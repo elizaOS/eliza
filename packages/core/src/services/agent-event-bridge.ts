@@ -37,6 +37,12 @@ interface NotificationServiceLike {
 	notify: (input: NotificationInput) => Promise<unknown> | unknown;
 }
 
+interface RuntimeServiceHost {
+	agentId: IAgentRuntime["agentId"];
+	getService: IAgentRuntime["getService"];
+	getCurrentRunId?: IAgentRuntime["getCurrentRunId"];
+}
+
 export const CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES = [
 	"line:message_received",
 	"GOOGLE_CHAT_MESSAGE_RECEIVED",
@@ -73,15 +79,16 @@ function readRecord(value: unknown): Record<string, unknown> {
 	return isRecord(value) ? value : {};
 }
 
-function readRuntime(value: unknown): IAgentRuntime | null {
-	if (
+function isRuntimeServiceHost(value: unknown): value is RuntimeServiceHost {
+	return (
 		isRecord(value) &&
 		typeof value.agentId === "string" &&
 		typeof value.getService === "function"
-	) {
-		return value as unknown as IAgentRuntime;
-	}
-	return null;
+	);
+}
+
+function readRuntime(value: unknown): RuntimeServiceHost | null {
+	return isRuntimeServiceHost(value) ? value : null;
 }
 
 function firstString(...values: unknown[]): string | undefined {
@@ -108,7 +115,7 @@ function readAttachments(value: unknown): boolean {
  * test doubles. Returns `null` when the service is absent so callers no-op.
  */
 function resolveAgentEventService(
-	runtime: IAgentRuntime,
+	runtime: RuntimeServiceHost,
 ): AgentEventService | null {
 	try {
 		const service = runtime.getService(ServiceType.AGENT_EVENT);
@@ -125,11 +132,11 @@ function resolveAgentEventService(
 }
 
 function resolveNotificationService(
-	runtime: IAgentRuntime,
+	runtime: RuntimeServiceHost,
 ): NotificationServiceLike | null {
 	try {
 		const service = runtime.getService(ServiceType.NOTIFICATION);
-		const candidate = service as unknown as Partial<NotificationServiceLike>;
+		const candidate = service as Partial<NotificationServiceLike>;
 		if (candidate && typeof candidate.notify === "function") {
 			return candidate as NotificationServiceLike;
 		}
@@ -144,7 +151,7 @@ function resolveNotificationService(
  * do not carry their own run id, so we fall back to the runtime's current run.
  */
 function resolveRunId(
-	runtime: IAgentRuntime,
+	runtime: RuntimeServiceHost,
 	payloadRunId?: string,
 ): string | null {
 	if (payloadRunId) {
@@ -322,7 +329,7 @@ function notificationData(
 }
 
 interface RawConnectorMessageSummary {
-	runtime: IAgentRuntime;
+	runtime: RuntimeServiceHost;
 	source: string;
 	channel: string;
 	messageId?: string;

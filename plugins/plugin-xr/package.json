@@ -1,9 +1,13 @@
 {
   "name": "@elizaos/plugin-xr",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "WebXR audio/video streaming for elizaOS — Quest 3 and XReal glasses",
   "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -22,8 +26,9 @@
     "lint": "bunx @biomejs/biome check src",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:types",
+    "prepack": "bun run build",
     "build:all": "bun run build && bun run simulator:build",
-    "clean": "rm -rf dist simulator/dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist simulator/dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "simulator:build": "cd simulator && bun install && bun run build",

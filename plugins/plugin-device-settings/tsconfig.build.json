@@ -2,7 +2,12 @@
   "extends": "../tsconfig.build.shared.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "paths": {
+      "@elizaos/capacitor-system": [
+        "../plugin-native-system/dist/esm/index.d.ts"
+      ]
+    }
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]

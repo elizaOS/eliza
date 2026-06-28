@@ -31,22 +31,16 @@ const JUDGE_SCHEMA: JSONSchema = {
 const JUDGE_SYSTEM =
   "Strict but fair benchmark judge. Read the rubric and the agent's replies. Decide pass/fail. Output JSON only.";
 
-export function normalizeJudgeResult(value: unknown): {
+export function normalizeJudgeResult(parsed: object): {
   pass: boolean;
   reason: string;
 } {
-  const result =
-    value && typeof value === "object"
-      ? (value as { pass?: unknown; reason?: unknown })
-      : {};
-
-  return {
-    pass: result.pass === true,
-    reason:
-      typeof result.reason === "string"
-        ? result.reason
-        : "(no reason returned)",
-  };
+  const pass = "pass" in parsed && parsed.pass === true;
+  const reason =
+    "reason" in parsed && typeof parsed.reason === "string"
+      ? parsed.reason
+      : "(no reason returned)";
+  return { pass, reason };
 }
 
 export async function runJudge(args: {

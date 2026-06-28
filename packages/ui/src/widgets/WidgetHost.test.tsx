@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WidgetHost } from "./WidgetHost";
 import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
 
-const { resolveWidgetsForSlotMock } = vi.hoisted(() => ({
+const { clientMock, resolveWidgetsForSlotMock } = vi.hoisted(() => ({
+  clientMock: {
+    getBaseUrl: vi.fn(() => ""),
+  },
   resolveWidgetsForSlotMock: vi.fn(),
 }));
 
@@ -37,6 +40,10 @@ vi.mock("../state", () => ({
     selector(mockAppState),
 }));
 
+vi.mock("../api", () => ({
+  client: clientMock,
+}));
+
 vi.mock("../state/useDeveloperMode", () => ({
   useIsDeveloperMode: () => false,
 }));
@@ -46,6 +53,7 @@ vi.mock("./registry", () => ({
 }));
 
 beforeEach(() => {
+  clientMock.getBaseUrl.mockReturnValue("");
   resolveWidgetsForSlotMock.mockReturnValue([
     {
       declaration: {
@@ -189,5 +197,47 @@ describe("WidgetHost", () => {
         },
       ],
     );
+  });
+
+  it("hides full app-shell widgets on limited cloud agent bases", () => {
+    clientMock.getBaseUrl.mockReturnValue(
+      "https://37911a1e-ed40-4626-88f5-0e4dcf249a34.elizacloud.ai",
+    );
+    resolveWidgetsForSlotMock.mockReturnValue([
+      {
+        declaration: {
+          id: "agent-orchestrator.apps",
+          pluginId: "agent-orchestrator",
+          slot: "home",
+          label: "Apps",
+        },
+        Component: () => <div>Apps widget</div>,
+      },
+      {
+        declaration: {
+          id: "activity-sink",
+          pluginId: "spec-plugin",
+          slot: "home",
+          label: "Activity sink",
+        },
+        Component: () => <div>Activity sink</div>,
+        defaultWidgetSink: "activity",
+      },
+      {
+        declaration: {
+          id: "notifications.recent",
+          pluginId: "notifications",
+          slot: "home",
+          label: "Notifications",
+        },
+        Component: () => <div>Notifications widget</div>,
+      },
+    ]);
+
+    render(<WidgetHost slot="home" />);
+
+    expect(screen.queryByText("Apps widget")).toBeNull();
+    expect(screen.queryByText("Activity sink")).toBeNull();
+    expect(screen.getByText("Notifications widget")).toBeTruthy();
   });
 });

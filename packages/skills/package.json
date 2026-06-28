@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/skills",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "Bundled skills and skill loading utilities for elizaOS agents",
   "type": "module",
   "main": "dist/index.js",
@@ -31,13 +31,14 @@
     }
   },
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "build": "tsc --noCheck -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "bun test ./test",
     "prepublishOnly": "bun run clean && bun run build",
     "lint": "bunx @biomejs/biome check --write ./src",
-    "lint:check": "bunx @biomejs/biome check ./src"
+    "lint:check": "bunx @biomejs/biome check ./src",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json"
   },
   "files": [
     "dist",

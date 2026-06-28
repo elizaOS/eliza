@@ -384,7 +384,19 @@ export async function materializeEnvAccountIfMissing(
     return;
   }
   const manager = getConnectorAccountManager(runtime);
-  const existing = await manager.getAccount(X_PROVIDER, DEFAULT_ACCOUNT_ID);
+  let existing: ConnectorAccount | null = null;
+  try {
+    existing = await manager.getAccount(X_PROVIDER, DEFAULT_ACCOUNT_ID);
+  } catch (err) {
+    logger.warn(
+      {
+        src: "plugin:x",
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Could not read X connector account; skipping env account materialization",
+    );
+    return;
+  }
   if (existing) {
     return;
   }

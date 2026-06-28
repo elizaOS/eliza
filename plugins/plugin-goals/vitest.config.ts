@@ -38,6 +38,14 @@ export default defineConfig({
         ),
       },
       {
+        // PA's telemetry-mapping (pulled in via lifeops/repository.ts) reads the
+        // activity-signal reliability helper from this server-safe leaf module.
+        find: /^@elizaos\/plugin-health\/sleep\/source-reliability$/,
+        replacement: sourceOf(
+          "../plugin-health/src/sleep/source-reliability.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-browser\/schema$/,
         replacement: sourceOf("../plugin-browser/src/schema.ts"),
       },

@@ -263,7 +263,7 @@ jobs:
           done
 
           cd "$ROOT_DIR"
-          rm -rf "$TEST_DIR"
+          node packages/scripts/rm-path-recursive.mjs "$TEST_DIR"
           echo "All JS tarballs passed installation test"
 
       - name: Upload tarball artifacts

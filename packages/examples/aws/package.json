@@ -7,7 +7,7 @@
   "scripts": {
     "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js --packages=external --external:@elizaos/core --external:@elizaos/plugin-openai --external:@elizaos/plugin-sql",
     "build:watch": "bun run build --watch",
-    "clean": "rm -rf dist",
+    "clean": "node ../../scripts/rm-path-recursive.mjs dist",
     "test": "cd ../../.. && bunx tsx packages/examples/aws/test-local.ts",
     "start": "bun run server-local.ts",
     "test:client": "bun run test-client.ts",

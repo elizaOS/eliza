@@ -40,6 +40,8 @@ TAILS_WORKAROUNDS_URL="${TAILS_WORKAROUNDS_URL:-https://gitlab.tails.boum.org/ta
 TAILS_WORKAROUNDS_REF="${TAILS_WORKAROUNDS_REF:-6701bfe3c41f4a676262a00b0e79d480d403caa1}"
 TAILS_TORBROWSER_LAUNCHER_URL="${TAILS_TORBROWSER_LAUNCHER_URL:-https://gitlab.tails.boum.org/tails/torbrowser-launcher.git}"
 TAILS_TORBROWSER_LAUNCHER_REF="${TAILS_TORBROWSER_LAUNCHER_REF:-9d2ea22d21f653e29169bb68ad250c674f533042}"
+# shellcheck source=packages/os/linux/scripts/submodule-checkout.sh
+source "${ELIZAOS_LIVE_SCRIPT_LIB:-/usr/local/lib/elizaos-live}/submodule-checkout.sh"
 
 cleanup() {
     if [ -n "${ACNG_PID}" ]; then
@@ -53,12 +55,12 @@ cleanup() {
     # with mixed uids — root-owned generated files vs runner-owned source
     # files). The build itself has either succeeded or not by this point.
     for generated in "${GENERATED_SUBMODULES[@]}"; do
-        rm -rf "${generated}" 2>/dev/null || true
+        elizaos_remove_path_recursive "${generated}" 2>/dev/null || true
     done
     if [ "${GENERATED_GIT}" = "1" ] && [ -d "${SRC}/.git" ]; then
         if [ "${GENERATED_GIT_COMMITTED}" = "1" ]; then
             git -C "${SRC}" checkout -- config/ po/*.po po/tails.pot 2>/dev/null || true
-            rm -rf \
+            elizaos_remove_path_recursive \
                 "${SRC}/config/binary_debian-installer-includes" \
                 "${SRC}/config/binary_debian-installer" \
                 "${SRC}/config/binary_grub" \
@@ -75,31 +77,23 @@ cleanup() {
                 "${SRC}/config/templates" 2>/dev/null || true
             rm -f \
                 "${SRC}/config/chroot_local-includes/etc/apparmor.d/torbrowser.Browser.firefox" 2>/dev/null || true
-            rm -rf \
+            elizaos_remove_path_recursive \
                 "${SRC}/config/chroot_local-includes/etc/apparmor.d/tunables/torbrowser" 2>/dev/null || true
         fi
-        rm -rf "${SRC}/.git" 2>/dev/null || true
+        elizaos_remove_path_recursive "${SRC}/.git" 2>/dev/null || true
     fi
-    rm -rf "${SRC}/tmp" 2>/dev/null || true
+    elizaos_remove_path_recursive "${SRC}/tmp" 2>/dev/null || true
 }
 
-ensure_submodule_checkout() {
+ensure_generated_submodule_checkout() {
     local path="$1"
     local url="$2"
     local ref="$3"
 
-    if [ -d "${path}" ] && find "${path}" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
-        return
+    ensure_submodule_checkout "${path}" "${url}" "${ref}"
+    if [ "${elizaos_submodule_checkout_fetched}" = "1" ]; then
+        GENERATED_SUBMODULES+=("${path}")
     fi
-
-    echo "missing ${path} — fetching ${ref} from ${url}"
-    rm -rf "${path}"
-    mkdir -p "$(dirname "${path}")"
-    git init -q "${path}"
-    git -C "${path}" remote add origin "${url}"
-    git -C "${path}" fetch --depth 1 origin "${ref}"
-    git -C "${path}" checkout -q FETCH_HEAD
-    GENERATED_SUBMODULES+=("${path}")
 }
 
 trap cleanup EXIT
@@ -133,7 +127,7 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     GENERATED_GIT=1
     for generated in submodules/tails-workarounds submodules/torbrowser-launcher config/chroot_local-includes/tmp/submodules; do
         if [ -d "${generated}" ] && [ ! -e "${generated}/.keep" ]; then
-            rm -rf "${generated}"
+            elizaos_remove_path_recursive "${generated}"
         fi
     done
     build_branch="$(head -n1 config/base_branch 2>/dev/null || echo stable)"
@@ -240,11 +234,11 @@ fi
 export PATH="${SRC}/auto/scripts:${SRC}/bin:${PATH}"
 
 if [ "${STAGE}" = "build" ]; then
-    ensure_submodule_checkout \
+    ensure_generated_submodule_checkout \
         submodules/tails-workarounds \
         "${TAILS_WORKAROUNDS_URL}" \
         "${TAILS_WORKAROUNDS_REF}"
-    ensure_submodule_checkout \
+    ensure_generated_submodule_checkout \
         submodules/torbrowser-launcher \
         "${TAILS_TORBROWSER_LAUNCHER_URL}" \
         "${TAILS_TORBROWSER_LAUNCHER_REF}"
@@ -299,7 +293,7 @@ if [ "${STAGE}" = "binary" ]; then
     echo "=== lb config (refresh config tree) ==="
     lb config
     echo "=== clear stale binary-stage artifacts ==="
-    rm -rf binary binary.iso binary.img binary.contents binary.files \
+    elizaos_remove_path_recursive binary binary.iso binary.img binary.contents binary.files \
         binary.packages binary.tmp chroot.tmp .stage/binary*
     # lb binary may install small helper packages such as squashfs-tools in
     # the copied chroot. Tails' Additional Software apt hook logs under

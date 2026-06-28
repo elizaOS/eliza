@@ -1245,6 +1245,31 @@ interface StreamingToolCallAcc {
   args: string;
 }
 
+/**
+ * True when `value` is one complete, self-contained JSON object (it parses and
+ * is a plain object — not an array or scalar). Used to recognise Cerebras's
+ * final aggregated tool-call frame, which re-sends the whole arguments object
+ * rather than the next incremental fragment.
+ *
+ * Parsing (not brace-counting) is load-bearing: a proper prefix of a single
+ * JSON object never itself parses as complete — the outer `{` stays open even
+ * when an inner `}` arrives mid-stream (e.g. `{"a":{"b":1}`) — so this only
+ * becomes true once the WHOLE object has arrived, which is exactly the resend
+ * boundary. A brace counter would be fooled by that inner close.
+ */
+function isCompleteJsonObject(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) return false;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return (
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Fold one SSE `delta.tool_calls[]` array into the per-index accumulator. */
 export function accumulateToolCallDeltas(
   acc: Map<number, StreamingToolCallAcc>,
@@ -1260,7 +1285,22 @@ export function accumulateToolCallDeltas(
     const fn = recordAt(d, "function");
     const name = firstString(fn.name);
     if (name) cur.name = name;
-    if (typeof fn.arguments === "string") cur.args += fn.arguments;
+    if (typeof fn.arguments === "string") {
+      // Cerebras streams the tool-call arguments incrementally, then emits a
+      // FINAL aggregated frame that re-sends the COMPLETE arguments object
+      // (re-carrying id + name). Blindly appending that re-send doubles the
+      // JSON (`{…}{…}`); downstream parsing can only recover when both copies
+      // are byte-identical, and the cloud character ("lowercase naturally")
+      // makes the copies diverge on casing — dead-ending terse replies. When
+      // the accumulated args AND the incoming fragment are each a complete,
+      // self-contained object the incoming is the authoritative full copy:
+      // replace rather than concatenate.
+      if (isCompleteJsonObject(cur.args) && isCompleteJsonObject(fn.arguments)) {
+        cur.args = fn.arguments;
+      } else {
+        cur.args += fn.arguments;
+      }
+    }
     acc.set(index, cur);
   }
 }

@@ -24,6 +24,7 @@ import { decideBuilderArming, selectBuilderHost } from "./app-builder-host";
 import { AppContainerProvider, type AppContainerSsh } from "./app-container-provider";
 import { appContainerStore } from "./app-container-store";
 import type { BuildExec } from "./app-image-builder";
+import { waitForUrlReachable } from "./app-reachability";
 import { appsService } from "./apps";
 import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
@@ -192,12 +193,19 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
 
   // Ingress route hooks — wired only when a Caddy admin URL is configured.
   // Otherwise routes are no-ops (the deploy still succeeds; the app just has no
-  // public URL until ingress is set up).
+  // public URL until ingress is set up). The reachability gate (#9853) is wired
+  // alongside the route hooks: a public URL only exists to probe once there's an
+  // ingress route to serve it, so an un-wired ingress skips the gate (no route =>
+  // nothing to verify) rather than failing every deploy on an unroutable URL.
   const caddyAdminUrl = containersEnv.caddyAdminUrl();
-  const ingress: Pick<ContainerExecutorDeps, "onRouteAdded" | "onRouteRemoved"> = caddyAdminUrl
+  const ingress: Pick<
+    ContainerExecutorDeps,
+    "onRouteAdded" | "onRouteRemoved" | "probeAppReachable"
+  > = caddyAdminUrl
     ? {
         onRouteAdded: (route) => addAppRoute({ ...route, adminBase: caddyAdminUrl }),
         onRouteRemoved: (route) => removeAppRoute({ ...route, adminBase: caddyAdminUrl }),
+        probeAppReachable: (url) => waitForUrlReachable(url),
       }
     : {};
 

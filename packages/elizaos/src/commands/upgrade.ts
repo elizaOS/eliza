@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import * as clack from "@clack/prompts";
 import pc from "picocolors";
 import { getTemplateById, getTemplatesDir } from "../manifest.js";
@@ -7,6 +6,7 @@ import {
   readProjectMetadata,
   writeProjectMetadata,
 } from "../project-metadata.js";
+import { removePathRecursive } from "../remove-path-recursive.js";
 import {
   buildMetadata,
   createRenderedTempDir,
@@ -86,7 +86,7 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
       : "Upgrade complete.",
   );
 
-  fs.rmSync(rendered.dir, { force: true, recursive: true });
+  await removePathRecursive(rendered.dir);
 
   if (!(options.check || options.dryRun)) {
     writeProjectMetadata(projectRoot, {

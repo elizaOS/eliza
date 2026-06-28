@@ -46,6 +46,8 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 	const commands: Array<[text: string, view: string]> = [
 		["open settings", "settings"],
 		["go to settings view", "settings"],
+		["go home", "chat"],
+		["open the home dashboard", "chat"],
 		["show me my calendar", "calendar"],
 		["muéstrame mi calendario", "calendar"],
 		["abra meu calendário", "calendar"],

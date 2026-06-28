@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-personal-assistant",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Personal-assistant orchestration plugin: BRIEF, PRIORITIZE, PERSONAL_ASSISTANT cross-domain orchestration, scheduled-task owner CRUD, and default-pack composition. Slimmed from the legacy plugin-lifeops; domain-specific surfaces have moved to plugin-inbox, plugin-goals, plugin-calendar, plugin-blocker, plugin-finances, plugin-relationships, etc.",
   "sideEffects": [
@@ -54,9 +54,10 @@
     "bench:work-threads": "cd ../.. && bun plugins/plugin-personal-assistant/scripts/work-thread-benchmark.ts",
     "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts",
     "build": "bun run build:js && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "bun run clean && tsup --config tsup.config.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json"
   },
   "dependencies": {
     "@capacitor/core": "8.4.0",

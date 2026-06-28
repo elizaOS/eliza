@@ -100,6 +100,64 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
+	it("suppresses the simple→requiresTool promotion for bot-to-bot crosstalk (#9874)", () => {
+		// The inbound is addressed to another bot, not us; the caller resolved
+		// that and passes suppressToolPromotion. requiresTool would normally
+		// promote a simple-only turn to planning against general — here it must
+		// stay on the simple reply so we do not fabricate a phantom tool task.
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "Overheard crosstalk.",
+			plan: {
+				contexts: ["simple"],
+				requiresTool: true,
+				reply: "got it",
+			},
+		};
+
+		const promoted = routeMessageHandlerOutput(output);
+		expect(promoted.type).toBe("planning_needed");
+
+		const suppressed = routeMessageHandlerOutput(output, {
+			suppressToolPromotion: true,
+		});
+		expect(suppressed.type).toBe("final_reply");
+		if (suppressed.type === "final_reply") {
+			expect(suppressed.reply).toBe("got it");
+		}
+	});
+
+	it("suppression also blocks the candidateActions promotion, but leaves explicit non-simple planning intact (#9874)", () => {
+		const candidatePromotion = {
+			processMessage: "RESPOND" as const,
+			thought: "candidate hint.",
+			plan: {
+				contexts: ["simple"],
+				requiresTool: true,
+				candidateActions: ["BASH"],
+				reply: "on it",
+			},
+		};
+		expect(
+			routeMessageHandlerOutput(candidatePromotion, {
+				suppressToolPromotion: true,
+			}).type,
+		).toBe("final_reply");
+
+		// Suppression only blocks the simple-path promotion; a turn that already
+		// selected a real non-simple context still plans against it.
+		const explicitPlanning = {
+			processMessage: "RESPOND" as const,
+			thought: "real context.",
+			plan: { contexts: ["general"], requiresTool: true },
+		};
+		expect(
+			routeMessageHandlerOutput(explicitPlanning, {
+				suppressToolPromotion: true,
+			}).type,
+		).toBe("planning_needed");
+	});
+
 	it("keeps simple route for explicit non-tool candidate hints", () => {
 		const output = {
 			processMessage: "RESPOND" as const,

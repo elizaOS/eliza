@@ -1626,8 +1626,22 @@ async function unloadNativeLlamaModel(): Promise<void> {
 
 function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 	if (typeof params.prompt === "string" && params.prompt.length > 0) {
-		return renderChatMlPrompt(IOS_NATIVE_NO_THINK_SYSTEM, [
-			{ role: "user", content: params.prompt },
+		const trimmedPrompt = params.prompt.trimEnd();
+		if (
+			trimmedPrompt.includes("<start_of_turn>") &&
+			trimmedPrompt.includes("<start_of_turn>model")
+		) {
+			return trimmedPrompt;
+		}
+		const legacyMessages = trimmedPrompt.includes("<|im_start|>")
+			? collectChatMlPromptMessages(trimmedPrompt, IOS_NATIVE_NO_THINK_SYSTEM)
+			: null;
+		if (legacyMessages && legacyMessages.length > 0) {
+			return renderGemmaPrompt(legacyMessages);
+		}
+		return renderGemmaPrompt([
+			{ role: "system", content: IOS_NATIVE_NO_THINK_SYSTEM },
+			{ role: "user", content: trimmedPrompt },
 		]);
 	}
 	const systemBlocks = [IOS_NATIVE_NO_THINK_SYSTEM];
@@ -1665,23 +1679,63 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 			}
 		}
 	}
-	return renderChatMlPrompt(systemBlocks.join("\n\n"), chatMessages);
+	return renderGemmaPrompt([
+		{ role: "system", content: systemBlocks.join("\n\n") },
+		...chatMessages,
+	]);
 }
 
-function renderChatMlPrompt(
-	system: string,
+function roleForGemmaPrompt(role: string): "system" | "user" | "model" {
+	if (role === "assistant" || role === "tool") return "model";
+	if (role === "system") return "system";
+	return "user";
+}
+
+function collectChatMlPromptMessages(
+	prompt: string,
+	system?: string,
+): Array<{ role: string; content: string }> | null {
+	const headerPattern = /<\|im_start\|>(system|user|assistant|tool)(?:\n|$)/g;
+	const headers: Array<{ index: number; role: string; bodyStart: number }> = [];
+	let match = headerPattern.exec(prompt);
+	while (match !== null) {
+		headers.push({
+			index: match.index,
+			role: match[1],
+			bodyStart: match.index + match[0].length,
+		});
+		match = headerPattern.exec(prompt);
+	}
+	if (headers.length === 0) return null;
+	const messages: Array<{ role: string; content: string }> = [];
+	if (system?.trim() && headers[0]?.role !== "system") {
+		messages.push({ role: "system", content: system.trim() });
+	}
+	for (let i = 0; i < headers.length; i += 1) {
+		const current = headers[i];
+		const next = headers[i + 1];
+		const content = prompt
+			.slice(current.bodyStart, next ? next.index : prompt.length)
+			.replace(/<\|im_end\|>\s*$/g, "")
+			.trim();
+		if (content) messages.push({ role: current.role, content });
+	}
+	return messages.length > 0 ? messages : null;
+}
+
+function renderGemmaPrompt(
 	messages: Array<{ role: string; content: string }>,
 ): string {
-	const blocks = [`<|im_start|>system\n${system.trim()}\n<|im_end|>`];
+	const blocks: string[] = [];
 	for (const message of messages) {
-		const role =
-			message.role === "assistant" || message.role === "tool"
-				? message.role
-				: "user";
 		const content = message.content.trim();
-		if (content) blocks.push(`<|im_start|>${role}\n${content}\n<|im_end|>`);
+		if (content) {
+			blocks.push(
+				`<start_of_turn>${roleForGemmaPrompt(message.role)}\n${content}<end_of_turn>`,
+			);
+		}
 	}
-	blocks.push("<|im_start|>assistant\n<think>\n\n</think>\n\n");
+	blocks.push("<start_of_turn>model\n");
 	return blocks.join("\n");
 }
 
@@ -1696,8 +1750,11 @@ function stripReasoningBlocks(raw: string): string {
 
 function cleanIosNativeConversationReply(raw: string): string {
 	const withoutTokens = stripReasoningBlocks(raw)
+		.split("<end_of_turn>")[0]
+		.split("<start_of_turn>")[0]
 		.split("<|im_end|>")[0]
 		.split("<|im_start|>")[0]
+		.replace(/^\s*model\s*:\s*/i, "")
 		.replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
 		.trim();
 	const compact = withoutTokens.replace(/\s+/g, " ").trim();
@@ -1728,7 +1785,7 @@ async function maybeGenerateIosNativeConversationReply(
 			],
 			maxTokens: 32,
 			temperature: 0,
-			stopSequences: ["<|im_end|>", "<|im_start|>"],
+			stopSequences: ["<end_of_turn>", "<start_of_turn>"],
 		},
 		IOS_NATIVE_LLAMA_PROVIDER,
 	);
@@ -1760,7 +1817,9 @@ function mergeStopSequences(values: unknown): string[] {
 	const requested = Array.isArray(values)
 		? values.filter((value): value is string => typeof value === "string")
 		: [];
-	return Array.from(new Set([...requested, "<|im_end|>", "<|endoftext|>"]));
+	return Array.from(
+		new Set([...requested, "<end_of_turn>", "<start_of_turn>", "<endoftext>"]),
+	);
 }
 
 function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {

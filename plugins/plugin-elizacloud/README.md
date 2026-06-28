@@ -40,7 +40,7 @@ helpers in `src/utils/sdk-client.ts`:
 | `src/utils/cloud-api.ts` | Backwards-compatible re-export of SDK classes and types |
 
 `ELIZAOS_CLOUD_BASE_URL` remains the API base URL and defaults to
-`https://www.elizacloud.ai/api/v1`. `createElizaCloudClient` derives the site
+`https://elizacloud.ai/api/v1`. `createElizaCloudClient` derives the site
 root from that API URL when generated SDK route wrappers need `/api/v1/...`
 paths.
 
@@ -105,7 +105,7 @@ Get an API key from
 | Setting | Description | Default |
 | --- | --- | --- |
 | `ELIZAOS_CLOUD_API_KEY` | API key used for authenticated Cloud requests | Required |
-| `ELIZAOS_CLOUD_BASE_URL` | Eliza Cloud API base URL | `https://www.elizacloud.ai/api/v1` |
+| `ELIZAOS_CLOUD_BASE_URL` | Eliza Cloud API base URL | `https://elizacloud.ai/api/v1` |
 | `ELIZAOS_CLOUD_ENABLED` | Enables container provisioning, device auth, bridge, and backup services | `false` |
 | `ELIZAOS_CLOUD_NANO_MODEL` | Nano/cheapest model override | `NANO_MODEL` or `gpt-oss-120b` |
 | `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model override | `SMALL_MODEL` or `gpt-oss-120b` |

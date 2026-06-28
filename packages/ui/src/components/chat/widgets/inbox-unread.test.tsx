@@ -84,6 +84,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  getBaseUrlMock.mockReturnValue("http://localhost");
   publishHomeAttentionSpy.mockClear();
 });
 
@@ -126,6 +127,20 @@ describe("InboxUnreadWidget (#9143)", () => {
     });
     expect(screen.queryByTestId("chat-widget-inbox-unread")).toBeNull();
     expect(container.firstChild).toBeNull();
+  });
+
+  it("does not probe inbox routes on dedicated cloud chat agents", async () => {
+    getBaseUrlMock.mockReturnValue(
+      "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+    );
+    vi.stubGlobal("fetch", vi.fn());
+
+    const { container } = render(<InboxUnreadWidget {...fetchProps} />);
+
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+    expect(globalThis.fetch as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 
   it("publishes the message weight while unread threads exist", async () => {

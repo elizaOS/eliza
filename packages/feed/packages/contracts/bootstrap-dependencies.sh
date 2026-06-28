@@ -3,7 +3,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$ROOT_DIR/../../../.." && pwd)"
 DEPS_DIR="$ROOT_DIR/dependencies"
+RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.mjs"
 
 download_dependency() {
   local name="$1"
@@ -35,7 +37,7 @@ download_dependency() {
   fi
 
   unzip -q "$archive_path" -d "$target_dir"
-  rm -rf "$tmpdir"
+  node "$RM_PATH_RECURSIVE" "$tmpdir"
 }
 
 download_dependency \

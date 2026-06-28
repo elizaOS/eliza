@@ -62,6 +62,27 @@ describe("startup-telemetry", () => {
     expect(getStartupTrace().traceId).toBe("host-abc-123");
   });
 
+  it("adopts the Android native bridge trace id when no window id is injected", () => {
+    window.ElizaNative = {
+      getStartupTraceId: () => "android-abc-123",
+    };
+
+    expect(initStartupTrace("ignored-preferred")).toBe("android-abc-123");
+    expect(getStartupTrace().traceId).toBe("android-abc-123");
+    expect(windowTrace()?.traceId).toBe("android-abc-123");
+  });
+
+  it("keeps the injected window trace id ahead of the Android bridge", () => {
+    (window as unknown as Record<string, unknown>)[
+      STARTUP_TRACE_ID_WINDOW_KEY
+    ] = "host-wins";
+    window.ElizaNative = {
+      getStartupTraceId: () => "android-loses",
+    };
+
+    expect(initStartupTrace("ignored-preferred")).toBe("host-wins");
+  });
+
   it("uses the preferred id when no host id is injected", () => {
     expect(initStartupTrace("renderer-xyz")).toBe("renderer-xyz");
     // Idempotent: a second call does not change the id.

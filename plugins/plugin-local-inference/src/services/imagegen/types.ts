@@ -116,9 +116,9 @@ export interface ImageGenResult {
  * `ELIZA_1_BUNDLE_EXTRAS.json`.
  *
  * Some diffusion families are single-file GGUFs once quantized, such as
- * SD 1.5 Q5_0. Others stay split: stable-diffusion.cpp runs Z-Image
- * with `--diffusion-model` plus separate Qwen LLM text encoder and VAE
- * files. The optional paths below carry those companion assets.
+ * SD 1.5 Q5_0. Others stay split: stable-diffusion.cpp runs some diffusion
+ * families with `--diffusion-model` plus separate text encoder and VAE files.
+ * The optional paths below carry those companion assets.
  */
 export interface ImageGenLoadArgs {
 	/** Absolute path to the primary diffusion weights (GGUF / mlpackage / engine). */
@@ -135,7 +135,7 @@ export interface ImageGenLoadArgs {
 	clip?: string;
 	/** Optional split T5 / Gemma text encoder path. */
 	t5?: string;
-	/** Optional split LLM text encoder path, e.g. Qwen3 for Z-Image. */
+	/** Optional split LLM text encoder path for split diffusion bundles. */
 	llm?: string;
 	/**
 	 * Backend-specific acceleration hint. Accepts:

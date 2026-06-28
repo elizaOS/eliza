@@ -96,6 +96,12 @@ async function fulfillJson(
 }
 
 async function installConversationStreamMock(page: Page): Promise<{
+  messages: () => Array<{
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number;
+  }>;
   streamCalls: () => Array<Record<string, unknown>>;
 }> {
   let conversationCreated = false;
@@ -233,7 +239,10 @@ async function installConversationStreamMock(page: Page): Promise<{
     });
   });
 
-  return { streamCalls: () => [...streamCalls] };
+  return {
+    messages: () => [...messages],
+    streamCalls: () => [...streamCalls],
+  };
 }
 
 async function installTtsCloudMock(page: Page): Promise<{
@@ -786,25 +795,16 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
     );
   }
 
-  const showConversation = page.getByRole("button", {
-    name: /expand conversation|collapse conversation/i,
-  });
-  if ((await showConversation.count()) > 0) {
-    await expect(showConversation).toBeVisible();
-    await showConversation.click();
-  }
   await expect
-    .poll(async () => page.locator("body").innerText(), { timeout: 5_000 })
-    .toContain("always on browser turn");
-
-  // The overlay's fullscreen transcript animates out via AnimatePresence while
-  // the resting thread mounts in, so the same assistant line can be present in
-  // both during the expand/collapse transition. Assert the first visible bubble.
-  await expect(
-    page.getByText("Always-on assistant heard the browser turn").first(),
-  ).toBeVisible({
-    timeout: 5_000,
-  });
+    .poll(() => conversations.messages(), { timeout: 5_000 })
+    .toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          text: "always on browser turn",
+        }),
+      ]),
+    );
 
   const afterFinal = await page.evaluate(() => {
     return (

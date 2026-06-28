@@ -200,6 +200,83 @@ describe("streamed tool-call delta assembly", () => {
     accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: "{}" } }]);
     expect(finalizeStreamedToolCalls(acc)).toEqual([]);
   });
+
+  it("does NOT double when Cerebras re-sends the complete args in a final aggregated frame", () => {
+    // Cerebras streams the args incrementally, then emits a FINAL frame that
+    // re-carries id + name + the COMPLETE arguments object. Appending that
+    // re-send would yield `{"replyText":"PONG"}{"replyText":"PONG"}` (doubled).
+    const acc = new Map();
+    accumulateToolCallDeltas(acc, [
+      { index: 0, id: "call_1", function: { name: "HANDLE_RESPONSE", arguments: "" } },
+    ]);
+    accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: '{"replyText":"PO' } }]);
+    accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: 'NG"}' } }]);
+    // Aggregated re-send of the whole object (re-carries id + name).
+    accumulateToolCallDeltas(acc, [
+      {
+        index: 0,
+        id: "call_1",
+        function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"PONG"}' },
+      },
+    ]);
+    expect(finalizeStreamedToolCalls(acc)).toEqual([
+      {
+        type: "tool-call",
+        toolCallId: "call_1",
+        toolName: "HANDLE_RESPONSE",
+        input: { replyText: "PONG" },
+      },
+    ]);
+  });
+
+  it("takes the authoritative re-send even when it diverges from the incremental copy", () => {
+    // The cloud character ("lowercase naturally") can make the model emit a
+    // different casing in the aggregated re-send than in the streamed fragments.
+    // The re-send is the authoritative full copy — keep a single, valid object.
+    const acc = new Map();
+    accumulateToolCallDeltas(acc, [
+      {
+        index: 0,
+        id: "call_1",
+        function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"PONG"}' },
+      },
+    ]);
+    accumulateToolCallDeltas(acc, [
+      {
+        index: 0,
+        id: "call_1",
+        function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"pong"}' },
+      },
+    ]);
+    expect(finalizeStreamedToolCalls(acc)).toEqual([
+      {
+        type: "tool-call",
+        toolCallId: "call_1",
+        toolName: "HANDLE_RESPONSE",
+        input: { replyText: "pong" },
+      },
+    ]);
+  });
+
+  it("does NOT replace mid-stream when a nested inner object closes early", () => {
+    // Regression guard for the resend detector: a fragment can transiently
+    // contain a closed INNER object (`{"a":{"b":1}`) while the OUTER object is
+    // still open. JSON.parse rejects that prefix (a brace counter would not),
+    // so the fragments must keep appending — never replace mid-object.
+    const acc = new Map();
+    accumulateToolCallDeltas(acc, [
+      { index: 0, id: "call_1", function: { name: "set_filter", arguments: '{"a":{"b":1}' } },
+    ]);
+    accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: ',"c":2}' } }]);
+    expect(finalizeStreamedToolCalls(acc)).toEqual([
+      {
+        type: "tool-call",
+        toolCallId: "call_1",
+        toolName: "set_filter",
+        input: { a: { b: 1 }, c: 2 },
+      },
+    ]);
+  });
 });
 
 describe("streamNativeChatCompletion", () => {

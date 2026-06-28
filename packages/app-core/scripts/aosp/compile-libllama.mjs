@@ -173,7 +173,7 @@
 //   `eliza/` submodule the same algorithm finds the host repo root
 //   (it stops at the first ancestor that has a `package.json`).
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -207,6 +207,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // On a parent-host invocation that's `<host-root>`; when running
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const RECURSIVE_CLEANUP_SCRIPT = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 // elizaOS/llama.cpp @ 33c888a7b. Composes TBQ (apothic) +
 // QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + MTP spec-decode
@@ -413,6 +419,20 @@ export function parseAndroidTarget(target) {
   return { target, arch, backend, fused, androidAbi };
 }
 
+function removeDirectoryRecursive(targetPath) {
+  try {
+    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(detail || error?.message || String(error), {
+      cause: error,
+    });
+  }
+}
+
 /**
  * GGML_VULKAN CMake flags for the android-arm64 Vulkan backend. Points cmake at
  * the NDK's host `glslc` (the shader compiler ggml-vulkan's codegen invokes),
@@ -508,7 +528,7 @@ export function resolveAndroidVulkanCmakeFlags({
     ? path.resolve(stagingDir)
     : path.join(os.tmpdir(), "eliza-vulkan-headers");
   const stagedVulkan = path.join(incRoot, "vulkan");
-  fs.rmSync(stagedVulkan, { recursive: true, force: true });
+  removeDirectoryRecursive(stagedVulkan);
   fs.mkdirSync(incRoot, { recursive: true });
   fs.cpSync(hostVulkanDir, stagedVulkan, { recursive: true });
   // vulkan_core.h `#include <vk_video/...>` the video-codec extension headers,
@@ -517,7 +537,7 @@ export function resolveAndroidVulkanCmakeFlags({
   const hostVkVideoDir = path.join(path.dirname(hostVulkanDir), "vk_video");
   if (fs.existsSync(hostVkVideoDir)) {
     const stagedVkVideo = path.join(incRoot, "vk_video");
-    fs.rmSync(stagedVkVideo, { recursive: true, force: true });
+    removeDirectoryRecursive(stagedVkVideo);
     fs.cpSync(hostVkVideoDir, stagedVkVideo, { recursive: true });
   }
 
@@ -547,7 +567,7 @@ export function resolveAndroidVulkanCmakeFlags({
     );
   }
   const stagedSpirv = path.join(incRoot, "spirv");
-  fs.rmSync(stagedSpirv, { recursive: true, force: true });
+  removeDirectoryRecursive(stagedSpirv);
   fs.cpSync(path.join(hostSpirvRoot, "spirv"), stagedSpirv, {
     recursive: true,
   });
@@ -1000,7 +1020,7 @@ export function ensureLlamaCppCheckout({
     log(
       `[compile-libllama] Cloning llama.cpp ${LLAMA_CPP_TAG} into ${cacheDir}`,
     );
-    fs.rmSync(cacheDir, { recursive: true, force: true });
+    removeDirectoryRecursive(cacheDir);
     fs.mkdirSync(cacheDir, { recursive: true });
     spawn(
       "git",

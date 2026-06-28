@@ -1,4 +1,4 @@
-"""Apply FP8 (E4M3) weight quantization to a fine-tuned Qwen checkpoint.
+"""Apply FP8 (E4M3) weight quantization to a fine-tuned Eliza-1/Gemma checkpoint.
 
 Wraps :mod:`torchao.float8` per the recipe in
 https://pytorch.org/torchao/main/api_ref_quantization.html — converts every

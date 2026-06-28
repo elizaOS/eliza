@@ -1,39 +1,30 @@
 /**
  * Springboard — iOS-like app/view launcher.
  *
- * Renders every available view as a single uniform, NAKED tile on swipeable
- * pages: a real branded hero image when one loads, otherwise the view glyph
- * sitting directly on the ambient orange field (no dark card, no border). Every
- * tile looks the same. Tap launches; long-press enters edit mode where icons can
- * be reordered (drag) and — for manageable (dynamic developer) views — edited or
- * deleted. Page order is persisted via the pure `springboard-layout` model.
- * Renders no background of its own — the shared root `AppBackground` shows
- * through, matching the home screen.
- *
- * The `favoriteIds` / `onToggleFavorite` props are retained for the desktop-tab
- * caller's type compatibility but are no longer rendered: there is no favorites
- * dock, so every tile is identical.
+ * Renders every available view as a names-only icon on swipeable pages plus a
+ * pinned favorites dock. Tap launches; long-press enters edit mode where icons
+ * can be reordered (drag), favorited into the dock, and — for manageable
+ * (dynamic developer) views — edited or deleted. Page order is persisted via
+ * the pure `springboard-layout` model. Favorites are
+ * controlled-optional: when `onToggleFavorite` is supplied the dock reflects the
+ * caller's `favoriteIds`; otherwise favorites are kept locally. Fully
+ * token-themed (light/dark + overrides) and renders no background of its own —
+ * the shared root `AppBackground` shows through, matching the home screen.
  */
 
 import { Pencil, Trash2 } from "lucide-react";
-import { animate, motion, Reorder, useMotionValue } from "motion/react";
-import {
-  memo,
-  type PointerEvent as ReactPointerEvent,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Reorder } from "motion/react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import {
   moveIcon,
   readSpringboardLayout,
   reconcileLayout,
+  SPRINGBOARD_DOCK_LIMIT,
   type SpringboardLayout,
+  toggleFavorite,
   writeSpringboardLayout,
 } from "../../state/springboard-layout";
 import { emitViewInteraction } from "../../view-telemetry";
@@ -44,10 +35,7 @@ export interface SpringboardProps {
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
   onEdgeSwipeRight?: () => void;
-  /**
-   * Retained for desktop-tab caller type compatibility. The favorites dock was
-   * removed, so these are accepted and ignored — every tile renders uniformly.
-   */
+  /** When set, favorites are controlled by the caller (e.g. desktop tabs). */
   favoriteIds?: string[];
   onToggleFavorite?: (id: string) => void;
   /** Per-tile management for dynamic views, shown in edit mode when allowed. */
@@ -64,12 +52,6 @@ export interface SpringboardProps {
   /** Fires with the rendered page count whenever it changes, so an outer surface
    *  can size the unified page indicator. */
   onPageCountChange?: (count: number) => void;
-  /**
-   * Optional caller-owned page grouping. Used by the app launcher to keep
-   * curated system apps on page 1 and developer tools on page 2 regardless of
-   * persisted user layout. When omitted, the normal persisted layout is used.
-   */
-  pageGroups?: string[][];
   /** Controlled edit mode. When omitted, edit mode is local state. */
   editing?: boolean;
   onEditingChange?: (editing: boolean) => void;
@@ -85,8 +67,10 @@ export interface SpringboardProps {
 interface IconTileProps {
   entry: ViewEntry;
   editing: boolean;
+  favorited: boolean;
   manageable: boolean;
   onLaunch: (entry: ViewEntry) => void;
+  onToggleFavorite: (id: string) => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onLongPress: () => void;
@@ -96,35 +80,42 @@ const LONG_PRESS_MS = 450;
 /** Finger travel (px) that aborts a long-press — a pan/swipe is not a press, so
  *  a horizontal swipe-back can never ghost-fire edit mode mid-gesture. */
 const LONG_PRESS_MOVE_SLOP = 10;
-/** Horizontal drag distance (px) needed to flip to the adjacent page. */
-const SWIPE_THRESHOLD = 60;
-/**
- * Horizontal travel must beat vertical by this ratio before the pager claims the
- * gesture — below it the move is a vertical scroll of the tile grid and the
- * carousel stays put, so scrolling a long page never drifts the track sideways.
- */
-const PAGER_ANGLE_RATIO = 1.2;
-/** Settle animation for the page track when a drag releases (iOS-like ease-out). */
-const PAGER_SETTLE_TRANSITION = {
-  type: "spring",
-  stiffness: 420,
-  damping: 40,
-  mass: 0.9,
-} as const;
+
+function viewKindBadge(entry: ViewEntry): {
+  label: string;
+  title: string;
+} | null {
+  if (entry.viewKind === "preview") {
+    return {
+      label: "Preview",
+      title: `${entry.label} is marked preview`,
+    };
+  }
+  if (entry.viewKind === "developer" || entry.developerOnly === true) {
+    return {
+      label: "Dev",
+      title: `${entry.label} is marked developer`,
+    };
+  }
+  return null;
+}
 
 // Memoized so a layout reconcile (install/uninstall/sort) re-renders only the
 // tiles whose props actually changed, not all ~20 on a page.
 const IconTile = memo(function IconTile({
   entry,
   editing,
+  favorited,
   manageable,
   onLaunch,
+  onToggleFavorite,
   onEdit,
   onDelete,
   onLongPress,
 }: IconTileProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressStart = useRef<{ x: number; y: number } | null>(null);
+  const badge = viewKindBadge(entry);
 
   const clear = () => {
     if (timer.current !== null) {
@@ -172,14 +163,10 @@ const IconTile = memo(function IconTile({
           // ghost-fires edit mode after the user finishes scrolling.
           onPointerCancel={clear}
           className={cn(
-            // NAKED tile: no card, no border. ViewTileImage handles
-            // image-vs-glyph internally. The hero image (object-cover) IS the
-            // tile when it loads; otherwise the white glyph (with a soft shadow,
-            // applied in ViewTileImage's glyphClassName) sits directly on the
-            // ambient orange field. Hover is a faint white wash (never
-            // orange→black). Filter effects (#9281) and focus rings (#9292) were
-            // removed on develop.
-            "h-16 w-16 overflow-hidden rounded-2xl text-white transition-colors hover:bg-white/8",
+            // ViewTileImage renders this surface as an app icon, not as a
+            // cropped catalog preview. The button stays one constant hit target
+            // and owns hover/focus chrome; the inner visual owns color/glyph.
+            "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
             editing && "animate-pulse",
           )}
         >
@@ -187,10 +174,41 @@ const IconTile = memo(function IconTile({
             entry={entry}
             source="springboard"
             containerClassName="grid h-full w-full place-items-center"
-            glyphClassName="h-7 w-7 text-white [filter:drop-shadow(0_1px_3px_rgba(0,0,0,0.38))]"
+            glyphClassName="h-7 w-7"
             imageTestId={`springboard-image-${entry.id}`}
           />
         </button>
+        {badge ? (
+          <span
+            data-testid={`springboard-kind-${entry.id}`}
+            title={badge.title}
+            className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full border border-black/20 bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900 shadow-sm"
+          >
+            {badge.label}
+          </span>
+        ) : null}
+        {editing ? (
+          <button
+            type="button"
+            aria-label={
+              favorited ? `Unpin ${entry.label}` : `Pin ${entry.label}`
+            }
+            data-testid={`springboard-fav-${entry.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(entry.id);
+            }}
+            className={cn(
+              // Filled chips stay legible across image and dark tile backgrounds.
+              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-bold shadow-md",
+              favorited
+                ? "border-black/20 bg-accent text-white"
+                : "border-black/15 bg-white text-neutral-900",
+            )}
+          >
+            {favorited ? "★" : "+"}
+          </button>
+        ) : null}
         {editing && manageable ? (
           <div className="absolute -left-1.5 -top-1.5 flex gap-1">
             {onEdit ? (
@@ -224,7 +242,7 @@ const IconTile = memo(function IconTile({
           </div>
         ) : null}
       </div>
-      <span className="max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]">
+      <span className="max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
         {entry.label}
       </span>
     </div>
@@ -236,15 +254,14 @@ export function Springboard({
   loading = false,
   onLaunch,
   onEdgeSwipeRight,
-  // favoriteIds / onToggleFavorite are accepted for desktop-tab type
-  // compatibility but intentionally unused — the favorites dock was removed.
+  favoriteIds,
+  onToggleFavorite,
   canManageView,
   onEditView,
   onDeleteView,
   page: pageProp,
   onPageChange,
   onPageCountChange,
-  pageGroups,
   editing: editingProp,
   onEditingChange,
   showPageDots = true,
@@ -253,13 +270,16 @@ export function Springboard({
   const availableIds = useMemo(() => entries.map((e) => e.id), [entries]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
 
+  const controlled = onToggleFavorite != null;
+  const favorites = useMemo(
+    () => (controlled ? (favoriteIds ?? []) : null),
+    [controlled, favoriteIds],
+  );
+
   const [layout, setLayout] = useState<SpringboardLayout>(() => {
     const stored = readSpringboardLayout();
-    // The favorites dock is gone — drop any favorites a prior version persisted
-    // so those views reappear as ordinary page tiles instead of vanishing
-    // (reconcileLayout keeps favorites OUT of the page grid).
     return reconcileLayout(
-      { ...stored, favorites: [] },
+      { favorites: favorites ?? stored.favorites, pages: stored.pages },
       entries.map((e) => e.id),
     );
   });
@@ -291,20 +311,15 @@ export function Springboard({
     [editingControlled, onEditingChange],
   );
 
-  const groupedPages = useMemo(() => {
-    if (!pageGroups) return null;
-    const available = new Set(availableIds);
-    const next = pageGroups
-      .map((page) => page.filter((id) => available.has(id)))
-      .filter((page) => page.length > 0);
-    return next.length > 0 ? next : [[]];
-  }, [availableIds, pageGroups]);
-
-  // Re-reconcile when the available views change.
+  // Re-reconcile when the available views or controlled favorites change.
   useEffect(() => {
-    if (groupedPages) return;
-    setLayout((prev) => reconcileLayout(prev, availableIds));
-  }, [availableIds, groupedPages]);
+    setLayout((prev) =>
+      reconcileLayout(
+        { favorites: favorites ?? prev.favorites, pages: prev.pages },
+        availableIds,
+      ),
+    );
+  }, [availableIds, favorites]);
 
   // Keep the LOCAL active page index in range when pages shrink (views removed).
   // When controlled, the store clamps the page, so this only guards the
@@ -319,6 +334,23 @@ export function Springboard({
     setLayout(next);
     writeSpringboardLayout(next);
   }, []);
+
+  const toggleFav = useCallback(
+    (id: string) => {
+      const wasFavorited = (favorites ?? layout.favorites).includes(id);
+      emitViewInteraction({
+        source: "springboard",
+        action: wasFavorited ? "unfavorite" : "favorite",
+        viewId: id,
+      });
+      if (controlled) {
+        onToggleFavorite?.(id);
+        return;
+      }
+      commit(reconcileLayout(toggleFavorite(layout, id), availableIds));
+    },
+    [controlled, onToggleFavorite, commit, layout, availableIds, favorites],
+  );
 
   const handleLaunch = useCallback(
     (entry: ViewEntry) => {
@@ -341,8 +373,8 @@ export function Springboard({
   }, [editing, setEditingState]);
 
   const pages = useMemo(
-    () => groupedPages ?? (layout.pages.length > 0 ? layout.pages : [[]]),
-    [groupedPages, layout.pages],
+    () => (layout.pages.length > 0 ? layout.pages : [[]]),
+    [layout.pages],
   );
 
   // Report the page count up so an outer surface (the rail) can size the single
@@ -351,10 +383,26 @@ export function Springboard({
     onPageCountChange?.(pages.length);
   }, [pages.length, onPageCountChange]);
   const clampedPage = Math.min(activePage, pages.length - 1);
+  // Cap the rendered dock at SPRINGBOARD_DOCK_LIMIT in BOTH modes. The
+  // uncontrolled path already enforces it via toggleFavorite; controlled
+  // (desktop-tab) favorites are capped at the pinning source too, but clamp
+  // here as defense so the dock can never overflow regardless of caller.
+  const favoriteIdList = useMemo(
+    () => (favorites ?? layout.favorites).slice(0, SPRINGBOARD_DOCK_LIMIT),
+    [favorites, layout.favorites],
+  );
+  const favoriteEntries = useMemo(
+    () =>
+      favoriteIdList
+        .map((id) => byId.get(id))
+        .filter((e): e is ViewEntry => e != null),
+    [byId, favoriteIdList],
+  );
+  // O(1) dock-membership check inside the tile map instead of Array.includes.
+  const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
-      if (groupedPages) return;
       // Rebuild the layout for this page from the reordered id list.
       let next = layout;
       nextIds.forEach((id, index) => {
@@ -367,16 +415,18 @@ export function Springboard({
       });
       commit(next);
     },
-    [groupedPages, layout, commit],
+    [layout, commit],
   );
 
   const renderTile = useCallback(
-    (entry: ViewEntry) => (
+    (entry: ViewEntry, favorited: boolean) => (
       <IconTile
         entry={entry}
         editing={editing}
+        favorited={favorited}
         manageable={canManageView?.(entry.id) ?? false}
         onLaunch={handleLaunch}
+        onToggleFavorite={toggleFav}
         onEdit={onEditView}
         onDelete={onDeleteView}
         onLongPress={toggleEditMode}
@@ -386,231 +436,141 @@ export function Springboard({
       editing,
       canManageView,
       handleLaunch,
+      toggleFav,
       onEditView,
       onDeleteView,
       toggleEditMode,
     ],
   );
 
-  // Live carousel paging. The whole paged track (every page side-by-side)
-  // follows the finger 1:1 during a horizontal drag (`trackX`), then animates to
-  // the committed page on release — an iOS pager, not a half-move-then-snap. The
-  // committed resting offset is `-clampedPage * pageWidth`; the drag adds the raw
-  // finger delta on top. Vertical scroll is preserved by an axis lock: until a
-  // gesture proves horizontal it is left to the per-page `overflow-y-auto`.
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const [pageWidth, setPageWidth] = useState(0);
-  const trackX = useMotionValue(0);
-  const drag = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    baseX: number;
-    axis: "undecided" | "x" | "y";
-  } | null>(null);
-
-  // Measure the viewport so the track translates in real pixels (1:1 with the
-  // finger) instead of percentages, which a live drag can't track precisely.
-  useLayoutEffect(() => {
-    const node = viewportRef.current;
-    if (!node || typeof ResizeObserver === "undefined") {
-      if (node) setPageWidth(node.clientWidth);
-      return;
-    }
-    setPageWidth(node.clientWidth);
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width;
-      if (typeof width === "number") setPageWidth(width);
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
-  // Resting offset for the committed page. While a drag is in flight the pointer
-  // handlers own `trackX`; otherwise settle to (or animate toward) the committed
-  // page so a page change from the dots / store glides instead of jumping.
-  useEffect(() => {
-    if (drag.current) return;
-    const target = -clampedPage * pageWidth;
-    const controls = animate(trackX, target, PAGER_SETTLE_TRANSITION);
-    return () => controls.stop();
-  }, [clampedPage, pageWidth, trackX]);
-
-  const settleToPage = useCallback(
-    (next: number) => {
-      const target = -next * pageWidth;
-      animate(trackX, target, PAGER_SETTLE_TRANSITION);
+  const pager = useHorizontalPager({
+    page: clampedPage,
+    pageCount: pages.length,
+    enabled: !editing && pages.length > 1,
+    edgeSwipeRightEnabled: showPageDots && onEdgeSwipeRight != null,
+    onEdgeSwipeRight,
+    onPageChange: (nextPage) => {
+      setActivePage(nextPage);
+      emitViewInteraction({
+        source: "springboard",
+        action: "page-swipe",
+        count: nextPage,
+      });
     },
-    [pageWidth, trackX],
-  );
-
-  const handlePagerPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (editing || !event.isPrimary || pages.length <= 1) return;
-      drag.current = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        baseX: -clampedPage * pageWidth,
-        axis: "undecided",
-      };
-    },
-    [editing, pages.length, clampedPage, pageWidth],
-  );
-
-  const handlePagerPointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const state = drag.current;
-      if (!state || event.pointerId !== state.pointerId) return;
-      const dx = event.clientX - state.startX;
-      const dy = event.clientY - state.startY;
-      if (state.axis === "undecided") {
-        if (Math.hypot(dx, dy) < LONG_PRESS_MOVE_SLOP) return;
-        // Lock to whichever axis the finger committed to first: horizontal pans
-        // the carousel; vertical yields to the per-page scroll and never drifts
-        // the track sideways.
-        state.axis =
-          Math.abs(dx) > Math.abs(dy) * PAGER_ANGLE_RATIO ? "x" : "y";
-        if (state.axis === "y") {
-          drag.current = null;
-          return;
-        }
-        // Capture so the drag keeps tracking even if the finger slides off the
-        // viewport. Guarded: not every environment implements pointer capture.
-        event.currentTarget.setPointerCapture?.(state.pointerId);
-      }
-      if (state.axis !== "x") return;
-      // Resist past the first / last page so the edge has the same rubber-band
-      // give as an iOS pager rather than tearing off into empty space.
-      const atStart = clampedPage === 0 && dx > 0;
-      const atEnd = clampedPage === pages.length - 1 && dx < 0;
-      const applied = atStart || atEnd ? dx * 0.3 : dx;
-      trackX.set(state.baseX + applied);
-    },
-    [clampedPage, pages.length, trackX],
-  );
-
-  const finishPagerDrag = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const state = drag.current;
-      if (!state || event.pointerId !== state.pointerId) return;
-      drag.current = null;
-      if (state.axis !== "x") return;
-      const dx = event.clientX - state.startX;
-      if (dx < -SWIPE_THRESHOLD && clampedPage < pages.length - 1) {
-        const next = clampedPage + 1;
-        settleToPage(next);
-        setActivePage(next);
-        emitViewInteraction({
-          source: "springboard",
-          action: "page-swipe",
-          count: next,
-        });
-      } else if (dx > SWIPE_THRESHOLD && clampedPage > 0) {
-        const next = clampedPage - 1;
-        settleToPage(next);
-        setActivePage(next);
-        emitViewInteraction({
-          source: "springboard",
-          action: "page-swipe",
-          count: next,
-        });
-      } else {
-        // Under threshold (or edge-bounce): glide back to the current page.
-        settleToPage(clampedPage);
-        if (dx > SWIPE_THRESHOLD && clampedPage === 0) onEdgeSwipeRight?.();
-      }
-    },
-    [clampedPage, pages.length, settleToPage, setActivePage, onEdgeSwipeRight],
-  );
+  });
 
   return (
     <div
       className={cn("flex min-h-0 flex-1 flex-col", className)}
       data-testid="springboard"
     >
-      {/* Carousel viewport. The track holds every page side-by-side and the
-          pointer handlers translate it 1:1 with the finger (`trackX`), settling
-          to the committed page on release. Paging is active only outside edit
-          mode, so it never fights the in-tile drag-to-reorder gesture. */}
-      <div
-        ref={viewportRef}
-        // `touch-pan-y`: hand vertical drags to the browser (the per-page grid
-        // scrolls) and claim horizontal drags for the carousel. The axis lock in
-        // the move handler makes this precise even where touch-action isn't
-        // honored (desktop pointer / tests).
-        className="relative flex min-h-0 flex-1 flex-col overflow-hidden touch-pan-y"
-        onPointerDown={handlePagerPointerDown}
-        onPointerMove={handlePagerPointerMove}
-        onPointerUp={finishPagerDrag}
-        onPointerCancel={finishPagerDrag}
-        data-testid="springboard-pager-viewport"
-      >
-        {loading && entries.length === 0 ? (
-          <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
-            <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5">
-              {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
-                <div
-                  key={id}
-                  className="flex flex-col items-center gap-1.5 opacity-60"
-                >
-                  <div className="h-16 w-16 rounded-2xl bg-bg-accent/50" />
-                  <div className="h-2.5 w-12 rounded-full bg-bg-accent/50" />
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <motion.div
-            data-testid="springboard-pager-track"
-            // The whole multi-page track translates as one element: a stable
-            // identity (no `key={clampedPage}`) keeps Reorder.Group + every tile
-            // mounted across swipes, so paging never janks via remount (#9304).
-            // Each page is exactly the measured viewport width, so the pixel
-            // translate (`trackX`) tracks the finger 1:1.
-            className="flex min-h-0 flex-1 items-stretch"
-            style={{ x: trackX }}
+      {/* Favorites bar — pinned to the TOP of the springboard (not an iOS-style
+          bottom dock). There is no Edit button: long-press any icon toggles
+          edit mode (reorder / pin / unpin), and a right-flick leaves it. */}
+      {favoriteEntries.length > 0 ? (
+        <div
+          data-testid="springboard-dock"
+          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
+        >
+          {favoriteEntries.map((entry) => (
+            <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
+          never fights the in-tile drag-to-reorder gesture. A real rail is
+          rendered so adjacent pages move with the finger, instead of swapping
+          page contents after release. */}
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+          ref={pager.viewportRef}
+          data-testid="springboard-page-window"
+          className="relative flex min-h-0 flex-1 overflow-hidden touch-pan-y"
+          onPointerDown={pager.handlers.onPointerDown}
+          onPointerMove={pager.handlers.onPointerMove}
+          onPointerUp={pager.handlers.onPointerUp}
+          onPointerCancel={pager.handlers.onPointerCancel}
+          onLostPointerCapture={pager.handlers.onLostPointerCapture}
+        >
+          <div
+            ref={pager.railRef}
+            data-testid="springboard-page-rail"
+            className="flex h-full min-h-0 w-full motion-reduce:transition-none"
           >
-            {pages.map((pageIds, pageIndex) => (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: pages have no stable id; index is the page identity.
-                key={`page-${pageIndex}-${pageIds[0] ?? "empty"}`}
-                data-testid={`springboard-page-${pageIndex}`}
-                // Off-screen pages are hidden from AT/tab order; only the
-                // committed page is reachable, even though every page stays
-                // mounted in the carousel track.
-                aria-hidden={pageIndex !== clampedPage}
-                className="flex min-h-0 shrink-0 items-start justify-center overflow-y-auto px-6 pt-2 pb-8"
-                style={pageWidth > 0 ? { width: pageWidth } : { width: "100%" }}
-              >
-                <Reorder.Group
-                  axis="y"
-                  values={pageIds}
-                  onReorder={(next) =>
-                    handleReorder(pageIndex, next as string[])
-                  }
-                  className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5"
-                >
-                  {pageIds.map((id) => {
-                    const entry = byId.get(id);
-                    if (!entry) return null;
-                    return (
-                      <Reorder.Item
-                        key={id}
-                        value={id}
-                        drag={editing && !groupedPages}
-                        dragListener={editing && !groupedPages}
-                        className="flex justify-center"
-                      >
-                        {renderTile(entry)}
-                      </Reorder.Item>
-                    );
-                  })}
-                </Reorder.Group>
+            {loading && entries.length === 0 ? (
+              <div className="flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
+                <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
+                  {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
+                    <div
+                      key={id}
+                      className="flex flex-col items-center gap-1.5 opacity-60"
+                    >
+                      <div className="h-16 w-16 rounded-2xl bg-bg-accent/50" />
+                      <div className="h-2.5 w-12 rounded-full bg-bg-accent/50" />
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </motion.div>
-        )}
+            ) : (
+              pages.map((pageIds, pageIndex) => {
+                const active = pageIndex === clampedPage;
+                return (
+                  <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: page index is the persisted page identity.
+                    key={`springboard-page-${pageIndex}`}
+                    data-testid={`springboard-page-${pageIndex}`}
+                    aria-hidden={!active}
+                    inert={!active || undefined}
+                    className={cn(
+                      "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
+                      !active && "pointer-events-none",
+                    )}
+                  >
+                    {editing && active ? (
+                      <Reorder.Group
+                        axis="y"
+                        values={pageIds}
+                        onReorder={(next) =>
+                          handleReorder(pageIndex, next as string[])
+                        }
+                        className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5"
+                      >
+                        {pageIds.map((id) => {
+                          const entry = byId.get(id);
+                          if (!entry) return null;
+                          return (
+                            <Reorder.Item
+                              key={id}
+                              value={id}
+                              drag={editing}
+                              dragListener={editing}
+                              className="flex justify-center"
+                            >
+                              {renderTile(entry, favoriteSet.has(id))}
+                            </Reorder.Item>
+                          );
+                        })}
+                      </Reorder.Group>
+                    ) : (
+                      <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
+                        {pageIds.map((id) => {
+                          const entry = byId.get(id);
+                          if (!entry) return null;
+                          return (
+                            <div key={id} className="flex justify-center">
+                              {renderTile(entry, favoriteSet.has(id))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
 
         {/* Page dots — rendered only for STANDALONE usage. When nested in the
             home/springboard rail, `showPageDots` is false and the rail owns the

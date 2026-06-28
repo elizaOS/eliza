@@ -35,6 +35,7 @@ import {
 } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { AgentRegistration } from "@feed/agents";
 import { logger } from "@feed/shared";
 import { resolveLiveLlmTestConfig } from "./helpers/live-runtime";
 
@@ -245,15 +246,15 @@ describe("Full Agent Tick Integration Test", () => {
 
       results.discovery.totalRegistered = registeredAgents.length;
       results.discovery.userAgents = registeredAgents.filter(
-        (a) => a.type === AgentType.USER_CONTROLLED,
+        (a: AgentRegistration) => a.type === AgentType.USER_CONTROLLED,
       ).length;
       results.discovery.npcAgents = registeredAgents.filter(
-        (a) => a.type === AgentType.NPC,
+        (a: AgentRegistration) => a.type === AgentType.NPC,
       ).length;
 
       results.discovery.agentSamples = registeredAgents
         .slice(0, 10)
-        .map((a) => ({
+        .map((a: AgentRegistration) => ({
           id: a.agentId,
           name: a.name,
           type: a.type,

@@ -20,7 +20,6 @@ describe("registerAllCloudSurfaces", () => {
       "dashboard/security",
       "dashboard/organization",
       "dashboard/monetization",
-      "dashboard/documents",
       "dashboard/api-explorer",
       "dashboard/apps",
       "dashboard/admin",

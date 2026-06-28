@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -6,9 +6,16 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const nextCliPath = require.resolve("next/dist/bin/next");
+const nextVersion = require("next/package.json").version;
+const nextMajor = Number.parseInt(nextVersion.split(".")[0] ?? "0", 10);
+const nextBuildArgs = ["build", ...(nextMajor >= 16 ? ["--webpack"] : [])];
 const pkgRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
+);
+const cleanupHelperPath = path.resolve(
+  pkgRoot,
+  "../../scripts/rm-path-recursive.mjs",
 );
 
 const finalDistDir = ".next";
@@ -49,12 +56,14 @@ const originalTsconfig = await readFile(tsconfigPath, "utf8").catch((error) => {
   throw error;
 });
 
-await rm(tempDistDir, {
-  force: true,
-  maxRetries: 5,
-  recursive: true,
-  retryDelay: 100,
-});
+function rmRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperPath, targetPath], {
+    cwd: pkgRoot,
+    stdio: "inherit",
+  });
+}
+
+rmRecursive(tempDistDir);
 await rm(tsbuildInfoPath, {
   force: true,
   maxRetries: 5,
@@ -102,7 +111,7 @@ try {
     const markerInterval = setInterval(() => {
       void refreshTempPackageMarker().catch(() => {});
     }, 100);
-    const child = spawn(process.execPath, [nextCliPath, "build"], {
+    const child = spawn(process.execPath, [nextCliPath, ...nextBuildArgs], {
       cwd: pkgRoot,
       env: {
         ...process.env,
@@ -120,20 +129,10 @@ try {
   });
 
   if (exitCode === 0) {
-    await rm(finalDistDir, {
-      force: true,
-      maxRetries: 5,
-      recursive: true,
-      retryDelay: 100,
-    });
+    rmRecursive(finalDistDir);
     await rename(tempDistDir, finalDistDir);
   } else {
-    await rm(tempDistDir, {
-      force: true,
-      maxRetries: 5,
-      recursive: true,
-      retryDelay: 100,
-    });
+    rmRecursive(tempDistDir);
   }
 } finally {
   if (originalNextEnv !== null) {

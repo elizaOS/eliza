@@ -171,7 +171,7 @@ IMPORTANT: If mentioning prediction markets, use SHORT SUMMARIES not full questi
 
 Generate ONLY the message text, or "SKIP" if you shouldn't respond.`;
 
-      // Use large model (qwen3-32b) for quality group chat content
+      // Use the large configured model for quality group chat content.
       const responseContent = await callGroqDirect({
         prompt,
         system: config?.systemPrompt ?? undefined,

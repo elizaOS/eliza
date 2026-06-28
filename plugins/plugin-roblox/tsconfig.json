@@ -13,7 +13,6 @@
     "declarationMap": true,
     "sourceMap": true,
     "noEmit": true,
-    "noImplicitAny": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,

@@ -8,6 +8,12 @@ import { copyDir } from "./safe-copy-dir.ts";
 const PACKAGE_DIR = import.meta.dir;
 const REPO_ROOT = path.resolve(PACKAGE_DIR, "..", "..");
 const DIST_DIR = path.join(PACKAGE_DIR, "dist");
+const RM_RECURSIVE_SCRIPT = path.join(
+  REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 function resolveBin(name: string): string {
   const local = path.join(REPO_ROOT, "node_modules", ".bin", name);
@@ -75,7 +81,7 @@ function manifestPayloadMatches(
 function prepareTemplates(): void {
   const sourceDir = resolveTemplateSourceDir();
   if (path.resolve(sourceDir) !== path.resolve(TEMPLATE_DIR)) {
-    fs.rmSync(TEMPLATE_DIR, { force: true, recursive: true });
+    rmRecursive(TEMPLATE_DIR);
     copyDir(sourceDir, TEMPLATE_DIR);
   }
   const payload = {
@@ -113,6 +119,25 @@ function runBin(bin: string, args: string[]): void {
   if (result.status !== 0) {
     throw new Error(
       `${bin} ${args.join(" ")} exited with code ${result.status}`,
+    );
+  }
+}
+
+function rmRecursive(targetPath: string): void {
+  const result = spawnSync(
+    process.execPath,
+    [RM_RECURSIVE_SCRIPT, targetPath],
+    {
+      cwd: PACKAGE_DIR,
+      stdio: "inherit",
+    },
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `rm-path-recursive failed for ${targetPath} with status ${result.status}`,
     );
   }
 }

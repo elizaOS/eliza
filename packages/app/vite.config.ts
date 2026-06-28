@@ -216,6 +216,102 @@ const bufferEntry: string | undefined = (() => {
   }
   return undefined;
 })();
+const bufferBase64JsEntry = resolveBunStorePackageEntry(
+  "base64-js",
+  "index.js",
+);
+const bufferIeee754Entry = resolveBunStorePackageEntry("ieee754", "index.js");
+const BUFFER_ESM_SHIM_ID = "virtual:eliza-buffer-esm-shim";
+const BUFFER_ESM_SHIM_RESOLVED = `\0${BUFFER_ESM_SHIM_ID}`;
+
+function resolveBunStorePackageEntry(
+  packageName: string,
+  entryPath: string,
+): string | undefined {
+  try {
+    const bunDir = path.join(elizaRoot, "node_modules/.bun");
+    const versions = fs
+      .readdirSync(bunDir)
+      .filter((d) => d.startsWith(`${packageName}@`))
+      .sort();
+    for (const dir of versions.reverse()) {
+      const entry = path.join(
+        bunDir,
+        dir,
+        "node_modules",
+        packageName,
+        entryPath,
+      );
+      if (fs.existsSync(entry)) return entry;
+    }
+  } catch {
+    // fall through
+  }
+  return undefined;
+}
+
+function bufferEsmShimPlugin(): Plugin {
+  return {
+    name: "buffer-esm-shim",
+    enforce: "pre",
+    resolveId(source) {
+      if (
+        bufferEntry &&
+        bufferBase64JsEntry &&
+        bufferIeee754Entry &&
+        (source === "buffer" ||
+          source === "node:buffer" ||
+          source === BUFFER_ESM_SHIM_ID)
+      ) {
+        return BUFFER_ESM_SHIM_RESOLVED;
+      }
+      return null;
+    },
+    load(id) {
+      if (id !== BUFFER_ESM_SHIM_RESOLVED) return null;
+      if (!bufferEntry || !bufferBase64JsEntry || !bufferIeee754Entry)
+        return null;
+
+      const base64Source = fs.readFileSync(bufferBase64JsEntry, "utf8");
+      const ieee754Source = fs.readFileSync(bufferIeee754Entry, "utf8");
+      const bufferSource = fs.readFileSync(bufferEntry, "utf8");
+
+      return `
+const base64JsModule = (() => {
+  const module = { exports: {} };
+  const exports = module.exports;
+  ${base64Source}
+  return module.exports;
+})();
+
+const ieee754Module = (() => {
+  const module = { exports: {} };
+  const exports = module.exports;
+  ${ieee754Source}
+  return module.exports;
+})();
+
+const bufferModule = (() => {
+  const module = { exports: {} };
+  const exports = module.exports;
+  const require = (id) => {
+    if (id === "base64-js") return base64JsModule;
+    if (id === "ieee754") return ieee754Module;
+    throw new Error("Unsupported buffer shim dependency: " + id);
+  };
+  ${bufferSource}
+  return module.exports;
+})();
+
+export const Buffer = bufferModule.Buffer;
+export const SlowBuffer = bufferModule.SlowBuffer;
+export const INSPECT_MAX_BYTES = bufferModule.INSPECT_MAX_BYTES;
+export const kMaxLength = bufferModule.kMaxLength;
+export default bufferModule;
+`;
+    },
+  };
+}
 // Other Capacitor packages imported by eliza/packages/app-core sources.
 // Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
@@ -1299,6 +1395,10 @@ const VENDOR_DRACO_TEST = /\/node_modules\/draco3d(gltf)?\//;
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
 
+  if (VENDOR_OPTIMIZED_WALLET_TEST.test(normalizedId)) {
+    return "vendor-crypto";
+  }
+
   if (normalizedId.includes("/node_modules/")) {
     // Crypto + EVM-wallet + Solana collapse into ONE lazy `vendor-crypto`
     // chunk. They are the same logical wallet/crypto graph (the wallet and
@@ -1311,8 +1411,7 @@ function resolveManualChunk(id: string): string | undefined {
     if (
       VENDOR_CRYPTO_TEST.test(normalizedId) ||
       VENDOR_WALLET_TEST.test(normalizedId) ||
-      VENDOR_SOLANA_TEST.test(normalizedId) ||
-      VENDOR_OPTIMIZED_WALLET_TEST.test(normalizedId)
+      VENDOR_SOLANA_TEST.test(normalizedId)
     ) {
       return "vendor-crypto";
     }
@@ -1845,7 +1944,18 @@ function makeEsToolkitCompatEsmPlugin(
 export default defineConfig({
   root: here,
   customLogger: viteLogger,
-  base: "./",
+  // Native shells (Electrobun `views://`, Capacitor `file://`) load assets
+  // relative to the HTML document, so they need a relative base — keep "./".
+  // The web bundle (`build:web` → Cloudflare Pages, served from an origin root)
+  // is an SPA whose client-side routes go several segments deep
+  // (e.g. /auth/cli-login, /app-auth/authorize, /payment/:id). With a relative
+  // base, `./assets/x.js` resolves against the route directory (→
+  // /auth/assets/x.js), which the SPA catch-all returns as index.html
+  // (text/html). The browser then rejects the stylesheet/module and the bundle
+  // never boots — the page hangs on a blank/loading shell. `build:web` sets
+  // ELIZA_WEB_ABSOLUTE_BASE=1 so the deployed SPA uses an absolute "/" base and
+  // every route depth resolves assets to /assets/… correctly.
+  base: process.env.ELIZA_WEB_ABSOLUTE_BASE === "1" ? "/" : "./",
   // Keep pre-bundle cache under the app dir (not node_modules/.vite) so Bun
   // installs don't fight Vite, and `bun run clean` / docs can target one path.
   // ELIZA_VITE_CACHE_DIR lets a parallel dev/measurement server use an isolated
@@ -1893,6 +2003,7 @@ export default defineConfig({
     ),
   },
   plugins: [
+    bufferEsmShimPlugin(),
     // Manifest-driven renderer side-effect plugin registration (#9178): resolves
     // the `virtual:eliza-side-effect-app-modules` import in plugin-registrations.ts
     // by scanning plugins/ for elizaos.appRegister markers. Without this the
@@ -2152,8 +2263,8 @@ export const INVALID_TRACER_PROVIDER = {};
       // now bypasses them) so the crypto graph gets a callable Buffer.
       ...(bufferEntry
         ? [
-            { find: /^buffer$/, replacement: bufferEntry },
-            { find: /^node:buffer$/, replacement: bufferEntry },
+            { find: /^buffer$/, replacement: BUFFER_ESM_SHIM_ID },
+            { find: /^node:buffer$/, replacement: BUFFER_ESM_SHIM_ID },
           ]
         : []),
       {

@@ -56,7 +56,7 @@ async function build(): Promise<void> {
 
   const { mkdir, writeFile } = await import("node:fs/promises");
   const { $ } = await import("bun");
-  await $`bunx tsc --project tsconfig.build.json`;
+  await $`bunx tsc --project tsconfig.build.json --noCheck`;
 
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });

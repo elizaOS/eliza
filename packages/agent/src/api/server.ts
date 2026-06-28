@@ -472,6 +472,7 @@ import {
   isPublicRuntimePluginRoute,
   registerBuiltinViews,
   tryHandleHonoRuntimeRoute,
+  tryHandleLifeOpsInboxFallbackLazy,
   tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
@@ -3528,6 +3529,20 @@ async function handleRequest(
       pathname,
       method,
       runtime: state.runtime,
+      res,
+    })
+  ) {
+    return;
+  }
+
+  // ── LifeOps inbox compatibility fallback ────────────────────────────────
+  // The inbox view is bundled independently from the PA-owned inbox cache
+  // route. When PA is absent, serve an empty wire payload instead of a 404 loop.
+  if (
+    await tryHandleLifeOpsInboxFallbackLazy({
+      pathname,
+      method,
+      url,
       res,
     })
   ) {

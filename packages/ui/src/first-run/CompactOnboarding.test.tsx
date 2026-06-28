@@ -46,6 +46,7 @@ function controller(
     submitting: false,
     busyText: null,
     error: null,
+    cloudLoginFallbackUrl: null,
     cloudError: null,
     voice: {
       supported: false,
@@ -234,6 +235,25 @@ describe("CompactOnboarding", () => {
     expect(openBtn).toBeTruthy();
     // The raw "Open this link to log in:" string is NOT dumped at the user.
     expect(screen.queryByText(/Open this link to log in:/)).toBeNull();
+
+    fireEvent.click(openBtn);
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai/auth/cli-login?session=abc",
+    );
+  });
+
+  it("uses the in-flight cloud login fallback URL before an error exists", () => {
+    controllerMock.current = controller({
+      submitting: true,
+      cloudLoginFallbackUrl:
+        "https://www.elizacloud.ai/auth/cli-login?session=abc",
+    });
+
+    render(<CompactOnboarding />);
+
+    const openBtn = screen.getByTestId("onboarding-cloud-open-signin");
+    expect(openBtn).toBeTruthy();
+    expect(screen.queryByText("How should elizaOS run?")).toBeNull();
 
     fireEvent.click(openBtn);
     expect(openExternalUrl).toHaveBeenCalledWith(

@@ -9,7 +9,7 @@ This is the science: baseline eval → SFT warmup → online RL ticks with
 periodic eval → plot improvement trajectory.
 
 Usage:
-    python scripts/measure_learning.py --mock --model Qwen/Qwen3-4B --ticks 40
+    python scripts/measure_learning.py --mock --model google/gemma-4-E4B --ticks 40
 """
 
 from __future__ import annotations
@@ -364,7 +364,7 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Measure learning with periodic eval")
-    parser.add_argument("--model", default="Qwen/Qwen3-4B")
+    parser.add_argument("--model", default="google/gemma-4-E4B")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--agents-per-team", type=int, default=5)
     parser.add_argument("--ticks", type=int, default=40)

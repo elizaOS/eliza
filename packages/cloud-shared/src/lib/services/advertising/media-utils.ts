@@ -1,4 +1,5 @@
 import { assertSafeOutboundUrl } from "../../security/outbound-url";
+import { safeFetch } from "../../security/safe-fetch";
 
 const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
@@ -50,10 +51,13 @@ export async function downloadAdMedia(
   } = {},
 ): Promise<DownloadedAdMedia> {
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
-  let currentUrl = await assertSafeAdMediaUrl(rawUrl);
+  // safeFetch validates + IP-pins each hop, so we follow redirects manually
+  // (preserving the per-hop Accept header and MAX_REDIRECTS budget) without a
+  // separate pre-validation pass.
+  let currentUrl = rawUrl;
 
   for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
-    const response = await fetch(currentUrl, {
+    const response = await safeFetch(currentUrl, {
       redirect: "manual",
       headers: { Accept: options.allowedContentTypes?.join(",") ?? "*/*" },
     });
@@ -61,7 +65,7 @@ export async function downloadAdMedia(
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
       if (!location) throw new Error("Media URL redirected without a Location header");
-      currentUrl = await assertSafeAdMediaUrl(new URL(location, currentUrl).toString());
+      currentUrl = new URL(location, currentUrl).toString();
       continue;
     }
 

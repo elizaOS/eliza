@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-steward-app",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -35,6 +35,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@noble/curves": "2.2.0",
@@ -57,11 +58,12 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "vitest run --config vitest.config.ts",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json",
     "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.real.e2e.test.ts test/*.live.e2e.test.ts"
   },
   "files": [

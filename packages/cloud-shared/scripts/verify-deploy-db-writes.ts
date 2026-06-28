@@ -121,8 +121,8 @@ check(
 );
 await appContainerStore.markDeleted(created.id);
 check(
-  "markDeleted -> status stopped (row reusable)",
-  (await containersRepository.findById(created.id, orgId))?.status === "stopped",
+  "markDeleted -> status deleted (row no longer counts toward quota)",
+  (await containersRepository.findById(created.id, orgId))?.status === "deleted",
 );
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);

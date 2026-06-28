@@ -10,6 +10,7 @@ import { logger } from "@elizaos/logger";
 import { getStylePresets } from "@elizaos/shared";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
@@ -38,6 +39,7 @@ import {
   savePersistedActiveServer,
 } from "./persistence";
 import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
+import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
 import type { SetupStep } from "./types";
 
@@ -366,6 +368,48 @@ export async function runPollingBackend(
     dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
   };
 
+  const isSameOriginProxyBase = () => {
+    const base = client.getBaseUrl().trim();
+    if (!base) return true;
+    if (typeof window === "undefined") return false;
+    try {
+      return new URL(base).origin === window.location.origin;
+    } catch {
+      return false;
+    }
+  };
+
+  const isDevUiPort = () =>
+    typeof window !== "undefined" && window.location.port === "2138";
+
+  const routeToOfflineFirstRun = (why: string) => {
+    logger.warn(
+      { reason: why },
+      "[startup-phase-poll] backend is unavailable; routing to first-run without server options",
+    );
+    clearPersistedActiveServer();
+    client.setBaseUrl(null);
+    client.setToken(null);
+    deps.setFirstRunOptions(buildStaticFirstRunOptions(deps.uiLanguage));
+    deps.setFirstRunComplete(false);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "BACKEND_UNAVAILABLE_FIRST_RUN" });
+  };
+
+  if (
+    !cancelled.current &&
+    effectRunRef.current === effectRunId &&
+    isDevUiPort() &&
+    isSameOriginProxyBase() &&
+    !ctx?.persistedActiveServer &&
+    !ctx?.hadPriorFirstRun
+  ) {
+    routeToOfflineFirstRun(
+      "dev web shell has no saved backend target; skipping same-origin API proxy probe",
+    );
+    return;
+  }
+
   while (!cancelled.current && effectRunRef.current === effectRunId) {
     if (Date.now() >= deadline) {
       deps.setStartupError(describeBackendFailure(lastErr, true));
@@ -426,6 +470,17 @@ export async function runPollingBackend(
       // in startup because every first-run/runtime endpoint returns 401.
       if (auth.required && !auth.authenticated && client.hasToken()) {
         deps.setAuthRequired(false);
+        deps.setFirstRunComplete(true);
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+        return;
+      }
+      if (
+        !supportsFullAppShellRoutes(client.getBaseUrl()) &&
+        (deps.firstRunCompletionCommittedRef.current ||
+          ctx?.shouldPreserveCompletedFirstRun === true)
+      ) {
+        deps.setFirstRunCloudProvisionedContainer(false);
         deps.setFirstRunComplete(true);
         deps.setFirstRunLoading(false);
         dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
@@ -697,6 +752,26 @@ export async function runPollingBackend(
         deps.setStartupError(describeBackendFailure(err, false));
         deps.setFirstRunLoading(false);
         dispatch({ type: "BACKEND_NOT_FOUND" });
+        return;
+      }
+      if (
+        isDevUiPort() &&
+        !policy.supportsLocalRuntime &&
+        isSameOriginProxyBase() &&
+        (ae?.status === undefined ||
+          ae.status === 502 ||
+          ae.status === 503 ||
+          ae.status === 504)
+      ) {
+        // Scope this destructive reset to the dev UI shell (port 2138) only.
+        // On hosted web (app.elizacloud.ai) a transient gateway 5xx must NOT
+        // eject an established user to onboarding — it falls through to the
+        // normal retry/backoff loop below instead.
+        routeToOfflineFirstRun(
+          ae?.status === undefined
+            ? "same-origin API proxy failed without an HTTP response"
+            : `same-origin API proxy returned HTTP ${ae.status}`,
+        );
         return;
       }
       if (

@@ -1,4 +1,5 @@
 import type { Plugin } from "@elizaos/core";
+import { calendarHttpRoutes } from "./routes/plugin-routes.js";
 import { CalendarService } from "./service/CalendarService.js";
 import { CalendarMigrationService } from "./service/migration.js";
 import { calendarSchema } from "./service/schema.js";
@@ -23,6 +24,7 @@ export const calendarPlugin: Plugin = {
   // CALENDAR / CONFLICT_DETECT actions after injecting its LifeOps adapters.
   actions: [],
   providers: [],
+  routes: calendarHttpRoutes,
   views: [
     // ONE declaration → GUI + XR + TUI, all drawn from the single CalendarView
     // spatial source. `modalities` is a plain literal here (plugin.ts is not in

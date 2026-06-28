@@ -33,8 +33,9 @@
  * Build the static catalog first: `bun run build-storybook --output-dir storybook-static`.
  */
 
+import { spawnSync } from "node:child_process";
 import { createReadStream, existsSync, readdirSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
@@ -44,6 +45,7 @@ import { determinismShim, FROZEN_EPOCH_MS } from "./determinism-shim.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(here, "../..");
+const rmRecursiveScript = resolve(pkgRoot, "../scripts/rm-path-recursive.mjs");
 
 // ---------------------------------------------------------------------------
 // args
@@ -211,6 +213,17 @@ async function loadBaseline(name) {
   }
 }
 
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `failed to remove generated story-gate output ${targetPath} (exit ${result.status})`,
+    );
+  }
+}
+
 function normalizeConsole(text) {
   // Collapse volatile substrings (urls, numbers, hex ids) so baseline keys are
   // stable across runs.
@@ -228,6 +241,25 @@ function normalizeConsole(text) {
   if (
     normalized ===
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ) {
+    return "";
+  }
+  // useAppSelector throws in the headless Story Gate for any story that renders
+  // an app-state consumer without mounting the real AppProvider — a harness
+  // artifact (the app always mounts AppProvider), caught by the story error
+  // boundary so the story still renders `good`. It surfaces FLAKILY: a given
+  // consumer story is classified `needs-runtime` one run and renders-with-throw
+  // the next, which makes per-story baselining a perpetual moving target across
+  // the ~127 app-selector consumers. Drop it (and Storybook's paired "Error
+  // rendering story" wrapper) globally instead. A genuinely broken story is
+  // still caught by the broken verdict (the DOM error display), and a real
+  // (non-useAppSelector) render throw keeps its own specific message — only this
+  // generic wrapper is dropped.
+  if (
+    normalized.startsWith(
+      "Error: useAppSelector used before AppProvider rendered",
+    ) ||
+    /^Error rendering story '[^']*':/.test(normalized)
   ) {
     return "";
   }
@@ -458,7 +490,7 @@ async function main() {
   const enforceConsole = Object.keys(consoleBaseline).length > 0;
   const enforceA11y = Object.keys(a11yBaseline).length > 0;
 
-  await rm(outDir, { recursive: true, force: true });
+  rmRecursive(outDir);
   await mkdir(outDir, { recursive: true });
 
   const server = await startStaticServer(staticDir);

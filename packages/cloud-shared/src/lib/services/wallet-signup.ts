@@ -9,9 +9,11 @@ import type { Organization } from "../../db/repositories/organizations";
 import { organizationsRepository } from "../../db/repositories/organizations";
 import type { UserWithOrganization } from "../../db/repositories/users";
 import { usersRepository } from "../../db/repositories/users";
+import { getClientIp } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
 import { organizationsService } from "./organizations";
+import { signupGrantAllowedForIp } from "./signup-grant-guard";
 import { usersService } from "./users";
 
 export const INITIAL_FREE_CREDITS = ((): number => {
@@ -36,13 +38,20 @@ async function grantWalletSignupCredits(params: {
   requireInitialCredits: boolean;
 }): Promise<boolean> {
   if (params.amount <= 0) return false;
+
+  // Anti-sybil: withhold the bonus when this IP has hit the daily free-grant cap.
+  const signupIp = getClientIp();
+  if (!(await signupGrantAllowedForIp(signupIp))) {
+    return false;
+  }
+
   try {
     await creditsService.addCredits({
       organizationId: params.organizationId,
       amount: params.amount,
       description: "Wallet sign-up bonus",
       stripePaymentIntentId: params.idempotencyKey,
-      metadata: { type: "wallet_signup", chain: params.chain },
+      metadata: { type: "wallet_signup", chain: params.chain, ip_address: signupIp },
     });
     return true;
   } catch (err) {

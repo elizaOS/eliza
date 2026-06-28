@@ -8,79 +8,10 @@ REPO_ROOT="$(cd "${ROOT}/../../.." && pwd)"
 SOURCE_ONLY="${ELIZAOS_STATIC_SOURCE_ONLY:-0}"
 cd "${ROOT}"
 
-rg() {
-    local rg_bin
-    rg_bin="$(type -P rg || true)"
-    if [ -n "${rg_bin}" ]; then
-        "${rg_bin}" "$@"
-        return
-    fi
-
-    local show_line_numbers=0
-    local quiet=0
-    local pattern
-    local glob_pattern=""
-    local paths=()
-
-    # Consume leading flags this shim understands. Crucially `-q`: without it,
-    # `rg -q 'pat' file` would leave `-q` as the pattern and shove the real
-    # pattern into grep's file position ("grep: <pat>: No such file or directory").
-    while [ "$#" -gt 0 ]; do
-        case "${1:-}" in
-            -n) show_line_numbers=1; shift ;;
-            -q) quiet=1; shift ;;
-            -nq | -qn) show_line_numbers=1; quiet=1; shift ;;
-            *) break ;;
-        esac
-    done
-    pattern="${1:-}"
-    if [ -z "${pattern}" ]; then
-        return 2
-    fi
-    shift
-
-    while [ "$#" -gt 0 ]; do
-        case "$1" in
-            --glob)
-                glob_pattern="${2:-}"
-                shift 2
-                ;;
-            --)
-                shift
-                ;;
-            *)
-                paths+=("$1")
-                shift
-                ;;
-        esac
-    done
-
-    if [ "${#paths[@]}" -eq 0 ]; then
-        paths=(.)
-    fi
-
-    local grep_flags="-RE"
-    if [ "${show_line_numbers}" = "1" ]; then
-        grep_flags="${grep_flags}n"
-    fi
-    if [ "${quiet}" = "1" ]; then
-        grep_flags="${grep_flags}q"
-    fi
-
-    if [ -n "${glob_pattern}" ]; then
-        local matches=()
-        while IFS= read -r -d '' match; do
-            matches+=("${match}")
-        done < <(find "${paths[@]}" -type f -name "${glob_pattern}" -print0 2>/dev/null)
-        if [ "${#matches[@]}" -eq 0 ]; then
-            return 1
-        fi
-        grep ${grep_flags} -- "${pattern}" "${matches[@]}"
-        return
-    fi
-
-    grep ${grep_flags} -- "${pattern}" "${paths[@]}"
-}
+if ! command -v rg >/dev/null 2>&1; then
+    echo "ripgrep (rg) is required for elizaOS Live static smoke checks." >&2
+    exit 1
+fi
 
 stat_mode() {
     local path="$1"
@@ -141,6 +72,8 @@ bash -n build.sh build-iso.sh tails/auto/build \
     scripts/dev-sign-update-manifest.sh \
     scripts/usb-write.sh \
     scripts/generate-elizaos-brand-assets.sh \
+    scripts/run-cool-build.sh \
+    scripts/submodule-checkout.sh \
     scripts/security-smoke.sh
 grep -Fq 'if [ -f "${SRC}/binary.iso" ]' build-iso.sh
 grep -Fq 'find "${SRC}" -maxdepth 1 -name' build-iso.sh
@@ -237,6 +170,7 @@ for executable in \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager \
     scripts/dev-sign-update-manifest.sh \
+    scripts/run-cool-build.sh \
     scripts/usb-write.sh \
     scripts/security-smoke.sh \
     scripts/sync-runtime-to-chroot.sh
@@ -306,18 +240,19 @@ fi
 # StartupShell is a SHARED app-shell component (@elizaos/ui), and the elizaOS OS
 # ISO bundles it verbatim — there is no downstream OS theme override for the
 # boot splash. Per the per-surface accent system, the *app* surface owns the
-# splash and it is intentionally orange (#FF5800), while the OS chrome
-# (greeter, dashboard metadata, failure/first-run shells below) stays on the
-# blue/white palette. So this gate asserts the splash's current intentional
-# orange palette and the neutral bootstrap-gate surface, and only rejects the
-# genuinely-stale dark/gradient/glow styling from the pre-redesign shell.
+# splash and it uses the launch token with the current home-shader fallback
+# (#ef5a1f). OS chrome such as the greeter/dashboard metadata/failure shell
+# stays on the blue/white palette; first-run stays inside the launch surface.
+# So this gate asserts the splash's current intentional launch token and the
+# neutral bootstrap-gate surface, and only rejects the genuinely-stale
+# dark/gradient/glow styling from the pre-redesign shell.
 if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
 then
     echo "Startup shell must not reintroduce the old dark/gradient splash." >&2
     exit 1
 fi
-grep -q 'bg-\[#FF5800\]' \
+grep -Fq 'bg-[var(--launch-bg,#ef5a1f)]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
 grep -q 'bg-\[#F7F6F4\]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
@@ -327,18 +262,19 @@ then
     echo "Startup failure shell must stay on the clean elizaOS white/blue surface." >&2
     exit 1
 fi
-grep -q 'bg-\[#F7F9FF\]' \
+grep -q 'bg-bg' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
-grep -q 'text-\[#0B35F1\]' \
+grep -q 'text-txt' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
-grep -q 'data-testid="first-run-shell"' \
-    "${REPO_ROOT}/packages/ui/src/components/shell/FirstRunShell.tsx"
-grep -q 'bg-\[#F7F9FF\]' \
-    "${REPO_ROOT}/packages/ui/src/components/shell/FirstRunShell.tsx"
-if rg -n 'bg-bg|bg-card|text-accent|bg-accent|text-warn|text-ok|text-danger|#FF5800|#ff5800|#ffe600|#f0b90b' \
-    "${REPO_ROOT}/packages/ui/src/components/shell/FirstRunShell.tsx"
+grep -q 'text-destructive' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
+first_run_shell="${REPO_ROOT}/packages/ui/src/first-run/CompactOnboarding.tsx"
+grep -q 'className="first-run-screen' "${first_run_shell}"
+grep -q 'text-white' "${first_run_shell}"
+if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
+    "${first_run_shell}"
 then
-    echo "First-run onboarding must stay on the clean elizaOS white/blue surface." >&2
+    echo "First-run onboarding must not reintroduce the old dark/gradient shell." >&2
     exit 1
 fi
 onboarding_states_css="${REPO_ROOT}/packages/ui/src/components/onboarding/states/onboarding.css"

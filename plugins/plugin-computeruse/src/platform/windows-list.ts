@@ -223,6 +223,7 @@ function listWindowsDarwinViaSystemEvents(): WindowInfo[] {
         repeat with proc in (every process whose visible is true)
           set procName to name of proc
           try
+            set procName to name of proc
             repeat with w in (every window of proc)
               try
                 set outText to outText & procName & "|||" & (name of w) & "<<WIN>>"

@@ -177,14 +177,15 @@ ELIZA_IOS_INCLUDE_LLAMA=1 \
 
 ## Known gaps
 
-### iOS runtime bridge is symbol-ready, not generation-ready
+### iOS runtime bridge: text-benchmark ready, voice symbol-ready
 
 The iOS slices now embed the same shipped Metal kernel payload as desktop
 Metal and `build-xcframework.mjs --verify` passes the kernel-symbol and
 runtime-symbol audits. The added `libeliza-ios-runtime-shim.a` is a link
-and smoke-test bridge, not a complete mobile inference engine. It refuses
-real text/voice generation until the mobile bridge is wired to a live llama
-context and real OmniVoice GGUF assets.
+and smoke-test bridge. Its text entrypoint is wired to a live llama context for
+the physical-device `--benchmark-model` path; its voice entrypoints still
+refuse real TTS/ASR with structured unsupported/not-loaded errors until the
+mobile runtime is wired to real OmniVoice GGUF assets.
 
 ### Real iPhone hardware verification
 
@@ -214,11 +215,16 @@ If no physical device is attached, unlocked, trusted, and in Developer
 Mode, the script exits non-zero and prints the offline device list
 reported by `xcrun xctrace list devices`.
 
-This still does **not** claim text/voice numerical generation because no
-Eliza-1 weights are bundled into the XCTest package. The next gate after
-this smoke passes is a real bundle smoke that downloads or stages final
-Eliza-1 artifacts, loads the selected tier, and measures first-token /
-first-audio latency plus peak RSS.
+By default, this is still a symbol/ABI smoke and no model weights are bundled.
+With `--benchmark-model <path-to.gguf>`, the generated host app bundles that
+GGUF and runs a real CPU + Metal text-generation benchmark on the physical
+device. The report captures prompt/generation throughput, token counts, process
+memory footprint before/after generation, and thermal state before/after.
+
+This does **not** claim voice numerical generation or first-audio latency yet.
+The iOS voice ABI currently links and fail-closes with structured errors for
+missing TTS/ASR assets; first-audio requires a future full-bundle or app-shell
+smoke that stages real OmniVoice assets and exercises the mobile voice runtime.
 
 ### Why no fallback to the npm-bundled framework
 

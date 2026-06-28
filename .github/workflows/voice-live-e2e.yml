@@ -234,7 +234,7 @@ jobs:
             "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so")"
 
           BUNDLE="$RUNNER_TEMP/eliza-voice-real.bundle"
-          rm -rf "$BUNDLE"
+          node packages/scripts/rm-path-recursive.mjs "$BUNDLE"
           mkdir -p "$BUNDLE"
           for entry in "$SRC_BUNDLE"/*; do
             name="$(basename "$entry")"

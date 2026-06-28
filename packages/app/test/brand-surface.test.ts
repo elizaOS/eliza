@@ -235,16 +235,30 @@ describe("brand surfaces", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("desktop OS pill uses the transparent chat-overlay shell", () => {
+  it("desktop chat overlay uses the transparent in-app shell", () => {
     const mainSrc = read("src/main.tsx");
+    const appSrc = read("../ui/src/App.tsx");
     const stylesSrc = read("../ui/src/styles/styles.css");
-    const pillSrc = read("../app-core/platforms/electrobun/src/pill-window.ts");
 
-    expect(pillSrc).toContain('url.search = "?shellMode=chat-overlay"');
+    expect(
+      existsSync(
+        join(root, "../app-core/platforms/electrobun/src/pill-window.ts"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(
+          root,
+          "../app-core/platforms/electrobun/src/desktop-pill-config.ts",
+        ),
+      ),
+    ).toBe(false);
     expect(mainSrc).toContain("isChatOverlayWindowShell");
     expect(mainSrc).toContain(
       'root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell)',
     );
+    expect(appSrc).toContain('data-testid="chat-overlay-shell"');
+    expect(appSrc).toContain("<ContinuousChatOverlay");
     expect(stylesSrc).toContain("html.eliza-chat-overlay-shell #root");
     expect(stylesSrc).toContain("background: transparent");
   });

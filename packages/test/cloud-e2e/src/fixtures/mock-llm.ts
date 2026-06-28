@@ -38,6 +38,25 @@ export interface MockLlmOptions {
   echoContext?: boolean;
   /** Reported completion tokens. Default `8`. */
   completionTokens?: number;
+  /**
+   * Context-aware echo mode (off by default). When on, the assistant reply is
+   * DERIVED from the request the caller sent — it echoes the number of prior
+   * user turns plus the latest user message — instead of a fixed string. This
+   * lets a multi-turn spec assert the reply itself reflects the conversation
+   * history that was replayed into the model call (turn 2 sees turn 1), which a
+   * fixed reply cannot prove. Off keeps the deterministic `reply` other specs
+   * assert on.
+   */
+  echoContext?: boolean;
+}
+
+/** Extract the user-role message contents from a chat-completions request. */
+function userMessages(body: ChatCompletionRequestBody): string[] {
+  return (body.messages ?? [])
+    .filter((m) => m.role === "user")
+    .map((m) =>
+      typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+    );
 }
 
 interface ChatCompletionRequestBody {
@@ -105,6 +124,7 @@ export async function startMockLlm(
 ): Promise<RunningMockLlm> {
   const reply = options.reply ?? "PONG";
   const completionTokens = options.completionTokens ?? 8;
+  const echoContext = options.echoContext ?? false;
   let count = 0;
 
   const server: Server = createServer((req, res) => {
@@ -120,8 +140,16 @@ export async function startMockLlm(
         }
         count += 1;
         const promptTokens = estimatePromptTokens(body);
-        const content = options.echoContext
-          ? buildContextEchoReply(body)
+        // In echo mode the reply is computed from the replayed conversation:
+        // "turn <N> (prior user turns: <k>): <latest user message>". On turn 1
+        // there are no prior user turns; on turn 2 the prior turn is present in
+        // `messages` (proving history was replayed), so the count rises. A fixed
+        // reply could never reflect that.
+        const users = userMessages(body);
+        const latestUser = users.at(-1) ?? "";
+        const priorUserTurns = Math.max(0, users.length - 1);
+        const content = echoContext
+          ? `turn ${users.length} (prior user turns: ${priorUserTurns}): ${latestUser}`
           : reply;
         const payload = {
           id: "chatcmpl-mock",

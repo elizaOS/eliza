@@ -142,7 +142,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "  - elizaos\n"
         "  - training-pipeline\n"
         "  - apollo\n"
-        "  - qwen\n"
+        "  - gemma\n"
         "---\n"
         "\n"
         "# eliza-1-pipeline\n"

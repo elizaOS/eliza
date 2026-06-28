@@ -2,10 +2,20 @@
 
 Status: harness rewritten as a **self-contained CUDA fixture-parity harness**
 (no `libggml-cuda.so` link dependency). Full nvcc compile + fixture parity +
-model-backed graph dispatch require a CUDA host. **Hardware result:
-NEEDS-HARDWARE** until `cuda_runner.sh` exits zero on a real NVIDIA GPU and
-the result lands in `packages/inference/README.md` + a JSON evidence file
-under `hardware-results/`.
+model-backed graph dispatch require a CUDA host.
+
+**Fixture parity: VERIFIED on Blackwell sm_120** (RTX 5080 Laptop, CUDA 12.8,
+`nvcc -gencode arch=compute_120,code=sm_120`, 2026-06-25, #9580). All eight run —
+turbo3/turbo4/turbo3_tcq/qjl/polar/polar_qjl 8/8 each and fused_attn_qjl_tbq
+non-causal 1920/1920 + causal 1536/1536 — at tol 1e-3 (max diff ≈ 1e-5). The
+causal case required porting causal masking into `cuda_verify.cu` (commit
+`6e52af6e41`; it previously failed 3/1536 because the kernel attended to all KV
+positions). Reproduce + full matrix: `hardware-results/MATRIX-2026-06-25-linux-cuda-android.md`.
+
+**Graph-dispatch leg: still NEEDS-HARDWARE.** A publishable CUDA pass also needs
+`cuda_runner.sh` to exit zero with the model-backed graph smoke (build the fork
+`libggml-cuda.so` + a smoke GGUF), not just fixture parity. That leg has not run
+on this host yet.
 
 This is the sibling of `metal_verify` (Apple GPU) and `vulkan_verify`
 (cross-vendor). Same contract: load the canonical fixtures from

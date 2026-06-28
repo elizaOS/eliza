@@ -294,7 +294,7 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Team-based continuous RL")
-    parser.add_argument("--model", default="Qwen/Qwen3-4B")
+    parser.add_argument("--model", default="google/gemma-4-E4B")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--agents-per-team", type=int, default=10)
     parser.add_argument("--ticks", type=int, default=50)

@@ -128,7 +128,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 			});
 
 			it("does not declare a default KV-cache override for shipped tiers", () => {
-				// Shipped qwen35 tiers stay on F16 KV by default. QJL/TBQ cache
+				// Shipped Gemma tiers stay on F16 KV by default. QJL/TBQ cache
 				// experiments are opt-in per runtime/backend, not catalog defaults.
 				expect(model?.runtime?.kvCache).toBeUndefined();
 			});

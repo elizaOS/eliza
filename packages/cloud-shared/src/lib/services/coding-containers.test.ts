@@ -4,6 +4,7 @@ import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import {
   buildCodingContainerCreatePayload,
   buildCodingContainerSessionResponse,
+  imageRequiresDigestPin,
   isCodingContainerImageAllowed,
   RequestCodingAgentContainerRequestSchema,
 } from "./coding-containers";
@@ -161,5 +162,43 @@ describe("coding container image allowlist", () => {
       () => containersEnv.codingContainerImageAllowlist(),
     );
     expect(allowlist).toEqual(["ghcr.io/foo/*", "ghcr.io/bar/baz:1"]);
+  });
+});
+
+describe("coding container digest-pin gate", () => {
+  const DIGEST = `a${"0".repeat(63)}`;
+  const PINNED = `ghcr.io/elizaos/eliza@sha256:${DIGEST}`;
+
+  it("never rejects when the flag is off (opt-in default)", () => {
+    expect(imageRequiresDigestPin("ghcr.io/elizaos/eliza:latest", false)).toBe(false);
+    expect(imageRequiresDigestPin("ghcr.io/elizaos/eliza", false)).toBe(false);
+    expect(imageRequiresDigestPin(PINNED, false)).toBe(false);
+  });
+
+  it("rejects mutable refs when the flag is on", () => {
+    // Explicit mutable tag.
+    expect(imageRequiresDigestPin("ghcr.io/elizaos/eliza:latest", true)).toBe(true);
+    // Implicit latest (no tag, no digest).
+    expect(imageRequiresDigestPin("ghcr.io/elizaos/eliza", true)).toBe(true);
+    // A digest that is not a full sha256:<64 hex> is not production-safe.
+    expect(imageRequiresDigestPin("ghcr.io/elizaos/eliza@sha256:abc", true)).toBe(true);
+  });
+
+  it("accepts a full sha256-digest-pinned ref when the flag is on", () => {
+    expect(imageRequiresDigestPin(PINNED, true)).toBe(false);
+  });
+
+  it("env getter defaults OFF and only 'true' enables it", () => {
+    expect(runWithCloudBindings({}, () => containersEnv.requireDigestPinnedImages())).toBe(false);
+    expect(
+      runWithCloudBindings({ CONTAINER_IMAGE_REQUIRE_DIGEST: "1" }, () =>
+        containersEnv.requireDigestPinnedImages(),
+      ),
+    ).toBe(false);
+    expect(
+      runWithCloudBindings({ CONTAINER_IMAGE_REQUIRE_DIGEST: "true" }, () =>
+        containersEnv.requireDigestPinnedImages(),
+      ),
+    ).toBe(true);
   });
 });

@@ -1,7 +1,8 @@
 import type { PendingUserAction } from "@elizaos/core";
 import { CircleHelp } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { dispatchChatPrefill } from "../../../events";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useNow } from "../../../hooks/useNow";
@@ -53,17 +54,35 @@ export function useApprovals(): {
 } {
   const [pending, setPending] = useState<PendingUserAction[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const mountedRef = useRef(true);
 
   const load = useCallback(async () => {
+    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+      if (mountedRef.current) {
+        setPending([]);
+        setLoaded(true);
+      }
+      return;
+    }
     try {
       const { pending: next } = await client.listPendingActions();
+      if (!mountedRef.current) return;
       setPending((prev) => (pendingEqual(prev, next) ? prev : next));
     } catch {
       // Best-effort: keep the last good data on a transient fetch failure.
     } finally {
-      setLoaded(true);
+      if (mountedRef.current) {
+        setLoaded(true);
+      }
     }
   }, []);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
 
   useEffect(() => {
     void load();

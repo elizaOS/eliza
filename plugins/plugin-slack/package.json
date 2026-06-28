@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-slack",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "Slack integration plugin for elizaOS agents with Socket Mode support",
   "type": "module",
   "main": "dist/index.js",
@@ -61,7 +61,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

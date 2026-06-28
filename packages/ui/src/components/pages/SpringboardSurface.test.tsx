@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
@@ -73,7 +67,7 @@ function availableApp(id: string, label: string): ViewEntry {
 const DEFAULT_VIEWS = [
   view("chat", "Chat", "/chat"),
   view("views", "Views", "/views"),
-  view("logs", "Logs", "/apps/logs", { viewKind: "developer" }),
+  view("phone", "Phone", "/phone", { visibleInManager: false }),
   view("settings", "Settings", "/settings", { visibleInManager: false }),
   view("notes", "Notes", "/notes"),
   view("views-manager", "View Manager", "/views"),
@@ -84,7 +78,7 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/");
   useEnabledViewKindsMock.mockReturnValue({
     developer: true,
-    preview: false,
+    preview: true,
   });
   useRoutableViewsMock.mockReturnValue({
     views: DEFAULT_VIEWS,
@@ -107,15 +101,15 @@ afterEach(() => {
 });
 
 describe("SpringboardSurface", () => {
-  it("shows curated tiles and hides self-links plus preview-gated entries", () => {
+  it("shows Settings as a favorite and hides Home/Springboard self-links", () => {
     render(<SpringboardSurface />);
 
     expect(screen.getByTestId("springboard-tile-settings")).toBeTruthy();
+    expect(screen.getByTestId("springboard-tile-phone")).toBeTruthy();
+    expect(screen.getByTestId("springboard-tile-notes")).toBeTruthy();
     expect(screen.queryByTestId("springboard-tile-chat")).toBeNull();
     expect(screen.queryByTestId("springboard-tile-views")).toBeNull();
     expect(screen.queryByTestId("springboard-tile-views-manager")).toBeNull();
-    expect(screen.queryByTestId("springboard-tile-notes")).toBeNull();
-    expect(screen.queryByTestId("springboard-tile-weather")).toBeNull();
   });
 
   it("navigates loaded views through the browser route", () => {
@@ -129,7 +123,7 @@ describe("SpringboardSurface", () => {
   it("uses the catalog get action for available apps", () => {
     const get = vi.fn(async (_entry: ViewEntry) => {});
     useViewCatalogMock.mockReturnValue({
-      entries: [availableApp("feed", "Feed")],
+      entries: [availableApp("weather", "Weather")],
       loading: false,
       error: null,
       refresh: vi.fn(),
@@ -137,23 +131,35 @@ describe("SpringboardSurface", () => {
     });
 
     render(<SpringboardSurface />);
-    fireEvent.click(screen.getByRole("button", { name: "Feed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Weather" }));
 
     expect(get).toHaveBeenCalledTimes(1);
     const launched = get.mock.calls.at(0)?.at(0);
-    expect(launched?.id).toBe("feed");
+    expect(launched?.id).toBe("weather");
   });
 
-  it("keeps system apps on page 1 and developer apps on page 2", () => {
+  it("orders stable first-party views ahead of developer QA views and catalog apps", () => {
+    useRoutableViewsMock.mockReturnValue({
+      views: [
+        view("notes", "Notes", "/notes", { order: 920 }),
+        view("phone", "Phone", "/phone", { visibleInManager: false }),
+        view("settings", "Settings", "/settings", {
+          visibleInManager: false,
+        }),
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
     render(<SpringboardSurface />);
 
-    const pageOne = screen.getByTestId("springboard-page-0");
-    const pageTwo = screen.getByTestId("springboard-page-1");
+    const page = screen.getByTestId("springboard-page-0");
+    const ids = Array.from(
+      page.querySelectorAll<HTMLElement>('[data-testid^="springboard-tile-"]'),
+    ).map((node) =>
+      node.getAttribute("data-testid")?.replace("springboard-tile-", ""),
+    );
 
-    expect(
-      within(pageOne).getByTestId("springboard-tile-settings"),
-    ).toBeTruthy();
-    expect(within(pageOne).queryByTestId("springboard-tile-logs")).toBeNull();
-    expect(within(pageTwo).getByTestId("springboard-tile-logs")).toBeTruthy();
+    expect(ids).toEqual(["phone", "notes", "weather"]);
   });
 });

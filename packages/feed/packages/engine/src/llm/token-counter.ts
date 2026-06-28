@@ -41,7 +41,13 @@ const MODEL_TOKEN_LIMITS: Record<string, number> = {
   "openai/gpt-4.1-mini": 128000,
   "openai/gpt-4.1-nano": 128000,
 
-  // Groq / Strategy models
+  // Gemma 4 / Feed strategy models
+  "google/gemma-4-E2B-it": 131072,
+  "google/gemma-4-E4B-it": 131072,
+  "google/gemma-4-12B-it": 262144,
+  "google/gemma-4-31B-it": 262144,
+
+  // Legacy strategy models retained for old run metadata
   "unsloth/Qwen3-4B-128K": 131072,
   "unsloth/Qwen3-8B-128K": 131072,
   "unsloth/Qwen3-14B-128K": 131072,

@@ -1,4 +1,4 @@
-"""Apply GGUF Q3_K_M K-quant to a fine-tuned Qwen checkpoint.
+"""Apply GGUF Q3_K_M K-quant to a fine-tuned Eliza-1/Gemma checkpoint.
 
 Wraps llama.cpp's two-stage GGUF conversion:
 

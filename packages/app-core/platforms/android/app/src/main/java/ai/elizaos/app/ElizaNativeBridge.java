@@ -44,6 +44,11 @@ public final class ElizaNativeBridge {
     }
 
     @JavascriptInterface
+    public String getStartupTraceId() {
+        return ElizaStartupTrace.currentId();
+    }
+
+    @JavascriptInterface
     public String getAndroidVirtualization() {
         return AndroidVirtualizationBridge.probeJson(appContext);
     }

@@ -36,10 +36,13 @@
  *                                   run-mobile-build.mjs mtpTargetOutDir()
  *   ELIZA_MTP_LLAMA_CPP_SRC         override fork source tree
  *   ELIZA_IOS_DEPLOYMENT_TARGET     iOS min version (default 16.0)
+ *   ELIZA_IOS_METAL_STD             Metal language std (default ios-metal2.4);
+ *                                   the iOS min-version flag is appended here
+ *                                   so embedded metallibs run on older devices
  *   ELIZA_MTP_FORCE_REBUILD=1       ignore a cached slice and rebuild
  */
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,6 +52,19 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 // packages/app-core/scripts → repo root
 const repoRoot = path.resolve(here, "..", "..", "..");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 // ── State dir — MUST mirror run-mobile-build.mjs elizaStateDirForBuild() and
 //    ios-xcframework/build-xcframework.mjs elizaStateDir() EXACTLY, otherwise
@@ -58,6 +74,7 @@ const STATE_DIR =
 
 const DEPLOYMENT_TARGET =
   process.env.ELIZA_IOS_DEPLOYMENT_TARGET?.trim() || "16.0";
+const IOS_METAL_STD = process.env.ELIZA_IOS_METAL_STD?.trim() || "ios-metal2.4";
 
 // ── Fork source. The canonical fork is the in-repo submodule; the vendored
 //    ios-deps tree is the historical fallback. Both carry the eliza kernels.
@@ -203,7 +220,7 @@ function requiredKernelsMissing(symbolsText) {
 
 function copyHeaders(srcDir, outDir) {
   const incOut = path.join(outDir, "include");
-  fs.rmSync(incOut, { recursive: true, force: true });
+  removePathRecursive(incOut);
   fs.mkdirSync(incOut, { recursive: true });
   for (const incDir of [
     path.join(srcDir, "include"),
@@ -281,10 +298,16 @@ function buildTarget(target) {
   const revision = forkRevision(srcDir);
   log(`target=${target} sdk=${t.sdk} fork=${revision}`);
   log(`source: ${srcDir}`);
+  const metalDeploymentFlag = t.isSimulator
+    ? `-mios-simulator-version-min=${DEPLOYMENT_TARGET}`
+    : `-miphoneos-version-min=${DEPLOYMENT_TARGET}`;
+  // ggml appends GGML_METAL_STD after -std=; CMake list expansion lets this
+  // also pass the iOS deployment target into the embedded metallib compile.
+  const metalStdAndDeployment = `${IOS_METAL_STD};${metalDeploymentFlag}`;
 
   const buildDir = path.join(STATE_DIR, "local-inference", "mtp-build", target);
   if (process.env.ELIZA_MTP_FORCE_REBUILD === "1") {
-    fs.rmSync(buildDir, { recursive: true, force: true });
+    removePathRecursive(buildDir);
   }
   fs.mkdirSync(buildDir, { recursive: true });
   fs.mkdirSync(outDir, { recursive: true });
@@ -309,6 +332,7 @@ function buildTarget(target) {
     // (ggml-metal/CMakeLists.txt ELIZA-KERNEL-EMBED-PATCH-V1).
     "-DGGML_METAL=ON",
     "-DGGML_METAL_EMBED_LIBRARY=ON",
+    `-DGGML_METAL_STD=${metalStdAndDeployment}`,
     "-DGGML_METAL_USE_BF16=ON",
     "-DGGML_ACCELERATE=ON",
     "-DGGML_BLAS=OFF",

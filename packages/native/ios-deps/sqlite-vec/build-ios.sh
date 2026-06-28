@@ -15,6 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 SRC_DIR="$ROOT_DIR/src"
 DIST_DIR="$ROOT_DIR/dist"
@@ -23,12 +24,14 @@ BUILD_LOCK_DIR="$BUILD_ROOT/.build-ios.lock"
 VERSION_FILE="$ROOT_DIR/../VERSIONS"
 SQLITE_VEC_REPO="${SQLITE_VEC_REPO:-https://github.com/asg017/sqlite-vec}"
 IOS_DEPLOYMENT_TARGET="${ELIZA_IOS_MIN_VERSION:-15.0}"
+RM_PATH_RECURSIVE=(node "$REPO_ROOT/packages/scripts/rm-path-recursive.mjs")
 
 cmd="${1:-all}"
 
 log() { printf '\033[34m[sqlite-vec-ios]\033[0m %s\n' "$*"; }
 err() { printf '\033[31m[sqlite-vec-ios:err]\033[0m %s\n' "$*" >&2; }
 die() { err "$*"; exit 1; }
+rm_path_recursive() { "${RM_PATH_RECURSIVE[@]}" "$@"; }
 
 case "$cmd" in
   all|device|simulator|clean) ;;
@@ -37,7 +40,7 @@ esac
 
 clean_all() {
   log "Cleaning $DIST_DIR and $BUILD_ROOT"
-  rm -rf "$DIST_DIR" "$BUILD_ROOT"
+  rm_path_recursive "$DIST_DIR" "$BUILD_ROOT"
 }
 
 if [[ "$cmd" == "clean" ]]; then
@@ -86,7 +89,7 @@ acquire_build_lock() {
     fi
     sleep 1
   done
-  trap 'rm -rf "$BUILD_LOCK_DIR"' EXIT
+  trap 'rm_path_recursive "$BUILD_LOCK_DIR"' EXIT
 }
 
 ensure_source_checkout() {
@@ -142,7 +145,7 @@ build_slice() {
   cxx_compiler="$(xcrun --sdk "$sdk_name" --find clang++)" || die "unable to locate clang++ for $sdk_name"
 
   log "Building slice: $slice (sysroot=$sysroot archs=$archs)"
-  rm -rf "$build_dir" "$install_dir"
+  rm_path_recursive "$build_dir" "$install_dir"
   mkdir -p "$build_dir" "$install_dir"
 
   cmake -S "$SRC_DIR" -B "$build_dir" -G Xcode \
@@ -172,7 +175,7 @@ build_slice() {
 create_xcframework() {
   [[ -f "$DIST_DIR/ios-arm64/libsqlite_vec.a" ]] || die "missing device slice"
   [[ -f "$DIST_DIR/ios-arm64-simulator/libsqlite_vec.a" ]] || die "missing simulator slice"
-  rm -rf "$DIST_DIR/SqliteVec.xcframework"
+  rm_path_recursive "$DIST_DIR/SqliteVec.xcframework"
   xcodebuild -create-xcframework \
     -library "$DIST_DIR/ios-arm64/libsqlite_vec.a" \
     -headers "$DIST_DIR/ios-arm64/Headers" \

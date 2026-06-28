@@ -41,7 +41,10 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
-import { isCodingContainerImageAllowed } from "@/lib/services/coding-containers";
+import {
+  imageRequiresDigestPin,
+  isCodingContainerImageAllowed,
+} from "@/lib/services/coding-containers";
 import { type Container, containersService } from "@/lib/services/containers";
 import { getHetznerContainersClient } from "@/lib/services/containers/hetzner-client/client";
 import {
@@ -261,6 +264,28 @@ app.post("/", async (c) => {
           success: false,
           code: "CONTAINER_IMAGE_NOT_ALLOWED",
           error: `Image '${body.image}' is not permitted`,
+        },
+        403,
+      );
+    }
+
+    // SECURITY (opt-in): when the digest-pin gate is armed, reject mutable
+    // refs so an allowed repo cannot swap bytes behind a tag after this check.
+    if (
+      imageRequiresDigestPin(
+        body.image,
+        containersEnv.requireDigestPinnedImages(),
+      )
+    ) {
+      logger.warn("[Containers API] image rejected: digest pin required", {
+        organizationId: user.organization_id,
+        image: body.image,
+      });
+      return c.json(
+        {
+          success: false,
+          code: "CONTAINER_IMAGE_NOT_DIGEST_PINNED",
+          error: `Image '${body.image}' must be pinned to a full sha256 digest (e.g. repo@sha256:<64 hex>)`,
         },
         403,
       );

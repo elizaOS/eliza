@@ -10,11 +10,15 @@ import {
   withBuiltinShellViews,
 } from "./useAvailableViews";
 
-const { fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
+const { client, fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
+  client: {
+    getBaseUrl: vi.fn(() => ""),
+  },
   fetchWithCsrf: vi.fn(),
   getFrontendPlatform: vi.fn(() => "desktop"),
 }));
 
+vi.mock("../api", () => ({ client }));
 vi.mock("../api/csrf-client", () => ({ fetchWithCsrf }));
 vi.mock("../platform/platform-guards", () => ({ getFrontendPlatform }));
 
@@ -50,6 +54,7 @@ function view(
 describe("useAvailableViews", () => {
   beforeEach(() => {
     __resetResourceCache();
+    client.getBaseUrl.mockReturnValue("");
     fetchWithCsrf.mockReset();
     getFrontendPlatform.mockReset();
     getFrontendPlatform.mockReturnValue("desktop");
@@ -67,6 +72,46 @@ describe("useAvailableViews", () => {
       await Promise.resolve();
     });
   }
+
+  it("does not fetch or poll views when network access is disabled", async () => {
+    vi.useFakeTimers();
+
+    const { result } = renderHook(() =>
+      useAvailableViews({ networkEnabled: false }),
+    );
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.views).toEqual([]);
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+      result.current.refresh();
+    });
+    await flushHookEffects();
+
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch app-shell views from a limited cloud agent base", async () => {
+    vi.useFakeTimers();
+    client.getBaseUrl.mockReturnValue(
+      "https://37911a1e-ed40-4626-88f5-0e4dcf249a34.elizacloud.ai",
+    );
+
+    const { result } = renderHook(() => useAvailableViews());
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+  });
 
   it("fetches GUI, TUI, and XR views with the platform header and merges by view type/id", async () => {
     fetchWithCsrf

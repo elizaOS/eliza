@@ -38,6 +38,12 @@ const COMMAND_PREFIX = (process.env.ELIZA_DESKTOP_COMMAND_PREFIX ?? "")
   .split(/\s+/)
   .filter(Boolean);
 const DESKTOP_BUILD_LOCK_DIR = path.join(ROOT, ".turbo", "desktop-build.lock");
+const CLEANUP_HELPER_SCRIPT = path.join(
+  ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const RUNTIME_COPY_SCRIPT = fs.existsSync(
   path.join(ROOT, "scripts", "copy-runtime-node-modules.ts"),
 )
@@ -88,6 +94,33 @@ function isProcessAlive(pid) {
   }
 }
 
+function removePathRecursive(targetPath, label = "path cleanup") {
+  const result = spawnSync("node", [CLEANUP_HELPER_SCRIPT, targetPath], {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const detail = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    throw new Error(
+      `${label} failed with exit code ${result.status ?? 1}${
+        detail ? `: ${detail}` : ""
+      }`,
+    );
+  }
+}
+
+function removeDesktopBuildLockDir() {
+  removePathRecursive(DESKTOP_BUILD_LOCK_DIR, "desktop build lock cleanup");
+}
+
 function withDesktopBuildLock(run) {
   const lockParent = path.dirname(DESKTOP_BUILD_LOCK_DIR);
   const staleAfterMs = 30 * 60 * 1000;
@@ -120,7 +153,7 @@ function withDesktopBuildLock(run) {
         (ownerPid !== null && !isProcessAlive(ownerPid)) ||
         Date.now() - stat.mtimeMs > staleAfterMs
       ) {
-        fs.rmSync(DESKTOP_BUILD_LOCK_DIR, { recursive: true, force: true });
+        removeDesktopBuildLockDir();
         continue;
       }
 
@@ -137,7 +170,7 @@ function withDesktopBuildLock(run) {
   try {
     run();
   } finally {
-    fs.rmSync(DESKTOP_BUILD_LOCK_DIR, { recursive: true, force: true });
+    removeDesktopBuildLockDir();
   }
 }
 
@@ -1467,7 +1500,7 @@ function mirrorTreePreservingSymlinks(src, dst) {
     if (dstLstat) {
       try {
         if (dstLstat.isDirectory() && !dstLstat.isSymbolicLink()) {
-          fs.rmSync(dst, { force: true, recursive: true });
+          removePathRecursive(dst, "desktop mirror directory cleanup");
         } else {
           fs.unlinkSync(dst);
         }
@@ -1569,8 +1602,16 @@ function packageDesktopBuild() {
       : "Packaging Electrobun app",
   });
 
-  mirrorCanonicalToLegacy("build");
-  mirrorCanonicalToLegacy("artifacts");
+  // The legacy compatibility path (APP_DIR/electrobun) is not read by any
+  // production code — only docs and this mirror fn reference it (the inno
+  // installer takes BuildDir as a param; copy-runtime-node-modules reads the
+  // canonical platforms/electrobun path). Mirroring the entire ~2.3 GB /
+  // ~110k-file build tree on every package build is pure waste, so make it
+  // opt-in (default off). Set ELIZA_ELECTROBUN_MIRROR_LEGACY=1 to restore it.
+  if (process.env.ELIZA_ELECTROBUN_MIRROR_LEGACY === "1") {
+    mirrorCanonicalToLegacy("build");
+    mirrorCanonicalToLegacy("artifacts");
+  }
 
   // Electrobun's built-in rcedit call references a CI-local D:\ path that
   // doesn't exist on developer machines. Re-embed the icon from a locally

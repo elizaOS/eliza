@@ -1,9 +1,3 @@
-declare global {
-  interface Navigator {
-    readonly gpu?: unknown;
-  }
-}
-
 import * as THREE from "three";
 
 export { THREE };

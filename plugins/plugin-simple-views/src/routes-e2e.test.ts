@@ -1,8 +1,9 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { buildHonoAppForRuntime } from "../../../packages/agent/src/api/hono-adapter.ts";
 import { simpleViewsPlugin } from "./plugin.js";
+import { clearSimpleViewsStorageForTests } from "./storage.js";
 
 function makeRuntime(): IAgentRuntime {
   return {
@@ -15,6 +16,10 @@ function makeRequest(path: string, init?: RequestInit): Request {
 }
 
 describe("simple views plugin routes (real Hono dispatch)", () => {
+  beforeEach(() => {
+    clearSimpleViewsStorageForTests();
+  });
+
   it("serves state, enforces write auth, and dispatches interactions", async () => {
     const runtime = makeRuntime();
     const unauthorized = buildHonoAppForRuntime(runtime, {

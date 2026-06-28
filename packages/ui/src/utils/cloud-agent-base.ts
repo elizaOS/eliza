@@ -55,6 +55,12 @@ export const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "elizacloud.ai",
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
+  // Staging apex + API. Without these, `staging.elizacloud.ai` ends with
+  // `.elizacloud.ai` but isn't in the set, so isDedicatedCloudAgentBase
+  // mis-classifies the staging console as a per-agent subdomain (and the apex
+  // login redirect never fires on staging — so staging can't validate it).
+  "staging.elizacloud.ai",
+  "api-staging.elizacloud.ai",
 ]);
 
 /**

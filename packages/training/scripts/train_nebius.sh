@@ -11,7 +11,7 @@
 # `"default"`-subnet shape is gone.
 #
 # Flow: provision a Nebius VM (single H200 SXM `gpu-h200-sxm` / `1gpu-16vcpu-200gb`
-# for the 0.6b/1.7b/4b/9b tiers; the 8×H200 `8gpu-128vcpu-1600gb` preset + FSDP
+# for the active 2b/4b/9b tiers; the 8×H200 `8gpu-128vcpu-1600gb` preset + FSDP
 # for 27b — that preset is expensive, see the note below), boot-disk from the
 # `mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8` public image (NVIDIA 570.x +
 # CUDA 12.8 preinstalled), rsync `packages/training/` + the training corpus,
@@ -25,17 +25,14 @@
 # can target a 2× or 4× H200/B200 box.
 #
 # eliza-1 cloud-tier targets (model_registry.py REGISTRY keys):
-#   REGISTRY_KEY=gemma4-e2b → eliza-1-0_8b   (single H200 — overkill, ~2 GPU-h)
 #   REGISTRY_KEY=gemma4-e2b   → eliza-1-2b     (single H200 — fits seq 8k)
 #   REGISTRY_KEY=gemma4-e4b   → eliza-1-4b     (single H200)
 #   REGISTRY_KEY=gemma4-12b   → eliza-1-9b     (single H200, ~80 GB peak)
 #   REGISTRY_KEY=gemma4-31b  → eliza-1-27b    (8× H200 fallback; prefer Vast)
-#   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — kept addressable for
-#   compatibility but the eliza-1 fused-kernel stack only validates Gemma 4.)
 #
 # Required env:
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
-#   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access + pushing results
+#   HUGGING_FACE_HUB_TOKEN     # for gated Gemma access + pushing results
 # Optional env:
 #   REGISTRY_KEY               # default: gemma4-e2b
 #   RUN_NAME                   # default: <registry-key>-apollo-<unix-ts>
@@ -383,7 +380,7 @@ export CUDA_VISIBLE_DEVICES=0
 # back to CPU placement (the model then trains single-threaded on CPU at ~10
 # s/it with the GPU at 0% util holding only unused optimizer states) — tell
 # train_local.py to skip device_map and .to() the GPU explicitly. (native_tool_call_bench.py
-# still runs on CPU here — see the §11 caveat in the 0_6b report; --skip-base-bench
+# still runs on CPU here — see the §11 caveat in the legacy CPU-bench report; --skip-base-bench
 # from BENCHMARK_AFTER=0 avoids the base pass, the finetuned pass is ~3h CPU.)
 export ELIZA_NO_DEVICE_MAP=1
 export HF_HOME=/opt/hf-cache
@@ -439,7 +436,7 @@ echo "RUN_PIPELINE_DONE_OK"
 EOF
   # NOTE: `bash ... 2>&1 | tee $log` makes `$?` reflect `tee`'s exit (always 0)
   # — masking real failures. Use ${PIPESTATUS[0]} to capture the script's
-  # actual rc. Without this, a 0.8B SFT crash (chat-template TypeError,
+  # actual rc. Without this, a pre-Gemma SFT crash (chat-template TypeError,
   # 2026-05-12 incident) emitted `RUN_PIPELINE_EXIT=0`, the launcher saw
   # "success", and ran fetch + teardown over an empty checkpoint dir.
   ssh -o StrictHostKeyChecking=no "$target" "chmod +x $REMOTE_TRAIN_DIR/.run_pipeline.sh; tmux kill-session -t elizatrain 2>/dev/null || true; tmux new-session -d -s elizatrain \"bash $REMOTE_TRAIN_DIR/.run_pipeline.sh 2>&1 | tee $log; echo RUN_PIPELINE_EXIT=\\\${PIPESTATUS[0]} >> $log\""
@@ -480,8 +477,8 @@ fetch() {
 # --- MTP drafter distillation (distill_mtp_drafter.py) ----------------
 # Env knobs (defaults frugal — a small KD job, not a full pipeline):
 #   MTP_TIER              tier the drafter ships for. Active tiers (per
-#                            distill_mtp_drafter.py::ACTIVE_TIERS): 0_8b,
-#                            2b, 4b, 9b, 27b. Default: 2b.
+#                            distill_mtp_drafter.py::ACTIVE_TIERS): 2b,
+#                            4b, 9b, 27b, 27b-256k. Default: 2b.
 #   MTP_TARGET_CHECKPOINT remote path (relative to $REMOTE_TRAIN_DIR) to the
 #                            SFT'd target text HF checkpoint directory. The
 #                            distiller loads the target via

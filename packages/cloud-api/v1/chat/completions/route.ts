@@ -126,7 +126,7 @@ function buildProviderBillingFields(
  * Computes effective max_tokens, reserving response capacity for reasoning models.
  *
  * Reasoning models (Anthropic extended-thinking, OpenAI o-series, DeepSeek R,
- * MiniMax M, Qwen think, etc.) spend output tokens on hidden chain-of-thought
+ * MiniMax M, and similar families) spend output tokens on hidden chain-of-thought
  * BEFORE emitting any visible answer. If max_tokens only covers the reasoning,
  * the model truncates mid-thought and returns empty content while still billing
  * the consumed tokens. To prevent that:
@@ -740,6 +740,12 @@ export async function handleChatCompletionsPOST(
   try {
     // 1. Authenticate
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(req);
+    // Pre-forward latency instrumentation (#9899): measured TTFT through this
+    // route is ~6.5s while cerebras-direct is ~0.24s — 100% of the overhead is
+    // pre-forward work, not the model. These marks split it (auth vs the
+    // rate-limit/app/catalog/moderation reads vs the reserve write) so the next
+    // fix targets the real cross-region-Railway hotspot instead of guessing.
+    const tAuth = Date.now();
 
     // 1b. Per-org tier rate limit
     if (user.organization_id && !options.skipOrgRateLimit) {
@@ -896,6 +902,7 @@ export async function handleChatCompletionsPOST(
       effectiveMaxTokens ?? request.max_tokens ?? 500;
     const affiliateCode = req.headers.get("X-Affiliate-Code");
 
+    const tBeforeReserve = Date.now();
     let reservation: CreditReservation;
     let appCreditsInfo:
       | { appId: string; estimatedBaseCost: number; app: typeof monetizedApp }
@@ -981,6 +988,7 @@ export async function handleChatCompletionsPOST(
     }
 
     settleReservation = createCreditReservationSettler(reservation);
+    const tAfterReserve = Date.now();
 
     // 7. Convert messages for AI SDK
     const systemMessage = request.messages.find((m) => m.role === "system");
@@ -998,6 +1006,20 @@ export async function handleChatCompletionsPOST(
       streaming: request.stream,
       estimatedInputTokens,
       webSearchEnabled: webSearchActive,
+    });
+
+    // Pre-forward latency breakdown (#9899). authMs = auth+org DB lookup;
+    // midReadsMs = rate-limit + app + reasoning-catalog + moderation (these run
+    // serially and are independent → the parallelization candidate); reserveMs =
+    // the credit-reservation DB write; totalMs = everything before the model
+    // call. Compare against cerebras-direct ~0.24s to see how much of TTFT is us.
+    logger.info("[Chat Completions][preforward]", {
+      model,
+      authMs: tAuth - startTime,
+      midReadsMs: tBeforeReserve - tAuth,
+      reserveMs: tAfterReserve - tBeforeReserve,
+      totalMs: Date.now() - startTime,
+      stream: request.stream === true,
     });
 
     // 8. Handle streaming vs non-streaming

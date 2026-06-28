@@ -68,6 +68,12 @@ async function fulfillJson(
 }
 
 async function installAssistantFlowRoutes(page: Page): Promise<{
+  messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number;
+  }>;
   streamRequests: string[];
 }> {
   await installDefaultAppRoutes(page);
@@ -373,7 +379,7 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
     },
   );
 
-  return { streamRequests };
+  return { messages, streamRequests };
 }
 
 async function screenshot(page: Page, name: string): Promise<void> {
@@ -387,12 +393,40 @@ async function screenshot(page: Page, name: string): Promise<void> {
 
 function assistantComposer(page: Page) {
   return page
-    .locator('[data-testid="chat-composer-textarea"]')
-    .or(page.getByLabel("message"));
+    .getByTestId("chat-composer-textarea")
+    .or(page.getByLabel(/^message$/i))
+    .first();
 }
 
 function assistantMicButton(page: Page) {
   return page.getByRole("button", { name: /^(talk|voice input)$/i });
+}
+
+function springboardTile(page: Page, viewId: string) {
+  return page.getByTestId(`springboard-tile-${viewId}`).first();
+}
+
+async function revealSpringboardTile(
+  page: Page,
+  viewId: string,
+): Promise<void> {
+  const tile = springboardTile(page, viewId);
+  await expect(tile).toBeAttached();
+  const pageTestId = await tile.evaluate((node) =>
+    node
+      .closest('[data-testid^="springboard-page-"]')
+      ?.getAttribute("data-testid"),
+  );
+  const pageIndex = pageTestId?.match(/^springboard-page-(\d+)$/)?.[1];
+  if (pageIndex == null) return;
+
+  const pageLocator = page.getByTestId(`springboard-page-${pageIndex}`);
+  if ((await pageLocator.getAttribute("aria-hidden")) === "true") {
+    await page
+      .getByRole("button", { name: `Page ${Number(pageIndex) + 1}` })
+      .click();
+    await expect(pageLocator).toHaveAttribute("aria-hidden", "false");
+  }
 }
 
 function conversationLog(page: Page) {
@@ -730,6 +764,7 @@ test.describe("assistant home app flow", () => {
     await screenshot(page, "04-chat-pill-suppressed");
 
     await openAppPath(page, "/views");
+    await revealSpringboardTile(page, "terminal");
     await expect(page.getByRole("button", { name: /Terminal/i })).toBeVisible();
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "05-views-with-pill");
@@ -770,11 +805,17 @@ test.describe("assistant home app flow", () => {
     await expect
       .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
       .toEqual(["show me my pinned views"]);
-    await expect(
-      page
-        .getByText("Opening the right view now and keeping voice ready.")
-        .first(),
-    ).toBeVisible();
+    await expect
+      .poll(
+        () =>
+          assistantApi.messages
+            .filter((message) => message.role === "assistant")
+            .map((message) => message.text),
+        { timeout: 10_000 },
+      )
+      .toContain(
+        "I heard you. Opening the right view now and keeping voice ready.",
+      );
     expect(assistantApi.streamRequests).toEqual(["show me my pinned views"]);
   });
 

@@ -12,8 +12,14 @@ import { secureHeaders } from "hono/secure-headers";
 import { runWithDbCacheAsync } from "@/db/client";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
+import {
+  getIpKey,
+  getRequestIp,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { runWithRequestContext } from "@/lib/runtime/request-context";
 import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovision-job-service";
 import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
@@ -168,7 +174,12 @@ export function createApp(): Hono<AppEnv> {
     setRuntimeR2Bucket(c.env.BLOB);
     await runWithCloudBindingsAsync(
       c.env as Record<string, unknown>,
-      async () => runWithDbCacheAsync(async () => next()),
+      async () =>
+        // Expose the client IP to shared library code (anti-sybil grant checks)
+        // without threading it through every call site.
+        runWithRequestContext({ clientIp: getRequestIp(c) }, async () =>
+          runWithDbCacheAsync(async () => next()),
+        ),
     );
   });
 
@@ -246,6 +257,24 @@ export function createApp(): Hono<AppEnv> {
     );
   });
   app.route("/.well-known/jwks.json", jwksRoute);
+
+  // Global IP-keyed backstop limiter. Routes with their own (tighter) limiter
+  // still enforce it; this only guarantees that a route which forgot to add one
+  // is not completely unprotected against per-IP flooding. The ceiling is
+  // deliberately generous (10 req/s sustained) so it sits above every per-route
+  // policy and never interferes with legitimate traffic. Enforced only when
+  // REDIS_RATE_LIMITING=true (falls open otherwise). Registered before
+  // authMiddleware so unauthenticated routes are covered too.
+  app.use(
+    "*",
+    rateLimit({
+      windowMs: 60_000,
+      maxRequests: 600,
+      // Namespaced so this backstop counter never collides with a per-route
+      // IP-keyed limiter sharing the same `ip:<addr>` key.
+      keyGenerator: (c) => `global:${getIpKey(c)}`,
+    }),
+  );
 
   app.use("*", authMiddleware);
 

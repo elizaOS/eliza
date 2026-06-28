@@ -55,15 +55,21 @@ describe("resolveSwipe", () => {
 });
 
 describe("usePullGesture rAF coalescing (#9141)", () => {
-  function pointer(x: number, y: number): React.PointerEvent {
+  function pointer(
+    x: number,
+    y: number,
+    pointerId = 1,
+    currentTarget = {
+      setPointerCapture() {},
+      releasePointerCapture() {},
+    },
+  ): React.PointerEvent {
     return {
       clientX: x,
       clientY: y,
-      pointerId: 1,
-      currentTarget: {
-        setPointerCapture() {},
-        releasePointerCapture() {},
-      },
+      pointerId,
+      isPrimary: true,
+      currentTarget,
     } as unknown as React.PointerEvent;
   }
 
@@ -105,7 +111,26 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(onDrag).toHaveBeenCalledWith(50);
   });
 
-  it("does not apply a stale coalesced value after release", () => {
+  it("captures immediately for a vertical pull handle that also supports swipes", () => {
+    const setPointerCapture = vi.fn();
+    const currentTarget = {
+      setPointerCapture,
+      releasePointerCapture() {},
+    };
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onPullUp: vi.fn(),
+        onSwipeLeft: vi.fn(),
+      }),
+    );
+
+    result.current.onPointerDown(pointer(100, 300, 1, currentTarget));
+
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
+  });
+
+  it("flushes the latest coalesced drag before free-settle release", () => {
     const raf: { cb: ((t: number) => void) | null } = { cb: null };
     vi.stubGlobal(
       "requestAnimationFrame",
@@ -118,16 +143,107 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     vi.stubGlobal("cancelAnimationFrame", cancel);
 
     const onDrag = vi.fn();
-    const { result } = renderHook(() => usePullGesture({ onDrag }));
+    const onSettleFree = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onDrag, onSettleFree, velocityThreshold: 999 }),
+    );
     const b = result.current;
 
     b.onPointerDown(pointer(100, 300));
-    b.onPointerMove(pointer(100, 270)); // dy=30, scheduled but not flushed
-    b.onPointerUp(pointer(100, 270)); // release clears the pending frame
+    b.onPointerMove(pointer(100, 230)); // dy=70, scheduled but not flushed
+    b.onPointerUp(pointer(100, 230)); // release flushes before settling
 
     expect(cancel).toHaveBeenCalled();
-    raf.cb?.(0); // even if the captured frame fires, the pending value was cleared
-    // The continuous 30px offset is never applied (only the release path runs).
-    expect(onDrag).not.toHaveBeenCalledWith(30);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(onDrag).toHaveBeenCalledWith(70);
+    expect(onSettleFree).toHaveBeenCalledWith("up");
+
+    raf.cb?.(0); // even if the captured frame fires, the pending value is gone
+    expect(onDrag).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets instead of sending onDrag(0) for a horizontal-dominant move on a vertical-only binding", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onDrag = vi.fn();
+    const onDragReset = vi.fn();
+    const onPullUp = vi.fn();
+    const onPullDown = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onDrag, onDragReset, onPullUp, onPullDown }),
+    );
+    const b = result.current;
+
+    b.onPointerDown(pointer(300, 300));
+    b.onPointerMove(pointer(180, 294));
+    b.onPointerUp(pointer(180, 294));
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(onDragReset).toHaveBeenCalled();
+    expect(onPullUp).not.toHaveBeenCalled();
+    expect(onPullDown).not.toHaveBeenCalled();
+  });
+
+  it("treats pointercancel as cancellation, not a committed pull", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onDrag = vi.fn();
+    const onDragReset = vi.fn();
+    const onPullUp = vi.fn();
+    const onCancel = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onDrag, onDragReset, onPullUp, onCancel }),
+    );
+    const b = result.current;
+
+    b.onPointerDown(pointer(100, 300));
+    b.onPointerMove(pointer(100, 180));
+    b.onPointerCancel(pointer(100, 180));
+
+    expect(onDrag).toHaveBeenCalledWith(120);
+    expect(onDragReset).toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onPullUp).not.toHaveBeenCalled();
+  });
+
+  it("ignores moves and releases from a different pointer id", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onDrag = vi.fn();
+    const onPullUp = vi.fn();
+    const { result } = renderHook(() => usePullGesture({ onDrag, onPullUp }));
+    const b = result.current;
+
+    b.onPointerDown(pointer(100, 300, 1));
+    b.onPointerMove(pointer(100, 100, 2));
+    b.onPointerUp(pointer(100, 100, 2));
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(onPullUp).not.toHaveBeenCalled();
+
+    b.onPointerMove(pointer(100, 180, 1));
+    b.onPointerUp(pointer(100, 180, 1));
+    expect(onPullUp).toHaveBeenCalledTimes(1);
   });
 });

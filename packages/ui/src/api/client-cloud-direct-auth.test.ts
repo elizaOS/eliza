@@ -263,6 +263,54 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("forwards forceCreate into the create POST body so the backend bypasses the reuse guard", async () => {
+    capacitorMocks.request.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        success: true,
+        data: { id: "dedicated-1", agentName: "My Agent", status: "pending" },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    await client.createCloudCompatAgent({
+      agentName: "My Agent",
+      forceCreate: true,
+    });
+
+    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        method: "POST",
+        data: expect.objectContaining({
+          agentName: "My Agent",
+          forceCreate: true,
+        }),
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("omits forceCreate from the body by default (request byte-identical for every existing caller)", async () => {
+    capacitorMocks.request.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        success: true,
+        data: { id: "agent-1", agentName: "My Agent", status: "pending" },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    await client.createCloudCompatAgent({ agentName: "My Agent" });
+
+    const body = capacitorMocks.request.mock.calls[0]?.[0]?.data as Record<
+      string,
+      unknown
+    >;
+    expect(body).not.toHaveProperty("forceCreate");
+  });
+
   it("accepts an async-provisioning create response that returns agentId without id", async () => {
     // The cloud agent-create async branch (202) returns the new agent's id
     // under `agentId` only — no `id` field. The client must read it instead of

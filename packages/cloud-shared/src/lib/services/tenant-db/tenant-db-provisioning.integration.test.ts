@@ -195,7 +195,13 @@ d("tenant-db provisioning over real Postgres", () => {
     });
 
     // decrypt passthrough: the column holds the plaintext admin DSN for the test.
-    const provisioning = makeTenantDbProvisioning({ decrypt: async (x) => x });
+    // This integration creates only tenant_db_clusters (not the whole cloud
+    // apps/app_databases schema), so keep it on the legacy pool seam while unit
+    // tests cover the production placement claimer.
+    const provisioning = makeTenantDbProvisioning({
+      decrypt: async (x) => x,
+      claimPlacement: () => new ClusterPool(tenantDbClustersRepository).allocate(),
+    });
 
     const app1 = randomUUID();
     const app2 = randomUUID();
@@ -229,11 +235,9 @@ d("tenant-db provisioning over real Postgres", () => {
     // would otherwise throw 42710 / 42P04.
     //
     // It drives SqlTenantDbProvisioner DIRECTLY on one fixed cluster — NOT
-    // provisionForApp — because the deploy path claims a NEW cluster slot per call
-    // (ClusterPool.allocate -> tryClaimSlot). That cluster-slot-leak-on-retry is a
-    // SEPARATE, still-open concern (no app->cluster placement is persisted today);
-    // this test pins ONLY what the PR fixes: provisioner DDL idempotency, and that
-    // the provisioner layer never touches the slot count.
+    // provisionForApp — because provisionForApp now owns durable app->cluster
+    // placement. This test pins only the lower DDL layer: provisioner DDL
+    // idempotency, and that this layer never touches the slot count.
     const SEED_COUNT = 7;
     await tenantDbClustersRepository.create({
       provider: "direct_pg",

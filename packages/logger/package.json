@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/logger",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "Standalone structured logger for elizaOS (extracted from @elizaos/core).",
   "type": "module",
   "sideEffects": false,
@@ -24,7 +24,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "build": "bun run build:dist",
     "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/logger",

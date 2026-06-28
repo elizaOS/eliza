@@ -2,6 +2,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  LAYOUT_SHIFT_INTENT_ATTR,
+  LAYOUT_SHIFT_INTENT_TRANSIENT,
   type LayoutShiftTelemetryEvent,
   startLayoutShiftMonitor,
 } from "./useLayoutShiftMonitor";
@@ -14,13 +16,18 @@ type MockPerformanceObserverCallback = (
 type LayoutShiftTestEntry = PerformanceEntry & {
   value: number;
   hadRecentInput: boolean;
+  sources?: Array<{ node?: Node | null }>;
 };
 
 type RenderTelemetryGlobal = typeof globalThis & {
   __ELIZA_RENDER_TELEMETRY__?: unknown[];
 };
 
-function shift(value: number, hadRecentInput = false): LayoutShiftTestEntry {
+function shift(
+  value: number,
+  hadRecentInput = false,
+  sources?: Array<{ node?: Node | null }>,
+): LayoutShiftTestEntry {
   return {
     name: "layout-shift",
     entryType: "layout-shift",
@@ -28,6 +35,7 @@ function shift(value: number, hadRecentInput = false): LayoutShiftTestEntry {
     duration: 0,
     value,
     hadRecentInput,
+    ...(sources ? { sources } : {}),
     toJSON: () => ({}),
   };
 }
@@ -135,6 +143,94 @@ describe("startLayoutShiftMonitor", () => {
     vi.advanceTimersByTime(100);
 
     expect(telemetry).toEqual([]);
+    stop();
+  });
+
+  it("ignores shifts fully attributed to an intentional transient-motion subtree", () => {
+    vi.useFakeTimers();
+    const telemetry: unknown[] = [];
+    (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY__ =
+      telemetry;
+
+    let callback: MockPerformanceObserverCallback = () => {
+      throw new Error("PerformanceObserver callback was not installed");
+    };
+    class MockPerformanceObserver {
+      constructor(cb: MockPerformanceObserverCallback) {
+        callback = cb;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("PerformanceObserver", MockPerformanceObserver);
+
+    const surface = document.createElement("div");
+    surface.setAttribute(
+      LAYOUT_SHIFT_INTENT_ATTR,
+      LAYOUT_SHIFT_INTENT_TRANSIENT,
+    );
+    const child = document.createElement("div");
+    surface.appendChild(child);
+    document.body.appendChild(surface);
+
+    const stop = startLayoutShiftMonitor({
+      windowMs: 100,
+      clsBudget: 0.1,
+    });
+
+    callback(entryList([shift(0.3, false, [{ node: child }])]));
+    vi.advanceTimersByTime(100);
+
+    expect(telemetry).toEqual([]);
+    stop();
+  });
+
+  it("still reports mixed intentional and outside shifts", () => {
+    vi.useFakeTimers();
+    const telemetry: unknown[] = [];
+    (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY__ =
+      telemetry;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    let callback: MockPerformanceObserverCallback = () => {
+      throw new Error("PerformanceObserver callback was not installed");
+    };
+    class MockPerformanceObserver {
+      constructor(cb: MockPerformanceObserverCallback) {
+        callback = cb;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("PerformanceObserver", MockPerformanceObserver);
+
+    const surface = document.createElement("div");
+    surface.setAttribute(
+      LAYOUT_SHIFT_INTENT_ATTR,
+      LAYOUT_SHIFT_INTENT_TRANSIENT,
+    );
+    const child = document.createElement("div");
+    surface.appendChild(child);
+    const outside = document.createElement("div");
+    document.body.append(surface, outside);
+
+    const stop = startLayoutShiftMonitor({
+      windowMs: 100,
+      clsBudget: 0.1,
+    });
+
+    callback(
+      entryList([shift(0.3, false, [{ node: child }, { node: outside }])]),
+    );
+    vi.advanceTimersByTime(100);
+
+    const event = telemetry[0] as LayoutShiftTelemetryEvent;
+    expect(event).toMatchObject({
+      source: "layoutShift",
+      severity: "error",
+      cls: 0.3,
+      shiftCount: 1,
+    });
     stop();
   });
 });

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-capacitor-bridge",
-	"version": "2.0.3-beta.2",
+	"version": "2.0.3-beta.7",
 	"description": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -45,13 +45,13 @@
 		"build": "bun run check:android-manifest && NODE_OPTIONS='--max-old-space-size=8192' tsup",
 		"check:android-manifest": "node scripts/check-android-manifest.mjs",
 		"dev": "tsup --watch",
-		"clean": "rm -rf dist .turbo node_modules",
+		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
 		"test": "vitest run --config vitest.config.ts",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsgo --noEmit"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",

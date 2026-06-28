@@ -53,6 +53,26 @@ export interface NlmsEchoCancellerOptions {
 	 * cancel) the user's voice. Set 0 to disable.
 	 */
 	dtdRatio?: number;
+	/**
+	 * Opt-in nonlinear residual-echo suppressor (#9583/#9649). After the linear
+	 * NLMS subtracts the modeled echo, an echo-only frame (the agent is speaking,
+	 * the user is NOT — far-end power exceeds near-end power and no double-talk)
+	 * still carries the residual echo the finite-length filter could not remove.
+	 * When enabled, the residual on those frames is scaled toward zero. It is
+	 * **default-off** and never engages during double-talk or near-end-dominant
+	 * frames, so it can never attenuate the user's voice. Pass `true` for the
+	 * default gain or `{ gain }` to tune.
+	 */
+	residualSuppression?: boolean | ResidualSuppressionOptions;
+}
+
+export interface ResidualSuppressionOptions {
+	/**
+	 * Gain (0,1] applied to the residual on echo-only frames. Lower = stronger
+	 * suppression. Default 0.15 (~−16 dB) — aggressive enough to flatten residual
+	 * echo while leaving headroom for the gate's hysteresis.
+	 */
+	gain?: number;
 }
 
 const DEFAULTS = {
@@ -61,6 +81,7 @@ const DEFAULTS = {
 	epsilon: 1e-6,
 	delaySamples: 0,
 	dtdRatio: 2,
+	residualSuppressionGain: 0.15,
 } as const;
 
 export class NlmsEchoCanceller {
@@ -71,6 +92,8 @@ export class NlmsEchoCanceller {
 	private readonly eps: number;
 	private readonly delay: number;
 	private readonly dtdRatio: number;
+	/** Residual-suppressor gain, or null when the suppressor is disabled (default). */
+	private readonly resGain: number | null;
 	/** Pending far-end samples not yet aligned to a near-end sample (delay line). */
 	private readonly delayLine: number[] = [];
 	private xEnergy = 0; // running ‖x‖² over the active window (incremental)
@@ -105,6 +128,7 @@ export class NlmsEchoCanceller {
 			Math.floor(opts.delaySamples ?? DEFAULTS.delaySamples),
 		);
 		this.dtdRatio = opts.dtdRatio ?? DEFAULTS.dtdRatio;
+		this.resGain = resolveResidualSuppressionGain(opts.residualSuppression);
 		this.w = new Float32Array(this.taps);
 		this.x = new Float32Array(this.taps);
 	}
@@ -145,7 +169,6 @@ export class NlmsEchoCanceller {
 			for (let k = 0; k < this.taps; k++) yhat += this.w[k] * this.x[k];
 			const d = nearEnd[i];
 			const e = d - yhat;
-			out[i] = e;
 
 			// Double-talk detection by near-end vs far-end power. A passive
 			// playback→mic path attenuates, so the echo power stays below the
@@ -192,13 +215,56 @@ export class NlmsEchoCanceller {
 				}
 			}
 
+			// Opt-in residual-echo suppressor (#9583/#9649): on echo-only frames
+			// (far-end dominant, no double-talk, far actually active) the residual
+			// `e` is mostly the echo the finite filter could not remove, so scale it
+			// toward zero. Gated so it never engages while the user might be talking
+			// (double-talk or near-end-dominant) — it cannot attenuate the user's
+			// voice. Default-off: `cleaned === e` unless explicitly enabled.
+			const cleaned =
+				this.resGain !== null &&
+				!doubleTalk &&
+				farActive &&
+				this.pFar > this.pNear
+					? e * this.resGain
+					: e;
+			out[i] = cleaned;
+
 			echoPow += yhat * yhat;
-			residualPow += e * e;
+			residualPow += cleaned * cleaned;
 		}
 
 		this.lastEchoPow = echoPow / Math.max(1, n);
 		this.lastResidualPow = residualPow / Math.max(1, n);
 		return out;
+	}
+
+	/**
+	 * Advance cheap detector/reference state while the far-end is silent without
+	 * running the FIR echo-estimation loop. Learned filter weights are preserved,
+	 * but stale playback samples are removed from the delay line/ring so the next
+	 * non-empty reference frame cannot subtract an echo estimate from a previous
+	 * utterance.
+	 */
+	observeFarEndSilence(nearEnd: Float32Array): void {
+		const n = nearEnd.length;
+		this.delayLine.length = 0;
+		this.x.fill(0);
+		this.xEnergy = 0;
+		this.peakXEnergy *= NlmsEchoCanceller.PEAK_DECAY ** n;
+		this.pFar *= 0.99 ** n;
+		this.hangover = Math.max(0, this.hangover - n);
+
+		let residualPow = 0;
+		for (let i = 0; i < n; i++) {
+			const d = nearEnd[i];
+			this.pNear = 0.99 * this.pNear + 0.01 * d * d;
+			residualPow += d * d;
+		}
+		if (this.peakXEnergy < this.eps) this.peakXEnergy = 0;
+		if (this.pFar < this.eps) this.pFar = 0;
+		this.lastEchoPow = 0;
+		this.lastResidualPow = residualPow / Math.max(1, n);
 	}
 
 	/** Echo-return-loss-enhancement (dB) over the last processed block. Higher is
@@ -232,4 +298,20 @@ export class NlmsEchoCanceller {
 		for (let k = this.taps - 1; k > 0; k--) this.x[k] = this.x[k - 1];
 		this.x[0] = sample;
 	}
+}
+
+/** Resolve the residual-suppressor option to a clamped gain in (0,1], or null
+ *  (disabled). `false`/`undefined` → null; `true` → default gain; `{ gain }` →
+ *  that gain clamped to (0,1] (an out-of-range/non-finite gain falls back to the
+ *  default rather than silently disabling the suppressor). */
+function resolveResidualSuppressionGain(
+	option: boolean | ResidualSuppressionOptions | undefined,
+): number | null {
+	if (!option) return null;
+	if (option === true) return DEFAULTS.residualSuppressionGain;
+	const g = option.gain;
+	if (typeof g !== "number" || !Number.isFinite(g) || g <= 0 || g > 1) {
+		return DEFAULTS.residualSuppressionGain;
+	}
+	return g;
 }

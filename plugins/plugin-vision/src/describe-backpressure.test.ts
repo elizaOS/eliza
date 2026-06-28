@@ -9,6 +9,7 @@ describe("DescribeBackpressureController", () => {
       expect(d.describe).toBe(true);
       expect(d.reason).toBeNull();
       expect(d.transitionedTo).toBeNull();
+      expect(d.warnPaused).toBe(false);
     }
     const stats = ctrl.stats();
     expect(stats.paused).toBe(false);
@@ -38,6 +39,7 @@ describe("DescribeBackpressureController", () => {
     const second = ctrl.evaluate();
     expect(second.describe).toBe(false);
     expect(second.transitionedTo).toBeNull();
+    expect(second.pausedForMs).toBe(5_000);
 
     expect(ctrl.stats().describesSkipped).toBe(2);
     expect(ctrl.stats().pauseTransitions).toBe(1);
@@ -75,44 +77,39 @@ describe("DescribeBackpressureController", () => {
     expect(d.transitionedTo).toBe("active");
   });
 
-  it("pauses on RSS GROWTH over the cap and self-recovers when RSS drops back", () => {
-    // Baseline 1500 MB (a local agent with multi-GB GGUF models resident),
-    // cap = 500 MB of vision-attributable growth.
-    let rss = 1500 * 1024 * 1024;
-    const cap = 500 * 1024 * 1024;
+  it("pauses on local RSS growth over the baseline and self-recovers when RSS drops", () => {
+    let rss = 2_000 * 1024 * 1024; // steady 2 GB process baseline
+    const cap = 500 * 1024 * 1024; // 500 MB
     const ctrl = new DescribeBackpressureController({
       memoryCapBytes: cap,
       sampleRssBytes: () => rss,
     });
 
-    // First call captures the baseline → growth 0 → describes.
     expect(ctrl.evaluate().describe).toBe(true);
+    expect(ctrl.stats().memoryBaselineBytes).toBe(2_000 * 1024 * 1024);
+    expect(ctrl.stats().memoryGrowthBytes).toBe(0);
 
-    rss = 2100 * 1024 * 1024; // +600 MB growth, over the 500 MB cap
+    rss = 2_600 * 1024 * 1024; // 600 MB growth over baseline
     const over = ctrl.evaluate();
     expect(over.describe).toBe(false);
     expect(over.reason).toBe("memory-cap");
     expect(over.transitionedTo).toBe("paused");
+    expect(ctrl.stats().memoryGrowthBytes).toBe(600 * 1024 * 1024);
 
-    rss = 1700 * 1024 * 1024; // +200 MB growth, back within cap
+    rss = 2_200 * 1024 * 1024; // back under baseline + cap
     const under = ctrl.evaluate();
     expect(under.describe).toBe(true);
     expect(under.transitionedTo).toBe("active");
   });
 
-  it("does NOT pause on a high steady-state RSS (regression: absolute-RSS cap permanently blocked describing)", () => {
-    // A real vision-enabled local agent mmaps multi-GB GGUF models; whole-process
-    // RSS sits well above any MB cap. The growth-relative cap must NOT pause.
-    const steadyRss = 4 * 1024 * 1024 * 1024; // 4 GB, constant
+  it("does not permanently pause when steady-state RSS already exceeds the cap", () => {
     const ctrl = new DescribeBackpressureController({
-      memoryCapBytes: 2000 * 1024 * 1024, // documented MAX_MEMORY_USAGE_MB default
-      sampleRssBytes: () => steadyRss,
+      memoryCapBytes: 500 * 1024 * 1024,
+      sampleRssBytes: () => 3_000 * 1024 * 1024,
     });
-    for (let i = 0; i < 10; i++) {
-      const d = ctrl.evaluate();
-      expect(d.describe).toBe(true);
-      expect(d.reason).toBeNull();
-    }
+
+    expect(ctrl.evaluate().describe).toBe(true);
+    expect(ctrl.evaluate().describe).toBe(true);
     expect(ctrl.stats().describesSkipped).toBe(0);
   });
 
@@ -126,22 +123,48 @@ describe("DescribeBackpressureController", () => {
 
   it("reports arbiter pressure as the reason when both signals are active", () => {
     let now = 0;
-    let rss = 100 * 1024 * 1024;
+    let rss = 1024;
     const ctrl = new DescribeBackpressureController({
-      memoryCapBytes: 1, // 1-byte growth cap
+      memoryCapBytes: 1,
       sampleRssBytes: () => rss,
       now: () => now,
     });
 
-    // First call captures baseline (100 MB) → no growth yet.
-    expect(ctrl.evaluate().reason).toBeNull();
-    // Grow RSS so the cap trips alone.
-    rss = 200 * 1024 * 1024;
+    // Capture baseline, then let the cap trip on local growth.
+    expect(ctrl.evaluate().describe).toBe(true);
+    rss = 2048;
     expect(ctrl.evaluate().reason).toBe("memory-cap");
 
     // Arbiter pressure should now take precedence in the reported reason.
     ctrl.setPressure("critical");
     now += 1;
     expect(ctrl.evaluate().reason).toBe("arbiter-pressure");
+  });
+
+  it("requests throttled warnings for a continuous pause", () => {
+    let now = 0;
+    const ctrl = new DescribeBackpressureController({
+      arbiterPauseCooldownMs: 300_000,
+      pauseWarningThresholdMs: 60_000,
+      pauseWarningIntervalMs: 30_000,
+      now: () => now,
+    });
+
+    ctrl.setPressure("low");
+    expect(ctrl.evaluate().warnPaused).toBe(false);
+
+    now = 59_000;
+    expect(ctrl.evaluate().warnPaused).toBe(false);
+
+    now = 60_000;
+    const firstWarning = ctrl.evaluate();
+    expect(firstWarning.warnPaused).toBe(true);
+    expect(firstWarning.pausedForMs).toBe(60_000);
+
+    now = 70_000;
+    expect(ctrl.evaluate().warnPaused).toBe(false);
+
+    now = 90_000;
+    expect(ctrl.evaluate().warnPaused).toBe(true);
   });
 });

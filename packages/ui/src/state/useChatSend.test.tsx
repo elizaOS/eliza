@@ -9,8 +9,20 @@ import type {
   ConversationMessage,
   ImageAttachment,
 } from "../api";
+import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
 import { type UseChatSendDeps, useChatSend } from "./useChatSend";
+
+const SHARED_BASE = "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123";
+const DEDICATED_BASE = "https://agent-456.elizacloud.ai";
+
+function dispatchHandoffPhase(phase: string): void {
+  window.dispatchEvent(
+    new CustomEvent(CLOUD_HANDOFF_PHASE_EVENT, {
+      detail: { agentId: "agent-123", phase },
+    }),
+  );
+}
 
 const mocks = vi.hoisted(() => ({
   client: {
@@ -29,10 +41,16 @@ vi.mock("../api", () => ({
   client: mocks.client,
 }));
 
-vi.mock("../api/client-cloud", () => ({
-  isDirectCloudSharedAgentBase: (url: string | null | undefined) =>
-    !!url &&
-    /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim()),
+// Stub Capacitor so the REAL `../api/client-cloud` (imported by useChatSend)
+// loads cleanly under jsdom. We deliberately do NOT mock client-cloud: these
+// freeze tests must exercise the production `isDirectCloudSharedAgentBase`
+// classifier, not a hand-copied regex that can silently drift from it.
+vi.mock("@capacitor/core", () => ({
+  Capacitor: {
+    isNativePlatform: () => false,
+    getPlatform: () => "web",
+  },
+  CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
 function conversation(id: string, roomId: string): Conversation {
@@ -496,5 +514,211 @@ describe("useChatSend non-404 send failures", () => {
     );
     // Auth failures skip the reconcile reload (it would just fail again).
     expect(deps.loadConversationMessages).not.toHaveBeenCalled();
+  });
+});
+
+describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+  });
+
+  it("queues a message sent during the handoff window and delivers it to the dedicated agent after switch (not lost, not sent to shared)", async () => {
+    // The bug this proves we fixed: while the handoff is migrating the user is
+    // still on the SHARED agent, whose transcript was already snapshotted. The
+    // dedicated import is skip-all idempotent, so a message that reaches the
+    // shared history after the snapshot is silently lost. The freeze must hold
+    // the message off the shared agent and deliver it to the dedicated once the
+    // client has switched.
+    const basesSeenAtSend: string[] = [];
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      basesSeenAtSend.push(mocks.client.getBaseUrl());
+      return { text: "ack", completed: true };
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    // Handoff starts: the window opens.
+    act(() => dispatchHandoffPhase("migrating"));
+
+    // The user fires a message DURING the window. sendChatText resolves only
+    // once the message is actually delivered, so we don't await it here — it
+    // must stay pending (queued) until the switch settles.
+    let sendSettled = false;
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current
+        .sendChatText("during handoff", { conversationId: "conv-1" })
+        .then(() => {
+          sendSettled = true;
+        });
+      // Give the queued flush a chance to (not) run.
+      await Promise.resolve();
+    });
+
+    // GUARANTEE 1: nothing was dispatched to the shared agent — the message did
+    // not reach the post-snapshot shared history, so it can't be lost.
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+    expect(sendSettled).toBe(false);
+
+    // The switch completes: onSwitch re-points the live client at the dedicated
+    // container BEFORE the `switched` phase is dispatched (mirrors the real
+    // handoff ordering), then the phase fires and unfreezes the queue.
+    mocks.client.getBaseUrl.mockReturnValue(DEDICATED_BASE);
+    await act(async () => {
+      dispatchHandoffPhase("switched");
+      await sendPromise;
+    });
+
+    // GUARANTEE 2: the queued message was delivered exactly once, and only after
+    // the client pointed at the dedicated container.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    const [convIdArg, textArg] =
+      mocks.client.sendConversationMessageStream.mock.calls[0];
+    expect(convIdArg).toBe("conv-1");
+    expect(textArg).toBe("during handoff");
+    expect(basesSeenAtSend).toEqual([DEDICATED_BASE]);
+    expect(sendSettled).toBe(true);
+  });
+
+  it("flushes the queue to the shared agent (no message lost) when the handoff times out", async () => {
+    // Fallback path: the dedicated container never became ready. No switch
+    // happened and no snapshot landed, so the user safely stays on the shared
+    // agent — the queued message must still be delivered there, never dropped.
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "ack",
+      completed: true,
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    act(() => dispatchHandoffPhase("migrating"));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("during handoff", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+
+    // Handoff gives up — unfreeze and drain to the (still-active) shared agent.
+    await act(async () => {
+      dispatchHandoffPhase("timed-out");
+      await sendPromise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    const [convIdArg, textArg] =
+      mocks.client.sendConversationMessageStream.mock.calls[0];
+    expect(convIdArg).toBe("conv-1");
+    expect(textArg).toBe("during handoff");
+  });
+
+  it("re-checks the freeze mid-drain: a message queued behind an in-flight send when `migrating` fires is NOT drained to shared after the snapshot", async () => {
+    // Regression for the in-flight-drain race: send A is already mid-`await`
+    // when the handoff begins; the user then fires send B during the window.
+    // B is enqueued behind A's still-running drain loop. When A resolves the
+    // loop must NOT shift B and dispatch it to the (post-snapshot) SHARED agent
+    // — it must re-check the freeze, break, and leave B for the post-switch
+    // flush. Without the per-iteration freeze re-check, B leaks to shared and is
+    // lost to the skip-all import.
+    const basesSeenAtSend: string[] = [];
+    let releaseA: (() => void) | undefined;
+    const aInFlight = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    let callCount = 0;
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      const index = callCount++;
+      basesSeenAtSend.push(mocks.client.getBaseUrl());
+      if (index === 0) await aInFlight; // A blocks until we release it
+      return { text: "ack", completed: true };
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    // Send A starts on the SHARED base BEFORE the handoff — it is not frozen, so
+    // it enters the drain loop and parks mid-await (the drain loop stays busy).
+    let aPromise: Promise<void> | undefined;
+    await act(async () => {
+      aPromise = result.current.sendChatText("before handoff", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+
+    // Handoff begins while A is still in flight, then the user fires B.
+    act(() => dispatchHandoffPhase("migrating"));
+    let bPromise: Promise<void> | undefined;
+    await act(async () => {
+      bPromise = result.current.sendChatText("during handoff", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+
+    // Release A; the still-running drain loop must break on the freeze re-check
+    // rather than draining B to shared.
+    await act(async () => {
+      releaseA?.();
+      await aPromise;
+      await Promise.resolve();
+    });
+
+    // GUARANTEE: B was NOT sent to shared — only A's send happened, on SHARED.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(basesSeenAtSend).toEqual([SHARED_BASE]);
+
+    // Switch settles: the client repoints to the dedicated, the phase fires, and
+    // B drains to the dedicated container exactly once.
+    mocks.client.getBaseUrl.mockReturnValue(DEDICATED_BASE);
+    await act(async () => {
+      dispatchHandoffPhase("switched");
+      await bPromise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(2);
+    expect(basesSeenAtSend).toEqual([SHARED_BASE, DEDICATED_BASE]);
+    const [, secondText] =
+      mocks.client.sendConversationMessageStream.mock.calls[1];
+    expect(secondText).toBe("during handoff");
+  });
+
+  it("does not freeze when no handoff is in flight — sends dispatch inline (flag-off parity)", async () => {
+    // With `preferSharedCloudTier` off no `migrating` phase ever fires, so the
+    // freeze flag stays false and the queue drains immediately, exactly as
+    // before this change.
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "ack",
+      completed: true,
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
   });
 });

@@ -843,25 +843,30 @@ export class DirectWalletPaymentsService {
     const now = new Date();
 
     const payment = await dbWrite.transaction(async (tx) => {
-      // BSC promo redemption check temporarily disabled — allow repeat $5 bonus on $10 buys.
-      // if (promoRequested) {
-      //   await tx.execute(sql`
-      //     SELECT pg_advisory_xact_lock(hashtext(${"crypto_direct_bsc_promo:" + params.organizationId}))
-      //   `);
-      //   const existingPromo = await tx
-      //     .select({ id: cryptoPayments.id })
-      //     .from(cryptoPayments)
-      //     .where(sql`
-      //       ${cryptoPayments.organization_id} = ${params.organizationId}
-      //       AND ${cryptoPayments.status} IN ('pending', 'confirmed')
-      //       AND ${cryptoPayments.metadata}->>'kind' = 'direct_wallet_credit_purchase'
-      //       AND ${cryptoPayments.metadata}->>'promo_code' = 'bsc'
-      //     `)
-      //     .limit(1);
-      //   if (existingPromo.length > 0) {
-      //     throw new Error("BSC promotion has already been redeemed for this organization");
-      //   }
-      // }
+      // Duplicate-redemption guard: the one-time BSC promo bonus must only ever
+      // be granted once per organization. Serialize concurrent attempts with a
+      // per-org advisory lock, then reject if any prior promo payment already
+      // exists in a non-terminal/successful state. 'broadcast' is included
+      // because such a payment is in-flight and will settle to 'confirmed' —
+      // omitting it would leave a window for a second bonus.
+      if (promoRequested) {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(hashtext(${"crypto_direct_bsc_promo:" + params.organizationId}))
+        `);
+        const existingPromo = await tx
+          .select({ id: cryptoPayments.id })
+          .from(cryptoPayments)
+          .where(sql`
+            ${cryptoPayments.organization_id} = ${params.organizationId}
+            AND ${cryptoPayments.status} IN ('pending', 'broadcast', 'confirmed')
+            AND ${cryptoPayments.metadata}->>'kind' = 'direct_wallet_credit_purchase'
+            AND ${cryptoPayments.metadata}->>'promo_code' = 'bsc'
+          `)
+          .limit(1);
+        if (existingPromo.length > 0) {
+          throw new Error("BSC promotion has already been redeemed for this organization");
+        }
+      }
 
       const [created] = await tx
         .insert(cryptoPayments)

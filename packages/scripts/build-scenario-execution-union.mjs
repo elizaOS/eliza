@@ -6,7 +6,6 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -29,6 +28,12 @@ const DEFAULT_REPORT_DIR = path.join(
   "reports",
   "scenarios",
   "catalog-execution-union",
+);
+const CLEANUP_HELPER_SCRIPT = path.join(
+  REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
 );
 const PLAYBACK_DIR_NAME = "playback";
 const ROOTS = [
@@ -90,6 +95,30 @@ function listScenarioIds(root) {
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
+}
+
+function removePathRecursive(targetPath) {
+  const completed = spawnSync(
+    "node",
+    [CLEANUP_HELPER_SCRIPT, path.relative(REPO_ROOT, targetPath)],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (completed.error) throw completed.error;
+  if (completed.status !== 0) {
+    throw new Error(
+      [
+        `failed to remove ${targetPath}`,
+        completed.stdout.trim(),
+        completed.stderr.trim(),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
 }
 
 function safeSegment(value) {
@@ -348,7 +377,7 @@ function scenarioPlaybackHtml({ row, finding, attempts }) {
 
 function writeScenarioPlaybackPages(rows, findings, scenarioByRun, trajectoryFiles, reportDir) {
   const playbackRoot = path.join(reportDir, PLAYBACK_DIR_NAME);
-  rmSync(playbackRoot, { recursive: true, force: true });
+  removePathRecursive(playbackRoot);
   const findingByKey = new Map(findings.map((finding) => [`${finding.scope}\t${finding.id}`, finding]));
   let count = 0;
   for (const row of rows) {

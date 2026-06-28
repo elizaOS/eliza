@@ -18,8 +18,8 @@ model handlers:
 
 | Model type | Handler | Default model |
 |---|---|---|
-| `ModelType.TEXT_SMALL` | `handleTextSmall` | `Qwen/Qwen3.6-35B-A3B-FP8` |
-| `ModelType.TEXT_LARGE` | `handleTextLarge` | `zai-org/GLM-5.1-FP8` |
+| `ModelType.TEXT_SMALL` | `handleTextSmall` | `google/gemma-4-31B-it` |
+| `ModelType.TEXT_LARGE` | `handleTextLarge` | `google/gemma-4-31B-it` |
 
 Both handlers emit a `EventType.MODEL_USED` event after each successful inference call
 (token counts included).
@@ -71,11 +71,11 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `NEARAI_API_KEY` | Yes (Node) | — | Authentication token for NEAR AI Cloud |
 | `NEARAI_BASE_URL` | No | `https://cloud-api.near.ai/v1` | OpenAI-compatible API base URL (Node) |
 | `NEARAI_BROWSER_BASE_URL` | No | — | Proxy URL used in browser builds instead of base URL (do not expose API keys in-browser) |
-| `NEARAI_SMALL_MODEL` | No | `Qwen/Qwen3.6-35B-A3B-FP8` | Model identifier for `TEXT_SMALL` |
-| `NEARAI_LARGE_MODEL` | No | `zai-org/GLM-5.1-FP8` | Model identifier for `TEXT_LARGE` |
+| `NEARAI_SMALL_MODEL` | No | `google/gemma-4-31B-it` | Model identifier for `TEXT_SMALL` |
+| `NEARAI_LARGE_MODEL` | No | `google/gemma-4-31B-it` | Model identifier for `TEXT_LARGE` |
 | `NEARAI_EXPERIMENTAL_TELEMETRY` | No | `false` | Set `"true"` to enable Vercel AI SDK telemetry |
 
-Model identifiers must match the NEAR AI catalog: `GET https://cloud-api.near.ai/v1/model/list`.
+Model identifiers must match the NEAR AI catalog: `GET https://cloud-api.near.ai/v1/models`.
 
 ## How to extend
 

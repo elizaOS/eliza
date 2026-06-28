@@ -199,6 +199,11 @@ const iosBunRuntimePackageRoot = path.join(
   "native",
   "bun-runtime",
 );
+const RM_PATH_RECURSIVE_SCRIPT = path.join(
+  packagesRoot,
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const defaultIosBunEngineXcframework = path.join(
   iosBunRuntimePackageRoot,
   "artifacts",
@@ -411,6 +416,28 @@ function runCaptureSync(command, args, { cwd = repoRoot, maxBuffer } = {}) {
     encoding: "utf8",
     maxBuffer,
   });
+}
+
+function rmRecursive(pathToRemove) {
+  const result = spawnSync(
+    process.execPath,
+    [RM_PATH_RECURSIVE_SCRIPT, path.resolve(pathToRemove)],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.status !== 0) {
+    const reason =
+      result.stderr?.trim() ||
+      result.stdout?.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    throw new Error(
+      `[mobile-build] failed to recursively remove ${pathToRemove}: ${reason}`,
+    );
+  }
 }
 
 function resolveBunExecutable() {
@@ -979,6 +1006,40 @@ export function resolveMobileBuildPolicy(platform) {
 }
 
 async function buildWeb(platform) {
+  // Auto-skip the full Vite renderer build when it is NOT explicitly forced and
+  // the existing dist is already up-to-date for this variant/target (#9626).
+  // This reuses the same manifest + staleness checks as the explicit-skip path
+  // below, so the loud-fail-on-stale guarantee is preserved: a stale or
+  // mismatched dist simply does not match here and falls through to a rebuild.
+  // Explicit ELIZA_MOBILE_SKIP_WEB_BUILD=1 keeps its force-reuse semantics below.
+  if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1") {
+    const autoDistDir = path.join(appDir, "dist");
+    if (fs.existsSync(path.join(autoDistDir, "index.html"))) {
+      const autoPolicy = resolveMobileBuildPolicy(platform);
+      const autoVariant =
+        process.env.ELIZA_BUILD_VARIANT || autoPolicy.buildVariant;
+      const autoManifest = readRendererBuildManifest(autoDistDir);
+      const variantOk =
+        autoManifest != null &&
+        (autoManifest.variant == null || autoManifest.variant === autoVariant);
+      const targetOk =
+        autoManifest != null &&
+        (autoManifest.capacitorTarget == null ||
+          autoManifest.capacitorTarget === autoPolicy.capacitorTarget);
+      if (
+        autoManifest != null &&
+        variantOk &&
+        targetOk &&
+        !viteRendererBuildNeeded(appDir, repoRoot)
+      ) {
+        console.log(
+          "[mobile-build] Auto-skipping web build: existing dist is up-to-date " +
+            `(buildId=${autoManifest.buildId.slice(0, 12)})`,
+        );
+        return;
+      }
+    }
+  }
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
     const distDir = path.join(appDir, "dist");
     const indexPath = path.join(distDir, "index.html");
@@ -1239,7 +1300,7 @@ function stageIosAgentRuntime({
   }
 
   const targetDir = path.join(iosDir, "App", "public", "agent");
-  fs.rmSync(targetDir, { recursive: true, force: true });
+  rmRecursive(targetDir);
   fs.mkdirSync(targetDir, { recursive: true });
   const filesToStage = assetPlan.agentAssets ?? fs.readdirSync(sourceDir);
   for (const file of filesToStage) {
@@ -1286,7 +1347,7 @@ function removeIosLocalExecutionAssets() {
   let removed = 0;
   for (const target of targets) {
     if (!fs.existsSync(target)) continue;
-    fs.rmSync(target, { recursive: true, force: true });
+    rmRecursive(target);
     removed += 1;
   }
   if (removed > 0) {
@@ -1408,7 +1469,7 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
   if (hasSyncedPublic && !sameTree) {
     fs.mkdirSync(targetAssets, { recursive: true });
-    fs.rmSync(targetPublic, { recursive: true, force: true });
+    rmRecursive(targetPublic);
     fs.cpSync(syncedPublic, targetPublic, { recursive: true });
     for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
       const src = path.join(syncedAssets, cfg);
@@ -1447,10 +1508,7 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     fs.existsSync(targetAssets)
   ) {
     fs.mkdirSync(targetPublic, { recursive: true });
-    fs.rmSync(path.join(targetPublic, "assets"), {
-      recursive: true,
-      force: true,
-    });
+    rmRecursive(path.join(targetPublic, "assets"));
     fs.cpSync(freshWeb, targetPublic, { recursive: true });
     console.log(
       `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
@@ -2475,7 +2533,7 @@ function removeStaleAndroidJavaSourceRoots(
       shouldRemoveAndroidJavaSourceRoot(candidate, dstJava, protectedRoots) &&
       fs.existsSync(candidate)
     ) {
-      fs.rmSync(candidate, { recursive: true, force: true });
+      rmRecursive(candidate);
     }
   }
 }
@@ -2997,7 +3055,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
           protectedJavaRoots,
         )
       ) {
-        fs.rmSync(staleJava, { recursive: true, force: true });
+        rmRecursive(staleJava);
       }
     }
     fs.mkdirSync(dstJava, { recursive: true });
@@ -3074,7 +3132,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       path.resolve(srcJava) !== path.resolve(templateJava) &&
       path.resolve(srcJava) !== path.resolve(dstJava)
     ) {
-      fs.rmSync(srcJava, { recursive: true, force: true });
+      rmRecursive(srcJava);
     }
     console.log("[mobile-build] Overlaid Android Java sources.");
   }
@@ -5105,7 +5163,7 @@ async function ensureIosLlamaCppVendoredFramework({
   await ensureMtpIosTarget(simulatorTarget);
 
   fs.mkdirSync(xcframeworksDir, { recursive: true });
-  fs.rmSync(xcframeworkDir, { recursive: true, force: true });
+  rmRecursive(xcframeworkDir);
   await run("node", [
     IOS_XCFRAMEWORK_BUILD_SCRIPT,
     "--output",
@@ -5136,7 +5194,7 @@ async function ensureIosLlamaCppVendoredFramework({
       "ios",
       `.${path.basename(stale, ".framework")}-stock-archive`,
     );
-    fs.rmSync(archived, { recursive: true, force: true });
+    rmRecursive(archived);
     fs.renameSync(stale, archived);
     console.log(
       `[mobile-build] Archived stock npm framework: ${stale} -> ${archived} ` +
@@ -5471,7 +5529,7 @@ function stageIosFullBunEngineForPodspec(framework) {
   console.log(
     `[mobile-build] staging external iOS full Bun engine for CocoaPods: ${resolved} -> ${defaultIosBunEngineXcframework}`,
   );
-  fs.rmSync(defaultIosBunEngineXcframework, { recursive: true, force: true });
+  rmRecursive(defaultIosBunEngineXcframework);
   fs.mkdirSync(path.dirname(defaultIosBunEngineXcframework), {
     recursive: true,
   });
@@ -6056,7 +6114,7 @@ export function removeInactiveAndroidJavaSourceRoots(javaRoots, activeRoot) {
     if (resolved === active || seen.has(resolved)) continue;
     seen.add(resolved);
     if (!fs.existsSync(root)) continue;
-    fs.rmSync(root, { recursive: true, force: true });
+    rmRecursive(root);
     removed += 1;
   }
   return removed;
@@ -6066,7 +6124,7 @@ function removeCloudNativeArtifacts() {
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
   const stagedAgentAssets = path.join(assetsRoot, "agent");
   if (fs.existsSync(stagedAgentAssets)) {
-    fs.rmSync(stagedAgentAssets, { recursive: true, force: true });
+    rmRecursive(stagedAgentAssets);
     console.log(
       "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
     );
@@ -7417,7 +7475,7 @@ function writeAndroidSystemProvenance(apkPath) {
       );
     }
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmRecursive(tmpDir);
   }
 }
 

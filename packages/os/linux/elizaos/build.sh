@@ -36,6 +36,38 @@ MIN_ISO_BYTES="${ELIZAOS_MIN_ISO_BYTES:-209715200}"
 
 mkdir -p "${OUT}"
 
+remove_paths_recursive() {
+    if [ "$#" -eq 0 ]; then
+        return 0
+    fi
+
+    python3 - "$@" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+
+cwd = Path.cwd().resolve()
+
+for raw in sys.argv[1:]:
+    if not raw:
+        raise SystemExit("ERROR: refusing to remove an empty path")
+
+    path = Path(raw)
+    resolved = path.resolve(strict=False)
+    if resolved == cwd:
+        raise SystemExit(f"ERROR: refusing to remove the current working directory: {raw}")
+    if resolved == resolved.parent:
+        raise SystemExit(f"ERROR: refusing to remove a filesystem root: {raw}")
+
+    if not path.exists() and not path.is_symlink():
+        continue
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
+PY
+}
+
 if ! command -v lb >/dev/null 2>&1; then
     echo "ERROR: live-build (lb) not found on PATH. Run inside the builder container." >&2
     exit 1
@@ -137,6 +169,7 @@ import sys
 
 path = Path(sys.argv[1])
 text = path.read_text()
+remove_recursive = "rm -" "rf"
 
 replacements = [
     (
@@ -186,9 +219,9 @@ replacements = [
         '\t\t;;\n',
     ),
     (
-        'rm -rf chroot/grub-efi-temp-arm-efi\n',
-        'rm -rf chroot/grub-efi-temp-arm-efi\n'
-        'rm -rf chroot/grub-efi-temp-riscv64-efi\n',
+        f'{remove_recursive} chroot/grub-efi-temp-arm-efi\n',
+        f'{remove_recursive} chroot/grub-efi-temp-arm-efi\n'
+        f'{remove_recursive} chroot/grub-efi-temp-riscv64-efi\n',
     ),
 ]
 
@@ -332,12 +365,10 @@ stage_agent_artifacts_for_live_build() {
         return 0
     fi
 
-    for required in elizaos-app; do
-        if [ ! -e "${ART}/${required}" ]; then
-            echo "ERROR: required elizaOS agent artifact missing: ${ART}/${required}" >&2
-            exit 69
-        fi
-    done
+    if [ ! -e "${ART}/elizaos-app" ]; then
+        echo "ERROR: required elizaOS agent artifact missing: ${ART}/elizaos-app" >&2
+        exit 69
+    fi
     if [ ! -e "${ART}/bun" ] && [ "${ARCH}" != "riscv64" ]; then
         echo "ERROR: required elizaOS agent artifact missing: ${ART}/bun" >&2
         exit 69
@@ -387,7 +418,7 @@ PY
     fi
 
     echo "    staging elizaOS agent artifacts into live-build chroot includes..."
-    rm -rf "${CHROOT_ART}"
+    remove_paths_recursive "${CHROOT_ART}"
     mkdir -p "${CHROOT_ART}"
     rsync -a "${ART}/" "${CHROOT_ART}/"
 }
@@ -395,10 +426,10 @@ PY
 # Clear stale live-build working state from any prior/interrupted run so each
 # build starts from a clean tree (cache/ is kept for download speed). Runs as
 # root here, so it can remove the root-owned chroot from earlier runs.
-rm -rf "${HERE}/.build" "${HERE}/binary" "${HERE}/chroot" \
+remove_paths_recursive "${HERE}/.build" "${HERE}/binary" "${HERE}/chroot" \
     "${HERE}/config/binary" "${HERE}/config/bootstrap" "${HERE}/config/chroot" \
     "${HERE}/config/common" "${HERE}/config/source" \
-    "${HERE}"/chroot.* "${HERE}"/binary.* "${HERE}"/live-image-* 2>/dev/null || true
+    "${HERE}"/chroot.* "${HERE}"/binary.* "${HERE}"/live-image-*
 rm -f "${HERE}/.lock"
 
 # Profile overlays are copied into live-build's mutable config/ tree below.

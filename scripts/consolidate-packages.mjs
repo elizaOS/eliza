@@ -2,15 +2,12 @@
 // Consolidate sibling packages into canonical homes.
 // Usage: node scripts/consolidate-packages.mjs [--dry-run]
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
-  rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -18,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(__filename), "..");
+const rmRecursiveScript = path.join(ROOT, "scripts/rm-path-recursive.mjs");
 const DRY = process.argv.includes("--dry-run");
 
 const log = (...a) => console.log(DRY ? "[dry]" : "[run]", ...a);
@@ -25,6 +23,13 @@ const log = (...a) => console.log(DRY ? "[dry]" : "[run]", ...a);
 function sh(cmd) {
   log("$", cmd);
   if (!DRY) execSync(cmd, { cwd: ROOT, stdio: "inherit" });
+}
+
+function rmRecursive(relativePath) {
+  execFileSync("node", [rmRecursiveScript, relativePath], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
 }
 
 function mvDir(from, to) {
@@ -74,7 +79,7 @@ function rmPath(p) {
     try {
       execSync(`git rm -rf "${p}"`, { cwd: ROOT, stdio: "pipe" });
     } catch {
-      rmSync(full, { recursive: true, force: true });
+      rmRecursive(p);
     }
   }
 }
@@ -85,14 +90,7 @@ function readJson(p) {
 function writeJson(p, obj) {
   log(`write ${p}`);
   if (!DRY)
-    writeFileSync(path.join(ROOT, p), JSON.stringify(obj, null, 2) + "\n");
-}
-function writeText(p, content) {
-  log(`write ${p}`);
-  if (!DRY) {
-    mkdirSync(path.dirname(path.join(ROOT, p)), { recursive: true });
-    writeFileSync(path.join(ROOT, p), content);
-  }
+    writeFileSync(path.join(ROOT, p), `${JSON.stringify(obj, null, 2)}\n`);
 }
 
 // ---------------- Step 1: directory + file moves ----------------

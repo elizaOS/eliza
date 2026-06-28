@@ -151,10 +151,22 @@ export const visionProvider: Provider = {
           (visionMode === "CAMERA" || visionMode === "BOTH") &&
           sceneDescription
         ) {
-          const ageInSeconds = (Date.now() - sceneDescription.timestamp) / 1000;
+          const descriptionTimestamp =
+            sceneDescription.descriptionTimestamp ?? sceneDescription.timestamp;
+          const ageInSeconds = (Date.now() - descriptionTimestamp) / 1000;
           const secondsAgo = Math.round(ageInSeconds);
 
           perceptionText += `Camera view (${secondsAgo}s ago):\n${sceneDescription.description}`;
+
+          if (
+            sceneDescription.descriptionStale ||
+            sceneDescription.describePaused
+          ) {
+            const reason = sceneDescription.describePauseReason
+              ? ` (${sceneDescription.describePauseReason})`
+              : "";
+            perceptionText += `\n\nVLM description is stale because describe is paused${reason}; object, person, OCR, and change signals may be newer than the prose above.`;
+          }
 
           if (sceneDescription.people.length > 0) {
             perceptionText += `\n\nPeople detected: ${sceneDescription.people.length}`;
@@ -283,8 +295,16 @@ export const visionProvider: Provider = {
           peopleCount: sceneDescription?.people.length || 0,
           objectCount: sceneDescription?.objects.length || 0,
           sceneAge: sceneDescription
-            ? Math.round((Date.now() - sceneDescription.timestamp) / 1000)
+            ? Math.round(
+                (Date.now() -
+                  (sceneDescription.descriptionTimestamp ??
+                    sceneDescription.timestamp)) /
+                  1000,
+              )
             : null,
+          descriptionStale: sceneDescription?.descriptionStale || false,
+          describePaused: sceneDescription?.describePaused || false,
+          describePauseReason: sceneDescription?.describePauseReason || null,
           lastChange: sceneDescription?.sceneChanged
             ? sceneDescription.changePercentage
             : 0,

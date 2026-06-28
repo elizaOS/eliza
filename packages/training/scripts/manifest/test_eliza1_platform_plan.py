@@ -64,6 +64,15 @@ def test_mtp_required_files_match_bundle_layout() -> None:
     assert "licenses/LICENSE.mtp" in small_plan.required_files
 
 
+def test_gemma_quantization_sidecars_follow_required_kernels() -> None:
+    plan = build_plan()
+    for tier_plan in plan.values():
+        assert "quantization/turboquant.json" in tier_plan.required_files
+        assert "quantization/fused_turboquant.json" in tier_plan.required_files
+        assert "quantization/qjl_config.json" not in tier_plan.required_files
+        assert "quantization/polarquant_config.json" not in tier_plan.required_files
+
+
 def test_text_contexts_ship_half_and_native_contexts() -> None:
     plan = build_plan()
     for tier in ("2b", "4b", "9b", "27b"):
@@ -77,17 +86,10 @@ def test_text_contexts_ship_half_and_native_contexts() -> None:
 
 def test_imagegen_required_files_match_tier_defaults() -> None:
     plan = build_plan()
-    for tier in ("2b", "4b"):
+    for tier in ("2b", "4b", "9b", "27b", "27b-256k"):
         assert "imagegen/sd-1.5-Q5_0.gguf" in plan[tier].required_files
         assert "imagegen/z-image-turbo-Q4_K_M.gguf" not in plan[tier].required_files
-    for tier in ("9b", "27b", "27b-256k"):
-        assert "imagegen/z-image-turbo-Q4_K_M.gguf" in plan[tier].required_files
-        assert "imagegen/vae/ae.safetensors" in plan[tier].required_files
-        assert (
-            "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-            in plan[tier].required_files
-        )
-        assert "imagegen/sd-1.5-Q5_0.gguf" not in plan[tier].required_files
+        assert "imagegen/vae/ae.safetensors" not in plan[tier].required_files
 
 
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
@@ -124,6 +126,8 @@ def test_readiness_mentions_vad_native_gguf_caveat() -> None:
     assert "Gemma 4 E2B (`2b`)" in text
     assert "Gemma 4 E4B (`4b`)" in text
     assert "Gemma 4 12B (`9b`)" in text
+    assert "0.8B/2B/4B/9B" not in text
+    assert "2B/4B/9B carry Kokoro" in text
     assert "Qwen3-ASR and Qwen3-Embedding are retired" in text
     assert "Base-v1 release readiness remains blocked" in text
     assert "not evaluated in plan-only mode" in text

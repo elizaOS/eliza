@@ -5,6 +5,7 @@ import path from "node:path";
 import * as clack from "@clack/prompts";
 import type { Command } from "commander";
 import pc from "picocolors";
+import { removePathRecursive } from "../remove-path-recursive.js";
 
 interface SubmitOptions {
   registry?: string;
@@ -179,7 +180,7 @@ export async function submitPluginToRegistry(
 
     console.log(pc.green(`Created registry PR: ${prUrl}`));
   } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    await removePathRecursive(tempDir);
   }
 }
 

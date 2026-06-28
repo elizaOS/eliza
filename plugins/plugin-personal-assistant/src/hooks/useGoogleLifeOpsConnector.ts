@@ -377,8 +377,10 @@ function googleStatusesFromConnectorAccounts(
   side?: LifeOpsConnectorSide,
 ): LifeOpsGoogleConnectorStatus[] {
   return response.accounts
-    .filter((account) => (side ? googleSideForAccount(account) === side : true))
-    .map((account) =>
+    .filter((account: GoogleConnectorAccountRecord) =>
+      side ? googleSideForAccount(account) === side : true,
+    )
+    .map((account: GoogleConnectorAccountRecord) =>
       googleStatusFromConnectorAccount({
         account,
         defaultAccountId: response.defaultAccountId ?? null,

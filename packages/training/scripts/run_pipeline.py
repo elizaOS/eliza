@@ -216,8 +216,9 @@ def _format_ok_rate(summary: dict | None) -> float | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
-                    help="One of: gemma4-e2b, gemma4-e4b, "
-                         "eliza-1-0_8b, eliza-1-2b, eliza-1-4b. "
+                    help="One of: gemma4-e2b, gemma4-e4b, gemma4-12b, "
+                         "gemma4-31b, eliza-1-2b, eliza-1-4b, eliza-1-9b, "
+                         "eliza-1-27b. "
                          "Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
@@ -249,9 +250,9 @@ def main() -> int:
         "--micro-batch", type=int, default=0,
         help="Per-device micro-batch size for SFT (forwarded to "
              "train_local.py --batch-size). 0 = use the registry default for "
-             "the tier. Per benchmarks/APOLLO_TUNING.md, --micro-batch 2 "
-             "--grad-accum 4 keeps the 0.6B GPU occupied at zero quality cost "
-             "(same effective batch); validate VRAM with memory_calc.py first.",
+             "the tier. For Gemma E2B/E4B overrides, keep the effective batch "
+             "stable with --grad-accum and validate VRAM with memory_calc.py "
+             "first.",
     )
     ap.add_argument(
         "--grad-accum", type=int, default=0,

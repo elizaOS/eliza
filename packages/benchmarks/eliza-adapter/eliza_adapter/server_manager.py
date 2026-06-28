@@ -73,6 +73,9 @@ def _server_command(server_script: Path) -> list[str]:
     return ["node", "--import", "tsx", str(server_script)]
 
 
+CEREBRAS_OPENAI_MODEL_IDS = {"gpt-oss-120b", "zai-glm-4.7"}
+
+
 def _normalize_model_env(env: dict[str, str]) -> None:
     """Expose benchmark provider/model settings to the TypeScript bridge.
 
@@ -92,7 +95,7 @@ def _normalize_model_env(env: dict[str, str]) -> None:
     ).strip()
     if provider == "cerebras" and model.startswith("openai/"):
         model = model.split("/", 1)[1]
-    model_is_cerebras = model in {"gpt-oss-120b", "qwen-3-235b-a22b-instruct-2507"}
+    model_is_cerebras = model in CEREBRAS_OPENAI_MODEL_IDS
 
     cerebras_key = env.get("CEREBRAS_API_KEY", "").strip()
     if cerebras_key and (

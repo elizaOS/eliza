@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { readdirSync, rmSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { createConnection } from "node:net";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,12 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(testDir, "..", "..");
 const repoRoot = join(appRoot, "..", "..");
 const cloudSharedRoot = join(repoRoot, "packages", "cloud-shared");
+const rmRecursiveScript = join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 const extraArgs = process.argv.slice(2);
 
@@ -176,6 +182,19 @@ async function reclaimPort(host, port) {
   return false;
 }
 
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `[api-e2e] recursive cleanup failed for ${targetPath} with exit code ${result.status ?? "unknown"}`,
+    );
+  }
+}
+
 async function ensurePGliteBridge() {
   const usingPGliteBridge =
     !configuredDatabaseUrl || configuredDatabaseUrl.startsWith("pglite://");
@@ -200,7 +219,7 @@ async function ensurePGliteBridge() {
         );
       }
     }
-    rmSync(resolve(repoRoot, dataDir), { recursive: true, force: true });
+    rmRecursive(resolve(repoRoot, dataDir));
   }
 
   if (alreadyRunning) return null;

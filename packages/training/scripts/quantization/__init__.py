@@ -1,4 +1,4 @@
-"""Post-training quantization + abliteration for Qwen checkpoints.
+"""Post-training quantization + abliteration for Eliza-1/Gemma checkpoints.
 
 Members:
     polarquant_apply        — weight-side Gaussian quantization (data-free).

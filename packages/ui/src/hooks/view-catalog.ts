@@ -21,10 +21,28 @@ import {
   isViewVisible,
   type ViewKind,
 } from "@elizaos/core";
+import { generateViewHeroSvgFor } from "@elizaos/shared";
 import type { RegistryAppInfo } from "../api";
-import { viewIconDataUri } from "../components/views/view-icons.generated";
 import type { ViewModality } from "../platform/platform-guards";
 import type { ViewRegistryEntry } from "./useAvailableViews";
+
+/**
+ * A deterministic, branded view hero generated CLIENT-SIDE as an inline data
+ * URI. This is the SAME no-blue art the agent serves at `/api/views/:id/hero`,
+ * but rendered with no network round-trip — so every launcher tile shows a real
+ * image even offline / on cloud builds where that endpoint isn't reachable
+ * (the "tiles show glyphs, not images" report). Real plugin heroes
+ * (`heroImageUrl`) still win; this is the universal fallback.
+ */
+function generatedViewHeroDataUri(source: {
+  id: string;
+  label: string;
+  icon?: string;
+}): string {
+  return `data:image/svg+xml,${encodeURIComponent(
+    generateViewHeroSvgFor(source),
+  )}`;
+}
 
 export type { ViewModality } from "../platform/platform-guards";
 
@@ -43,10 +61,9 @@ export interface ViewEntry {
   /** Real preview image URL, or undefined when only a generated fallback exists. */
   heroUrl?: string;
   /**
-   * Always-available preview image URL. Real plugin art wins when present;
-   * otherwise this is a deterministic branded SVG data URI. Use this (not
-   * {@link heroUrl}) when every entry must show an image, e.g. Springboard
-   * tiles.
+   * Always-available preview image URL. Real plugin art wins only when the
+   * registry says that asset exists; otherwise this is a deterministic branded
+   * SVG data URI, not a backend hero endpoint probe.
    */
   imageUrl?: string;
   /** Deterministic branded image used when a real preview image fails to load. */
@@ -76,6 +93,8 @@ export interface ViewEntry {
   developerOnly?: boolean;
   /** Four-tier visibility category resolved from the source declaration. */
   viewKind?: ViewKind;
+  /** Sort priority for launcher/nav surfaces (lower = earlier). */
+  order?: number;
   /** Source records (one is set depending on `kind`). */
   view?: ViewRegistryEntry;
   app?: RegistryAppInfo;
@@ -87,22 +106,25 @@ export interface InstalledAppLike {
 }
 
 export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
-  // Every tile uses a BUNDLED icon — a base64 PNG data URI baked into the JS
-  // bundle (see view-icons.generated.ts). It is preloaded with the app, so a
-  // tile is never a bare glyph, never the `/api/views/:id/hero` endpoint (which
-  // 404s → black/reloading on native), and never a generated SVG. Views without
-  // a dedicated icon fall back to the bundled generic `default` icon.
-  const bundledIcon = viewIconDataUri(view.id);
+  const hasHero = Boolean(view.hasHeroImage && view.heroImageUrl);
+  const generatedHero = generatedViewHeroDataUri({
+    id: view.id,
+    label: view.label,
+    icon: view.icon,
+  });
   return {
     key: `view:${view.id}`,
     id: view.id,
     label: view.label,
     description: view.description,
     icon: view.icon,
-    heroUrl: undefined,
-    imageUrl: bundledIcon,
-    fallbackImageUrl: viewIconDataUri("default"),
-    hasHero: true,
+    heroUrl: hasHero ? view.heroImageUrl : undefined,
+    // Use a registry hero only when it is declared as real. Otherwise generate
+    // the branded fallback client-side so static/mobile shells avoid backend
+    // `/api/views/:id/hero` probes for icon-only views.
+    imageUrl: hasHero ? view.heroImageUrl : generatedHero,
+    fallbackImageUrl: generatedHero,
+    hasHero,
     modality: view.viewType ?? "gui",
     modalities: [view.viewType ?? "gui"],
     state: "loaded",
@@ -112,39 +134,29 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     builtin: view.builtin,
     developerOnly: view.developerOnly,
     viewKind: view.viewKind,
+    order: view.order,
     view,
   };
 }
 
-/**
- * An app hero is reachable from any shell ONLY when it is an absolute URL
- * (data/blob/http(s)/custom scheme). A root-relative `/api/apps/hero/<slug>`
- * path — what the registry assigns when an app ships no hero, or to stream an
- * on-disk one — 404s on native/desktop shells the same way view heroes do, so
- * it must NOT be used as the primary tile image.
- */
-function isReachableHero(url: string | null | undefined): url is string {
-  return Boolean(url) && /^[a-z][a-z0-9+.-]*:/i.test(url as string);
-}
-
 function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
-  // An app's own hero wins only when it is an absolute, shell-reachable URL
-  // (a root-relative `/api/...` path 404s on native). Otherwise use the bundled
-  // icon for this app id, falling back to the generic `default` — always a
-  // preloaded data URI, never an SVG or a doomed network round-trip.
-  const reachableHero = isReachableHero(app.heroImage);
+  const hasHero = Boolean(app.heroImage);
   const label = app.displayName || app.name;
-  const bundledIcon = viewIconDataUri(app.name);
+  const generatedHero = generatedViewHeroDataUri({
+    id: app.name,
+    label,
+    icon: app.icon ?? undefined,
+  });
   return {
     key: `app:${app.name}`,
     id: app.name,
     label,
     description: app.description,
     icon: app.icon ?? undefined,
-    heroUrl: reachableHero ? (app.heroImage ?? undefined) : undefined,
-    imageUrl: reachableHero ? (app.heroImage as string) : bundledIcon,
-    fallbackImageUrl: bundledIcon,
-    hasHero: true,
+    heroUrl: app.heroImage ?? undefined,
+    imageUrl: app.heroImage ?? generatedHero,
+    fallbackImageUrl: generatedHero,
+    hasHero,
     category: app.category,
     // Catalog cards are a GUI install surface; the loaded view carries the real
     // modality once the plugin registers.

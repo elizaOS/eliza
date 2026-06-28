@@ -61,6 +61,8 @@ export interface AppBootConfig {
   cloudApiBase?: string;
   vrmAssets?: BundledVrmAsset[];
   firstRunStyles?: unknown[];
+  /** Default-on shared cloud tier; false is the dedicated-direct kill-switch. */
+  preferSharedCloudTier?: boolean;
   characterCatalog?: CharacterCatalogData;
   envAliases?: readonly (readonly [string, string])[];
   clientMiddleware?: ClientMiddleware;
@@ -69,7 +71,8 @@ export interface AppBootConfig {
 
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
-  cloudApiBase: "https://www.elizacloud.ai",
+  cloudApiBase: "https://elizacloud.ai",
+  preferSharedCloudTier: true,
 };
 
 const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");

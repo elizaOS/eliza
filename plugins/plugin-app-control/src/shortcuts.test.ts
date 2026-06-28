@@ -19,6 +19,9 @@ describe("viewNavigationShortcuts (#8791)", () => {
 	it("resolves explicit typed and ASR-normalized view navigation to VIEWS", () => {
 		for (const phrase of [
 			"open settings",
+			"go home",
+			"return to the main screen",
+			"open the home dashboard",
 			"show me my calendar",
 			"hey can you open settings please",
 			"open app builder",
@@ -39,6 +42,7 @@ describe("viewNavigationShortcuts (#8791)", () => {
 				name: "VIEWS",
 				parameters: { action: "show" },
 			});
+			expect(match?.parameters.view, phrase).toBeUndefined();
 			expect(match?.confidence).toBeGreaterThanOrEqual(0.9);
 		}
 	});

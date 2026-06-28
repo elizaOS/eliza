@@ -395,9 +395,11 @@ if $REMOTE; then
   for arg in "${BUILD_ARGS[@]}"; do
     REMOTE_BUILD_ARGS+=" $(printf '%q' "$arg")"
   done
+  REMOTE_BUILD_DIR_QUOTED="$(printf '%q' "${REMOTE_BUILD_DIR}")"
+  REMOTE_CLEANUP_HELPER="$(printf '%q' "${REMOTE_BUILD_DIR}/packages/scripts/rm-path-recursive.mjs")"
   REMOTE_SCRIPT=$(cat <<SCRIPT
 set -e
-cd ${REMOTE_BUILD_DIR}
+cd ${REMOTE_BUILD_DIR_QUOTED}
 tar -xzf build.tar.gz
 rm build.tar.gz
 echo "[remote] Extracted build context"
@@ -406,7 +408,8 @@ docker build -f $(printf '%q' "${DOCKERFILE}")${REMOTE_BUILD_ARGS} \
   . 2>&1 | tail -30
 echo "[remote] Build complete"
 docker images '${IMAGE_NAME}' --format 'Image ready: {{.Repository}}:{{.Tag}} ({{.Size}})'
-rm -rf ${REMOTE_BUILD_DIR}
+cd /tmp
+node ${REMOTE_CLEANUP_HELPER} ${REMOTE_BUILD_DIR_QUOTED}
 SCRIPT
 )
   run "ssh ${SSH_OPTS} -i '${SSH_KEY}' ${BUILD_SERVER} \"${REMOTE_SCRIPT}\""

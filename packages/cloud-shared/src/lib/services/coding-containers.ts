@@ -27,6 +27,7 @@ import type {
   SyncCloudCodingContainerRequest,
 } from "@elizaos/shared/contracts/cloud-coding-containers";
 import { containersEnv } from "../config/containers-env";
+import { describeImageReference } from "./containers/image-rollout-status";
 
 export interface CodingContainerCreatePayload {
   name: string;
@@ -218,6 +219,24 @@ export function isCodingContainerImageAllowed(
     }
   }
   return false;
+}
+
+/**
+ * Returns true when `image` must be REJECTED because the digest-pin gate is
+ * armed (`requireDigest`) but `image` is not pinned to a full `sha256:<64hex>`
+ * digest (a mutable `:tag` or implicit-latest reference).
+ *
+ * Complements {@link isCodingContainerImageAllowed}: the allowlist controls
+ * WHICH repos may run; this controls that an allowed ref is content-addressed
+ * so the registry cannot swap the bytes after the gate passes. Digest validity
+ * is delegated to `describeImageReference().productionSafe` (the single source
+ * of truth for digest pinning) — do not re-parse digests here.
+ *
+ * When `requireDigest` is false (the default, opt-in via
+ * `containersEnv.requireDigestPinnedImages()`) this is always false.
+ */
+export function imageRequiresDigestPin(image: string, requireDigest: boolean): boolean {
+  return requireDigest && !describeImageReference(image).productionSafe;
 }
 
 function readString(data: Record<string, unknown>, keys: string[]): string | undefined {

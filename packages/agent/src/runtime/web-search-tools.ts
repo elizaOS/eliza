@@ -145,6 +145,31 @@ export function __shouldSkipServerSideWebSearchForTests(
   return shouldSkip(params);
 }
 
+function copyStaticFunctionProperties(
+  original: (...a: unknown[]) => unknown,
+  wrapped: (...a: unknown[]) => unknown,
+): void {
+  for (const key of Object.getOwnPropertyNames(original)) {
+    if (key === "length" || key === "name" || key === "prototype") {
+      continue;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(original, key);
+    if (!descriptor) continue;
+    try {
+      Object.defineProperty(wrapped, key, descriptor);
+    } catch {
+      /* non-configurable */
+    }
+  }
+}
+
+export function __copyStaticFunctionPropertiesForTests(
+  original: (...a: unknown[]) => unknown,
+  wrapped: (...a: unknown[]) => unknown,
+): void {
+  copyStaticFunctionProperties(original, wrapped);
+}
+
 function wrapFn(
   original: (...a: unknown[]) => unknown,
   name: string,
@@ -171,17 +196,7 @@ function wrapFn(
     return original.apply(this, args);
   };
   // Preserve static properties on the original SDK function.
-  for (const key of Object.getOwnPropertyNames(original)) {
-    if (key !== "length" && key !== "name" && key !== "prototype") {
-      try {
-        (wrapped as unknown as Record<string, unknown>)[key] = (
-          original as unknown as Record<string, unknown>
-        )[key];
-      } catch {
-        /* read-only */
-      }
-    }
-  }
+  copyStaticFunctionProperties(original, wrapped);
   return wrapped;
 }
 

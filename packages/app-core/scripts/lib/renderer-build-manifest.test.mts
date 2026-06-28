@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +14,22 @@ import {
   readRendererBuildManifest,
   writeRendererBuildManifest,
 } from "./renderer-build-manifest.mjs";
+import { resolveRepoRootFromImportMeta } from "./repo-root.mjs";
+
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath: string) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 let tmp: string;
 
@@ -21,7 +38,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  fs.rmSync(tmp, { recursive: true, force: true });
+  removePathRecursive(tmp);
 });
 
 /**

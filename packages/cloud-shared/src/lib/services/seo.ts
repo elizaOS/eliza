@@ -15,6 +15,7 @@ import { seoRequests, seoRequestTypeEnum } from "../../db/schemas/seo";
 import { mergeAnthropicCotProviderOptions } from "../providers/anthropic-thinking";
 import { getLanguageModel } from "../providers/language-model";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
 
@@ -267,8 +268,7 @@ async function runHealthCheck(pageUrl: string): Promise<{
   robots: boolean;
   canonical?: string;
 }> {
-  const safeUrl = await assertSafeOutboundUrl(pageUrl);
-  const response = await fetch(safeUrl, {
+  const response = await safeFetch(pageUrl, {
     method: "GET",
     redirect: "error",
   });

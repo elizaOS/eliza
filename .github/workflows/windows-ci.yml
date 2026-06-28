@@ -152,7 +152,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node packages/app-core/scripts/ensure-shared-i18n-data.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --filter=@elizaos/contracts --filter=@elizaos/prompts --concurrency=4
+          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --filter=@elizaos/contracts --filter=@elizaos/prompts --concurrency=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --concurrency=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

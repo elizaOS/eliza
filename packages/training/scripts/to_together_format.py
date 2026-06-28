@@ -53,8 +53,8 @@ from typing import Any, Iterator
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-# Re-use the Qwen-side prompt resolver so Together training sees the same
-# conditioning surface as the Qwen / Gemini formatters.
+# Re-use the canonical prompt resolver so Together training sees the same
+# conditioning surface as the Gemma / Gemini formatters.
 from format_for_training import system_prompt_for  # noqa: E402
 
 # --------------------------------------------------------------------------- #
@@ -147,7 +147,7 @@ def build_together_record(eliza: dict[str, Any]) -> TogetherBuildResult:
     if not cm_text:
         return TogetherBuildResult(None, "empty_currentMessage")
 
-    # 1. System prompt (same resolver as the Qwen/Gemini formatters).
+    # 1. System prompt (same resolver as the Gemma/Gemini formatters).
     system_text = system_prompt_for(eliza).rstrip()
 
     md = eliza.get("metadata") or {}

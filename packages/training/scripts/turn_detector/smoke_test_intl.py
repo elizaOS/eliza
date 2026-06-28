@@ -6,7 +6,7 @@ plus two non-English samples (Spanish, Japanese), covering complete
 utterances and mid-utterance prefixes for each. Runs against the same
 scoring path as ``probabilityFromOnnxOutput`` in the runtime:
 
-    P(EOU) = softmax(logits[:, last_real_pos, :])[<|im_end|>]
+    P(EOU) = softmax(logits[:, last_real_pos, :])[<end_of_turn>]
 
 Exit code:
   0 — every complete utterance scored ≥ ``--decision-threshold`` and
@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Final
 
 
-LIVEKIT_IM_END_TOKEN: Final[str] = "<|im_end|>"
+GEMMA_END_OF_TURN_TOKEN: Final[str] = "<end_of_turn>"
 
 # Hand-crafted bilingual EOU / non-EOU pairs. Each row covers a single
 # "complete utterance vs. random mid-utterance prefix" comparison.
@@ -101,16 +101,16 @@ def _format_livekit_prompt(tokenizer: Any, transcript: str) -> str:
         tokenize=False,
         add_special_tokens=False,
     )
-    ix = templated.rfind(LIVEKIT_IM_END_TOKEN)
+    ix = templated.rfind(GEMMA_END_OF_TURN_TOKEN)
     if ix >= 0:
         templated = templated[:ix]
     return templated
 
 
-def _resolve_im_end_id(tokenizer: Any) -> int:
-    ids = tokenizer(LIVEKIT_IM_END_TOKEN, add_special_tokens=False)["input_ids"]
+def _resolve_end_of_turn_id(tokenizer: Any) -> int:
+    ids = tokenizer(GEMMA_END_OF_TURN_TOKEN, add_special_tokens=False)["input_ids"]
     if not ids:
-        raise SystemExit("tokenizer did not produce an <|im_end|> id")
+        raise SystemExit("tokenizer did not produce an <end_of_turn> id")
     return int(ids[0])
 
 
@@ -147,7 +147,7 @@ def smoke_test(
     tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path))
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
-    im_end_id = _resolve_im_end_id(tokenizer)
+    eot_id = _resolve_end_of_turn_id(tokenizer)
     session = onnxruntime.InferenceSession(
         str(model_path), providers=["CPUExecutionProvider"],
     )
@@ -169,7 +169,7 @@ def smoke_test(
         logits = outputs[0][0, -1, :].astype("float64")
         logits = logits - logits.max()
         probs = np.exp(logits) / np.exp(logits).sum()
-        return float(probs[im_end_id])
+        return float(probs[eot_id])
 
     for case in cases:
         lang = case["lang"]

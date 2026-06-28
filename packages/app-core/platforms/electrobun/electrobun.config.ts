@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -178,6 +179,13 @@ const workspacePackagesRoot = fs.existsSync(
 )
   ? path.join(repoRoot, "packages")
   : path.join(repoRoot, "eliza", "packages");
+const elizaWorkspaceRoot = path.dirname(workspacePackagesRoot);
+const rmPathRecursiveScript = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const sharedSourceDir = path.join(workspacePackagesRoot, "shared", "src");
 const coreNodeEntry = fs.existsSync(
   path.join(workspacePackagesRoot, "core", "dist", "node", "index.node.js"),
@@ -216,7 +224,7 @@ function resolveRuntimeBundleSourcePath(rootDir: string): string {
     ".generated",
     "runtime-dist",
   );
-  fs.rmSync(sanitizedDistPath, { recursive: true, force: true });
+  rmRecursive(sanitizedDistPath);
   fs.mkdirSync(sanitizedDistPath, { recursive: true });
   for (const entry of fs.readdirSync(runtimeDistPath)) {
     if (entry === "node_modules") continue;
@@ -230,6 +238,28 @@ function resolveRuntimeBundleSourcePath(rootDir: string): string {
     );
   }
   return sanitizedDistPath;
+}
+
+function rmRecursive(pathToRemove: string): void {
+  const result = spawnSync(
+    process.execPath,
+    [rmPathRecursiveScript, path.resolve(pathToRemove)],
+    {
+      cwd: elizaWorkspaceRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.status !== 0) {
+    const reason =
+      result.stderr?.trim() ||
+      result.stdout?.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    throw new Error(
+      `Failed to recursively remove sanitized Electrobun runtime dist ${pathToRemove}: ${reason}`,
+    );
+  }
 }
 
 const runtimeBundleSourcePath = resolveRuntimeBundleSourcePath(repoRoot);

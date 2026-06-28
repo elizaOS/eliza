@@ -57,6 +57,15 @@ conditional `runs-on` (GitHub-hosted for fork PRs, self-hosted otherwise) at
 that point, and keep the runner-agnostic step hardening (no `sudo`-only
 install/cleanup) so jobs run on either runner type.
 
+CodeQL is the current exception: trusted push, scheduled, and manual CodeQL
+runs use `self-hosted, Linux, X64, hetzner-robot` because full JavaScript
+analysis is disk-bound and has exhausted GitHub-hosted runners during the
+`PolynomialReDoS` dataflow query. Pull-request CodeQL remains GitHub-hosted so
+forked code never executes on self-hosted machines. Keep the full CodeQL query
+surface intact; move capacity around rather than weakening security coverage.
+The CodeQL config may ignore deliberately invalid negative-test fixtures, but
+not real source files; those fixtures should stay covered by their owning tests.
+
 GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
 separate purpose-built fleet and are unaffected by this policy.
 

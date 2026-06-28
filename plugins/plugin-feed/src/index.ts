@@ -61,4 +61,7 @@ if (typeof window === "undefined") {
 export default feedPlugin;
 export * from "./routes.js";
 export * from "./ui/feed-data.js";
-export * from "./ui/index.js";
+// NOTE: the UI surface (./ui/index — FeedOperatorSurface + registerOperatorSurface)
+// is intentionally NOT re-exported here. The Node agent imports this entry to
+// register the plugin's views; pulling React/UI in breaks that bundle. The app
+// loads the UI via the dedicated browser entry (src/ui/index.ts) + view bundle.

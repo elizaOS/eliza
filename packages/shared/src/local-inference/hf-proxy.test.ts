@@ -43,7 +43,7 @@ describe("resolveHfDownloadBase", () => {
     process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.elizacloud.ai";
 
     expect(resolveHfDownloadBase()).toEqual({
-      base: "https://www.elizacloud.ai/api/v1/hf-proxy",
+      base: "https://elizacloud.ai/api/v1/hf-proxy",
       authHeader: { authorization: "Bearer key-123" },
       viaCloud: true,
     });

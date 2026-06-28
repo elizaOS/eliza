@@ -53,8 +53,8 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 
 /**
  * Candidate filenames for the fused library, per platform. Mirrors
- * `samantha-preset-regenerator.ts::libraryFilenames` so the runtime and the
- * voice regenerator resolve the same artifact.
+ * `engine-bridge.ts::libraryFilenames` so every consumer resolves the same
+ * artifact.
  */
 function fusedLibraryFilenames(): string[] {
 	if (process.platform === "darwin") return ["libelizainference.dylib"];

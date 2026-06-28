@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import { cn } from "../../lib/utils";
 import {
   goHome,
@@ -7,17 +8,6 @@ import {
   useShellSurface,
 } from "../../state/shell-surface-store";
 import type { HomeSpringboardPage } from "./home-springboard-events";
-
-/** Horizontal travel (px) needed to commit a rail flick (home ↔ springboard). */
-const RAIL_FLICK_THRESHOLD = 72;
-/** Horizontal travel must beat vertical by this ratio so a scroll never flips. */
-const RAIL_FLICK_ANGLE_RATIO = 1.25;
-
-interface FlickState {
-  startX: number;
-  startY: number;
-  tracking: boolean;
-}
 
 export interface HomeSpringboardSurfaceProps {
   home: React.ReactNode;
@@ -50,97 +40,35 @@ export function HomeSpringboardSurface({
     setShellSurfacePage(initialPage);
   }, [initialPage]);
 
-  const homeFlick = React.useRef<FlickState>({
-    startX: 0,
-    startY: 0,
-    tracking: false,
-  });
-  const springboardFlick = React.useRef<FlickState>({
-    startX: 0,
-    startY: 0,
-    tracking: false,
-  });
   // A committed flick must swallow the click that the browser synthesizes from
   // the same press, so the flick doesn't also tap-launch the tile underneath.
-  const suppressHomeClickRef = React.useRef(false);
-  const suppressSpringboardClickRef = React.useRef(false);
-
-  // One flick detector, parameterized by the direction that commits: the home
-  // half commits a LEFT flick (open springboard); the springboard half commits a
-  // RIGHT flick (return home) — the back gesture the old surface lacked, and the
-  // one escape that works even while the springboard is in edit mode.
-  const makeFlickHandlers = (
-    flick: React.RefObject<FlickState>,
-    suppress: React.RefObject<boolean>,
-    direction: "left" | "right",
-    onCommit: () => void,
-  ) => {
-    const committed = (dx: number, dy: number) =>
-      Math.abs(dx) > Math.abs(dy) * RAIL_FLICK_ANGLE_RATIO &&
-      (direction === "left"
-        ? dx < -RAIL_FLICK_THRESHOLD
-        : dx > RAIL_FLICK_THRESHOLD);
-    return {
-      onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
-        if (!event.isPrimary) return;
-        flick.current = {
-          startX: event.clientX,
-          startY: event.clientY,
-          tracking: true,
-        };
-      },
-      onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => {
-        const state = flick.current;
-        if (!state.tracking) return;
-        state.tracking = false;
-        if (
-          !committed(event.clientX - state.startX, event.clientY - state.startY)
-        ) {
-          return;
-        }
-        suppress.current = true;
-        onCommit();
-        window.setTimeout(() => {
-          suppress.current = false;
-        }, 0);
-      },
-      onPointerCancel: () => {
-        flick.current.tracking = false;
-      },
-      onClickCapture: (event: React.MouseEvent<HTMLDivElement>) => {
-        if (!suppress.current) return;
-        suppress.current = false;
-        event.preventDefault();
-        event.stopPropagation();
-      },
-    };
-  };
-
-  const homeHandlers = makeFlickHandlers(
-    homeFlick,
-    suppressHomeClickRef,
-    "left",
-    goSpringboard,
-  );
-  const springboardHandlers = makeFlickHandlers(
-    springboardFlick,
-    suppressSpringboardClickRef,
-    "right",
-    () => {
-      // A right-flick returns home only from the FIRST springboard page (iOS
-      // back); on deeper pages the inner pager steps back one page instead, so
-      // the two gestures never both fire. While editing it is always the escape
-      // hatch out of jiggle mode (the inner pager is disabled then).
-      if (springboardPage === 0 || springboardEditing) goHome();
+  const suppressClickRef = React.useRef(false);
+  const pager = useHorizontalPager<HTMLElement>({
+    page: page === "springboard" ? 1 : 0,
+    pageCount: 2,
+    // Let the inner Springboard own app-page swipes after page 1. On the first
+    // app page, or while editing, the parent owns the right-swipe home gesture.
+    enabled: page === "home" || springboardPage === 0 || springboardEditing,
+    onPageChange: (nextPage) => {
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      if (nextPage === 0) {
+        goHome();
+      } else {
+        goSpringboard();
+      }
     },
-  );
-
-  const railStyle = React.useMemo<React.CSSProperties>(
-    () => ({
-      transform:
-        page === "springboard" ? "translate3d(-50%,0,0)" : "translate3d(0,0,0)",
-    }),
-    [page],
+  });
+  const suppressCommittedSwipeClick = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!suppressClickRef.current) return;
+      suppressClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [],
   );
   // No page indicator: the dots collided with the floating chat composer, and
   // the swipe gesture (left → springboard, right → home / back a page) is the
@@ -148,6 +76,7 @@ export function HomeSpringboardSurface({
 
   return (
     <section
+      ref={pager.viewportRef}
       data-testid="home-springboard-surface"
       data-page={page}
       // `select-none`: this is a swipeable launcher (home ↔ springboard), so a
@@ -160,12 +89,9 @@ export function HomeSpringboardSurface({
       )}
     >
       <div
+        ref={pager.railRef}
         data-testid="home-springboard-rail"
-        className={cn(
-          "absolute inset-0 flex w-[200%]",
-          "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-        )}
-        style={railStyle}
+        className="absolute inset-0 flex w-[200%] motion-reduce:transition-none"
       >
         <div
           data-testid="home-springboard-home-page"
@@ -176,10 +102,12 @@ export function HomeSpringboardSurface({
           // browser's own scroll/back gesture, which fires `pointercancel`
           // instead of `pointerup` — the flick silently never commits.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"
-          onPointerDown={homeHandlers.onPointerDown}
-          onPointerUp={homeHandlers.onPointerUp}
-          onPointerCancel={homeHandlers.onPointerCancel}
-          onClickCapture={homeHandlers.onClickCapture}
+          onPointerDown={pager.handlers.onPointerDown}
+          onPointerMove={pager.handlers.onPointerMove}
+          onPointerUp={pager.handlers.onPointerUp}
+          onPointerCancel={pager.handlers.onPointerCancel}
+          onLostPointerCapture={pager.handlers.onLostPointerCapture}
+          onClickCapture={suppressCommittedSwipeClick}
         >
           {home}
         </div>
@@ -189,10 +117,12 @@ export function HomeSpringboardSurface({
           // Same as the home half: vertical scroll (the tile grid) stays with
           // the browser, horizontal flicks (right → back home) are ours.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"
-          onPointerDown={springboardHandlers.onPointerDown}
-          onPointerUp={springboardHandlers.onPointerUp}
-          onPointerCancel={springboardHandlers.onPointerCancel}
-          onClickCapture={springboardHandlers.onClickCapture}
+          onPointerDown={pager.handlers.onPointerDown}
+          onPointerMove={pager.handlers.onPointerMove}
+          onPointerUp={pager.handlers.onPointerUp}
+          onPointerCancel={pager.handlers.onPointerCancel}
+          onLostPointerCapture={pager.handlers.onLostPointerCapture}
+          onClickCapture={suppressCommittedSwipeClick}
         >
           {React.cloneElement(springboard, {
             onNavigateHomeFromEdge: goHome,

@@ -722,7 +722,7 @@ jobs:
         working-directory: packages/app-core/platforms/electrobun
         run: |
           out_dir="$RUNNER_TEMP/electrobun-entry-probe"
-          rm -rf "$out_dir"
+          node "$GITHUB_WORKSPACE/packages/scripts/rm-path-recursive.mjs" "$out_dir"
           bun build src/index.ts --target=bun --packages=external --outdir "$out_dir"
 
       - name: Build patched Electrobun CLI

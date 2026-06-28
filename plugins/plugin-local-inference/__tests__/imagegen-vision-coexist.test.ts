@@ -146,7 +146,7 @@ describe("WS3 ↔ WS2 shared vision residentRole — reverse swap direction", ()
 					visState.loaded += 1;
 					return makeFakeVisionBackend(visState);
 				},
-				modelFamily: "qwen3-vl",
+				modelFamily: "gemma-vl",
 			}),
 		);
 		arbiter.registerCapability(
@@ -163,7 +163,7 @@ describe("WS3 ↔ WS2 shared vision residentRole — reverse swap direction", ()
 			{ image: { kind: "bytes"; bytes: Uint8Array }; prompt: string },
 			{ title: string; description: string }
 		>({
-			modelKey: "qwen3-vl-2b",
+			modelKey: "gemma-vl-2b",
 			payload: {
 				image: { kind: "bytes", bytes: new Uint8Array([9, 9, 9]) },
 				prompt: "what is this",
@@ -210,7 +210,7 @@ describe("WS3 cache namespace separation", () => {
 		// computes.
 		const visionHash = hashVisionInput(
 			{ kind: "bytes", bytes: new Uint8Array([1, 2, 3, 4]) },
-			"qwen3-vl",
+			"gemma-vl",
 		);
 		expect(typeof visionHash).toBe("string");
 		expect(visionHash).toMatch(/^[0-9a-f]+$/);
@@ -288,7 +288,7 @@ describe("WS3 ↔ WS2 swap refcount-awareness", () => {
 					visState.loaded += 1;
 					return makeFakeVisionBackend(visState);
 				},
-				modelFamily: "qwen3-vl",
+				modelFamily: "gemma-vl",
 			}),
 		);
 		arbiter.registerCapability(
@@ -303,7 +303,7 @@ describe("WS3 ↔ WS2 swap refcount-awareness", () => {
 		// Acquire a long-lived vision handle (refCount=1).
 		const handle = await arbiter.acquire<VisionDescribeBackend>(
 			"vision-describe",
-			"qwen3-vl-2b",
+			"gemma-vl-2b",
 		);
 		expect(visState.loaded).toBe(1);
 

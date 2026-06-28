@@ -142,6 +142,21 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("agent-orchestrator")).toBe(true);
   });
 
+  it("keeps simple views out of defaults while allowing explicit QA aliases", () => {
+    const defaultNames = collectPluginNames({} as ElizaConfig);
+    expect(defaultNames.has("@elizaos/plugin-simple-views")).toBe(false);
+
+    const allowNames = collectPluginNames({
+      plugins: { allow: ["notes"] },
+    } as ElizaConfig);
+    expect(allowNames.has("@elizaos/plugin-simple-views")).toBe(true);
+
+    const entryNames = collectPluginNames({
+      plugins: { entries: { "simple-calendar": { enabled: true } } },
+    } as ElizaConfig);
+    expect(entryNames.has("@elizaos/plugin-simple-views")).toBe(true);
+  });
+
   it("lets ELIZA_AGENT_ORCHESTRATOR=false override coding-agent defaults", () => {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "false";
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";

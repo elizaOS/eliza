@@ -114,6 +114,7 @@ public class MainActivity extends BridgeActivity {
             // for the dead-Handler bug it works around.
             getBridge().getWebView().addJavascriptInterface(
                 new ElizaNativeBridge(this), ElizaNativeBridge.JS_NAME);
+            Log.i(TAG, "startupTraceId=" + ElizaStartupTrace.currentId());
             ElizaAndroidSystemBridge.install(getBridge().getWebView(), this);
             publishGestureInset();
         }

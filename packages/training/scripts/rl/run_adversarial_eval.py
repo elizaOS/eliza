@@ -9,8 +9,8 @@ Tests:
   4. Trained model (defender) vs scripted ScamBench attacks
 
 Usage:
-    python scripts/run_adversarial_eval.py --model Qwen/Qwen3-4B
-    python scripts/run_adversarial_eval.py --model Qwen/Qwen3-4B --num-episodes 20
+    python scripts/run_adversarial_eval.py --model google/gemma-4-E4B
+    python scripts/run_adversarial_eval.py --model google/gemma-4-E4B --num-episodes 20
 """
 
 from __future__ import annotations
@@ -184,7 +184,7 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Adversarial model-vs-model evaluation")
-    parser.add_argument("--model", default="Qwen/Qwen3-4B")
+    parser.add_argument("--model", default="google/gemma-4-E4B")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--num-episodes", type=int, default=10)
     parser.add_argument("--num-legit", type=int, default=5)

@@ -46,6 +46,10 @@ export interface DescribeBackpressureStats {
   describesSkipped: number;
   /** Count of paused<->active edges (telemetry / test signal). */
   pauseTransitions: number;
+  /** RSS captured on the first describe tick, used as the local cap baseline. */
+  memoryBaselineBytes: number | null;
+  /** Latest sampled RSS growth over the captured baseline. */
+  memoryGrowthBytes: number | null;
 }
 
 export interface DescribeBackpressureDecision {
@@ -55,16 +59,18 @@ export interface DescribeBackpressureDecision {
   transitionedTo: "paused" | "active" | null;
   /** Why we are paused (only meaningful when `describe === false`). */
   reason: DescribePauseReason;
+  /** How long the current continuous pause has lasted, in ms. */
+  pausedForMs: number;
+  /** True when the caller should emit a throttled long-pause warning. */
+  warnPaused: boolean;
 }
 
 export interface DescribeBackpressureConfig {
   /**
-   * Cap in bytes on **vision-attributable RSS growth** over the baseline
-   * captured on the first describe tick. While `rss - baseline` exceeds it the
+   * RSS growth cap in bytes. The first describe tick captures the process RSS
+   * baseline; while sampled RSS exceeds `baseline + memoryCapBytes`, the
    * describe step pauses. `0` or negative disables the local check — only the
-   * arbiter signal can pause describing. (Deliberately growth-relative, not
-   * absolute: a local agent's steady-state RSS includes multi-GB mmap'd GGUF
-   * models, so an absolute comparison would pause describing permanently.)
+   * arbiter signal can pause describing.
    */
   memoryCapBytes?: number;
   /**
@@ -78,25 +84,34 @@ export interface DescribeBackpressureConfig {
    * auto-clears after this window of silence. Default 15_000.
    */
   arbiterPauseCooldownMs?: number;
+  /** Continuous pause duration before a warning is requested. Default 60s. */
+  pauseWarningThresholdMs?: number;
+  /** Minimum interval between repeated long-pause warnings. Default 60s. */
+  pauseWarningIntervalMs?: number;
   /** Clock, injectable for tests. Defaults to `Date.now`. */
   now?: () => number;
 }
 
 const DEFAULT_ARBITER_PAUSE_COOLDOWN_MS = 15_000;
+const DEFAULT_PAUSE_WARNING_THRESHOLD_MS = 60_000;
+const DEFAULT_PAUSE_WARNING_INTERVAL_MS = 60_000;
 
 export class DescribeBackpressureController {
   private readonly memoryCapBytes: number;
   private readonly sampleRssBytes: () => number;
   private readonly arbiterPauseCooldownMs: number;
+  private readonly pauseWarningThresholdMs: number;
+  private readonly pauseWarningIntervalMs: number;
   private readonly now: () => number;
   private pressureLevel: MemoryPressureLevel = "nominal";
   private pauseUntilMs = 0;
   private paused = false;
   private describesSkipped = 0;
   private pauseTransitions = 0;
-  // RSS baseline captured on the first cap evaluation; the cap measures growth
-  // over this, not absolute RSS (see config.memoryCapBytes). null until set.
-  private baselineRssBytes: number | null = null;
+  private memoryBaselineBytes: number | null = null;
+  private latestMemoryGrowthBytes: number | null = null;
+  private pauseStartedAtMs: number | null = null;
+  private lastPauseWarningAtMs = 0;
 
   constructor(config: DescribeBackpressureConfig = {}) {
     this.memoryCapBytes =
@@ -110,6 +125,16 @@ export class DescribeBackpressureController {
       config.arbiterPauseCooldownMs > 0
         ? config.arbiterPauseCooldownMs
         : DEFAULT_ARBITER_PAUSE_COOLDOWN_MS;
+    this.pauseWarningThresholdMs =
+      typeof config.pauseWarningThresholdMs === "number" &&
+      config.pauseWarningThresholdMs > 0
+        ? config.pauseWarningThresholdMs
+        : DEFAULT_PAUSE_WARNING_THRESHOLD_MS;
+    this.pauseWarningIntervalMs =
+      typeof config.pauseWarningIntervalMs === "number" &&
+      config.pauseWarningIntervalMs > 0
+        ? config.pauseWarningIntervalMs
+        : DEFAULT_PAUSE_WARNING_INTERVAL_MS;
     this.now = config.now ?? (() => Date.now());
   }
 
@@ -137,8 +162,22 @@ export class DescribeBackpressureController {
    * the reported `reason` is the more authoritative one.
    */
   evaluate(): DescribeBackpressureDecision {
-    const arbiterPaused = this.now() < this.pauseUntilMs;
-    const overCap = this.isOverGrowthCap();
+    const now = this.now();
+    const arbiterPaused = now < this.pauseUntilMs;
+    const sampledRssBytes =
+      this.memoryCapBytes > 0 ? this.sampleRssBytes() : null;
+    if (sampledRssBytes !== null && this.memoryBaselineBytes === null) {
+      this.memoryBaselineBytes = sampledRssBytes;
+    }
+    this.latestMemoryGrowthBytes =
+      sampledRssBytes !== null && this.memoryBaselineBytes !== null
+        ? Math.max(0, sampledRssBytes - this.memoryBaselineBytes)
+        : null;
+    const overCap =
+      this.memoryCapBytes > 0 &&
+      sampledRssBytes !== null &&
+      this.memoryBaselineBytes !== null &&
+      sampledRssBytes > this.memoryBaselineBytes + this.memoryCapBytes;
     const paused = arbiterPaused || overCap;
 
     let transitionedTo: "paused" | "active" | null = null;
@@ -146,8 +185,25 @@ export class DescribeBackpressureController {
       transitionedTo = paused ? "paused" : "active";
       this.paused = paused;
       this.pauseTransitions += 1;
+      this.pauseStartedAtMs = paused ? now : null;
+      this.lastPauseWarningAtMs = 0;
     }
-    if (paused) this.describesSkipped += 1;
+    let pausedForMs = 0;
+    let warnPaused = false;
+    if (paused) {
+      this.describesSkipped += 1;
+      if (this.pauseStartedAtMs !== null) {
+        pausedForMs = Math.max(0, now - this.pauseStartedAtMs);
+        if (
+          pausedForMs >= this.pauseWarningThresholdMs &&
+          (this.lastPauseWarningAtMs === 0 ||
+            now - this.lastPauseWarningAtMs >= this.pauseWarningIntervalMs)
+        ) {
+          warnPaused = true;
+          this.lastPauseWarningAtMs = now;
+        }
+      }
+    }
 
     const reason: DescribePauseReason = !paused
       ? null
@@ -155,23 +211,13 @@ export class DescribeBackpressureController {
         ? "arbiter-pressure"
         : "memory-cap";
 
-    return { describe: !paused, transitionedTo, reason };
-  }
-
-  /**
-   * Has vision-attributable RSS grown past the cap? Captures the baseline on
-   * the first call (the first describe tick, when the loop's models are already
-   * resident) so the steady-state model footprint is absorbed rather than
-   * counted as over-cap. A transient growth that drops back resumes describing.
-   */
-  private isOverGrowthCap(): boolean {
-    if (this.memoryCapBytes <= 0) return false;
-    const rss = this.sampleRssBytes();
-    if (this.baselineRssBytes === null) {
-      this.baselineRssBytes = rss;
-      return false;
-    }
-    return rss - this.baselineRssBytes > this.memoryCapBytes;
+    return {
+      describe: !paused,
+      transitionedTo,
+      reason,
+      pausedForMs,
+      warnPaused,
+    };
   }
 
   stats(): DescribeBackpressureStats {
@@ -180,6 +226,8 @@ export class DescribeBackpressureController {
       pressureLevel: this.pressureLevel,
       describesSkipped: this.describesSkipped,
       pauseTransitions: this.pauseTransitions,
+      memoryBaselineBytes: this.memoryBaselineBytes,
+      memoryGrowthBytes: this.latestMemoryGrowthBytes,
     };
   }
 }

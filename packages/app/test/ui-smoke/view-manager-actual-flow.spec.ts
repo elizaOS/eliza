@@ -95,7 +95,10 @@ function springboardTile(page: Page, viewId: string) {
   return page.getByTestId(`springboard-tile-${viewId}`).first();
 }
 
-async function expectSpringboardTile(page: Page, viewId: string): Promise<void> {
+async function expectSpringboardTile(
+  page: Page,
+  viewId: string,
+): Promise<void> {
   await expect(springboardTile(page, viewId)).toBeVisible();
 }
 
@@ -103,36 +106,92 @@ function viewLaunchButton(page: Page, viewId: string) {
   return springboardTile(page, viewId).getByRole("button").first();
 }
 
-async function enterSpringboardEditMode(page: Page): Promise<void> {
-  const edit = page.getByRole("button", { name: "Edit", exact: true });
-  if ((await edit.count()) > 0) {
-    await edit.click();
+async function revealSpringboardTile(
+  page: Page,
+  viewId: string,
+): Promise<void> {
+  const tile = springboardTile(page, viewId);
+  await expect(tile).toBeAttached();
+  const pageTestId = await tile.evaluate((node) =>
+    node
+      .closest('[data-testid^="springboard-page-"]')
+      ?.getAttribute("data-testid"),
+  );
+  const pageIndex = pageTestId?.match(/^springboard-page-(\d+)$/)?.[1];
+  if (pageIndex == null) return;
+
+  const pageLocator = page.getByTestId(`springboard-page-${pageIndex}`);
+  if ((await pageLocator.getAttribute("aria-hidden")) === "true") {
+    await page
+      .getByRole("button", { name: `Page ${Number(pageIndex) + 1}` })
+      .click();
+    await expect(pageLocator).toHaveAttribute("aria-hidden", "false");
+  }
+}
+
+async function launchSpringboardView(
+  page: Page,
+  viewId: string,
+): Promise<void> {
+  await revealSpringboardTile(page, viewId);
+  await viewLaunchButton(page, viewId).click();
+}
+
+async function longPressSpringboardView(
+  page: Page,
+  viewId: string,
+): Promise<void> {
+  await revealSpringboardTile(page, viewId);
+  const button = viewLaunchButton(page, viewId);
+  const box = await button.boundingBox();
+  if (!box) throw new Error(`springboard tile ${viewId} is not laid out`);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(500);
+  await page.mouse.up();
+}
+
+async function editModeVisible(page: Page): Promise<boolean> {
+  const badge = page.locator('[data-testid^="springboard-fav-"]').first();
+  if ((await badge.count()) === 0) return false;
+  return badge.isVisible().catch(() => false);
+}
+
+async function enterSpringboardEditMode(
+  page: Page,
+  viewId: string,
+): Promise<void> {
+  if (!(await editModeVisible(page))) {
+    await longPressSpringboardView(page, viewId);
   }
   await expect(
-    page.getByRole("button", { name: "Done", exact: true }),
+    page.locator('[data-testid^="springboard-fav-"]').first(),
   ).toBeVisible();
 }
 
-async function exitSpringboardEditMode(page: Page): Promise<void> {
-  const done = page.getByRole("button", { name: "Done", exact: true });
-  if ((await done.count()) > 0) {
-    await done.click();
+async function exitSpringboardEditMode(
+  page: Page,
+  viewId: string,
+): Promise<void> {
+  if (await editModeVisible(page)) {
+    await longPressSpringboardView(page, viewId);
   }
   await expect(
-    page.getByRole("button", { name: "Edit", exact: true }),
-  ).toBeVisible();
+    page.locator('[data-testid^="springboard-fav-"]').first(),
+  ).toHaveCount(0);
 }
 
 async function editSpringboardView(page: Page, viewId: string): Promise<void> {
-  await enterSpringboardEditMode(page);
+  await enterSpringboardEditMode(page, viewId);
   await page.getByTestId(`springboard-edit-${viewId}`).click();
 }
 
-async function deleteSpringboardView(page: Page, viewId: string): Promise<void> {
-  await enterSpringboardEditMode(page);
-  return page
-    .getByTestId(`springboard-delete-${viewId}`)
-    .click();
+async function deleteSpringboardView(
+  page: Page,
+  viewId: string,
+): Promise<void> {
+  await enterSpringboardEditMode(page, viewId);
+  await page.getByTestId(`springboard-delete-${viewId}`).click();
 }
 
 async function installElectrobunDynamicViewBridge(
@@ -169,6 +228,22 @@ async function installElectrobunDynamicViewBridge(
   });
 }
 
+async function navigateSplitView(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: {
+          action: "split-view",
+          viewId: "notes",
+          views: ["notes", "simple-calendar"],
+          layout: "horizontal",
+          placement: "right",
+        },
+      }),
+    );
+  });
+}
+
 test.beforeEach(({ page }) => {
   installPageDiagnosticsGuard(page);
 });
@@ -202,6 +277,38 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
         visibleInManager: true,
       },
     ],
+    [
+      "notes",
+      {
+        id: "notes",
+        label: "Notes",
+        viewType: "gui",
+        viewKind: "developer",
+        description: "Simple sticky notes wall",
+        path: "/notes",
+        available: true,
+        pluginName: "@elizaos/plugin-simple-views",
+        tags: ["notes", "qa"],
+        desktopTabEnabled: true,
+        visibleInManager: true,
+      },
+    ],
+    [
+      "simple-calendar",
+      {
+        id: "simple-calendar",
+        label: "Simple Calendar",
+        viewType: "gui",
+        viewKind: "developer",
+        description: "Simple local calendar for view switching QA",
+        path: "/simple-calendar",
+        available: true,
+        pluginName: "@elizaos/plugin-simple-views",
+        tags: ["calendar", "qa"],
+        desktopTabEnabled: true,
+        visibleInManager: true,
+      },
+    ],
   ]);
   let remoteBundleRequests = 0;
   const registerCalls: Array<{
@@ -211,6 +318,30 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     update: boolean;
   }> = [];
   const unregisterCalls: string[] = [];
+  const simpleViewsState = {
+    notes: [
+      {
+        id: "note-ui-smoke",
+        title: "UI smoke note",
+        body: "Rendered from the optional simple views plugin.",
+        color: "yellow",
+        createdAt: "2026-06-25T00:00:00.000Z",
+        updatedAt: "2026-06-25T00:00:00.000Z",
+      },
+    ],
+    events: [
+      {
+        id: "event-ui-smoke",
+        title: "UI smoke calendar event",
+        date: "2026-06-25",
+        time: "09:00",
+        notes: "Rendered from the optional simple views plugin.",
+        color: "green",
+        createdAt: "2026-06-25T00:00:00.000Z",
+      },
+    ],
+    selectedDate: "2026-06-25",
+  };
 
   await installElectrobunDynamicViewBridge(page, {
     async register(payload) {
@@ -228,6 +359,26 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
       const removed = views.delete(payload.viewId);
       return { removed };
     },
+  });
+
+  await page.route("**/api/simple-views/state", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(simpleViewsState),
+    });
+  });
+
+  await page.route("**/api/simple-views/interact", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        text: "OK",
+        state: simpleViewsState,
+      }),
+    });
   });
 
   await page.route("**/api/views**", async (route) => {
@@ -278,6 +429,9 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     page.getByRole("form", { name: "Dynamic view management" }),
   ).toBeVisible();
   await expectSpringboardTile(page, "local-notes");
+  await expectSpringboardTile(page, "notes");
+  await expectSpringboardTile(page, "simple-calendar");
+  await screenshot(page, "00-view-manager-ready");
 
   await page.getByLabel("Dynamic view ID").fill("actual-local-ledger");
   await page.getByLabel("Dynamic view title").fill("Actual Local Ledger");
@@ -301,7 +455,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   await expectSpringboardTile(page, "actual-local-ledger");
   await screenshot(page, "01-local-created");
 
-  await viewLaunchButton(page, "actual-local-ledger").click();
+  await launchSpringboardView(page, "actual-local-ledger");
   await expect(page).toHaveURL(/\/apps\/actual-local-ledger$/);
   await openViewManager(page);
 
@@ -324,7 +478,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   });
   await expectSpringboardTile(page, "actual-local-ledger");
   await expect(page.getByText(/^Actual Local Ledger$/)).toHaveCount(0);
-  await exitSpringboardEditMode(page);
+  await exitSpringboardEditMode(page, "actual-local-ledger");
 
   await page.getByLabel("Dynamic view ID").fill("actual-remote-ledger");
   await page.getByLabel("Dynamic view title").fill("Actual Remote Ledger");
@@ -348,7 +502,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   await expectSpringboardTile(page, "actual-remote-ledger");
   await screenshot(page, "02-remote-created");
 
-  await viewLaunchButton(page, "actual-local-ledger").click();
+  await launchSpringboardView(page, "actual-local-ledger");
   await expect(page).toHaveURL(/\/apps\/actual-local-ledger$/);
   expect(
     remoteBundleRequests,
@@ -358,7 +512,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
 
   await openViewManager(page);
 
-  await viewLaunchButton(page, "actual-remote-ledger").click();
+  await launchSpringboardView(page, "actual-remote-ledger");
   await expect(page).toHaveURL(/\/apps\/actual-remote-ledger$/);
   await expect(
     page.getByText("Actual remote ledger module loaded"),
@@ -383,10 +537,10 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   });
   await expectSpringboardTile(page, "actual-remote-ledger");
   await expect(page.getByText(/^Actual Remote Ledger$/)).toHaveCount(0);
-  await exitSpringboardEditMode(page);
+  await exitSpringboardEditMode(page, "actual-remote-ledger");
 
   const remoteRequestsAfterFirstOpen = remoteBundleRequests;
-  await viewLaunchButton(page, "actual-remote-ledger").click();
+  await launchSpringboardView(page, "actual-remote-ledger");
   await expect(page).toHaveURL(/\/apps\/actual-remote-ledger$/);
   await expect(
     page.getByText("Actual remote ledger module loaded"),
@@ -396,6 +550,31 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   );
   await screenshot(page, "05-remote-updated-reopened");
 
+  await openViewManager(page);
+
+  await launchSpringboardView(page, "notes");
+  await expect(page).toHaveURL(/\/notes$/);
+  await expect(page.getByTestId("simple-notes-view")).toBeVisible();
+  await screenshot(page, "06-notes-open");
+  await openViewManager(page);
+
+  await launchSpringboardView(page, "simple-calendar");
+  await expect(page).toHaveURL(/\/simple-calendar$/);
+  await expect(page.getByTestId("simple-calendar-view")).toBeVisible();
+  await screenshot(page, "07-simple-calendar-open");
+
+  await navigateSplitView(page);
+  await expect(page.getByTestId("view-layout-surface")).toBeVisible();
+  await expect(page.getByTestId("view-layout-pane-notes")).toBeVisible();
+  await expect(
+    page.getByTestId("view-layout-pane-simple-calendar"),
+  ).toBeVisible();
+  await expect(page.getByTestId("simple-notes-view")).toBeVisible();
+  await expect(page.getByTestId("simple-calendar-view")).toBeVisible();
+  await screenshot(page, "08-notes-calendar-split-view");
+
+  await page.getByTestId("view-layout-close").click();
+  await expect(page.getByTestId("view-layout-surface")).toHaveCount(0);
   await openViewManager(page);
 
   await deleteSpringboardView(page, "actual-remote-ledger");
@@ -411,6 +590,8 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   );
   await expect(springboardTile(page, "actual-local-ledger")).toHaveCount(0);
   await expectSpringboardTile(page, "local-notes");
+  await expectSpringboardTile(page, "notes");
+  await expectSpringboardTile(page, "simple-calendar");
   expect(registerCalls).toEqual([
     {
       id: "actual-local-ledger",

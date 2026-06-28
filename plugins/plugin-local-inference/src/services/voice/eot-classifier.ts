@@ -23,7 +23,7 @@
  *     fallback for a measured turn signal.
  *
  *   `Eliza1EotClassifier` — uses the already-loaded text model to compute
- *     P(`<|im_end|>` | partial transcript). Zero additional model weights.
+ *     P(`<end_of_turn>` | partial transcript). Zero additional model weights.
  *
  *   The GGUF-backed LiveKit detector lives in `eot-classifier-ggml.ts`.
  *
@@ -296,7 +296,7 @@ export type { Eliza1EotScoreResult, Eliza1EotScorerOptions };
 /**
  * Eliza-1 EOT classifier. Reuses the already-loaded text model (typically
  * the eliza-1 drafter — same model MTP keeps warm for speculative
- * decoding) to compute P(`<|im_end|>` | partial transcript). Optionally
+ * decoding) to compute P(`<end_of_turn>` | partial transcript). Optionally
  * loads a fine-tuned EOT LoRA adapter on top of the base weights — see
  * `packages/training/scripts/turn_detector/` for the training recipe.
  *
@@ -347,7 +347,7 @@ export const COMPOSITE_HEURISTIC_CONFIDENCE_CUTOFF = 0.6;
 
 /**
  * End-of-turn classifier that blends the fused semantic scorer
- * (P(`<|im_end|>`) over the loaded text model) with the heuristic syntactic
+ * (P(`<end_of_turn>`) over the loaded text model) with the heuristic syntactic
  * rules. The heuristic is NOT a fallback — it is a tuned co-signal: when it is
  * confident (clear punctuation / mid-clause conjunction / dangling preposition)
  * its verdict wins outright and the model pass is skipped; in the ambiguous

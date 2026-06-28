@@ -222,6 +222,13 @@ export type {
 	TextGenerationSlot,
 } from "./types";
 export {
+	getVisionContextAugmenter,
+	registerVisionContextAugmenter,
+	type VisionAugmentResult,
+	type VisionContextAugmenter,
+	type VisionFusedContext,
+} from "./vision/augmenter";
+export {
 	VisionEmbeddingCache,
 	type VisionEmbeddingCacheConfig,
 	type VisionEmbeddingEntry,

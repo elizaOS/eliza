@@ -88,6 +88,24 @@ describe("agent-orchestrator sandbox gating", () => {
     expect(actions[0]?.name).toBe("TASKS");
   });
 
+  it("registers completion and failure response evaluators under supported direct builds", {
+    timeout: SLOW,
+  }, async () => {
+    process.env.ELIZA_BUILD_VARIANT = "direct";
+    process.env.ELIZA_PLATFORM = "desktop";
+    _resetBuildVariantForTests();
+
+    const agentOrchestratorPlugin = createAgentOrchestratorPlugin();
+    expect(
+      (agentOrchestratorPlugin.responseHandlerEvaluators ?? []).map(
+        (evaluator) => evaluator.name,
+      ),
+    ).toEqual([
+      "agent-orchestrator.sub-agent-completion",
+      "agent-orchestrator.sub-agent-failure",
+    ]);
+  });
+
   it("registers only a TASKS unsupported stub on Android without a staged shell", {
     timeout: SLOW,
   }, async () => {

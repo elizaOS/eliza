@@ -143,8 +143,8 @@ def head_dim_of(text_cfg: "PretrainedConfig") -> int:
 
 
 def full_attention_layer_indices(text_cfg: "PretrainedConfig") -> list[int]:
-    """Indices of ``full_attention`` layers (Qwen3.5/3.6 hybrid models),
-    or ``range(num_hidden_layers)`` when ``layer_types`` is absent.
+    """Indices of ``full_attention`` layers on hybrid decoder configs, or
+    ``range(num_hidden_layers)`` when ``layer_types`` is absent.
     """
     layer_types = getattr(text_cfg, "layer_types", None)
     if layer_types:

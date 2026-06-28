@@ -4,18 +4,15 @@
 
 ## Eliza-1 Source
 
-Phase 8 is Eliza-1 first. The canonical model repository is `elizaos/eliza-1`; runtime bundles live under `bundles/<tier>/`. The Remote represents the HF-visible bundle tiers:
+Phase 8 is Eliza-1 first. The canonical model repository is `elizaos/eliza-1`; runtime bundles live under `bundles/<tier>/`. The Remote exposes the active runtime bundle tiers:
 
-- `0_6b`
-- `0_8b`
-- `1_7b`
 - `2b`
 - `4b`
 - `9b`
 - `27b`
 - `27b-256k`
 
-The local app catalog currently marks the active Eliza-1 line as `0_8b`, `2b`, `4b`, `9b`, `27b`, and `27b-256k`. The HF-visible `0_6b` and `1_7b` tiers remain represented as visible remote tiers until the local catalog activates them.
+The local app catalog marks the active Eliza-1 line as `2b`, `4b`, `9b`, `27b`, and `27b-256k`. Historical `0_6b`, `0_8b`, and `1_7b` bundle experiments are not exposed by this Remote.
 
 The default published runtime artifact is `Q4_K_M`. `Q6_K` and `Q8_0` are tracked as higher-precision variants when the repo or local catalog reports them.
 
@@ -97,7 +94,6 @@ The current route file does not expose direct local generation or direct embeddi
 
 ```sh
 bun run --cwd elizalaunch/remotes/local-model typecheck
-bun run --cwd elizalaunch/remotes/local-model build
 bun run --cwd elizalaunch/remotes/local-model smoke
 bun run --cwd elizalaunch/remotes/local-model smoke:phase8
 ```

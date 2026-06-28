@@ -66,6 +66,7 @@ mock.module("ai", () => ({
   streamText: mock(() => {
     throw new Error("streamText is outside this onboarding-chat test fixture");
   }),
+  wrapLanguageModel: mock(({ model }: { model: unknown }) => model),
 }));
 
 mock.module("../eliza-managed-launch", () => ({

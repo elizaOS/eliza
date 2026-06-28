@@ -391,7 +391,7 @@ jobs:
 
       - name: Stage renderer
         run: |
-          rm -rf packages/app-core/platforms/electrobun/renderer
+          node packages/scripts/rm-path-recursive.mjs packages/app-core/platforms/electrobun/renderer
           cp -r packages/app/dist packages/app-core/platforms/electrobun/renderer
 
       - name: Build native macOS effects

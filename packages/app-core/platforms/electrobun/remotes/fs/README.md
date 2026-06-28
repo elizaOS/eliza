@@ -61,7 +61,6 @@ Environment overrides:
 ## Commands
 
 ```sh
-bun run --cwd elizalaunch/remotes/fs build
 bun run --cwd elizalaunch/remotes/fs smoke
 bun run --cwd elizalaunch/remotes/fs smoke:phase5
 bun run --cwd elizalaunch/remotes/fs typecheck

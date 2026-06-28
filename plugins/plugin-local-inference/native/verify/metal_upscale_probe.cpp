@@ -40,7 +40,7 @@ static const char * usage() {
         "Usage: ./metal_upscale_probe [options]\n"
         "\n"
         "Builds a GGML graph containing one GGML_OP_UPSCALE and probes Metal support.\n"
-        "The default shape mirrors Qwen3-VL CLIP warmup: src=[48 48 1152 1], dst=[92 92 1152 1].\n"
+        "The default shape mirrors the Eliza-1 vision-projector CLIP warmup: src=[48 48 1152 1], dst=[92 92 1152 1].\n"
         "\n"
         "Options:\n"
         "  --mode nearest|bilinear|bilinear-aa|bicubic  Upscale mode; default bilinear-aa\n"

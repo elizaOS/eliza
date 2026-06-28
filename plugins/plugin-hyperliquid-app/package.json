@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-hyperliquid-app",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -51,8 +51,8 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
-    "clean": "rm -rf dist",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "vitest run --config vitest.config.ts",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",

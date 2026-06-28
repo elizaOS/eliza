@@ -8,14 +8,8 @@
  * with a colored prefix. Ctrl+C triggers ordered graceful shutdown.
  */
 
-import { spawn } from "node:child_process";
-import {
-  createWriteStream,
-  existsSync,
-  mkdirSync,
-  rmSync,
-  writeSync,
-} from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, writeSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
@@ -23,6 +17,12 @@ import process from "node:process";
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
 const LOG_DIR = path.join(REPO_ROOT, ".logs");
 const PGDATA_DIR = path.join(REPO_ROOT, ".eliza/.pgdata");
+const RM_RECURSIVE_SCRIPT = path.join(
+  REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 const USAGE = `Usage: bun scripts/cloud/mock-stack-up.mjs [flags]
 
@@ -266,6 +266,21 @@ function dumpTail(svcName) {
   process.stderr.write(`--- end ${svcName} ---\n`);
 }
 
+function rmRecursive(targetPath) {
+  const result = spawnSync(
+    process.execPath,
+    [RM_RECURSIVE_SCRIPT, targetPath],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+    },
+  );
+  if (result.status !== 0) {
+    const detail = result.stderr || result.stdout || `exit ${result.status}`;
+    throw new Error(`recursive cleanup failed for ${targetPath}: ${detail}`);
+  }
+}
+
 async function main() {
   const { flags, error } = parseFlags(process.argv.slice(2));
   if (error) {
@@ -282,7 +297,7 @@ async function main() {
     process.stdout.write(
       `${color("gray", "[stack]")} --reset: wiping ${PGDATA_DIR}\n`,
     );
-    rmSync(PGDATA_DIR, { recursive: true, force: true });
+    rmRecursive(PGDATA_DIR);
   }
   mkdirSync(PGDATA_DIR, { recursive: true });
 

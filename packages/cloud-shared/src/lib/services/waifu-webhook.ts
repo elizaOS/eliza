@@ -22,6 +22,7 @@
 import { createHmac } from "node:crypto";
 
 import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 
 const SIGNATURE_PREFIX = "sha256=";
@@ -191,7 +192,10 @@ export async function emitWaifuWebhook(
     eventId: params.payload.eventId ?? params.idempotencyKey,
   };
   const rawBody = JSON.stringify(body);
-  const fetchImpl = params.fetchImpl ?? fetch;
+  // Default to the IP-pinning safeFetch so the configured receiver host cannot
+  // rebind to a private/mesh address between validation and connect. Tests still
+  // inject a stub via params.fetchImpl.
+  const fetchImpl = params.fetchImpl ?? safeFetch;
 
   let url: URL;
   try {

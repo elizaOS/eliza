@@ -245,9 +245,17 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
-					const refusalCandidate = getNonEmptyString(
-						lastPlannerExplicitMessageToUser,
-					);
+					// Prefer the planner's EXPLICIT messageToUser refusal. When the
+					// model emitted only native free text (no explicit field, no REPLY
+					// call), fall back to that text ONLY if it survives the user-safe
+					// refusal gate — which rejects reasoning/leak/fabrication AND
+					// pre-tool deliberation — so an honest native-mode refusal reaches
+					// the user instead of the caller's generic apology, without ever
+					// surfacing a pre-tool thought (#9874 item 3; guarded by the "does
+					// not capture native text fallback" test).
+					const refusalCandidate =
+						userSafeRefusalCandidate(lastPlannerExplicitMessageToUser) ??
+						userSafeRefusalCandidate(plannerOutput.messageToUser);
 					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
 					if (
@@ -361,9 +369,11 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
-					const refusalCandidate = terminalMessageFromToolCalls(
-						plannerOutput.toolCalls,
-						plannerOutput.messageToUser,
+					const refusalCandidate = userSafeRefusalCandidate(
+						terminalMessageFromToolCalls(
+							plannerOutput.toolCalls,
+							plannerOutput.messageToUser,
+						),
 					);
 					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
@@ -908,6 +918,26 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
 	const text = getNonEmptyString(raw.text);
 
+	// Some provider/proxy combinations return planner/evaluator control JSON in
+	// the native text channel (e.g. `{"decision":"CONTINUE","thought":...}`)
+	// while tool calls are delivered out-of-band. That JSON is control data, not
+	// a user-facing message, and must never leak into the channel verbatim. We
+	// only treat the text this way when it actually looks like a planner/
+	// evaluator envelope — a legitimate non-envelope JSON object reply (e.g. a
+	// user asking for `{"foo":"bar"}`) carries no recognized planner field and
+	// must fall through to round-trip as `messageToUser`.
+	const controlText =
+		text && looksLikePlannerControlJson(text)
+			? parseJsonPlannerOutput(text)
+			: undefined;
+	// No native tool calls + the text channel is itself a control envelope:
+	// consume it fully through the JSON planner parser so any embedded
+	// REPLY/tool-call envelope still works and the raw JSON never reaches the
+	// user.
+	if (controlText && nativeToolCalls.length === 0) {
+		return controlText;
+	}
+
 	let textRecoveredCalls: PlannerToolCall[] = [];
 	const embeddedToolCalls = parseEmbeddedToolCalls(raw.text);
 	const embeddedObjectCount =
@@ -922,18 +952,47 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 
 	return {
 		toolCalls,
-		// When `raw.text` was itself tool-call JSON it is not a user-facing
-		// message — take the reply from a REPLY call rather than leaking the
-		// raw JSON blob into the channel.
+		// When `raw.text` was itself tool-call/control JSON it is not a
+		// user-facing message — take the reply from a REPLY call, or the
+		// control envelope's own `messageToUser`, rather than leaking the raw
+		// JSON blob into the channel.
 		messageToUser:
 			textRecoveredCalls.length > 0
 				? terminalMessageFromToolCalls(toolCalls)
-				: text,
+				: controlText
+					? controlText.messageToUser
+					: text,
+		thought: controlText?.thought,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
+			...(controlText ? { parsedText: controlText.raw } : {}),
 		} as Record<string, unknown>,
 	};
+}
+
+/**
+ * True when `text` is a planner/evaluator CONTROL envelope that must be
+ * consumed as data rather than surfaced to the user. This is narrow on
+ * purpose: a bare user-requested JSON object (e.g. `{"foo":"bar"}`) carries no
+ * recognized planner field, returns `false`, and is preserved as a visible
+ * reply. Recognized either by the strict evaluator-envelope shape or by a
+ * top-level planner field (`action` / `toolCalls` / `messageToUser` / `text` /
+ * `decision`).
+ */
+function looksLikePlannerControlJson(text: string): boolean {
+	if (looksLikeEvaluatorEnvelopeJson(text)) return true;
+	const parsed = parseJsonObject<RawPlannerOutput & { decision?: unknown }>(
+		text.trim(),
+	);
+	if (!parsed) return false;
+	return (
+		parsed.action !== undefined ||
+		parsed.toolCalls !== undefined ||
+		parsed.messageToUser !== undefined ||
+		parsed.text !== undefined ||
+		parsed.decision !== undefined
+	);
 }
 
 function parseJsonPlannerOutput(raw: string): {
@@ -2819,11 +2878,50 @@ export function looksLikeSpawnEnvelopeJson(text: string): boolean {
 	);
 }
 
+/**
+ * Detects a planner/evaluator CONTROL envelope returned in a user-visible
+ * channel — `{"decision":"CONTINUE"|"FINISH"|"NEXT_RECOMMENDED", …}` (or
+ * `route`) carrying at least one evaluator discriminator
+ * (`success`/`thought`/`nextTool`/`recommendedToolCallId`). Narrow by design:
+ * a bare `{"decision":"approve"}` from a real reply does not match.
+ */
+export function looksLikeEvaluatorEnvelopeJson(text: string): boolean {
+	let body = text.trim();
+	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (fence?.[1]) body = fence[1].trim();
+	if (!body.startsWith("{") || !body.endsWith("}")) return false;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		return false;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return false;
+	}
+	const record = parsed as Record<string, unknown>;
+	const decision = String(record.decision ?? record.route ?? "").toUpperCase();
+	if (!["FINISH", "CONTINUE", "NEXT_RECOMMENDED"].includes(decision)) {
+		return false;
+	}
+	return (
+		typeof record.success === "boolean" ||
+		typeof record.thought === "string" ||
+		typeof record.nextTool === "object" ||
+		typeof record.recommendedToolCallId === "string"
+	);
+}
+
 function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
-	if (looksLikeSpawnEnvelopeJson(text)) return true;
+	if (
+		looksLikeSpawnEnvelopeJson(text) ||
+		looksLikeEvaluatorEnvelopeJson(text)
+	) {
+		return true;
+	}
 	return [
 		/\bto=functions\.[A-Z0-9_]+\b/i,
 		/\bfunctions\.[A-Z0-9_]+\b/i,
@@ -2834,6 +2932,75 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		/\b(?:MESSAGE\s+action|action=(?:draft_reply|respond|send_draft|triage|list_inbox))\b/i,
 		/\{\s*"parameters"\s*:/i,
 	].some((pattern) => pattern.test(text));
+}
+
+// Detects planner free-text that NARRATES the model's own deliberation / tool
+// selection rather than addressing the user — a pre-tool "thought". Kept as a
+// belt-and-braces reject alongside the positive allowlist below.
+function looksLikePreToolThought(value: string): boolean {
+	const text = value.trim();
+	if (!text) return false;
+	return [
+		/\bthink(?:ing)?\s+through\b/i,
+		/\btool\s+choice\b/i,
+		/\b(?:after|before|once)\s+(?:thinking|considering|deciding|choosing|reviewing|figuring)\b/i,
+		/\blet me (?:think|consider|figure|decide|choose)\b/i,
+		/\bI(?:'ll| will| should| need to| am going to| plan to)\s+(?:think|consider|figure|decide|choose)\b/i,
+	].some((pattern) => pattern.test(text));
+}
+
+// Positive markers that a native free-text is a genuine inability/refusal — the
+// ONLY shape we surface from an ambiguous native `text` field. An allowlist (not
+// a denylist of known-bad phrasings) is what makes this safe: intent-narration
+// like "Let me check the database" or "I'm reviewing the history" carries no
+// inability marker, so it is never surfaced and a pre-tool thought can't reach
+// the user as a fake "refusal" (#9874 item 3).
+const REFUSAL_MARKERS = [
+	/\b(?:can(?:'|no)?t|cannot)\b/i,
+	/\b(?:un)?able to\b/i,
+	/\bdon'?t (?:have|see)\b/i,
+	/\bno (?:access|way|ability|matching|such|suitable)\b/i,
+	/\bnot (?:available|possible|supported|something I can|wired|connected|set up)\b/i,
+	/\bisn'?t (?:available|possible|supported|something I can)\b/i,
+	/\bthere(?:'s| is| are) (?:no|nothing)\b/i,
+];
+
+// In-flight / imminent action narration — the confabulation shape ("Let me look
+// that up", "I'm pulling up your messages", "please hold"). Rejected even when a
+// refusal marker co-occurs, because once this iteration ends no further tool
+// work happens, so any "I'm doing X now" is a false promise.
+const IN_FLIGHT_ACTION_CLAIM = [
+	/\blet me\b/i,
+	/\bI(?:'ll| will| am going to|'m going to|'m gonna| am gonna)\b/i,
+	/\bI'?m\s+(?:checking|fetching|searching|looking|pulling|reviewing|gathering|working|getting|grabbing|loading|digging|querying)\b/i,
+	/\b(?:one|just a)\s+(?:sec|second|moment|min|minute)\b/i,
+	/\bplease (?:hold|wait)\b/i,
+	/\b(?:be right back|brb|hang on)\b/i,
+];
+
+// Gate for surfacing native planner free-text as a forced-tool-exhaustion
+// refusal (#9874 item 3). Returns the sanitized message ONLY when it POSITIVELY
+// reads as an inability statement (REFUSAL_MARKERS) and carries no leaked
+// tool-call/reasoning markup (isUnsafeUserVisibleText), no deliberation
+// (looksLikePreToolThought), and no in-flight action claim (IN_FLIGHT). When the
+// text is ambiguous (e.g. a bare native "Let me check…" thought) it returns
+// undefined and the caller falls back to its generic apology — the safe
+// direction. Stricter than userSafeFinalMessage's candidate check, which runs on
+// text already known to be user-directed.
+function userSafeRefusalCandidate(
+	message: string | undefined,
+): string | undefined {
+	const candidate = sanitizePlannerMessage(message);
+	if (!candidate) return undefined;
+	if (!REFUSAL_MARKERS.some((pattern) => pattern.test(candidate))) {
+		return undefined;
+	}
+	if (isUnsafeUserVisibleText(candidate)) return undefined;
+	if (looksLikePreToolThought(candidate)) return undefined;
+	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+		return undefined;
+	}
+	return candidate;
 }
 
 function preferRecommendedToolCall(

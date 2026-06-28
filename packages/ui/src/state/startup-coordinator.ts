@@ -96,6 +96,7 @@ export type StartupEvent =
   // Backend poll results
   | { type: "BACKEND_REACHED"; firstRunComplete: boolean }
   | { type: "BACKEND_AUTH_REQUIRED" }
+  | { type: "BACKEND_UNAVAILABLE_FIRST_RUN" }
   | { type: "BACKEND_NOT_FOUND" }
   | { type: "BACKEND_TIMEOUT" }
   | { type: "BACKEND_POLL_RETRY" }
@@ -177,6 +178,12 @@ export function startupReducer(
           };
         case "BACKEND_AUTH_REQUIRED":
           return { phase: "pairing-required" };
+        case "BACKEND_UNAVAILABLE_FIRST_RUN":
+          return {
+            phase: "first-run-required",
+            serverReachable: false,
+            target: state.target,
+          };
         case "BACKEND_NOT_FOUND":
           return {
             phase: "error",
@@ -285,6 +292,8 @@ export function startupReducer(
             };
           }
           return { phase: "first-run-required", serverReachable: true };
+        case "BACKEND_UNAVAILABLE_FIRST_RUN":
+          return { phase: "first-run-required", serverReachable: false };
         case "AGENT_RUNNING":
           return { phase: "hydrating" };
         case "RETRY":

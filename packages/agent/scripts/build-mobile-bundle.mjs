@@ -39,7 +39,6 @@ import {
   mkdir,
   readdir,
   rename,
-  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -54,6 +53,23 @@ const agentRoot = path.resolve(here, "..");
 // the source of every "could not locate @electric-sql/pglite/dist" or
 // "agent-bundle.js not found" error in CI.)
 const repoRoot = path.resolve(agentRoot, "..", "..");
+const rmRecursiveScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `[build-mobile] FATAL: failed to remove generated mobile output ${targetPath} (exit ${result.status})`,
+    );
+  }
+}
 
 // Target selection. `--target=android` (default) preserves existing behavior;
 // `--target=ios` swaps in iOS-specific stubs and sets ELIZA_PLATFORM=ios at
@@ -86,7 +102,7 @@ console.log("[build-mobile] target:", TARGET);
 console.log("[build-mobile] agent root:", agentRoot);
 console.log("[build-mobile] output dir:", outDir);
 
-await rm(outDir, { recursive: true, force: true });
+rmRecursive(outDir);
 await mkdir(outDir, { recursive: true });
 
 const generateCssStringsScript = path.join(
@@ -1362,7 +1378,10 @@ const localInferenceDedupePlugin = {
       { filter: /^@elizaos\/plugin-local-inference\// },
       (args) => {
         // Leave the explicitly-stubbed subpath to the stub plugin.
-        if (args.path === "@elizaos/plugin-local-inference/runtime/embedding-presets")
+        if (
+          args.path ===
+          "@elizaos/plugin-local-inference/runtime/embedding-presets"
+        )
           return undefined;
         let sub = args.path.slice("@elizaos/plugin-local-inference/".length);
         if (sub.startsWith("src/")) sub = sub.slice(4);

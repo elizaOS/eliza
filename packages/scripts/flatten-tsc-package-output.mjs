@@ -1,7 +1,11 @@
 #!/usr/bin/env node
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {
@@ -32,6 +36,12 @@ const packageDir = path.resolve(root, packageDirArg);
 const relPackageDir = path.relative(root, packageDir).split(path.sep).join("/");
 const distDir = path.join(packageDir, "dist");
 const nestedSourceDir = path.join(distDir, ...relPackageDir.split("/"), "src");
+const cleanupHelper = path.join(
+  root,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 async function pathExists(filePath) {
   try {
@@ -67,6 +77,12 @@ async function retryTransientFsOperation(operation) {
   throw lastError;
 }
 
+async function removePathRecursive(targetPath) {
+  await execFileAsync(process.execPath, [cleanupHelper, targetPath], {
+    cwd: root,
+  });
+}
+
 async function hasFlatEntryPoint() {
   return (
     (await pathExists(path.join(distDir, "index.js"))) ||
@@ -98,20 +114,14 @@ async function flattenNestedSource() {
       throw error;
     }
 
-    await retryTransientFsOperation(() =>
-      fs.rm(targetEntry, { recursive: true, force: true }),
-    );
+    await removePathRecursive(targetEntry);
     await retryTransientFsOperation(() => fs.rename(stagingEntry, targetEntry));
   }
 }
 
 async function removeNestedRoots() {
-  await retryTransientFsOperation(() =>
-    fs.rm(path.join(distDir, "packages"), { recursive: true, force: true }),
-  );
-  await retryTransientFsOperation(() =>
-    fs.rm(path.join(distDir, "plugins"), { recursive: true, force: true }),
-  );
+  await removePathRecursive(path.join(distDir, "packages"));
+  await removePathRecursive(path.join(distDir, "plugins"));
 }
 
 let flattened = false;

@@ -1,6 +1,11 @@
 import { type Agent, logger, type UUID } from "@elizaos/core";
 import { count, eq } from "drizzle-orm";
-import { documentsFromDb, messageExamplesFromDb } from "../agent-mapping";
+import {
+  documentsFromDb,
+  documentsToDb,
+  messageExamplesFromDb,
+  messageExamplesToDb,
+} from "../agent-mapping";
 import { agentTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
@@ -70,6 +75,9 @@ export class AgentStore implements Store {
   async create(agent: Agent): Promise<boolean> {
     return this.ctx.withRetry(async () => {
       try {
+        if (!agent.name) {
+          throw new Error("Cannot create agent without a name");
+        }
         if (agent.id) {
           const existing = await this.db
             .select({ id: agentTable.id })
@@ -86,12 +94,16 @@ export class AgentStore implements Store {
           }
         }
 
+        const values: typeof agentTable.$inferInsert = {
+          ...agent,
+          name: agent.name,
+          knowledge: documentsToDb(agent.knowledge),
+          messageExamples: messageExamplesToDb(agent.messageExamples),
+          createdAt: new Date(toEpochMillis(agent.createdAt)),
+          updatedAt: new Date(toEpochMillis(agent.updatedAt)),
+        };
         await this.db.transaction(async (tx) => {
-          await tx.insert(agentTable).values({
-            ...agent,
-            createdAt: new Date(toEpochMillis(agent.createdAt)),
-            updatedAt: new Date(toEpochMillis(agent.updatedAt)),
-          });
+          await tx.insert(agentTable).values(values);
         });
 
         return true;
@@ -249,24 +261,21 @@ export class AgentStore implements Store {
     const currentSettings =
       currentAgent.length > 0 && currentAgent[0].settings ? currentAgent[0].settings : {};
 
+    const isRecord = (value: unknown): value is Record<string, unknown> =>
+      typeof value === "object" && value !== null && !Array.isArray(value);
+
     const deepMerge = (
-      target: Record<string, unknown> | unknown,
+      target: unknown,
       source: Record<string, unknown>
     ): Record<string, unknown> | undefined => {
-      if (source === null) return undefined;
-      if (Array.isArray(source) || typeof source !== "object") return source;
-
-      const output =
-        typeof target === "object" && target !== null && !Array.isArray(target)
-          ? { ...target }
-          : {};
+      const output: Record<string, unknown> = isRecord(target) ? { ...target } : {};
 
       for (const key of Object.keys(source)) {
         const sourceValue = source[key];
         if (sourceValue === null) {
           delete output[key];
-        } else if (typeof sourceValue === "object" && !Array.isArray(sourceValue)) {
-          const nested = deepMerge(output[key], sourceValue as Record<string, unknown>);
+        } else if (isRecord(sourceValue)) {
+          const nested = deepMerge(output[key], sourceValue);
           if (nested === undefined) delete output[key];
           else output[key] = nested;
         } else {

@@ -336,9 +336,14 @@ export class DocumentService extends Service {
 				visible.push(memory);
 			}
 		}
-		return accessContext
-			? filterByAccessContext(visible, accessContext, this.runtime.agentId)
-			: visible;
+		// When the caller threads in an AccessContext (who is asking, in which
+		// world, with what role), apply the scope-read primitive as a second,
+		// strictly-subtractive gate. A memory must clear BOTH this and
+		// `canAccessDocument` above to be returned, so a requester can never widen
+		// their view by routing through this path. With no AccessContext the
+		// behaviour is unchanged (single-tenant byte-for-byte).
+		if (!accessContext) return visible;
+		return filterByAccessContext(visible, accessContext, this.runtime.agentId);
 	}
 
 	async getDocumentById(
@@ -927,7 +932,12 @@ export class DocumentService extends Service {
 		// never reply latency. `embedRecallQuery` caches + dedupes per turn.
 		const embedding = await embedRecallQuery(this.runtime, queryText);
 		if (!embedding) {
-			return this._keywordSearch(queryText, filterScope, message);
+			return this._keywordSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+			);
 		}
 
 		const fragments = await this.runtime.searchMemories({

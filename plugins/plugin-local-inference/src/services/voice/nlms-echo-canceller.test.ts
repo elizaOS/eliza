@@ -175,4 +175,70 @@ describe("NlmsEchoCanceller", () => {
 		// weights + reference history are zero → ŷ[0]=0 → out[0]==in[0] exactly.
 		expect(out[0]).toBe(echo[0]);
 	});
+
+	describe("opt-in residual suppressor (#9583/#9649)", () => {
+		it("further attenuates the residual on echo-only frames when enabled", () => {
+			const far = signal(SR, 7);
+			const near = echoOf(far); // user silent — echo only
+			const base = runBlocks(
+				new NlmsEchoCanceller({ filterTaps: 256, mu: 0.5 }),
+				near,
+				far,
+			);
+			const sup = runBlocks(
+				new NlmsEchoCanceller({
+					filterTaps: 256,
+					mu: 0.5,
+					residualSuppression: true,
+				}),
+				near,
+				far,
+			);
+			const half = near.length >> 1; // measure after convergence
+			// The suppressor only ever scales the residual down, so on echo-only
+			// frames its output power must be strictly below the linear filter's.
+			expect(power(sup, half)).toBeLessThan(power(base, half));
+		});
+
+		it("preserves the user's voice during double-talk (only touches echo-only sub-frames)", () => {
+			const far = signal(SR, 3);
+			const user = signal(SR, 99); // continuous local talker
+			const echo = echoOf(far);
+			const near = new Float32Array(far.length);
+			for (let i = 0; i < near.length; i++) near[i] = user[i] + echo[i];
+			const cfg = { filterTaps: 256, mu: 0.5, dtdRatio: 1.5 } as const;
+			const base = runBlocks(new NlmsEchoCanceller(cfg), near, far);
+			const sup = runBlocks(
+				new NlmsEchoCanceller({ ...cfg, residualSuppression: { gain: 0.1 } }),
+				near,
+				far,
+			);
+			// With the user active, near-end power dominates far-end power, so the
+			// gate (pFar > pNear) stays shut and the user's voice is left intact.
+			// The suppressor only ever engages on the rare echo-only sub-frame (a
+			// momentary user pause while the agent plays), so total output power is
+			// preserved to well within 0.1% — never the aggressive `gain: 0.1` crush.
+			const half = near.length >> 1;
+			const pBase = power(base, half);
+			const pSup = power(sup, half);
+			expect(Math.abs(pSup - pBase) / pBase).toBeLessThan(0.001);
+		});
+
+		it("is off by default (no residualSuppression option ⇒ no extra attenuation)", () => {
+			const far = signal(SR, 5);
+			const near = echoOf(far);
+			const a = runBlocks(
+				new NlmsEchoCanceller({ filterTaps: 128 }),
+				near,
+				far,
+			);
+			const b = runBlocks(
+				new NlmsEchoCanceller({ filterTaps: 128, residualSuppression: false }),
+				near,
+				far,
+			);
+			const half = near.length >> 1;
+			expect(power(a, half)).toBeCloseTo(power(b, half), 12);
+		});
+	});
 });

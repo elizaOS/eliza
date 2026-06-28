@@ -1,3 +1,4 @@
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
 import * as React from "react";
 import {
   type DynamicViewManifest,
@@ -23,41 +24,92 @@ import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { recordRecentViewId } from "../../view-recents";
 import { Springboard } from "./Springboard";
-import {
-  canonicalSpringboardId,
-  compareSpringboardEntries,
-  dedupeSpringboardEntries,
-  isCuratedSpringboardEntryVisible,
-  normalizeSpringboardEntry,
-  springboardKindForCanonicalId,
-  springboardPageGroups,
-} from "./springboard-curation";
 
 const HIDDEN_SPRINGBOARD_VIEW_IDS = new Set([
   "chat",
   "views",
   "apps",
   "views-manager",
+  "character",
   "character-select",
   "voice",
+  "background",
 ]);
 
-const HIDDEN_SPRINGBOARD_PATHS = new Set(["/chat", "/views", "/apps"]);
+const HIDDEN_SPRINGBOARD_PATHS = new Set([
+  "/chat",
+  "/views",
+  "/apps",
+  "/background",
+]);
+
+const SPRINGBOARD_SYSTEM_ENTRY_IDS = new Set([
+  "phone",
+  "messages",
+  "contacts",
+  "settings",
+  "tasks",
+  "automations",
+  "triggers",
+  "browser",
+  "inventory",
+  "documents",
+  "files",
+  "plugins",
+  "skills",
+  "trajectories",
+  "transcripts",
+  "relationships",
+  "memories",
+  "runtime",
+  "database",
+  "logs",
+  "stream",
+  "desktop",
+]);
 
 function isVisibleSpringboardView(
   view: ViewRegistryEntry,
+  enabledKinds: EnabledViewKinds,
   activeModality: ViewModality,
 ): boolean {
   if (HIDDEN_SPRINGBOARD_VIEW_IDS.has(view.id)) return false;
   if (view.path && HIDDEN_SPRINGBOARD_PATHS.has(view.path)) return false;
   if ((view.viewType ?? "gui") !== activeModality) return false;
+  if (!isViewVisible(view, enabledKinds)) return false;
   if (
     view.visibleInManager === false &&
-    springboardKindForCanonicalId(canonicalSpringboardId(view)) === "preview"
+    !SPRINGBOARD_SYSTEM_ENTRY_IDS.has(view.id)
   ) {
     return false;
   }
   return true;
+}
+
+function compareEntryLabels(left: { label: string }, right: { label: string }) {
+  return left.label.localeCompare(right.label, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function compareSpringboardEntries(left: ViewEntry, right: ViewEntry): number {
+  const leftOrder = left.order ?? (left.kind === "view" ? 500 : 1000);
+  const rightOrder = right.order ?? (right.kind === "view" ? 500 : 1000);
+  if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+  return compareEntryLabels(left, right);
+}
+
+function dedupeEntries(entries: ViewEntry[]): ViewEntry[] {
+  const seen = new Set<string>();
+  const out: ViewEntry[] = [];
+  for (const entry of entries) {
+    const key = `${entry.modality}:${entry.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(entry);
+  }
+  return out;
 }
 
 interface DynamicViewFormState {
@@ -121,9 +173,12 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
   const loadedEntries = React.useMemo(
     () =>
       views
-        .filter((view) => isVisibleSpringboardView(view, activeModality))
-        .map(viewToEntry),
-    [activeModality, views],
+        .filter((view) =>
+          isVisibleSpringboardView(view, enabledKinds, activeModality),
+        )
+        .map(viewToEntry)
+        .sort(compareSpringboardEntries),
+    [activeModality, enabledKinds, views],
   );
 
   const availableEntries = React.useMemo(
@@ -131,30 +186,16 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
       catalogEntries
         .filter((entry) => entry.state !== "loaded")
         .filter((entry) => entry.modality === activeModality)
-        .map(normalizeSpringboardEntry)
-        .filter((entry) =>
-          isCuratedSpringboardEntryVisible(entry, enabledKinds),
-        )
         .sort(compareSpringboardEntries),
-    [activeModality, catalogEntries, enabledKinds],
+    [activeModality, catalogEntries],
   );
 
   const entries = React.useMemo(
     () =>
-      dedupeSpringboardEntries([
-        ...loadedEntries
-          .map(normalizeSpringboardEntry)
-          .filter((entry) =>
-            isCuratedSpringboardEntryVisible(entry, enabledKinds),
-          ),
-        ...availableEntries,
-      ]).sort(compareSpringboardEntries),
-    [availableEntries, enabledKinds, loadedEntries],
-  );
-
-  const pageGroups = React.useMemo(
-    () => springboardPageGroups(entries),
-    [entries],
+      dedupeEntries([...loadedEntries, ...availableEntries]).sort(
+        compareSpringboardEntries,
+      ),
+    [availableEntries, loadedEntries],
   );
 
   const entryById = React.useMemo(
@@ -305,7 +346,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
             <label className="grid gap-1 text-xs font-medium">
               Dynamic view ID
               <input
-                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent"
+                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none"
                 value={dynamicViewForm.id}
                 onChange={(event) =>
                   updateDynamicField("id", event.currentTarget.value)
@@ -315,7 +356,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
             <label className="grid gap-1 text-xs font-medium">
               Dynamic view title
               <input
-                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent"
+                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none"
                 value={dynamicViewForm.title}
                 onChange={(event) =>
                   updateDynamicField("title", event.currentTarget.value)
@@ -325,7 +366,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
             <label className="grid gap-1 text-xs font-medium">
               Dynamic view entrypoint
               <input
-                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent"
+                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none"
                 value={dynamicViewForm.entrypoint}
                 onChange={(event) =>
                   updateDynamicField("entrypoint", event.currentTarget.value)
@@ -335,7 +376,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
             <label className="grid gap-1 text-xs font-medium">
               Dynamic view description
               <input
-                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent"
+                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none"
                 value={dynamicViewForm.description}
                 onChange={(event) =>
                   updateDynamicField("description", event.currentTarget.value)
@@ -381,7 +422,6 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
         page={springboardPage}
         onPageChange={setSpringboardPage}
         onPageCountChange={setSpringboardPageCount}
-        pageGroups={pageGroups}
         editing={springboardEditing}
         onEditingChange={setSpringboardEditing}
         showPageDots={false}

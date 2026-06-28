@@ -14,7 +14,6 @@
 
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { z } from "zod";
 import { dbRead, dbWrite } from "@/db/client";
 import { domainPurchaseIdempotency } from "@/db/schemas/domain-purchase-idempotency";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -39,18 +38,7 @@ import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-const BuySchema = z.object({
-  domain: z
-    .string()
-    .min(4)
-    .max(253)
-    .regex(
-      /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i,
-      "Invalid domain format",
-    )
-    .transform((d) => d.toLowerCase().trim()),
-});
+import { domainBodySchema as BuySchema } from "../schemas";
 
 /**
  * Idempotency claim lifetime. A claim that never reaches `completed` within this

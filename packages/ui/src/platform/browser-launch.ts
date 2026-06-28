@@ -4,6 +4,7 @@ import {
   createPersistedActiveServer,
   savePersistedActiveServer,
 } from "../state/persistence";
+import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 
 const TRUSTED_CLOUD_LAUNCH_HOSTS = new Set([
   "elizacloud.ai",
@@ -80,6 +81,7 @@ function normalizeLaunchApiBase(
         (options.allowPublicHttps ||
           isAllowedHttpHost(parsed.hostname) ||
           isConfiguredCloudHost(parsed.hostname) ||
+          isDedicatedCloudAgentBase(parsed.toString()) ||
           isCurrentHost(parsed.hostname))) ||
       (parsed.protocol === "http:" && isAllowedHttpHost(parsed.hostname))
     ) {

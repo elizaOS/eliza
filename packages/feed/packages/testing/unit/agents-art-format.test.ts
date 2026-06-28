@@ -3,7 +3,10 @@ import {
   groupTrajectories,
   validateARTCompatibility,
 } from "../../agents/src/plugins/plugin-trajectory-logger/src/art-format";
-import type { Trajectory } from "../../agents/src/plugins/plugin-trajectory-logger/src/types";
+import type {
+  Trajectory,
+  TrajectoryGroup,
+} from "../../agents/src/plugins/plugin-trajectory-logger/src/types";
 
 /**
  * Trajectory → ART (RL training) conversion gate. validateARTCompatibility must
@@ -66,7 +69,7 @@ describe("groupTrajectories", () => {
       traj({ scenarioId: "s1" }),
     ]);
     expect(groups).toHaveLength(2);
-    const s1 = groups.find((g) => g.scenarioId === "s1");
+    const s1 = groups.find((g: TrajectoryGroup) => g.scenarioId === "s1");
     expect(s1?.trajectories).toHaveLength(2);
   });
 });

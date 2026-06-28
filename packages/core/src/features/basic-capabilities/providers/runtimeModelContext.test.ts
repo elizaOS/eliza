@@ -107,6 +107,34 @@ describe("runtimeModelContextProvider", () => {
 		}
 	});
 
+	it("omits an unresolvable slot instead of leaking its raw name", async () => {
+		// On a non-codex backend the resolver returns the raw slot name
+		// ("RESPONSE_HANDLER") for a slot it can't map. Resolve from the
+		// configured *_MODEL keys (LARGE/ACTION_PLANNER here) and OMIT a slot that
+		// stays unresolvable, rather than rendering its raw name to the user.
+		const runtime = makeRuntime(
+			{
+				ANTHROPIC_LARGE_MODEL: "claude-opus-4-8",
+				ANTHROPIC_ACTION_PLANNER_MODEL: "claude-opus-4-8",
+			},
+			{
+				resolveProviderModelString: (modelType: string) => modelType,
+				models: new Map([
+					[ModelType.RESPONSE_HANDLER, [{ provider: "anthropic" }]],
+					[ModelType.ACTION_PLANNER, [{ provider: "anthropic" }]],
+				]),
+			} as unknown as Partial<IAgentRuntime>,
+		);
+		const result = await runtimeModelContextProvider.get(
+			runtime,
+			makeMessage("what model are you running on?"),
+			{} as never,
+		);
+		expect(result.text).not.toContain("RESPONSE_HANDLER");
+		expect(result.text).toContain("claude-opus-4-8");
+		expect(result.data?.responseHandlerModel).toBeUndefined();
+	});
+
 	it("stays silent for unrelated live-data questions", async () => {
 		const runtime = makeRuntime({
 			OPENAI_LARGE_MODEL: "gpt-oss-120b",

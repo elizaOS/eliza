@@ -73,6 +73,7 @@ export class AppsRepository {
       return undefined;
     }
 
+    /* global-scope: by-id app lookup; route handlers authorize org ownership before use. */
     return await dbRead.query.apps.findFirst({
       where: eq(apps.id, id),
     });
@@ -263,6 +264,7 @@ export class AppsRepository {
     ipAddress?: string | null;
     userAgent?: string | null;
   }): Promise<"created" | "updated"> {
+    /* global-scope: counter/last-seen writes keyed by rows already resolved from (app_id, user_id). */
     const existingConnection = await this.findAppUser(input.appId, input.userId);
 
     if (existingConnection) {
@@ -405,6 +407,7 @@ export class AppsRepository {
    * Updates an existing app.
    */
   async update(id: string, data: Partial<NewApp>): Promise<App | undefined> {
+    /* global-scope: by-id mutation; route handlers authorize org ownership before calling. */
     const [updated] = await dbWrite
       .update(apps)
       .set({
@@ -425,6 +428,7 @@ export class AppsRepository {
    * Deletes an app by ID.
    */
   async delete(id: string): Promise<void> {
+    /* global-scope: by-id deletion; route handlers authorize org ownership before calling. */
     // Read the row first so we know the slug + api_key_id keys to evict.
     // Bypass the cache so a stale cached row does not point at the wrong slug.
     const existing = await dbRead.query.apps.findFirst({ where: eq(apps.id, id) });
@@ -440,6 +444,7 @@ export class AppsRepository {
    * Atomically increments app usage statistics.
    */
   async incrementUsage(id: string, creditsUsed: string = "0.00"): Promise<void> {
+    /* global-scope: atomic usage counter keyed by an app id the caller already owns. */
     await dbWrite
       .update(apps)
       .set({
@@ -455,6 +460,7 @@ export class AppsRepository {
    * Creates a new app user and increments the app's total user count.
    */
   async createAppUser(data: NewAppUser): Promise<AppUser> {
+    /* global-scope: total_users counter keyed by data.app_id supplied by the owning caller. */
     const [appUser] = await dbWrite.insert(appUsers).values(data).returning();
 
     // Increment the app's total_users count

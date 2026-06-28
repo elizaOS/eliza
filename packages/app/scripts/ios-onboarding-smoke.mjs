@@ -11,6 +11,12 @@ import { fileURLToPath } from "node:url";
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
 const resultDir = path.join(appDir, "test-results", "ios-onboarding-to-home");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const DEFAULT_API_BASE = "http://127.0.0.1:31337";
@@ -34,6 +40,30 @@ function run(command, args, options = {}) {
     );
   }
   return result.stdout?.trim() ?? "";
+}
+
+function removePathRecursive(targetPath) {
+  const result = spawnSync(
+    "node",
+    [cleanupHelperScript, path.relative(repoRoot, targetPath)],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      [
+        `failed to remove ${targetPath}`,
+        result.stdout.trim(),
+        result.stderr.trim(),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
 }
 
 function tryRun(command, args, options = {}) {
@@ -319,7 +349,7 @@ async function main() {
   const { appId, urlScheme } = readAppIdentity();
   const apiBase = val("--api-base", DEFAULT_API_BASE);
   const udid = ensureSimulatorBooted();
-  fs.rmSync(resultDir, { recursive: true, force: true });
+  removePathRecursive(resultDir);
   fs.mkdirSync(resultDir, { recursive: true });
 
   installLatestApp(udid, appId);
@@ -344,12 +374,14 @@ async function main() {
     log(`launching ${appId} on ${udid}`);
     simctl(["launch", udid, appId]);
     await sleep(1500);
-    tryRun("xcrun", [
-      "simctl",
-      "openurl",
-      udid,
-      `${urlScheme}://first-run/runtime/remote`,
-    ]);
+    if (has("--use-deeplink")) {
+      tryRun("xcrun", [
+        "simctl",
+        "openurl",
+        udid,
+        `${urlScheme}://first-run/runtime/remote`,
+      ]);
+    }
     takeScreenshot(udid, "fresh-onboarding");
     const result = await pollResult(udid, appId);
     const screenshot = takeScreenshot(udid, "home-landing");

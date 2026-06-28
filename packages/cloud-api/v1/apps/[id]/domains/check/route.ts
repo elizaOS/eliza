@@ -6,7 +6,6 @@
  */
 
 import { Hono } from "hono";
-import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appsService } from "@/lib/services/apps";
@@ -14,18 +13,7 @@ import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar"
 import { computeDomainPrice } from "@/lib/services/domain-pricing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-const CheckSchema = z.object({
-  domain: z
-    .string()
-    .min(4)
-    .max(253)
-    .regex(
-      /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i,
-      "Invalid domain format",
-    )
-    .transform((d) => d.toLowerCase().trim()),
-});
+import { domainBodySchema as CheckSchema } from "../schemas";
 
 const app = new Hono<AppEnv>();
 

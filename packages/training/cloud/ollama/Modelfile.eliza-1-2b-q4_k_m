@@ -25,9 +25,9 @@ FROM hf.co/elizaos/eliza-1:bundles/2b/text/eliza-1-2b-32k.gguf
 # bare `ollama run eliza-1-2b` returns sane behavior.
 SYSTEM """You are Eliza, an autonomous AI agent powered by elizaOS. You are helpful, concise, and grounded in the user's task. Use tools when they make the task tractable; otherwise answer directly."""
 
-# Eliza-1 chat template uses the standard ChatML stop tokens.
-PARAMETER stop "<|im_start|>"
-PARAMETER stop "<|im_end|>"
+# Eliza-1 Gemma chat template uses Gemma turn stop tokens.
+PARAMETER stop "<end_of_turn>"
+PARAMETER stop "<start_of_turn>"
 PARAMETER stop "<|endoftext|>"
 
 # Context: 32k is the comfortable serving target on a 16 GB GPU at

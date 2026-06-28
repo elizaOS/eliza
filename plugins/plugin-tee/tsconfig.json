@@ -18,7 +18,6 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": false,
-    "noImplicitAny": false,
     "noUncheckedIndexedAccess": false,
     "types": ["node"]
   },

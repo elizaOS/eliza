@@ -20,6 +20,10 @@ describe("shouldWarmupVoice", () => {
     expect(shouldWarmupVoice({ ...base, skipEnv: true })).toBe(false);
   });
 
+  it("skips for explicit cloud-only desktop runtimes", () => {
+    expect(shouldWarmupVoice({ ...base, cloudOnly: true })).toBe(false);
+  });
+
   it("skips on a dev hot-reload respawn (cold boot still warms)", () => {
     expect(shouldWarmupVoice({ ...base, hotReload: true })).toBe(false);
     expect(shouldWarmupVoice({ ...base, hotReload: false })).toBe(true);

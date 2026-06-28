@@ -62,8 +62,9 @@ interface ResolvedLlm {
  * Real-LLM mode accepts either OPENAI_API_KEY or CEREBRAS_API_KEY. When the
  * Cerebras key is present (and OPENAI_API_KEY is not), the OpenAI plugin is
  * auto-configured to point at Cerebras's OpenAI-compatible endpoint with a
- * default Cerebras model — Cerebras serves Llama / Qwen / GPT-OSS at very
- * high tokens/sec, so it's well-suited to live-agent benchmarking.
+ * default Cerebras model. Cerebras serves several OpenAI-compatible model
+ * families at very high tokens/sec, so it's well-suited to live-agent
+ * benchmarking.
  */
 async function resolveLlmPlugin(useRealLlm: boolean): Promise<ResolvedLlm> {
   if (!useRealLlm) {

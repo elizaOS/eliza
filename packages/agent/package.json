@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -28,7 +28,7 @@
     "eliza-autonomous": "./src/bin.ts"
   },
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "start": "bun run src/bin.ts",
     "dev": "bun --hot src/bin.ts",
     "prepublishOnly": "bun run build:dist",
@@ -36,9 +36,9 @@
     "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
     "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
-    "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
+    "build:docker-dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "build:dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
+    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
     "test:sandbox-live": "bun run scripts/live-sandbox-smoke.ts",
     "lint": "bunx @biomejs/biome check ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/config ./src/contracts ./src/diagnostics ./src/hooks ./src/index.ts ./src/providers ./src/runtime ./src/security ./src/services ./src/shared ./src/triggers ./src/utils ./src/version-resolver.ts",
     "lint:check": "bun run lint",
@@ -302,6 +302,7 @@
     "@elizaos/plugin-remote-manifest": "workspace:*",
     "@elizaos/security": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
+    "@elizaos/plugin-simple-views": "workspace:*",
     "@elizaos/plugin-worker-runtime": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",

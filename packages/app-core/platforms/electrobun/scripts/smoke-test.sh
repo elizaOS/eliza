@@ -74,6 +74,12 @@ if ! has_electrobun_workspace_root "$REPO_ROOT"; then
   echo "ERROR: ELIZA_ELECTROBUN_REPO_ROOT is not an Electrobun workspace root: $REPO_ROOT" >&2
   exit 1
 fi
+RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.mjs"
+
+remove_path_recursive() {
+  node "$RM_PATH_RECURSIVE" "$@"
+}
+
 APP_DIR="${ELIZA_ELECTROBUN_APP_DIR:-}"
 if [[ -z "$APP_DIR" ]]; then
   if [[ -f "$REPO_ROOT/packages/app/package.json" ]]; then
@@ -163,7 +169,7 @@ cleanup() {
     fi
   done
   if [[ -n "$LAUNCH_APP_BUNDLE" && "$LAUNCH_APP_BUNDLE" == /tmp/* && -d "$LAUNCH_APP_BUNDLE" ]]; then
-    rm -rf "$LAUNCH_APP_BUNDLE"
+    remove_path_recursive "$LAUNCH_APP_BUNDLE"
   fi
   if [[ -n "$MOUNT_POINT" && -d "$MOUNT_POINT" ]]; then
     hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
@@ -619,7 +625,7 @@ EOF
       process.stdout.write("1");
     ' "$probe_exec"
   )"
-  rm -rf "$probe_root"
+  remove_path_recursive "$probe_root"
 
   [[ "$MAC_DIRECT_EXEC_PROBE_RC" == "0" ]]
 }

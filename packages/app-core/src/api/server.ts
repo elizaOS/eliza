@@ -143,6 +143,7 @@ import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleFirstRunTtsRoute } from "./first-run-tts-route";
+import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import {
   isPerfInstrumentEnabled,
@@ -685,6 +686,10 @@ async function handleCompatRouteInner(
   // Runtime mode introspection — UI shells hit this on boot for the
   // useRuntimeMode() hook.
   if (await handleRuntimeModeRoute(req, res, state)) return true;
+
+  // First-paint UI language suggestion. Public/advisory only; the client
+  // falls back to English when it is absent, but serving it avoids noisy 404s.
+  if (handleI18nLocaleRoute(req, res)) return true;
 
   // Eliza Cloud thin-client proxy (compat agents, jobs, OAuth, …). Keep this
   // before the local /api/cloud handler so /api/cloud/v1/* forwards to Cloud.

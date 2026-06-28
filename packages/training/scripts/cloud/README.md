@@ -10,10 +10,10 @@ This wraps existing primitives — it does not duplicate them:
 
 | Provider | What it uses |
 |---|---|
-| `vast` | the `vastai` CLI (`pip install --user vastai`), `VAST_API_KEY` — implemented here for `build` / `kernel-verify` / `bench` |
+| `vast` | [`dispatch-vast.sh`](dispatch-vast.sh), the `vastai` CLI (`pip install --user vastai`), `VAST_API_KEY` |
 | `--task train --provider vast` | delegates to [`../train_vast.sh provision-and-train`](../CLOUD_VAST.md) (its GPU mapping, checkpoint pull, teardown) |
-| `--task train --provider nebius` | delegates to [`../train_nebius.sh full`](../train_nebius.sh) — H200 (`gpu-h200x1` for 0.6b/1.7b/9b, `gpu-h200x2` + FSDP for 27b); requires `NEBIUS_PROJECT_ID`. Emergency fallback; Vast is canonical. |
-| `nebius` + `kernel-verify`/`bench` | not wired yet (extend `../lib/backends/nebius.py` + the `kernel-verify`/`bench` branch in `run-on-cloud.sh`) |
+| `--task train --provider nebius` | delegates to [`../train_nebius.sh full`](../train_nebius.sh) — H200 (`gpu-h200x1` for 2b/4b/9b, `gpu-h200x2` + FSDP for 27b/27b-256k); requires `NEBIUS_PROJECT_ID`. Emergency fallback; Vast is canonical. |
+| `nebius` + `kernel-verify`/`bench` | [`dispatch-nebius.sh`](dispatch-nebius.sh), delegating VM lifecycle to `../train_nebius.sh` |
 
 The existing cloud backend abstraction (`../lib/backends/base.py`,
 `../cloud_run.py`) is the place to add Nebius/RunPod/Lambda for the
@@ -50,21 +50,21 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
   --provider vast --task kernel-verify --gpu h100 \
   --smoke-model /models/eliza-1-smoke.gguf --yes-i-will-pay
 
-# CUDA e2e bench for the 0.8B tier on an RTX 4090:
+# CUDA e2e bench for the 2B tier on an RTX 4090:
 bash packages/training/scripts/cloud/run-on-cloud.sh \
-  --provider vast --task bench --gpu rtx4090 --tier 0_8b --yes-i-will-pay
+  --provider vast --task bench --gpu rtx4090 --tier 2b --yes-i-will-pay
 
 # Train the 27B tier on 2x B200 (delegates to train_vast.sh provision-and-train):
 bash packages/training/scripts/cloud/run-on-cloud.sh \
   --provider vast --task train --gpu b200 --tier 27b --yes-i-will-pay
 
-# Train the 0.8B tier on a Nebius H200 (delegates to train_nebius.sh full):
+# Train the 2B tier on a Nebius H200 (delegates to train_nebius.sh full):
 NEBIUS_PROJECT_ID=project-… HUGGING_FACE_HUB_TOKEN=… \
 bash packages/training/scripts/cloud/run-on-cloud.sh \
-  --provider nebius --task train --gpu h200 --tier 0_8b --yes-i-will-pay
+  --provider nebius --task train --gpu h200 --tier 2b --yes-i-will-pay
 # Plan only (no spend):
 bash packages/training/scripts/cloud/run-on-cloud.sh \
-  --provider nebius --task train --gpu h200 --tier 0_8b --dry-run
+  --provider nebius --task train --gpu h200 --tier 2b --dry-run
 
 # Plan only — prints what it WOULD provision, spends nothing:
 bash packages/training/scripts/cloud/run-on-cloud.sh \
@@ -75,10 +75,10 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 
 | Flag | Values | Default |
 |---|---|---|
-| `--provider` | `vast` \| `nebius` | (required) |
+| `--provider` | `vast` \| `nebius` | auto from `tier-routing.json` |
 | `--task` | `build` \| `kernel-verify` \| `bench` \| `train` | (required) |
 | `--gpu` | `h100` `h200` `a100` `a100-80` `rtx4090` `rtx5090` `l40s` `b200` `blackwell6000` | `h100` |
-| `--tier` | `0_8b` `2b` `4b` `9b` `27b`  | `0_8b` |
+| `--tier` | `2b` `4b` `9b` `27b` `27b-256k` | `2b` |
 | `--ssh-pubkey` | path | `~/.ssh/id_ed25519.pub` |
 | `--smoke-model` | path to a GGUF | none (parity-only) |
 | `--yes-i-will-pay` | (gate) — required for any real provisioning | off |

@@ -1,8 +1,49 @@
-import { useState } from "react";
+import { type CSSProperties, useState } from "react";
+import { client } from "../../api";
+import {
+  isLimitedCloudAgentApiResourceUrl,
+  supportsFullAppShellRoutes,
+} from "../../api/app-shell-capabilities";
 import type { ViewEntry } from "../../hooks/view-catalog";
+import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { emitViewInteraction } from "../../view-telemetry";
 import { ViewIcon } from "./ViewIcon";
+
+const SPRINGBOARD_ICON_PALETTES: ReadonlyArray<{
+  from: string;
+  to: string;
+  foreground: string;
+}> = [
+  { from: "#ff7a1a", to: "#f2c14e", foreground: "#fff7ed" },
+  { from: "#0f766e", to: "#5eead4", foreground: "#ecfeff" },
+  { from: "#1d4ed8", to: "#93c5fd", foreground: "#eff6ff" },
+  { from: "#7c2d12", to: "#fb923c", foreground: "#fff7ed" },
+  { from: "#334155", to: "#94a3b8", foreground: "#f8fafc" },
+  { from: "#be123c", to: "#fda4af", foreground: "#fff1f2" },
+  { from: "#166534", to: "#86efac", foreground: "#f0fdf4" },
+  { from: "#6d28d9", to: "#c4b5fd", foreground: "#f5f3ff" },
+];
+
+function hashText(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function springboardIconStyle(entry: ViewEntry): CSSProperties {
+  const palette =
+    SPRINGBOARD_ICON_PALETTES[
+      hashText(`${entry.id}:${entry.label}`) % SPRINGBOARD_ICON_PALETTES.length
+    ];
+  return {
+    background: `linear-gradient(145deg, ${palette.from} 0%, ${palette.to} 100%)`,
+    color: palette.foreground,
+  };
+}
 
 /**
  * Resolve a tile hero URL into one reachable from the renderer. The hero source
@@ -16,21 +57,29 @@ import { ViewIcon } from "./ViewIcon";
  */
 function resolveTileImageUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("//")) return url;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("//")) {
+    return isLimitedCloudAgentApiResourceUrl(url) ? undefined : url;
+  }
+  if (
+    (url.startsWith("/api/") || url.startsWith("api/")) &&
+    !supportsFullAppShellRoutes(client.getBaseUrl())
+  ) {
+    return undefined;
+  }
   return resolveApiUrl(url);
 }
 
 /**
- * The shared visual core for a launcher tile: render the view's hero
- * (`entry.imageUrl`, which the agent serves as a real image or a deterministic
- * branded SVG) and fall back to the Lucide glyph if the image is absent OR fails
- * to load — so a tile is never blank. This is the single hero-resolution path
- * used by both the Springboard tile and the catalog "Get" card; callers supply
- * only the container/glyph styling that genuinely differs between surfaces.
+ * The shared visual core for view launch surfaces.
+ *
+ * Springboard tiles are app icons: paint the deterministic glyph tile
+ * underneath the concrete hero or generated branded fallback so icons never
+ * appear blank while image decoding catches up after a swipe. Catalog cards are
+ * previews and use the same image/fallback order at their larger size.
  *
  * A load failure emits a `hero-image-error` interaction event (best-effort,
- * client-only) so broken hero endpoints are observable instead of silently
- * swallowed by the glyph fallback.
+ * client-only) from preview surfaces so broken hero endpoints are observable
+ * instead of silently swallowed by the glyph fallback.
  */
 export function ViewTileImage({
   entry,
@@ -50,12 +99,86 @@ export function ViewTileImage({
   imageTestId?: string;
 }) {
   const [failure, setFailure] = useState<"none" | "primary" | "all">("none");
+
   const primaryUrl =
     failure === "none" ? resolveTileImageUrl(entry.imageUrl) : undefined;
   const fallbackUrl =
     failure !== "all" ? resolveTileImageUrl(entry.fallbackImageUrl) : undefined;
   const url = primaryUrl ?? fallbackUrl;
   const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
+
+  if (source === "springboard") {
+    if (url) {
+      return (
+        <div
+          className={cn(containerClassName, "relative overflow-hidden")}
+          data-view-visual={entry.id}
+          style={springboardIconStyle(entry)}
+        >
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-4 -top-5 h-14 w-14 rounded-full bg-white/25"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.36)_0%,rgba(255,255,255,0.08)_42%,rgba(0,0,0,0.2)_100%)]"
+          />
+          <ViewIcon
+            icon={entry.icon}
+            label={entry.label}
+            id={entry.id}
+            className={cn(
+              glyphClassName,
+              "relative z-0 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
+            )}
+          />
+          <img
+            src={url}
+            alt=""
+            draggable={false}
+            loading="eager"
+            decoding="async"
+            onError={() => {
+              emitViewInteraction({
+                source,
+                action: "hero-image-error",
+                viewId: entry.id,
+              });
+              setFailure(primaryUrl && hasFallback ? "primary" : "all");
+            }}
+            className="absolute inset-0 z-10 h-full w-full object-cover"
+            data-testid={imageTestId}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={cn(containerClassName, "relative overflow-hidden")}
+        data-view-visual={entry.id}
+        style={springboardIconStyle(entry)}
+      >
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-4 -top-5 h-14 w-14 rounded-full bg-white/25"
+        />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.36)_0%,rgba(255,255,255,0.08)_42%,rgba(0,0,0,0.2)_100%)]"
+        />
+        <ViewIcon
+          icon={entry.icon}
+          label={entry.label}
+          id={entry.id}
+          className={cn(
+            glyphClassName,
+            "relative z-10 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
+          )}
+        />
+      </div>
+    );
+  }
 
   if (url) {
     return (

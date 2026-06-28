@@ -21,6 +21,10 @@ export interface ElectrobunCryptoWindow {
   __electrobun_decrypt?: ElectrobunDecrypt;
 }
 
+declare global {
+  interface Window extends ElectrobunCryptoWindow {}
+}
+
 export interface ElectrobunCryptoReadyGuardOptions {
   timeoutMs?: number;
   pollIntervalMs?: number;
@@ -71,7 +75,7 @@ async function waitForInstalledFunction<
  * falling into a broken postMessage fallback.
  */
 export function installElectrobunCryptoReadyGuards(
-  globalWindow: ElectrobunCryptoWindow = window as unknown as ElectrobunCryptoWindow,
+  globalWindow: ElectrobunCryptoWindow = window,
   options: ElectrobunCryptoReadyGuardOptions = {},
 ): boolean {
   if (!hasSocketRpcGlobals(globalWindow)) {

@@ -1,23 +1,25 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
-  rmSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
+const RM_RECURSIVE_SCRIPT = path.join(SCRIPT_DIR, "rm-path-recursive.mjs");
+const SOURCE_DIR = path.join(
+  REPO_ROOT,
+  "packages",
+  "benchmarks",
+  "benchmark_results",
 );
-const SOURCE_DIR = path.join(REPO_ROOT, "packages", "benchmarks", "benchmark_results");
 const LATEST_DIR = path.join(SOURCE_DIR, "latest");
 const SQLITE_PATH = path.join(SOURCE_DIR, "orchestrator.sqlite");
 const REPORT_DIR = path.join(
@@ -32,6 +34,13 @@ const FAMILY_DIR = path.join(REPORT_DIR, "family-pages");
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
+}
+
+function rmRecursive(targetPath) {
+  execFileSync("node", [RM_RECURSIVE_SCRIPT, targetPath], {
+    cwd: REPO_ROOT,
+    stdio: "inherit",
+  });
 }
 
 function sqliteJson(sql) {
@@ -64,10 +73,12 @@ function redactPath(filePath) {
 }
 
 function pathSegment(value) {
-  return String(value || "unknown")
-    .replace(/[^a-zA-Z0-9_.-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 120) || "unknown";
+  return (
+    String(value || "unknown")
+      .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || "unknown"
+  );
 }
 
 function truncate(value, limit = 900) {
@@ -76,13 +87,17 @@ function truncate(value, limit = 900) {
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[char]);
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char],
+  );
 }
 
 function canonicalPlaybackHtml(calls, entry) {
@@ -223,7 +238,7 @@ function noPlaybackGapHtml({ finding, family, rows, credentialGaps }) {
       <tr><th>output files</th><td>${escapeHtml(family?.output_files ?? 0)}</td></tr>
       <tr><th>matrix complete</th><td>${escapeHtml(family?.matrix_complete)}</td></tr>
       <tr><th>unsupported cells</th><td>${escapeHtml(family?.unsupported_cells ?? 0)}</td></tr>
-      <tr><th>cache</th><td>${escapeHtml(family?.cache_percent == null ? "n/a" : family.cache_percent.toFixed(1) + "%")}</td></tr>
+      <tr><th>cache</th><td>${escapeHtml(family?.cache_percent == null ? "n/a" : `${family.cache_percent.toFixed(1)}%`)}</td></tr>
     </tbody></table></div></section>
     <section class="panel"><h2>Latest Rows</h2><div class="body"><table><thead><tr><th>agent</th><th>status</th><th>score</th><th>calls</th><th>tokens</th><th>outputs</th><th>warnings</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.agent)}</td><td>${escapeHtml(row.status)}</td><td>${escapeHtml(row.score)} ${escapeHtml(row.unit || "")}</td><td>${escapeHtml(row.llm_call_count)}</td><td>${escapeHtml(row.total_tokens)}</td><td>${escapeHtml((row.output_files || []).length)}</td><td>${escapeHtml((row.publication_warnings || []).join(", "))}</td></tr>`).join("") || `<tr><td colspan="7" class="bad">No latest published rows.</td></tr>`}</tbody></table></div></section>
     ${credentialSection}
@@ -239,18 +254,25 @@ function writeNoPlaybackGapPages(payload) {
     (payload.canonicalFiles || []).map((entry) => entry.benchmark_id),
   );
   const familyByBenchmark = new Map(
-    (payload.benchmarkFamilies || []).map((family) => [family.benchmark_id, family]),
+    (payload.benchmarkFamilies || []).map((family) => [
+      family.benchmark_id,
+      family,
+    ]),
   );
   const rowsByBenchmark = new Map();
   for (const row of payload.latestRows || []) {
-    if (!rowsByBenchmark.has(row.benchmark_id)) rowsByBenchmark.set(row.benchmark_id, []);
+    if (!rowsByBenchmark.has(row.benchmark_id))
+      rowsByBenchmark.set(row.benchmark_id, []);
     rowsByBenchmark.get(row.benchmark_id).push(row);
   }
   const pages = [];
   for (const finding of payload.reviewFindings || []) {
     if (finding.disposition === "review-pass") continue;
     if (canonicalBenchmarks.has(finding.benchmark_id)) continue;
-    const filePath = path.join(GAP_DIR, `${pathSegment(finding.benchmark_id)}.html`);
+    const filePath = path.join(
+      GAP_DIR,
+      `${pathSegment(finding.benchmark_id)}.html`,
+    );
     const family = familyByBenchmark.get(finding.benchmark_id);
     const rows = rowsByBenchmark.get(finding.benchmark_id) || [];
     writeFileSync(
@@ -275,7 +297,15 @@ function writeNoPlaybackGapPages(payload) {
   return pages;
 }
 
-function familyReviewHtml({ family, finding, rows, calls, canonicalFiles, history, gapPage }) {
+function familyReviewHtml({
+  family,
+  finding,
+  rows,
+  calls,
+  canonicalFiles,
+  history,
+  gapPage,
+}) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -319,7 +349,16 @@ function familyReviewHtml({ family, finding, rows, calls, canonicalFiles, histor
     <section class="panel"><h2>Reasons / Warnings</h2><div class="body"><p>${escapeHtml((finding.reasons || []).join("; ") || "No review caveats.")}</p><p class="muted">${escapeHtml((family.warnings || []).join(", ") || "No publication warnings.")}</p>${gapPage ? `<p><a href="../${escapeHtml(path.relative(REPORT_DIR, path.join(REPO_ROOT, gapPage)).replaceAll(path.sep, "/"))}">Open playback gap page</a></p>` : ""}</div></section>
     <section class="panel"><h2>Latest Rows</h2><div class="body"><table><thead><tr><th>agent</th><th>status</th><th>score</th><th>tasks</th><th>calls</th><th>tokens</th><th>trajectory/output files</th><th>warnings</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.agent)}</td><td class="${row.status === "succeeded" ? "ok" : "bad"}">${escapeHtml(row.status)}</td><td>${escapeHtml(row.score)} ${escapeHtml(row.unit || "")}</td><td>${escapeHtml(row.total_tasks)}</td><td>${escapeHtml(row.llm_call_count)}</td><td>${escapeHtml(row.total_tokens)}</td><td>${escapeHtml((row.discovered_trajectory_files || []).length)} trajectory<br>${escapeHtml((row.output_files || []).length)} output</td><td>${escapeHtml((row.publication_warnings || []).join(", "))}</td></tr>`).join("")}</tbody></table></div></section>
     <section class="panel"><h2>Canonical Playback</h2><div class="body"><table><thead><tr><th>agent</th><th>run</th><th>calls</th><th>tokens/cache</th><th>sources</th><th>playback</th></tr></thead><tbody>${canonicalFiles.map((entry) => `<tr><td>${escapeHtml(entry.agent)}</td><td><code>${escapeHtml(entry.run_id)}</code></td><td>${escapeHtml(entry.call_count)}</td><td>${escapeHtml(entry.token_total)}<br><span class="muted">${escapeHtml(entry.cached_token_total)} cached</span></td><td>${escapeHtml((entry.sources || []).join(", "))}</td><td><a href="../${escapeHtml(path.relative(REPORT_DIR, path.join(REPO_ROOT, entry.playback_file)).replaceAll(path.sep, "/"))}">playback</a><br><code>${escapeHtml(entry.file)}</code></td></tr>`).join("") || `<tr><td colspan="6" class="warn">No canonical playback file exists for this family.</td></tr>`}</tbody></table></div></section>
-    <section class="panel"><h2>Normalized Call Samples</h2><div class="body"><table><thead><tr><th>#</th><th>agent/run</th><th>usage</th><th>prompt/response</th></tr></thead><tbody>${calls.slice(0, 20).map((call) => `<tr><td>${escapeHtml(call.catalog_index)}</td><td>${escapeHtml(call.agent)}<br><code>${escapeHtml(call.run_id)}</code><br><span class="muted">${escapeHtml(call.source)}</span></td><td>${escapeHtml(call.usage?.prompt_tokens)} / ${escapeHtml(call.usage?.completion_tokens)} / ${escapeHtml(call.usage?.total_tokens)}<br><span class="muted">cache ${escapeHtml(call.usage?.cached_tokens)}</span></td><td><details><summary>prompt</summary><pre>${escapeHtml(truncate(call.prompt, 3000))}</pre></details><details><summary>response</summary><pre>${escapeHtml(truncate(call.response, 3000))}</pre></details></td></tr>`).join("") || `<tr><td colspan="4" class="warn">No normalized calls.</td></tr>`}</tbody></table></div></section>
+    <section class="panel"><h2>Normalized Call Samples</h2><div class="body"><table><thead><tr><th>#</th><th>agent/run</th><th>usage</th><th>prompt/response</th></tr></thead><tbody>${
+      calls
+        .slice(0, 20)
+        .map(
+          (call) =>
+            `<tr><td>${escapeHtml(call.catalog_index)}</td><td>${escapeHtml(call.agent)}<br><code>${escapeHtml(call.run_id)}</code><br><span class="muted">${escapeHtml(call.source)}</span></td><td>${escapeHtml(call.usage?.prompt_tokens)} / ${escapeHtml(call.usage?.completion_tokens)} / ${escapeHtml(call.usage?.total_tokens)}<br><span class="muted">cache ${escapeHtml(call.usage?.cached_tokens)}</span></td><td><details><summary>prompt</summary><pre>${escapeHtml(truncate(call.prompt, 3000))}</pre></details><details><summary>response</summary><pre>${escapeHtml(truncate(call.response, 3000))}</pre></details></td></tr>`,
+        )
+        .join("") ||
+      `<tr><td colspan="4" class="warn">No normalized calls.</td></tr>`
+    }</tbody></table></div></section>
     <section class="panel"><h2>Run History</h2><div class="body"><table><thead><tr><th>agent</th><th>runs</th><th>current</th><th>previous</th><th>deltas</th></tr></thead><tbody>${history.map((entry) => `<tr><td>${escapeHtml(entry.agent)}</td><td>${escapeHtml(entry.run_count)}<br><span class="muted">${escapeHtml(entry.succeeded_run_count)} succeeded</span></td><td><code>${escapeHtml(entry.current?.run_id)}</code><br>${escapeHtml(entry.current?.status)} ${escapeHtml(entry.current?.score ?? "")}</td><td>${entry.previous ? `<code>${escapeHtml(entry.previous.run_id)}</code><br>${escapeHtml(entry.previous.status)} ${escapeHtml(entry.previous.score ?? "")}` : `<span class="muted">none</span>`}</td><td>score ${escapeHtml(entry.deltas?.score ?? "")}<br>calls ${escapeHtml(entry.deltas?.llm_call_count ?? "")}<br>tokens ${escapeHtml(entry.deltas?.total_tokens ?? "")}</td></tr>`).join("") || `<tr><td colspan="5" class="warn">No run history comparison.</td></tr>`}</tbody></table></div></section>
   </main>
 </body>
@@ -329,34 +368,47 @@ function familyReviewHtml({ family, finding, rows, calls, canonicalFiles, histor
 function writeFamilyReviewPages(payload) {
   mkdirSync(FAMILY_DIR, { recursive: true });
   const findingByBenchmark = new Map(
-    (payload.reviewFindings || []).map((finding) => [finding.benchmark_id, finding]),
+    (payload.reviewFindings || []).map((finding) => [
+      finding.benchmark_id,
+      finding,
+    ]),
   );
   const rowsByBenchmark = new Map();
   for (const row of payload.latestRows || []) {
-    if (!rowsByBenchmark.has(row.benchmark_id)) rowsByBenchmark.set(row.benchmark_id, []);
+    if (!rowsByBenchmark.has(row.benchmark_id))
+      rowsByBenchmark.set(row.benchmark_id, []);
     rowsByBenchmark.get(row.benchmark_id).push(row);
   }
   const callsByBenchmark = new Map();
   for (const call of payload.normalizedCalls || []) {
-    if (!callsByBenchmark.has(call.benchmark_id)) callsByBenchmark.set(call.benchmark_id, []);
+    if (!callsByBenchmark.has(call.benchmark_id))
+      callsByBenchmark.set(call.benchmark_id, []);
     callsByBenchmark.get(call.benchmark_id).push(call);
   }
   const canonicalByBenchmark = new Map();
   for (const entry of payload.canonicalFiles || []) {
-    if (!canonicalByBenchmark.has(entry.benchmark_id)) canonicalByBenchmark.set(entry.benchmark_id, []);
+    if (!canonicalByBenchmark.has(entry.benchmark_id))
+      canonicalByBenchmark.set(entry.benchmark_id, []);
     canonicalByBenchmark.get(entry.benchmark_id).push(entry);
   }
   const historyByBenchmark = new Map();
   for (const entry of payload.runHistory?.comparisons || []) {
-    if (!historyByBenchmark.has(entry.benchmark_id)) historyByBenchmark.set(entry.benchmark_id, []);
+    if (!historyByBenchmark.has(entry.benchmark_id))
+      historyByBenchmark.set(entry.benchmark_id, []);
     historyByBenchmark.get(entry.benchmark_id).push(entry);
   }
   const gapByBenchmark = new Map(
-    (payload.noPlaybackGapPages || []).map((entry) => [entry.benchmark_id, entry.gap_page]),
+    (payload.noPlaybackGapPages || []).map((entry) => [
+      entry.benchmark_id,
+      entry.gap_page,
+    ]),
   );
   const pages = [];
   for (const family of payload.benchmarkFamilies || []) {
-    const filePath = path.join(FAMILY_DIR, `${pathSegment(family.benchmark_id)}.html`);
+    const filePath = path.join(
+      FAMILY_DIR,
+      `${pathSegment(family.benchmark_id)}.html`,
+    );
     const finding = findingByBenchmark.get(family.benchmark_id) || {
       benchmark_id: family.benchmark_id,
       disposition: "needs-review",
@@ -384,7 +436,9 @@ function writeFamilyReviewPages(payload) {
       benchmark_id: family.benchmark_id,
       disposition: finding.disposition,
       family_page: familyPage,
-      canonical_playback_files: (canonicalByBenchmark.get(family.benchmark_id) || []).length,
+      canonical_playback_files: (
+        canonicalByBenchmark.get(family.benchmark_id) || []
+      ).length,
       latest_rows: family.latest_rows,
       normalized_calls: family.normalized_calls,
     });
@@ -407,10 +461,7 @@ function usageFromRecord(record) {
       usage.completionTokens ??
       null,
     total_tokens:
-      record?.total_tokens ??
-      usage.total_tokens ??
-      usage.totalTokens ??
-      null,
+      record?.total_tokens ?? usage.total_tokens ?? usage.totalTokens ?? null,
     cached_tokens:
       record?.cache_read_input_tokens ??
       record?.cached_tokens ??
@@ -528,13 +579,18 @@ function jsonRecordsFromFile(filePath, maxRecords = 3) {
   }
   const parsed = JSON.parse(text);
   if (Array.isArray(parsed)) return parsed.slice(0, maxRecords);
-  if (Array.isArray(parsed?.results)) return parsed.results.slice(0, maxRecords);
-  if (Array.isArray(parsed?.messages)) return parsed.messages.slice(0, maxRecords);
-  if (Array.isArray(parsed?.verdicts)) return parsed.verdicts.slice(0, maxRecords);
-  if (Array.isArray(parsed?.samples)) return parsed.samples.slice(0, maxRecords);
+  if (Array.isArray(parsed?.results))
+    return parsed.results.slice(0, maxRecords);
+  if (Array.isArray(parsed?.messages))
+    return parsed.messages.slice(0, maxRecords);
+  if (Array.isArray(parsed?.verdicts))
+    return parsed.verdicts.slice(0, maxRecords);
+  if (Array.isArray(parsed?.samples))
+    return parsed.samples.slice(0, maxRecords);
   if (Array.isArray(parsed?.tasks)) return parsed.tasks.slice(0, maxRecords);
   if (Array.isArray(parsed?.steps)) return parsed.steps.slice(0, maxRecords);
-  if (Array.isArray(parsed?.actions)) return parsed.actions.slice(0, maxRecords);
+  if (Array.isArray(parsed?.actions))
+    return parsed.actions.slice(0, maxRecords);
   return [parsed];
 }
 
@@ -554,7 +610,11 @@ function callPreviews(files, maxPreviews = 3) {
         if (Array.isArray(steps)) {
           for (const [stepIndex, step] of steps.entries()) {
             if (previews.length >= maxPreviews) break;
-            const stepPreview = previewFromRecord(step, relativeFile, stepIndex);
+            const stepPreview = previewFromRecord(
+              step,
+              relativeFile,
+              stepIndex,
+            );
             if (stepPreview) previews.push(stepPreview);
           }
         }
@@ -573,7 +633,12 @@ function callsFromFile(relativeFile, metadata = {}) {
   try {
     const records = jsonRecordsFromFile(absoluteFile, 10000);
     records.forEach((record, index) => {
-      const call = normalizedCallFromRecord(record, relativeFile, index, metadata);
+      const call = normalizedCallFromRecord(
+        record,
+        relativeFile,
+        index,
+        metadata,
+      );
       if (call) calls.push(call);
       const steps = record?.trajectory_snapshot?.steps;
       if (Array.isArray(steps)) {
@@ -639,7 +704,7 @@ function sqliteTrajectoryRows() {
 }
 
 function writeCanonicalTrajectories(normalizedCalls, sqliteRows) {
-  rmSync(CANONICAL_DIR, { recursive: true, force: true });
+  rmRecursive(CANONICAL_DIR);
   const grouped = new Map();
   for (const call of normalizedCalls) {
     const key = [
@@ -713,9 +778,16 @@ function writeCanonicalTrajectories(normalizedCalls, sqliteRows) {
       pathSegment(agent),
     );
     mkdirSync(dir, { recursive: true });
-    const filePath = path.join(dir, `${pathSegment(runId)}.trajectory.canonical.jsonl`);
+    const filePath = path.join(
+      dir,
+      `${pathSegment(runId)}.trajectory.canonical.jsonl`,
+    );
     const playbackPath = filePath.replace(/\.jsonl$/, ".playback.html");
-    writeFileSync(filePath, calls.map((call) => JSON.stringify(call)).join("\n") + "\n", "utf8");
+    writeFileSync(
+      filePath,
+      `${calls.map((call) => JSON.stringify(call)).join("\n")}\n`,
+      "utf8",
+    );
     const entry = {
       benchmark_id: benchmarkId,
       agent,
@@ -723,8 +795,14 @@ function writeCanonicalTrajectories(normalizedCalls, sqliteRows) {
       call_count: calls.length,
       file: redactPath(filePath),
       playback_file: redactPath(playbackPath),
-      token_total: calls.reduce((total, call) => total + Number(call.usage?.total_tokens || 0), 0),
-      cached_token_total: calls.reduce((total, call) => total + Number(call.usage?.cached_tokens || 0), 0),
+      token_total: calls.reduce(
+        (total, call) => total + Number(call.usage?.total_tokens || 0),
+        0,
+      ),
+      cached_token_total: calls.reduce(
+        (total, call) => total + Number(call.usage?.cached_tokens || 0),
+        0,
+      ),
       sources: [...new Set(calls.map((call) => call.source))].sort(),
     };
     writeFileSync(playbackPath, canonicalPlaybackHtml(calls, entry), "utf8");
@@ -738,7 +816,7 @@ function writeCanonicalTrajectories(normalizedCalls, sqliteRows) {
   mkdirSync(CANONICAL_DIR, { recursive: true });
   writeFileSync(
     path.join(CANONICAL_DIR, "manifest.json"),
-    JSON.stringify(manifest, null, 2) + "\n",
+    `${JSON.stringify(manifest, null, 2)}\n`,
     "utf8",
   );
   return manifest;
@@ -766,18 +844,19 @@ function listRunFiles(runRoot) {
     .filter(Boolean)
     .sort()
     .map(redactPath);
-  const trajectoryFiles = files.filter((file) =>
-    /(?:trajectory|trajectories|telemetry)\.(?:jsonl?|ndjson)$/i.test(file) ||
-    /(?:^|\/)trajectory[^/]*\.(?:jsonl?|ndjson)$/i.test(file) ||
-    /(?:^|\/)traj(?:ectory)?[^/]*\.(?:jsonl?|ndjson)$/i.test(file) ||
-    /(?:^|\/)telemetry\.jsonl$/i.test(file) ||
-    /(?:^|\/)voicebench[^/]*\.json$/i.test(file) ||
-    /(?:^|\/)voiceagentbench[^/]*\.json$/i.test(file) ||
-    /vision-language-results\.json$/i.test(file) ||
-    /(?:^|\/)evm_[^/]*_metrics\.json$/i.test(file) ||
-    /personality-bench.*\/output\/report\.json$/i.test(file) ||
-    /eliza-replay-results\.json$/i.test(file) ||
-    /benchmark_results_eliza-bridge\.json$/i.test(file),
+  const trajectoryFiles = files.filter(
+    (file) =>
+      /(?:trajectory|trajectories|telemetry)\.(?:jsonl?|ndjson)$/i.test(file) ||
+      /(?:^|\/)trajectory[^/]*\.(?:jsonl?|ndjson)$/i.test(file) ||
+      /(?:^|\/)traj(?:ectory)?[^/]*\.(?:jsonl?|ndjson)$/i.test(file) ||
+      /(?:^|\/)telemetry\.jsonl$/i.test(file) ||
+      /(?:^|\/)voicebench[^/]*\.json$/i.test(file) ||
+      /(?:^|\/)voiceagentbench[^/]*\.json$/i.test(file) ||
+      /vision-language-results\.json$/i.test(file) ||
+      /(?:^|\/)evm_[^/]*_metrics\.json$/i.test(file) ||
+      /personality-bench.*\/output\/report\.json$/i.test(file) ||
+      /eliza-replay-results\.json$/i.test(file) ||
+      /benchmark_results_eliza-bridge\.json$/i.test(file),
   );
   const outputFiles = files.filter((file) => file.includes("/output/"));
   return { files, trajectoryFiles, outputFiles };
@@ -873,7 +952,9 @@ function summarize(rows, index, canonicalFiles) {
     }
   }
   const benchmarkIds = new Set(rows.map((row) => row.benchmark_id));
-  const agents = [...new Set(rows.map((row) => row.agent).filter(Boolean))].sort();
+  const agents = [
+    ...new Set(rows.map((row) => row.agent).filter(Boolean)),
+  ].sort();
   const insufficientRows = rows.filter((row) =>
     (row.publication_warnings || []).some((warning) =>
       String(warning).startsWith("insufficient_"),
@@ -924,16 +1005,30 @@ function summarize(rows, index, canonicalFiles) {
 }
 
 function summarizeCallCatalog(calls) {
-  const rowsWithCalls = new Set(calls.map((call) => `${call.benchmark_id}__${call.agent}`));
+  const rowsWithCalls = new Set(
+    calls.map((call) => `${call.benchmark_id}__${call.agent}`),
+  );
   const benchmarksWithCalls = new Set(calls.map((call) => call.benchmark_id));
   return {
     normalizedCallCount: calls.length,
     rowsWithNormalizedCalls: rowsWithCalls.size,
     benchmarksWithNormalizedCalls: benchmarksWithCalls.size,
-    totalTokens: calls.reduce((total, call) => total + Number(call.usage?.total_tokens || 0), 0),
-    cachedTokens: calls.reduce((total, call) => total + Number(call.usage?.cached_tokens || 0), 0),
-    promptTokens: calls.reduce((total, call) => total + Number(call.usage?.prompt_tokens || 0), 0),
-    completionTokens: calls.reduce((total, call) => total + Number(call.usage?.completion_tokens || 0), 0),
+    totalTokens: calls.reduce(
+      (total, call) => total + Number(call.usage?.total_tokens || 0),
+      0,
+    ),
+    cachedTokens: calls.reduce(
+      (total, call) => total + Number(call.usage?.cached_tokens || 0),
+      0,
+    ),
+    promptTokens: calls.reduce(
+      (total, call) => total + Number(call.usage?.prompt_tokens || 0),
+      0,
+    ),
+    completionTokens: calls.reduce(
+      (total, call) => total + Number(call.usage?.completion_tokens || 0),
+      0,
+    ),
   };
 }
 
@@ -959,7 +1054,8 @@ function telemetryGapSummary(rows, families, findings) {
       run_id: row.run_id,
       llm_call_count: row.llm_call_count,
       trajectory_turns: row.trajectory_turns,
-      discovered_trajectory_files: (row.discovered_trajectory_files || []).length,
+      discovered_trajectory_files: (row.discovered_trajectory_files || [])
+        .length,
       call_previews: (row.call_previews || []).length,
       output_files: (row.output_files || []).length,
     }));
@@ -992,7 +1088,8 @@ function telemetryGapSummary(rows, families, findings) {
 function benchmarkFamilySummary(rows, calls, index) {
   const callBuckets = new Map();
   for (const call of calls) {
-    if (!callBuckets.has(call.benchmark_id)) callBuckets.set(call.benchmark_id, []);
+    if (!callBuckets.has(call.benchmark_id))
+      callBuckets.set(call.benchmark_id, []);
     callBuckets.get(call.benchmark_id).push(call);
   }
   const rowBuckets = new Map();
@@ -1001,7 +1098,9 @@ function benchmarkFamilySummary(rows, calls, index) {
     rowBuckets.get(row.benchmark_id).push(row);
   }
   const matrix = index.matrix_contract?.benchmarks || {};
-  const names = [...new Set([...rowBuckets.keys(), ...Object.keys(matrix)])].sort();
+  const names = [
+    ...new Set([...rowBuckets.keys(), ...Object.keys(matrix)]),
+  ].sort();
   return names.map((name) => {
     const familyRows = rowBuckets.get(name) || [];
     const familyCalls = callBuckets.get(name) || [];
@@ -1019,17 +1118,31 @@ function benchmarkFamilySummary(rows, calls, index) {
     return {
       benchmark_id: name,
       latest_rows: familyRows.length,
-      agents: [...new Set(familyRows.map((row) => row.agent).filter(Boolean))].sort(),
-      succeeded_rows: familyRows.filter((row) => row.status === "succeeded").length,
+      agents: [
+        ...new Set(familyRows.map((row) => row.agent).filter(Boolean)),
+      ].sort(),
+      succeeded_rows: familyRows.filter((row) => row.status === "succeeded")
+        .length,
       score_min:
         familyRows.length > 0
-          ? Math.min(...familyRows.map((row) => Number(row.score)).filter(Number.isFinite))
+          ? Math.min(
+              ...familyRows
+                .map((row) => Number(row.score))
+                .filter(Number.isFinite),
+            )
           : null,
       score_max:
         familyRows.length > 0
-          ? Math.max(...familyRows.map((row) => Number(row.score)).filter(Number.isFinite))
+          ? Math.max(
+              ...familyRows
+                .map((row) => Number(row.score))
+                .filter(Number.isFinite),
+            )
           : null,
-      total_tasks: familyRows.reduce((total, row) => total + Number(row.total_tasks || 0), 0),
+      total_tasks: familyRows.reduce(
+        (total, row) => total + Number(row.total_tasks || 0),
+        0,
+      ),
       normalized_calls: familyCalls.length,
       token_total: tokenTotal,
       cached_token_total: cachedTotal,
@@ -1045,14 +1158,16 @@ function benchmarkFamilySummary(rows, calls, index) {
       warnings,
       matrix_complete: matrix[name]?.complete ?? null,
       unsupported_cells: Object.values(matrix[name]?.cells || {}).filter(
-        (cell) => cell?.status === "unsupported" || cell?.state === "unsupported",
+        (cell) =>
+          cell?.status === "unsupported" || cell?.state === "unsupported",
       ).length,
     };
   });
 }
 
 function trajectorySummary() {
-  const summary = sqliteJson(`
+  const summary =
+    sqliteJson(`
     select
       count(*) as trajectory_rows,
       count(distinct run_id) as run_count,
@@ -1123,10 +1238,14 @@ function runHistoryComparison() {
   }
   const comparisons = [];
   for (const [key, history] of grouped) {
-    const succeededHistory = history.filter((row) => row.status === "succeeded");
-    const comparableHistory = succeededHistory.length > 0 ? succeededHistory : history;
+    const succeededHistory = history.filter(
+      (row) => row.status === "succeeded",
+    );
+    const comparableHistory =
+      succeededHistory.length > 0 ? succeededHistory : history;
     const current = comparableHistory.at(-1);
-    const previous = comparableHistory.length > 1 ? comparableHistory.at(-2) : null;
+    const previous =
+      comparableHistory.length > 1 ? comparableHistory.at(-2) : null;
     comparisons.push({
       key,
       benchmark_id: current.benchmark_id,
@@ -1171,14 +1290,19 @@ function runHistoryComparison() {
       runCount: rows.length,
       benchmarkCount: new Set(rows.map((row) => row.benchmark_id)).size,
       benchmarkAgentPairs: comparisons.length,
-      pairsWithPrevious: comparisons.filter((entry) => entry.has_previous).length,
-      pairsWithoutPrevious: comparisons.filter((entry) => !entry.has_previous).length,
+      pairsWithPrevious: comparisons.filter((entry) => entry.has_previous)
+        .length,
+      pairsWithoutPrevious: comparisons.filter((entry) => !entry.has_previous)
+        .length,
       pairsWithSuccessfulPrevious: comparisons.filter(
         (entry) => entry.has_previous && entry.succeeded_run_count >= 2,
       ).length,
-      rowsWithBenchmarksCommit: rows.filter((row) => row.benchmarks_commit).length,
-      rowsWithHighScore: rows.filter((row) => row.high_score_value !== null).length,
-      skippedOrUnsupportedRuns: rows.filter((row) => row.status !== "succeeded").length,
+      rowsWithBenchmarksCommit: rows.filter((row) => row.benchmarks_commit)
+        .length,
+      rowsWithHighScore: rows.filter((row) => row.high_score_value !== null)
+        .length,
+      skippedOrUnsupportedRuns: rows.filter((row) => row.status !== "succeeded")
+        .length,
     },
     comparisons,
   };
@@ -1203,16 +1327,22 @@ function reviewFindings(families, runHistory) {
       (entry) => entry.has_previous && Number(entry.deltas?.score || 0) > 0,
     ).length;
     if (family.matrix_complete === false) {
-      reasons.push(`matrix partial; unsupported cells=${family.unsupported_cells}`);
+      reasons.push(
+        `matrix partial; unsupported cells=${family.unsupported_cells}`,
+      );
     }
     if (family.latest_rows === 0) {
       reasons.push("no latest published rows");
     }
     if (family.succeeded_rows < family.latest_rows) {
-      reasons.push(`${family.latest_rows - family.succeeded_rows} latest row(s) not succeeded`);
+      reasons.push(
+        `${family.latest_rows - family.succeeded_rows} latest row(s) not succeeded`,
+      );
     }
     if ((family.warnings || []).length > 0) {
-      reasons.push(`publication warnings: ${(family.warnings || []).join(", ")}`);
+      reasons.push(
+        `publication warnings: ${(family.warnings || []).join(", ")}`,
+      );
     }
     if (family.normalized_calls === 0) {
       reasons.push("no normalized model/action calls recovered");
@@ -1224,7 +1354,9 @@ function reviewFindings(families, runHistory) {
       reasons.push("call records lack token totals");
     }
     if (regressionPairs > 0) {
-      reasons.push(`${regressionPairs} comparable history pair(s) regressed by score`);
+      reasons.push(
+        `${regressionPairs} comparable history pair(s) regressed by score`,
+      );
     }
     if (previousPairs === 0) {
       reasons.push("no previous comparable run for version comparison");
@@ -1251,7 +1383,10 @@ function reviewFindings(families, runHistory) {
     return {
       benchmark_id: family.benchmark_id,
       disposition,
-      reasons: reasons.length > 0 ? reasons : ["latest rows succeeded with trajectory/call evidence"],
+      reasons:
+        reasons.length > 0
+          ? reasons
+          : ["latest rows succeeded with trajectory/call evidence"],
       latest_rows: family.latest_rows,
       succeeded_rows: family.succeeded_rows,
       normalized_calls: family.normalized_calls,
@@ -1281,9 +1416,14 @@ function reviewFindingSummary(findings) {
     needsReview: byDisposition["needs-review"] || 0,
     telemetryGap: byDisposition["telemetry-gap"] || 0,
     blocked: byDisposition.blocked || 0,
-    withRegression: findings.filter((finding) => finding.regression_pairs > 0).length,
-    withoutVersionComparison: findings.filter((finding) => finding.previous_pairs === 0).length,
-    withoutNormalizedCalls: findings.filter((finding) => finding.normalized_calls === 0).length,
+    withRegression: findings.filter((finding) => finding.regression_pairs > 0)
+      .length,
+    withoutVersionComparison: findings.filter(
+      (finding) => finding.previous_pairs === 0,
+    ).length,
+    withoutNormalizedCalls: findings.filter(
+      (finding) => finding.normalized_calls === 0,
+    ).length,
   };
 }
 
@@ -1439,38 +1579,43 @@ function renderMarkdown(payload) {
     "",
     "| benchmark | latest rows | succeeded | tasks | normalized calls | tokens | cached tokens | matrix complete | warnings |",
     "|---|---:|---:|---:|---:|---:|---:|---:|---|",
-    ...payload.benchmarkFamilies.map((family) =>
-      `| \`${family.benchmark_id}\` | ${family.latest_rows} | ${family.succeeded_rows} | ${family.total_tasks} | ${family.normalized_calls} | ${family.token_total} | ${family.cached_token_total} | ${family.matrix_complete} | ${(family.warnings || []).join(", ")} |`,
+    ...payload.benchmarkFamilies.map(
+      (family) =>
+        `| \`${family.benchmark_id}\` | ${family.latest_rows} | ${family.succeeded_rows} | ${family.total_tasks} | ${family.normalized_calls} | ${family.token_total} | ${family.cached_token_total} | ${family.matrix_complete} | ${(family.warnings || []).join(", ")} |`,
     ),
     "",
     "## Per-Benchmark Review Findings",
     "",
     "| benchmark | disposition | rows | calls | cache % | history | reasons |",
     "|---|---|---:|---:|---:|---:|---|",
-    ...payload.reviewFindings.map((finding) =>
-      `| \`${finding.benchmark_id}\` | ${finding.disposition} | ${finding.succeeded_rows}/${finding.latest_rows} | ${finding.normalized_calls} | ${finding.cache_percent == null ? "" : finding.cache_percent.toFixed(1)} | ${finding.previous_pairs}/${finding.history_pairs} | ${(finding.reasons || []).join("; ").replaceAll("|", "\\|")} |`,
+    ...payload.reviewFindings.map(
+      (finding) =>
+        `| \`${finding.benchmark_id}\` | ${finding.disposition} | ${finding.succeeded_rows}/${finding.latest_rows} | ${finding.normalized_calls} | ${finding.cache_percent == null ? "" : finding.cache_percent.toFixed(1)} | ${finding.previous_pairs}/${finding.history_pairs} | ${(finding.reasons || []).join("; ").replaceAll("|", "\\|")} |`,
     ),
     "",
     "## Telemetry Gap Details",
     "",
     "| benchmark | normalized records | trajectory files | output files | reasons |",
     "|---|---:|---:|---:|---|",
-    ...payload.telemetryGapSummary.tokenlessFamilies.map((family) =>
-      `| \`${family.benchmark_id}\` | ${family.normalized_calls} | ${family.trajectory_like_files} | ${family.output_files} | ${(family.reasons || []).join("; ").replaceAll("|", "\\|")} |`,
+    ...payload.telemetryGapSummary.tokenlessFamilies.map(
+      (family) =>
+        `| \`${family.benchmark_id}\` | ${family.normalized_calls} | ${family.trajectory_like_files} | ${family.output_files} | ${(family.reasons || []).join("; ").replaceAll("|", "\\|")} |`,
     ),
     "",
     "| benchmark | agent | run | llm calls | turns | files | previews | output files |",
     "|---|---|---|---:|---:|---:|---:|---:|",
-    ...payload.telemetryGapSummary.zeroMetricRows.map((row) =>
-      `| \`${row.benchmark_id}\` | ${row.agent} | \`${row.run_id}\` | ${row.llm_call_count ?? ""} | ${row.trajectory_turns ?? ""} | ${row.discovered_trajectory_files} | ${row.call_previews} | ${row.output_files} |`,
+    ...payload.telemetryGapSummary.zeroMetricRows.map(
+      (row) =>
+        `| \`${row.benchmark_id}\` | ${row.agent} | \`${row.run_id}\` | ${row.llm_call_count ?? ""} | ${row.trajectory_turns ?? ""} | ${row.discovered_trajectory_files} | ${row.call_previews} | ${row.output_files} |`,
     ),
     "",
     "## Run History Comparison",
     "",
     "| benchmark | agent | runs | succeeded | current | previous | score delta | call delta | cache-read delta |",
     "|---|---|---:|---|---|---:|---:|---:|",
-    ...payload.runHistory.comparisons.map((entry) =>
-      `| \`${entry.benchmark_id}\` | ${entry.agent} | ${entry.run_count} | ${entry.succeeded_run_count} | \`${entry.current?.run_id || ""}\` | \`${entry.previous?.run_id || ""}\` | ${entry.deltas?.score ?? ""} | ${entry.deltas?.llm_call_count ?? ""} | ${entry.deltas?.cache_read_tokens ?? ""} |`,
+    ...payload.runHistory.comparisons.map(
+      (entry) =>
+        `| \`${entry.benchmark_id}\` | ${entry.agent} | ${entry.run_count} | ${entry.succeeded_run_count} | \`${entry.current?.run_id || ""}\` | \`${entry.previous?.run_id || ""}\` | ${entry.deltas?.score ?? ""} | ${entry.deltas?.llm_call_count ?? ""} | ${entry.deltas?.cache_read_tokens ?? ""} |`,
     ),
     "",
     "## Warning Counts",
@@ -1485,8 +1630,9 @@ function renderMarkdown(payload) {
     "",
     "| benchmark | agent | run | calls | tokens | cached tokens | playback | jsonl |",
     "|---|---|---|---:|---:|---:|---|---|",
-    ...payload.canonicalFiles.map((entry) =>
-      `| \`${entry.benchmark_id}\` | ${entry.agent} | \`${entry.run_id}\` | ${entry.call_count} | ${entry.token_total} | ${entry.cached_token_total} | \`${entry.playback_file}\` | \`${entry.file}\` |`,
+    ...payload.canonicalFiles.map(
+      (entry) =>
+        `| \`${entry.benchmark_id}\` | ${entry.agent} | \`${entry.run_id}\` | ${entry.call_count} | ${entry.token_total} | ${entry.cached_token_total} | \`${entry.playback_file}\` | \`${entry.file}\` |`,
     ),
     "",
   ].join("\n");
@@ -1498,7 +1644,10 @@ function main() {
   const rows = latestRows();
   const normalizedCalls = normalizedCallCatalog(rows);
   const sqliteRows = sqliteTrajectoryRows();
-  const canonicalFiles = writeCanonicalTrajectories(normalizedCalls, sqliteRows);
+  const canonicalFiles = writeCanonicalTrajectories(
+    normalizedCalls,
+    sqliteRows,
+  );
   const families = benchmarkFamilySummary(rows, normalizedCalls, index);
   const runHistory = runHistoryComparison();
   const findings = reviewFindings(families, runHistory);
@@ -1529,7 +1678,7 @@ function main() {
   payload.summary.familyReviewPages = payload.familyReviewPages.length;
   writeFileSync(
     path.join(REPORT_DIR, "corpus-review.json"),
-    JSON.stringify(payload, null, 2) + "\n",
+    `${JSON.stringify(payload, null, 2)}\n`,
     "utf8",
   );
   writeFileSync(
@@ -1537,7 +1686,11 @@ function main() {
     `window.BENCHMARK_RESULTS_CORPUS_REVIEW = ${JSON.stringify(payload)};\n`,
     "utf8",
   );
-  writeFileSync(path.join(REPORT_DIR, "README.md"), renderMarkdown(payload), "utf8");
+  writeFileSync(
+    path.join(REPORT_DIR, "README.md"),
+    renderMarkdown(payload),
+    "utf8",
+  );
   writeFileSync(path.join(REPORT_DIR, "index.html"), html(), "utf8");
   process.stdout.write(
     `benchmark results corpus review ${payload.summary.rowCount} rows, ${payload.summary.benchmarkCount} benchmarks, ${payload.trajectory.trajectory_rows || 0} trajectory rows\n`,

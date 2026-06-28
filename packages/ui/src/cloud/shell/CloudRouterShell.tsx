@@ -36,6 +36,7 @@ import {
   useLocation,
   useParams,
 } from "react-router-dom";
+import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../../utils/cloud-agent-base";
 import { queryClient } from "../lib/query-client";
 import { useSessionAuth } from "../lib/use-session-auth";
 import {
@@ -65,11 +66,16 @@ const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> = [
   { from: "dashboard/containers", to: "/dashboard/agents" },
   { from: "dashboard/containers/:id", to: "/dashboard/agents/:id" },
   { from: "dashboard/containers/agents/:id", to: "/dashboard/agents/:id" },
+  // In-dashboard quick chat was removed; real chat lives in the app. Send old
+  // deep links back to the agent detail page.
+  { from: "dashboard/agents/:id/chat", to: "/dashboard/agents/:id" },
   // App-create modal is opened from the apps list, not its own route.
   { from: "dashboard/apps/create", to: "/dashboard/apps" },
   // New app-IA targets: billing / api-keys move into settings sections.
   { from: "dashboard/billing", to: "/settings#billing" },
   { from: "dashboard/api-keys", to: "/settings#api-keys" },
+  // Knowledge/Documents now lives in the app; old deep links land on the agents list.
+  { from: "dashboard/documents", to: "/dashboard/agents" },
 ];
 
 /** Substitute `:param` segments from the matched route params. */
@@ -106,30 +112,6 @@ function CloudNotFound(): React.JSX.Element {
       <p>The page you requested doesn&apos;t exist.</p>
     </div>
   );
-}
-
-function isControlPlaneApexHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return (
-    host === "elizacloud.ai" ||
-    host === "www.elizacloud.ai" ||
-    host === "staging.elizacloud.ai" ||
-    host === "dev.elizacloud.ai"
-  );
-}
-
-export function AppCatchAllRoute({
-  appElement,
-}: {
-  appElement: ReactNode;
-}): React.JSX.Element {
-  const auth = useSessionAuth();
-  const hostname =
-    typeof window === "undefined" ? "" : window.location.hostname;
-  if (isControlPlaneApexHost(hostname) && auth.ready && !auth.authenticated) {
-    return <Navigate to="/login" replace />;
-  }
-  return <>{appElement}</>;
 }
 
 /**
@@ -180,6 +162,51 @@ export interface CloudRouterShellProps {
 }
 
 /**
+ * Apex control-plane hosts that serve THIS console UI but have no same-origin
+ * agent backend — so an unauthenticated visitor must land on the Steward
+ * `/login` page, not the agent shell (which 401-walls on `/api/*`).
+ * `api.elizacloud.ai` is the API origin (it never serves this shell); per-agent
+ * `<id>.elizacloud.ai` subdomains are NOT in the control-plane set and boot
+ * their real runtime, so they fall through untouched.
+ */
+const APEX_UI_CONTROL_PLANE_HOSTS = new Set(
+  // Exclude the API origins (api. / api-staging.) — they never serve this shell.
+  [...ELIZA_CLOUD_CONTROL_PLANE_HOSTS].filter((h) => !/^api[.-]/.test(h)),
+);
+
+function isApexControlPlaneHost(): boolean {
+  if (typeof window === "undefined") return false;
+  return APEX_UI_CONTROL_PLANE_HOSTS.has(
+    window.location.hostname.toLowerCase(),
+  );
+}
+
+/**
+ * Catch-all element. Renders the agent app exactly as before, EXCEPT on an apex
+ * control-plane host where the Steward session is resolved-and-unauthenticated —
+ * there it redirects to the registered cloud `/login` page (`returnTo`
+ * preserved) instead of booting the agent shell that would 401-wall. The apex
+ * 401-wall was a router fall-through: no route registers the apex root `/`, so
+ * an unauthenticated apex visitor hit this catch-all and booted the agent
+ * runtime against a backend that isn't there.
+ */
+export function AppCatchAllRoute({
+  appElement,
+}: {
+  appElement: ReactNode;
+}): React.JSX.Element {
+  const { ready, authenticated } = useSessionAuth();
+  const location = useLocation();
+  if (isApexControlPlaneHost() && ready && !authenticated) {
+    const returnTo = encodeURIComponent(
+      `${location.pathname}${location.search}`,
+    );
+    return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
+  }
+  return <>{appElement}</>;
+}
+
+/**
  * The shell. Mounts the registered cloud routes + the `/dashboard/*` compat
  * redirects, and renders {@link CloudRouterShellProps.appElement} for every
  * other path so chat stays home and the tab system is untouched.
@@ -220,7 +247,9 @@ export function CloudRouterShell({
            */}
           <Route path="dashboard/*" element={<CloudNotFound />} />
 
-          {/* Catch-all: the existing tab/view app. Chat is home. */}
+          {/* Catch-all: the existing tab/view app (chat is home) — except an
+              unauthenticated visit to an apex control-plane host, which
+              redirects to /login instead of 401-walling. See AppCatchAllRoute. */}
           <Route
             path="*"
             element={<AppCatchAllRoute appElement={appElement} />}

@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd)"
 LINUX_DIR="${ROOT}/packages/os/linux/elizaos"
+RM_PATH_RECURSIVE_SCRIPT="${ROOT}/packages/scripts/rm-path-recursive.mjs"
 
 ARCH="amd64"
 SKIP_BUILD=0
@@ -107,6 +108,14 @@ try:
 except ValueError:
     print(path.as_posix())
 PY
+}
+
+rm_path_recursive() {
+    if [ ! -r "${RM_PATH_RECURSIVE_SCRIPT}" ]; then
+        echo "ERROR: recursive cleanup helper not found at ${RM_PATH_RECURSIVE_SCRIPT}" >&2
+        return 1
+    fi
+    node "${RM_PATH_RECURSIVE_SCRIPT}" "$@"
 }
 
 copy_agent_bundle() {
@@ -223,16 +232,24 @@ out.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-
 PY
 }
 
-rm -rf "${OUT}"
+rm_path_recursive "${OUT}"
 mkdir -p "${OUT}"
 copy_agent_bundle
 
 if [ "${ARCH}" = "riscv64" ]; then
     if [ "${RISCV64_BUN_ZIP_EXPLICIT}" = "1" ] && [ -s "${RISCV64_BUN_ZIP}" ]; then
         newest_input="$(
-            find "${ROOT}/packages/app-core/scripts/bun-riscv64" \
-                \( -path '*/bun-patches/*' -o -path '*/webkit-patches/*' -o -name 'bun-version.json' \) \
-                -type f -printf '%T@\n' | sort -n | tail -1
+            python3 - "${ROOT}/packages/app-core/scripts/bun-riscv64" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+paths = [root / "bun-version.json"]
+for dirname in ("bun-patches", "webkit-patches"):
+    paths.extend(path for path in (root / dirname).glob("**/*") if path.is_file())
+
+print(max((path.stat().st_mtime for path in paths if path.is_file()), default=0))
+PY
         )"
         zip_mtime="$(python3 - "${RISCV64_BUN_ZIP}" <<'PY'
 from pathlib import Path

@@ -29,19 +29,20 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
     )
 
 
-def test_lite_tiers_are_source_only_and_keep_mtp_missing(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+def test_active_tiers_have_source_weight_entries() -> None:
+    active_tiers = set(stage.ELIZA_1_TIERS)
+    assert set(stage.TEXT_SOURCES) == active_tiers
+    assert set(stage.DRAFTER_SOURCES) == active_tiers
+    assert set(stage.VISION_SOURCES) == active_tiers
+    assert set(stage.MMPROJ_QUANT_BY_TIER) == active_tiers
+    assert set(stage.MMPROJ_QUANT_TENSOR_OVERRIDES) == active_tiers
 
-    report = stage.stage_sources(_args(tmp_path, "0_8b"))
-
-    kinds = [f["kind"] for f in report["files"]]
-    assert "text" in kinds
-    assert "mtp" not in kinds
-    assert "unsloth/gemma-4-E2B-GGUF" in report["sources"]
-    assert any("No upstream MTP drafter" in b for b in report["blockers"])
+    for tier in stage.ELIZA_1_TIERS:
+        assert tier in stage.TEXT_SOURCES
+        assert tier in stage.DRAFTER_SOURCES
+        assert tier in stage.VISION_SOURCES
+        assert tier in stage.MMPROJ_QUANT_BY_TIER
+        assert tier in stage.MMPROJ_QUANT_TENSOR_OVERRIDES
 
 
 def test_mobile_tier_uses_gemma4_e2b_source(
@@ -52,11 +53,24 @@ def test_mobile_tier_uses_gemma4_e2b_source(
 
     report = stage.stage_sources(_args(tmp_path, "2b"))
 
+    kinds = [f["kind"] for f in report["files"]]
+    assert "text" in kinds
+    assert "mtp" in kinds
     assert "unsloth/gemma-4-E2B-GGUF" in report["sources"]
     assert (
         "google/gemma-4-E2B-it-qat-q4_0-unquantized-assistant"
         in report["sources"]
     )
+
+
+def test_2b_tier_records_mtp_conversion_blocker(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+
+    report = stage.stage_sources(_args(tmp_path, "2b"))
+
     assert stage.DRAFTER_SOURCES["2b"] is not None
     assert any("not a final GGUF" in b for b in report["blockers"])
 
@@ -100,48 +114,50 @@ def test_27b_class_tiers_use_gemma4_31b_source(
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
 
-    tier = "27b"
-    report = stage.stage_sources(_args(tmp_path, tier))
+    for tier in ("27b", "27b-256k"):
+        report = stage.stage_sources(_args(tmp_path, tier))
 
-    assert "unsloth/gemma-4-31B-GGUF" in report["sources"]
-    assert (
-        "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant"
-        in report["sources"]
-    )
-    # The 27b tier must use the 31B Gemma 4 source, never a smaller-tier base.
-    assert all(
-        not any(
-            small in f["repo"]
-            for small in ("gemma-4-E2B", "gemma-4-E4B", "gemma-4-12B")
+        assert "unsloth/gemma-4-31B-GGUF" in report["sources"]
+        assert (
+            "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant"
+            in report["sources"]
         )
-        for f in report["files"]
-        if f["kind"] in {"text", "mtp", "vision"}
-    )
-    drafter_files = [f for f in report["files"] if f["kind"] == "mtp"]
-    assert drafter_files == [
-        {
-            "kind": "mtp",
-            "repo": "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
-            "filename": "model.safetensors",
-            "destination": f"source/mtp/gemma4-31b-assistant.safetensors",
-            "license": "gemma",
-            "status": "source-safetensors",
-            "notes": tuple(stage.DRAFTER_SOURCES[tier].notes),
-            "revision": "sha-google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
-            "path": str(
-                tmp_path
-                / f"eliza-1-{tier}.bundle"
-                / f"source/mtp/gemma4-31b-assistant.safetensors"
-            ),
-            "dryRun": True,
-        }
-    ]
-    assert any("acceptance against the Eliza-1 text checkpoint" in b for b in report["blockers"])
+        # The 27b-family tiers must use the 31B Gemma 4 source, never a
+        # smaller-tier base.
+        assert all(
+            not any(
+                small in f["repo"]
+                for small in ("gemma-4-E2B", "gemma-4-E4B", "gemma-4-12B")
+            )
+            for f in report["files"]
+            if f["kind"] in {"text", "mtp", "vision"}
+        )
+        drafter_files = [f for f in report["files"] if f["kind"] == "mtp"]
+        assert drafter_files == [
+            {
+                "kind": "mtp",
+                "repo": "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
+                "filename": "model.safetensors",
+                "destination": "source/mtp/gemma4-31b-assistant.safetensors",
+                "license": "gemma",
+                "status": "source-safetensors",
+                "notes": tuple(stage.DRAFTER_SOURCES[tier].notes),
+                "revision": "sha-google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
+                "path": str(
+                    tmp_path
+                    / f"eliza-1-{tier}.bundle"
+                    / "source/mtp/gemma4-31b-assistant.safetensors"
+                ),
+                "dryRun": True,
+            }
+        ]
+        assert any(
+            "acceptance against the Eliza-1 text checkpoint" in b
+            for b in report["blockers"]
+        )
 
 
 def test_known_mtp_sources_are_wired_without_faking_small_tiers() -> None:
-    assert stage.DRAFTER_SOURCES["0_8b"] is None
-
     assert (
         stage.DRAFTER_SOURCES["2b"].repo
         == "google/gemma-4-E2B-it-qat-q4_0-unquantized-assistant"
@@ -163,7 +179,7 @@ def test_known_mtp_sources_are_wired_without_faking_small_tiers() -> None:
     assert stage.DRAFTER_SOURCES["9b"].filename == "model.safetensors"
     assert stage.DRAFTER_SOURCES["9b"].license == "gemma"
 
-    for tier in ("27b",):
+    for tier in ("27b", "27b-256k"):
         artifact = stage.DRAFTER_SOURCES[tier]
         assert artifact is not None
         assert artifact.repo == "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant"
@@ -172,13 +188,8 @@ def test_known_mtp_sources_are_wired_without_faking_small_tiers() -> None:
 
 
 def test_every_active_tier_has_vision_source() -> None:
-    """Every active release tier must source its own mmproj-F16.gguf.
-
-    The 27b tier uses the `unsloth/gemma-4-31B-GGUF` projector. The
-    0_8b/2b/4b/9b tiers each source the matching Gemma 4 projector. The
-    0_8b tier ships Q4_K_M; every other tier ships Q8_0.
-    """
-    for tier in ("0_8b", "2b", "4b", "9b", "27b"):
+    """Every active release tier must source its own mmproj-F16.gguf."""
+    for tier in stage.ELIZA_1_TIERS:
         assert stage.VISION_SOURCES[tier] is not None, tier
         artifact = stage.VISION_SOURCES[tier]
         assert artifact.kind == "vision"
@@ -189,9 +200,7 @@ def test_every_active_tier_has_vision_source() -> None:
             assert artifact.repo.startswith("unsloth/gemma-4-")
         assert tier in stage.MMPROJ_QUANT_BY_TIER
         assert tier in stage.MMPROJ_QUANT_TENSOR_OVERRIDES
-        assert stage.MMPROJ_QUANT_BY_TIER["0_8b"] == "Q4_K_M"
-        if tier != "0_8b":
-            assert stage.MMPROJ_QUANT_BY_TIER[tier] == "Q8_0"
+        assert stage.MMPROJ_QUANT_BY_TIER[tier] == "Q8_0"
 
 
 def test_large_projector_tiers_carry_ffn_down_override() -> None:
@@ -199,14 +208,14 @@ def test_large_projector_tiers_carry_ffn_down_override() -> None:
 
     Their hidden_dim (4304) is not divisible by 32, which is the row
     alignment Q8_0 requires; without the override `llama-quantize` bails
-    with "Unsupported tensor size encountered" mid-stream. The 0_8b/2b/4b
-    mid+small projectors do not need that override.
+    with "Unsupported tensor size encountered" mid-stream. The 2b/4b mid+small
+    projectors do not need that override.
     """
-    for tier in ("9b", "27b"):
+    for tier in ("9b", "27b", "27b-256k"):
         overrides = stage.MMPROJ_QUANT_TENSOR_OVERRIDES[tier]
         assert "v\\.blk\\.[0-9]+\\.ffn_down\\.weight" in overrides
         assert "v\\.patch_embd\\.weight" in overrides
-    for tier in ("0_8b", "2b", "4b"):
+    for tier in ("2b", "4b"):
         overrides = stage.MMPROJ_QUANT_TENSOR_OVERRIDES[tier]
         assert "v\\.patch_embd\\.weight" in overrides
         assert "v\\.blk\\.[0-9]+\\.ffn_down\\.weight" not in overrides

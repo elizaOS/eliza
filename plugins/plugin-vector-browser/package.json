@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-vector-browser",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -68,11 +68,11 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json",
     "test": "vitest run --config ./vitest.config.ts"
   },
   "files": [
@@ -81,6 +81,7 @@
   ],
   "devDependencies": {
     "@types/react": "^19.0.0",
+    "@types/three": "^0.184.0",
     "react": "^19.0.0",
     "three": "^0.184.0",
     "tsup": "^8.5.1",

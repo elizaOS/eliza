@@ -12,6 +12,7 @@
  */
 
 import { type AppDatabaseMode, DEFAULT_APP_DATABASE_MODE } from "./app-database-mode";
+import { RESERVED_PLATFORM_ENV_KEYS, stripReservedEnvKeys } from "./reserved-env-keys";
 
 export interface DeployAppRequest {
   appId: string;
@@ -97,10 +98,21 @@ export async function deployApp(
   // (ensureTenantDb is create-if-not-exists, so it materializes seamlessly).
   const mode = req.databaseMode ?? DEFAULT_APP_DATABASE_MODE;
   const dsn = mode === "isolated" ? await deps.ensureTenantDb(req.appId) : undefined;
+  // Strip caller-supplied platform-reserved keys (managed DB DSN, cloud API
+  // token, metered-identity keys) BEFORE injecting platform values. Without this
+  // a stateless ("none"-mode) app could set DATABASE_URL/POSTGRES_URL to point at
+  // an arbitrary DB, or pre-empt a managed identity key. The agent path already
+  // enforces this denylist (findReservedManagedElizaEnvKeys); the app path must
+  // too. POSTGRES_URL is added to the shared platform list because it is the
+  // app-container DB var (DATABASE_URL is already reserved).
+  const safeCallerEnv = stripReservedEnvKeys(req.env ?? {}, [
+    ...RESERVED_PLATFORM_ENV_KEYS,
+    "POSTGRES_URL",
+  ]);
   const environmentVars = {
-    ...(req.env ?? {}),
-    // Platform-owned DB values intentionally win over caller-provided values for
-    // these keys.
+    ...safeCallerEnv,
+    // Platform-owned DB values are injected last so they always win for isolated
+    // apps; stateless apps get neither var (and can no longer inject one).
     ...(dsn ? { DATABASE_URL: dsn, POSTGRES_URL: dsn } : {}),
   };
 

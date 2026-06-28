@@ -1,12 +1,17 @@
 {
   "name": "@elizaos/cloud-routing",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.json && node ../scripts/prepare-package-dist.mjs packages/cloud-routing",
+    "prepack": "bun run build",
     "test": "vitest run src",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src"

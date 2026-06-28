@@ -246,6 +246,39 @@ describe("ElizaClient websocket connection policy", () => {
     expect(received).toEqual([]);
   });
 
+  it("repointBaseUrl swaps the WS to the new host seamlessly (new socket, no disconnected flap)", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://shared.example.test", "tok");
+    client.connectWs();
+    expect(instances).toHaveLength(1);
+    // Bring the first socket up so wsHasConnectedOnce is set — repoint should
+    // still come up cleanly on the new host afterward.
+    instances[0].readyState = 1; // OPEN
+    instances[0].onopen?.();
+
+    const states: string[] = [];
+    client.onConnectionStateChange((s) => states.push(s.state));
+
+    client.repointBaseUrl("https://dedicated.example.test");
+
+    // A brand-new socket is opened against the dedicated host…
+    expect(instances).toHaveLength(2);
+    // …and the base is now the dedicated one.
+    expect(client.getBaseUrl()).toBe("https://dedicated.example.test");
+    // The seamless swap must NOT surface a "disconnected" connection state
+    // (that's the visible drop disconnectWs() would cause). connectWs() only
+    // emits on a *changed* state, and we suppressed the old socket's onclose,
+    // so no "disconnected" is reported during the re-point.
+    expect(states).not.toContain("disconnected");
+
+    // Driving the OLD (now-detached) socket's onclose must be a no-op: the
+    // re-point nulled its handlers, so it can't schedule a reconnect against
+    // the stale host.
+    const before = instances.length;
+    instances[0].onclose?.();
+    expect(instances).toHaveLength(before);
+  });
+
   it("removes a parked network-status reconnect wake on intentional disconnect", () => {
     const instances = stubWebSocketWithInstances();
     const client = new ElizaClient("https://agent.example.test", "agent-token");

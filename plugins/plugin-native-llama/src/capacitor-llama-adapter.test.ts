@@ -237,7 +237,7 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
 
     const adapter = new CapacitorLlamaAdapter();
-    await adapter.load({ modelPath: "/tmp/android-qwen.gguf" });
+    await adapter.load({ modelPath: "/tmp/android-eliza-1.gguf" });
 
     expect(state.initContextCalls).toHaveLength(1);
     expect(state.initContextCalls[0].params.n_gpu_layers).toBe(0);

@@ -162,27 +162,13 @@ build-fast: elizaos-app
 # cap with ELIZAOS_BUILD_CPUS=3 just build-cool. This defaults to
 # demo-friendly docs behavior; set ELIZAOS_SKIP_WEBSITE=0 to rebuild docs.
 build-cool: elizaos-app
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cpus="${ELIZAOS_BUILD_CPUS:-2}"
-    ELIZAOS_BUILD_CPUS="${cpus}" \
-        ELIZAOS_MKSQUASHFS_PROCESSORS="${ELIZAOS_MKSQUASHFS_PROCESSORS:-${cpus}}" \
-        ELIZAOS_SKIP_WEBSITE="${ELIZAOS_SKIP_WEBSITE:-1}" \
-        MT_FAST=1 \
-        ./build.sh build
+    ELIZAOS_SKIP_WEBSITE="${ELIZAOS_SKIP_WEBSITE:-1}" scripts/run-cool-build.sh build
 
 # Fastest full demo build: keep the Tails OS build, low-compression ISO,
 # and CPU cap, but skip rebuilding the bundled offline website/docs.
 # Use release `just build` when the local Tails documentation must be exact.
 build-demo: elizaos-app
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cpus="${ELIZAOS_BUILD_CPUS:-2}"
-    ELIZAOS_BUILD_CPUS="${cpus}" \
-        ELIZAOS_MKSQUASHFS_PROCESSORS="${ELIZAOS_MKSQUASHFS_PROCESSORS:-${cpus}}" \
-        ELIZAOS_SKIP_WEBSITE=1 \
-        MT_FAST=1 \
-        ./build.sh build
+    ELIZAOS_SKIP_WEBSITE=1 scripts/run-cool-build.sh build
 
 # Go/no-go: run only `lb config` in the container. Fast (~1 min) sanity
 # check that the Tails config tree still processes cleanly.
@@ -201,13 +187,7 @@ binary: elizaos-app sync-chroot
 # Low-CPU incremental rebuild. Still requires an existing chroot/ from a
 # previous full build.
 binary-cool: elizaos-app sync-chroot
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cpus="${ELIZAOS_BUILD_CPUS:-2}"
-    ELIZAOS_BUILD_CPUS="${cpus}" \
-        ELIZAOS_MKSQUASHFS_PROCESSORS="${ELIZAOS_MKSQUASHFS_PROCESSORS:-${cpus}}" \
-        MT_FAST=1 \
-        ./build.sh binary
+    scripts/run-cool-build.sh binary
 
 # --- Test -------------------------------------------------------------------
 

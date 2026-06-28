@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Render the elizaOS boot splash for the AOSP fork: the white elizaOS logo
 // on the elizaOS blue field, as the PNG frame sequence AOSP's bootanimation
 // daemon plays during boot (kernel logo -> this splash -> Eliza launcher).
@@ -12,13 +13,18 @@
 // Uses sharp (the repo's image toolchain) to rasterize + composite the SVG;
 // no external ImageMagick dependency.
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
+const reqFromApp = createRequire(
+  path.join(repoRoot, "packages/app/package.json"),
+);
 
 const LOGO_SVG = path.join(
   repoRoot,
@@ -27,6 +33,10 @@ const LOGO_SVG = path.join(
 const BOOTANIM_DIR = path.resolve(here, "../vendor/eliza/bootanimation");
 const PART0 = path.join(BOOTANIM_DIR, "part0"); // one-shot intro: logo fades in
 const PART1 = path.join(BOOTANIM_DIR, "part1"); // idle loop until boot completes
+const rmRecursiveScript = path.resolve(
+  repoRoot,
+  "packages/scripts/rm-path-recursive.mjs",
+);
 
 // Device framebuffer geometry (matches desc.txt); the eliza_cf_*_phone
 // products use the Cuttlefish 1080x2400 panel.
@@ -40,10 +50,10 @@ const BLUE = { r: 0x0b, g: 0x35, b: 0xf1, alpha: 1 };
 
 let sharp;
 try {
-  sharp = (await import("sharp")).default;
+  sharp = (await import(reqFromApp.resolve("sharp"))).default;
 } catch {
   console.error(
-    "sharp is required to render the boot splash (it ships with the repo toolchain; run `bun install`)",
+    "sharp is required to render the boot splash (it ships with the app toolchain; run `bun install`)",
   );
   process.exit(1);
 }
@@ -53,8 +63,19 @@ if (!fs.existsSync(LOGO_SVG)) {
   process.exit(1);
 }
 
-fs.rmSync(PART0, { recursive: true, force: true });
-fs.rmSync(PART1, { recursive: true, force: true });
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `failed to remove generated bootanimation frames ${targetPath} (exit ${result.status})`,
+    );
+  }
+}
+
+rmRecursive(PART0);
+rmRecursive(PART1);
 fs.mkdirSync(PART0, { recursive: true });
 fs.mkdirSync(PART1, { recursive: true });
 
@@ -70,7 +91,12 @@ const logoPng = await sharp(fs.readFileSync(LOGO_SVG))
   .png()
   .toBuffer();
 const logoLayer = await sharp({
-  create: { width: WIDTH, height: HEIGHT, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  create: {
+    width: WIDTH,
+    height: HEIGHT,
+    channels: 4,
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  },
 })
   .composite([{ input: logoPng, gravity: "center" }])
   .raw()

@@ -12,9 +12,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+REPO_ROOT="$(cd ../.. && pwd)"
+RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.mjs"
 PY=${PY:-python3}
 WORK=$(mktemp -d -t eliza-ci-XXXXXX)
-trap 'rm -rf "$WORK"' EXIT
+trap 'node "$RM_PATH_RECURSIVE" "$WORK"' EXIT
 
 step() { echo; echo "[ci-smoke] $*"; }
 fail() { echo "[ci-smoke] FAIL: $*" >&2; exit 1; }

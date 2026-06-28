@@ -18,6 +18,12 @@ const safariWorkDir = path.join(extensionRoot, "safari");
 const generatedProjectDir = path.join(safariWorkDir, "generated");
 const derivedDataDir = path.join(distDir, "safari-derived-data");
 const artifactsDir = path.join(distDir, "artifacts");
+const cleanupHelper = path.resolve(
+  extensionRoot,
+  "..",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const appName = "Agent Browser Bridge";
 const bundleIdentifier = "ai.elizaos.browserbridge.app";
 const release = resolveBrowserBridgeReleaseVersion();
@@ -51,8 +57,9 @@ await run("bun", [path.join(scriptDir, "build.mjs"), "safari"], {
 });
 
 await fs.mkdir(safariWorkDir, { recursive: true });
-await fs.rm(generatedProjectDir, { recursive: true, force: true });
-await fs.rm(derivedDataDir, { recursive: true, force: true });
+await run("node", [cleanupHelper, generatedProjectDir, derivedDataDir], {
+  cwd: extensionRoot,
+});
 await fs.mkdir(artifactsDir, { recursive: true });
 
 await run("xcrun", [
@@ -116,7 +123,7 @@ const versionedProjectZipPath = path.join(
   artifactsDir,
   versionedArtifactName("browser-bridge-safari-project", "zip", release),
 );
-await fs.rm(artifactAppPath, { recursive: true, force: true });
+await run("node", [cleanupHelper, artifactAppPath], { cwd: extensionRoot });
 await fs.rm(artifactZipPath, { force: true });
 await fs.rm(versionedArtifactZipPath, { force: true });
 await fs.rm(versionedProjectZipPath, { force: true });

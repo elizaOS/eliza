@@ -18,6 +18,9 @@ describe("resolveRuntimePluginImportSpecifier", () => {
     expect(
       resolveRuntimePluginImportSpecifier("@elizaos/plugin-calendar"),
     ).toBe("@elizaos/plugin-calendar/plugin");
+    expect(
+      resolveRuntimePluginImportSpecifier("@elizaos/plugin-simple-views"),
+    ).toBe("@elizaos/plugin-simple-views/plugin");
   });
 
   it("keeps regular plugin package roots unchanged", () => {

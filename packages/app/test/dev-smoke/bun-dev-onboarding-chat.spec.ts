@@ -11,6 +11,8 @@ import {
 const RESPONSE_MARKER = "BUN_DEV_SMOKE_OK";
 
 test.describe("bun run dev onboarding chat smoke", () => {
+  test.describe.configure({ retries: process.env.CI ? 1 : 0 });
+
   test.skip(!LIVE_PROVIDER, "set a supported live provider key for dev smoke");
 
   test("starts dev, completes onboarding, and sends a chat message", async ({

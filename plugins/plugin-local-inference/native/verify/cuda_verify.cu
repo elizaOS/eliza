@@ -567,6 +567,7 @@ fused_attn_qjl_tbq3_kernel(const float * __restrict__ q_sketch,
                            const dev_block_qjl1_256 * __restrict__ k_blocks,
                            const dev_block_tbq3_0 * __restrict__ v_blocks,
                            int proj_dim, int n_heads, int n_kv_heads, int n_tokens,
+                           int causal, int q_pos_base,
                            float sm_scale, float * __restrict__ out) {
     const int lane = threadIdx.x;            // 0..31
     const int hq   = blockIdx.x;
@@ -601,6 +602,10 @@ fused_attn_qjl_tbq3_kernel(const float * __restrict__ q_sketch,
     for (int c = 0; c < 4; ++c) acc[c] = 0.0f;
     float m = -INFINITY, l = 0.0f;
     for (int t = 0; t < n_tokens; ++t) {
+        // Causal mask (mirrors vulkan/fused_attn_qjl_tbq.comp:251 `if (causal && t > q_abs) break`):
+        // the single query sits at absolute position q_pos_base (q_pos == 0 for the fixture),
+        // so it attends to KV positions 0..q_pos_base; tokens are walked in order, so break.
+        if (causal && t > q_pos_base) break;
         // QJL K score: lane owns sign byte `lane`.
         const uint8_t sb = __ldg(&pk[t].qs[lane]);
         float partial = 0.0f;
@@ -744,6 +749,10 @@ static int run_fused(const char * fx_path, const std::string & s, float tol) {
         if (find_key_from(s, "n_heads", c) && c < cend)    n_heads    = parse_int_at(s, c);
         if (find_key_from(s, "n_kv_heads", c) && c < cend) n_kv_heads = parse_int_at(s, c);
         if (find_key_from(s, "n_kv", c) && c < cend)       n_kv       = parse_int_at(s, c);
+        // Causal masking params (parsed with independent cursors so they don't disturb `c`).
+        int causal = 0, q_pos_base = 0;
+        { size_t cc = brace; if (find_key_from(s, "causal", cc) && cc < cend)     causal     = parse_int_at(s, cc); }
+        { size_t cc = brace; if (find_key_from(s, "q_pos_base", cc) && cc < cend) q_pos_base = parse_int_at(s, cc); }
         std::vector<float>   q_sketch, expected_out;
         std::vector<uint8_t> k_blocks, v_blocks;
         if (find_key_from(s, "q_sketch", c) && c < cend)        q_sketch     = parse_float_array_at(s, c);
@@ -779,7 +788,7 @@ static int run_fused(const char * fx_path, const std::string & s, float tol) {
         fused_attn_qjl_tbq3_kernel<<<n_heads, 32>>>(d_q,
             reinterpret_cast<const dev_block_qjl1_256 *>(d_k),
             reinterpret_cast<const dev_block_tbq3_0 *>(d_v),
-            proj_dim, n_heads, n_kv_heads, n_kv, (float)sm_scale, d_out);
+            proj_dim, n_heads, n_kv_heads, n_kv, causal, q_pos_base, (float)sm_scale, d_out);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         std::vector<float> got(n_out);

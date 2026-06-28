@@ -114,6 +114,15 @@ export interface Content {
 	/** UUID of parent message if this is a reply/thread */
 	inReplyTo?: UUID;
 
+	/**
+	 * Full, untruncated text of the message THIS message reacted to. Connectors
+	 * that record an emoji reaction as a short display stub in `text` (e.g.
+	 * `*Added 👍 to: "first 50 chars…"*`) set this so context-building can feed
+	 * the planner the complete reacted-to statement instead of a truncated
+	 * fragment it would otherwise back-rationalize into a phantom task (#9874).
+	 */
+	reactedMessageText?: string;
+
 	/** Array of media attachments */
 	attachments?: Media[];
 

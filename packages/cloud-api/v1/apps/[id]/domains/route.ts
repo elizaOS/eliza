@@ -10,7 +10,6 @@
 
 import crypto from "node:crypto";
 import { Hono } from "hono";
-import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
@@ -19,18 +18,7 @@ import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-
-const DomainSchema = z.object({
-  domain: z
-    .string()
-    .min(4)
-    .max(253)
-    .regex(
-      /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i,
-      "Invalid domain format",
-    )
-    .transform((d) => d.toLowerCase().trim()),
-});
+import { domainBodySchema as DomainSchema } from "./schemas";
 
 const app = new Hono<AppEnv>();
 

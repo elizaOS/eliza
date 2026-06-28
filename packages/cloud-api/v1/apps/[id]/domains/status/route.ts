@@ -6,21 +6,13 @@
  */
 
 import { Hono } from "hono";
-import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appsService } from "@/lib/services/apps";
 import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-const StatusSchema = z.object({
-  domain: z
-    .string()
-    .min(4)
-    .max(253)
-    .transform((d) => d.toLowerCase().trim()),
-});
+import { domainBodySchema as StatusSchema } from "../schemas";
 
 const app = new Hono<AppEnv>();
 

@@ -13,6 +13,12 @@ const repoRoot = path.resolve(extensionRoot, "..", "..");
 const workspaceRoot = path.resolve(repoRoot, "..");
 const chromeDistDir = path.join(extensionRoot, "dist", "chrome");
 const resultsDir = path.join(extensionRoot, "dist", "test-results");
+const removePathRecursiveScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 function resolveBunCommand() {
   const bunFromEnv = process.env.BUN?.trim();
@@ -101,6 +107,12 @@ async function createTempDir(prefix) {
   return await fsp.mkdtemp(path.join(os.tmpdir(), prefix));
 }
 
+async function removePathRecursive(targetPath) {
+  await run(process.execPath, [removePathRecursiveScript, targetPath], {
+    cwd: repoRoot,
+  });
+}
+
 async function waitForServiceWorker(context) {
   return (
     context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"))
@@ -125,11 +137,11 @@ async function launchExtensionContext(chromium) {
       extensionId,
       async close() {
         await context.close();
-        await fsp.rm(userDataDir, { recursive: true, force: true });
+        await removePathRecursive(userDataDir);
       },
     };
   } catch (error) {
-    await fsp.rm(userDataDir, { recursive: true, force: true });
+    await removePathRecursive(userDataDir);
     throw error;
   }
 }

@@ -1,8 +1,9 @@
 {
   "schema": "eliza_type_safety_ratchet_v1",
-  "updatedAt": "2026-06-25T11:38:51.878Z",
+  "updatedAt": "2026-06-28T06:06:46.081Z",
   "scope": {
     "trackedOnly": true,
+    "enumeration": "git ls-files",
     "globs": [
       "src/**/*.ts",
       "src/**/*.tsx",
@@ -29,6 +30,7 @@
       "**/__mocks__/**",
       "**/__tests__/**",
       "**/fixtures/**",
+      "**/generated/**",
       "**/mock/**",
       "**/mocks/**",
       "**/test/**",
@@ -36,10 +38,11 @@
     ]
   },
   "limits": {
-    "asUnknownAs": 144,
+    "asUnknownAs": 132,
     "asAny": 0,
+    "explicitAny": 126,
     "tsSuppress": 0,
-    "nonNullAssertion": 577
+    "nonNullAssertion": 573
   },
-  "filesScanned": 9994
+  "filesScanned": 9990
 }

@@ -126,7 +126,7 @@ def test_fresh_riscv64_stage_writes_patch_bound_provenance() -> None:
         if missing:
             raise AssertionError(f"provenance missing current patch inputs: {missing}")
         artifact = provenance.get("artifact", {})
-        if artifact.get("zip_path") != str(fresh_zip):
+        if artifact.get("zip_path") != str(fresh_zip.resolve()):
             raise AssertionError(artifact)
         if not artifact.get("staged_bun_sha256"):
             raise AssertionError(artifact)

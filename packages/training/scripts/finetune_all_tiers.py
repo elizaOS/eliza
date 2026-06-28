@@ -256,7 +256,7 @@ def finetune_tier(
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Fine-tune all eliza-1 tiers (0.8b → 27b) with APOLLO SFT.",
+        description="Fine-tune all active eliza-1 tiers (2B → 27B) with APOLLO SFT.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument(

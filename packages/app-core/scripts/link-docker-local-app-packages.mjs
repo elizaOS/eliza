@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import { collectWorkspaceMaps } from "./lib/workspace-discovery.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const recursiveCleanupScript = path.join(
+  repoRoot,
+  "packages/scripts/rm-path-recursive.mjs",
+);
 const rootPkg = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
@@ -202,6 +207,22 @@ function pathExists(filePath) {
   }
 }
 
+function removeDirectoryRecursive(filePath) {
+  try {
+    execFileSync("node", [recursiveCleanupScript, filePath], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(
+      `Failed to remove directory ${filePath}${detail ? `: ${detail}` : ""}`,
+      { cause: error },
+    );
+  }
+}
+
 function removePath(filePath) {
   try {
     const stat = fs.lstatSync(filePath);
@@ -209,7 +230,11 @@ function removePath(filePath) {
       fs.unlinkSync(filePath);
       return;
     }
-    fs.rmSync(filePath, { force: true, recursive: stat.isDirectory() });
+    if (stat.isDirectory()) {
+      removeDirectoryRecursive(filePath);
+      return;
+    }
+    fs.rmSync(filePath, { force: true });
   } catch (error) {
     if (error?.code === "ENOENT") {
       return;

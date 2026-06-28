@@ -12,7 +12,7 @@ Compressed KV cache layout (per position per head):
     2-bit, head_dim=128: 32 + 4 = 36 bytes   (vs 256B fp16 → 7.11x savings)
 
 Architecture-aware: only compresses full-attention layers in hybrid models
-like Qwen3.5 (skips DeltaNet/linear attention layers automatically).
+(skips recurrent/state-space attention layers automatically).
 
 Configuration:
     TURBOQUANT_BITS=4       Quantization bits (2, 3, or 4)
@@ -53,11 +53,11 @@ class FusedTurboQuantBackend(_AttentionBackendBase):
     attention (fused QK from packed indices).
 
     Usage:
-        vllm serve Qwen/Qwen3-8B --attention-backend FUSED_TURBOQUANT
+        vllm serve google/gemma-4-E2B --attention-backend FUSED_TURBOQUANT
 
         # Or with Python API:
         from vllm import LLM
-        llm = LLM("Qwen/Qwen3-8B", attention_backend="FUSED_TURBOQUANT")
+        llm = LLM("google/gemma-4-E2B", attention_backend="FUSED_TURBOQUANT")
     """
 
     name = "FUSED_TURBOQUANT"

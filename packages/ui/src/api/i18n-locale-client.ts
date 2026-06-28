@@ -9,6 +9,7 @@
 
 import { getBootConfig } from "../config/boot-config";
 import { normalizeLanguage, type UiLanguage } from "../i18n";
+import { supportsFullAppShellRoutes } from "./app-shell-capabilities";
 import { fetchWithCsrf } from "./csrf-client";
 
 function localeBase(): string {
@@ -17,11 +18,20 @@ function localeBase(): string {
   return apiBase ? apiBase.replace(/\/$/, "") : window.location.origin;
 }
 
+function shouldFetchSuggestedLanguage(): boolean {
+  if (typeof window === "undefined") return false;
+  const apiBase = getBootConfig().apiBase;
+  if (apiBase) return supportsFullAppShellRoutes(apiBase);
+  const host = window.location.hostname.toLowerCase();
+  return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+}
+
 /**
  * Fetch the server's suggested UI language. Returns `null` when the endpoint
  * is unreachable or the server has no confident suggestion (advisory only).
  */
 export async function fetchSuggestedLanguage(): Promise<UiLanguage | null> {
+  if (!shouldFetchSuggestedLanguage()) return null;
   let res: Response;
   try {
     res = await fetchWithCsrf(`${localeBase()}/api/i18n/locale`);

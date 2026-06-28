@@ -167,15 +167,28 @@ shares a single id end to end:
   `window.__ELIZA_STARTUP_TRACE_ID__` ahead of renderer JS (same mechanism as
   `window.__ELIZA_APP_API_BASE__`, `apiBaseOwner.injectIntoHtml`). The value
   should be the host startup-trace `session_id`.
+- Electrobun's static-server HTML path now injects that startup-trace
+  `session_id` through `apiBaseOwner.injectIntoHtml`, so desktop renderer marks
+  adopt the host id before module evaluation.
+- Android's Capacitor host now exposes a process-local startup trace id through
+  the synchronous `window.ElizaNative.getStartupTraceId()` bridge and passes the
+  same value into the local agent as `ELIZA_STARTUP_TRACE_ID`, so renderer marks,
+  restart events, and `<stateDir>/telemetry/boot/latest.json` can be correlated
+  on Android device boots.
+- iOS's Capacitor host now uses an `ElizaBridgeViewController` document-start
+  `WKUserScript` to inject `window.__ELIZA_STARTUP_TRACE_ID__` before renderer
+  module evaluation. The iOS full-Bun local runtime passes that same id into the
+  agent env as `ELIZA_STARTUP_TRACE_ID`, so renderer marks and
+  `<stateDir>/telemetry/boot/latest.json` can be correlated on iOS local boots.
 - The renderer reads it (`initStartupTrace()` →
-  `STARTUP_TRACE_ID_WINDOW_KEY`); absent an injected id it derives a
+  `STARTUP_TRACE_ID_WINDOW_KEY`, then Android's bridge fallback); absent an
+  injected/native id it derives a
   renderer-local id and still records `timeOrigin` (epoch ms), so traces can be
   aligned by wall-clock even before the id seam is wired.
 
-> Wiring status: the renderer side and the adoption seam ship now. Injecting the
-> host `session_id` at `injectIntoHtml` is a one-line follow-up in
-> `electrobun/src/index.ts` (and the Capacitor equivalent) — tracked as the next
-> step on #9565, kept out of this change to avoid touching the volatile host.
+> Wiring status: renderer adoption, Electrobun injection, Android bridge/env
+> propagation, and iOS document-start injection/full-Bun env propagation now
+> ship together.
 
 ---
 

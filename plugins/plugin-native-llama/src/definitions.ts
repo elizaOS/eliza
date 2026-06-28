@@ -282,7 +282,7 @@ export interface LlamaAdapter {
    * Apply the loaded model's native chat template to a list of
    * `{role, content}` messages and return the rendered prompt string.
    * Backed by llama.cpp's `llama_chat_apply_template` which uses the
-   * GGUF's own Jinja template — handles Llama-3, Qwen, Mistral, Phi,
+   * GGUF's own Jinja template — handles Gemma, Llama-3, Mistral, Phi,
    * etc. without per-model code on the caller side. Returns null when
    * the loaded GGUF has no chat template baked in.
    */

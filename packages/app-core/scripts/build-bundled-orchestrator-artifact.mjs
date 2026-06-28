@@ -1,18 +1,17 @@
 #!/usr/bin/env bun
 
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..");
-const pluginDir = path.join(
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const pluginDir = path.join(repoRoot, "plugins", "plugin-agent-orchestrator");
+const cleanupHelperScript = path.join(
   repoRoot,
-  "eliza",
-  "plugins",
-  "plugin-agent-orchestrator",
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
 );
 
 const externals = [
@@ -26,12 +25,35 @@ const externals = [
   "zod",
 ];
 
+function removeGeneratedDist() {
+  if (!existsSync("dist")) {
+    return;
+  }
+
+  const result = spawnSync("node", [cleanupHelperScript, "dist"], {
+    cwd: pluginDir,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const output = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    throw new Error(
+      `cleanup helper failed for ${path.join(pluginDir, "dist")}${output ? `:\n${output}` : ""}`,
+    );
+  }
+}
+
 async function main() {
   process.chdir(pluginDir);
 
-  if (existsSync("dist")) {
-    await rm("dist", { recursive: true, force: true });
-  }
+  removeGeneratedDist();
 
   const result = await Bun.build({
     entrypoints: ["./src/index.ts"],

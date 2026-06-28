@@ -181,6 +181,67 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("alpha beta gamma");
   });
 
+  it("does not stream internal tool or evaluation payloads as visible chat text", async () => {
+    const internalToolPayload = JSON.stringify({
+      type: "tool_call",
+      toolCall: {
+        id: "tool-1",
+        name: "VIEWS",
+        arguments: { action: "show", view: "notes" },
+        status: "pending",
+      },
+      contextEvent: {
+        id: "tool:VIEWS",
+        type: "tool",
+        source: "message-service",
+      },
+    });
+    const internalEvaluationPayload = JSON.stringify({
+      type: "evaluation",
+      evaluation: {
+        success: true,
+        decision: "FINISH",
+        thought: "Opened the Notes view successfully.",
+      },
+    });
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, _callback, options) {
+        await options?.onStreamChunk?.(internalToolPayload);
+        await options?.onStreamChunk?.(internalEvaluationPayload);
+        return {
+          didRespond: true,
+          responseContent: { text: "Navigated to Notes (gui)." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "tool-stream-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("open notes"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: (chunk) => chunks.push(chunk),
+        onSnapshot: (text) => snapshots.push(text),
+      },
+    );
+
+    expect(chunks).toEqual([]);
+    expect(snapshots).toEqual(["Navigated to Notes (gui)."]);
+    expect(result.text).toBe("Navigated to Notes (gui).");
+  });
+
   it("routes a clean extension to onChunk but an in-place revision to onSnapshot", async () => {
     // chat-routes' appendIncomingText() runs every onStreamChunk value through
     // resolveStreamingUpdate(responseText, incoming):
@@ -324,6 +385,10 @@ describe("generateChatResponse token streaming", () => {
     const directParams = useModel.mock.calls[0]?.[1] as { prompt?: string };
     expect(directParams.prompt).not.toContain("/no_think");
     expect(directParams.prompt).toContain("can you hear me locally?");
+    expect(directParams.prompt).toContain("<start_of_turn>user\n");
+    expect(directParams.prompt).toContain("<end_of_turn>\n");
+    expect(directParams.prompt).toContain("<start_of_turn>model\n");
+    expect(directParams.prompt).not.toContain("<|im_start|>");
 
     expect(useModel).toHaveBeenCalledWith(
       expect.anything(),
@@ -331,6 +396,7 @@ describe("generateChatResponse token streaming", () => {
         stream: true,
         maxTokens: 20,
         prompt: expect.stringContaining("<think>\n\n</think>\n"),
+        stopSequences: ["<end_of_turn>", "<start_of_turn>"],
         providerOptions: expect.objectContaining({
           androidLocal: expect.objectContaining({
             minFirstSentenceChars: 12,

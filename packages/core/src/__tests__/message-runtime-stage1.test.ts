@@ -404,6 +404,34 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime).length).toBe(1);
 	});
 
+	it("keeps an all-caps reply the user explicitly asked the agent to say", async () => {
+		// "Say PONG" -> "PONG" used to dead-end into the fallback because
+		// isUnusableStage1Reply flags any non-allowlisted 2-8 char all-caps word.
+		// When the user explicitly requested that token, the reply is intentional.
+		for (const [ask, want] of [
+			["Say PONG", "PONG"],
+			["say HELLO", "HELLO"],
+			["please respond with the word PING", "PING"],
+			// mention-prefixed (Discord/Telegram render the mention into the text)
+			["remilio (@1490833425802854491) Say PONG", "PONG"],
+			["<@1490833425802854491> say HELLO", "HELLO"],
+		] as const) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: want }),
+			]);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: ask }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(want);
+			}
+		}
+	});
+
 	it("does not keep known-junk Stage 1 fragments when regeneration returns empty", async () => {
 		for (const badReply of ["RPPY", "{}", "aaaaa", "::::"]) {
 			const runtime = makeRuntime([

@@ -6,7 +6,6 @@
     "declaration": true,
     "declarationMap": true,
     "strict": true,
-    "noImplicitAny": false,
     "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

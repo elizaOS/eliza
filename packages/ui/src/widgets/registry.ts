@@ -213,6 +213,13 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       signalKinds: ["workflow", "activity"],
     },
     {
+      pluginId: "simple-views",
+      label: "Simple Views",
+      icon: "LayoutGrid",
+      defaultWidget: "activity",
+      signalKinds: ["workflow", "activity"],
+    },
+    {
       pluginId: "shopify-ui",
       label: "Shopify",
       icon: "ShoppingBag",

@@ -1,6 +1,7 @@
 import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/shared";
 import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import { isDesktopExternalHttpApiBaseUrl } from "./desktop-external-api-base";
 import {
   type AgentRequestTransport,
   bodyToString,
@@ -29,29 +30,6 @@ function isExternalPlainHttpUrl(url: string): boolean {
   }
 }
 
-function getConfiguredExternalApiBaseOrigin(): string | null {
-  if (typeof window === "undefined") return null;
-  const value = (window as { __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: unknown })
-    .__ELIZA_DESKTOP_EXTERNAL_API_BASE__;
-  if (typeof value !== "string" || !value.trim()) return null;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" ? parsed.origin : null;
-  } catch {
-    return null;
-  }
-}
-
-function isConfiguredExternalApiBaseUrl(url: string): boolean {
-  const allowedOrigin = getConfiguredExternalApiBaseOrigin();
-  if (!allowedOrigin) return false;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "http:" && parsed.origin === allowedOrigin;
-  } catch {
-    return false;
-  }
-}
 const desktopHttpTransport: AgentRequestTransport = {
   async request(url, init, context) {
     const rpc = getElectrobunRendererRpc();
@@ -90,7 +68,7 @@ export function desktopHttpTransportForUrl(
   url: string,
 ): AgentRequestTransport | null {
   return isElectrobunRuntime() &&
-    (isExternalPlainHttpUrl(url) || isConfiguredExternalApiBaseUrl(url))
+    (isExternalPlainHttpUrl(url) || isDesktopExternalHttpApiBaseUrl(url))
     ? desktopHttpTransport
     : null;
 }

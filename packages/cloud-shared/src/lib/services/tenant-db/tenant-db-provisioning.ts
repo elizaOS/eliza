@@ -43,6 +43,17 @@ export interface SqlTenantDbProvisioningDeps {
   /** Builds a provisioner bound to a cluster's admin connection. */
   makeProvisioner: (cluster: TenantDbCluster, adminDsn: string) => TenantDbProvisioner;
   /**
+   * Claim or reuse this app's durable cluster placement. Real DB wiring does
+   * this in one transaction with the cluster slot claim so deploy retries for
+   * the same app re-enter the same cluster instead of incrementing capacity.
+   */
+  claimPlacement?: (appId: string) => Promise<AllocatedCluster>;
+  /**
+   * Clear the durable app->cluster placement after teardown. Required in real
+   * wiring so a later recreate for the same app id can claim fresh capacity.
+   */
+  clearPlacement?: (appId: string, clusterId: string) => Promise<void>;
+  /**
    * Resolve the cluster owning a host (from the app's stored DSN) -> id +
    * ENCRYPTED admin DSN. Required for `deprovisionForApp`.
    */
@@ -61,11 +72,11 @@ export class SqlTenantDbProvisioning implements TenantDbProvisioning {
   }
 
   async provisionForApp(appId: string): Promise<{ dsn: string; clusterId: string }> {
-    const allocated = await this.deps.pool.allocate();
-    const adminDsn = await this.deps.decrypt(allocated.adminDsnEncrypted);
-    const provisioner = this.deps.makeProvisioner({ host: allocated.host }, adminDsn);
+    const cluster = await this.claimClusterPlacement(appId);
+    const adminDsn = await this.deps.decrypt(cluster.adminDsnEncrypted);
+    const provisioner = this.deps.makeProvisioner({ host: cluster.host }, adminDsn);
     const result = await provisioner.provision(appId);
-    return { dsn: result.dsn, clusterId: allocated.id };
+    return { dsn: result.dsn, clusterId: cluster.id };
   }
 
   async deprovisionForApp(appId: string, dsn: string): Promise<TenantDbDeprovisionResult> {
@@ -75,14 +86,27 @@ export class SqlTenantDbProvisioning implements TenantDbProvisioning {
         "deprovisionForApp not configured: pass resolveClusterByHost + releaseSlot to SqlTenantDbProvisioning",
       );
     }
-    return deprovisionTenantDbForApp(appId, dsn, {
+    let resolvedClusterId: string | undefined;
+    const result = await deprovisionTenantDbForApp(appId, dsn, {
       resolveClusterByHost: async (host) => {
         const cluster = await resolveClusterByHost(host);
         if (!cluster) return null;
+        resolvedClusterId = cluster.id;
         return { id: cluster.id, adminDsn: await this.deps.decrypt(cluster.adminDsnEncrypted) };
       },
       makeDeprovisioner: (adminDsn, host) => this.deps.makeProvisioner({ host }, adminDsn),
       releaseSlot,
     });
+    if (result.deprovisioned && resolvedClusterId && this.deps.clearPlacement) {
+      await this.deps.clearPlacement(appId, resolvedClusterId);
+    }
+    return result;
+  }
+
+  private async claimClusterPlacement(appId: string): Promise<AllocatedCluster> {
+    if (this.deps.claimPlacement) {
+      return await this.deps.claimPlacement(appId);
+    }
+    return await this.deps.pool.allocate();
   }
 }

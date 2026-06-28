@@ -20,13 +20,12 @@ network and does NOT publish. It only assembles the text/vision/(mtp) core
 from local files and validates the result, so M8's "assemble a loadable E2B
 bundle from local artifacts" goal can be proven offline.
 
-The manifest schema here is the GEMMA cutover shape described in the M8 plan
-(`schema.ts`: tiers 2b/4b/9b/27b/27b-256k, tokenizerFamily "gemma", vocab
-262144, REQUIRED_KERNELS = turboquant_q4 + turbo3_tcq, separate-drafter MTP,
-stock q8_0 KV). It is written directly rather than via
-`scripts/manifest/eliza1_manifest.py`, which is still the pre-Gemma version
-(lists 0_8b, requires qjl+polar, has no tokenizer/kv/mtp fields) and would
-emit a non-Gemma contract until its own M8 workstream lands.
+The manifest schema here is the Gemma 4 cutover shape described in the M8 plan
+and now mirrored by `scripts/manifest/eliza1_manifest.py` (`schema.ts`: tiers
+2b/4b/9b/27b/27b-256k, tokenizerFamily "gemma4", vocab 262144,
+REQUIRED_KERNELS = turboquant_q4 + turbo3_tcq, separate-drafter MTP, stock q8_0
+KV). This standalone assembler keeps the same contract local so it can prove a
+loadable core bundle without running the full publish pipeline.
 
 Usage:
     cd packages/training

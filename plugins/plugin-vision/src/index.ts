@@ -16,6 +16,12 @@ import { ScreenCaptureBridgeService } from "./screen-capture-bridge";
 import { VisionService } from "./service";
 import { wireComputerUseSetOfMarksBridge } from "./set-of-marks-provider";
 
+type LocalInferenceServicesModule = {
+  registerVisionContextAugmenter?: (augmenter: unknown) => void;
+};
+
+const dynamicImport = (specifier: string) => import(specifier);
+
 export const visionPlugin: Plugin = {
   name: "vision",
   description:
@@ -72,6 +78,32 @@ export const visionPlugin: Plugin = {
         registerOcrWithCoordsService(new RapidOcrCoordAdapter());
       }
     }
+    // Vision-context fusion (#9105): register an augmenter that runs OCR +
+    // object/face detection over describe-image inputs and folds the results
+    // into the Gemma-4 VL prompt. plugin-local-inference owns the registry; we
+    // wire into it via a best-effort dynamic import (no hard dep — skipped
+    // cleanly when local-inference is not installed), same as the OCR bridge.
+    try {
+      const li = (await dynamicImport(
+        "@elizaos/plugin-local-inference/services",
+      )) as LocalInferenceServicesModule;
+      if (typeof li.registerVisionContextAugmenter === "function") {
+        const { createDefaultVisionAugmenter } = await import(
+          "./vision-context-augmenter.js"
+        );
+        li.registerVisionContextAugmenter(createDefaultVisionAugmenter());
+        logger.info(
+          "[vision] registered vision-context augmenter (OCR+object+face fusion) into IMAGE_DESCRIPTION",
+        );
+      }
+    } catch (err) {
+      logger.debug(
+        `[vision] local-inference vision-augment seam not available; describe runs unaugmented (${
+          err instanceof Error ? err.message : String(err)
+        })`,
+      );
+    }
+
     try {
       const mod = (await import(
         "@elizaos/plugin-computeruse/mobile/ocr-provider"

@@ -40,6 +40,7 @@ RISCV64_GUI_KIOSK_REPORT ?= $(HERE)/evidence/riscv64_gui_kiosk_iso_check.json
 ARM64_GUI_KIOSK_REPORT ?= $(HERE)/evidence/arm64_gui_kiosk_iso_check.json
 ARM64_QEMU_EVIDENCE ?= $(HERE)/evidence/arm64_qemu_virt_boot.json
 ARM64_QEMU_TRANSCRIPT ?= $(HERE)/evidence/arm64_qemu_virt_boot.transcript.log
+REMOVE_PATH_RECURSIVE ?= node ../../../scripts/rm-path-recursive.mjs
 
 SUPPORTED_ARCHES := amd64 arm64 riscv64
 SUPPORTED_PROFILES := default gui secure secure-gui
@@ -99,8 +100,7 @@ lint:
 	python3 scripts/test_check_multiarch_boot_contract.py
 
 clean:
-	rm -rf $(OUT)
-	rm -rf cache chroot binary*.iso config/binary config/bootstrap config/chroot config/source
+	$(REMOVE_PATH_RECURSIVE) "$(OUT)" cache chroot binary*.iso config/binary config/bootstrap config/chroot config/source
 
 check-arch:
 	@case " $(SUPPORTED_ARCHES) " in \
@@ -136,7 +136,14 @@ mkosi-build: builder check-arch
 	        -v "$(MKOSI_OUT):/out" \
 	        --entrypoint bash \
 	        elizaos-linux-builder -lc "\
-	            rm -rf /work/mkosi && mkdir -p /work/mkosi && \
+	            if [ -L /work/mkosi ]; then \
+	                unlink /work/mkosi; \
+	            elif [ -d /work/mkosi ]; then \
+	                find /work/mkosi -mindepth 1 -depth -delete && rmdir /work/mkosi; \
+	            elif [ -e /work/mkosi ]; then \
+	                unlink /work/mkosi; \
+	            fi && \
+	            mkdir -p /work/mkosi && \
 	            rsync -a /src/ /work/mkosi/ \
 	                --exclude .build --exclude .build.lock --exclude cache \
 	                --exclude chroot --exclude binary --exclude out && \
@@ -164,4 +171,4 @@ mkosi-lint:
 	scripts/mkosi-lint.sh
 
 mkosi-clean:
-	rm -rf "$(MKOSI_OUT)"
+	$(REMOVE_PATH_RECURSIVE) "$(MKOSI_OUT)"

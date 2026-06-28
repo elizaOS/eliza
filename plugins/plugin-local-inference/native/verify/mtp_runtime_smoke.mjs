@@ -144,7 +144,7 @@ function timestamp() {
 }
 
 function inferTier(value) {
-  const match = String(value ?? "").match(/eliza-1-(0_8b|2b|4b|9b|27b(?:-256k)?)/);
+  const match = String(value ?? "").match(/eliza-1-(2b|4b|9b|27b(?:-256k)?)/);
   return match?.[1] ?? "";
 }
 

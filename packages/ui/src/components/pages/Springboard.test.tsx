@@ -5,9 +5,16 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "../../api";
 import type { ViewEntry } from "../../hooks/view-catalog";
+import {
+  SPRINGBOARD_DOCK_LIMIT,
+  SPRINGBOARD_STORAGE_KEY,
+} from "../../state/springboard-layout";
+import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
 import { Springboard } from "./Springboard";
 
 function entry(id: string, label: string): ViewEntry {
@@ -48,7 +55,11 @@ function longPressToEdit(label: string): void {
 }
 
 beforeEach(() => window.localStorage.clear());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("Springboard", () => {
   it("renders every view as a names-only icon tile", () => {
@@ -57,6 +68,27 @@ describe("Springboard", () => {
     expect(screen.getByTestId("springboard-tile-settings")).toBeTruthy();
     // Label text is present (names below icons), no descriptions.
     expect(screen.getByText("Chat")).toBeTruthy();
+  });
+
+  it("marks preview and developer tiles without changing release tiles", () => {
+    render(
+      <Springboard
+        entries={[
+          entry("settings", "Settings"),
+          { ...entry("alpha", "Alpha"), viewKind: "preview" },
+          { ...entry("trace", "Trace"), viewKind: "developer" },
+        ]}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("springboard-kind-settings")).toBeNull();
+    expect(screen.getByTestId("springboard-kind-alpha").textContent).toBe(
+      "Preview",
+    );
+    expect(screen.getByTestId("springboard-kind-trace").textContent).toBe(
+      "Dev",
+    );
   });
 
   it("launches a view on tap (not in edit mode)", () => {
@@ -75,72 +107,28 @@ describe("Springboard", () => {
     expect(onLaunch).not.toHaveBeenCalled();
   });
 
-  it("renders no favorites dock — every tile is a uniform page tile", () => {
+  it("favorites a view into the dock and persists the layout", () => {
+    // `notes` is not in DEFAULT_SPRINGBOARD_FAVORITES (#9144), so favoriting it
+    // genuinely adds it to the dock rather than toggling off a pre-seeded id.
     const entries = [entry("notes", "Notes"), entry("settings", "Settings")];
     render(<Springboard entries={entries} onLaunch={() => {}} />);
-    // The dark favorites dock is gone entirely.
-    expect(screen.queryByTestId("springboard-dock")).toBeNull();
-    // Both views render as ordinary page tiles (nothing held back in a dock).
+    longPressToEdit("Notes");
+    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
+    // The dock now contains a Notes tile (keyed dock-notes).
     expect(screen.getByTestId("springboard-tile-notes")).toBeTruthy();
-    expect(screen.getByTestId("springboard-tile-settings")).toBeTruthy();
+    const stored = JSON.parse(
+      window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY) ?? "{}",
+    );
+    expect(stored.favorites).toContain("notes");
   });
 
-  it("renders every tile uniformly with no dark card or border", () => {
-    const entries = [entry("notes", "Notes"), entry("settings", "Settings")];
-    const { container } = render(
-      <Springboard entries={entries} onLaunch={() => {}} />,
-    );
-    // No tile carries the old dark-card / border classes.
-    expect(container.querySelector(".bg-black\\/35")).toBeNull();
-    expect(container.querySelector(".bg-black\\/45")).toBeNull();
-    expect(container.querySelector(".border-white\\/10")).toBeNull();
-    // Both launch buttons share the identical naked tile class string.
-    const buttons = Array.from(
-      container.querySelectorAll(
-        '[data-testid^="springboard-tile-"] > div > button',
-      ),
-    );
-    expect(buttons).toHaveLength(2);
-    const classes = new Set(buttons.map((b) => b.getAttribute("class")));
-    expect(classes.size).toBe(1);
-  });
-
-  it("shows page dots when there is more than one page (>24 views)", () => {
-    // 25 views overflow the 24-tile (4×6) page, so a second page appears.
+  it("shows page dots when there is more than one page", () => {
     const many = Array.from({ length: 25 }, (_, i) =>
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
     expect(screen.getByRole("button", { name: "Page 1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Page 2" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Page 3" })).toBeNull();
-  });
-
-  it("keeps a single page (no dots) when views fit within 24", () => {
-    const exactly = Array.from({ length: 24 }, (_, i) =>
-      entry(`v${i}`, `View ${i}`),
-    );
-    render(<Springboard entries={exactly} onLaunch={() => {}} />);
-    // 24 views fit one 4×6 page — no second page, so no page dots.
-    expect(screen.queryByRole("button", { name: "Page 1" })).toBeNull();
-    expect(screen.getByTestId("springboard-page-0")).toBeTruthy();
-    expect(screen.queryByTestId("springboard-page-1")).toBeNull();
-  });
-
-  it("renders every page as a carousel track and marks only the active one", () => {
-    // The carousel keeps every page mounted (it translates the whole track), so
-    // both pages — and all 25 tiles — are in the DOM; only the committed page is
-    // visible (the rest are aria-hidden).
-    const many = Array.from({ length: 25 }, (_, i) =>
-      entry(`v${i}`, `View ${i}`),
-    );
-    render(<Springboard entries={many} onLaunch={() => {}} />);
-    const page0 = screen.getByTestId("springboard-page-0");
-    const page1 = screen.getByTestId("springboard-page-1");
-    // v24 (the 25th view, sole tile of page 1) is mounted even on page 0.
-    expect(screen.getByTestId("springboard-tile-v24")).toBeTruthy();
-    expect(page0.getAttribute("aria-hidden")).toBe("false");
-    expect(page1.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("navigates pages via the page dots", () => {
@@ -148,18 +136,101 @@ describe("Springboard", () => {
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
-    // Page 1 is the active page; the second page is hidden.
+    // Page 1 shows the first page's views, not the 21st.
     expect(
-      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
-    ).toBe("true");
+      within(screen.getByTestId("springboard-page-0")).queryByTestId(
+        "springboard-tile-v20",
+      ),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
-    // The second page becomes the active (visible) one.
+    const secondPage = screen.getByTestId("springboard-page-1");
+    expect(secondPage.getAttribute("aria-hidden")).toBe("false");
+    expect(within(secondPage).getByTestId("springboard-tile-v20")).toBeTruthy();
+  });
+
+  it("slides adjacent pages with the finger before committing a page swipe", () => {
+    runAnimationFramesImmediately();
+    const many = Array.from({ length: 25 }, (_, i) =>
+      entry(`v${i}`, `View ${i}`),
+    );
+    render(<Springboard entries={many} onLaunch={() => {}} />);
+
+    const pageWindow = screen.getByTestId("springboard-page-window");
+    Object.defineProperty(pageWindow, "clientWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const rail = screen.getByTestId("springboard-page-rail");
+    fireEvent.pointerDown(pageWindow, {
+      isPrimary: true,
+      pointerId: 3,
+      clientX: 320,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(pageWindow, {
+      isPrimary: true,
+      pointerId: 3,
+      clientX: 220,
+      clientY: 304,
+    });
+
+    expect(rail.style.transform).toContain("-100px");
+    expect(rail.style.transition).toBe("none");
+
+    fireEvent.pointerUp(pageWindow, {
+      isPrimary: true,
+      pointerId: 3,
+      clientX: 170,
+      clientY: 304,
+    });
+
     expect(
-      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
-    ).toBe("false");
-    expect(
-      screen.getByTestId("springboard-page-0").getAttribute("aria-hidden"),
+      screen
+        .getByRole("button", { name: "Page 2" })
+        .getAttribute("aria-current"),
     ).toBe("true");
+    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
+  });
+
+  it("rubber-bands at the last page edge instead of dead-stopping", () => {
+    runAnimationFramesImmediately();
+    const many = Array.from({ length: 25 }, (_, i) =>
+      entry(`v${i}`, `View ${i}`),
+    );
+    render(<Springboard entries={many} onLaunch={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    const pageWindow = screen.getByTestId("springboard-page-window");
+    Object.defineProperty(pageWindow, "clientWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const rail = screen.getByTestId("springboard-page-rail");
+
+    fireEvent.pointerDown(pageWindow, {
+      isPrimary: true,
+      pointerId: 4,
+      clientX: 120,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(pageWindow, {
+      isPrimary: true,
+      pointerId: 4,
+      clientX: 20,
+      clientY: 304,
+    });
+
+    expect(rail.style.transform).toContain("-425px");
+    expect(rail.style.transition).toBe("none");
+
+    fireEvent.pointerUp(pageWindow, {
+      isPrimary: true,
+      pointerId: 4,
+      clientX: 20,
+      clientY: 304,
+    });
+
+    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
   });
 
   it("drops views that are no longer available on re-render", () => {
@@ -189,67 +260,90 @@ describe("Springboard", () => {
 });
 
 describe("Springboard image tiles", () => {
-  it("renders the view's hero image as the tile when imageUrl is set", () => {
-    render(
-      <Springboard
-        entries={[imageEntry("notes", "Notes", "/api/views/notes/hero")]}
-        onLaunch={() => {}}
-      />,
-    );
-    const img = screen.getByTestId("springboard-image-notes");
-    expect(img.getAttribute("src")).toBe("/api/views/notes/hero");
-    // The launch button is still labelled for a11y + tap.
-    expect(screen.getByRole("button", { name: "Notes" })).toBeTruthy();
-  });
-
-  it("falls back to the icon glyph when the hero image fails to load", () => {
+  it("renders a compact image icon over a glyph fallback when imageUrl is set", () => {
     const { container } = render(
       <Springboard
         entries={[imageEntry("notes", "Notes", "/api/views/notes/hero")]}
         onLaunch={() => {}}
       />,
     );
-    const img = screen.getByTestId("springboard-image-notes");
-    act(() => {
-      fireEvent.error(img);
-    });
-    // Image is gone; the Lucide fallback glyph renders so the tile is never blank.
-    expect(screen.queryByTestId("springboard-image-notes")).toBeNull();
-    expect(container.querySelector("svg")).toBeTruthy();
+    const image = screen.getByTestId("springboard-image-notes");
+    expect(image.getAttribute("src")).toBe("/api/views/notes/hero");
+    const visual = container.querySelector<HTMLElement>(
+      '[data-view-visual="notes"]',
+    );
+    expect(visual).toBeTruthy();
+    expect(visual?.querySelector("img")).toBeTruthy();
+    expect(visual?.querySelector("svg")).toBeTruthy();
+    // The launch button is still labelled for a11y + tap.
+    expect(screen.getByRole("button", { name: "Notes" })).toBeTruthy();
   });
 
-  it("renders the icon glyph (no image) when imageUrl is absent", () => {
+  it("renders the icon glyph when imageUrl is absent", () => {
     const { container } = render(
       <Springboard entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
     );
     expect(screen.queryByTestId("springboard-image-notes")).toBeNull();
     expect(container.querySelector("svg")).toBeTruthy();
   });
+
+  it("falls back to a glyph instead of probing API heroes on dedicated cloud agents", () => {
+    vi.spyOn(client, "getBaseUrl").mockReturnValue(
+      "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+    );
+
+    const { container } = render(
+      <Springboard
+        entries={[imageEntry("notes", "Notes", "/api/views/notes/hero")]}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("springboard-image-notes")).toBeNull();
+    const visual = container.querySelector<HTMLElement>(
+      '[data-view-visual="notes"]',
+    );
+    expect(visual?.querySelector("svg")).toBeTruthy();
+  });
+
+  it("falls back to a glyph for already-resolved dedicated cloud API heroes", () => {
+    const { container } = render(
+      <Springboard
+        entries={[
+          imageEntry(
+            "notes",
+            "Notes",
+            "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai/api/views/notes/hero",
+          ),
+        ]}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("springboard-image-notes")).toBeNull();
+    const visual = container.querySelector<HTMLElement>(
+      '[data-view-visual="notes"]',
+    );
+    expect(visual?.querySelector("svg")).toBeTruthy();
+  });
 });
 
 describe("Springboard long-press to edit", () => {
   afterEach(() => vi.useRealTimers());
 
-  /** Edit mode pulses every tile (the only resting→editing visual now that the
-   *  pin badge is gone). A pulsing tile is the edit-mode signal. */
-  const editingTileCount = () =>
-    document.querySelectorAll(
-      '[data-testid^="springboard-tile-"] button.animate-pulse',
-    ).length;
-
   it("enters edit mode after a long press on a tile", () => {
     vi.useFakeTimers();
     render(<Springboard entries={FEW} onLaunch={() => {}} />);
-    // Resting: no tile is pulsing.
-    expect(editingTileCount()).toBe(0);
+    // Resting: no per-tile pin affordances (there is no Edit button anymore).
+    expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Chat" }));
     act(() => {
       vi.advanceTimersByTime(450);
     });
 
-    // Edit mode is on: tiles pulse.
-    expect(editingTileCount()).toBeGreaterThan(0);
+    // Edit mode is on: per-tile pin affordances appear.
+    expect(screen.getByTestId("springboard-fav-chat")).toBeTruthy();
   });
 
   it("does not enter edit mode when the press is released early", () => {
@@ -264,8 +358,8 @@ describe("Springboard long-press to edit", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    // Still resting: no pulse.
-    expect(editingTileCount()).toBe(0);
+    // Still resting: no pin affordances surfaced.
+    expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
   });
 
   it("cancels the long-press when the pointer is cancelled (touch scroll)", () => {
@@ -282,14 +376,15 @@ describe("Springboard long-press to edit", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(editingTileCount()).toBe(0);
+    expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
   });
 });
 
-describe("Springboard desktop-tab props (favorites dock removed)", () => {
-  it("ignores favoriteIds / onToggleFavorite — renders no dock, plain page tiles", () => {
-    // The favorites props are retained for desktop-tab type compatibility but
-    // no longer render a dock. Supplying them must not produce a dock.
+describe("Springboard controlled favorites (desktop tabs)", () => {
+  it("clamps the dock to SPRINGBOARD_DOCK_LIMIT even when more are supplied", () => {
+    // Controlled mode (onToggleFavorite set) renders the caller's favoriteIds.
+    // A caller that supplies more than the cap must still render at most
+    // SPRINGBOARD_DOCK_LIMIT dock tiles (the iOS-style 4-slot dock).
     const ids = ["a", "b", "c", "d", "e", "f"];
     render(
       <Springboard
@@ -299,10 +394,61 @@ describe("Springboard desktop-tab props (favorites dock removed)", () => {
         onToggleFavorite={() => {}}
       />,
     );
-    expect(screen.queryByTestId("springboard-dock")).toBeNull();
-    // Every supplied view renders exactly once as a page tile.
-    for (const id of ids) {
-      expect(screen.getAllByTestId(`springboard-tile-${id}`)).toHaveLength(1);
-    }
+    const dockTiles = screen
+      .getByTestId("springboard-dock")
+      .querySelectorAll('[data-testid^="springboard-tile-"]');
+    expect(dockTiles).toHaveLength(SPRINGBOARD_DOCK_LIMIT);
   });
 });
+
+describe("Springboard dock favorites (local, uncontrolled)", () => {
+  // None of these ids are in DEFAULT_SPRINGBOARD_FAVORITES, so the seeded dock
+  // reconciles to empty and each favorite is a genuine add.
+  const MANY = ["a", "b", "c", "d", "e"].map((id) =>
+    entry(id, id.toUpperCase()),
+  );
+
+  it("unpins a favorited view from the dock", () => {
+    // `notes` and `archive` are not default-dock ids (#9144), so the seeded dock
+    // reconciles to empty and the dock only exists once we pin `notes`.
+    render(
+      <Springboard
+        entries={[entry("notes", "Notes"), entry("archive", "Archive")]}
+        onLaunch={() => {}}
+      />,
+    );
+    longPressToEdit("Notes");
+    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
+    expect(
+      within(screen.getByTestId("springboard-dock")).getByText("Notes"),
+    ).toBeTruthy();
+
+    // Toggle it off again → the dock empties and unmounts.
+    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
+    expect(screen.queryByTestId("springboard-dock")).toBeNull();
+    const stored = JSON.parse(
+      window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY) ?? "{}",
+    );
+    expect(stored.favorites).not.toContain("notes");
+  });
+
+  it("evicts the oldest favorite when the dock is full", () => {
+    render(<Springboard entries={MANY} onLaunch={() => {}} />);
+    longPressToEdit("A");
+    for (const id of ["a", "b", "c", "d", "e"]) {
+      fireEvent.click(screen.getByTestId(`springboard-fav-${id}`));
+    }
+    // Dock caps at 4 → the first-added ("A") is evicted, B–E remain.
+    const dock = within(screen.getByTestId("springboard-dock"));
+    expect(dock.queryByText("A")).toBeNull();
+    expect(dock.getByText("B")).toBeTruthy();
+    expect(dock.getByText("E")).toBeTruthy();
+    const stored = JSON.parse(
+      window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY) ?? "{}",
+    );
+    expect(stored.favorites).toEqual(["b", "c", "d", "e"]);
+  });
+});
+
+// Keep `within` referenced for future grouped-dock assertions without lint noise.
+void within;

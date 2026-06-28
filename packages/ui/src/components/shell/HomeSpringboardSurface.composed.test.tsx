@@ -20,6 +20,7 @@ import { useRoutableViews } from "../../hooks/useAvailableViews";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
 import { SpringboardSurface } from "../pages/SpringboardSurface";
 import { HomeSpringboardSurface } from "./HomeSpringboardSurface";
 
@@ -60,12 +61,11 @@ function view(
   };
 }
 
-// 4 system views + 24 plain views = 28 tiles, which pack into TWO springboard
-// pages (page size 20). Two pages is what makes the doubled-dots bug
-// observable: the inner Springboard WOULD render its own dot strip here if it
-// weren't suppressed in favor of the rail's single indicator. (The favorites
-// dock was removed — every one of these renders as a uniform page tile.)
-const SYSTEM_VIEWS = [
+// Four dock favorites (so the dock fills) + 24 page views, which pack into TWO
+// springboard pages (page size 20). Two pages is what makes the doubled-dots
+// bug observable: the inner Springboard WOULD render its own dot strip here if
+// it weren't suppressed in favor of the rail's single indicator.
+const DOCK_VIEWS = [
   view("settings", "Settings", "/settings", { icon: "Settings" }),
   view("files", "Files", "/apps/files", { icon: "FolderClosed" }),
   view("tasks", "Tasks", "/apps/tasks", { icon: "ListTodo" }),
@@ -74,15 +74,13 @@ const SYSTEM_VIEWS = [
 const PAGE_VIEWS = Array.from({ length: 24 }, (_, i) =>
   view(`app${i}`, `App ${i}`, `/apps/app${i}`),
 );
-const ALL_VIEWS = [...SYSTEM_VIEWS, ...PAGE_VIEWS];
-
-/** Edit mode pulses every tile (no pin badge anymore) — the editing signal. */
-const tilePulsing = (id: string): boolean =>
-  Boolean(
-    document
-      .querySelector(`[data-testid="springboard-tile-${id}"] button`)
-      ?.classList.contains("animate-pulse"),
-  );
+const HIDDEN_VIEWS = [
+  view("background", "Background", "/background", {
+    icon: "Image",
+    viewKind: "system",
+  }),
+];
+const ALL_VIEWS = [...DOCK_VIEWS, ...PAGE_VIEWS, ...HIDDEN_VIEWS];
 
 beforeEach(() => {
   resetShellSurfaceForTests();
@@ -107,6 +105,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetShellSurfaceForTests();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -123,14 +122,21 @@ function renderComposed() {
 
 function flick(testid: string, dx: number, dy = 4): void {
   const el = screen.getByTestId(testid);
-  fireEvent.pointerDown(el, { isPrimary: true, clientX: 260, clientY: 300 });
+  fireEvent.pointerDown(el, {
+    isPrimary: true,
+    pointerId: 1,
+    clientX: 260,
+    clientY: 300,
+  });
   fireEvent.pointerMove(el, {
     isPrimary: true,
+    pointerId: 1,
     clientX: 260 + dx,
     clientY: 300 + dy,
   });
   fireEvent.pointerUp(el, {
     isPrimary: true,
+    pointerId: 1,
     clientX: 260 + dx,
     clientY: 300 + dy,
   });
@@ -140,19 +146,64 @@ const openSpringboard = () => flick("home-springboard-home-page", -140);
 const swipeBackHome = () => flick("home-springboard-springboard-page", 140);
 
 describe("Home ↔ Springboard composed surface", () => {
-  it("renders NO page indicator — the dots were removed (collided with chat)", () => {
+  it("tracks the rail with the finger before committing a home ↔ springboard swipe", () => {
+    runAnimationFramesImmediately();
+    const surface = renderComposed();
+    Object.defineProperty(surface, "clientWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const homePage = screen.getByTestId("home-springboard-home-page");
+    const rail = screen.getByTestId("home-springboard-rail");
+
+    fireEvent.pointerDown(homePage, {
+      isPrimary: true,
+      pointerId: 2,
+      clientX: 260,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(homePage, {
+      isPrimary: true,
+      pointerId: 2,
+      clientX: 170,
+      clientY: 304,
+    });
+
+    expect(rail.style.transform).toContain("-90px");
+    expect(rail.style.transition).toBe("none");
+
+    fireEvent.pointerUp(homePage, {
+      isPrimary: true,
+      pointerId: 2,
+      clientX: 120,
+      clientY: 304,
+    });
+
+    expect(surface.getAttribute("data-page")).toBe("springboard");
+    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
+  });
+
+  it("renders exactly ONE page-indicator strip — no stacked dot rows (#4)", () => {
     const surface = renderComposed();
     openSpringboard();
     expect(surface.getAttribute("data-page")).toBe("springboard");
 
-    // The rail indicator is gone entirely — navigation is swipe-only now.
+    // The single rail indicator: Home + one dot per springboard page (2 pages).
+    const indicator = screen.getByTestId("home-springboard-indicator");
+    const railDots = indicator.querySelectorAll("button");
+    expect(railDots.length).toBe(3); // Home + Apps page 1 + Apps page 2
+    expect(screen.getByLabelText("Home")).toBeTruthy();
+    expect(screen.getByLabelText("Apps page 1")).toBeTruthy();
+    expect(screen.getByLabelText("Apps page 2")).toBeTruthy();
+
+    // The inner Springboard's OWN dot strip (aria-label "Page N") must be gone —
+    // it is what stacked under the rail dots before. There must be none.
+    expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
+    // ...and only one indicator container exists.
     expect(
       document.querySelectorAll('[data-testid="home-springboard-indicator"]')
         .length,
-    ).toBe(0);
-    // ...and the inner Springboard's own dot strip stays suppressed too.
-    expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
-    expect(screen.queryByLabelText("Apps page 1")).toBeNull();
+    ).toBe(1);
   });
 
   it("swiping back from the springboard returns HOME and is NOT in edit mode (#3)", () => {
@@ -170,8 +221,8 @@ describe("Home ↔ Springboard composed surface", () => {
     act(() => vi.advanceTimersByTime(600));
     fireEvent.pointerUp(settingsTile);
     vi.useRealTimers();
-    // Edit mode is on: tiles pulse (no pin badge / Done button anymore).
-    expect(tilePulsing("settings")).toBe(true);
+    // Edit mode is on: per-tile pin affordances appear (no Done button now).
+    expect(screen.getByTestId("springboard-fav-settings")).toBeTruthy();
 
     // Swipe back. This is the exact gesture that used to strand the user in
     // jiggle mode. It must return home AND drop edit mode (store invariant).
@@ -181,7 +232,7 @@ describe("Home ↔ Springboard composed surface", () => {
     // Re-enter the springboard: it must be a CLEAN launch view, not stale edit.
     openSpringboard();
     expect(surface.getAttribute("data-page")).toBe("springboard");
-    expect(tilePulsing("settings")).toBe(false);
+    expect(screen.queryByTestId("springboard-fav-settings")).toBeNull();
   });
 
   it("a horizontal swipe that starts ON a tile never ghost-fires edit mode (#3)", () => {
@@ -197,8 +248,8 @@ describe("Home ↔ Springboard composed surface", () => {
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 50 });
     fireEvent.pointerMove(tile, { clientX: 90, clientY: 52 }); // dx 40 > slop
     act(() => vi.advanceTimersByTime(600));
-    // Swipe ⇒ NOT a long-press ⇒ NOT edit mode (tile does not pulse).
-    expect(tilePulsing("app0")).toBe(false);
+    // Swipe ⇒ NOT a long-press ⇒ NOT edit mode (no pin affordances surfaced).
+    expect(screen.queryByTestId("springboard-fav-app0")).toBeNull();
 
     // Control: a STATIONARY hold past the threshold DOES enter edit mode, so the
     // intentional long-press affordance still works.
@@ -208,34 +259,53 @@ describe("Home ↔ Springboard composed surface", () => {
     if (!tile2) throw new Error("tile button missing");
     fireEvent.pointerDown(tile2, { clientX: 50, clientY: 50 });
     act(() => vi.advanceTimersByTime(600));
-    expect(tilePulsing("app1")).toBe(true);
+    expect(screen.getByTestId("springboard-fav-app1")).toBeTruthy();
   });
 
-  it("tiles render DISTINCT per-view visuals, with distinct glyph fallback (#5)", () => {
+  it("does not render a Background tile because backgrounds live in Settings", () => {
     renderComposed();
     openSpringboard();
 
-    const settingsImage = screen.getByTestId(
-      "springboard-image-settings",
-    ) as HTMLImageElement;
-    const filesImage = screen.getByTestId(
-      "springboard-image-files",
-    ) as HTMLImageElement;
-    expect(settingsImage.getAttribute("src")).toMatch(/^data:image\/svg\+xml,/);
-    expect(filesImage.getAttribute("src")).toMatch(/^data:image\/svg\+xml,/);
-    expect(settingsImage.getAttribute("src")).not.toBe(
-      filesImage.getAttribute("src"),
+    expect(screen.queryByTestId("springboard-tile-background")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Background" })).toBeNull();
+  });
+
+  it("tapping a rail dot jumps directly to that surface", () => {
+    const surface = renderComposed();
+    openSpringboard();
+
+    // Jump to springboard page 2 via its dot.
+    fireEvent.click(screen.getByLabelText("Apps page 2"));
+    expect(
+      screen.getByLabelText("Apps page 2").getAttribute("aria-current"),
+    ).toBe("true");
+
+    // Jump home via the home dot.
+    fireEvent.click(screen.getByLabelText("Home"));
+    expect(surface.getAttribute("data-page")).toBe("home");
+  });
+
+  it("springboard tiles render DISTINCT generated app-icon imagery (#5)", () => {
+    renderComposed();
+    openSpringboard();
+
+    const settingsVisual = document.querySelector<HTMLElement>(
+      '[data-view-visual="settings"]',
     );
+    const filesVisual = document.querySelector<HTMLElement>(
+      '[data-view-visual="files"]',
+    );
+    expect(settingsVisual).toBeTruthy();
+    expect(filesVisual).toBeTruthy();
+    expect(screen.getByTestId("springboard-image-settings")).toBeTruthy();
+    expect(screen.getByTestId("springboard-image-files")).toBeTruthy();
+    expect(settingsVisual?.getAttribute("style")).toContain("linear-gradient");
+    expect(filesVisual?.getAttribute("style")).toContain("linear-gradient");
 
-    fireEvent.error(settingsImage);
-    fireEvent.error(filesImage);
-
-    const settingsGlyph = document
-      .querySelector('[data-view-visual="settings"] svg')
+    const settingsGlyph = settingsVisual
+      ?.querySelector("svg")
       ?.getAttribute("class");
-    const filesGlyph = document
-      .querySelector('[data-view-visual="files"] svg')
-      ?.getAttribute("class");
+    const filesGlyph = filesVisual?.querySelector("svg")?.getAttribute("class");
     expect(settingsGlyph).toContain("lucide-settings");
     expect(filesGlyph).toContain("lucide-folder-closed");
     expect(settingsGlyph).not.toBe(filesGlyph);

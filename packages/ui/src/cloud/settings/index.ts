@@ -1,14 +1,11 @@
 /**
  * In-app Eliza Cloud settings sections (re-IA Step 2).
  *
- * Importing this module registers the Cloud settings group + every cloud
- * settings section (and the two Security-group additions) via the side-effecting
- * {@link ./register-cloud-settings}. The Settings view imports it so the cloud
- * sections are present whenever settings render — web and native alike — the same
- * way the built-in sections register through `settings-sections.ts`.
+ * This barrel is intentionally side-effect free. Hosts that expose the Cloud
+ * dashboard inside Settings must call {@link registerCloudSettingsSections}
+ * from their cloud boot path; local-first shells can import Cloud helpers
+ * without surfacing Cloud-only tabs.
  */
-
-import "./register-cloud-settings";
 
 export { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 export {
@@ -18,6 +15,7 @@ export {
   listExtraSettingsGroups,
   registerSettingsGroup,
 } from "./cloud-settings-group";
+export { registerCloudSettingsSections } from "./register-cloud-settings";
 export {
   CloudAccountSection,
   CloudApiKeysSection,

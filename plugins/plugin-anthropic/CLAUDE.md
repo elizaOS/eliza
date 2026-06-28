@@ -101,6 +101,7 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_OAUTH_TOKEN` | No | — | OAuth bearer token for `ANTHROPIC_AUTH_MODE=oauth` |
 | `ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID` | No | `default` | Account ID for app-managed subscription credentials |
 | `CLAUDE_CONFIG_DIR` | No | `~/.claude` | Override credential store directory (macOS keychain also checked) |
+| `ELIZA_ANTHROPIC_DISABLE_STREAM` | No | — | Set to `1` to force the non-streaming `generateText` path for all requests. Tool-using requests (tools present or `toolChoice` set) already take this path automatically to avoid `AI_NoOutputGeneratedError` on tool_use-only responses. |
 
 ## How to extend
 

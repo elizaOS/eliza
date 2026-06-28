@@ -2363,7 +2363,11 @@ export type ElizaDesktopRPCSchema = {
       floatingChatStatusChanged: FloatingChatStatus;
 
       // API Base injection
-      apiBaseUpdate: { base: string; token?: string };
+      apiBaseUpdate: {
+        base: string;
+        token?: string;
+        externalApiBase?: string | null;
+      };
 
       // Share target
       shareTargetReceived: { url: string; text?: string };

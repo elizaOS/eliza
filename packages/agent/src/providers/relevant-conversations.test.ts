@@ -40,6 +40,9 @@ function makeRuntime(overrides: Partial<IAgentRuntime> = {}): {
   ]);
   const runtime = createMockRuntime({
     getRoom: vi.fn(async () => ({ id: ROOM_ID }) as unknown as Room),
+    // Lexical hash-memory scan runs before the semantic embed; default to no
+    // hash memories so these tests isolate the embed path.
+    getMemories: vi.fn(async () => []),
     searchMemories,
     ...overrides,
   });
@@ -98,6 +101,43 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
       expect.objectContaining({ embedding: [0.1, 0.2, 0.3] }),
     );
     expect(result.text).toContain("Relevant past conversations:");
+  });
+
+  it("surfaces lexical hash memories even when the embed fails open (null)", async () => {
+    embedRecallQuery.mockResolvedValue(null);
+    const getMemories = vi.fn(async () => [
+      {
+        id: "00000000-0000-0000-0000-0000000000h1",
+        roomId: "00000000-0000-0000-0000-0000000000hr",
+        entityId: "00000000-0000-0000-0000-0000000000e9",
+        content: {
+          text: "the launch date is set for next Friday",
+          source: "hash_memory",
+        },
+        createdAt: 5,
+      } as unknown as Memory,
+      {
+        id: "00000000-0000-0000-0000-0000000000h2",
+        roomId: "00000000-0000-0000-0000-0000000000hr",
+        entityId: "00000000-0000-0000-0000-0000000000e9",
+        content: { text: "unrelated note", source: "hash_memory" },
+        createdAt: 6,
+      } as unknown as Memory,
+    ]);
+    const { runtime, searchMemories } = makeRuntime({ getMemories });
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what is the launch date for the release"),
+      EMPTY_STATE,
+    );
+
+    // No embed vector → no semantic search, but the lexical hit still surfaces.
+    expect(searchMemories).not.toHaveBeenCalled();
+    expect(result.text).toContain("Relevant past conversations:");
+    expect(result.text).toContain("the launch date is set for next Friday");
+    expect(result.text).not.toContain("unrelated note");
+    expect(result.values?.relevantConversationCount).toBe(1);
   });
 
   it("short messages short-circuit before embedding", async () => {

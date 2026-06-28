@@ -19,6 +19,7 @@
 import { AlertCircle, Loader2, Mail, UserCog } from "lucide-react";
 import { useState } from "react";
 import {
+  BrandButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -187,32 +188,24 @@ export function InviteMemberDialog({
             >
               Cancel
             </button>
-            <button
+            <BrandButton
               type="submit"
+              variant="primary"
               disabled={isSubmitting}
-              className="relative bg-[#e1e1e1] px-4 py-2 overflow-hidden hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed order-1 sm:order-2"
+              className="font-mono text-sm order-1 sm:order-2"
             >
-              <div
-                className="absolute inset-0 opacity-20 bg-repeat pointer-events-none"
-                style={{
-                  backgroundImage: `url(/assets/settings/pattern-6px-flip.png)`,
-                  backgroundSize: "2.915576934814453px 2.915576934814453px",
-                }}
-              />
-              <span className="relative z-10 text-black font-mono font-medium text-sm flex items-center justify-center gap-2">
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Mail className="h-4 w-4" />
-                    Send Invitation
-                  </>
-                )}
-              </span>
-            </button>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Mail className="h-4 w-4" />
+                  Send Invitation
+                </>
+              )}
+            </BrandButton>
           </DialogFooter>
         </form>
       </DialogContent>

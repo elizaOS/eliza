@@ -2,9 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$ROOT/../../../.." && pwd)"
+RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.mjs"
 TMP_DIR="$(mktemp -d)"
 cleanup() {
-  rm -rf "$TMP_DIR"
+  node "$RM_PATH_RECURSIVE" "$TMP_DIR"
 }
 trap cleanup EXIT
 

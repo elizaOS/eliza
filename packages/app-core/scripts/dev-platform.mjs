@@ -324,17 +324,12 @@ const rendererBuildSkipRequested =
   process.env.ELIZA_DESKTOP_RENDERER_BUILD === "skip";
 const viteWatch = process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
 const viteDepForceCli = process.argv.includes("--vite-force");
-const viteDepForce =
-  viteDepForceCli ||
-  process.env.ELIZA_VITE_FORCE === "1" ||
-  process.env.ELIZA_VITE_FORCE === "1";
+const viteDepForce = viteDepForceCli || process.env.ELIZA_VITE_FORCE === "1";
 const viteRollupWatchCli = process.argv.includes("--rollup-watch");
 /** Legacy: Rollup `vite build --watch` (tens of seconds per edit on large graphs). */
 const viteRollupWatch =
   viteWatch &&
-  (viteRollupWatchCli ||
-    process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1" ||
-    process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1");
+  (viteRollupWatchCli || process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1");
 /** Default when VITE_WATCH: Vite dev server + Electrobun ELIZA_RENDERER_URL (fast HMR). */
 const viteDevServer = viteWatch && !viteRollupWatch;
 /** On by default for `dev:desktop` / `dev:desktop:watch`; set to 0/false/no/off to disable. */
@@ -373,7 +368,7 @@ const desktopCefWorkaroundEnv = (() => {
     return explicit;
   }
 
-  return "1";
+  return null;
 })();
 const desktopUnsafeDevtoolsEnv = (() => {
   if (process.platform !== "darwin") {
@@ -673,12 +668,22 @@ const CHILD_COLORS = {
   default: chalk.white,
 };
 
+function shouldSuppressExpectedDevLine(line) {
+  return (
+    line.includes("Notification authorization error:") &&
+    line.includes("falling back to legacy API")
+  );
+}
+
 function prefixStream(name, stream) {
   const plainTag = `[${name.padEnd(PREFIX_PAD)}]`;
   const colorFn = CHILD_COLORS[name] ?? CHILD_COLORS.default;
   stream.on("data", (chunk) => {
     for (const line of chunk.toString().split("\n")) {
       if (line.trim()) {
+        if (shouldSuppressExpectedDevLine(line)) {
+          continue;
+        }
         // Use the child color for both streams. Many tools (including Electrobun)
         // write normal startup logs to stderr; red prefixes read as errors.
         const coloredTag = colorFn(plainTag);
@@ -695,12 +700,16 @@ function prefixStream(name, stream) {
   });
 }
 
+function childColorEnv() {
+  return process.env.NO_COLOR === undefined ? { FORCE_COLOR: "1" } : {};
+}
+
 function pushChild(name, cmd, args, cwd, extraEnv = {}) {
   const resolvedCmd = cmd === "bun" ? BUN_EXECUTABLE : cmd;
   const child = spawn(resolvedCmd, args, {
     cwd,
     env: extendNodePathEnv(
-      { ...process.env, ...extraEnv, FORCE_COLOR: "1" },
+      { ...process.env, ...extraEnv, ...childColorEnv() },
       bundleRoot,
     ),
     stdio: ["ignore", "pipe", "pipe"],
@@ -877,9 +886,13 @@ async function launch() {
     ...apiEmbeddingWarmupPolicy.env,
   };
   const apiWatchEnabled = envFlagEnabled("ELIZA_DESKTOP_API_WATCH");
+  // Runtime startup must never mutate dependencies. Optional plugin imports
+  // should fail fast when a package is absent instead of letting Bun auto-install
+  // transitive native packages inside the desktop app process.
+  const apiSourceConditionArgs = ["--no-install", "--conditions=eliza-source"];
   const apiArgs = apiWatchEnabled
-    ? ["--watch", devServerEntry]
-    : [devServerEntry];
+    ? [...apiSourceConditionArgs, "--watch", devServerEntry]
+    : [...apiSourceConditionArgs, devServerEntry];
   if (!apiWatchEnabled) {
     console.log(
       "[eliza] API file watcher disabled (set ELIZA_DESKTOP_API_WATCH=1 to enable).",
@@ -897,7 +910,7 @@ async function launch() {
             ...apiEnv,
             [API_PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
             [PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
-            FORCE_COLOR: "1",
+            ...childColorEnv(),
           },
           bundleRoot,
         ),

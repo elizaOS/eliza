@@ -21,6 +21,14 @@ export type ElectrobunBootConfigWindow = {
   [BOOT_CONFIG_STORE_KEY]?: ElectrobunBootConfigStore;
 };
 
+declare global {
+  interface Window {
+    [BOOT_CONFIG_WINDOW_KEY]?: ElectrobunBootConfig;
+    [LEGACY_BOOT_CONFIG_WINDOW_KEY]?: ElectrobunBootConfig;
+    [BOOT_CONFIG_STORE_KEY]?: ElectrobunBootConfigStore;
+  }
+}
+
 export function updateElectrobunBootConfig(
   globalObject: ElectrobunBootConfigWindow,
   updates: Pick<ElectrobunBootConfig, "apiBase" | "apiToken">,

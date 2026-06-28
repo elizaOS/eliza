@@ -119,8 +119,8 @@ test("resolves tier-compatible bundle mmproj artifacts from the vision directory
   }
 });
 
-test("0_8B and 2B require image-analysis vision artifacts; ASR mmproj is not enough", () => {
-  for (const tier of ["0_8b", "2b"]) {
+test("2B requires image-analysis vision artifacts; ASR mmproj is not enough", () => {
+  for (const tier of ["2b"]) {
     const dir = writeBundle(tier, {
       manifestVision: false,
       lineageVision: false,
@@ -141,8 +141,8 @@ test("0_8B and 2B require image-analysis vision artifacts; ASR mmproj is not eno
   }
 });
 
-test("0_8B and 2B accept tier-compatible image-analysis vision artifacts", () => {
-  for (const tier of ["0_8b", "2b"]) {
+test("active entry tiers accept tier-compatible image-analysis vision artifacts", () => {
+  for (const tier of ["2b"]) {
     const dir = writeBundle(tier, {
       manifestVision: true,
       lineageVision: true,
@@ -162,7 +162,7 @@ test("0_8B and 2B accept tier-compatible image-analysis vision artifacts", () =>
 });
 
 test("active vision tiers write fail evidence until image smoke passes", () => {
-  for (const tier of ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]) {
+  for (const tier of ["2b", "4b", "9b", "27b", "27b-256k"]) {
     const dir = writeBundle(tier);
     try {
       const report = buildReport(argsFor(dir));

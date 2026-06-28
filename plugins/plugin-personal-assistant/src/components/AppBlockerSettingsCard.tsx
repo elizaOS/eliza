@@ -133,7 +133,9 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
         setInstalledApps(response.apps);
         setSelectedPackageNames((current) =>
           current.filter((packageName) =>
-            response.apps.some((app) => app.packageName === packageName),
+            response.apps.some(
+              (app: AppBlockerInstalledApp) => app.packageName === packageName,
+            ),
           ),
         );
       } else {

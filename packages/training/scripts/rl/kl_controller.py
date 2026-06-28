@@ -15,7 +15,7 @@ Features:
 - Integration with reward function
 
 Usage:
-    kl_controller = KLController("Qwen/Qwen2.5-3B-Instruct")
+    kl_controller = KLController("google/gemma-4-E2B")
 
     # During reward computation
     penalty, mean_kl = kl_controller.get_penalty(

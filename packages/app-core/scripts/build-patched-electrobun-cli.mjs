@@ -8,7 +8,6 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
@@ -16,6 +15,17 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {
+  fallbackToCwd: true,
+});
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 function fail(message, code = 1) {
   console.error(`[build-patched-electrobun-cli] ${message}`);
@@ -45,6 +55,24 @@ function runAllowFailure(command, args, options = {}) {
     fail(`${rendered} failed with signal ${result.signal}`);
   }
   return result.status ?? 1;
+}
+
+function removePathRecursive(targetPath) {
+  const result = spawnSync("node", [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const output = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    fail(
+      `cleanup helper failed for ${targetPath}${output ? `:\n${output}` : ""}`,
+    );
+  }
 }
 
 function resolveElectrobunDir() {
@@ -394,7 +422,7 @@ function main() {
     process.env.RUNNER_TEMP ?? os.tmpdir(),
     `eliza-electrobun-src-${electrobunVersion}`,
   );
-  rmSync(tempRoot, { recursive: true, force: true });
+  removePathRecursive(tempRoot);
 
   run("git", [
     "clone",

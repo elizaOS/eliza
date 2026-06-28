@@ -45,6 +45,7 @@
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
 import { containersRepository } from "../../db/repositories/containers";
 import type { NewContainer } from "../../db/schemas/containers";
+import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { resolveAppDatabaseMode } from "./app-database-mode";
 import {
@@ -56,6 +57,7 @@ import {
 } from "./app-deploy-orchestrator";
 import { deriveAppPublicUrl } from "./app-url";
 import { appsService } from "./apps";
+import { isCodingContainerImageAllowed } from "./coding-containers";
 import { ContainerJobEnqueuer, type ContainerJobsWriter } from "./container-job-service";
 import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 import type { UserDatabaseService } from "./user-database";
@@ -110,18 +112,45 @@ export function toNewContainer(row: NewAppContainerRow): NewContainer {
   };
 }
 
-async function resolveImageRef(
+export async function resolveImageRef(
   deps: AppDeployRunnerDeps,
   app: { id: string; name: string; metadata: Record<string, unknown>; repoUrl?: string },
 ): Promise<string> {
   const fromResolver = deps.resolveImage ? await deps.resolveImage(app) : undefined;
   const fromMetadata =
     typeof app.metadata?.imageTag === "string" ? (app.metadata.imageTag as string) : undefined;
-  const fromEnv = process.env.APP_DEFAULT_IMAGE;
-  const image = fromResolver ?? fromMetadata ?? fromEnv;
+  // A repo-configured app whose build-from-repo is disabled (no resolver wired,
+  // i.e. APPS_IMAGE_REGISTRY unset) must NOT silently fall back to
+  // APP_DEFAULT_IMAGE — that would deploy a default/smoke image in place of the
+  // user's code (a silent wrong deploy). Require an explicit prebuilt image
+  // instead. (build-from-repo is intentionally deferred — prebuilt-image only.)
+  if (app.repoUrl && !fromResolver && !fromMetadata) {
+    throw new Error(
+      `App ${app.id} builds from a git repo, but build-from-repo is disabled ` +
+        `(no APPS_IMAGE_REGISTRY). Set a prebuilt image via metadata.imageTag, ` +
+        `or enable build-from-repo.`,
+    );
+  }
+  const image = fromResolver ?? fromMetadata ?? process.env.APP_DEFAULT_IMAGE;
   if (!image) {
     throw new Error(
       `No image to deploy for app ${app.id}: pass resolveImage, set app.metadata.imageTag, or APP_DEFAULT_IMAGE`,
+    );
+  }
+  // SECURITY: an app deploy runs an image on our shared docker nodes. Gate the
+  // resolved image on the same allowlist the coding-container routes use, so a
+  // caller-supplied `metadata.imageTag` (or a mis-set APP_DEFAULT_IMAGE) cannot
+  // run an arbitrary off-namespace image. Fail-closed: empty allowlist denies.
+  // The default allowlist covers the first-party GHCR namespaces, so the default
+  // agent image and APP_DEFAULT_IMAGE under those namespaces pass unchanged.
+  const allowlist = containersEnv.codingContainerImageAllowlist();
+  if (!isCodingContainerImageAllowed(image, allowlist)) {
+    const permitted = allowlist.length > 0 ? allowlist.join(", ") : "(none configured)";
+    throw new Error(
+      `Image '${image}' is not permitted for app ${app.id}: it is outside the ` +
+        `allowed image namespaces (${permitted}). Set app.metadata.imageTag (or ` +
+        `APP_DEFAULT_IMAGE) to an allowlisted image, or widen ` +
+        `CODING_CONTAINER_IMAGE_ALLOWLIST.`,
     );
   }
   return image;
@@ -357,35 +386,11 @@ export function makeDirectAppDeployRunner(args: {
   });
 }
 
-/**
- * WORKER factory — `pg`-free. `ensureTenantDb` runs `provisionDatabase` over a
- * `userDatabaseService` constructed WITHOUT a tenant-DB provisioning backend, so
- * it takes the shared-DB fallback (returns process.env.DATABASE_URL; no DDL, no
- * `pg`). Isolation in this mode is by app/agent UUID scoping in plugin-sql, not
- * by REVOKE-CONNECT. Use this in cloud-api (workerd) until tenant-DB DDL is moved
- * into the CONTAINER_PROVISION executor (then this factory enqueues instead).
- *
- * The injected `userDatabaseService` here is the bare singleton (no provisioning
- * backend) — passing it explicitly keeps the dependency visible and testable.
- */
-export function makeWorkerAppDeployRunner(args: {
-  userDatabaseService: UserDatabaseService;
-  jobsWriter: ContainerJobsWriter;
-  resolveImage?: AppDeployRunnerDeps["resolveImage"];
-  port?: number;
-}): DefaultAppDeployRunner {
-  return new DefaultAppDeployRunner({
-    ensureTenantDb: async (appId, appName) => {
-      const provisioned = await args.userDatabaseService.provisionDatabase(appId, appName);
-      if (!provisioned.success || !provisioned.connectionUri) {
-        throw new Error(
-          `ensureTenantDb (shared) failed for app ${appId}: ${provisioned.error ?? "no connection URI"}`,
-        );
-      }
-      return provisioned.connectionUri;
-    },
-    jobsWriter: args.jobsWriter,
-    resolveImage: args.resolveImage,
-    port: args.port,
-  });
-}
+// NOTE: there used to be a `makeWorkerAppDeployRunner` here — a `pg`-free factory
+// that ran `provisionDatabase` over a backend-less `UserDatabaseService`, taking
+// the shared-DB fallback (no `CREATE ROLE`/`REVOKE CONNECT`, isolation by UUID
+// only) while still being used for "isolated" apps. It had zero callers (the live
+// path enqueues an APP_DEPLOY job → the node daemon runs `makeNodeAppDeployRunner`
+// with real per-tenant DDL, and an unarmed daemon hard-fails). It was removed so
+// nobody can re-wire a silent isolation downgrade; `provisionDatabase` now also
+// fail-closes when no provisioning backend is wired.

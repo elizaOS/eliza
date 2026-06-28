@@ -1,4 +1,4 @@
-"""Apply GGUF Q8_0 K-quant to a fine-tuned Qwen checkpoint.
+"""Apply GGUF Q8_0 K-quant to a fine-tuned Eliza-1/Gemma checkpoint.
 
 This is the top rung of the Eliza-1 GGUF ladder. It reuses the same
 llama.cpp conversion path as the Q6_K wrapper, changing only the quantization

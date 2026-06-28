@@ -6,9 +6,8 @@
  * and eliza-1-27b-256k.
  * These ship Gemma 4 bases: E2B/E4B/12B/31B mapped onto the
  * 2B/4B/9B/27B release tiers (the 2026-06-22 cutover from the legacy
- * Qwen3.5/3.6 line — see #9033 and
- * packages/training/scripts/training/model_registry.py for the active
- * registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
+ * hybrid line — see #9033 and packages/training/scripts/training/model_registry.py
+ * for the active registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
  * (PLE) + MQA architecture; KV is already minimal so the legacy
  * QJL/PolarQuant KV kernels are not used (stock KV), while TurboQuant
  * weight-quant remains active. External Hub search remains custom/opt-in and
@@ -225,11 +224,10 @@ interface TierSpec {
   hasVision?: boolean;
   /**
    * WS3: whether this tier ships a default image-gen model in the bundle
-   * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). Mobile-class
-   * tiers (2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
-   * tiers (9b/27b) default to Z-Image-Turbo Q4_K_M
-   * (~3.4 GB). The diffusion weights are runtime-downloaded — they are
-   * NOT part of the base-v1 bundle.
+   * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). All active
+   * tiers default to SD 1.5 Q5_0 until a legacy-free split-diffusion text
+   * encoder is available. The diffusion weights are runtime-downloaded —
+   * they are NOT part of the base-v1 bundle.
    */
   hasImageGen?: boolean;
 }
@@ -250,8 +248,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     // 361,518,784 bytes, published 2026-05-14); the arbiter owns the
     // swap with the text weights under pressure.
     hasVision: true,
-    // WS3: image-gen on the standard small-phone default uses SD 1.5
-    // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
+    // WS3: image-gen on the standard small-phone default uses SD 1.5 Q5_0.
     hasImageGen: true,
   },
   "eliza-1-4b": {
@@ -271,8 +268,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     textFile: "text/eliza-1-4b-128k.gguf",
     hasEmbedding: true,
     hasVision: true,
-    // WS3: 4B is the last tier that defaults to SD 1.5; flagship-phone
-    // optional path can upgrade to SDXL-Turbo Q4_0.
+    // WS3: 4B uses the same monolithic SD 1.5 default as the rest of the
+    // Gemma cutover catalog.
     hasImageGen: true,
   },
   "eliza-1-9b": {
@@ -287,9 +284,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     gpuProfile: "rtx-3090",
     hasEmbedding: true,
     hasVision: true,
-    // WS3: 9B is the boundary tier where Z-Image-Turbo Q4_K_M (~3.4 GB)
-    // becomes the default. FLUX.1 schnell remains opt-in for >=24 GB
-    // shared RAM / >=12 GB VRAM.
+    // WS3: keep 9B on the monolithic SD 1.5 default until a legacy-free
+    // split-diffusion text encoder is available.
     hasImageGen: true,
   },
   "eliza-1-27b": {
@@ -384,7 +380,7 @@ function bundleComponent(
  *
  * R8 §2 + omnivoice.cpp/AGENTS.md PolarQuant note: the K-quant family
  * (Q3..Q6) is the only weight-quant currently wired for OmniVoice's
- * Qwen3-shaped LM head — PolarQuant / TurboQuant for the LM weight bank
+ * MaskGIT LM weight bank — PolarQuant / TurboQuant for that LM bank
  * is *plausible* (same arch) but no recipe wires it yet; QJL is N/A
  * (OmniVoice has no KV cache between MaskGIT steps); V-cache PolarQuant
  * is N/A for the same reason. See `docs/inference/voice-quant-matrix.md`.

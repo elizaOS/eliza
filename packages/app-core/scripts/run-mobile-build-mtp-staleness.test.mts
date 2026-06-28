@@ -1,15 +1,16 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import {
   MTP_FORK_SRC_CANDIDATES,
   mtpBuilderRepoRoot,
   mtpForceRebuildRequested,
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 // Far-future mtimes keep these tests independent of the checkout's own file
 // timestamps (the worktree stamps every file at checkout time, including the
@@ -18,6 +19,21 @@ const FUTURE_ARTIFACT = new Date("2031-01-01T00:00:00Z").getTime();
 const OLDER_SOURCE = new Date("2030-01-01T00:00:00Z").getTime();
 const NEWER_SOURCE = new Date("2032-01-01T00:00:00Z").getTime();
 
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath: string) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
+
 let tmp: string;
 
 beforeEach(() => {
@@ -25,7 +41,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  fs.rmSync(tmp, { recursive: true, force: true });
+  removePathRecursive(tmp);
 });
 
 function touch(file: string, mtimeMs: number) {
@@ -118,7 +134,7 @@ describe("mtpSliceReuse", () => {
 describe("MTP_FORK_SRC_CANDIDATES (no drift vs the builder)", () => {
   it("mirrors build-llama-cpp-mtp.mjs: the in-repo fork + the ios-deps fallback, and nothing divergent", () => {
     const here = path.dirname(fileURLToPath(import.meta.url));
-    const repoRoot = path.resolve(here, "..", "..", "..");
+    const expectedRepoRoot = path.resolve(here, "..", "..", "..");
     const forkSuffix = path.join(
       "plugins",
       "plugin-local-inference",
@@ -133,7 +149,7 @@ describe("MTP_FORK_SRC_CANDIDATES (no drift vs the builder)", () => {
       "src",
     );
 
-    expect(repoRoot).toBe(mtpBuilderRepoRoot);
+    expect(expectedRepoRoot).toBe(mtpBuilderRepoRoot);
     expect(MTP_FORK_SRC_CANDIDATES).toEqual(
       [
         process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),

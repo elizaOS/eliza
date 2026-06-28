@@ -1,6 +1,11 @@
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { ControlPlaneStore, type Job, type Sandbox } from "./store";
+import {
+  ControlPlaneStore,
+  type ImportedMessage,
+  type Job,
+  type Sandbox,
+} from "./store";
 
 type DatabaseJob = {
   id: string;
@@ -1201,6 +1206,79 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       },
     });
   });
+
+  // ── Dedicated-agent conversation surface (handoff import target) ───────
+  // A provisioned dedicated agent advertises its base as
+  // `<origin>/api/compat/agents/<sandboxId>`; the shared→personal handoff then
+  // POSTs the copied transcript to `<base>/api/conversations/:convId/import`
+  // and (after switching) reads it back at `<base>/api/conversations/:convId/
+  // messages`. These mock the agent-side primitives — a silent, idempotent
+  // bulk-insert with no inference (mirrors agent/src/api/conversation-routes.ts)
+  // — so the success handoff is reachable + assertable in e2e.
+  const normalizeImportMessages = (raw: unknown): ImportedMessage[] => {
+    if (!Array.isArray(raw)) return [];
+    const out: ImportedMessage[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== "object") continue;
+      const rec = entry as Record<string, unknown>;
+      const role =
+        rec.role === "assistant"
+          ? "assistant"
+          : rec.role === "user"
+            ? "user"
+            : null;
+      const rawText =
+        typeof rec.text === "string"
+          ? rec.text
+          : typeof rec.content === "string"
+            ? rec.content
+            : "";
+      const text = rawText.trim();
+      if (!role || !text) continue;
+      out.push({
+        role,
+        text,
+        ...(typeof rec.timestamp === "number" && Number.isFinite(rec.timestamp)
+          ? { timestamp: rec.timestamp }
+          : {}),
+      });
+    }
+    return out;
+  };
+
+  app.post(
+    "/api/compat/agents/:id/api/conversations/:convId/import",
+    async (c) => {
+      await latency();
+      const sandboxId = c.req.param("id");
+      const conversationId = decodeURIComponent(c.req.param("convId"));
+      const body = (await c.req.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      if (!body || !Array.isArray(body.messages)) {
+        return c.json({ error: "Body must include a `messages` array" }, 400);
+      }
+      const messages = normalizeImportMessages(body.messages);
+      const result = store.importConversation(
+        sandboxId,
+        conversationId,
+        messages,
+      );
+      return c.json(result);
+    },
+  );
+
+  app.get(
+    "/api/compat/agents/:id/api/conversations/:convId/messages",
+    async (c) => {
+      await latency();
+      const sandboxId = c.req.param("id");
+      const conversationId = decodeURIComponent(c.req.param("convId"));
+      const messages = store.getConversation(sandboxId, conversationId);
+      return c.json({ messages });
+    },
+  );
 
   async function hetznerFetch(
     path: string,

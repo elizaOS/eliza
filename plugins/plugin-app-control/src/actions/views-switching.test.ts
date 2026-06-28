@@ -33,7 +33,16 @@ const coreMock = vi.hoisted(() => ({
 		error instanceof Error ? error.message : String(error),
 }));
 
-vi.mock("@elizaos/core", () => coreMock);
+// views-show.ts (loaded via ./views.js and the direct resolveIntentView import)
+// pulls getUserMessageText from @elizaos/core, so the mock must carry the real
+// implementation — keep the rest of core mocked. Mirrors views-management.test.ts.
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return {
+		...coreMock,
+		getUserMessageText: actual.getUserMessageText,
+	};
+});
 
 function message(text: string, roomId = "room-1") {
 	return {
@@ -361,7 +370,7 @@ describe("view switching — VIEWS action resolver", () => {
 	});
 
 	describe("model param hallucination — user's words win over a wrong view param", () => {
-		// A weak/local planner (the 0.8B) frequently emits VIEWS with a WRONG view
+		// A weak local planner can emit VIEWS with a WRONG view
 		// param (e.g. view:"wallet" for "open my calendar"). The user's own words
 		// are authoritative when they name a registered domain surface, so the
 		// hallucinated param must not mis-navigate. This is the "structured
@@ -410,6 +419,35 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.success).toBe(false);
 			expect(result?.text).toContain("No view matches");
 			expect(navigated).toEqual([]);
+		});
+
+		it("does not fall back to Knowledge/Documents for standalone notes when no notes view is registered", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "open notes");
+			expect(result?.success).toBe(false);
+			expect(result?.text).toContain('No view matches "notes"');
+			expect(navigated).toEqual([]);
+		});
+
+		it("opens a registered notes view for standalone notes requests", async () => {
+			const withNotes: ViewSummary[] = [
+				...REGISTRY,
+				{
+					id: "notes",
+					label: "Notes",
+					description: "Simple notes",
+					path: "/notes",
+					pluginName: "@elizaos/plugin-simple-views",
+					available: true,
+					viewType: "gui",
+					tags: ["notes"],
+					visibleInManager: true,
+				},
+			];
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(withNotes, "open notes");
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["notes"]);
 		});
 
 		it("asks which one when a target is genuinely ambiguous", async () => {
@@ -759,7 +797,6 @@ describe("resolveIntentView — expanded surfaces + multilingual", () => {
 			["what's on my to-do list", "todos"],
 			["my tasks", "todos"],
 			["pull up my documents", "documents"],
-			["my notes", "documents"],
 			["who do I know at Acme", "relationships"],
 			["my contacts", "relationships"],
 			["I want to add a new feature to my app", "task-coordinator"],
@@ -767,6 +804,11 @@ describe("resolveIntentView — expanded surfaces + multilingual", () => {
 		];
 		it.each(EN_CASES)('"%s" -> %s', (phrase, viewId) => {
 			expect(resolveIntentView(phrase)).toBe(viewId);
+		});
+
+		it("routes notes to the Notes view instead of Knowledge/Documents", () => {
+			expect(resolveIntentView("my notes")).toBe("notes");
+			expect(resolveIntentView("pull up my notes")).toBe("notes");
 		});
 	});
 

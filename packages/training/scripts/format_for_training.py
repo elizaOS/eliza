@@ -1,4 +1,4 @@
-"""Render Eliza-1 training rows for Qwen chat-template training.
+"""Render Eliza-1 training rows for Gemma chat-template training.
 
 The primary input is `eliza_native_v1`: one row per Vercel AI SDK model
 boundary with the exact request sent to the provider and the exact normalized

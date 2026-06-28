@@ -1,7 +1,7 @@
 <div align="center">
   <img src="packages/shared/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
   <h1>elizaOS</h1>
-  <p><strong>The agentic operating system. For devices that run themselves.</strong></p>
+  <p><strong>Your agentic operating system.</strong></p>
   <p>
     <a href="https://eliza.app">Get the app</a> ·
     <a href="https://os.elizacloud.ai">Install the OS</a> ·
@@ -18,24 +18,6 @@ elizaOS is an open-source, local-first operating system for AI agents. Two parts
 - **elizaOS** — the runtime and the OS underneath it. The same runtime can take over the whole machine — boot a **Linux** desktop or run on **Android** as the system assistant.
 
 The agent, your data, and the models all run on your device. [Eliza Cloud](#eliza-cloud-optional) is optional — add it for hosted inference, sync, and deploys.
-
-## The stack
-
-```
-┌────────────────────────────────────────────────────────────┐
-│  Eliza — the app          desktop · mobile · web            │  ← what you use
-│  chat · voice · phone · wallet · browser · assistant        │
-├────────────────────────────────────────────────────────────┤
-│  Apps on elizaOS          installable app-plugins + catalog │  ← what you add
-├────────────────────────────────────────────────────────────┤
-│  elizaOS runtime          agent loop · models · services    │  ← what runs it
-│  on-device inference (Eliza-1) · optional Eliza Cloud       │
-├────────────────────────────────────────────────────────────┤
-│  elizaOS — the OS         Linux · Android                   │  ← what runs your device
-└────────────────────────────────────────────────────────────┘
-```
-
-Run Eliza as an app on the OS you have, or run elizaOS as the OS itself.
 
 ## Get Eliza
 

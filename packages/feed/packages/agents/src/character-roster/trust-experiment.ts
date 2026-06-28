@@ -65,9 +65,9 @@ export const TRUST_EXPERIMENT_MODEL_PROFILES: Record<
 > = {
   "0.5b": {
     id: "0.5b",
-    label: "Qwen2.5 0.5B",
-    parameterCountB: 0.5,
-    baseModel: "Qwen/Qwen2.5-0.5B-Instruct",
+    label: "Gemma 4 E2B",
+    parameterCountB: 2,
+    baseModel: "google/gemma-4-E2B-it",
     trainingProfile: "12gb",
     runtimeRouting: {
       primary: "llama-3.1-8b-instant",
@@ -77,9 +77,9 @@ export const TRUST_EXPERIMENT_MODEL_PROFILES: Record<
   },
   "1.5b": {
     id: "1.5b",
-    label: "Qwen2.5 1.5B",
-    parameterCountB: 1.5,
-    baseModel: "Qwen/Qwen2.5-1.5B-Instruct",
+    label: "Gemma 4 E2B",
+    parameterCountB: 2,
+    baseModel: "google/gemma-4-E2B-it",
     trainingProfile: "16gb",
     runtimeRouting: {
       primary: "openai/gpt-oss-20b",
@@ -89,9 +89,9 @@ export const TRUST_EXPERIMENT_MODEL_PROFILES: Record<
   },
   "3b": {
     id: "3b",
-    label: "Qwen2.5 3B",
-    parameterCountB: 3,
-    baseModel: "Qwen/Qwen2.5-3B-Instruct",
+    label: "Gemma 4 E4B",
+    parameterCountB: 4,
+    baseModel: "google/gemma-4-E4B-it",
     trainingProfile: "24gb",
     runtimeRouting: {
       primary: "openai/gpt-oss-120b",
@@ -101,9 +101,9 @@ export const TRUST_EXPERIMENT_MODEL_PROFILES: Record<
   },
   "7b": {
     id: "7b",
-    label: "Qwen2.5 7B",
-    parameterCountB: 7,
-    baseModel: "Qwen/Qwen2.5-7B-Instruct",
+    label: "Gemma 4 E4B",
+    parameterCountB: 4,
+    baseModel: "google/gemma-4-E4B-it",
     trainingProfile: "48gb",
     runtimeRouting: {
       primary: "llama-3.3-70b-versatile",
@@ -113,9 +113,9 @@ export const TRUST_EXPERIMENT_MODEL_PROFILES: Record<
   },
   "14b": {
     id: "14b",
-    label: "Qwen2.5 14B",
-    parameterCountB: 14,
-    baseModel: "Qwen/Qwen2.5-14B-Instruct",
+    label: "Gemma 4 12B",
+    parameterCountB: 12,
+    baseModel: "google/gemma-4-12B-it",
     trainingProfile: "h100",
     runtimeRouting: {
       primary: "openai/gpt-oss-120b",
@@ -125,9 +125,9 @@ export const TRUST_EXPERIMENT_MODEL_PROFILES: Record<
   },
   "30b": {
     id: "30b",
-    label: "Qwen3 30B",
-    parameterCountB: 30,
-    baseModel: "Qwen/Qwen3-30B-A3B",
+    label: "Gemma 4 31B",
+    parameterCountB: 31,
+    baseModel: "google/gemma-4-31B-it",
     trainingProfile: "h100-4gpu",
     runtimeRouting: {
       primary: "moonshotai/kimi-k2-instruct-0905",
@@ -157,8 +157,13 @@ export function buildTrustExperimentAgents(
   let index = 0;
 
   while (agents.length < agentCount) {
-    const baseSheet = archetypes[index % archetypes.length]!;
-    const modelSize = modelSizes[index % modelSizes.length]!;
+    const baseSheet = archetypes[index % archetypes.length];
+    const modelSize = modelSizes[index % modelSizes.length];
+
+    if (!baseSheet || !modelSize) {
+      throw new Error("Trust experiment requires archetypes and model sizes");
+    }
+
     const variantIndex = Math.floor(index / archetypes.length) + 1;
     const modelProfile = TRUST_EXPERIMENT_MODEL_PROFILES[modelSize];
 

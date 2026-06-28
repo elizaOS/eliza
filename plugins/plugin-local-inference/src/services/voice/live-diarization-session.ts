@@ -241,6 +241,24 @@ function resolveEchoDelaySamples(): number {
 }
 
 /**
+ * Opt-in residual-echo suppressor, off by default (#9583/#9649). Device-tunable
+ * via `ELIZA_VOICE_RESIDUAL_SUPPRESSION`:
+ *   - `"1"` / `"true"` / `"on"` → enable with the canceller's default gain;
+ *   - a number in (0,1] → enable with that residual gain (lower = stronger);
+ *   - unset / anything else → disabled (the canceller does linear NLMS only).
+ * Left off until validated with real device audio, per #9649 item 2.
+ */
+function resolveResidualSuppression(): boolean | { gain: number } | undefined {
+	const raw =
+		process.env.ELIZA_VOICE_RESIDUAL_SUPPRESSION?.trim().toLowerCase();
+	if (!raw) return undefined;
+	if (raw === "1" || raw === "true" || raw === "on") return true;
+	const gain = Number(raw);
+	if (Number.isFinite(gain) && gain > 0 && gain <= 1) return { gain };
+	return undefined;
+}
+
+/**
  * Owns the single live diarization consumer for the agent process. Built
  * lazily on first frame batch so it does not load voice models at boot.
  */
@@ -354,10 +372,12 @@ export class LiveDiarizationSession {
 			diarizer,
 			profileStore: store,
 		});
+		const residualSuppression = resolveResidualSuppression();
 		const config: AudioFrameConsumerConfig = {
 			source: { kind: "local_mic", deviceId: "android-audioframe" },
 			preRollSeconds: 0.3,
 			maxTurnSeconds: 30,
+			...(residualSuppression ? { residualSuppression } : {}),
 		};
 		// Join the fused batch ASR so the live path carries the real transcript
 		// on VOICE_TURN_OBSERVED (#8786). Null when the fused build has no ASR

@@ -95,7 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           cd packages/examples/cloud/edad
-          rm -rf ./dist
+          node ../../../../packages/scripts/rm-path-recursive.mjs ./dist
           bun build server.ts --outdir=./dist --target=bun --format=esm
           cp -r public ./dist/public
           test -f ./dist/server.js
@@ -260,7 +260,7 @@ jobs:
         run: |
           set -euo pipefail
           cd packages/examples/cloud/clone-ur-crush
-          rm -rf .next
+          node ../../../../packages/scripts/rm-path-recursive.mjs .next
           bun run build
           app=.next/standalone/packages/examples/cloud/clone-ur-crush
           test -f "$app/server.js"

@@ -5,7 +5,10 @@ import {
 	resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
-import { resolveIntentView } from "../actions/views-show.js";
+import {
+	isStandaloneNotesSurfaceRequest,
+	resolveIntentView,
+} from "../actions/views-show.js";
 import { markViewSwitch } from "../runtime/view-switch-signal.js";
 
 const VIEWS_ACTION_NAME = "VIEWS";
@@ -65,9 +68,10 @@ export const BASELINE_VIEW_CONTEXT_INSTRUCTION = [
 	"- tasks / to-dos / checklists → todos",
 	"- goals / routines / habits → goals",
 	"- sleep / workouts / health metrics → health",
-	"- documents / files / notes → documents",
+	"- documents / files → documents",
 	"- contacts / people / relationships → relationships",
 	"- needing to concentrate / block distractions → focus",
+	'- notes → "none" unless a registered Notes view is explicitly available through the VIEWS action',
 	'If no view clearly helps (small talk, a question you can simply answer, or ambiguous intent), return viewId "none".',
 	'Respond as JSON: {"viewId": <one listed view or "none">, "reason": <short>}.',
 ].join("\n");
@@ -85,6 +89,14 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 				? output.viewId.trim().toLowerCase()
 				: "";
 		if (!viewId || viewId === NONE) return undefined;
+		const messageText =
+			typeof message?.content?.text === "string" ? message.content.text : "";
+		if (
+			viewId === "documents" &&
+			isStandaloneNotesSurfaceRequest(messageText)
+		) {
+			return undefined;
+		}
 
 		const client = createViewsClient();
 		let views: Awaited<ReturnType<typeof client.listViews>>;
@@ -162,6 +174,7 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 		const text =
 			typeof message.content?.text === "string" ? message.content.text : "";
 		if (text.trim().length < 8) return false;
+		if (isStandaloneNotesSurfaceRequest(text)) return false;
 		// Direct nav commands belong to the VIEWS action — only infer contextually
 		// when the keyword resolver finds NO direct surface but the turn hints at a
 		// mappable activity.

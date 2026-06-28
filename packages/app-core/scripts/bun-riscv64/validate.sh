@@ -17,11 +17,13 @@
 #   - Exit 0 if every patch validates, non-zero otherwise.
 #
 # Disk + network: needs ~1.5 GB free for the two shallow clones into /tmp.
-# Network: needs HTTPS access to github.com. Tear-down: rm -rf /tmp/bun-riscv64-validate*
+# Network: needs HTTPS access to github.com. Tear-down: helper removes /tmp/bun-riscv64-validate*
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+RM_PATH_RECURSIVE=(node "$REPO_ROOT/packages/scripts/rm-path-recursive.mjs")
 DIST_DIR="$SCRIPT_DIR/dist"
 REPORT="$DIST_DIR/validate-report.txt"
 mkdir -p "$DIST_DIR"
@@ -144,10 +146,10 @@ fi
 
 log ""
 
-declare -A RECORDED_PATCH_PATHS=()
+RECORDED_PATCH_PATHS=()
 if command -v bun >/dev/null 2>&1; then
     while IFS= read -r path; do
-        RECORDED_PATCH_PATHS["$path"]=1
+        RECORDED_PATCH_PATHS+=("$path")
     done < <(bun -e "
         const v = JSON.parse(require('fs').readFileSync('$VERSION_FILE','utf8'));
         for (const k of Object.keys(v.patch_series.bun_patches)) console.log('bun-patches/'+k);
@@ -156,7 +158,7 @@ if command -v bun >/dev/null 2>&1; then
     ")
 else
     while IFS= read -r path; do
-        RECORDED_PATCH_PATHS["$path"]=1
+        RECORDED_PATCH_PATHS+=("$path")
     done < <(python3 -c "
 import json
 v = json.load(open('$VERSION_FILE'))
@@ -165,10 +167,21 @@ for k in v['patch_series']['webkit_patches']: print('webkit-patches/'+k)
 for k in v['patch_series']['webkit_recipes']: print('webkit-patches/'+k)
 ")
 fi
+
+is_recorded_patch_path() {
+    local needle="$1" recorded
+    for recorded in "${RECORDED_PATCH_PATHS[@]}"; do
+        if [ "$recorded" = "$needle" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 for actual in "$SCRIPT_DIR"/bun-patches/*.patch "$SCRIPT_DIR"/webkit-patches/*.patch "$SCRIPT_DIR"/webkit-patches/*.recipe; do
     [ -e "$actual" ] || continue
     rel_path="${actual#"$SCRIPT_DIR/"}"
-    if [ -z "${RECORDED_PATCH_PATHS[$rel_path]+x}" ]; then
+    if ! is_recorded_patch_path "$rel_path"; then
         fail "unrecorded patch/recipe on disk: $rel_path"
     fi
 done
@@ -185,7 +198,7 @@ fi
 CLONE_DIR="${VALIDATE_CLONE_DIR:-/tmp/bun-riscv64-validate-bun}"
 if [ ! -d "$CLONE_DIR/.git" ]; then
     log "Cloning oven-sh/bun @ $BUN_TAG into $CLONE_DIR (shallow)…"
-    rm -rf "$CLONE_DIR"
+    "${RM_PATH_RECURSIVE[@]}" "$CLONE_DIR"
     if ! git clone --depth=1 --branch "$BUN_TAG" --no-recurse-submodules \
             https://github.com/oven-sh/bun.git "$CLONE_DIR" >>"$REPORT" 2>&1; then
         fail "git clone of oven-sh/bun @ $BUN_TAG failed — see $REPORT"
@@ -216,12 +229,12 @@ log "── 4. WebKit patches applicability ────────────
 WK_CLONE_DIR="${VALIDATE_WK_CLONE_DIR:-/tmp/bun-riscv64-validate-webkit}"
 if [ -d "$WK_CLONE_DIR/.git" ] && ! git -C "$WK_CLONE_DIR" rev-parse --verify "$WEBKIT_COMMIT^{commit}" >/dev/null 2>&1; then
     log "Discarding incomplete WebKit clone at $WK_CLONE_DIR"
-    rm -rf "$WK_CLONE_DIR"
+    "${RM_PATH_RECURSIVE[@]}" "$WK_CLONE_DIR"
 fi
 
 if [ ! -d "$WK_CLONE_DIR/.git" ]; then
     log "Cloning oven-sh/WebKit @ $WEBKIT_COMMIT into $WK_CLONE_DIR (shallow)…"
-    rm -rf "$WK_CLONE_DIR"
+    "${RM_PATH_RECURSIVE[@]}" "$WK_CLONE_DIR"
     git init --initial-branch=main "$WK_CLONE_DIR" >>"$REPORT" 2>&1
     git -C "$WK_CLONE_DIR" remote add origin https://github.com/oven-sh/WebKit.git
     if ! git -C "$WK_CLONE_DIR" fetch --depth=1 --filter=blob:none origin "$WEBKIT_COMMIT" >>"$REPORT" 2>&1; then

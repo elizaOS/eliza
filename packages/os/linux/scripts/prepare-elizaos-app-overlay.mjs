@@ -94,9 +94,24 @@ function findWorkspaceRoot() {
 }
 
 const workspaceRoot = findWorkspaceRoot();
+const rmPathRecursiveScriptPath = workspaceRoot
+  ? path.join(workspaceRoot, "packages/scripts/rm-path-recursive.mjs")
+  : null;
 const existingOverlayManifest = fs.existsSync(overlayManifestPath)
   ? JSON.parse(fs.readFileSync(overlayManifestPath, "utf8"))
   : null;
+
+function removePathRecursive(targetPath) {
+  if (!rmPathRecursiveScriptPath || !fs.existsSync(rmPathRecursiveScriptPath)) {
+    throw new Error(
+      "Unable to locate packages/scripts/rm-path-recursive.mjs for recursive cleanup.",
+    );
+  }
+  execFileSync(process.execPath, [rmPathRecursiveScriptPath, targetPath], {
+    cwd: workspaceRoot,
+    stdio: "inherit",
+  });
+}
 
 const liveAgentOrchestratorStub = `
 import { execFile } from "node:child_process";
@@ -536,7 +551,9 @@ if (!fs.existsSync(buildJsonPath)) {
 }
 
 if (!fs.existsSync(versionJsonPath)) {
-  console.error(`elizaOS Electrobun version.json not found: ${versionJsonPath}`);
+  console.error(
+    `elizaOS Electrobun version.json not found: ${versionJsonPath}`,
+  );
   process.exit(1);
 }
 
@@ -831,7 +848,7 @@ function syncDirectoryContents(
     stale = true;
   }
   if (!checkOnly) {
-    fs.rmSync(targetDir, { recursive: true, force: true });
+    removePathRecursive(targetDir);
     fs.mkdirSync(path.dirname(targetDir), { recursive: true });
     fs.cpSync(sourceDir, targetDir, {
       recursive: true,
@@ -2155,13 +2172,19 @@ function patchRendererBundle(content) {
       'docsUrl:"https://docs.elizaos.ai"',
       'docsUrl:"https://docs.elizaos.ai"',
     )
-    .replaceAll('appUrl:"https://app.elizaos.ai"', 'appUrl:"https://elizaos.ai"')
+    .replaceAll(
+      'appUrl:"https://app.elizaos.ai"',
+      'appUrl:"https://elizaos.ai"',
+    )
     .replaceAll(
       'bugReportUrl:"https://github.com/elizaos/elizaos/issues/new?template=bug_report.yml"',
       'bugReportUrl:"https://github.com/elizaOS/eliza/issues/new"',
     )
     .replaceAll('hashtag:"#elizaOSAgent"', 'hashtag:"#elizaOS"')
-    .replaceAll('fileExtension:".elizaos-agent"', 'fileExtension:".eliza-agent"')
+    .replaceAll(
+      'fileExtension:".elizaos-agent"',
+      'fileExtension:".eliza-agent"',
+    )
     .replaceAll('packageScope:"elizaos"', 'packageScope:"elizaos"')
     .replaceAll("elizaos.ai", "elizaOS");
 }
@@ -2434,7 +2457,7 @@ if (nextAgentPackageJson) {
   fs.writeFileSync(agentPackageJsonPath, `${agentAfter}\n`);
 }
 for (const { linkPath, target } of dependencyTargets) {
-  fs.rmSync(linkPath, { recursive: true, force: true });
+  removePathRecursive(linkPath);
   fs.symlinkSync(target, linkPath);
 }
 // Apply all package and renderer patches BEFORE computing the overlay manifest

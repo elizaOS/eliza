@@ -23,6 +23,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  BrandButton,
 } from "../../cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type {
@@ -151,25 +152,17 @@ export function MembersTab({ user }: MembersTabProps) {
             </p>
           </div>
           {canManageMembers && (
-            <button
+            <BrandButton
               type="button"
+              variant="primary"
               onClick={() => setIsInviteDialogOpen(true)}
-              className="relative bg-[#e1e1e1] px-3 py-2 overflow-hidden hover:bg-white transition-colors flex items-center gap-2 w-full sm:w-auto"
+              className="font-mono text-sm md:text-base w-full sm:w-auto"
             >
-              <div
-                className="absolute inset-0 opacity-20 bg-repeat pointer-events-none"
-                style={{
-                  backgroundImage: `url(/assets/settings/pattern-6px-flip.png)`,
-                  backgroundSize: "2.915576934814453px 2.915576934814453px",
-                }}
-              />
-              <UserPlus className="relative z-10 h-4 w-4 text-black" />
-              <span className="relative z-10 text-black font-mono font-medium text-sm md:text-base">
-                {t("cloud.membersTab.inviteMember", {
-                  defaultValue: "Invite Member",
-                })}
-              </span>
-            </button>
+              <UserPlus className="h-4 w-4" />
+              {t("cloud.membersTab.inviteMember", {
+                defaultValue: "Invite Member",
+              })}
+            </BrandButton>
           )}
         </div>
 

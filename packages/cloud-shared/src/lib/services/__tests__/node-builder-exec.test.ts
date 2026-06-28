@@ -22,6 +22,7 @@ function reset() {
     "CONTAINERS_DOCKER_NODES",
     "CONTAINERS_SSH_KEY",
     "CONTAINERS_SSH_KEY_PATH",
+    "APPS_IMAGE_REGISTRY",
     "APPS_BUILD_FROM_REPO_ENABLED",
     "APPS_BUILDS_HOST",
     "APPS_BUILD_ON_RUNTIME_NODE",
@@ -70,6 +71,13 @@ describe("makeNodeBuilderExec — arming gate", () => {
   test("returns null when build-from-repo is NOT armed (backend configured)", () => {
     armBackend();
     // APPS_BUILD_FROM_REPO_ENABLED unset → stays on prebuilt path
+    expect(makeNodeBuilderExec()).toBeNull();
+  });
+
+  test("returns null when only the image registry is configured", () => {
+    armBackend();
+    process.env.APPS_IMAGE_REGISTRY = "ghcr.io/elizaos";
+    // A registry is necessary for build-from-repo, but it is not an arming flag.
     expect(makeNodeBuilderExec()).toBeNull();
   });
 

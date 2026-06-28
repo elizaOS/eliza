@@ -43,6 +43,50 @@ describe("formatMessages", () => {
 		);
 	});
 
+	it("preserves the full reacted-to message text in context (#9874)", () => {
+		// A reaction memory's `text` truncates the reacted-to content to a short
+		// stub; the untruncated original lives in `reactedMessageText`. Context
+		// formatting must surface the full statement so the planner does not
+		// back-rationalize a truncated fragment into a phantom task.
+		const full =
+			"can you pull the Q3 revenue numbers and compare them against Q2 for me";
+		const rendered = formatMessages({
+			messages: [
+				{
+					id: "00000000-0000-0000-0000-000000000021" as UUID,
+					entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+					roomId,
+					createdAt: 1765381653000,
+					content: {
+						text: `*Added 👍 to: "${full.slice(0, 50)}…"*`,
+						reactedMessageText: full,
+					},
+				} as Memory,
+			],
+			entities: [],
+		});
+
+		expect(rendered).toContain(full);
+		expect(rendered).toContain("reacted-to message in full");
+	});
+
+	it("omits the reacted-to context line when no reactedMessageText is set", () => {
+		const rendered = formatMessages({
+			messages: [
+				{
+					id: "00000000-0000-0000-0000-000000000022" as UUID,
+					entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+					roomId,
+					createdAt: 1765381653000,
+					content: { text: "just a normal message" },
+				} as Memory,
+			],
+			entities: [],
+		});
+
+		expect(rendered).not.toContain("reacted-to message in full");
+	});
+
 	it("advertises a stored-content read when readable text is stored", () => {
 		const rendered = formatMessages({
 			messages: [

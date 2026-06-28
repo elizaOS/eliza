@@ -553,7 +553,7 @@ function stageIosFullBunSmokeModel(udid, id) {
     models: [
       {
         id: IOS_FULL_BUN_SMOKE_MODEL_ID,
-        displayName: "eliza-1-0.8B",
+        displayName: "eliza-1-2B",
         path: modelPath,
         sizeBytes: sourceStats.size,
         installedAt: now,
@@ -958,7 +958,7 @@ function writeAndroidLocalInferenceRegistry(context, localInferenceDir) {
       models: [
         {
           id: ANDROID_SMOKE_MODEL_ID,
-          displayName: "eliza-1-0.8B",
+          displayName: "eliza-1-2B",
           path: absoluteModelPath,
           sizeBytes: ANDROID_SMOKE_MODEL_SIZE_BYTES,
           installedAt: now,

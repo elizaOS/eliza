@@ -397,8 +397,9 @@ try {
   );
 
   // ── Real per-view images — every tile shows a branded hero IMAGE (generated
-  // client-side as a data URI when no real hero exists), never a bare glyph.
-  // Each view's hero is deterministic per id, so the srcs are distinct.
+  // client-side as a data URI when no real hero exists). A deterministic glyph
+  // may sit underneath the image as a decode fallback, but no tile may be glyph
+  // only. Each view's hero is deterministic per id, so the srcs are distinct.
   const imageSrcs = await mobile.$$eval(
     '[data-testid^="springboard-image-"]',
     (imgs) =>
@@ -416,9 +417,13 @@ try {
     ),
     "every tile renders a real hero image (data-URI / served), not a glyph",
   );
+  const visualCount = await mobile.locator("[data-view-visual]").count();
+  const imageCount = await mobile
+    .locator('[data-view-visual] [data-testid^="springboard-image-"]')
+    .count();
   assert(
-    (await mobile.locator("[data-view-visual] svg").count()) === 0,
-    "no tile falls back to the bare Lucide glyph",
+    imageCount === visualCount,
+    `no tile falls back to a bare glyph-only visual (${imageCount}/${visualCount} have images)`,
   );
 
   // ── A swipe that starts ON a tile never ghost-fires edit mode (#3) ───────

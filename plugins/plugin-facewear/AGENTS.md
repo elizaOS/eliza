@@ -61,7 +61,6 @@ src/
   index.ts                    Plugin object + all exports
   register.ts                 Secondary entry for view-only imports
   register-terminal-view.tsx  Terminal (TUI) view registration
-  ui-shims.ts                 UI compatibility shims
   status-format.ts            Shared status formatting utilities
   actions/
     facewear-connect.ts       FACEWEAR_CONNECT

@@ -41,11 +41,18 @@ export const STARTUP_TRACE_WINDOW_KEY = "__ELIZA_STARTUP_TRACE__";
 export const STARTUP_TRACE_ID_WINDOW_KEY = "__ELIZA_STARTUP_TRACE_ID__";
 
 declare global {
+  interface ElizaNativeStartupBridge {
+    /** Android-native synchronous startup trace id fast path. */
+    getStartupTraceId?: () => unknown;
+  }
+
   interface Window {
     /** Renderer startup trace mirrored for out-of-band harness capture. */
     [STARTUP_TRACE_WINDOW_KEY]?: StartupTrace;
     /** Native-host-injected trace id, shared across host ↔ renderer. */
     [STARTUP_TRACE_ID_WINDOW_KEY]?: string;
+    /** Android synchronous native bridge, when running in the Capacitor APK. */
+    ElizaNative?: ElizaNativeStartupBridge;
   }
 }
 
@@ -68,10 +75,31 @@ function originMs(): number {
     : 0;
 }
 
+function normalizeTraceId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readAndroidBridgeTraceId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const bridge = window.ElizaNative;
+  if (!bridge || typeof bridge.getStartupTraceId !== "function") {
+    return undefined;
+  }
+  try {
+    return normalizeTraceId(bridge.getStartupTraceId());
+  } catch {
+    return undefined;
+  }
+}
+
 function readInjectedTraceId(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  const value = window[STARTUP_TRACE_ID_WINDOW_KEY];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  return (
+    normalizeTraceId(window[STARTUP_TRACE_ID_WINDOW_KEY]) ??
+    readAndroidBridgeTraceId()
+  );
 }
 
 function mirrorToWindow(): void {
@@ -179,5 +207,6 @@ export function __resetStartupTraceForTests(): void {
   if (typeof window !== "undefined") {
     delete window[STARTUP_TRACE_WINDOW_KEY];
     delete window[STARTUP_TRACE_ID_WINDOW_KEY];
+    delete window.ElizaNative;
   }
 }

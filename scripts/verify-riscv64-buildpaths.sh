@@ -41,6 +41,7 @@ cd "$repo_root"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 OUT="$repo_root/reports/riscv64-buildpath-verification.md"
 KEEP_BUILD=0
+RM_PATH_RECURSIVE="$repo_root/packages/scripts/rm-path-recursive.mjs"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -58,6 +59,16 @@ mkdir -p "$(dirname "$OUT")"
 
 have_cmd() {
     command -v "$1" >/dev/null 2>&1
+}
+
+remove_path_recursive() {
+    local node_bin
+    node_bin="${NODE_BIN:-$(command -v node || true)}"
+    if [ -z "$node_bin" ]; then
+        echo "[verify-riscv64] node not on PATH; cannot remove recursively via $RM_PATH_RECURSIVE." >&2
+        return 1
+    fi
+    "$node_bin" "$RM_PATH_RECURSIVE" "$@"
 }
 
 host_zig_platform() {
@@ -138,7 +149,7 @@ PY
         return 1
     fi
 
-    rm -rf "$install_dir"
+    remove_path_recursive "$install_dir"
     top_dir="$(tar -tf "$archive" | sed -n '1s#/.*##p')"
     tar -xf "$archive" -C "$cache_dir"
     if [ -z "$top_dir" ] || [ ! -x "$cache_dir/$top_dir/zig" ]; then
@@ -215,7 +226,7 @@ build_package() {
         return 1
     fi
 
-    rm -rf "$builddir"
+    remove_path_recursive "$builddir"
 
     local config_log="$builddir.config.log"
     local build_log="$builddir.build.log"
@@ -301,10 +312,10 @@ ar_members_are_rv64() {
         *) archive="$(cd "$(dirname "$archive")" && pwd)/$(basename "$archive")";;
     esac
     local extract_dir="$archive.verify-extract"
-    rm -rf "$extract_dir"
+    remove_path_recursive "$extract_dir"
     mkdir -p "$extract_dir"
     ( cd "$extract_dir" && ar x "$archive" >/dev/null 2>&1 ) || {
-        rm -rf "$extract_dir"
+        remove_path_recursive "$extract_dir"
         return 1
     }
     local bad=0
@@ -315,7 +326,7 @@ ar_members_are_rv64() {
             break
         fi
     done
-    rm -rf "$extract_dir"
+    remove_path_recursive "$extract_dir"
     [ "$bad" -eq 0 ]
 }
 
@@ -496,9 +507,10 @@ echo "[verify-riscv64] Report written: $OUT"
 
 if [ "$KEEP_BUILD" = "0" ]; then
     for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
-        rm -rf "packages/native/plugins/$pkg/build/riscv64-verify" \
-              "packages/native/plugins/$pkg/build/riscv64-verify.config.log" \
-              "packages/native/plugins/$pkg/build/riscv64-verify.build.log"
+        remove_path_recursive \
+            "packages/native/plugins/$pkg/build/riscv64-verify" \
+            "packages/native/plugins/$pkg/build/riscv64-verify.config.log" \
+            "packages/native/plugins/$pkg/build/riscv64-verify.build.log"
     done
 fi
 

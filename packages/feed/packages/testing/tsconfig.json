@@ -6,12 +6,10 @@
     "noEmit": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noImplicitAny": false,
     "strict": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
     "types": ["bun-types"],
-    "baseUrl": ".",
     "paths": {
       "next": ["../../node_modules/next"],
       "next/*": ["../../node_modules/next/*"],
