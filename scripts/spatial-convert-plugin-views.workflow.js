@@ -28,7 +28,6 @@ const PLUGINS =
         "plugin-wallet-ui",
         "plugin-polymarket",
         "plugin-hyperliquid",
-        "plugin-steward-app",
         "plugin-task-coordinator",
         "plugin-personal-assistant",
         "plugin-shopify",

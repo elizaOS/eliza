@@ -46,10 +46,6 @@ const allowedCallsites = new Map<string, string>([
 		"scenario action turns; rewrites action response text with TEXT_SMALL",
 	],
 	[
-		"plugins/plugin-steward-app/src/api/binance-skill-helpers.ts",
-		"steward Binance direct/fallback bypass; rewrites raw output with TEXT_SMALL",
-	],
-	[
 		"plugins/plugin-agent-skills/src/actions/skill.ts",
 		"skill router; attributes callbacks to routed child actions",
 	],

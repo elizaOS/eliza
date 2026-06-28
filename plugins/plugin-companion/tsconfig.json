@@ -27,7 +27,6 @@
       "@elizaos/plugin-personal-assistant": [
         "../plugin-personal-assistant/src/index.ts"
       ],
-      "@elizaos/plugin-steward-app": ["../plugin-steward-app/src/index.ts"],
       "@elizaos/plugin-wallet-ui": ["../plugin-wallet-ui/src/index.ts"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/agent": ["../../packages/agent/dist/index.d.ts"],

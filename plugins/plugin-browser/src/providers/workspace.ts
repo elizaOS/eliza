@@ -3,10 +3,8 @@
  * and current dispatch mode (`desktop` / `web`) into agent context whenever
  * a `browser` or `web` context is selected.
  *
- * Does not include Steward wallet state — that lived in this provider while
- * `@elizaos/app-browser` owned both surfaces. After consolidation, Steward
- * exposes its own provider from `@elizaos/plugin-steward-app`; an agent that needs
- * both contexts gets both providers, not a coupled one.
+ * Does not include wallet state; an agent that needs wallet context gets it
+ * from the wallet provider instead of coupling it to browser workspace state.
  */
 
 import type { Provider } from "@elizaos/core";

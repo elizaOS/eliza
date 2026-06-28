@@ -1256,7 +1256,6 @@ for (const root of [
     ["@elizaos/plugin-personal-assistant", "lifeops"],
     ["@elizaos/plugin-polymarket", "polymarket"],
     ["@elizaos/plugin-shopify", "shopify"],
-    ["@elizaos/plugin-steward-app", "steward"],
     ["@elizaos/plugin-training", "training"],
     ["@elizaos/plugin-vincent", "vincent"],
   ]);

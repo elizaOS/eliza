@@ -840,35 +840,6 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 - **Handler:** ✅ yes
 - **Examples:** ✅ yes
 
-## App / app-steward
-
-### CHECK_BALANCE
-
-- **File:** `eliza/plugins/plugin-steward-app/src/actions/check-balance.ts`
-- **Description:** Check wallet balances across chains. Use this when a user asks about
-- **Similes:** `GET_BALANCE`, `WALLET_BALANCE`, `CHECK_WALLET`, `MY_BALANCE`, `PORTFOLIO`, `HOLDINGS`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
-### EXECUTE_TRADE
-
-- **File:** `eliza/plugins/plugin-steward-app/src/actions/execute-trade.ts`
-- **Description:** Execute a BSC token trade (buy or sell). Use this when a user asks to
-- **Similes:** `BUY_TOKEN`, `SELL_TOKEN`, `SWAP`, `TRADE`, `BUY`, `SELL`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
-### TRANSFER_TOKEN
-
-- **File:** `eliza/plugins/plugin-steward-app/src/actions/transfer-token.ts`
-- **Description:** Transfer tokens or native BNB to another address. Use this when a user
-- **Similes:** `SEND_TOKEN`, `TRANSFER`, `SEND`, `SEND_BNB`, `SEND_CRYPTO`, `PAY`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
 ## Core / @elizaos/core / plugin-manager
 
 ### CORE_STATUS

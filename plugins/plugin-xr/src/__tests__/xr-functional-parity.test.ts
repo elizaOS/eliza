@@ -202,12 +202,6 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["ShopifyView", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-steward-app",
-    manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-steward-app/src/StewardView.tsx",
-    requiredTerms: ["StewardView", "useState"],
-  },
-  {
     pluginDir: "plugins/plugin-wallet-ui",
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
     xrComponentSrc: "plugins/plugin-wallet-ui/src/InventoryView.tsx",

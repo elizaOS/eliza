@@ -1,6 +1,6 @@
 # @elizaos/app-core
 
-Shared application core for elizaOS agent app shells. Provides the CLI bootstrap, the dashboard HTTP API, the Eliza runtime loader, the static app/plugin/connector registry, auth/secrets/vault services, and per-platform (Node, browser, Capacitor/iOS/Android, Electrobun desktop) bootstrap. Consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, the `packages/app` shell, and most `plugins/*` app plugins (e.g. `plugin-steward-app`, `plugin-registry`, `plugin-lifeops`).
+Shared application core for elizaOS agent app shells. Provides the CLI bootstrap, the dashboard HTTP API, the Eliza runtime loader, the static app/plugin/connector registry, auth/secrets/vault services, and per-platform (Node, browser, Capacitor/iOS/Android, Electrobun desktop) bootstrap. Consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, the `packages/app` shell, and most `plugins/*` app plugins (e.g. `plugin-registry`, `plugin-lifeops`).
 
 Repo-wide rules (logger-only, ESM, naming, architecture commandments, git workflow) live in the root [AGENTS.md](../../AGENTS.md) — not restated here.
 

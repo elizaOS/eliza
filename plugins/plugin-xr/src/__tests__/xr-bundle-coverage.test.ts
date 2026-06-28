@@ -145,10 +145,6 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-shopify/src/plugin.ts",
   },
   {
-    pluginDir: "plugins/plugin-steward-app",
-    manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
-  },
-  {
     pluginDir: "plugins/plugin-wallet-ui",
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
   },

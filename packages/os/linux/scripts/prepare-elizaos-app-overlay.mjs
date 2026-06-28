@@ -346,13 +346,6 @@ export const shopifyPlugin = {
 };
 export default shopifyPlugin;
 `,
-    "@elizaos/plugin-steward-app": `
-export const stewardPlugin = {
-  name: "steward",
-  routes: [],
-};
-export default stewardPlugin;
-`,
     "@elizaos/plugin-training": `
 export const trainingPlugin = {
   name: "training",
@@ -499,7 +492,6 @@ const forceLiveStubPackages = new Set([
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-polymarket",
   "@elizaos/plugin-shopify",
-  "@elizaos/plugin-steward-app",
   "@elizaos/plugin-training",
 ]);
 

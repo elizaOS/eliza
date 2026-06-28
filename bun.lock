@@ -124,9 +124,9 @@
         "@elizaos/plugin-phone": "workspace:*",
         "@elizaos/plugin-registry": "workspace:*",
         "@elizaos/plugin-remote-manifest": "workspace:*",
+        "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-shell": "workspace:*",
         "@elizaos/plugin-signal": "workspace:*",
-        "@elizaos/plugin-simple-views": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-streaming": "workspace:*",
         "@elizaos/plugin-task-coordinator": "workspace:*",
@@ -241,25 +241,20 @@
         "@elizaos/plugin-blocker": "workspace:*",
         "@elizaos/plugin-companion": "workspace:*",
         "@elizaos/plugin-contacts": "workspace:*",
-        "@elizaos/plugin-device-settings": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-facewear": "workspace:*",
         "@elizaos/plugin-feed": "workspace:*",
-        "@elizaos/plugin-hyperliquid-app": "workspace:*",
+        "@elizaos/plugin-hyperliquid": "workspace:*",
         "@elizaos/plugin-messages": "workspace:*",
+        "@elizaos/plugin-native-settings": "workspace:*",
         "@elizaos/plugin-personal-assistant": "workspace:*",
         "@elizaos/plugin-phone": "workspace:*",
-        "@elizaos/plugin-polymarket-app": "workspace:*",
-        "@elizaos/plugin-shopify-ui": "workspace:*",
-        "@elizaos/plugin-simple-views": "workspace:*",
-        "@elizaos/plugin-steward-app": "workspace:*",
+        "@elizaos/plugin-polymarket": "workspace:*",
+        "@elizaos/plugin-shopify": "workspace:*",
         "@elizaos/plugin-task-coordinator": "workspace:*",
         "@elizaos/plugin-training": "workspace:*",
         "@elizaos/plugin-trajectory-logger": "workspace:*",
         "@elizaos/plugin-vector-browser": "workspace:*",
-        "@elizaos/plugin-vincent": "workspace:*",
-        "@elizaos/plugin-waifu-imagegen-app": "workspace:*",
-        "@elizaos/plugin-waifu-swap-app": "workspace:*",
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-wallet-ui": "workspace:*",
         "@elizaos/plugin-wifi": "workspace:*",
@@ -2537,12 +2532,12 @@
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/plugin-coding-tools": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
-        "@elizaos/plugin-device-filesystem": "workspace:*",
         "@elizaos/plugin-github": "workspace:*",
         "@elizaos/plugin-gitpathologist": "workspace:*",
         "@elizaos/plugin-health": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-mcp": "workspace:*",
+        "@elizaos/plugin-native-filesystem": "workspace:*",
         "@elizaos/plugin-personal-assistant": "workspace:*",
         "@elizaos/plugin-remote-manifest": "workspace:*",
         "@elizaos/plugin-shell": "workspace:*",
@@ -3332,48 +3327,6 @@
         "react-dom": "^19.0.0",
       },
     },
-    "plugins/plugin-device-filesystem": {
-      "name": "@elizaos/plugin-device-filesystem",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "zod": "^4.4.3",
-      },
-      "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
-        "@capacitor/filesystem": "^8.1.2",
-        "@types/node": "^25.0.3",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.0",
-      },
-      "optionalDependencies": {
-        "@capacitor/filesystem": "^8.1.2",
-      },
-      "peerDependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-    },
-    "plugins/plugin-device-settings": {
-      "name": "@elizaos/plugin-device-settings",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/capacitor-system": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "lucide-react": "^1.0.0",
-      },
-      "devDependencies": {
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.17",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-      },
-    },
     "plugins/plugin-discord": {
       "name": "@elizaos/plugin-discord",
       "version": "2.0.3-beta.7",
@@ -3853,8 +3806,8 @@
         "react-dom": "^19.0.0",
       },
     },
-    "plugins/plugin-hyperliquid-app": {
-      "name": "@elizaos/plugin-hyperliquid-app",
+    "plugins/plugin-hyperliquid": {
+      "name": "@elizaos/plugin-hyperliquid",
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/app-core": "workspace:*",
@@ -4269,6 +4222,27 @@
         "@capacitor/core": "^8.3.1",
       },
     },
+    "plugins/plugin-native-filesystem": {
+      "name": "@elizaos/plugin-native-filesystem",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@capacitor/filesystem": "^8.1.2",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "optionalDependencies": {
+        "@capacitor/filesystem": "^8.1.2",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-native-gateway": {
       "name": "@elizaos/capacitor-gateway",
       "version": "2.0.3-beta.7",
@@ -4415,6 +4389,27 @@
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-settings": {
+      "name": "@elizaos/plugin-native-settings",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/app-core": "workspace:*",
+        "@elizaos/capacitor-system": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "lucide-react": "^1.0.0",
+      },
+      "devDependencies": {
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-native-shared-types": {
@@ -4715,8 +4710,8 @@
         "react-dom": "^19.0.0",
       },
     },
-    "plugins/plugin-polymarket-app": {
-      "name": "@elizaos/plugin-polymarket-app",
+    "plugins/plugin-polymarket": {
+      "name": "@elizaos/plugin-polymarket",
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/app-core": "workspace:*",
@@ -4835,6 +4830,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "drizzle-orm": "^0.45.1",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -4900,18 +4896,6 @@
       "name": "@elizaos/plugin-shopify",
       "version": "2.0.3-beta.7",
       "dependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-      "devDependencies": {
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.0",
-      },
-    },
-    "plugins/plugin-shopify-ui": {
-      "name": "@elizaos/plugin-shopify-ui",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
         "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -4923,9 +4907,9 @@
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
         "jsdom": "^29.0.0",
-        "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
         "vite": "^8.0.0",
         "vitest": "^4.1.5",
       },
@@ -4952,28 +4936,6 @@
       "optionalPeers": [
         "@elizaos/signal-native",
       ],
-    },
-    "plugins/plugin-simple-views": {
-      "name": "@elizaos/plugin-simple-views",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "lucide-react": "^1.0.0",
-      },
-      "devDependencies": {
-        "@types/react": "^19.0.0",
-        "@types/react-dom": "^19.0.0",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "tsup": "^8.5.1",
-        "vite": "^8.0.0",
-        "vitest": "^4.0.17",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-      },
     },
     "plugins/plugin-slack": {
       "name": "@elizaos/plugin-slack",
@@ -5059,37 +5021,6 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
-      },
-    },
-    "plugins/plugin-steward-app": {
-      "name": "@elizaos/plugin-steward-app",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-personal-assistant": "workspace:*",
-        "@elizaos/plugin-wallet": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "@noble/curves": "2.2.0",
-        "@simplewebauthn/browser": "^13.0.0",
-        "@solana/web3.js": "1.98.4",
-        "@stwd/sdk": "^0.8.1",
-        "ethers": "^6.16.0",
-        "lucide-react": "^1.0.0",
-        "react": "^19.0.0",
-        "viem": "^2.48.8",
-      },
-      "devDependencies": {
-        "@testing-library/react": "^16.3.2",
-        "@types/react": "^19.0.0",
-        "@types/react-dom": "^19.0.0",
-        "jsdom": "^29.0.0",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "tsup": "^8.5.1",
-        "vite": "^8.0.0",
-        "vitest": "^4.1.5",
       },
     },
     "plugins/plugin-streaming": {
@@ -5344,30 +5275,6 @@
         "vitest": "^4.0.17",
       },
     },
-    "plugins/plugin-vincent": {
-      "name": "@elizaos/plugin-vincent",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "lucide-react": "^1.0.0",
-        "react": "^19.0.0",
-      },
-      "devDependencies": {
-        "@testing-library/react": "^16.3.2",
-        "@types/react": "^19.0.0",
-        "@types/react-dom": "^19.0.0",
-        "jsdom": "^29.0.0",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "tsup": "^8.5.1",
-        "vite": "^8.0.0",
-        "vitest": "^4.1.5",
-      },
-    },
     "plugins/plugin-vision": {
       "name": "@elizaos/plugin-vision",
       "version": "2.0.3-beta.7",
@@ -5390,54 +5297,6 @@
       "optionalPeers": [
         "@elizaos/plugin-computeruse",
       ],
-    },
-    "plugins/plugin-waifu-imagegen-app": {
-      "name": "@elizaos/plugin-waifu-imagegen-app",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "lucide-react": "^1.0.0",
-        "react": "^19.0.0",
-      },
-      "devDependencies": {
-        "@testing-library/react": "^16.3.2",
-        "@types/react": "^19.0.0",
-        "@types/react-dom": "^19.0.0",
-        "jsdom": "^29.0.0",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.0.0",
-        "vitest": "^4.1.5",
-      },
-    },
-    "plugins/plugin-waifu-swap-app": {
-      "name": "@elizaos/plugin-waifu-swap-app",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "lucide-react": "^1.0.0",
-        "react": "^19.0.0",
-      },
-      "devDependencies": {
-        "@testing-library/react": "^16.3.2",
-        "@types/react": "^19.0.0",
-        "@types/react-dom": "^19.0.0",
-        "jsdom": "^29.0.0",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.0.0",
-        "vitest": "^4.1.5",
-      },
     },
     "plugins/plugin-wallet": {
       "name": "@elizaos/plugin-wallet",
@@ -6538,10 +6397,6 @@
 
     "@elizaos/plugin-contacts": ["@elizaos/plugin-contacts@workspace:plugins/plugin-contacts"],
 
-    "@elizaos/plugin-device-filesystem": ["@elizaos/plugin-device-filesystem@workspace:plugins/plugin-device-filesystem"],
-
-    "@elizaos/plugin-device-settings": ["@elizaos/plugin-device-settings@workspace:plugins/plugin-device-settings"],
-
     "@elizaos/plugin-discord": ["@elizaos/plugin-discord@workspace:plugins/plugin-discord"],
 
     "@elizaos/plugin-discord-local": ["@elizaos/plugin-discord-local@workspace:plugins/plugin-discord-local"],
@@ -6596,7 +6451,7 @@
 
     "@elizaos/plugin-host-shim-ios": ["@elizaos/plugin-host-shim-ios@workspace:packages/plugin-host-shim-ios"],
 
-    "@elizaos/plugin-hyperliquid-app": ["@elizaos/plugin-hyperliquid-app@workspace:plugins/plugin-hyperliquid-app"],
+    "@elizaos/plugin-hyperliquid": ["@elizaos/plugin-hyperliquid@workspace:plugins/plugin-hyperliquid"],
 
     "@elizaos/plugin-imessage": ["@elizaos/plugin-imessage@workspace:plugins/plugin-imessage"],
 
@@ -6628,6 +6483,10 @@
 
     "@elizaos/plugin-music": ["@elizaos/plugin-music@workspace:plugins/plugin-music"],
 
+    "@elizaos/plugin-native-filesystem": ["@elizaos/plugin-native-filesystem@workspace:plugins/plugin-native-filesystem"],
+
+    "@elizaos/plugin-native-settings": ["@elizaos/plugin-native-settings@workspace:plugins/plugin-native-settings"],
+
     "@elizaos/plugin-nearai": ["@elizaos/plugin-nearai@workspace:plugins/plugin-nearai"],
 
     "@elizaos/plugin-ngrok": ["@elizaos/plugin-ngrok@workspace:plugins/plugin-ngrok"],
@@ -6646,7 +6505,7 @@
 
     "@elizaos/plugin-phone": ["@elizaos/plugin-phone@workspace:plugins/plugin-phone"],
 
-    "@elizaos/plugin-polymarket-app": ["@elizaos/plugin-polymarket-app@workspace:plugins/plugin-polymarket-app"],
+    "@elizaos/plugin-polymarket": ["@elizaos/plugin-polymarket@workspace:plugins/plugin-polymarket"],
 
     "@elizaos/plugin-registry": ["@elizaos/plugin-registry@workspace:plugins/plugin-registry"],
 
@@ -6668,11 +6527,7 @@
 
     "@elizaos/plugin-shopify": ["@elizaos/plugin-shopify@workspace:plugins/plugin-shopify"],
 
-    "@elizaos/plugin-shopify-ui": ["@elizaos/plugin-shopify-ui@workspace:plugins/plugin-shopify-ui"],
-
     "@elizaos/plugin-signal": ["@elizaos/plugin-signal@workspace:plugins/plugin-signal"],
-
-    "@elizaos/plugin-simple-views": ["@elizaos/plugin-simple-views@workspace:plugins/plugin-simple-views"],
 
     "@elizaos/plugin-slack": ["@elizaos/plugin-slack@workspace:plugins/plugin-slack"],
 
@@ -6681,8 +6536,6 @@
     "@elizaos/plugin-sql": ["@elizaos/plugin-sql@workspace:plugins/plugin-sql"],
 
     "@elizaos/plugin-starter": ["@elizaos/plugin-starter@workspace:packages/examples/_plugin"],
-
-    "@elizaos/plugin-steward-app": ["@elizaos/plugin-steward-app@workspace:plugins/plugin-steward-app"],
 
     "@elizaos/plugin-streaming": ["@elizaos/plugin-streaming@workspace:plugins/plugin-streaming"],
 
@@ -6712,13 +6565,7 @@
 
     "@elizaos/plugin-video": ["@elizaos/plugin-video@workspace:plugins/plugin-video"],
 
-    "@elizaos/plugin-vincent": ["@elizaos/plugin-vincent@workspace:plugins/plugin-vincent"],
-
     "@elizaos/plugin-vision": ["@elizaos/plugin-vision@workspace:plugins/plugin-vision"],
-
-    "@elizaos/plugin-waifu-imagegen-app": ["@elizaos/plugin-waifu-imagegen-app@workspace:plugins/plugin-waifu-imagegen-app"],
-
-    "@elizaos/plugin-waifu-swap-app": ["@elizaos/plugin-waifu-swap-app@workspace:plugins/plugin-waifu-swap-app"],
 
     "@elizaos/plugin-wallet": ["@elizaos/plugin-wallet@workspace:plugins/plugin-wallet"],
 
@@ -17386,9 +17233,9 @@
 
     "@oxc-resolver/binding-wasm32-wasi/@napi-rs/wasm-runtime/@tybys/wasm-util": ["@tybys/wasm-util@0.10.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg=="],
 
-    "@oxc-transform/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core": ["@emnapi/core@1.11.1", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.2", "tslib": "^2.4.0" } }, "sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ=="],
+    "@oxc-transform/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core": ["@emnapi/core@1.9.2", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-UC+ZhH3XtczQYfOlu3lNEkdW/p4dsJ1r/bP7H8+rhao3TTTMO1ATq/4DdIi23XuGoFY+Cz0JmCbdVl0hz9jZcA=="],
 
-    "@oxc-transform/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/runtime": ["@emnapi/runtime@1.11.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw=="],
+    "@oxc-transform/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/runtime": ["@emnapi/runtime@1.9.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-3U4+MIWHImeyu1wnmVygh5WlgfYDtyf0k8AbLhMFxOipihf6nrWC4syIm/SwEeec0mNSafiiNnMJwbza/Is6Lw=="],
 
     "@oxc-transform/binding-wasm32-wasi/@napi-rs/wasm-runtime/@tybys/wasm-util": ["@tybys/wasm-util@0.10.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg=="],
 
@@ -17490,9 +17337,9 @@
 
     "@sigstore/sign/make-fetch-happen/ssri": ["ssri@13.0.1", "", { "dependencies": { "minipass": "^7.0.3" } }, "sha512-QUiRf1+u9wPTL/76GTYlKttDEBWV1ga9ZXW8BG6kfdeyyM8LGPix9gROyg9V2+P0xNyF3X2Go526xKFdMZrHSQ=="],
 
-    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core": ["@emnapi/core@1.11.1", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.2", "tslib": "^2.4.0" } }, "sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ=="],
+    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core": ["@emnapi/core@1.9.2", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-UC+ZhH3XtczQYfOlu3lNEkdW/p4dsJ1r/bP7H8+rhao3TTTMO1ATq/4DdIi23XuGoFY+Cz0JmCbdVl0hz9jZcA=="],
 
-    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/runtime": ["@emnapi/runtime@1.11.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw=="],
+    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/runtime": ["@emnapi/runtime@1.9.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-3U4+MIWHImeyu1wnmVygh5WlgfYDtyf0k8AbLhMFxOipihf6nrWC4syIm/SwEeec0mNSafiiNnMJwbza/Is6Lw=="],
 
     "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@tybys/wasm-util": ["@tybys/wasm-util@0.10.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg=="],
 
@@ -19056,7 +18903,7 @@
 
     "@npmcli/metavuln-calculator/pacote/@npmcli/installed-package-contents/npm-normalize-package-bin": ["npm-normalize-package-bin@5.0.0", "", {}, "sha512-CJi3OS4JLsNMmr2u07OJlhcrPxCeOeP/4xq67aWNai6TNWWbTrlNDgl8NcFKVlcBKp18GPj+EzbNIgrBfZhsag=="],
 
-    "@oxc-transform/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
+    "@oxc-transform/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w=="],
 
     "@prisma/instrumentation/@opentelemetry/instrumentation/import-in-the-middle/cjs-module-lexer": ["cjs-module-lexer@2.2.0", "", {}, "sha512-4bHTS2YuzUvtoLjdy+98ykbNB5jS0+07EvFNXerqZQJ89F7DI6ET7OQo/HJuW6K0aVsKA9hj9/RVb2kQVOrPDQ=="],
 
@@ -19160,7 +19007,7 @@
 
     "@sigstore/sign/make-fetch-happen/minipass-fetch/minipass-sized": ["minipass-sized@2.0.0", "", { "dependencies": { "minipass": "^7.1.2" } }, "sha512-zSsHhto5BcUVM2m1LurnXY6M//cGhVaegT71OfOXoprxT6o780GZd792ea6FfrQkuU4usHZIUczAQMRUE2plzA=="],
 
-    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
+    "@snazzah/davey-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w=="],
 
     "@solana/spl-token-group/@solana/codecs/@solana/codecs-core/@solana/errors": ["@solana/errors@2.0.0-rc.1", "", { "dependencies": { "chalk": "^5.3.0", "commander": "^12.1.0" }, "peerDependencies": { "typescript": ">=5" }, "bin": { "errors": "bin/cli.mjs" } }, "sha512-ejNvQ2oJ7+bcFAYWj225lyRkHnixuAeb7RQCixm+5mH4n1IA4Qya/9Bmfy5RAAHQzxK43clu3kZmL5eF9VGtYQ=="],
 
@@ -19832,9 +19679,9 @@
 
     "@solana/spl-token-metadata/@solana/codecs/@solana/options/@solana/errors/commander": ["commander@12.1.0", "", {}, "sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA=="],
 
-    "@vercel/backends/rolldown/@rolldown/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core": ["@emnapi/core@1.11.1", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.2", "tslib": "^2.4.0" } }, "sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ=="],
+    "@vercel/backends/rolldown/@rolldown/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core": ["@emnapi/core@1.9.2", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-UC+ZhH3XtczQYfOlu3lNEkdW/p4dsJ1r/bP7H8+rhao3TTTMO1ATq/4DdIi23XuGoFY+Cz0JmCbdVl0hz9jZcA=="],
 
-    "@vercel/backends/rolldown/@rolldown/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/runtime": ["@emnapi/runtime@1.11.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw=="],
+    "@vercel/backends/rolldown/@rolldown/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/runtime": ["@emnapi/runtime@1.9.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-3U4+MIWHImeyu1wnmVygh5WlgfYDtyf0k8AbLhMFxOipihf6nrWC4syIm/SwEeec0mNSafiiNnMJwbza/Is6Lw=="],
 
     "@vercel/backends/rolldown/@rolldown/binding-wasm32-wasi/@napi-rs/wasm-runtime/@tybys/wasm-util": ["@tybys/wasm-util@0.10.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg=="],
 
@@ -19990,7 +19837,7 @@
 
     "@serwist/next/glob/jackspeak/@isaacs/cliui/wrap-ansi/ansi-styles": ["ansi-styles@6.2.3", "", {}, "sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg=="],
 
-    "@vercel/backends/rolldown/@rolldown/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
+    "@vercel/backends/rolldown/@rolldown/binding-wasm32-wasi/@napi-rs/wasm-runtime/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w=="],
 
     "@walletconnect/ethereum-provider/@reown/appkit/@reown/appkit-ui/qrcode/yargs/cliui": ["cliui@6.0.0", "", { "dependencies": { "string-width": "^4.2.0", "strip-ansi": "^6.0.0", "wrap-ansi": "^6.2.0" } }, "sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ=="],
 

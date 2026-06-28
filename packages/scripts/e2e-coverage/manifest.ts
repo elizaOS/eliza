@@ -227,11 +227,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
     reason:
       "model-tester is a dev-only diagnostic surface whose routes proxy live model providers; it has no deterministic fixture and is not shipped in the default agent.",
   },
-  "plugin-steward-app": {
-    status: "exempt",
-    reason:
-      "steward-app routes proxy the hosted Steward cloud backend; they require live Steward credentials and have no keyless mock yet (tracked for the e2e-mock-infra issue).",
-  },
   "plugin-vision": {
     status: "exempt",
     reason:
