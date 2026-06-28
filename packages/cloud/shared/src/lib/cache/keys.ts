@@ -256,7 +256,7 @@ export const CacheTTL = {
   inference: {
     authContext: 60, // 1 minute - worst-case revoked/banned exposure ~= TTL + KV lag
     orgBalance: 15, // 15 seconds - optimistic-billing gate hint, kept tight to bound drift
-    pendingCharge: 1800, // 30 minutes - must exceed max request duration + sweep grace
+    pendingCharge: 3600, // 60 min - sweep window = TTL - grace(20m) = 40m, survives cron hiccups
   },
   /**
    * App cache TTLs

@@ -185,9 +185,7 @@ export default defineConfig({
       ),
       pluginAlias("plugin-matrix"),
       pluginAlias("plugin-mcp"),
-      pluginAlias("plugin-minecraft"),
       pluginAlias("plugin-music"),
-      pluginAlias("plugin-mysticism"),
       pluginAlias("plugin-ngrok"),
       pluginAlias("plugin-nostr"),
       pluginAlias(
@@ -207,10 +205,6 @@ export default defineConfig({
         path.join(repoRoot, "plugins/plugin-pdf/index.ts"),
       ),
       pluginAlias("plugin-registry"),
-      pluginAlias(
-        "plugin-rlm",
-        path.join(repoRoot, "plugins/plugin-rlm/index.ts"),
-      ),
       pluginAlias(
         "plugin-roblox",
         path.join(repoRoot, "plugins/plugin-roblox/index.ts"),

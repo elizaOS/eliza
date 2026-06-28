@@ -202,9 +202,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-music": covered(
     "plugins/plugin-music/src/__tests__/routes-e2e.test.ts",
   ),
-  "plugin-mysticism": covered(
-    "plugins/plugin-mysticism/src/__tests__/routes-e2e.test.ts",
-  ),
   "plugin-telegram": covered("plugins/plugin-telegram/src/routes-e2e.test.ts"),
   "plugin-workflow": covered(
     "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts",
@@ -262,12 +259,8 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
 export const ZERO_TEST_EXEMPT: Record<string, string> = {
   "plugin-action-bench":
     "Benchmark/eval harness plugin used to drive scenario benchmarks; it has no shipped runtime behavior to unit-test and runs only under the benchmark lanes.",
-  "plugin-google-meet-cute":
-    "Experimental Google Meet companion surface gated behind live Google Meet credentials; no deterministic fixture exists.",
   "plugin-native-shared-types":
     "Pure shared TypeScript type/contract definitions for the native bridges; there is no runtime behavior to test.",
-  "plugin-remote-ledger":
-    "Static remote-ledger app shell package with only manifest/assets today; the deterministic PR scenario exercises the remote-ledger view route, and there is no runtime logic to unit-test in this plugin package.",
   "plugin-tee":
     "Trusted-execution (dstack TEE) attestation/key-release; requires real TEE hardware + a dstack socket, validated by the dedicated TEE smoke scripts.",
   "plugin-xmtp":

@@ -238,7 +238,6 @@
     "plugins/plugin-github/**",
     "plugins/plugin-wallet/src/chains/evm/**",
     "plugins/plugin-sql/**",
-    "plugins/plugin-minecraft/**",
     "plugins/plugin-linear/**",
     "**/build.ts"
   ]

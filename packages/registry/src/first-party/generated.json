@@ -2731,9 +2731,6 @@
       "launch": {
         "type": "server-launch",
         "capabilities": [],
-        "uiExtension": {
-          "detailPanelId": "feed-operator-dashboard"
-        },
         "curatedSlug": "feed"
       }
     },
@@ -4525,86 +4522,6 @@
       }
     },
     {
-      "id": "minecraft",
-      "name": "Minecraft",
-      "description": "Minecraft automation app for driving Mineflayer bots from Eliza agents.",
-      "npmName": "@elizaos/plugin-minecraft",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": ["app", "games", "minecraft", "automation", "mineflayer"],
-      "config": {
-        "MC_AUTH": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Auth",
-          "help": "Minecraft auth mode (offline/microsoft)",
-          "advanced": false
-        },
-        "MC_HOST": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Host",
-          "help": "Server host address",
-          "advanced": false
-        },
-        "MC_PORT": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "label": "Port",
-          "help": "Minecraft server port",
-          "advanced": false,
-          "min": 1,
-          "max": 65535
-        },
-        "MC_VERSION": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Version",
-          "help": "Minecraft version",
-          "advanced": false
-        },
-        "MC_USERNAME": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Username",
-          "help": "Minecraft username",
-          "advanced": false
-        },
-        "MC_SERVER_PORT": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "label": "Server Port",
-          "help": "Local server port",
-          "advanced": false,
-          "min": 1,
-          "max": 65535
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Pickaxe",
-        "group": "gaming",
-        "groupOrder": 11,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaos/eliza#readme",
-        "repository": "https://github.com/elizaos/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "kind": "plugin",
-      "subtype": "gaming"
-    },
-    {
       "id": "model-tester",
       "name": "Model Tester",
       "description": "Run end-to-end probes for Eliza-1 text, voice, transcription, VAD, and vision models.",
@@ -4980,55 +4897,6 @@
       "channels": [],
       "kind": "plugin",
       "subtype": "other"
-    },
-    {
-      "id": "mysticism",
-      "name": "Mysticism",
-      "description": "Mystical divination engines for ElizaOS — Tarot, I Ching, and Astrology readings",
-      "npmName": "@elizaos/plugin-mysticism",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": ["mysticism", "tarot", "iching", "astrology", "divination"],
-      "config": {
-        "MYSTICISM_PRICE_TAROT": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "label": "Price Tarot",
-          "help": "Price in SOL for this reading type",
-          "advanced": false
-        },
-        "MYSTICISM_PRICE_ICHING": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "label": "Price Iching",
-          "help": "Price in SOL for this reading type",
-          "advanced": false
-        },
-        "MYSTICISM_PRICE_ASTROLOGY": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "label": "Price Astrology",
-          "help": "Price in SOL for this reading type",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Sparkle",
-        "group": "gaming",
-        "groupOrder": 11,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {},
-      "dependsOn": [],
-      "channels": [],
-      "kind": "plugin",
-      "subtype": "gaming"
     },
     {
       "id": "nearai",
@@ -6021,39 +5889,6 @@
         "target": "relationships",
         "capabilities": ["relationships", "graph", "viewer"]
       }
-    },
-    {
-      "id": "rlm",
-      "name": "Rlm",
-      "description": "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts",
-      "npmName": "@elizaos/plugin-rlm",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": [
-        "rlm",
-        "recursive-language-model",
-        "llm",
-        "agent",
-        "long-context"
-      ],
-      "config": {},
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "RefreshCw",
-        "group": "documents",
-        "groupOrder": 6,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaos/eliza#readme",
-        "repository": "https://github.com/elizaos/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "kind": "plugin",
-      "subtype": "documents"
     },
     {
       "id": "roblox",

@@ -54,6 +54,7 @@ mock.module("./api-keys", () => ({
 
 const {
   isOptimisticBillingEnabled,
+  isOptimisticBackstopAvailable,
   resolveSafeBalanceThresholdUsd,
   isOptimisticEligible,
   isPendingInferenceCharge,
@@ -65,6 +66,10 @@ const {
 const { cache } = await import("../cache/client");
 const { CacheKeys } = await import("../cache/keys");
 const { readOrgBalanceHint, writeOrgBalanceHint } = await import("./inference-auth-cache");
+
+// Mirror of the module-private sweep-lock key (kept as a literal so a rename is
+// caught loudly by the lock test below).
+const SWEEP_LOCK_KEY = "iac:sweep-lock:v1";
 
 let n = 0;
 const uid = (p: string) => `${p}-${++n}`;
@@ -318,5 +323,67 @@ describe("sweepStalePendingInferenceCharges", () => {
     const stats = await sweepStalePendingInferenceCharges({ now: 10_000_000 });
     expect(stats.settled).toBe(0);
     expect(deductCalls).toHaveLength(0); // nothing left to sweep
+  });
+
+  test("a held single-flight lock makes the sweep a no-op (no overlapping claims)", async () => {
+    const input = chargeInput({ estimatedCostUsd: 0.05 });
+    await writePendingInferenceCharge(input, 1); // ancient -> would settle if unlocked
+    // Simulate another sweep already holding the lock.
+    await cache.setIfNotExists(SWEEP_LOCK_KEY, 1, 50_000);
+    const stats = await sweepStalePendingInferenceCharges({ now: 10_000_000 });
+    expect(stats.locked).toBe(true);
+    expect(stats.settled).toBe(0);
+    expect(deductCalls).toHaveLength(0);
+    // Entry is untouched, so the next (unlocked) sweep still settles it.
+    expect(await cache.get(CacheKeys.inference.pendingCharge(input.requestId))).not.toBeNull();
+    await cache.del(SWEEP_LOCK_KEY);
+  });
+});
+
+describe("#9899 hardening: backstop durability, lower-only hint, claim atomicity", () => {
+  test("writePendingInferenceCharge reports true when the backstop persists", async () => {
+    const input = chargeInput();
+    const ok = await writePendingInferenceCharge(input, Date.now());
+    expect(ok).toBe(true);
+    expect(await cache.get(CacheKeys.inference.pendingCharge(input.requestId))).not.toBeNull();
+  });
+
+  test("isOptimisticBackstopAvailable is true when the cache is up", () => {
+    expect(isOptimisticBackstopAvailable()).toBe(true);
+  });
+
+  test("debit hint write is lower-only: a stale-high concurrent debit never raises the gate", async () => {
+    const input = chargeInput();
+    await writeOrgBalanceHint(input.organizationId, 10, Date.now());
+    // A debit that reports a HIGHER balance (out-of-order) must NOT raise the hint.
+    deductResult = { success: true, newBalance: 20 };
+    await writePendingInferenceCharge(input, Date.now());
+    await createOptimisticDebitSettler(input)(0.01);
+    expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(10);
+
+    // A debit that reports a LOWER balance DOES lower the hint.
+    const input2 = chargeInput({ organizationId: input.organizationId });
+    deductResult = { success: true, newBalance: 4 };
+    await writePendingInferenceCharge(input2, Date.now());
+    await createOptimisticDebitSettler(input2)(0.01);
+    expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(4);
+  });
+
+  test("two concurrent inline claims of one request charge exactly once (atomic getAndDelete)", async () => {
+    const input = chargeInput();
+    await writePendingInferenceCharge(input, Date.now());
+    const settle = createOptimisticDebitSettler(input);
+    await Promise.all([settle(0.02), settle(0.02)]);
+    expect(deductCalls).toHaveLength(1); // only one claim wins; no double-bill
+  });
+
+  test("concurrent inline settle + cron sweep on one request charge at most once", async () => {
+    const input = chargeInput({ estimatedCostUsd: 0.05 });
+    await writePendingInferenceCharge(input, 1); // ancient -> sweep-eligible
+    await Promise.all([
+      createOptimisticDebitSettler(input)(0.02),
+      sweepStalePendingInferenceCharges({ now: 10_000_000 }),
+    ]);
+    expect(deductCalls.length).toBeLessThanOrEqual(1);
   });
 });

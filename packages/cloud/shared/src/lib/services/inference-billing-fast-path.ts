@@ -33,18 +33,19 @@
  * getAndDelete claim of the KV pending entry. On the KV backend that is a
  * get-then-delete (near-atomic); a crash between claim and debit loses a single
  * charge (under-bill, never double-bill). True exactly-once would need a DB
- * unique constraint (migration) — see packages/cloud-api/docs/inference-hot-path.md.
+ * unique constraint (migration) — see packages/cloud/api/docs/inference-hot-path.md.
  */
 
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { type CreditReconciliationResult, creditsService } from "./credits";
 import {
   INFERENCE_AUTH_CONTEXT_VERSION,
   invalidateOrgBalanceHint,
+  lowerOrgBalanceHint,
   readOrgBalanceHint,
   writeOrgBalanceHint,
 } from "./inference-auth-cache";
@@ -66,19 +67,35 @@ export interface PendingInferenceCharge {
 /** Default sweep grace: a pending entry older than this with no inline settle is a straggler. */
 const DEFAULT_SWEEP_GRACE_MS = 20 * 60 * 1000; // 20 min (> max route duration)
 
-export function isOptimisticBillingEnabled(
-  env: { INFERENCE_OPTIMISTIC_BILLING?: string } = getCloudAwareEnv(),
-): boolean {
+type StringEnv = Record<string, string | undefined>;
+
+export function isOptimisticBillingEnabled(env: StringEnv = getCloudAwareEnv()): boolean {
   return (env.INFERENCE_OPTIMISTIC_BILLING ?? "").trim() === "true";
+}
+
+/**
+ * Whether the durable pending-charge backstop can be written right now. The
+ * optimistic path SKIPS the synchronous reserve, so the backstop is the only
+ * record of the charge until settle — if the cache is unavailable (circuit open
+ * during a KV brownout, disabled, no backend) the request MUST take the safe
+ * synchronous-reserve path, never forward on an un-recorded charge (#9899, the
+ * "free-forever on cache failure" hole). Mirrors the IAC resolver's CS-5 guard.
+ *
+ * Note: this is `cache.isAvailable()`, NOT `supportsAtomicOperations()` — the
+ * production backend is Cloudflare KV (no atomic NX), and gating on atomicity
+ * would disable the optimistic path entirely in prod. Durability, not atomicity,
+ * is what the backstop needs; exactly-once is handled by the getAndDelete claim
+ * (with the documented KV residual).
+ */
+export function isOptimisticBackstopAvailable(): boolean {
+  return cache.isAvailable();
 }
 
 /**
  * Resolve SAFE_BALANCE_THRESHOLD (USD). Fails SAFE: unset / blank / non-finite /
  * non-positive → +Infinity, so no org is ever fast-pathed on misconfiguration.
  */
-export function resolveSafeBalanceThresholdUsd(
-  env: { SAFE_BALANCE_THRESHOLD?: string } = getCloudAwareEnv(),
-): number {
+export function resolveSafeBalanceThresholdUsd(env: StringEnv = getCloudAwareEnv()): number {
   const raw = (env.SAFE_BALANCE_THRESHOLD ?? "").trim();
   const n = Number.parseFloat(raw);
   return Number.isFinite(n) && n > 0 ? n : Number.POSITIVE_INFINITY;
@@ -133,21 +150,38 @@ export function isOptimisticEligible(params: {
   return balanceUsd > thresholdUsd && balanceUsd > estimatedCostUsd;
 }
 
-/** Write the durable pending-charge backstop before forwarding to the model. */
+/**
+ * Write the durable pending-charge backstop before forwarding to the model, and
+ * REPORT whether it actually persisted. The caller (route) must only take the
+ * optimistic path when this returns `true`; otherwise it has to fall back to the
+ * synchronous reserve, because a forwarded request with no durable charge is
+ * free inference (#9899). Uses `setIfNotExists` (requestId is a unique id, so NX
+ * always sets) because, unlike `cache.set`, it throws on an unavailable backend
+ * and surfaces write success/failure instead of silently swallowing it.
+ */
 export async function writePendingInferenceCharge(
   charge: Omit<PendingInferenceCharge, "v" | "enqueuedAt">,
   now: number,
-): Promise<void> {
+): Promise<boolean> {
   const record: PendingInferenceCharge = {
     v: INFERENCE_AUTH_CONTEXT_VERSION,
     enqueuedAt: now,
     ...charge,
   };
-  await cache.set(
-    CacheKeys.inference.pendingCharge(charge.requestId),
-    record,
-    CacheTTL.inference.pendingCharge,
-  );
+  try {
+    return await cache.setIfNotExists(
+      CacheKeys.inference.pendingCharge(charge.requestId),
+      record,
+      CacheTTL.inference.pendingCharge * 1000, // setIfNotExists takes ms
+    );
+  } catch (error) {
+    logger.warn("[InferenceBilling] pending-charge backstop write failed; will reserve instead", {
+      requestId: charge.requestId,
+      organizationId: charge.organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 interface DebitContext {
@@ -185,7 +219,10 @@ async function debitInferenceCost(
       },
     });
     if (result.success) {
-      await writeOrgBalanceHint(ctx.organizationId, result.newBalance, Date.now());
+      // Lower-only: a debit can only REDUCE the balance, so never let an
+      // out-of-order concurrent debit raise the cached gate hint (#9899 #12).
+      // Top-ups go through a separate path that invalidates the hint.
+      await lowerOrgBalanceHint(ctx.organizationId, result.newBalance, Date.now());
       return;
     }
     // Uncollected: balance can't go negative, so the debit was refused. Record
@@ -240,13 +277,28 @@ export interface SweepStats {
   settled: number;
   uncollectedOrStale: number;
   skippedYoung: number;
+  /** true when this run did no work (another sweep held the lock, or cache down). */
+  locked: boolean;
+  /** true when the scan hit `maxKeys` — a backlog larger than one run can drain. */
+  capHit: boolean;
 }
+
+/** Single-flight lock so two overlapping cron sweeps can't both claim+charge an entry. */
+const SWEEP_LOCK_KEY = "iac:sweep-lock:v1";
+const SWEEP_LOCK_TTL_MS = 50_000; // < 60s cron interval; auto-expires if a run dies
 
 /**
  * Cron backstop: settle pending charges whose inline settle never ran. Only
  * touches entries older than the grace window (younger ones may still be in
  * flight). Claims each via getAndDelete so it never races a concurrent inline
  * settle. Charges the ESTIMATE (the inline path, when it runs, charges actual).
+ *
+ * Single-flighted via a best-effort lock (real exclusion on atomic backends;
+ * a no-op on Cloudflare KV, where overlapping sweeps plus non-atomic getAndDelete
+ * remain a documented residual — the production-grade fix is a DB-backed ledger,
+ * see packages/cloud/api/docs/inference-hot-path.md). `maxKeys` bounds work per
+ * run; a `capHit` means the backlog exceeds one run and is logged, not silently
+ * dropped.
  */
 export async function sweepStalePendingInferenceCharges(opts?: {
   graceMs?: number;
@@ -254,50 +306,79 @@ export async function sweepStalePendingInferenceCharges(opts?: {
   now?: number;
 }): Promise<SweepStats> {
   const graceMs = opts?.graceMs ?? DEFAULT_SWEEP_GRACE_MS;
-  const maxKeys = opts?.maxKeys ?? 500;
+  const maxKeys = opts?.maxKeys ?? 1000;
   const now = opts?.now ?? Date.now();
 
-  const keys = await cache.scanByPrefix(CacheKeys.inference.pendingChargePrefix(), maxKeys);
-  const stats: SweepStats = {
-    scanned: keys.length,
+  const idle: SweepStats = {
+    scanned: 0,
     settled: 0,
     uncollectedOrStale: 0,
     skippedYoung: 0,
+    locked: true,
+    capHit: false,
   };
 
-  for (const key of keys) {
-    const pending = await cache.get<unknown>(key);
-    if (!pending || !isPendingInferenceCharge(pending)) {
-      await cache.del(key);
-      stats.uncollectedOrStale++;
-      continue;
-    }
-    if (now - pending.enqueuedAt < graceMs) {
-      stats.skippedYoung++;
-      continue;
-    }
-    // Claim atomically; if the inline settle grabbed it first, getAndDelete → null.
-    const claimed = await cache.getAndDelete<PendingInferenceCharge>(key);
-    if (!claimed || !isPendingInferenceCharge(claimed)) continue;
-    if (claimed.estimatedCostUsd > 0) {
-      await debitInferenceCost(
-        {
-          requestId: claimed.requestId,
-          organizationId: claimed.organizationId,
-          userId: claimed.userId,
-          model: claimed.model,
-          provider: claimed.provider,
-          billingSource: claimed.billingSource,
-        },
-        claimed.estimatedCostUsd,
-        "backstop",
-      );
-    }
-    stats.settled++;
+  let lockOwned = false;
+  try {
+    lockOwned = await cache.setIfNotExists(SWEEP_LOCK_KEY, now, SWEEP_LOCK_TTL_MS);
+  } catch {
+    return idle; // cache unavailable → nothing to sweep
   }
+  if (!lockOwned) return idle; // another sweep is already running this minute
 
-  if (stats.settled > 0 || stats.uncollectedOrStale > 0) {
-    logger.warn("[InferenceBilling] swept stale pending charges (dropped inline settles)", stats);
+  try {
+    const keys = await cache.scanByPrefix(CacheKeys.inference.pendingChargePrefix(), maxKeys);
+    const stats: SweepStats = {
+      scanned: keys.length,
+      settled: 0,
+      uncollectedOrStale: 0,
+      skippedYoung: 0,
+      locked: false,
+      capHit: keys.length >= maxKeys,
+    };
+
+    for (const key of keys) {
+      const pending = await cache.get<unknown>(key);
+      if (!pending || !isPendingInferenceCharge(pending)) {
+        await cache.del(key);
+        stats.uncollectedOrStale++;
+        continue;
+      }
+      if (now - pending.enqueuedAt < graceMs) {
+        stats.skippedYoung++;
+        continue;
+      }
+      // Claim atomically; if the inline settle grabbed it first, getAndDelete → null.
+      const claimed = await cache.getAndDelete<PendingInferenceCharge>(key);
+      if (!claimed || !isPendingInferenceCharge(claimed)) continue;
+      if (claimed.estimatedCostUsd > 0) {
+        await debitInferenceCost(
+          {
+            requestId: claimed.requestId,
+            organizationId: claimed.organizationId,
+            userId: claimed.userId,
+            model: claimed.model,
+            provider: claimed.provider,
+            billingSource: claimed.billingSource,
+          },
+          claimed.estimatedCostUsd,
+          "backstop",
+        );
+      }
+      stats.settled++;
+    }
+
+    if (stats.capHit) {
+      logger.warn("[InferenceBilling] pending-charge sweep hit its scan cap — backlog growing", {
+        maxKeys,
+        scanned: stats.scanned,
+      });
+    }
+    if (stats.settled > 0 || stats.uncollectedOrStale > 0) {
+      logger.warn("[InferenceBilling] swept stale pending charges (dropped inline settles)", stats);
+    }
+    return stats;
+  } finally {
+    await cache.del(SWEEP_LOCK_KEY).catch(() => {});
   }
-  return stats;
 }

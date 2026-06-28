@@ -323,10 +323,6 @@ tasks/
 # legitimate source (ported react-query hooks) — un-ignore them too.
 !packages/ui/src/cloud/**/data/
 !packages/ui/src/cloud/**/data/**
-# plugin-mysticism ships data/*.json fixtures alongside the engines —
-# tarot, iching, and astrology all import their data tables from those JSONs.
-!plugins/plugin-mysticism/src/engines/*/data/
-!plugins/plugin-mysticism/src/engines/*/data/**
 # The Feed engine ships content/grounding modules as TS source under src/data/
 # (reality-grounding, world-facts, world-event-examples, question-examples, and
 # the actors/organizations/correlations re-export shims). These are real source,

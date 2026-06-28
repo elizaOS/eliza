@@ -372,6 +372,17 @@ class AdminService {
           updatedAt: now,
         })
         .where(eq(userModerationStatus.userId, userId));
+
+      // #9899: if this violation crosses the user into a blocking state
+      // (banned or >=5 violations — see shouldBlockUser), drop their cached
+      // inference auth-context so they stop fast-pathing inference within the
+      // request, not after the IAC TTL. Wired into the authoritative mutation so
+      // every moderation entrypoint (chat, messages, A2A) is covered uniformly.
+      const wasBlocking = existing.status === "banned" || existing.totalViolations >= 5;
+      const isBlocking = newStatus === "banned" || newTotalViolations >= 5;
+      if (isBlocking && !wasBlocking) {
+        await invalidateUserInferenceContext(userId);
+      }
     } else {
       await dbWrite.insert(userModerationStatus).values({
         userId,

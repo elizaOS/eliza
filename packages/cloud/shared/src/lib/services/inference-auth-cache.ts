@@ -8,7 +8,7 @@
  *
  * The `InferenceAuthContext` (IAC) entry collapses auth + org + moderation into
  * a single KV read for API-key dedicated-agent inference. Two hard rules make it
- * safe (see `packages/cloud-api/docs/inference-hot-path.md`):
+ * safe (see `packages/cloud/api/docs/inference-hot-path.md`):
  *   1. A positive entry is ONLY ever written for a FULLY-authorized credential
  *      (active user + active org + not suspended + org present). There are no
  *      `active`/`suspended` booleans in the shape - anything not-OK is simply
@@ -162,4 +162,21 @@ export async function writeOrgBalanceHint(
 /** Drop the org-balance gate hint so the next request re-reads it fresh. */
 export async function invalidateOrgBalanceHint(orgId: string): Promise<void> {
   await cache.del(CacheKeys.inference.orgBalance(orgId));
+}
+
+/**
+ * Write the org-balance gate hint ONLY when it lowers the cached value. Used by
+ * the debit settler: a debit can only reduce a balance, so an out-of-order
+ * concurrent debit must never raise the cached gate value (which would
+ * over-admit the optimistic path). A fresh authoritative read still uses
+ * `writeOrgBalanceHint` (it is the source of truth); top-ups invalidate the hint.
+ */
+export async function lowerOrgBalanceHint(
+  orgId: string,
+  balanceUsd: number,
+  balanceAt: number,
+): Promise<void> {
+  const existing = await readOrgBalanceHint(orgId);
+  if (existing && existing.balanceUsd <= balanceUsd) return;
+  await writeOrgBalanceHint(orgId, balanceUsd, balanceAt);
 }

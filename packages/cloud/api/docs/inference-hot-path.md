@@ -242,3 +242,54 @@ then prod.
   contexts; non-OK ⇒ slow path to preserve the 401/403/402 taxonomy.
 - **RB-5:** streaming/non-streaming settlement parity.
 - **RB-6:** preserve 429→403→402 ordering.
+
+---
+
+## Post-implementation adversarial review (round 2) — fixes + residuals
+
+A second adversarial review of the shipped code surfaced 12 confirmed findings.
+The high-confidence, contained ones were FIXED:
+
+- **Free-on-cache-failure (HIGH):** `writePendingInferenceCharge` used a
+  swallow-on-failure `cache.set`, so on a KV brownout / open circuit it no-op'd
+  and the request forwarded with no recorded charge. FIXED: the optimistic branch
+  now gates on `isOptimisticBackstopAvailable()` (`cache.isAvailable()`, NOT
+  `supportsAtomicOperations()` — that is false on KV and would disable Tier 2 in
+  prod) AND `writePendingInferenceCharge` now uses `setIfNotExists` to REPORT
+  persistence; a non-durable backstop falls through to the synchronous reserve.
+- **Auto-suspension didn't invalidate IAC (MED):** `updateUserModerationStatus`
+  (the authoritative mutation behind chat/messages/A2A moderation) now drops the
+  user's IAC when they cross into a blocking state (banned / ≥5 violations).
+- **Flag-OFF parity (LOW):** the `onViolation` IAC invalidation is now gated on
+  `hotPathEnabled`, so flag-OFF does zero IAC/DB fan-out.
+- **Out-of-order hint raise (LOW):** the debit settler writes the org-balance
+  hint lower-only (`lowerOrgBalanceHint`), so a late concurrent debit can never
+  raise the gate value.
+- **Sweep hardening (MED):** pending TTL widened to 60 min (40-min sweep window
+  over the 20-min grace, survives cron hiccups); a best-effort single-flight lock
+  guards against overlapping sweeps; a `capHit` is logged, never silently dropped.
+
+Residuals that are INHERENT to a KV-backed backstop and require the **DB-backed
+pending-charge + settlement ledger** (the documented next step) before enabling
+at scale — these are bounded, not free-forever, and must be covered by a
+conservative `SAFE_BALANCE_THRESHOLD` until then:
+
+- **Concurrent in-flight overdraw (BILL-2 redux):** the gate has no per-org
+  in-flight accounting, so a burst within the 15s hint window can collectively
+  overdraw; the DB `CHECK(>=0)` then refuses the overdrawing debits (uncollected,
+  logged) and the org is forced to the slow path. Bounded by the threshold; a
+  hard bound needs atomic admission (DB or atomic counter — KV has neither).
+- **Exactly-once settlement:** the inline-vs-sweep and sweep-vs-sweep claim is an
+  atomic `getAndDelete` on Redis but a non-atomic get-then-delete on KV, so a
+  rare double-bill is possible there; the lock narrows it. True exactly-once
+  needs a DB unique constraint on `request_id`.
+- **Sweep drain rate:** the sweep is bounded to `maxKeys` per run with no cursor
+  continuation; a sustained backlog above that needs the age-ordered DB query.
+- **Gate/pricing DB reads:** the gate still reads a fresh balance on a hint miss,
+  and pricing lookups remain per-request — the "zero DB reads pre-forward" claim
+  holds for AUTH+MODERATION (Tier 1), not for the billing gate (Tier 2).
+
+The money-safety invariants (no double-charge under an atomic backend, no
+free-forever on cache failure, fail-safe `+Inf` threshold, uncollected→slow-path)
+are unit-tested; the residuals above are the explicit boundary of what unit tests
+on the in-memory adapter can prove about the production KV backend.

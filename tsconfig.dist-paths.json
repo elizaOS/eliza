@@ -240,7 +240,6 @@
       "@elizaos/plugin-hyperliquid-app": [
         "./plugins/plugin-hyperliquid-app/dist/index.d.ts"
       ],
-      "@elizaos/plugin-rlm": ["./plugins/plugin-rlm/dist/index.d.ts"],
       "@elizaos/plugin-anthropic": [
         "./plugins/plugin-anthropic/dist/index.d.ts"
       ],
@@ -270,12 +269,6 @@
       "@elizaos/plugin-music-player": [
         "./plugins/plugin-music/dist/index.d.ts"
       ],
-      "@elizaos/plugin-minecraft": [
-        "./plugins/plugin-minecraft/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-minecraft-mineflayer-server": [
-        "./plugins/plugin-minecraft/mineflayer-server/dist/index.d.ts"
-      ],
       "@elizaos/plugin-local-storage": [
         "./plugins/plugin-local-storage/dist/index.d.ts"
       ],
@@ -295,9 +288,6 @@
         "./plugins/plugin-elevenlabs/dist/index.d.ts"
       ],
       "@elizaos/plugin-vincent": ["./plugins/plugin-vincent/dist/index.d.ts"],
-      "@elizaos/plugin-mysticism": [
-        "./plugins/plugin-mysticism/dist/index.d.ts"
-      ],
       "@elizaos/plugin-groq": ["./plugins/plugin-groq/dist/index.d.ts"],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/dist/index.d.ts"],
       "@elizaos/plugin-commands": ["./plugins/plugin-commands/dist/index.d.ts"],
