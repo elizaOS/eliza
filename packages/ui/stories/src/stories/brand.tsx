@@ -38,7 +38,7 @@ import { Activity, Cloud, Cpu, Zap } from "lucide-react";
 import { useState } from "react";
 import type { StoryDefinition } from "../Story.tsx";
 
-const sampleMetrics = [
+const sampleMetrics: KeyMetric[] = [
   {
     label: "Local inference",
     value: "1.2k tok/s",
@@ -61,7 +61,7 @@ const sampleMetrics = [
     icon: Activity,
     accent: "emerald",
   },
-] as unknown as KeyMetric[];
+];
 
 const tabItems: TabItem[] = [
   { value: "local", label: "Local" },

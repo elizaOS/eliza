@@ -12,7 +12,7 @@
  */
 
 import type { IAgentRuntime, Route, RouteHandlerResult } from "@elizaos/core";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { stream as honoStream } from "hono/streaming";
 
 import { dispatchRoute } from "./dispatch-route.ts";
@@ -111,23 +111,12 @@ export function mountRoutesOnHono(
 ): void {
   const routes = runtime.routes;
   for (const route of routes as Route[]) {
-    const method = honoMethod(route.type);
-    if (!method) continue;
+    if (!honoMethod(route.type)) continue;
     if (!route.handler && !route.routeHandler) continue;
 
     const honoPath = toHonoPath(route.path);
 
-    // Hono's app[method] signature is uniform across verbs.
-    (
-      app as unknown as Record<
-        string,
-        (path: string, handler: (c: unknown) => unknown) => void
-      >
-    )[method](honoPath, async (c: unknown) => {
-      const ctx = c as {
-        req: { raw: Request; param: () => Record<string, string> };
-        newResponse: (body: BodyInit | null, init?: ResponseInit) => Response;
-      };
+    const honoHandler = async (ctx: Context): Promise<Response> => {
       const request = ctx.req.raw;
       const url = new URL(request.url);
       const params = ctx.req.param();
@@ -158,21 +147,13 @@ export function mountRoutesOnHono(
       if (result === null) {
         // Should be unreachable — Hono only invokes this handler on a match.
         void params;
-        return ctx.newResponse("Not Found", { status: 404 });
+        return new Response("Not Found", { status: 404 });
       }
 
       const headers = new Headers(result.headers ?? {});
       if (result.stream) {
         const resultStream = result.stream;
-        return (
-          honoStream as unknown as (
-            c: unknown,
-            cb: (stream: {
-              write: (chunk: string | Uint8Array) => Promise<void>;
-              close: () => Promise<void>;
-            }) => Promise<void>,
-          ) => Response
-        )(ctx, async (stream) => {
+        return honoStream(ctx, async (stream) => {
           for await (const chunk of resultStream) {
             await stream.write(chunk);
           }
@@ -189,7 +170,7 @@ export function mountRoutesOnHono(
           headers.set("content-type", "text/plain; charset=utf-8");
         }
       } else if (result.body instanceof Uint8Array) {
-        bodyOut = result.body as BodyInit;
+        bodyOut = new Uint8Array(result.body);
         if (!headers.has("content-type")) {
           headers.set("content-type", "application/octet-stream");
         }
@@ -199,8 +180,26 @@ export function mountRoutesOnHono(
           headers.set("content-type", "application/json; charset=utf-8");
         }
       }
-      return ctx.newResponse(bodyOut, { status: result.status, headers });
-    });
+      return new Response(bodyOut, { status: result.status, headers });
+    };
+
+    switch (route.type) {
+      case "GET":
+        app.get(honoPath, honoHandler);
+        break;
+      case "POST":
+        app.post(honoPath, honoHandler);
+        break;
+      case "PUT":
+        app.put(honoPath, honoHandler);
+        break;
+      case "PATCH":
+        app.patch(honoPath, honoHandler);
+        break;
+      case "DELETE":
+        app.delete(honoPath, honoHandler);
+        break;
+    }
   }
 }
 

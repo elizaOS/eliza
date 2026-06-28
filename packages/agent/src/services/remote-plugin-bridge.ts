@@ -665,12 +665,11 @@ export class RemotePluginBridge {
         for (const method of descriptor.rpcMethods) {
           const id = methodIdMap.get(method);
           if (!id) continue;
-          (this as unknown as Record<string, unknown>)[method] = async (
-            ...callArgs: unknown[]
-          ) =>
+          Reflect.set(this, method, async (...callArgs: unknown[]) =>
             bridge.workerRpc("service", id, {
               args: callArgs.map((a) => bridge.normalize(a)),
-            });
+            }),
+          );
         }
       }
       async stop(): Promise<void> {

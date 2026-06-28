@@ -38,7 +38,7 @@ export function resetHonoMountCache(): void {
   cached = null;
 }
 
-async function readNodeBody(req: IncomingMessage): Promise<Uint8Array | null> {
+async function readNodeBody(req: IncomingMessage): Promise<ArrayBuffer | null> {
   const method = (req.method ?? "GET").toUpperCase();
   if (method === "GET" || method === "HEAD") return null;
   const chunks: Buffer[] = [];
@@ -46,7 +46,10 @@ async function readNodeBody(req: IncomingMessage): Promise<Uint8Array | null> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   if (chunks.length === 0) return null;
-  return new Uint8Array(Buffer.concat(chunks));
+  const concatenated = Buffer.concat(chunks);
+  const body = new ArrayBuffer(concatenated.byteLength);
+  new Uint8Array(body).set(concatenated);
+  return body;
 }
 
 function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
@@ -126,7 +129,7 @@ export async function tryHandleHonoRuntimeRoute(options: {
   const request = new Request(url, {
     method: req.method ?? "GET",
     headers: nodeHeadersToWeb(req.headers),
-    body: (bodyBytes ?? undefined) as unknown as BodyInit | undefined,
+    body: bodyBytes ?? undefined,
   });
 
   const response: Response = await app.fetch(request);
