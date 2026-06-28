@@ -373,6 +373,53 @@
       "registryKind": "plugin",
       "directory": "packages/eliza-rollout-plugin"
     },
+    "@xynqai/plugin-eliza": {
+      "git": {
+        "repo": "visionsXBT/xynq",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@xynqai/plugin-eliza",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "XYNQ decentralized inference for ElizaOS — OpenAI-compatible models, live GPU mesh status, USDC worker earnings, and Solana credit top-ups.",
+      "homepage": "https://github.com/visionsXBT/xynq/tree/main/plugin-eliza",
+      "topics": [
+        "llm",
+        "inference",
+        "decentralized",
+        "solana",
+        "gpu",
+        "crypto",
+        "usdc"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugin-eliza"
+    },
     "blackwall-eliza-guardrail": {
       "git": {
         "repo": "bluetieroperations-create/blackwall-eliza-guardrail",
@@ -599,6 +646,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "plugin-agentscoin": {
+      "git": {
+        "repo": "axiosdevs/plugin-agentscoin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-agentscoin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Give your elizaOS agent an AgentsCoin wallet: create wallet, mine AGENT, check balance, send.",
+      "homepage": "https://agents-coin.com",
+      "topics": [
+        "crypto",
+        "wallet",
+        "ai-agents",
+        "agentic-payments",
+        "evm",
+        "mcp"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-raven-verify": {
       "git": {
         "repo": "billybotticelli4u-collab/plugin-raven-verify",
@@ -682,6 +775,54 @@
         "base",
         "web3",
         "paid-api"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-x402-endpoints": {
+      "git": {
+        "repo": "digitalweb33333-creator/plugin-x402-endpoints",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-x402-endpoints",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Exposes the x402-endpoints catalogue (28 paid data endpoints: official EU/global registries — GLEIF, VIES, BODACC, EUR-Lex, Companies House, EPO, sanctions, CVE, FDA — plus crypto pre-trade data) as native ElizaOS actions, billed per call via x402 (USDC on Base mainnet).",
+      "homepage": "https://github.com/digitalweb33333-creator/plugin-x402-endpoints",
+      "topics": [
+        "x402",
+        "micropayments",
+        "base",
+        "usdc",
+        "compliance",
+        "crypto",
+        "data",
+        "kyb"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

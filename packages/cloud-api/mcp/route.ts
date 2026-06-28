@@ -100,17 +100,20 @@ async function handleJsonRpc(c: AppContext, message: unknown) {
   }
 }
 
-app.get("/", (c) =>
-  getPlatformUpstream(c)
-    ? forwardMcpUpstreamRequest(c.req.raw, getPlatformUpstream(c)!)
-    : c.json({
-        success: true,
-        name: "eliza-cloud-platform",
-        protocol: "mcp",
-        transport: "streamable-http",
-        tools: listPlatformCloudMcpTools().map((tool) => tool.name),
-      }),
-);
+app.get("/", async (c) => {
+  const upstream = getPlatformUpstream(c);
+  if (upstream) {
+    return forwardMcpUpstreamRequest(c.req.raw, upstream);
+  }
+
+  return c.json({
+    success: true,
+    name: "eliza-cloud-platform",
+    protocol: "mcp",
+    transport: "streamable-http",
+    tools: listPlatformCloudMcpTools().map((tool) => tool.name),
+  });
+});
 
 app.post("/", async (c) => {
   const upstream = getPlatformUpstream(c);
@@ -132,7 +135,7 @@ app.post("/", async (c) => {
   return c.json(Array.isArray(body) ? results : results[0]);
 });
 
-app.all("*", (c) => {
+app.all("*", async (c) => {
   const upstream = getPlatformUpstream(c);
   if (upstream) return forwardMcpUpstreamRequest(c.req.raw, upstream);
   return c.json(

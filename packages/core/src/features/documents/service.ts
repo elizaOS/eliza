@@ -1,8 +1,10 @@
 import { existsSync, statSync } from "node:fs";
+import { filterByAccessContext } from "../../access-control/filter";
 import { createUniqueUuid } from "../../entities";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
 import {
+	type AccessContext,
 	type Content,
 	type CustomMetadata,
 	type IAgentRuntime,
@@ -326,6 +328,7 @@ export class DocumentService extends Service {
 	private async filterVisibleMemories(
 		memories: Memory[],
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<Memory[]> {
 		const visible: Memory[] = [];
 		for (const memory of memories) {
@@ -333,7 +336,9 @@ export class DocumentService extends Service {
 				visible.push(memory);
 			}
 		}
-		return visible;
+		return accessContext
+			? filterByAccessContext(visible, accessContext, this.runtime.agentId)
+			: visible;
 	}
 
 	async getDocumentById(
@@ -868,6 +873,7 @@ export class DocumentService extends Service {
 		message: Memory,
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		searchMode?: SearchMode,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for document query");
@@ -893,15 +899,20 @@ export class DocumentService extends Service {
 		}
 
 		if (effectiveMode === "keyword") {
-			return this._keywordSearch(queryText, filterScope, message);
+			return this._keywordSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+			);
 		}
 
 		if (effectiveMode === "vector") {
-			return this._vectorSearch(queryText, filterScope, message);
+			return this._vectorSearch(queryText, filterScope, message, accessContext);
 		}
 
 		// hybrid: vector + BM25 combined
-		return this._hybridSearch(queryText, filterScope, message);
+		return this._hybridSearch(queryText, filterScope, message, accessContext);
 	}
 
 	/** Pure vector (cosine-similarity) search — original behaviour. */
@@ -909,6 +920,7 @@ export class DocumentService extends Service {
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		// Bound the recall embed and fail open to keyword/BM25 recall on a
 		// slow/unavailable embed (issue #47): a slow embed costs recall richness,
@@ -925,11 +937,13 @@ export class DocumentService extends Service {
 			...filterScope,
 			limit: 20,
 			match_threshold: 0.1,
+			accessContext,
 		});
 
 		const visibleFragments = await this.filterVisibleMemories(
 			fragments.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
 			message,
+			accessContext,
 		);
 
 		return visibleFragments
@@ -951,12 +965,14 @@ export class DocumentService extends Service {
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		const allFragments = await this.runtime.getMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			agentId: this.runtime.agentId,
 			...filterScope,
 			count: 1000,
+			accessContext,
 		});
 
 		const visibleFragments = await this.filterVisibleMemories(
@@ -964,6 +980,7 @@ export class DocumentService extends Service {
 				this.isDocumentFragmentMemory(fragment),
 			),
 			message,
+			accessContext,
 		);
 		const valid = visibleFragments.filter(
 			(f) => f.id !== undefined && f.content.text,
@@ -1000,6 +1017,7 @@ export class DocumentService extends Service {
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		// Bound the recall embed and fail open to keyword/BM25 recall on a
 		// slow/unavailable embed (issue #47). `_keywordSearch` is the same BM25
@@ -1007,7 +1025,12 @@ export class DocumentService extends Service {
 		// gracefully to keyword-only recall instead of blocking the reply.
 		const embedding = await embedRecallQuery(this.runtime, queryText);
 		if (!embedding) {
-			return this._keywordSearch(queryText, filterScope, message);
+			return this._keywordSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+			);
 		}
 
 		// Fetch a larger candidate set so BM25 can re-rank meaningfully
@@ -1018,11 +1041,13 @@ export class DocumentService extends Service {
 			...filterScope,
 			limit: 40,
 			match_threshold: 0.05,
+			accessContext,
 		});
 
 		const visibleCandidates = await this.filterVisibleMemories(
 			candidates.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
 			message,
+			accessContext,
 		);
 		const valid = visibleCandidates.filter(
 			(f) => f.id !== undefined && f.content.text,

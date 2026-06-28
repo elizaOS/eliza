@@ -165,6 +165,18 @@ export function findAvailableActionName(
 	return undefined;
 }
 
+const WEB_LOOKUP_ACTION_NAMES = [
+	"SEARCH",
+	"WEB_SEARCH",
+	"SEARCH_WEB",
+	"BRAVE_SEARCH",
+	"INTERNET_SEARCH",
+	"SEARCH_INTERNET",
+	"LOOKUP_WEB",
+	"WEB_FETCH",
+	"GOOGLE",
+] as const;
+
 export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -205,19 +217,33 @@ export function inferDirectCurrentRequestCandidateActions(
  * the runtime has no real search backend registered.
  */
 export function findWebLookupActionName(
-	actions: ReadonlyArray<Pick<Action, "name">>,
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 ): string | undefined {
-	return findAvailableActionName(actions, [
-		"SEARCH",
-		"WEB_SEARCH",
-		"SEARCH_WEB",
-		"BRAVE_SEARCH",
-		"INTERNET_SEARCH",
-		"SEARCH_INTERNET",
-		"LOOKUP_WEB",
-		"WEB_FETCH",
-		"GOOGLE",
-	]);
+	return findWebLookupActionNames(actions)[0];
+}
+
+export function findWebLookupActionNames(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string[] {
+	const result: string[] = [];
+	const seen = new Set<string>();
+	for (const want of WEB_LOOKUP_ACTION_NAMES) {
+		const wanted = normalizeActionIdentifier(want);
+		for (const action of actions) {
+			const actionKey = normalizeActionIdentifier(action.name);
+			if (seen.has(actionKey)) continue;
+			const similes = Array.isArray(action.similes) ? action.similes : [];
+			const matches =
+				actionKey === wanted ||
+				similes.some(
+					(simile) => normalizeActionIdentifier(String(simile)) === wanted,
+				);
+			if (!matches) continue;
+			seen.add(actionKey);
+			result.push(action.name);
+		}
+	}
+	return result;
 }
 
 const VIEW_REQUEST_OPERATION_GROUPS = {

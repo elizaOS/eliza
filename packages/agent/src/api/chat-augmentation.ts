@@ -15,12 +15,13 @@
 import crypto from "node:crypto";
 
 import type {
+  AccessContext,
   AgentRuntime,
   Content,
   createMessageMemory,
   UUID,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { buildAccessContext, parseJSONObjectFromText } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import {
@@ -83,6 +84,7 @@ const DEFAULT_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS = 5_000;
 const MAX_CHAT_DOCUMENTS_LOOKUP_TIMEOUT_MS = 30_000;
 const MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS = 30_000;
 const CHAT_DOCUMENTS_RECOVERY_MODEL = "TEXT_LARGE";
+const ANONYMOUS_REQUESTER_ID = "00000000-0000-0000-0000-000000000000" as UUID;
 
 export interface ChatDocumentAugmentationOptions {
   signal?: AbortSignal;
@@ -131,6 +133,37 @@ function resolveRecoveryTimeoutMs(explicit?: number): number {
     DEFAULT_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
     MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
   );
+}
+
+function requesterEntityIdForAccessContext(
+  message: ReturnType<typeof createMessageMemory>,
+): UUID {
+  return typeof message.entityId === "string" &&
+    message.entityId.trim().length > 0
+    ? (message.entityId as UUID)
+    : ANONYMOUS_REQUESTER_ID;
+}
+
+async function resolveDocumentAccessContext(
+  runtime: AgentRuntime,
+  message: ReturnType<typeof createMessageMemory>,
+): Promise<AccessContext> {
+  const requesterEntityId = requesterEntityIdForAccessContext(message);
+  try {
+    return await buildAccessContext(runtime, {
+      ...message,
+      entityId: requesterEntityId,
+    });
+  } catch (error) {
+    runtime.logger.debug(
+      {
+        src: "api:chat-augmentation",
+        error: getErrorMessage(error),
+      },
+      "Failed to resolve document access context; using requester-only scope",
+    );
+    return { requesterEntityId };
+  }
 }
 
 async function withOptionalTimeout<T>(
@@ -225,6 +258,7 @@ export async function maybeAugmentChatMessageWithDocuments(
     },
     createdAt: Date.now(),
   };
+  const accessContext = await resolveDocumentAccessContext(runtime, message);
 
   const lookupTimeoutMs = resolveLookupTimeoutMs(options.lookupTimeoutMs);
   const loadMatches = async (
@@ -247,6 +281,8 @@ export async function maybeAugmentChatMessageWithDocuments(
             },
           },
           { roomId: scopeRoomId },
+          undefined,
+          accessContext,
         )) ?? [],
     );
     return { matches: result.value, timedOut: result.timedOut };

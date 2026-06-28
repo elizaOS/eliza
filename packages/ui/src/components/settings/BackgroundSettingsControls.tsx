@@ -199,7 +199,7 @@ export function BackgroundSettingsControls({
           className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-110"
           style={{
             background:
-              "conic-gradient(from 0deg, #ef5a1f, #f59e0b, #059669, #2563eb, #7c3aed, #e11d48, #ef5a1f)",
+              "conic-gradient(from 0deg, #ef5a1f, #f59e0b, #65a30d, #059669, #57534e, #e11d48, #dc2626, #ef5a1f)",
           }}
         >
           <Pipette className="h-4 w-4 text-white" aria-hidden />

@@ -90,7 +90,9 @@ function makeRunner(): ScheduledTaskRunnerHandle {
     anchors: createAnchorRegistry(),
     consolidation: createConsolidationRegistry(),
     ownerFacts: () => ({}),
-    globalPause: { current: async () => ({ active: false }) } as GlobalPauseView,
+    globalPause: {
+      current: async () => ({ active: false }),
+    } as GlobalPauseView,
     activity: { hasSignalSince: () => false },
     subjectStore: { wasUpdatedSince: () => false },
     dispatcher: TestNoopScheduledTaskDispatcher,
@@ -102,7 +104,9 @@ function makeRunner(): ScheduledTaskRunnerHandle {
   });
 }
 
-const consumerPack = (overrides?: Partial<DefaultTaskPack>): DefaultTaskPack => {
+const consumerPack = (
+  overrides?: Partial<DefaultTaskPack>,
+): DefaultTaskPack => {
   const task: ScheduledTaskInput = {
     kind: "reminder",
     promptInstructions: "consumer reminder",
@@ -163,7 +167,8 @@ describe("seedRegisteredTaskPacks with the built-in fallback pack", () => {
     );
     const weekly = tasks.find(
       (t) =>
-        t.idempotencyKey === FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS.weeklyReview,
+        t.idempotencyKey ===
+        FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS.weeklyReview,
     );
 
     // Good morning ships RUNNING (daily cron) and owner-visible.

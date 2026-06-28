@@ -14,11 +14,6 @@ export {
   registerBuiltInCompletionChecks,
 } from "./completion-check-registry.js";
 export {
-  buildFallbackDefaultPack,
-  FALLBACK_DEFAULT_PACK_ID,
-  FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS,
-} from "./default-pack.js";
-export {
   __anchorTestUtils,
   type AnchorRegistry,
   type ConsolidationRegistry,
@@ -26,6 +21,11 @@ export {
   createConsolidationRegistry,
   registerFallbackAnchors,
 } from "./consolidation-policy.js";
+export {
+  buildFallbackDefaultPack,
+  FALLBACK_DEFAULT_PACK_ID,
+  FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS,
+} from "./default-pack.js";
 export {
   expectedReplyKindForTask,
   isCompletionTimeoutDue,

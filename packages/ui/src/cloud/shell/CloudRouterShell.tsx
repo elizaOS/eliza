@@ -37,6 +37,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { queryClient } from "../lib/query-client";
+import { useSessionAuth } from "../lib/use-session-auth";
 import {
   CloudI18nProvider,
   resolveInitialCloudLang,
@@ -105,6 +106,30 @@ function CloudNotFound(): React.JSX.Element {
       <p>The page you requested doesn&apos;t exist.</p>
     </div>
   );
+}
+
+function isControlPlaneApexHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === "elizacloud.ai" ||
+    host === "www.elizacloud.ai" ||
+    host === "staging.elizacloud.ai" ||
+    host === "dev.elizacloud.ai"
+  );
+}
+
+export function AppCatchAllRoute({
+  appElement,
+}: {
+  appElement: ReactNode;
+}): React.JSX.Element {
+  const auth = useSessionAuth();
+  const hostname =
+    typeof window === "undefined" ? "" : window.location.hostname;
+  if (isControlPlaneApexHost(hostname) && auth.ready && !auth.authenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{appElement}</>;
 }
 
 /**
@@ -196,7 +221,10 @@ export function CloudRouterShell({
           <Route path="dashboard/*" element={<CloudNotFound />} />
 
           {/* Catch-all: the existing tab/view app. Chat is home. */}
-          <Route path="*" element={appElement} />
+          <Route
+            path="*"
+            element={<AppCatchAllRoute appElement={appElement} />}
+          />
         </Routes>
       </CloudProviders>
     </BrowserRouter>

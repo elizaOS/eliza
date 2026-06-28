@@ -158,46 +158,31 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = dedicatedSandbox();
     // Not running yet → findRunningSandbox misses; bridge re-resolves by id+org.
-    const findRunningSpy = spyOn(
-      agentSandboxesRepository,
-      "findRunningSandbox",
-    ).mockResolvedValue(undefined);
-    const findByIdSpy = spyOn(
-      agentSandboxesRepository,
-      "findByIdAndOrg",
-    ).mockResolvedValue(sandbox);
-    const historyGetSpy = spyOn(
-      sharedRuntimeHistoryRepository,
-      "get",
-    ).mockResolvedValue([]);
-    const historyUpsertSpy = spyOn(
-      sharedRuntimeHistoryRepository,
-      "upsert",
-    ).mockResolvedValue(undefined);
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      undefined,
+    );
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      sandbox,
+    );
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+      undefined,
+    );
 
     try {
-      const response = await runWithCloudBindings(
-        { CEREBRAS_API_KEY: "test-key" },
-        () =>
-          new ElizaSandboxService().bridge(
-            sandbox.id,
-            sandbox.organization_id,
-            {
-              jsonrpc: "2.0",
-              id: "boot-turn",
-              method: "message.send",
-              params: { text: "hello" },
-            },
-          ),
+      const response = await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
+          jsonrpc: "2.0",
+          id: "boot-turn",
+          method: "message.send",
+          params: { text: "hello" },
+        }),
       );
 
       expect(response.error).toBeUndefined();
       expect((response.result as { text?: string }).text).toBe("bootstrap reply");
       expect(runSharedAgentTurn).toHaveBeenCalledTimes(1);
-      expect(findByIdSpy).toHaveBeenCalledWith(
-        sandbox.id,
-        sandbox.organization_id,
-      );
+      expect(findByIdSpy).toHaveBeenCalledWith(sandbox.id, sandbox.organization_id);
     } finally {
       findRunningSpy.mockRestore();
       findByIdSpy.mockRestore();
@@ -209,14 +194,12 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
   test("status.get reports ready during the bootstrap window", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = dedicatedSandbox();
-    const findRunningSpy = spyOn(
-      agentSandboxesRepository,
-      "findRunningSandbox",
-    ).mockResolvedValue(undefined);
-    const findByIdSpy = spyOn(
-      agentSandboxesRepository,
-      "findByIdAndOrg",
-    ).mockResolvedValue(sandbox);
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      undefined,
+    );
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      sandbox,
+    );
 
     try {
       const response = await runWithCloudBindings({}, () =>
@@ -241,14 +224,12 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
       status: "stopped",
       bridge_url: "https://boot-nancy.internal",
     });
-    const findRunningSpy = spyOn(
-      agentSandboxesRepository,
-      "findRunningSandbox",
-    ).mockResolvedValue(undefined);
-    const findByIdSpy = spyOn(
-      agentSandboxesRepository,
-      "findByIdAndOrg",
-    ).mockResolvedValue(sandbox);
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      undefined,
+    );
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      sandbox,
+    );
 
     try {
       const response = await runWithCloudBindings({}, () =>

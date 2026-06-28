@@ -223,15 +223,14 @@ export type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "./components/chat/widgets/types";
-export { ChatSearchHint } from "./components/composites/chat-search-hint";
 // Surfaced directly on the root barrel (also reachable via the composites/hooks
 // chains) so dist-mapped consumers resolve them by name.
 export {
-  type ChatEmptyStateWithRecommendationsProps,
   ChatEmptyStateWithRecommendations,
+  type ChatEmptyStateWithRecommendationsProps,
   type ChatRecommendation,
 } from "./components/composites/chat/ChatEmptyStateWithRecommendations";
-export { useChatPrefill } from "./hooks/useChatPrefill";
+export { ChatSearchHint } from "./components/composites/chat-search-hint";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content";
@@ -481,6 +480,7 @@ export {
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";
+export { useChatPrefill } from "./hooks/useChatPrefill";
 export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility";
 export {
   type FrameBudgetMonitorOptions,

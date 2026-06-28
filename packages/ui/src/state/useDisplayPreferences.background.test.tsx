@@ -30,24 +30,24 @@ describe("useDisplayPreferences — background history + undo", () => {
   it("set pushes the previous config onto the undo stack", () => {
     const { result } = renderHook(() => useDisplayPreferences());
     act(() => {
-      result.current.setBackgroundConfig({ mode: "shader", color: "#0891b2" });
+      result.current.setBackgroundConfig({ mode: "shader", color: "#059669" });
     });
-    expect(result.current.state.backgroundConfig.color).toBe("#0891b2");
+    expect(result.current.state.backgroundConfig.color).toBe("#059669");
     expect(result.current.state.canUndoBackground).toBe(true);
   });
 
   it("undo restores the previous config and pops the stack", () => {
     const { result } = renderHook(() => useDisplayPreferences());
     act(() => {
-      result.current.setBackgroundConfig({ mode: "shader", color: "#0891b2" });
+      result.current.setBackgroundConfig({ mode: "shader", color: "#059669" });
     });
     act(() => {
-      result.current.setBackgroundConfig({ mode: "shader", color: "#7c3aed" });
+      result.current.setBackgroundConfig({ mode: "shader", color: "#e11d48" });
     });
     act(() => {
       result.current.undoBackgroundConfig();
     });
-    expect(result.current.state.backgroundConfig.color).toBe("#0891b2");
+    expect(result.current.state.backgroundConfig.color).toBe("#059669");
     act(() => {
       result.current.undoBackgroundConfig();
     });

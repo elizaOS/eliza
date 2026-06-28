@@ -71,7 +71,7 @@ function makeEntry(spec: (typeof SPECS)[number]): ViewEntry {
     id: spec.id,
     label: spec.label,
     icon: spec.icon,
-    imageUrl: spec.image ? tileImage("#0891b2", "#7c3aed") : undefined,
+    imageUrl: spec.image ? tileImage("#059669", "#e11d48") : undefined,
     hasHero: Boolean(spec.image),
     modality: "gui",
     modalities: ["gui"],

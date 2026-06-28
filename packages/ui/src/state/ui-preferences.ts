@@ -39,7 +39,7 @@ export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
 
 /** A named default background — a curated shader color the user can pick. */
 export interface BackgroundPreset {
-  /** Stable slug used by chat ("use the teal background") and tests. */
+  /** Stable slug used by chat ("use the green background") and tests. */
   id: string;
   /** Human-readable name shown to screen readers and the agent. */
   label: string;
@@ -50,18 +50,18 @@ export interface BackgroundPreset {
 /**
  * The curated default backgrounds. This is the single source of truth shared by
  * the Background view (swatches) and the agent's BACKGROUND action (so "use the
- * teal background" maps to the same color the swatch sets). Each preset is a
+ * green background" maps to the same color the swatch sets). Each preset is a
  * live, breathing shader field — not a flat fill.
  */
 export const BACKGROUND_PRESETS: readonly BackgroundPreset[] = [
   { id: "orange", label: "Orange", color: DEFAULT_BACKGROUND_COLOR },
   { id: "amber", label: "Amber", color: "#f59e0b" },
   { id: "rose", label: "Rose", color: "#e11d48" },
-  { id: "violet", label: "Violet", color: "#7c3aed" },
-  { id: "blue", label: "Blue", color: "#2563eb" },
-  { id: "teal", label: "Teal", color: "#0891b2" },
+  { id: "red", label: "Red", color: "#dc2626" },
   { id: "green", label: "Green", color: "#059669" },
-  { id: "slate", label: "Slate", color: "#334155" },
+  { id: "olive", label: "Olive", color: "#65a30d" },
+  { id: "stone", label: "Stone", color: "#57534e" },
+  { id: "graphite", label: "Graphite", color: "#3f3f46" },
   { id: "black", label: "Black", color: "#0a0a0a" },
   { id: "light", label: "Light", color: "#f4f4f5" },
 ];

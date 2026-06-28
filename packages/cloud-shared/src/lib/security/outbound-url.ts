@@ -2,7 +2,7 @@ import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-function normalizeHostname(hostname: string): string {
+export function normalizeHostname(hostname: string): string {
   return hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
 }
 
@@ -175,33 +175,45 @@ export function assertSafeOutboundUrlSync(rawUrl: string): URL {
   return validateUrlSyntax(rawUrl);
 }
 
+export async function resolveSafeOutboundTarget(rawUrl: string): Promise<{
+  url: URL;
+  address: string;
+  family: number;
+}> {
+  const parsed = validateUrlSyntax(rawUrl);
+  const hostname = normalizeHostname(parsed.hostname);
+  const literalFamily = isIP(hostname);
+
+  if (literalFamily) {
+    return { url: parsed, address: hostname, family: literalFamily };
+  }
+
+  let records: LookupAddress[];
+  try {
+    records = await lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    throw new Error("Unable to resolve endpoint hostname");
+  }
+
+  if (!records.length) {
+    throw new Error("Unable to resolve endpoint hostname");
+  }
+
+  for (const record of records) {
+    if (isForbiddenIpAddress(record.address)) {
+      throw new Error("Endpoint resolves to a private or reserved IP address");
+    }
+  }
+
+  const [first] = records;
+  return { url: parsed, address: first.address, family: first.family };
+}
+
 /**
  * Validates an outbound URL against SSRF-sensitive destinations.
  * For hostnames, DNS is resolved at call time so rebinding to private ranges
  * cannot bypass creation-time validation.
  */
 export async function assertSafeOutboundUrl(rawUrl: string): Promise<URL> {
-  const parsed = validateUrlSyntax(rawUrl);
-  const hostname = normalizeHostname(parsed.hostname);
-
-  if (!isIP(hostname)) {
-    let records: LookupAddress[];
-    try {
-      records = await lookup(hostname, { all: true, verbatim: true });
-    } catch {
-      throw new Error("Unable to resolve endpoint hostname");
-    }
-
-    if (!records.length) {
-      throw new Error("Unable to resolve endpoint hostname");
-    }
-
-    for (const record of records) {
-      if (isForbiddenIpAddress(record.address)) {
-        throw new Error("Endpoint resolves to a private or reserved IP address");
-      }
-    }
-  }
-
-  return parsed;
+  return (await resolveSafeOutboundTarget(rawUrl)).url;
 }

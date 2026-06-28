@@ -11,11 +11,11 @@ import {
   selectLatestRunForApp,
 } from "@elizaos/app-core/ui-compat";
 import { Button } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 // Imported via direct subpaths: the big `@elizaos/ui` root barrel doesn't
 // resolve these newly-added members under the plugin's bundler tsconfig.
 import { ChatEmptyStateWithRecommendations } from "@elizaos/ui/components/composites/chat/ChatEmptyStateWithRecommendations";
 import { dispatchChatPrefill } from "@elizaos/ui/events";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useAppSelector } from "@elizaos/ui/state";
 import { LineChart } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";

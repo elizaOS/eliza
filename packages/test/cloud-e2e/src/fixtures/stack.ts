@@ -26,9 +26,8 @@ import {
   type RunningHetznerMock,
   startHetznerMock,
 } from "@elizaos/cloud-test-mocks/hetzner";
-import { type RunningMockLlm, startMockLlm } from "./mock-llm";
-
 import { buildSharedEnv } from "./env";
+import { type RunningMockLlm, startMockLlm } from "./mock-llm";
 
 /**
  * Resolve the bun executable for `child_process.spawn`. On Windows, Node cannot
@@ -256,6 +255,12 @@ export interface StartCloudStackOptions {
    * with no paid provider key. Defaults to false.
    */
   mockLlm?: boolean;
+  /**
+   * Boot the mock LLM in context-echo mode. This implies `mockLlm` and returns a
+   * reply derived from the user messages sent upstream, so multi-turn specs can
+   * prove prior context was replayed.
+   */
+  mockLlmEchoContext?: boolean;
 }
 
 /**
@@ -285,7 +290,10 @@ export async function startCloudStack(
     hetznerUrl: hetzner.url,
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });
-  const mockLlm = opts.mockLlm ? await startMockLlm() : undefined;
+  const mockLlm =
+    opts.mockLlm || opts.mockLlmEchoContext
+      ? await startMockLlm({ echoContext: opts.mockLlmEchoContext })
+      : undefined;
   const mockLlmEnv: Record<string, string> = mockLlm
     ? {
         OPENAI_API_KEY: "mock-llm-key",

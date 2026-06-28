@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
 	type CloudRuntimeSettings,
 	isCloudConnected,
-	resolveCloudRoute,
 	type RouteSpec,
+	resolveCloudRoute,
 } from "./cloud-routing";
 
 /**
@@ -23,7 +23,9 @@ import {
  * strand a cloud user on a missing local key).
  */
 
-function settings(map: Record<string, string | boolean | number>): CloudRuntimeSettings {
+function settings(
+	map: Record<string, string | boolean | number>,
+): CloudRuntimeSettings {
 	return {
 		getSetting(key: string) {
 			return key in map ? map[key] : undefined;
@@ -58,9 +60,9 @@ describe("isCloudConnected — cloud-inference gate", () => {
 	});
 
 	it("is false when the key is missing/empty or the flag is off", () => {
-		expect(
-			isCloudConnected(settings({ ELIZAOS_CLOUD_ENABLED: true })),
-		).toBe(false);
+		expect(isCloudConnected(settings({ ELIZAOS_CLOUD_ENABLED: true }))).toBe(
+			false,
+		);
 		expect(
 			isCloudConnected(
 				settings({ ELIZAOS_CLOUD_API_KEY: "  ", ELIZAOS_CLOUD_ENABLED: true }),
@@ -68,12 +70,15 @@ describe("isCloudConnected — cloud-inference gate", () => {
 		).toBe(false);
 		expect(
 			isCloudConnected(
-				settings({ ELIZAOS_CLOUD_API_KEY: "k", ELIZAOS_CLOUD_ENABLED: "false" }),
+				settings({
+					ELIZAOS_CLOUD_API_KEY: "k",
+					ELIZAOS_CLOUD_ENABLED: "false",
+				}),
 			),
 		).toBe(false);
-		expect(
-			isCloudConnected(settings({ ELIZAOS_CLOUD_API_KEY: "k" })),
-		).toBe(false);
+		expect(isCloudConnected(settings({ ELIZAOS_CLOUD_API_KEY: "k" }))).toBe(
+			false,
+		);
 	});
 });
 
@@ -114,7 +119,9 @@ describe("resolveCloudRoute — the three modes", () => {
 		);
 		expect(route.source).toBe("cloud-proxy");
 		if (route.source !== "cloud-proxy") throw new Error("unreachable");
-		expect(route.baseUrl).toBe("https://stage.elizacloud.ai/api/v1/apis/openai");
+		expect(route.baseUrl).toBe(
+			"https://stage.elizacloud.ai/api/v1/apis/openai",
+		);
 	});
 
 	it("disabled: no local key and cloud not connected → fall back to local inference", () => {

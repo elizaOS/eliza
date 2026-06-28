@@ -1773,6 +1773,33 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     },
   );
 
+  await page.route(/^https:\/\/ipapi\.co\/json\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({
+        latitude: 37.7749,
+        longitude: -122.4194,
+        city: "San Francisco",
+      }),
+    });
+  });
+
+  await page.route("https://api.open-meteo.com/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({
+        current: {
+          temperature_2m: 68,
+          weather_code: 2,
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/health", async (route) => {
     await route.fulfill({
       status: 200,

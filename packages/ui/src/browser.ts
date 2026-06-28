@@ -52,6 +52,11 @@ export {
 // the root index.ts too; keep both in sync. Missing here breaks
 // `packages/app build:web` (plugin-task-coordinator/register-slots.ts).
 export { registerTaskWidget } from "./components/chat/widgets/task-widget.tsx";
+export {
+  ChatEmptyStateWithRecommendations,
+  type ChatEmptyStateWithRecommendationsProps,
+  type ChatRecommendation,
+} from "./components/composites/chat/ChatEmptyStateWithRecommendations.tsx";
 export { DiffReviewPanel } from "./components/composites/code/DiffReviewPanel.tsx";
 export { PagePanel } from "./components/composites/page-panel/index.ts";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content.tsx";
@@ -70,6 +75,13 @@ export {
   UiRenderer,
   type UiRendererProps,
 } from "./components/config-ui/ui-renderer.tsx";
+export {
+  getAllSettingsSections,
+  getSettingsSection,
+  listSettingsSections,
+  registerSettingsSection,
+  type SettingsSectionDef,
+} from "./components/settings/settings-sections.ts";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar.tsx";
 export * from "./components/shared/LanguageDropdown.helpers.ts";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
