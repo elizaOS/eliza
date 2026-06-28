@@ -1538,7 +1538,8 @@ function ElementRenderer({ elementId }: { elementId: string }) {
   // Handle repeat / list rendering
   if (el.repeat) {
     const listData = getByPath(ctx.state, el.repeat.path) as
-      Array<Record<string, unknown>> | undefined;
+      | Array<Record<string, unknown>>
+      | undefined;
     if (!Array.isArray(listData)) return null;
 
     const repeatKey = el.repeat.key;
