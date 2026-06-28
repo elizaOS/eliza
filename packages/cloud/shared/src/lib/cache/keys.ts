@@ -28,6 +28,8 @@ export const CacheKeys = {
   },
   apiKey: {
     validation: (keyHash: string) => `apikey:validation:${keyHash}:v1`,
+    /** Combined api-key + user + org auth result (cold-auth fast path). */
+    combinedAuth: (keyHash: string) => `apikey:combined-auth:${keyHash}:v1`,
     /** Cache app lookup by API key ID */
     appMapping: (apiKeyId: string) => `apikey:app:${apiKeyId}:v1`,
     pattern: () => `apikey:*`,
@@ -245,6 +247,12 @@ export const CacheTTL = {
   },
   apiKey: {
     validation: 600, // 10 minutes (was 300s)
+    // SHORT on purpose: the cold-auth win comes from the combined single-round-trip
+    // QUERY (vs 2 sequential), not the cache; this cache only de-dupes the agent's
+    // per-turn burst. Key revoke invalidates it immediately (api-keys invalidateCache);
+    // a short TTL also bounds staleness from user/org DEACTIVATION (which is keyed by
+    // user/org id, not key hash, so it can't cheaply del this entry) to <=60s.
+    combinedAuth: 60,
     appMapping: 600, // 10 minutes - app-to-API-key mapping rarely changes
   },
   /**

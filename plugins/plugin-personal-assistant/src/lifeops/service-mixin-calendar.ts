@@ -110,7 +110,7 @@ function resolveCalendarService(runtime: IAgentRuntime): CalendarService {
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsCalendarService> {
-  const CalendarBase = Base as unknown as Constructor<LifeOpsServiceBase>;
+  const CalendarBase = Base;
   return class extends CalendarBase {
     listCalendars(
       requestUrl: URL,

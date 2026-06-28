@@ -125,7 +125,7 @@ function googlePluginUnavailableStatus(
 export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsGoogleService> {
-  const GoogleBase = Base as unknown as Constructor<LifeOpsServiceBase>;
+  const GoogleBase = Base;
 
   class LifeOpsGoogleServiceMixin extends GoogleBase {
     private googleConnectorManager() {

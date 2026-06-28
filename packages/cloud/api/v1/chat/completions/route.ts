@@ -1187,52 +1187,62 @@ export async function handleChatCompletionsPOST(
     });
 
     // 8. Handle streaming vs non-streaming
-    if (request.stream) {
-      return await handleStreamingRequest(
-        model,
-        systemPrompt,
-        modelMessages,
-        request,
-        user,
-        apiKey ? { id: apiKey.id } : null,
-        appCreditsInfo,
-        affiliateCode,
-        idempotencyKey,
-        requestId,
-        appId,
-        startTime,
-        req.signal,
-        routeTimeoutMs,
-        settleReservation,
-        cotOptions,
-        effectiveMaxTokens,
-        webSearchOptions,
-        billingSource,
+    const preforwardResponse = request.stream
+      ? await handleStreamingRequest(
+          model,
+          systemPrompt,
+          modelMessages,
+          request,
+          user,
+          apiKey ? { id: apiKey.id } : null,
+          appCreditsInfo,
+          affiliateCode,
+          idempotencyKey,
+          requestId,
+          appId,
+          startTime,
+          req.signal,
+          routeTimeoutMs,
+          settleReservation,
+          cotOptions,
+          effectiveMaxTokens,
+          webSearchOptions,
+          billingSource,
+        )
+      : await handleNonStreamingRequest(
+          model,
+          systemPrompt,
+          modelMessages,
+          request,
+          user,
+          apiKey ? { id: apiKey.id } : null,
+          appCreditsInfo,
+          affiliateCode,
+          idempotencyKey,
+          requestId,
+          appId,
+          startTime,
+          req.signal,
+          routeTimeoutMs,
+          settleReservation,
+          cotOptions,
+          effectiveMaxTokens,
+          webSearchOptions,
+          billingSource,
+          options.executionCtx,
+        );
+    // Emit per-step pre-forward timing as a readable header (#9899). Debug-only
+    // numbers, no behavior change. totalMs = everything before the model
+    // forward; compare vs cerebras-direct ~0.24s to see how much of TTFT is us.
+    try {
+      preforwardResponse.headers.set(
+        "X-Eliza-Preforward-Ms",
+        `total=${Date.now() - startTime};auth=${tAuth - startTime};mid=${tBeforeReserve - tAuth};reserve=${tAfterReserve - tBeforeReserve}`,
       );
-    } else {
-      return await handleNonStreamingRequest(
-        model,
-        systemPrompt,
-        modelMessages,
-        request,
-        user,
-        apiKey ? { id: apiKey.id } : null,
-        appCreditsInfo,
-        affiliateCode,
-        idempotencyKey,
-        requestId,
-        appId,
-        startTime,
-        req.signal,
-        routeTimeoutMs,
-        settleReservation,
-        cotOptions,
-        effectiveMaxTokens,
-        webSearchOptions,
-        billingSource,
-        options.executionCtx,
-      );
+    } catch {
+      // Some Response shapes have immutable headers — never fail a request for a debug header.
     }
+    return preforwardResponse;
   } catch (error) {
     await settleReservation?.(0);
     const rawMessage = error instanceof Error ? error.message : String(error);

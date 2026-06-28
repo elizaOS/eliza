@@ -7,6 +7,7 @@
 import crypto from "crypto";
 import { encryptApiKey } from "../../db/crypto/api-keys";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
+import type { UserWithOrganization } from "../../db/repositories/users";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "../pricing";
@@ -35,6 +36,29 @@ function isCacheableApiKey(value: unknown): value is ApiKey {
     typeof candidate.key_prefix === "string" &&
     typeof candidate.is_active === "boolean"
   );
+}
+
+/**
+ * Validates a cached combined-auth entry ({ apiKey, user+org }) before trusting
+ * it, mirroring isCacheableApiKey. `organization` may be null (org-less account)
+ * but the key must be present so the caller's org gate is meaningful.
+ */
+function isCacheableCombinedAuth(
+  value: unknown,
+): value is { apiKey: ApiKey; user: UserWithOrganization } {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (!isCacheableApiKey(candidate.apiKey)) {
+    return false;
+  }
+  const user = candidate.user;
+  if (!user || typeof user !== "object") {
+    return false;
+  }
+  const u = user as Record<string, unknown>;
+  return isUuid(u.id) && typeof u.is_active === "boolean" && "organization" in u;
 }
 
 /**
@@ -132,6 +156,51 @@ export class ApiKeysService {
   }
 
   /**
+   * Cold-auth fast path: validate an API key AND resolve its user + organization
+   * in ONE combined lookup (cache → single relational query), instead of the
+   * sequential validateApiKey + usersService.getWithOrganization the auth path
+   * runs today. Used only when AUTH_COMBINED_FASTPATH is enabled.
+   *
+   * Caching contract mirrors validateApiKey: positive results cached for
+   * CacheTTL.apiKey.combinedAuth (short, see keys.ts), unknown keys negative-cached.
+   * Returns null for unknown / inactive / expired keys (same outcome as a null
+   * validateApiKey). The user.is_active / organization.is_active gates are applied
+   * by the caller — identical to the existing post-getWithOrganization checks.
+   */
+  async validateApiKeyCombined(
+    key: string,
+  ): Promise<{ apiKey: ApiKey; user: UserWithOrganization } | null> {
+    const hash = crypto.createHash("sha256").update(key).digest("hex");
+    const cacheKey = CacheKeys.apiKey.combinedAuth(hash.substring(0, 16));
+
+    const cached = await cache.get<unknown>(cacheKey);
+    if (cached) {
+      if (isNegativeApiKeySentinel(cached)) {
+        logger.debug("[ApiKeys] Cache hit for negative combined-auth lookup");
+        return null;
+      }
+      if (isCacheableCombinedAuth(cached)) {
+        logger.debug("[ApiKeys] Cache hit for combined-auth lookup");
+        return cached;
+      }
+      await cache.del(cacheKey);
+      logger.warn("[ApiKeys] Dropped invalid combined-auth cache entry", { cacheKey });
+    }
+
+    const result = await apiKeysRepository.findActiveWithUserAndOrg(hash);
+    if (result) {
+      await cache.set(cacheKey, result, CacheTTL.apiKey.combinedAuth);
+      logger.debug("[ApiKeys] Cached combined-auth result", {
+        keyPrefix: result.apiKey.key_prefix,
+      });
+      return result;
+    }
+
+    await cache.set(cacheKey, API_KEY_NEGATIVE_SENTINEL, API_KEY_NEGATIVE_TTL_SECONDS);
+    return null;
+  }
+
+  /**
    * Increment usage_count for an API key with per-process debouncing.
    *
    * Without debouncing, every authenticated API request triggers a DB write.
@@ -166,9 +235,20 @@ export class ApiKeysService {
    * inference immediately rather than waiting out the IAC TTL.
    */
   async invalidateCache(keyHash: string): Promise<void> {
-    const cacheKey = CacheKeys.apiKey.validation(keyHash.substring(0, 16));
-    await Promise.all([cache.del(cacheKey), invalidateInferenceAuthContextByKeyHash(keyHash)]);
-    logger.debug("[ApiKeys] Invalidated API key + inference auth-context cache");
+    const shortHash = keyHash.substring(0, 16);
+    // Invalidate every auth cache a key participates in, or a revoked/updated
+    // key would keep authenticating until each TTL expires. All revoke/update/
+    // deactivate paths funnel through here: the per-key validation cache, the
+    // combined-auth cold-path cache, and the #9899 inference hot-path
+    // auth-context entry (keyed by full hash).
+    await Promise.all([
+      cache.del(CacheKeys.apiKey.validation(shortHash)),
+      cache.del(CacheKeys.apiKey.combinedAuth(shortHash)),
+      invalidateInferenceAuthContextByKeyHash(keyHash),
+    ]);
+    logger.debug(
+      "[ApiKeys] Invalidated API key + combined-auth + inference auth-context cache",
+    );
   }
 
   async getById(id: string): Promise<ApiKey | undefined> {

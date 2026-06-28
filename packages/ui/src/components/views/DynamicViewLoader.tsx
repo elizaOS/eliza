@@ -55,6 +55,10 @@ import {
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
+import {
+  useAppSelector,
+  useAppSelectorShallow,
+} from "../../state/app-store.ts";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
@@ -340,6 +344,8 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   registerOverlayApp,
   registerOperatorSurface,
   useApp,
+  useAppSelector,
+  useAppSelectorShallow,
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
