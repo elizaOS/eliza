@@ -9,10 +9,6 @@ import { asRecord } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
 import {
-  CLOUD_HANDOFF_PHASE_EVENT,
-  type CloudHandoffPhaseDetail,
-} from "../events";
-import {
   type ChatTurnStatus,
   type CodingAgentSession,
   type ConversationChannelType,
@@ -27,6 +23,10 @@ import {
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
+import {
+  CLOUD_HANDOFF_PHASE_EVENT,
+  type CloudHandoffPhaseDetail,
+} from "../events";
 import { getWindowNavigationPath, type Tab } from "../navigation";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
@@ -1236,6 +1236,15 @@ export function useChatSend(deps: UseChatSendDeps) {
 
     try {
       while (chatSendQueueRef.current.length > 0) {
+        // Re-check the freeze EACH iteration: a handoff can begin (`migrating`)
+        // while an earlier turn is mid-`await` here, and `sendChatText` can
+        // enqueue a new turn during that await. Without this guard the loop
+        // would drain that newly-queued turn to the SHARED agent after its
+        // snapshot — re-opening the skip-all-import loss window the freeze
+        // exists to close. `break` leaves the not-yet-shifted turns queued; the
+        // terminal-phase handler re-invokes this flush after the client base is
+        // repointed at the dedicated, so they land there exactly once.
+        if (handoffFrozenRef.current) break;
         const nextTurn = chatSendQueueRef.current.shift();
         if (!nextTurn) break;
         try {

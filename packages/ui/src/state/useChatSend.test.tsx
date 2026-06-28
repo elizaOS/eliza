@@ -625,6 +625,81 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
     expect(textArg).toBe("during handoff");
   });
 
+  it("re-checks the freeze mid-drain: a message queued behind an in-flight send when `migrating` fires is NOT drained to shared after the snapshot", async () => {
+    // Regression for the in-flight-drain race: send A is already mid-`await`
+    // when the handoff begins; the user then fires send B during the window.
+    // B is enqueued behind A's still-running drain loop. When A resolves the
+    // loop must NOT shift B and dispatch it to the (post-snapshot) SHARED agent
+    // — it must re-check the freeze, break, and leave B for the post-switch
+    // flush. Without the per-iteration freeze re-check, B leaks to shared and is
+    // lost to the skip-all import.
+    const basesSeenAtSend: string[] = [];
+    let releaseA: (() => void) | undefined;
+    const aInFlight = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    let callCount = 0;
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      const index = callCount++;
+      basesSeenAtSend.push(mocks.client.getBaseUrl());
+      if (index === 0) await aInFlight; // A blocks until we release it
+      return { text: "ack", completed: true };
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    // Send A starts on the SHARED base BEFORE the handoff — it is not frozen, so
+    // it enters the drain loop and parks mid-await (the drain loop stays busy).
+    let aPromise: Promise<void> | undefined;
+    await act(async () => {
+      aPromise = result.current.sendChatText("before handoff", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+
+    // Handoff begins while A is still in flight, then the user fires B.
+    act(() => dispatchHandoffPhase("migrating"));
+    let bPromise: Promise<void> | undefined;
+    await act(async () => {
+      bPromise = result.current.sendChatText("during handoff", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+
+    // Release A; the still-running drain loop must break on the freeze re-check
+    // rather than draining B to shared.
+    await act(async () => {
+      releaseA?.();
+      await aPromise;
+      await Promise.resolve();
+    });
+
+    // GUARANTEE: B was NOT sent to shared — only A's send happened, on SHARED.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(basesSeenAtSend).toEqual([SHARED_BASE]);
+
+    // Switch settles: the client repoints to the dedicated, the phase fires, and
+    // B drains to the dedicated container exactly once.
+    mocks.client.getBaseUrl.mockReturnValue(DEDICATED_BASE);
+    await act(async () => {
+      dispatchHandoffPhase("switched");
+      await bPromise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(2);
+    expect(basesSeenAtSend).toEqual([SHARED_BASE, DEDICATED_BASE]);
+    const [, secondText] =
+      mocks.client.sendConversationMessageStream.mock.calls[1];
+    expect(secondText).toBe("during handoff");
+  });
+
   it("does not freeze when no handoff is in flight — sends dispatch inline (flag-off parity)", async () => {
     // With `preferSharedCloudTier` off no `migrating` phase ever fires, so the
     // freeze flag stays false and the queue drains immediately, exactly as

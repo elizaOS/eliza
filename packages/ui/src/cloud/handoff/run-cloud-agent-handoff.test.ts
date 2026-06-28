@@ -31,10 +31,12 @@ describe("runCloudAgentHandoff", () => {
 
   it("dispatches migrating then the supervisor's terminal status", async () => {
     const { phases, stop } = collectPhases();
-    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
-      status: "switched",
-      imported: 3,
-    }));
+    const start = vi.fn(
+      async (): Promise<ConversationHandoffResult> => ({
+        status: "switched",
+        imported: 3,
+      }),
+    );
 
     runCloudAgentHandoff("a1", start);
     await flush();
@@ -95,10 +97,12 @@ describe("runCloudAgentHandoff", () => {
   // shared bridge, so deleting it would lose their conversation).
   it("fires onSwitchSucceeded on `switched` (success — safe to delete shared)", async () => {
     const { stop } = collectPhases();
-    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
-      status: "switched",
-      imported: 2,
-    }));
+    const start = vi.fn(
+      async (): Promise<ConversationHandoffResult> => ({
+        status: "switched",
+        imported: 2,
+      }),
+    );
     const onSwitchSucceeded = vi.fn();
 
     runCloudAgentHandoff("a5", start, onSwitchSucceeded);
@@ -110,10 +114,12 @@ describe("runCloudAgentHandoff", () => {
 
   it("fires onSwitchSucceeded on `switched-empty` (success, nothing to copy)", async () => {
     const { stop } = collectPhases();
-    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
-      status: "switched-empty",
-      imported: 0,
-    }));
+    const start = vi.fn(
+      async (): Promise<ConversationHandoffResult> => ({
+        status: "switched-empty",
+        imported: 0,
+      }),
+    );
     const onSwitchSucceeded = vi.fn();
 
     runCloudAgentHandoff("a6", start, onSwitchSucceeded);
@@ -125,10 +131,12 @@ describe("runCloudAgentHandoff", () => {
 
   it("does NOT fire onSwitchSucceeded on `timed-out` (user still on the shared bridge)", async () => {
     const { stop } = collectPhases();
-    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
-      status: "timed-out",
-      imported: 0,
-    }));
+    const start = vi.fn(
+      async (): Promise<ConversationHandoffResult> => ({
+        status: "timed-out",
+        imported: 0,
+      }),
+    );
     const onSwitchSucceeded = vi.fn();
 
     runCloudAgentHandoff("a7", start, onSwitchSucceeded);
@@ -140,11 +148,13 @@ describe("runCloudAgentHandoff", () => {
 
   it("does NOT fire onSwitchSucceeded on `failed`", async () => {
     const { stop } = collectPhases();
-    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
-      status: "failed",
-      imported: 0,
-      error: "import failed",
-    }));
+    const start = vi.fn(
+      async (): Promise<ConversationHandoffResult> => ({
+        status: "failed",
+        imported: 0,
+        error: "import failed",
+      }),
+    );
     const onSwitchSucceeded = vi.fn();
 
     runCloudAgentHandoff("a8", start, onSwitchSucceeded);
@@ -170,10 +180,12 @@ describe("runCloudAgentHandoff", () => {
 
   it("swallows an onSwitchSucceeded rejection (a leaked-row delete never throws upward)", async () => {
     const { stop } = collectPhases();
-    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
-      status: "switched",
-      imported: 1,
-    }));
+    const start = vi.fn(
+      async (): Promise<ConversationHandoffResult> => ({
+        status: "switched",
+        imported: 1,
+      }),
+    );
     const onSwitchSucceeded = vi.fn(async () => {
       throw new Error("delete failed");
     });
@@ -209,11 +221,13 @@ describe("runCloudAgentHandoff", () => {
   it("drops the armed retry listener after the TTL so an un-retried handoff doesn't leak it", async () => {
     vi.useFakeTimers();
     try {
-      const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
-        status: "failed",
-        imported: 0,
-        error: "import failed",
-      }));
+      const start = vi.fn(
+        async (): Promise<ConversationHandoffResult> => ({
+          status: "failed",
+          imported: 0,
+          error: "import failed",
+        }),
+      );
 
       runCloudAgentHandoff("a13", start, undefined);
       // Resolve the start() promise + the .then arming the retry listener.

@@ -30,7 +30,7 @@ const INLINE_TEXTAREA_MAX_HEIGHT_PX = 128;
 const INLINE_STACKED_INLINE_PADDING_PX = 12;
 
 const inlineTextareaClass =
-  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt outline-none placeholder:text-muted-strong pointer-coarse:text-base    ";
+  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt outline-none placeholder:text-muted-strong pointer-coarse:text-[16px]    ";
 
 const inlineMeasureTextareaClass = `${inlineTextareaClass} pointer-events-none fixed left-0 top-0 z-[-1] opacity-0`;
 
@@ -629,10 +629,10 @@ export function ChatComposer({
           density={isInline ? null : undefined}
           className={
             isGameModal
-              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted pointer-coarse:text-base"
+              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted pointer-coarse:text-[16px]"
               : isInline
                 ? inlineTextareaClass
-                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted pointer-coarse:text-base"
+                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted pointer-coarse:text-[16px]"
           }
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}

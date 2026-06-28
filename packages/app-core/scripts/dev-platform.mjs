@@ -324,14 +324,12 @@ const rendererBuildSkipRequested =
   process.env.ELIZA_DESKTOP_RENDERER_BUILD === "skip";
 const viteWatch = process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
 const viteDepForceCli = process.argv.includes("--vite-force");
-const viteDepForce =
-  viteDepForceCli || process.env.ELIZA_VITE_FORCE === "1";
+const viteDepForce = viteDepForceCli || process.env.ELIZA_VITE_FORCE === "1";
 const viteRollupWatchCli = process.argv.includes("--rollup-watch");
 /** Legacy: Rollup `vite build --watch` (tens of seconds per edit on large graphs). */
 const viteRollupWatch =
   viteWatch &&
-  (viteRollupWatchCli ||
-    process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1");
+  (viteRollupWatchCli || process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1");
 /** Default when VITE_WATCH: Vite dev server + Electrobun ELIZA_RENDERER_URL (fast HMR). */
 const viteDevServer = viteWatch && !viteRollupWatch;
 /** On by default for `dev:desktop` / `dev:desktop:watch`; set to 0/false/no/off to disable. */

@@ -182,7 +182,11 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     // The org already has a non-terminal agent (the shared bridge). With
     // forceCreate the route must NOT let createAgent reuse it — the dedicated
     // handoff target has to be a distinct record, else dedicatedId === sharedId.
-    const agent = { ...pendingAgent(), id: "dedicated-fresh", status: "pending" };
+    const agent = {
+      ...pendingAgent(),
+      id: "dedicated-fresh",
+      status: "pending",
+    };
     createAgent.mockResolvedValue({ agent, idempotent: false });
 
     const res = await postCreate({

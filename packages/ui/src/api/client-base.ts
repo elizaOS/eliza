@@ -658,10 +658,19 @@ export class ElizaClient {
    *   3. immediately `connectWs()`s to the new base.
    *
    * The transcript was already copied to the dedicated agent by the handoff
-   * supervisor, and the new socket's `onopen` fires `ws-reconnected`, so live
-   * updates resume against the dedicated host with no full-screen reload, no
-   * coordinator re-entry, and no draft loss. Used ONLY by the handoff's silent
-   * re-point — every other base change still goes through `setBaseUrl`.
+   * supervisor, so live updates resume against the dedicated host with no
+   * full-screen reload, no coordinator re-entry, and no draft loss. Used ONLY by
+   * the handoff's silent re-point — every other base change still goes through
+   * `setBaseUrl`.
+   *
+   * Note on the WS swap: on cloud bases (the shared REST adapter and
+   * `*.elizacloud.ai`) `connectWs()` reports connected-over-REST and no socket
+   * is opened, so `ws-reconnected` does NOT fire and live updates resume via
+   * REST/SSE keyed off the new `baseUrl`. The socket teardown + reconnect path
+   * (steps 1 and 3, where `onopen` fires `ws-reconnected`) is exercised only for
+   * non-cloud hosts — it is forward-cover for when a base actually uses `/ws`.
+   * The "invisible" wins (no `disconnected` flap, no `StartupScreen`, no draft
+   * clear) hold independent of whether a socket is involved.
    */
   repointBaseUrl(baseUrl: string): void {
     const normalized = normalizeBaseUrl(baseUrl);

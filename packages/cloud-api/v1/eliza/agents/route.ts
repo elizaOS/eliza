@@ -326,6 +326,18 @@ app.post("/", async (c) => {
       sanitizedConfig,
     ),
   });
+  // `forceCreate` bypasses the org-scoped reuse guard, and shared agents never
+  // reach the credit gate below (only eager/dedicated tiers do). The only
+  // legitimate `forceCreate` caller — the shared→dedicated handoff — always
+  // targets a dedicated (`alwaysOn`) agent, so a `forceCreate` shared create has
+  // no valid use and would let any authenticated caller mint unmetered shared
+  // rows past the reuse ceiling. Reject that combination explicitly.
+  if (parsed.data.forceCreate && executionTier === "shared") {
+    throw ValidationError(
+      "forceCreate is only valid for dedicated agents (the handoff migration target); a shared agent never needs to bypass the reuse guard",
+    );
+  }
+
   const shouldProvisionEagerly =
     autoProvision && tierProvisionsEagerly(executionTier);
 
@@ -376,7 +388,7 @@ app.post("/", async (c) => {
     // `forceCreate` opts out so a caller that needs a SEPARATE record (the
     // shared→dedicated handoff's migration target) mints a fresh agent instead
     // of getting the shared one handed back.
-    reuseExistingNonTerminal: parsed.data.forceCreate ? false : true,
+    reuseExistingNonTerminal: !parsed.data.forceCreate,
   });
 
   // Idempotent reuse: the org already had a non-terminal agent, so createAgent

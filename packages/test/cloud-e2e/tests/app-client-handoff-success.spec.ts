@@ -126,8 +126,9 @@ test.describe("app onboarding handoff — success switch", () => {
       // org so the user's token authorizes it — then drive its provision job
       // through the mock control-plane until it's `running` with a reachable
       // bridge base. That is what makes the already-wired handoff reachable.
-      const { agentSandboxesRepository } =
-        await import("@elizaos/cloud-shared/db/repositories/agent-sandboxes");
+      const { agentSandboxesRepository } = await import(
+        "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
+      );
       const dedicatedRow = await agentSandboxesRepository.create({
         organization_id: seededUser.organizationId,
         user_id: seededUser.userId,

@@ -3079,22 +3079,42 @@ ElizaClient.prototype.deleteSharedBridgeAgent = async function (
   // synchronously removes the shared `agent_sandboxes` row AND its
   // `shared_runtime_history` (cascaded in `deleteAgent`); no container teardown.
   const apiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
+  const url = `${apiBase}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${options.authToken}`,
+  };
   try {
-    const res = await fetch(
-      `${apiBase}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
-      {
-        method: "DELETE",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${options.authToken}`,
-        },
-        signal: AbortSignal.timeout(20_000),
-      },
-    );
-    if (res.status < 200 || res.status >= 300) {
+    // Route through Capacitor native HTTP on iOS/Android, exactly like every
+    // other direct-cloud helper in this file. A bare cross-origin `fetch()`
+    // from `capacitor://localhost` is blocked on native, so without this the
+    // fire-and-forget cleanup would silently no-op on mobile and leak the
+    // shared `agent_sandboxes` row — the very thing this delete exists to avoid.
+    const status = shouldUseNativeCloudHttp()
+      ? (
+          await withDirectCloudHttpTimeout(
+            CapacitorHttp.request({
+              url,
+              method: "DELETE",
+              headers,
+              responseType: "json",
+              connectTimeout: 10_000,
+              readTimeout: 10_000,
+            }),
+            { method: "DELETE", url },
+          )
+        ).status
+      : (
+          await fetch(url, {
+            method: "DELETE",
+            headers,
+            signal: AbortSignal.timeout(20_000),
+          })
+        ).status;
+    if (status < 200 || status >= 300) {
       return {
         success: false,
-        error: `shared bridge delete failed (HTTP ${res.status})`,
+        error: `shared bridge delete failed (HTTP ${status})`,
       };
     }
     return { success: true };
