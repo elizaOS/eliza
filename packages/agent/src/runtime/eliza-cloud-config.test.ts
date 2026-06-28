@@ -1,7 +1,11 @@
+import { resolveElizaCloudTopology } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import type { ElizaConfig } from "../config/config.ts";
-import { applyCloudConfigToEnv } from "./eliza.ts";
+import {
+  applyCloudConfigToEnv,
+  applyProvisionedCloudRuntimeDefaults,
+  shouldStartThinCloudRuntime,
+} from "./eliza.ts";
 
 // applyCloudConfigToEnv is the #8769 source change: a cloud-provisioned container
 // MUST use cloud (1536-dim) embeddings, never plugin-local-inference's 384-dim
@@ -16,6 +20,9 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_USE_RPC",
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_AGENT_ID",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -45,6 +52,46 @@ describe("applyCloudConfigToEnv cloud-container embeddings (#8769)", () => {
     expect(process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED).toBeUndefined();
     // Cloud inference is likewise forced on for a provisioned container.
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
+  });
+
+  it("repairs provisioned cloud topology when the in-memory config lost canonical routing", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZAOS_CLOUD_API_KEY = "cloud-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.elizacloud.ai/api/v1";
+    process.env.ELIZA_CLOUD_AGENT_ID = "agent-123";
+    const config = {
+      cloud: { enabled: true },
+    } as ElizaConfig;
+
+    applyProvisionedCloudRuntimeDefaults(config);
+
+    expect(config.cloud?.apiKey).toBe("cloud-key");
+    expect(config.cloud?.agentId).toBe("agent-123");
+    expect(config.deploymentTarget).toEqual({
+      runtime: "cloud",
+      provider: "elizacloud",
+    });
+    expect(config.serviceRouting?.llmText).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+    });
+    const topology = resolveElizaCloudTopology(
+      config as Record<string, unknown>,
+    );
+    expect(topology.runtime).toBe("cloud");
+    expect(topology.services.inference).toBe(true);
+  });
+
+  it("uses thin cloud runtime only outside provisioned cloud containers", () => {
+    const config = {
+      deploymentTarget: { runtime: "cloud", provider: "elizacloud" },
+      cloud: { enabled: true, apiKey: "cloud-key", agentId: "agent-123" },
+    } as ElizaConfig;
+
+    expect(shouldStartThinCloudRuntime(config)).toBe(true);
+
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    expect(shouldStartThinCloudRuntime(config)).toBe(false);
   });
 
   it("is a no-op when neither cloud config nor ELIZA_CLOUD_PROVISIONED is present", () => {

@@ -99,6 +99,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
   isElizaSettingsDebugEnabled,
@@ -1874,10 +1876,11 @@ export async function autoFetchCloudGithubToken(
  * ElizaCloud plugin can discover settings at startup.
  */
 export function applyCloudConfigToEnv(config: ElizaConfig): void {
+  applyProvisionedCloudRuntimeDefaults(config);
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   const cloud = config.cloud;
 
-  const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const isCloudContainer = isProvisionedCloudContainer();
   if (!cloud && !isCloudContainer) return;
   const topology = resolveElizaCloudTopology(config as Record<string, unknown>);
 
@@ -2058,6 +2061,95 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   } else {
     delete process.env.ELIZA_CLOUD_RPC_DISABLED;
   }
+}
+
+function isProvisionedCloudContainer(): boolean {
+  return process.env.ELIZA_CLOUD_PROVISIONED === "1";
+}
+
+function buildCloudRouteFromEnv() {
+  return buildElizaCloudServiceRoute({
+    nanoModel: process.env.ELIZAOS_CLOUD_NANO_MODEL,
+    smallModel: process.env.ELIZAOS_CLOUD_SMALL_MODEL,
+    mediumModel: process.env.ELIZAOS_CLOUD_MEDIUM_MODEL,
+    largeModel: process.env.ELIZAOS_CLOUD_LARGE_MODEL,
+    megaModel: process.env.ELIZAOS_CLOUD_MEGA_MODEL,
+    responseHandlerModel: process.env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL,
+    shouldRespondModel: process.env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL,
+    actionPlannerModel: process.env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL,
+    plannerModel: process.env.ELIZAOS_CLOUD_PLANNER_MODEL,
+    responseModel: process.env.ELIZAOS_CLOUD_RESPONSE_MODEL,
+    mediaDescriptionModel: process.env.ELIZAOS_CLOUD_MEDIA_DESCRIPTION_MODEL,
+  });
+}
+
+export function applyProvisionedCloudRuntimeDefaults(
+  config: ElizaConfig,
+): void {
+  if (!isProvisionedCloudContainer()) return;
+
+  const root = config as Record<string, unknown>;
+  migrateLegacyRuntimeConfig(root);
+
+  const cloud = config.cloud ?? {};
+  const apiKey =
+    cloud.apiKey?.trim() || process.env.ELIZAOS_CLOUD_API_KEY?.trim();
+  const baseUrl =
+    cloud.baseUrl?.trim() || process.env.ELIZAOS_CLOUD_BASE_URL?.trim();
+  const agentId =
+    cloud.agentId?.trim() ||
+    process.env.ELIZA_CLOUD_AGENT_ID?.trim() ||
+    process.env.WAIFU_ELIZA_CLOUD_AGENT_ID?.trim();
+
+  if (apiKey || baseUrl || agentId) {
+    config.cloud = {
+      ...cloud,
+      enabled: cloud.enabled ?? Boolean(apiKey),
+      ...(apiKey ? { apiKey } : {}),
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(agentId ? { agentId } : {}),
+    };
+  }
+
+  const deploymentTarget = resolveDeploymentTargetInConfig(root);
+  if (
+    deploymentTarget.runtime !== "cloud" ||
+    deploymentTarget.provider !== "elizacloud"
+  ) {
+    root.deploymentTarget = { runtime: "cloud", provider: "elizacloud" };
+  }
+
+  const serviceRouting = resolveServiceRoutingInConfig(root) ?? {};
+  const llmText = serviceRouting.llmText;
+  const hasCloudTextRoute =
+    llmText?.transport === "cloud-proxy" && llmText.backend === "elizacloud";
+  const baseRouting = {
+    ...serviceRouting,
+    ...(hasCloudTextRoute ? {} : { llmText: buildCloudRouteFromEnv() }),
+  };
+  root.serviceRouting = buildDefaultElizaCloudServiceRouting({
+    base: baseRouting,
+    includeInference: true,
+  });
+
+  const topology = resolveElizaCloudTopology(root);
+  logger.info(
+    `[eliza] Provisioned cloud topology: runtime=${topology.runtime}, inference=${topology.services.inference}, hasApiKey=${Boolean(config.cloud?.apiKey || process.env.ELIZAOS_CLOUD_API_KEY)}`,
+  );
+}
+
+export function shouldStartThinCloudRuntime(config: ElizaConfig): boolean {
+  if (isProvisionedCloudContainer()) return false;
+
+  const deploymentTarget = resolveDeploymentTargetInConfig(
+    config as Record<string, unknown>,
+  );
+  return Boolean(
+    deploymentTarget.runtime === "cloud" &&
+      deploymentTarget.provider === "elizacloud" &&
+      config.cloud?.apiKey &&
+      config.cloud.agentId?.trim(),
+  );
 }
 
 /**
@@ -3697,13 +3789,11 @@ export async function startEliza(
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
 
-  if (
-    deploymentTarget.runtime === "cloud" &&
-    deploymentTarget.provider === "elizacloud" &&
-    config.cloud?.apiKey &&
-    config.cloud?.agentId?.trim()
-  ) {
-    return startInCloudMode(config, config.cloud.agentId, opts);
+  if (shouldStartThinCloudRuntime(config)) {
+    const cloudAgentId = config.cloud?.agentId?.trim();
+    if (cloudAgentId) {
+      return startInCloudMode(config, cloudAgentId, opts);
+    }
   }
 
   // 3. Build elizaOS Character from Eliza config
