@@ -68,6 +68,8 @@ export {
   Card,
   Divider,
   type DividerProps,
+  Escape,
+  type EscapeProps,
   Field,
   type FieldProps,
   getSpatialKind,
