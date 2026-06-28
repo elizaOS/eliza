@@ -173,8 +173,7 @@ const PLUGIN_REGISTRY: Array<{
   {
     pluginDir: "plugins/plugin-messages",
     manifestPath: "plugins/plugin-messages/src/plugin.ts",
-    xrComponentSrc:
-      "plugins/plugin-messages/src/components/MessagesView.tsx",
+    xrComponentSrc: "plugins/plugin-messages/src/components/MessagesView.tsx",
     requiredTerms: ["MessagesView", "useState"],
   },
   {
@@ -277,8 +276,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
     capabilities: ["terminal-hyperliquid-state"],
   },
   "plugins/plugin-messages": {
-    srcFile:
-      "plugins/plugin-messages/src/components/messages-interact.ts",
+    srcFile: "plugins/plugin-messages/src/components/messages-interact.ts",
     capabilities: ["terminal-list-threads", "terminal-send-sms"],
   },
   "plugins/plugin-phone": {
