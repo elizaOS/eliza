@@ -69,11 +69,10 @@ describe("PhoneSpatialView one source, three modalities", () => {
   });
 
   it("renders a distinct direction mark per call type (incoming/missed/outgoing)", () => {
-    // Strip ANSI styling so the glyph-to-row binding is asserted on plain text.
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI.
-    const flat = renderViewToLines(view, 54)
-      .join("\n")
-      .replace(/\x1b\[[0-9;]*m/g, "");
+    // Strip ANSI styling so the glyph-to-row binding is asserted on plain text
+    // (ESC built via fromCharCode so no control char appears in the source).
+    const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+    const flat = renderViewToLines(view, 54).join("\n").replace(ansi, "");
     // Each row carries its own direction glyph: incoming `<`, missed `x`,
     // outgoing `>` (the spatial-primitive stand-in for the lucide
     // phone-incoming/-missed/-outgoing icons of the retired overlay).

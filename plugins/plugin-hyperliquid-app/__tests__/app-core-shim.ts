@@ -1,12 +1,4 @@
-export interface OverlayApp {
-  name: string;
-  component?: unknown;
-  [key: string]: unknown;
-}
-
 export const client = {};
-
-export function registerOverlayApp(_app: OverlayApp): void {}
 
 export function sendJson(
   res: {

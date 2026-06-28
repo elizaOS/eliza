@@ -9,9 +9,8 @@
  * surface renders the same `FacewearSpatialView` through the terminal registry
  * (see `register-terminal-view.tsx`).
  *
- * The full-screen GUI dashboard (`../ui/FacewearAppView.tsx`) is unchanged; it
- * stays mounted as the app-shell page while this wrapper drives the
- * manager/XR/TUI surfaces from the same status DTO.
+ * This wrapper is the single Facewear surface: it is the `componentExport` the
+ * manifest declares and the component the app-shell page (`register.ts`) mounts.
  */
 
 import { SpatialSurface } from "@elizaos/ui/spatial";

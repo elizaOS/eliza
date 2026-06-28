@@ -1,8 +1,8 @@
-// View-bundle `interact` capability handler plus the TUI state loaders it shares
-// with HyperliquidTuiView, split out of HyperliquidAppView.tsx so that file
-// exports only React components and stays Fast-Refresh-compatible (Vite would
-// full-reload a component file that also exports a plain function). The view
-// bundle re-exports `interact` via ./hyperliquid-app-view-bundle.ts.
+// View-bundle `interact` capability handler plus the TUI state loaders for the
+// Hyperliquid view. Kept separate from HyperliquidView.tsx so that file exports
+// only React components and stays Fast-Refresh-compatible (Vite would full-reload
+// a component file that also exports a plain function). The view bundle
+// re-exports `interact` via ./hyperliquid-app-view-bundle.ts.
 
 import { client } from "@elizaos/app-core";
 import "./client";

@@ -1,6 +1,6 @@
-// Pure facewear device-profile data + connected-state derivation, shared by the
-// legacy GUI dashboard (FacewearAppView.tsx) and the unified data wrapper
-// (FacewearView.tsx). Split out so the .tsx files export only React components
+// Pure facewear device-profile data + connected-state derivation, used by the
+// unified data wrapper (FacewearView.tsx). Split out so the .tsx files export
+// only React components
 // and stay Fast-Refresh-compatible (Vite full-reloads a component file that also
 // exports plain data/functions).
 

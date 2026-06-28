@@ -1,19 +1,12 @@
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { type ComponentType, createElement, useEffect, useState } from "react";
+import type { ComponentType } from "react";
 
 type DeferredViewComponent = ComponentType<Record<string, unknown>>;
 type DeferredViewModule = { default: DeferredViewComponent };
-type DeferredViewLoader = () => Promise<DeferredViewModule>;
 
-function loadFacewearAppView(): Promise<DeferredViewModule> {
-  return import("./ui/FacewearAppView.tsx").then((module) => ({
-    default: module.FacewearAppView as DeferredViewComponent,
-  }));
-}
-
-function loadFacewearTuiView(): Promise<DeferredViewModule> {
-  return import("./ui/FacewearAppView.tsx").then((module) => ({
-    default: module.FacewearTuiView as DeferredViewComponent,
+function loadFacewearView(): Promise<DeferredViewModule> {
+  return import("./components/FacewearView.tsx").then((module) => ({
+    default: module.FacewearView as DeferredViewComponent,
   }));
 }
 
@@ -23,71 +16,10 @@ function loadSmartglassesView(): Promise<DeferredViewModule> {
   }));
 }
 
-function loadSmartglassesTuiView(): Promise<DeferredViewModule> {
-  return import("./ui/FacewearAppView.tsx").then((module) => ({
-    default: module.SmartglassesTuiView as DeferredViewComponent,
-  }));
-}
-
-function deferredComponent(loader: DeferredViewLoader): DeferredViewComponent {
-  let cached: DeferredViewComponent | null = null;
-  let pending: Promise<DeferredViewComponent> | null = null;
-
-  function load(): Promise<DeferredViewComponent> {
-    if (cached) return Promise.resolve(cached);
-    pending ??= loader().then(
-      (module) => {
-        cached = module.default;
-        return cached;
-      },
-      (error) => {
-        pending = null;
-        throw error;
-      },
-    );
-    return pending;
-  }
-
-  return function DeferredComponent(props: Record<string, unknown>) {
-    const [Component, setComponent] = useState<DeferredViewComponent | null>(
-      cached,
-    );
-
-    useEffect(() => {
-      if (Component) return;
-      let cancelled = false;
-      void load()
-        .then((nextComponent) => {
-          if (!cancelled) setComponent(() => nextComponent);
-        })
-        .catch(() => {
-          if (!cancelled) setComponent(null);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [Component]);
-
-    return Component ? createElement(Component, props) : null;
-  };
-}
-
-export const FacewearAppView = deferredComponent(loadFacewearAppView);
-export const FacewearTuiView = deferredComponent(loadFacewearTuiView);
-export const SmartglassesView = deferredComponent(loadSmartglassesView);
-export const SmartglassesTuiView = deferredComponent(loadSmartglassesTuiView);
-
-registerAppShellPage({
-  id: "facewear.tui",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Facewear TUI",
-  icon: "Terminal",
-  path: "/apps/facewear/tui",
-  order: 80.1,
-  group: "hardware",
-  loader: loadFacewearTuiView,
-});
-
+// Register the in-process app-shell pages so the views render on native (where
+// the remote view bundle is disabled). Both load the single canonical surface:
+// the FacewearView tri-modal wrapper renders FacewearSpatialView; the
+// Smartglasses dashboard owns the BLE transport.
 registerAppShellPage({
   id: "facewear",
   pluginId: "@elizaos/plugin-facewear",
@@ -96,18 +28,7 @@ registerAppShellPage({
   path: "/apps/facewear",
   order: 80,
   group: "hardware",
-  loader: loadFacewearAppView,
-});
-
-registerAppShellPage({
-  id: "smartglasses.tui",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Smartglasses TUI",
-  icon: "Terminal",
-  path: "/apps/smartglasses/tui",
-  order: 81.1,
-  group: "hardware",
-  loader: loadSmartglassesTuiView,
+  loader: loadFacewearView,
 });
 
 registerAppShellPage({

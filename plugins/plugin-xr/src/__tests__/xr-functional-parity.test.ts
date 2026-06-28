@@ -208,12 +208,6 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["StewardView", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-vincent",
-    manifestPath: "plugins/plugin-vincent/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-vincent/src/VincentView.tsx",
-    requiredTerms: ["VincentView", "useState"],
-  },
-  {
     pluginDir: "plugins/plugin-wallet-ui",
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
     xrComponentSrc: "plugins/plugin-wallet-ui/src/InventoryView.tsx",

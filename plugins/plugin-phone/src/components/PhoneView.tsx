@@ -14,13 +14,13 @@ import { Phone } from "@elizaos/capacitor-phone";
 import { consumePendingPhoneNumber } from "@elizaos/ui/app-navigate-view";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { normalizeNumber } from "./phone-view-helpers.ts";
 import {
   type PhoneCallRow,
   type PhoneSnapshot,
   PhoneSpatialView,
   toPhoneCallRow,
 } from "./PhoneSpatialView.tsx";
+import { normalizeNumber } from "./phone-view-helpers.ts";
 
 /** Short relative/absolute timestamp for a recent-call row. */
 function formatWhen(epochMs: number): string {

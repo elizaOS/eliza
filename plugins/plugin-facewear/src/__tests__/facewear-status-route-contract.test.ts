@@ -2,7 +2,7 @@
 // facewearStatusRoute handler runs over a REAL FacewearService (whose runtime
 // returns realistically-shaped XR + smartglasses services), and the JSON body is
 // asserted to match the exact { connected, devices:[{id,kind,deviceType}] } DTO
-// that the FacewearView wrapper + FacewearAppView dashboard parse from
+// that the FacewearView wrapper parses from
 // fetch("/api/facewear/status"). This pins the producer (route) and the consumer
 // (view parser) to one shape.
 

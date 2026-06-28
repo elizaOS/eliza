@@ -6,14 +6,8 @@
 //   - `FacewearView`         → the gui/xr/tui Facewear data wrapper
 //   - `SmartglassesPanelView` → the gui/xr/tui Smartglasses operator panel
 // Both render the single spatial source (FacewearSpatialView /
-// SmartglassesSpatialView). The legacy full-screen dashboards (FacewearAppView,
-// SmartglassesView) and the TUI shims stay exported because the app shell mounts
-// them as overlay pages.
+// SmartglassesSpatialView). The Smartglasses dashboard (SmartglassesView) stays
+// exported because it owns the live BLE transport the operator panel mirrors.
 export { FacewearView } from "../components/FacewearView.tsx";
 export { SmartglassesPanelView } from "../components/SmartglassesPanelView.tsx";
-export {
-  FacewearAppView,
-  FacewearTuiView,
-  SmartglassesTuiView,
-} from "./FacewearAppView.tsx";
 export { SmartglassesView } from "./SmartglassesView.tsx";

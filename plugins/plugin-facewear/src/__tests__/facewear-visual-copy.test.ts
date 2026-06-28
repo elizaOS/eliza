@@ -34,7 +34,7 @@ describe("facewear visual copy", () => {
   });
 
   it("does not render redundant helper copy under the Facewear header", () => {
-    const source = readSource("ui/FacewearAppView.tsx");
+    const source = readSource("components/FacewearView.tsx");
 
     expect(source).not.toContain(
       "Manage all connected XR devices and smartglasses.",

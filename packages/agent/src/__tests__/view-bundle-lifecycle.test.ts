@@ -34,7 +34,6 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-polymarket-app/src/plugin.ts",
   "plugins/plugin-shopify-ui/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
-  "plugins/plugin-vincent/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
