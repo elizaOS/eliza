@@ -118,7 +118,7 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
   feed: {
     viewId: "feed",
     provider: "dynamic",
-    files: ["plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx"],
+    files: ["plugins/plugin-feed/src/components/FeedSpatialView.tsx"],
     minAgentElements: 2,
   },
   relationships: {
@@ -218,7 +218,10 @@ function readRepoFiles(files: readonly string[]): string {
 }
 
 function countAgentElements(source: string): number {
-  return source.match(/useAgentElement(?:<[^>]*>)?\(/g)?.length ?? 0;
+  return (
+    (source.match(/useAgentElement(?:<[^>]*>)?\(/g)?.length ?? 0) +
+    (source.match(/\sagent=\{?["'`][^"'`]+["'`]\}?/g)?.length ?? 0)
+  );
 }
 
 describe("required core view agent-surface coverage", () => {
