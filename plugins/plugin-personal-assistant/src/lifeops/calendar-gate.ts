@@ -11,8 +11,8 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import {
-  CalendarService,
   type CalendarHostGate,
+  CalendarService,
 } from "@elizaos/plugin-calendar";
 import type {
   LifeOpsAuditEvent,
@@ -57,7 +57,7 @@ interface CalendarGateHost {
 export function buildLifeOpsCalendarGate(
   runtime: IAgentRuntime,
 ): CalendarHostGate {
-  const host = new LifeOpsService(runtime) as unknown as CalendarGateHost;
+  const host: CalendarGateHost = new LifeOpsService(runtime);
   const repo = host.repository;
   return {
     getGoogleConnectorAccounts: (requestUrl, side) =>

@@ -7,8 +7,8 @@ import {
   type BrowserBridgeAction,
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeSettings,
-  type UpsertBrowserBridgeCompanionRequest,
   createBrowserBridgeCompanionStatus,
+  type UpsertBrowserBridgeCompanionRequest,
 } from "@elizaos/plugin-browser";
 import { LifeOpsScheduleSyncClient } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-client";
 import type {
@@ -20,16 +20,13 @@ import type {
   LifeOpsOwnershipInput,
   LifeOpsWorkflowDefinition,
 } from "../contracts/index.js";
-import type { computeAdaptiveWindowPolicy } from "./defaults.js";
-import {
-  createLifeOpsAuditEvent,
-  LifeOpsRepository,
-} from "./repository.js";
-import { resolveLifeOpsScheduleSyncConfigFromElizaConfig } from "./schedule-sync-config.js";
 import {
   DEFAULT_BROWSER_PERMISSION_STATE,
   DEFAULT_BROWSER_SETTINGS,
 } from "./browser-constants.js";
+import type { computeAdaptiveWindowPolicy } from "./defaults.js";
+import { createLifeOpsAuditEvent, LifeOpsRepository } from "./repository.js";
+import { resolveLifeOpsScheduleSyncConfigFromElizaConfig } from "./schedule-sync-config.js";
 import { reminderProcessingQueues } from "./service-constants.js";
 import {
   defaultOwnerEntityId,
