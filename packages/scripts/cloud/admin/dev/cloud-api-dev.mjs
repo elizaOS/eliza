@@ -83,7 +83,7 @@ function wranglerScript() {
   // ERR_PACKAGE_PATH_NOT_EXPORTED on wrangler >=4. Resolve the package via its
   // (exported) package.json and read the declared bin path instead.
   const pkgJsonPath = require.resolve("wrangler/package.json", {
-    paths: [cloudApiDir],
+    paths: [cloudApiDir, repoRoot],
   });
   const pkg = require(pkgJsonPath);
   const binRel =
