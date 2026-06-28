@@ -8,6 +8,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../db/schemas/docker-nodes";
@@ -130,6 +131,48 @@ export function resolveDockerSandboxImage(
   operatorOverride = DOCKER_IMAGE_OVERRIDE,
 ): string {
   return dockerImage || operatorOverride || "ghcr.io/elizaos/eliza:latest";
+}
+
+export function buildManagedElizaRuntimeConfig(
+  allEnv: Record<string, string | undefined>,
+): Record<string, unknown> {
+  const apiKey = allEnv.ELIZAOS_CLOUD_API_KEY || "";
+  const agentId = allEnv.ELIZA_CLOUD_AGENT_ID || allEnv.WAIFU_ELIZA_CLOUD_AGENT_ID;
+
+  return {
+    logging: { level: "info" },
+    deploymentTarget: { runtime: "cloud", provider: "elizacloud" },
+    ...(apiKey
+      ? {
+          linkedAccounts: {
+            elizacloud: {
+              status: "linked",
+              source: "api-key",
+            },
+          },
+        }
+      : {}),
+    serviceRouting: buildDefaultElizaCloudServiceRouting({
+      includeInference: true,
+      nanoModel: allEnv.ELIZAOS_CLOUD_NANO_MODEL,
+      smallModel: allEnv.ELIZAOS_CLOUD_SMALL_MODEL,
+      mediumModel: allEnv.ELIZAOS_CLOUD_MEDIUM_MODEL,
+      largeModel: allEnv.ELIZAOS_CLOUD_LARGE_MODEL,
+      megaModel: allEnv.ELIZAOS_CLOUD_MEGA_MODEL,
+      responseHandlerModel: allEnv.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL,
+      shouldRespondModel: allEnv.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL,
+      actionPlannerModel: allEnv.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL,
+      plannerModel: allEnv.ELIZAOS_CLOUD_PLANNER_MODEL,
+      responseModel: allEnv.ELIZAOS_CLOUD_RESPONSE_MODEL,
+      mediaDescriptionModel: allEnv.ELIZAOS_CLOUD_MEDIA_DESCRIPTION_MODEL,
+    }),
+    cloud: {
+      enabled: Boolean(apiKey),
+      apiKey,
+      baseUrl: allEnv.ELIZAOS_CLOUD_BASE_URL || "",
+      ...(agentId ? { agentId } : {}),
+    },
+  };
 }
 
 function trimTrailingSlash(value: string): string {
@@ -1278,14 +1321,7 @@ export class DockerSandboxProvider implements SandboxProvider {
               "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
           );
         }
-        const elizaConfig = JSON.stringify({
-          logging: { level: "info" },
-          cloud: {
-            enabled: Boolean(allEnv.ELIZAOS_CLOUD_API_KEY),
-            apiKey: allEnv.ELIZAOS_CLOUD_API_KEY || "",
-            baseUrl: allEnv.ELIZAOS_CLOUD_BASE_URL,
-          },
-        });
+        const elizaConfig = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
         // Base64-encode the JSON before passing it through the shell so an
         // apiKey/baseUrl containing single quotes can't break out of the
         // outer sh -c quoting or inject commands on the remote host.

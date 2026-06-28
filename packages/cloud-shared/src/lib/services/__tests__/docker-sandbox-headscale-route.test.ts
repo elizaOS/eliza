@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { resolveElizaCloudTopology } from "@elizaos/shared";
 import {
+  buildManagedElizaRuntimeConfig,
   DockerSandboxProvider,
   headscaleVpnEnabled,
   requiresHeadscaleRoute,
@@ -155,6 +157,36 @@ describe("resolveDockerSandboxImage", () => {
     expect(resolveDockerSandboxImage(undefined, "ghcr.io/elizaos/eliza:stable")).toBe(
       "ghcr.io/elizaos/eliza:stable",
     );
+  });
+});
+
+describe("buildManagedElizaRuntimeConfig", () => {
+  test("writes canonical cloud runtime + inference routing for managed containers", () => {
+    const config = buildManagedElizaRuntimeConfig({
+      ELIZAOS_CLOUD_API_KEY: "agent-api-key",
+      ELIZAOS_CLOUD_BASE_URL: "https://api.elizacloud.ai/api/v1",
+      ELIZAOS_CLOUD_SMALL_MODEL: "gpt-oss-120b",
+      ELIZAOS_CLOUD_LARGE_MODEL: "zai-glm-4.7",
+      ELIZA_CLOUD_AGENT_ID: "cloud-agent-1",
+    });
+
+    const topology = resolveElizaCloudTopology(config);
+
+    expect(config).toMatchObject({
+      deploymentTarget: { runtime: "cloud", provider: "elizacloud" },
+      linkedAccounts: {
+        elizacloud: { status: "linked", source: "api-key" },
+      },
+      cloud: {
+        enabled: true,
+        apiKey: "agent-api-key",
+        baseUrl: "https://api.elizacloud.ai/api/v1",
+        agentId: "cloud-agent-1",
+      },
+    });
+    expect(topology.runtime).toBe("cloud");
+    expect(topology.services.inference).toBe(true);
+    expect(topology.shouldLoadPlugin).toBe(true);
   });
 });
 
