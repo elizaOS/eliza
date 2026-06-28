@@ -8,7 +8,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
-import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared";
+import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../db/schemas/docker-nodes";
