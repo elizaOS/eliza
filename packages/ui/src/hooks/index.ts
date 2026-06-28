@@ -4,6 +4,7 @@ export * from "./useActivityEvents";
 export * from "./useAutomationDeepLink";
 export * from "./useBugReport.hooks";
 export * from "./useChatAvatarVoiceBridge";
+export * from "./useChatPrefill";
 export * from "./useCloudHandoffPhase";
 export * from "./useConnectorAccounts";
 export * from "./useConnectorReconnect";

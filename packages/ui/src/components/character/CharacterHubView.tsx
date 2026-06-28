@@ -342,7 +342,7 @@ export function CharacterHubView({
 
     function StatChip({ children }: { children: ReactNode }) {
       return (
-        <span className="rounded-full border border-border/40 bg-bg/60 px-2.5 py-1 text-xs font-medium text-muted">
+        <span className="rounded-full bg-surface/60 px-2.5 py-1 text-xs font-medium text-muted">
           {children}
         </span>
       );
@@ -352,7 +352,7 @@ export function CharacterHubView({
     function PersonChip({ name }: { name: string }) {
       const Brand = getBrandIcon(name);
       return (
-        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/40 bg-bg/70 py-1 pl-1 pr-2.5 text-xs font-medium text-txt">
+        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface/60 py-1 pl-1 pr-2.5 text-xs font-medium text-txt">
           <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-2xs font-semibold uppercase text-accent">
             {name.slice(0, 1)}
           </span>
@@ -361,6 +361,17 @@ export function CharacterHubView({
             <Brand className="h-3 w-3 shrink-0 text-muted/70" aria-hidden />
           ) : null}
         </span>
+      );
+    }
+
+    /**
+     * Empty-state CTA shown inside a tile. The tile itself is the button that
+     * navigates to the section where the real action lives, so this reads as the
+     * concrete next step rather than a dead placeholder line.
+     */
+    function EmptyCta({ children }: { children: ReactNode }) {
+      return (
+        <span className="text-xs font-medium text-accent">{children}</span>
       );
     }
 
@@ -381,7 +392,7 @@ export function CharacterHubView({
         ) : null}
       </div>
     ) : (
-      <span className="text-xs text-muted">Tap to define voice + bio</span>
+      <EmptyCta>Define your voice</EmptyCta>
     );
 
     const relationshipsBody: ReactNode =
@@ -395,7 +406,7 @@ export function CharacterHubView({
           ) : null}
         </div>
       ) : (
-        <span className="text-xs text-muted">Builds up as we talk</span>
+        <EmptyCta>Introduce someone in chat</EmptyCta>
       );
 
     const skillsBody: ReactNode =
@@ -409,14 +420,13 @@ export function CharacterHubView({
           ) : null}
         </div>
       ) : (
-        <span className="text-xs text-muted">Learned over time</span>
+        <EmptyCta>Browse skills</EmptyCta>
       );
 
     return [
       {
         section: "personality",
         title: "Personality",
-        meta: styleItems > 0 ? `${styleItems} rules` : null,
         body: personalityBody,
         isLoading: historyLoading && !personalityHasContent,
         isEmpty: !personalityHasContent,
@@ -424,10 +434,6 @@ export function CharacterHubView({
       {
         section: "relationships",
         title: "Relationships",
-        meta:
-          peopleNames.length > 0
-            ? `${peopleNames.length} ${peopleNames.length === 1 ? "person" : "people"}`
-            : null,
         body: relationshipsBody,
         isLoading: relationshipActivityLoading && peopleNames.length === 0,
         isEmpty: peopleNames.length === 0,
@@ -435,12 +441,6 @@ export function CharacterHubView({
       {
         section: "documents",
         title: "Knowledge",
-        meta:
-          customDocumentRecords.length > 0
-            ? `${customDocumentRecords.length} doc${
-                customDocumentRecords.length === 1 ? "" : "s"
-              }`
-            : null,
         body:
           customDocumentRecords.length > 0 ? (
             <span className="text-xs text-muted">
@@ -448,9 +448,7 @@ export function CharacterHubView({
               {customDocumentRecords.length === 1 ? "" : "s"}
             </span>
           ) : (
-            <span className="text-xs text-muted">
-              Upload notes, docs, links
-            </span>
+            <EmptyCta>Upload your first document</EmptyCta>
           ),
         isLoading: documentsLoading && documentRecords.length === 0,
         isEmpty: customDocumentRecords.length === 0,
@@ -458,7 +456,6 @@ export function CharacterHubView({
       {
         section: "skills",
         title: "Skills",
-        meta: activeSkills.length > 0 ? `${activeSkills.length} active` : null,
         body: skillsBody,
         isLoading: learnedSkillsLoading && activeSkills.length === 0,
         isEmpty: activeSkills.length === 0,
@@ -466,12 +463,6 @@ export function CharacterHubView({
       {
         section: "experience",
         title: "Experience",
-        meta:
-          experienceRecords.length > 0
-            ? `${experienceRecords.length} lesson${
-                experienceRecords.length === 1 ? "" : "s"
-              }`
-            : null,
         body: recentExperience ? (
           <span className="line-clamp-2 text-xs italic text-muted">
             {recentExperience.learning ||
@@ -480,7 +471,7 @@ export function CharacterHubView({
               recentExperience.type}
           </span>
         ) : (
-          <span className="text-xs text-muted">Lessons added as we go</span>
+          <EmptyCta>Teach Eliza in chat</EmptyCta>
         ),
         isLoading: experienceLoading && experienceRecords.length === 0,
         isEmpty: experienceRecords.length === 0,
@@ -686,13 +677,13 @@ export function CharacterHubView({
     if (activeSection === "personality") {
       return (
         <div className="flex min-w-0 flex-col gap-6">
-          <section className="rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
+          <section>
             <CharacterIdentityPanel
               bioText={bioText}
               handleFieldEdit={handleFieldEdit}
               t={t}
             />
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/30 pt-4">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-4">
               <div className="flex flex-col gap-1">
                 {characterSaveSuccess ? (
                   <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-2 py-1 text-2xs font-semibold text-status-success">
@@ -733,7 +724,7 @@ export function CharacterHubView({
             t={t}
           />
 
-          <section className="rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
+          <section>
             <CharacterExamplesPanel
               d={d}
               normalizedMessageExamples={normalizedMessageExamples}
@@ -837,7 +828,7 @@ export function CharacterHubView({
             <button
               type="button"
               onClick={() => navigateToSection("overview")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/50 py-1.5 pl-2 pr-3.5 text-sm font-medium text-muted transition-colors hover:border-accent/40 hover:text-txt   "
+              className="inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-txt"
               aria-label="Back to Character hub"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden />

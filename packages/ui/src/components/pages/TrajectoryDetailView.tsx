@@ -533,10 +533,7 @@ export function TrajectoryDetailView({
     <div className="flex h-full min-h-0 flex-col gap-4">
       {orchestratorData ? (
         <PagePanel variant="section" className="p-5">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.Orchestrator")}
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <PagePanel.SummaryCard compact className="px-4 py-3">
               <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
                 {t("trajectorydetailview.DecisionType")}
@@ -569,12 +566,7 @@ export function TrajectoryDetailView({
       Object.keys(trajectory.metadata).length > 0 &&
       formatProviderPayload(trajectory.metadata).trim().length > 0 ? (
         <PagePanel variant="section" className="p-5">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.Metadata", {
-              defaultValue: "Metadata",
-            })}
-          </div>
-          <pre className="mt-4 max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+          <pre className="max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
             {formatProviderPayload(trajectory.metadata)}
           </pre>
         </PagePanel>
@@ -582,11 +574,6 @@ export function TrajectoryDetailView({
 
       {llmCalls.length > 0 ? (
         <PagePanel variant="section" className="px-5 py-4">
-          <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.Pipeline", {
-              defaultValue: "Pipeline",
-            })}
-          </div>
           <TrajectoryPipelineGraph
             nodes={pipelineNodes}
             activeStageId={activeStage}
@@ -627,11 +614,6 @@ export function TrajectoryDetailView({
 
       {toolEvents.length > 0 ? (
         <PagePanel variant="section" className="px-5 py-4">
-          <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.NativeToolEvents", {
-              defaultValue: "Native Tool Events",
-            })}
-          </div>
           <div className="space-y-3">
             {toolEvents.map((event, index) => (
               <ToolCallEventLog
@@ -669,11 +651,6 @@ export function TrajectoryDetailView({
 
       {providerAccesses.length > 0 ? (
         <PagePanel variant="section" className="px-5 py-4">
-          <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.ProviderAccesses", {
-              defaultValue: "Provider Accesses",
-            })}
-          </div>
           <div className="space-y-4">
             {providerAccesses.map((access, index) => (
               <PagePanel variant="inset" key={access.id} className="p-4">

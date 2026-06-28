@@ -305,9 +305,7 @@ export function TaskListHeader({
 }) {
   return (
     <header className="flex items-center gap-2 px-1 py-0.5">
-      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-accent">
-        {icon}
-      </span>
+      <span className="shrink-0 text-accent">{icon}</span>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
         <h1 className="truncate text-base font-semibold text-txt-strong">
           {title}
@@ -367,7 +365,7 @@ export function TaskEmptyState({
         aria-hidden
       />
       <p className="text-sm font-medium text-muted">{title}</p>
-      <p className="sr-only">{hint}</p>
+      <p className="max-w-xs text-xs text-muted/80">{hint}</p>
       {action ? <div>{action}</div> : null}
     </div>
   );

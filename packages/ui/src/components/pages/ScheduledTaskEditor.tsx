@@ -18,7 +18,6 @@ import type { ScheduledTaskVerbName } from "../../api/client-scheduled-tasks";
 import type { AutomationItem } from "../../api/client-types-config";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { scheduledTaskScheduleLabel } from "../../utils/scheduled-task-to-automation";
-import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { FieldLabel } from "../ui/field";
 import { StatusBadge } from "../ui/status-badge";
@@ -68,7 +67,7 @@ export function ScheduledTaskEditor({
   if (!task) {
     return (
       <div className="p-6">
-        <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+        <div className="text-sm text-danger">
           {t("scheduledtask.missing", {
             defaultValue: "This task is no longer available.",
           })}
@@ -87,12 +86,7 @@ export function ScheduledTaskEditor({
     <div className="device-layout mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-4 lg:px-6">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
-            aria-hidden
-          >
-            <CalendarClock className="h-5 w-5" />
-          </span>
+          <CalendarClock className="h-5 w-5 shrink-0 text-accent" aria-hidden />
           <div>
             <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
               {item.title}
@@ -113,7 +107,7 @@ export function ScheduledTaskEditor({
         </Button>
       </div>
 
-      <PagePanel variant="inset" className="space-y-4 rounded-sm p-4">
+      <div className="space-y-4">
         <div className="space-y-1">
           <FieldLabel>
             {t("scheduledtask.schedule", { defaultValue: "Schedule" })}
@@ -131,13 +125,9 @@ export function ScheduledTaskEditor({
             {task.promptInstructions}
           </p>
         </div>
-      </PagePanel>
+      </div>
 
-      {error && (
-        <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
-          {error}
-        </div>
-      )}
+      {error && <div className="text-sm text-danger">{error}</div>}
 
       <div className="flex flex-wrap gap-2">
         {/* Run now = acknowledge (fire the task immediately for manual/paused

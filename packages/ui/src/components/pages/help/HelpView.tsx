@@ -1,7 +1,12 @@
+import { LifeBuoy } from "lucide-react";
 import * as React from "react";
 
+import { useAgentElement } from "../../../agent-surface";
 import { useAppSelector } from "../../../state";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
+import { ChatEmptyStateWithRecommendations } from "../../composites/chat";
+import { Button } from "../../ui/button";
+import { ShellViewAgentSurface } from "../../views/ShellViewAgentSurface";
 import { startTutorial } from "../tutorial/tutorial-controller";
 import {
   HELP_ENTRIES,
@@ -33,6 +38,103 @@ function scoreEntry(entry: HelpEntry, q: string): number {
 }
 
 export function HelpView(): React.ReactElement {
+  return (
+    <ShellViewAgentSurface viewId="help">
+      <HelpViewBody />
+    </ShellViewAgentSurface>
+  );
+}
+
+function HelpDeepLinkButton({
+  entry,
+  onNavigate,
+}: {
+  entry: HelpEntry & { deepLink: HelpDeepLink };
+  onNavigate: (link: HelpDeepLink) => void;
+}): React.ReactElement {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `help-link-${entry.id}`,
+    role: "button",
+    label: entry.deepLink.label,
+    group: "help-links",
+    description: `Open the destination for help entry: ${entry.question}`,
+    onActivate: () => onNavigate(entry.deepLink),
+  });
+
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="default"
+      size="sm"
+      onClick={() => onNavigate(entry.deepLink)}
+      className="mt-3 gap-1"
+    >
+      {entry.deepLink.label} →
+    </Button>
+  );
+}
+
+function HelpEntryItem({
+  entry,
+  open,
+  onToggle,
+  onNavigate,
+}: {
+  entry: HelpEntry;
+  open: boolean;
+  onToggle: () => void;
+  onNavigate: (link: HelpDeepLink) => void;
+}): React.ReactElement {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `help-entry-${entry.id}`,
+    role: "button",
+    label: entry.question,
+    group: "help-entries",
+    status: open ? "expanded" : "collapsed",
+    description: `Expand or collapse the help answer for: ${entry.question}`,
+    onActivate: onToggle,
+  });
+
+  return (
+    <li data-testid={`help-entry-${entry.id}`}>
+      <button
+        ref={ref}
+        {...agentProps}
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-txt/[0.04]"
+      >
+        <span className="text-[14px] font-medium text-txt-strong">
+          {entry.question}
+        </span>
+        <span
+          className="shrink-0 text-txt/40 transition-transform"
+          style={{ transform: open ? "rotate(90deg)" : "none" }}
+          aria-hidden
+        >
+          ›
+        </span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <p className="text-[13px] leading-relaxed text-txt/75">
+            {entry.answer}
+          </p>
+          {entry.deepLink ? (
+            <HelpDeepLinkButton
+              entry={entry as HelpEntry & { deepLink: HelpDeepLink }}
+              onNavigate={onNavigate}
+            />
+          ) : null}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function HelpViewBody(): React.ReactElement {
   const setTab = useAppSelector((s) => s.setTab);
   const [query, setQuery] = React.useState("");
   const [openId, setOpenId] = React.useState<string | null>(null);
@@ -87,71 +189,34 @@ export function HelpView(): React.ReactElement {
     [setTab],
   );
 
-  const searching = query.trim().length > 0;
-
   return (
     <div
       className="flex h-full w-full flex-col overflow-hidden"
       data-testid="help-view"
     >
-      <div className="px-5 pt-5">
-        <h1 className="text-xl font-semibold text-txt-strong">Help</h1>
-        {searching && (
-          <p className="mt-1 text-[13px] leading-relaxed text-txt/60">
-            Showing answers for{" "}
-            <span className="font-medium text-txt-strong">“{query}”</span>
-          </p>
-        )}
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-8 pt-3">
         {results.length === 0 ? (
-          <p className="mt-6 text-center text-[13px] text-txt/50">
-            No answer matched that yet. Try simpler words — or just send your
-            question in the chat and Eliza will help directly.
-          </p>
+          <ChatEmptyStateWithRecommendations
+            icon={LifeBuoy}
+            title="Nothing matched that. Ask Eliza directly, or try one of these:"
+            recommendations={[
+              "How do I change the AI model?",
+              "How do I connect Discord or Telegram?",
+              "Is my data private and stored locally?",
+            ]}
+          />
         ) : (
-          <ul className="flex flex-col divide-y divide-border/40">
+          <ul className="flex flex-col gap-2">
             {results.map((entry) => {
               const open = openId === entry.id;
               return (
-                <li key={entry.id} data-testid={`help-entry-${entry.id}`}>
-                  <button
-                    type="button"
-                    onClick={() => setOpenId(open ? null : entry.id)}
-                    aria-expanded={open}
-                    className="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-txt/[0.04]"
-                  >
-                    <span className="text-[14px] font-medium text-txt-strong">
-                      {entry.question}
-                    </span>
-                    <span
-                      className="shrink-0 text-txt/40 transition-transform"
-                      style={{ transform: open ? "rotate(90deg)" : "none" }}
-                      aria-hidden
-                    >
-                      ›
-                    </span>
-                  </button>
-                  {open && (
-                    <div className="px-4 pb-4">
-                      <p className="text-[13px] leading-relaxed text-txt/75">
-                        {entry.answer}
-                      </p>
-                      {entry.deepLink && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(entry.deepLink as HelpDeepLink)
-                          }
-                          className="mt-3 inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-accent-fg transition-colors hover:bg-accent/90"
-                        >
-                          {entry.deepLink.label} →
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </li>
+                <HelpEntryItem
+                  key={entry.id}
+                  entry={entry}
+                  open={open}
+                  onToggle={() => setOpenId(open ? null : entry.id)}
+                  onNavigate={navigate}
+                />
               );
             })}
           </ul>

@@ -10,6 +10,7 @@ import {
   AlertDialogTrigger,
   Button,
   type ChangeSetData,
+  ChatEmptyStateWithRecommendations,
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
   type CodingAgentRerunFromEventInput,
@@ -91,7 +92,6 @@ import {
   BackChip,
   SparseWatermark,
   TaskCard,
-  TaskEmptyState,
   TaskMetaChip,
   TaskSearchInput,
   TaskStatusChip,
@@ -3538,41 +3538,43 @@ export function OrchestratorWorkbench() {
             className="relative flex flex-1 flex-col gap-3 px-4 pb-28 pt-4"
             data-testid="orchestrator-rail"
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <TaskSearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder={searchLabel}
-                inputRef={searchRef}
-                testId="orchestrator-search"
-                className="min-w-[12rem] flex-1"
-                agentProps={searchAgentProps}
-              />
-              <div className="flex items-center gap-2">
-                <div className="w-40">
-                  <FilterSelect
-                    status={status}
-                    active={statusFilter}
-                    onSelect={setStatusFilter}
-                    t={t}
-                  />
+            {tasks.length > 0 || loading ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <TaskSearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder={searchLabel}
+                  inputRef={searchRef}
+                  testId="orchestrator-search"
+                  className="min-w-[12rem] flex-1"
+                  agentProps={searchAgentProps}
+                />
+                <div className="flex items-center gap-2">
+                  <div className="w-40">
+                    <FilterSelect
+                      status={status}
+                      active={statusFilter}
+                      onSelect={setStatusFilter}
+                      t={t}
+                    />
+                  </div>
+                  <button
+                    ref={showArchivedRef}
+                    type="button"
+                    onClick={() => setShowArchived((value) => !value)}
+                    aria-pressed={showArchived}
+                    className={`inline-flex h-9 items-center gap-2 px-2 text-xs font-medium transition-colors ${
+                      showArchived ? "text-accent" : "text-muted hover:text-txt"
+                    }`}
+                    data-testid="orchestrator-show-archived"
+                    {...showArchivedAgentProps}
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    {showArchivedLabel}
+                  </button>
                 </div>
-                <button
-                  ref={showArchivedRef}
-                  type="button"
-                  onClick={() => setShowArchived((value) => !value)}
-                  aria-pressed={showArchived}
-                  className={`inline-flex h-9 items-center gap-2 px-2 text-xs font-medium transition-colors ${
-                    showArchived ? "text-accent" : "text-muted hover:text-txt"
-                  }`}
-                  data-testid="orchestrator-show-archived"
-                  {...showArchivedAgentProps}
-                >
-                  <Archive className="h-3.5 w-3.5" />
-                  {showArchivedLabel}
-                </button>
               </div>
-            </div>
+            ) : null}
 
             {tasks.length === 0 ? (
               loading ? (
@@ -3582,14 +3584,30 @@ export function OrchestratorWorkbench() {
                   })}
                 </p>
               ) : (
-                <TaskEmptyState
-                  title={t("orchestrator.empty.title", {
-                    defaultValue: "None",
-                  })}
-                  hint={t("orchestrator.empty.hint", {
-                    defaultValue:
-                      "Ask me to start a coding task and it will appear here.",
-                  })}
+                <ChatEmptyStateWithRecommendations
+                  icon={Layers}
+                  title={
+                    backendAbsent
+                      ? t("orchestrator.empty.setupTitle", {
+                          defaultValue:
+                            "Connect a cloud or desktop agent, then describe a task in the chat below.",
+                        })
+                      : t("orchestrator.empty.title", {
+                          defaultValue:
+                            "Describe a task in the chat below and it will appear here.",
+                        })
+                  }
+                  recommendations={[
+                    t("orchestrator.empty.rec.fixBug", {
+                      defaultValue: "Ask Eliza to fix a bug",
+                    }),
+                    t("orchestrator.empty.rec.tests", {
+                      defaultValue: "Ask Eliza to write tests for a module",
+                    }),
+                    t("orchestrator.empty.rec.feature", {
+                      defaultValue: "Ask Eliza to build a small feature",
+                    }),
+                  ]}
                 />
               )
             ) : (

@@ -318,8 +318,8 @@ export function UploadZone({
       <div
         className={`rounded-sm border px-3 py-3 transition-colors ${
           dragOver
-            ? "border-accent/45 bg-accent/8 "
-            : "border-border/35 bg-card/62"
+            ? "border-accent/40 bg-accent/8 "
+            : "border-transparent bg-card/12"
         } ${uploading ? "opacity-60" : ""}`}
       >
         <div className="flex items-center gap-2">
