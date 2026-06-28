@@ -325,12 +325,7 @@ describe("useFirstRunController cloud first-run", () => {
     expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
       "elizacloud",
     );
-    expect(mocks.submitFirstRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: "Demo Agent",
-        sandboxMode: "standard",
-      }),
-    );
+    expect(mocks.submitFirstRun).not.toHaveBeenCalled();
     expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
       launchCompanionOverlay: true,
     });
@@ -401,6 +396,10 @@ describe("useFirstRunController cloud first-run", () => {
     });
 
     expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
+    expect(mocks.submitFirstRun).not.toHaveBeenCalled();
+    expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
+      launchCompanionOverlay: true,
+    });
   });
 
   it("shows the picker (ready, sorted newest-first) without provisioning when the user has agents", async () => {
