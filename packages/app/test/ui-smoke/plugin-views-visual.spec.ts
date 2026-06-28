@@ -101,8 +101,8 @@ test.describe("registered plugin views visual coverage", () => {
         await expect
           .poll(
             async () => {
-              const text = await viewRoot.evaluate((root) =>
-                root.innerText.trim().replace(/\s+/g, " "),
+              const text = await viewRoot.evaluate(
+                (root) => root.textContent?.trim().replace(/\s+/g, " ") ?? "",
               );
               return text.length > 20 && !/^Loading view\b/.test(text);
             },
@@ -148,7 +148,7 @@ test.describe("registered plugin views visual coverage", () => {
             id,
             viewType,
             path: viewPath,
-            visibleText: normalize(root.innerText).slice(0, 4000),
+            visibleText: normalize(root.textContent).slice(0, 4000),
             controls,
             focusedAfterTabs: [],
           } satisfies ViewAudit;
