@@ -332,7 +332,7 @@ async function firstExistingPath(paths) {
 }
 
 const outputPath = await firstExistingPath([
-  path.join(cloudRoot, "packages", "cloud-sdk", "src", "public-routes.ts"),
+  path.join(cloudRoot, "packages", "cloud", "sdk", "src", "public-routes.ts"),
   path.join(cloudRoot, "packages", "sdk", "src", "public-routes.ts"),
 ]);
 const biomeBin = path.join(

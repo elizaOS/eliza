@@ -102,7 +102,7 @@ type KMSClientType = {
  *   4. Once all secrets are rotated, this class and the
  *      `@aws-sdk/client-kms` dependency can be removed.
  *
- * See `packages/cloud-infra/cloud/AWS_RETIREMENT.md` for the full plan.
+ * See `packages/cloud/infra/cloud/AWS_RETIREMENT.md` for the full plan.
  */
 export class AWSKMSProvider implements KMSProvider {
   private static deprecationWarned = false;
@@ -116,7 +116,7 @@ export class AWSKMSProvider implements KMSProvider {
       logger.warn(
         "[AWSKMSProvider] AWS KMS is deprecated and pending removal. " +
           "Migrate to LocalKMSProvider by setting SECRETS_MASTER_KEY and rotating stored secrets. " +
-          "See packages/cloud-infra/cloud/AWS_RETIREMENT.md (Stage 3).",
+          "See packages/cloud/infra/cloud/AWS_RETIREMENT.md (Stage 3).",
       );
     }
   }

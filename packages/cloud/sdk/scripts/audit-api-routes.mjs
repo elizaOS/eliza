@@ -86,7 +86,8 @@ async function readGeneratedRouteMethods(cloudRoot) {
   const sourcePath = path.join(
     cloudRoot,
     "packages",
-    "cloud-sdk",
+    "cloud",
+    "sdk",
     "src",
     "public-routes.ts",
   );

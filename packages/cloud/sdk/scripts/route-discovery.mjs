@@ -20,7 +20,7 @@ const DEFAULT_REEXPORT_RE =
 const HONO_APP_DECL_RE =
   /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+Hono\b/g;
 
-const API_ROOT_CANDIDATES = ["packages/cloud-api", "apps/api", "app/api"];
+const API_ROOT_CANDIDATES = ["packages/cloud/api", "apps/api", "app/api"];
 
 async function pathExists(candidate) {
   try {
@@ -123,7 +123,7 @@ function resolveRouteReexport(specifier, fromFile, cloudRoot) {
   if (specifier.startsWith("@/api/")) {
     const routePath = specifier.slice("@/api/".length);
     const candidates = [
-      path.join(cloudRoot, "packages", "cloud-api", routePath),
+      path.join(cloudRoot, "packages", "cloud", "api", routePath),
       path.join(cloudRoot, "apps", "api", routePath),
       path.join(cloudRoot, "app", "api", routePath),
     ];
