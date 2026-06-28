@@ -22,6 +22,8 @@ export function OrchestratorView() {
   return (
     <SpatialSurface>
       <Escape
+        width="100%"
+        height="100%"
         tui={<OrchestratorSpatialView snapshot={EMPTY_ORCHESTRATOR_SNAPSHOT} />}
       >
         <OrchestratorWorkbench />

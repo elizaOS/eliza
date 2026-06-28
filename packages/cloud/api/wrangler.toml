@@ -318,7 +318,7 @@ REDIS_RATE_LIMITING = "false"
 # single cache read; INFERENCE_OPTIMISTIC_BILLING enables Tier-2 off-path
 # billing (durable backstop). SAFE_BALANCE_THRESHOLD (USD) left empty -> +Inf ->
 # every org takes the safe synchronous-reserve path even if optimistic is on.
-INFERENCE_HOT_PATH_CACHE = "false"
+INFERENCE_HOT_PATH_CACHE = "true"
 INFERENCE_OPTIMISTIC_BILLING = "false"
 SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
