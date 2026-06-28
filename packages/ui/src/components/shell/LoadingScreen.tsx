@@ -44,10 +44,13 @@ export function LoadingScreen({
   useEffect(() => {
     if (!vrmUrl) return;
     const controller = new AbortController();
+    let mounted = true;
+    let settled = false;
 
     (async () => {
       try {
         const response = await fetch(vrmUrl, { signal: controller.signal });
+        if (!mounted) return;
         const contentLength = Number(
           response.headers.get("content-length") || 0,
         );
@@ -62,6 +65,7 @@ export function LoadingScreen({
 
         for (;;) {
           const { done, value } = await reader.read();
+          if (!mounted) return;
           if (done) break;
           received += value.byteLength;
           setFetchProgress(Math.min(received / contentLength, 1));
@@ -70,10 +74,19 @@ export function LoadingScreen({
         setVrmCached(true);
       } catch {
         // Non-blocking — VRM will load normally later.
+      } finally {
+        settled = true;
       }
     })();
 
-    return () => controller.abort();
+    return () => {
+      mounted = false;
+      if (!settled && !controller.signal.aborted) {
+        controller.abort(
+          new DOMException("LoadingScreen unmounted", "AbortError"),
+        );
+      }
+    };
   }, [vrmUrl]);
 
   const meta = PHASE_META[phase];

@@ -415,13 +415,13 @@ test("voice provider matrix returns documented combos for each device + runtime 
   ).toEqual({ tts: "local-inference", asr: "eliza-cloud" });
   expect(
     pickDefaultVoiceProvider({ platform: "web", runtimeMode: "local" }),
-  ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+  ).toEqual({ tts: "edge", asr: "eliza-cloud" });
   expect(
     pickDefaultVoiceProvider({ platform: "desktop", runtimeMode: "cloud" }),
-  ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+  ).toEqual({ tts: "edge", asr: "eliza-cloud" });
   expect(
     pickDefaultVoiceProvider({ platform: "mobile", runtimeMode: "remote" }),
-  ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+  ).toEqual({ tts: "edge", asr: "eliza-cloud" });
 });
 
 test("chat SSE stream emits token + done events for assistant message", async ({

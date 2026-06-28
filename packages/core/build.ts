@@ -768,7 +768,11 @@ async function buildBrowser() {
 			format: "esm",
 			external: browserExternals,
 			sourcemap: true,
-			minify: true, // Minify for browser to reduce bundle size
+			// Bun 1.4 can emit invalid ESM for this large barrel when identifier
+			// minification drops declarations that remain in the final export list.
+			// App/example bundlers minify their final browser assets, so keep this
+			// package artifact readable and valid.
+			minify: false,
 			generateDts: false, // Use the same .d.ts files from Node build
 			skipClean: true,
 			plugins: [],

@@ -256,7 +256,7 @@ describe("scenario PR workflow contract", () => {
       "bun run --cwd packages/scenario-runner test:pr:e2e",
     );
     expect(scenarioRunnerPackage.scripts?.["test:pr:e2e"]).toBe(
-      "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e",
+      "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e && bun run test:orchestrator:pr:e2e",
     );
     // The corpus lane runs the big `packages/test/scenarios` corpus filtered to
     // the `pr-deterministic` lane, keyless, under the same strict proxy.
