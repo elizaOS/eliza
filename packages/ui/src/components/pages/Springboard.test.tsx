@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "../../api";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import {
   SPRINGBOARD_DOCK_LIMIT,
@@ -284,6 +285,25 @@ describe("Springboard image tiles", () => {
     );
     expect(screen.queryByTestId("springboard-image-notes")).toBeNull();
     expect(container.querySelector("svg")).toBeTruthy();
+  });
+
+  it("falls back to a glyph instead of probing API heroes on dedicated cloud agents", () => {
+    vi.spyOn(client, "getBaseUrl").mockReturnValue(
+      "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+    );
+
+    const { container } = render(
+      <Springboard
+        entries={[imageEntry("notes", "Notes", "/api/views/notes/hero")]}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("springboard-image-notes")).toBeNull();
+    const visual = container.querySelector<HTMLElement>(
+      '[data-view-visual="notes"]',
+    );
+    expect(visual?.querySelector("svg")).toBeTruthy();
   });
 });
 

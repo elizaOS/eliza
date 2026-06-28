@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { client } from "../../api";
+import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { isDesktopExternalApiBaseUrl } from "../../api/desktop-external-api-base";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import {
@@ -42,6 +43,7 @@ export function useHomeModelStatus(): HomeModelStatus {
       runtimeMode.state.phase === "loading" ||
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
+      !supportsFullAppShellRoutes(client.getBaseUrl()) ||
       isDesktopExternalApiBaseUrl(client.getBaseUrl())
     ) {
       setStatus(NOT_REQUIRED);

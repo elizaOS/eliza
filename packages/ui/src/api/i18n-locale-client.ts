@@ -9,6 +9,7 @@
 
 import { getBootConfig } from "../config/boot-config";
 import { normalizeLanguage, type UiLanguage } from "../i18n";
+import { supportsFullAppShellRoutes } from "./app-shell-capabilities";
 import { fetchWithCsrf } from "./csrf-client";
 
 function localeBase(): string {
@@ -19,7 +20,8 @@ function localeBase(): string {
 
 function shouldFetchSuggestedLanguage(): boolean {
   if (typeof window === "undefined") return false;
-  if (getBootConfig().apiBase) return true;
+  const apiBase = getBootConfig().apiBase;
+  if (apiBase) return supportsFullAppShellRoutes(apiBase);
   const host = window.location.hostname.toLowerCase();
   return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
 }

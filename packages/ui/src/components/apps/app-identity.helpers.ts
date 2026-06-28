@@ -9,6 +9,8 @@ import {
   Wallet,
   Wrench,
 } from "lucide-react";
+import { client } from "../../api";
+import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
 import type { AppIdentitySource } from "./app-identity";
 
@@ -41,6 +43,9 @@ export function resolveRuntimeImageUrl(value: string): string {
   }
   // API-served hero endpoints must hit the API base, not the asset CDN.
   if (value.startsWith("/api/") || value.startsWith("api/")) {
+    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+      return "";
+    }
     return resolveApiUrl(value.startsWith("/") ? value : `/${value}`);
   }
   // Static asset under apps/app/public/ — resolves to CDN base in releases.
