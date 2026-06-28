@@ -8,6 +8,11 @@
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
+import {
+  getIpKey,
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { createAnonymousUserAndSession } from "@/lib/services/anonymous-session-creator";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -34,6 +39,19 @@ function isValidReturnUrl(url: string): boolean {
 }
 
 const app = new Hono<AppEnv>();
+
+// Anti-sybil: this endpoint mints a brand-new anonymous user + session (→ free
+// metered inference) on every unauthenticated GET. Cap it tightly per source IP
+// (CRITICAL preset: 5 mints / 5 min) so it can't be used to farm anon accounts.
+// IP-keyed because there is no auth identity to key on. Enforced only when
+// REDIS_RATE_LIMITING=true (falls open otherwise — see ops note in #9853).
+app.use(
+  "*",
+  rateLimit({
+    ...RateLimitPresets.CRITICAL,
+    keyGenerator: (c) => `anon-mint:${getIpKey(c)}`,
+  }),
+);
 
 app.get("/", async (c) => {
   try {
