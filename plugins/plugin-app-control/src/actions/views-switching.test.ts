@@ -738,6 +738,79 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(ok).toBe(false);
 			expect(owner).toHaveBeenCalled();
 		});
+
+		// A sub-agent completion relay carries content.source="sub_agent" (not the
+		// origin connector). Its true origin is on metadata.originSource. The
+		// desktop-mode gate must resolve the EFFECTIVE source so a Discord-triggered
+		// build relay doesn't terminate on "Opening your Settings now." instead of
+		// relaying the result.
+		function relayMessage(text: string, metadata: Record<string, unknown>) {
+			return {
+				entityId: "user-1",
+				roomId: "room-1",
+				agentId: "agent-1",
+				content: { text, source: "sub_agent", metadata },
+			};
+		}
+
+		it("gates desktop-only mode off a sub-agent relay that ORIGINATED on a text connector", async () => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				relayMessage("Opening your Settings now.", {
+					subAgent: true,
+					originSource: "discord",
+				}) as never,
+				undefined as never,
+				{ action: "open", view: "settings" } as never,
+			);
+			expect(ok).toBe(false);
+		});
+
+		it("gates desktop-only mode off a sub-agent relay with unknown/missing origin (a relay never navigates UI)", async () => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				relayMessage("Opening your Settings now.", {
+					subAgent: true,
+				}) as never,
+				undefined as never,
+				{ action: "open", view: "settings" } as never,
+			);
+			expect(ok).toBe(false);
+		});
+
+		// Spawning a sub-agent from WITHIN the Eliza app: the dashboard sends
+		// source="client_chat" (a view-capable local surface), so the relay's
+		// originSource is view-capable and desktop navigation stays available — the
+		// user is in the app and CAN see views. Only text connectors are restricted.
+		it.each([
+			"client_chat",
+			"app",
+			"chat",
+			"user_chat",
+		])("keeps desktop navigation for a sub-agent relay that originated in the app (%s)", async (originSource) => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				relayMessage("show my wallet", {
+					subAgent: true,
+					originSource,
+				}) as never,
+				undefined as never,
+				{ action: "show", view: "wallet" } as never,
+			);
+			expect(ok).toBe(true);
+		});
 	});
 
 	describe("BUG PROBE: developerMode-gated views reachable by ACTIVE command", () => {
