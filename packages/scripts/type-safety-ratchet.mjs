@@ -84,18 +84,11 @@ function isProductionSourceFile(relPath) {
 }
 
 function trackedSourceFiles() {
-  const output = execFileSync(
-    "git",
-    [
-      "ls-files",
-      "--",
-      ":(glob)src/**/*.ts",
-      ":(glob)src/**/*.tsx",
-      ":(glob)**/src/**/*.ts",
-      ":(glob)**/src/**/*.tsx",
-    ],
-    { cwd: ROOT, encoding: "utf8" },
-  );
+  const output = execFileSync("git", ["ls-files"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
 
   return [...new Set(output.split("\n").filter(Boolean))]
     .filter(isProductionSourceFile)
@@ -275,12 +268,7 @@ function baselinePayload(files, counts) {
     updatedAt: new Date().toISOString(),
     scope: {
       trackedOnly: true,
-      globs: [
-        "src/**/*.ts",
-        "src/**/*.tsx",
-        "**/src/**/*.ts",
-        "**/src/**/*.tsx",
-      ],
+      globs: ["git ls-files", "src/**/*.ts", "src/**/*.tsx"],
       excludes: [
         "*.d.ts",
         "*.test.ts",
