@@ -137,6 +137,19 @@ export {
 } from "./types";
 export * from "./types/message-service";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
+export type {
+	EnabledViewKinds,
+	ViewKind,
+	ViewKindBearer,
+} from "./types/view-kind";
+export {
+	isAlwaysOnViewKind,
+	isViewKindEnabled,
+	isViewVisible,
+	resolveViewKind,
+	VIEW_KIND_META,
+	VIEW_KINDS,
+} from "./types/view-kind";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export {
