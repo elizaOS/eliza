@@ -853,6 +853,89 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
+  // Fix #2 (PR #9855): a terminal `stopReason === "error"` that nonetheless
+  // captured a real deliverable (the sub-agent edited files / deployed / printed
+  // a verified result before its LAST step errored) must NOT be dropped. The
+  // event is relayed as `task_complete` so the normal completion path runs, and
+  // the durable store is NOT flipped to `errored` (which would show a
+  // false-failed task in history while the user actually got the result).
+  it("native sendPrompt relays a stopReason=error WITH captured deliverable as task_complete, not error", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-error-with-output",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      // Terminal result carries real output but ends with stopReason error.
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "error",
+          content: [
+            { type: "text", text: "Deployed the site to https://x.io" },
+          ],
+        },
+      } as AcpJsonRpcMessage);
+      // client.prompt resolves with the same terminal stopReason.
+      return { stopReason: "error" };
+    });
+
+    const result = await service.sendPrompt(sessionId, "build it");
+
+    const emitted = events.map((e) => e.event);
+    // The deliverable rides the completion path, never a user-facing error.
+    expect(emitted).toContain("task_complete");
+    expect(emitted).not.toContain("error");
+    const completePayload = events.find((e) => e.event === "task_complete")
+      ?.payload as { response?: string; stopReason?: string } | undefined;
+    expect(completePayload?.response).toBe("Deployed the site to https://x.io");
+    // The captured deliverable survives on the result.
+    expect(result.finalText).toBe("Deployed the site to https://x.io");
+    // Durable store is NOT flipped to errored — the work succeeded for the user.
+    expect((await service.getSession(sessionId))?.status).not.toBe("errored");
+  });
+
+  // The other half of Fix #2: a true failure (stopReason error AND no captured
+  // output) still surfaces as a user-facing `error` and marks the store errored.
+  it("native sendPrompt surfaces a stopReason=error with EMPTY deliverable as error", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-error-empty",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      // Terminal result: error with no captured deliverable at all.
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: { stopReason: "error" },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "error" };
+    });
+
+    await service.sendPrompt(sessionId, "build it");
+
+    // No deliverable → genuine failure: error event, errored store status.
+    expect(events).toContain("error");
+    expect(events).not.toContain("task_complete");
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
+  });
+
   it("native sendPrompt re-spaces word-split terminal result text blocks", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     await service.start();

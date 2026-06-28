@@ -382,20 +382,33 @@ describe("emitProgress routing ladder + cadence", () => {
     await rt.dispose();
   });
 
-  it("ack mode does NOT re-ack a verify-retry re-dispatch, even past the room dedup window", async () => {
+  it("ack mode does NOT re-ack a verify-retry re-dispatch when the label cache is empty", async () => {
     process.env.ACPX_PROGRESS_MODE = "ack";
     const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    // Connector that returns NO platformMessageId on send (some transports —
+    // SMS/stdio/X-DM — give back no addressable id). This is the case the
+    // `isVerifyRetrySpawn` guard exists for: with no platformId, the spawn ack's
+    // main message is never recorded in `mainMessageCacheByKey` (index.ts:1329,
+    // gated on a non-empty platformId). So the per-label main-message cache —
+    // which otherwise swallows a same-label re-dispatch on the !state-cachedMainId
+    // branch (index.ts:1257) BEFORE any second send — stays EMPTY here. That
+    // makes this assertion depend on the verify-retry guard itself, not on the
+    // label cache. (Remove `!isVerifyRetrySpawn` from registerProgressHook and
+    // this test goes red: the retry posts a second "working on it now.".)
+    rt.sendMessageToTarget.mockImplementation(async () => ({ metadata: {} }));
+
     // The original user-requested session acks exactly once.
     seedSession(rt, "s-orig", "build-site");
     await fire(rt, "s-orig", "ready");
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
 
     // SubAgentRouter.retryIncompleteBuild re-dispatches a failed build under a
-    // FRESH sessionId minutes later, tagging it `buildVerifyRetryCount > 0`. By
-    // then the per-room ack dedup window (ACK_ROOM_DEDUP_MS, 60s) has expired, so
-    // without the buildVerifyRetryCount guard the retry posts another
-    // "working on it now." — the triple-ack users reported. Advance well past the
-    // dedup window so this asserts the guard, not the room-dedup.
+    // FRESH sessionId minutes later, tagging it `buildVerifyRetryCount > 0`. The
+    // per-session ackedSessions/firstPostInFlight guards never see the new id,
+    // and the per-room ack dedup window (ACK_ROOM_DEDUP_MS, 60s) has expired — so
+    // the only thing standing between the retry and a second "working on it now."
+    // ack is the `isVerifyRetrySpawn` gate in registerProgressHook. Advance well
+    // past the room-dedup window so this asserts the guard, not the room-dedup.
     await vi.advanceTimersByTimeAsync(120_000);
     rt.sessions.set("s-retry", {
       status: "running",
@@ -408,6 +421,35 @@ describe("emitProgress routing ladder + cadence", () => {
     });
     await fire(rt, "s-retry", "ready");
     // Still exactly ONE ack for the whole user request.
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    await rt.dispose();
+  });
+
+  // Companion to the test above: when the connector DOES return a platformId, a
+  // same-room sibling/respawn under the SAME label is already absorbed by the
+  // per-label `mainMessageCacheByKey` reuse path (index.ts:1257) — even past the
+  // room-dedup window and WITHOUT the verify-retry guard. This documents that
+  // second, independent suppression mechanism so a future reader doesn't mistake
+  // the guard for the only thing keeping the ack count at one.
+  it("ack mode reuses the cached main message for a same-label respawn (label-cache path)", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+
+    seedSession(rt, "s-orig", "build-site");
+    await fire(rt, "s-orig", "ready");
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    // A plain respawn (NO buildVerifyRetryCount, so the guard does not apply)
+    // under the same label, past the room-dedup window. The label cache — now
+    // populated because the first send returned a platformId — reuses the cached
+    // main message and skips the network send entirely.
+    await vi.advanceTimersByTimeAsync(120_000);
+    rt.sessions.set("s-respawn", {
+      status: "running",
+      metadata: { source: SOURCE, roomId: ROOM, label: "build-site" },
+    });
+    await fire(rt, "s-respawn", "ready");
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
 
     await rt.dispose();
