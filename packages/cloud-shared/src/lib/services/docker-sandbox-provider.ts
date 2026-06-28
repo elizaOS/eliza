@@ -1263,9 +1263,7 @@ export class DockerSandboxProvider implements SandboxProvider {
             )} | base64 -d > ${shellQuote(`${volumePath}/eliza/eliza.json`)}`,
             DOCKER_CMD_TIMEOUT_MS,
           );
-          logger.info(
-            `[docker-sandbox] Pre-seeded eliza.json on host volume for ${containerName}`,
-          );
+          logger.info(`[docker-sandbox] Pre-seeded eliza.json on host volume for ${containerName}`);
         }
       } catch (preSeedErr) {
         logger.warn(
