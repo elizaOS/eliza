@@ -223,7 +223,7 @@ def next_command_plan() -> list[dict[str, Any]]:
         {
             "id": "e1_npu_nnapi_target_proof_capture",
             "area": "npu",
-            "source": "packages/chip/build/reports/e1_npu_nnapi_proof_readiness.json",
+            "source": "packages/research/chip/build/reports/e1_npu_nnapi_proof_readiness.json",
             "claim_boundary": "operator_commands_only_not_nnapi_acceleration_or_release_evidence",
             "commands": proof_next_commands(),
             "requires": [

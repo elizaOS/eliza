@@ -122,7 +122,7 @@ vastai create instance <offer-id> \
   --disk 120 \
   --label eliza-1-27b \
   --env '-p 8080:8080 -e MODEL_REPO=elizaos/eliza-1 -e MODEL_FILE=bundles/27b/text/eliza-1-27b-128k.gguf -e MODEL_ALIAS=vast/eliza-1-27b' \
-  --onstart-cmd "$(cat ../../cloud-services/vast-pyworker/onstart.sh)"
+  --onstart-cmd "$(cat ../../cloud/services/vast-pyworker/onstart.sh)"
 
 # Get the public endpoint.
 vastai show instance <instance-id>

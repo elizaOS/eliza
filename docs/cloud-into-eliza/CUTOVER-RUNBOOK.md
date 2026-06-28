@@ -46,7 +46,7 @@ DECISIONS.md D5.
 
 - `CLOUDFLARE_API_TOKEN` with **Pages: Edit** + **DNS: Edit** on the elizaOS
   account (same token the GH Actions deploy uses).
-- `CLOUDFLARE_ACCOUNT_ID` (matches `packages/cloud-api/wrangler.toml`).
+- `CLOUDFLARE_ACCOUNT_ID` (matches `packages/cloud/api/wrangler.toml`).
 - The `elizacloud.ai` zone id (fetched in §3).
 
 ```bash
@@ -207,6 +207,6 @@ additive and harmless if `app.*` is taken down.
 - `packages/cloud-frontend/wrangler.toml` (`name = "eliza-cloud"`), its `functions/*`
 - `packages/cloud-frontend/src/lib/eliza-app-url.ts` + the console "Talk to your
   agent" CTA in `src/dashboard/Page.tsx`
-- Origin allowlists in `packages/cloud-shared/src/lib/{cors,utils,security}/`
+- Origin allowlists in `packages/cloud/shared/src/lib/{cors,utils,security}/`
 - `packages/app/scripts/smoke-deeplinks.mjs`
 - `docs/cloud-into-eliza/DECISIONS.md` D5

@@ -8,7 +8,7 @@ by `profile_id`. No hardcoded `if robot == "ainex"` branches.
 ## Where things live
 
 ```
-packages/robot/
+packages/research/robot/
   eliza_robot/profiles/
     schema.py         # Pydantic v2 RobotProfile model + loader
     __init__.py       # load_profile, list_profiles, DEFAULT_PROFILE_ID
@@ -61,7 +61,7 @@ into `assets/profiles/<id>/` and update the YAML if you rename them.
 
 1. Pick a stable `id` (lowercase, dashes): `unitree-h1`, `xarm-7`,
    `koch-arm-v1`.
-2. Create `packages/robot/profiles/<id>/profile.yaml`. Start by copying
+2. Create `packages/research/robot/profiles/<id>/profile.yaml`. Start by copying
    `hiwonder-ainex/profile.yaml` and editing in place. The schema is
    strict — `extra="forbid"` will reject typos and unknown fields.
 3. Fill in `kinematics.joints` from the robot's URDF/MJCF. Indices must be
@@ -69,7 +69,7 @@ into `assets/profiles/<id>/` and update the YAML if you rename them.
    joint as `LEG`, `ARM`, or `HEAD` (arm-only robots use `ARM` for
    everything, optionally with a virtual `HEAD` group if there is a
    camera gimbal).
-4. Drop the assets into `packages/robot/assets/profiles/<id>/`:
+4. Drop the assets into `packages/research/robot/assets/profiles/<id>/`:
    - `ainex.xml` (or `<robot>.xml`) — MJCF
    - `ainex_mjx.xml` — MJX variant (can equal the MJCF if no special
      optimisation is needed)
@@ -89,7 +89,7 @@ into `assets/profiles/<id>/` and update the YAML if you rename them.
 6. Set `bridge_capabilities` to the subset of bridge commands this robot
    actually supports. An arm without legs should not list `walk.set` /
    `walk.command`. The bridge will reject commands not in this set.
-7. Add a test in `packages/robot/tests/test_profiles.py` that loads the
+7. Add a test in `packages/research/robot/tests/test_profiles.py` that loads the
    new profile and asserts its basic invariants (DoF count, group counts,
    asset files exist when populated).
 8. (Optional) Register the profile in the runtime `DEFAULT_PROFILE_ID`
@@ -134,5 +134,5 @@ it. Any field added/removed/renamed in `schema.py` MUST be applied to:
 - the hardcoded `HIWONDER_AINEX_FALLBACK` (until the bridge ships
   `profile.describe`)
 
-`packages/robot/tests/test_profiles.py` and
+`packages/research/robot/tests/test_profiles.py` and
 `plugins/plugin-ainex/test/profile.test.ts` are the safety net.

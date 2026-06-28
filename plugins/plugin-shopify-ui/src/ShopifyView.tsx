@@ -9,10 +9,6 @@
  * the SAME component serves both surfaces. The TUI surface renders the same
  * `ShopifySpatialView` through the terminal registry (see
  * `register-terminal-view.tsx`).
- *
- * The full-screen overlay app (`ShopifyAppView`, registered via `shopify-app.ts`)
- * keeps its own richer Tabs/dialog chrome; this wrapper is the view-manager
- * surface drawn from the cross-modal spatial source of truth.
  */
 
 import { SpatialSurface } from "@elizaos/ui/spatial";

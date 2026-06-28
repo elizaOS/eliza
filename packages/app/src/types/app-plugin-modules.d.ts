@@ -199,14 +199,6 @@ declare module "@elizaos/plugin-training" {
   export * from "@elizaos/app-training";
 }
 
-declare module "@elizaos/app-vincent" {
-  export const VincentView: ComponentType<Record<string, unknown>>;
-}
-
-declare module "@elizaos/plugin-vincent" {
-  export * from "@elizaos/app-vincent";
-}
-
 declare module "@elizaos/app-feed" {
   export {};
 }

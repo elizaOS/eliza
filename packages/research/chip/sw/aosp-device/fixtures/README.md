@@ -17,7 +17,7 @@ Wakeword GGUF (`wakeword.gguf`) is **not** committed; supply one via
 ## Reproducible regeneration
 
 ```sh
-python3 packages/chip/sw/aosp-device/fixtures/scripts/generate_fixtures.py
+python3 packages/research/chip/sw/aosp-device/fixtures/scripts/generate_fixtures.py
 ```
 
 The generator uses a fixed seeded LCG, so re-running produces byte-identical

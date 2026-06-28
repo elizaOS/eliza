@@ -2,7 +2,7 @@
 import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { getLocalPGliteDatabaseUrl } from "../../../cloud-shared/src/db/database-url";
+import { getLocalPGliteDatabaseUrl } from "../../../cloud/shared/src/db/database-url";
 import {
   generateJwtSigningKeys,
   isPlaceholderValue,

@@ -48,7 +48,7 @@ def utc_now() -> str:
 
 def provenance_safe_text(value: str, aosp_tree: Path | None = None) -> str:
     sanitized = value
-    replacements: list[tuple[str, str]] = [(ROOT.as_posix(), "packages/chip")]
+    replacements: list[tuple[str, str]] = [(ROOT.as_posix(), "packages/research/chip")]
     if aosp_tree is not None:
         replacements.append((aosp_tree.as_posix(), "$AOSP_TREE"))
     for source, replacement in replacements:

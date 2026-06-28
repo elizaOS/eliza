@@ -22,10 +22,7 @@
   "launch": {
     "type": "server-launch",
     "capabilities": [],
-    "curatedSlug": "feed",
-    "uiExtension": {
-      "detailPanelId": "feed-operator-dashboard"
-    }
+    "curatedSlug": "feed"
   },
   "curatedApp": {
     "slug": "feed",

@@ -5,9 +5,9 @@ claim_boundary: Inventory of current KiCad concept-board readiness for route pla
   is not DRC, ERC, SI/PI, RF, production-output, routed-STEP, enclosure, fabrication, or end-to-end phone
   readiness evidence.
 inputs:
-  board_file: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
-  routed_layout_burndown: packages/chip/board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml
-  report_path: packages/chip/board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+  board_file: packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  routed_layout_burndown: packages/research/chip/board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml
+  report_path: packages/research/chip/board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
 fail_closed_policy:
   route_execution_ready: false
   fabrication_ready: false
@@ -54,8 +54,8 @@ current_kicad_inventory:
   rf_named_footprint_count: 12
 development_route_snapshot:
   present: true
-  board_file: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
-  intake: packages/chip/board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
+  board_file: packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
+  intake: packages/research/chip/board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
   status: development_routed_tracks_present_not_release
   evidence_class: development_routing_visualization_not_release
   route_count: 153
@@ -537,8 +537,8 @@ development_route_snapshot:
   reason_not_release: development_routing_visualization_not_release
 development_real_footprint_snapshot:
   present: true
-  board_file: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
-  binding: packages/chip/board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
+  board_file: packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
+  binding: packages/research/chip/board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
   status: development_board_bound_to_concrete_footprint_ids_not_release
   evidence_class: real_footprint_development_board_not_release
   footprint_count: 89

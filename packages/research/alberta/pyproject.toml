@@ -8,7 +8,7 @@ version = "0.26.0"
 description = "Implementation of the Alberta Plan for AI Research - continual learning with meta-learned step-sizes"
 readme = "README.md"
 license = "Apache-2.0"
-# Vendored into elizaOS at packages/alberta (see VENDORING.md). Relaxed from
+# Vendored into elizaOS at packages/research/alberta (see VENDORING.md). Relaxed from
 # upstream ">=3.13" to ">=3.12": the continual-RL subset only uses PEP 695
 # syntax (3.12+), and eliza-robot imports it in-process on Python 3.12 where
 # brax/mujoco pin numpy<2. numpy floor relaxed to match that constraint.

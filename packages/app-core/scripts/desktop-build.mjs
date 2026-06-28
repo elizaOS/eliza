@@ -188,7 +188,9 @@ function resolveWorkspacePluginDir(pluginDirName) {
 
 const APP_CORE_PACKAGE_DIR = resolveWorkspacePackageDir("app-core");
 const AGENT_PACKAGE_DIR = resolveWorkspacePackageDir("agent");
-const CLOUD_SDK_PACKAGE_DIR = resolveWorkspacePackageDir("cloud-sdk");
+const CLOUD_SDK_PACKAGE_DIR = resolveWorkspacePackageDir(
+  path.join("cloud", "sdk"),
+);
 const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
 const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-agent-orchestrator",

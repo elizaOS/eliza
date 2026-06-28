@@ -3,7 +3,7 @@
 #
 # This script encodes the pinned recipe in compiler/llvm-build/llvm-pin.json. It is
 # canonical only when executed inside the e1-chip Linux container (per
-# packages/chip/Dockerfile). On macOS arm64 host it fails closed with BLOCKED;
+# packages/research/chip/Dockerfile). On macOS arm64 host it fails closed with BLOCKED;
 # release evidence must come from the container build.
 #
 # Outputs (all relative to repo root):

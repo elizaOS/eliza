@@ -39,7 +39,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]  # packages/chip
+ROOT = Path(__file__).resolve().parents[2]  # packages/research/chip
 HERE = Path(__file__).resolve().parent
 OPENSBI_SRC = ROOT / "external/opensbi/opensbi"
 OPENSBI_PLATFORM_SRC = ROOT / "sw/opensbi/platform/eliza"

@@ -35,7 +35,7 @@ Reference 2025-class flagship dies:
 - **Snapdragon 8 Elite Gen 5: ~126.2 mm²** on N3P.
 - **Dimensity 9500**: N3P, 1+3+4 ARM cores at 4.21 / 3.5 / 2.7 GHz.
 
-## B. Current state in `packages/chip`
+## B. Current state in `packages/research/chip`
 
 - `pd/openlane/config.sky130.json` points at `sky130A` PDK, `sky130_fd_sc_hd`, met5, 2500 × 2500 µm die, 100 ns clock. Real, runnable on open tooling, but 130 nm — three-four generations below mobile flagship, ~six below 2028 target.
 - `docs/spec-db/process-14a-effects.yaml` is a fail-closed planning contract: forbids any "14A tapeout ready" / "1.4 nm power/performance" / "Pixel-class 2028 efficiency" claim until `pd/signoff/manifest.yaml`, `benchmarks/power/workload-plan.yaml`, NanoSheet variability evidence, and frontside-vs-backside PDN tradeoffs are populated. Selected option `blocked_until_foundry_pdk_and_library_selection`.

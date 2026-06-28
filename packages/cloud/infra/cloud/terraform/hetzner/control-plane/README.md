@@ -11,7 +11,7 @@ the elizaOS Cloud control-plane:
 
 The **data plane** (the sandbox cores themselves) is **not** managed here —
 those are provisioned and drained at runtime by
-[`node-autoscaler.ts`](../../../../../cloud-shared/src/lib/services/containers/node-autoscaler.ts)
+[`node-autoscaler.ts`](../../../../../shared/src/lib/services/containers/node-autoscaler.ts)
 which talks to the Hetzner Cloud API directly. See
 [`../ARCHITECTURE.md`](../ARCHITECTURE.md) for the full split.
 
@@ -29,7 +29,7 @@ which talks to the Hetzner Cloud API directly. See
 ## Bootstrap a brand-new control-plane VM (staging)
 
 ```bash
-cd packages/cloud-infra/cloud/terraform/hetzner/control-plane
+cd packages/cloud/infra/cloud/terraform/hetzner/control-plane
 
 # 1. Pull providers + connect remote state.
 terraform init -backend-config=backend-staging.hcl
@@ -45,7 +45,7 @@ terraform plan -var-file=tfvars/staging.tfvars
 terraform apply -var-file=tfvars/staging.tfvars
 
 # 4. Output gives you the VM IP. Copy the cloud env file into place:
-scp packages/cloud-shared/.env.local root@<vm-ip>:/opt/eliza/cloud/.env.local
+scp packages/cloud/shared/.env.local root@<vm-ip>:/opt/eliza/cloud/.env.local
 
 # 5. Trigger first deploy from GitHub Actions
 #    (workflow: deploy-eliza-provisioning-worker.yml, manual dispatch).
@@ -130,7 +130,7 @@ The matching **DNS record** (`headscale[-staging].elizacloud.ai` → CP ipv4,
 in `main.tf`), set the env's FQDN via the `headscale_hostname` tfvar. So the
 full chain — DNS, nginx, cert, cp-router — now reproduces from IaC on a clean CP
 rebuild (`terraform apply` for DNS, then the arm workflow for the rest). See
-[`../../../../../cloud-services/headscale/DEPLOY.md`](../../../../../cloud-services/headscale/DEPLOY.md)
+[`../../../../../services/headscale/DEPLOY.md`](../../../../../services/headscale/DEPLOY.md)
 for the required GitHub Environment secrets and the "why" behind each one.
 
 If you are replacing a CP and must preserve an existing tailnet, copy the state

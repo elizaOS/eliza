@@ -401,7 +401,7 @@ sources:
     topic_tags: [gemmini, chipyard, integration]
     relevance: |
       Build-flow integration that E1's Chipyard pipeline already uses
-      (see packages/chip/scripts/bootstrap_chipyard.sh).
+      (see packages/research/chip/scripts/bootstrap_chipyard.sh).
 
   - id: nvdla
     title: "NVIDIA Deep Learning Accelerator (NVDLA)"

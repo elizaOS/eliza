@@ -202,8 +202,8 @@ if not raw_path.is_file():
     sys.exit(0)
 if not is_under_root(raw_path):
     blocked(
-        "E1_SPEC_RAW_OUTPUT must be an archived artifact under packages/chip before a SPEC transcript can be promoted",
-        [{"name": "artifacts.raw_output", "reason": "raw target output must be archived under packages/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}],
+        "E1_SPEC_RAW_OUTPUT must be an archived artifact under packages/research/chip before a SPEC transcript can be promoted",
+        [{"name": "artifacts.raw_output", "reason": "raw target output must be archived under packages/research/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}],
     )
     sys.exit(0)
 
@@ -234,8 +234,8 @@ if metadata_path is None or not metadata_path.is_file():
     sys.exit(0)
 if not is_under_root(metadata_path):
     blocked(
-        "E1_SPEC_TARGET_METADATA must be an archived artifact under packages/chip before a SPEC transcript can be promoted",
-        [{"name": "artifacts.target_metadata", "reason": "target metadata must be archived under packages/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}],
+        "E1_SPEC_TARGET_METADATA must be an archived artifact under packages/research/chip before a SPEC transcript can be promoted",
+        [{"name": "artifacts.target_metadata", "reason": "target metadata must be archived under packages/research/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}],
         artifacts,
     )
     sys.exit(0)
@@ -291,8 +291,8 @@ if manifest_path is None or not manifest_path.is_file():
     sys.exit(0)
 if not is_under_root(manifest_path):
     blocked(
-        "E1_SPEC_RUN_MANIFEST must be an archived artifact under packages/chip before a SPEC transcript can be promoted",
-        [{"name": "artifacts.spec_run_manifest", "reason": "SPEC run manifest must be archived under packages/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}],
+        "E1_SPEC_RUN_MANIFEST must be an archived artifact under packages/research/chip before a SPEC transcript can be promoted",
+        [{"name": "artifacts.spec_run_manifest", "reason": "SPEC run manifest must be archived under packages/research/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}],
         artifacts,
     )
     sys.exit(0)
@@ -324,7 +324,7 @@ config_path = Path(str(manifest_json.get("config", "")))
 if not config_path.is_absolute():
     config_path = ROOT / config_path
 if not is_under_root(config_path):
-    manifest_errors.append("config must be archived under packages/chip")
+    manifest_errors.append("config must be archived under packages/research/chip")
 elif not config_path.is_file():
     manifest_errors.append("config file is missing")
 elif re.fullmatch(r"[0-9a-fA-F]{64}", str(manifest_json.get("config_sha256", ""))) and sha256_file(config_path).lower() != str(manifest_json.get("config_sha256", "")).lower():
@@ -337,7 +337,7 @@ bundle_path = Path(str(manifest_json.get("result_bundle", "")))
 if not bundle_path.is_absolute():
     bundle_path = ROOT / bundle_path
 if not is_under_root(bundle_path):
-    manifest_errors.append("result_bundle must be archived under packages/chip")
+    manifest_errors.append("result_bundle must be archived under packages/research/chip")
 elif not bundle_path.is_file():
     manifest_errors.append("result_bundle file is missing")
 elif sha256_file(bundle_path).lower() != sha256_file(raw_path).lower():
@@ -424,7 +424,7 @@ capture_target_transcript() {
         capture_path="${RESULTS_DIR}/target-command-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
     fi
     if ! path_under_root "${capture_path}"; then
-        write_blocked "E1_SPEC_TARGET_CAPTURE_OUTPUT must be an archived artifact path under packages/chip"
+        write_blocked "E1_SPEC_TARGET_CAPTURE_OUTPUT must be an archived artifact path under packages/research/chip"
     fi
     mkdir -p "$(dirname "${capture_path}")"
     if ! sh -c "${target_cmd}" > "${capture_path}" 2>&1; then

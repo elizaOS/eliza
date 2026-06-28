@@ -12,13 +12,13 @@ plugins
 packages/app
 packages/steward
 packages/os
-packages/os-homepage
+packages/os/homepage
 packages/benchmarks/*
 !packages/benchmarks/lib
 packages/native
-packages/robot
-packages/chip
-packages/alberta
+packages/research/robot
+packages/research/chip
+packages/research/alberta
 packages/homepage
 packages/docs
 **/*.gguf

@@ -44,7 +44,7 @@ from eliza_robot.perception.entity_slots.slot_config import (
 )
 from eliza_robot.schema.canonical import AINEX_SCHEMA_VERSION
 
-# NOTE: Depends on packages/robot/eliza_robot/bridge/ which is being ported in
+# NOTE: Depends on packages/research/robot/eliza_robot/bridge/ which is being ported in
 # parallel (W3.1).  The TYPE_CHECKING-only import below may fail at runtime
 # until the bridge port lands; consumers should not rely on it yet.
 if TYPE_CHECKING:

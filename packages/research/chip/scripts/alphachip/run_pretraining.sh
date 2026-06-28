@@ -48,7 +48,7 @@ NOW_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 provenance_path() {
     case "$1" in
         "${REPO_ROOT}"/*)
-            printf 'packages/chip/%s' "${1#"${REPO_ROOT}/"}"
+            printf 'packages/research/chip/%s' "${1#"${REPO_ROOT}/"}"
             ;;
         /tmp/*|/var/tmp/*)
             printf '<host-tmp>/%s' "$(basename -- "$1")"

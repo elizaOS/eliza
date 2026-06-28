@@ -6,7 +6,7 @@
  *   GET  /api/v1/apps/:id/deploy/status
  *
  * Route-level happy-path / auth / not-found scenarios are exercised by the
- * existing e2e suite under packages/cloud-api/test/e2e (which has live
+ * existing e2e suite under packages/cloud/api/test/e2e (which has live
  * Postgres + Redis). The helpers below are pure and run without any I/O.
  */
 

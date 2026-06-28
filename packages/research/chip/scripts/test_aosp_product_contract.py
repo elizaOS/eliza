@@ -51,7 +51,7 @@ class AospProductContractTests(unittest.TestCase):
             chip / "local_manifests/eliza.xml",
             """<manifest>
   <project name="eliza" path="vendor/eliza/src">
-    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/device.mk"
+    <linkfile src="packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/device.mk"
               dest="device/eliza/eliza_ai_soc/device.mk" />
   </project>
 </manifest>

@@ -69,10 +69,10 @@ packages/        framework, shared libraries, and product surfaces
   tui/           terminal UI
   skills/        runtime skills knowledge base (USE_SKILL)
   scenario-runner/ scenario + eval harness
-  cloud-api/     managed backend API (Hono on Cloudflare Workers)
+  cloud/api/     managed backend API (Hono on Cloudflare Workers)
   app/           web + desktop dashboard; also hosts the current cloud apex UI
-  cloud-shared/  shared cloud backend: db (Drizzle), billing, services, types
-  cloud-sdk/ cloud-routing/ cloud-infra/  cloud client SDK, model routing, IaC
+  cloud/shared/  shared cloud backend: db (Drizzle), billing, services, types
+  cloud/sdk/ cloud/routing/ cloud/infra/  cloud client SDK, model routing, IaC
   contracts/     on-chain contracts + ABIs
   security/ vault/ soc2-verify/  secrets, key management, compliance tooling
   os/ robot/                     device/OS images, OS landing, robotics

@@ -84,7 +84,7 @@ exercised — boot failed upstream of the app layer.
 eliza-evidence: status=BLOCKED
 RESULT=2
 NEXT_STEP: rebuild/transfer a cvd-host_package matching android16-qpr2 (BP4A.251205.006)
-  per packages/chip/sw/aosp-device/CUTTLEFISH_PREBUILT.md, OR rebuild the eliza vendor
+  per packages/research/chip/sw/aosp-device/CUTTLEFISH_PREBUILT.md, OR rebuild the eliza vendor
   HAL surface (boot + keymint) against the host package's HAL interface versions, so the
   eliza vendor HALs register with this servicemanager. Then re-run the boot.
 ARTIFACT: eliza_cuttlefish_riscv64_kernel.20260522T230328Z.log (full guest kernel.log)

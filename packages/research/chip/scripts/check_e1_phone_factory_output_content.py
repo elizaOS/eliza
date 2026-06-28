@@ -98,7 +98,7 @@ def repo_path(path_text: str) -> Path:
     path = Path(path_text)
     if path.is_absolute():
         return path
-    if path_text.startswith("packages/chip/"):
+    if path_text.startswith("packages/research/chip/"):
         return (ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT) / path
     return ROOT / path
 
@@ -284,7 +284,7 @@ def source_manifest_refs(row: dict[str, Any]) -> list[dict[str, Any]]:
     if candidate_manifest:
         refs.append(
             {
-                "manifest": str(candidate_manifest).removeprefix("packages/chip/"),
+                "manifest": str(candidate_manifest).removeprefix("packages/research/chip/"),
                 "selectors": [str(row.get("path") or "")],
             }
         )

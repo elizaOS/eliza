@@ -31,7 +31,7 @@ wrangler.toml         Worker config (bindings, routes, queues, cron)
 ## Local development
 
 ```bash
-cd packages/cloud-api
+cd packages/cloud/api
 bun install
 bun run dev          # wrangler dev (writes .dev.vars from repo .env/.env.local)
 ```

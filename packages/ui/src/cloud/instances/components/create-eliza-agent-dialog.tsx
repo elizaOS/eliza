@@ -393,7 +393,7 @@ export function CreateElizaAgentDialog({
         agentName: trimmedName,
         autoProvision: autoStart,
       };
-      // The cloud-api tiering rule (cloud-shared/agent-tier.ts) is: dockerImage
+      // The cloud-api tiering rule (cloud/shared/agent-tier.ts) is: dockerImage
       // absent → tier=shared (no container). Present → tier=custom (own Docker
       // container). Send the image ONLY when the user picked "Dedicated".
       if (isDedicated && resolvedDockerImage) {

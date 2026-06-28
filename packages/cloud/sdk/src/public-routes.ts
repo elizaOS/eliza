@@ -13,7 +13,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/elevenlabs/voices/[id]/route.ts",
+    file: "packages/cloud/api/elevenlabs/voices/[id]/route.ts",
   },
   "DELETE /api/v1/advertising/accounts/{id}": {
     method: "DELETE",
@@ -22,7 +22,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/accounts/[id]/route.ts",
+    file: "packages/cloud/api/v1/advertising/accounts/[id]/route.ts",
   },
   "DELETE /api/v1/advertising/campaigns/{id}": {
     method: "DELETE",
@@ -31,7 +31,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/[id]/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/[id]/route.ts",
   },
   "DELETE /api/v1/advertising/creatives/{id}": {
     method: "DELETE",
@@ -40,7 +40,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/creatives/[id]/route.ts",
+    file: "packages/cloud/api/v1/advertising/creatives/[id]/route.ts",
   },
   "DELETE /api/v1/agents/{agentId}/publish": {
     method: "DELETE",
@@ -49,7 +49,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/publish/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/publish/route.ts",
   },
   "DELETE /api/v1/agents/{agentId}/workflows/{workflowId}": {
     method: "DELETE",
@@ -58,7 +58,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "workflowId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/workflows/[workflowId]/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/workflows/[workflowId]/route.ts",
   },
   "DELETE /api/v1/api-keys/{id}": {
     method: "DELETE",
@@ -67,7 +67,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/api-keys/[id]/route.ts",
+    file: "packages/cloud/api/v1/api-keys/[id]/route.ts",
   },
   "DELETE /api/v1/apis/storage/objects/{key}": {
     method: "DELETE",
@@ -76,7 +76,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["key"],
     catchAllPathParams: ["key"],
-    file: "packages/cloud-api/v1/apis/storage/objects/[...key]/route.ts",
+    file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
   },
   "DELETE /api/v1/apps/{id}": {
     method: "DELETE",
@@ -85,7 +85,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/route.ts",
   },
   "DELETE /api/v1/apps/{id}/discord-automation": {
     method: "DELETE",
@@ -94,7 +94,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/discord-automation/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/discord-automation/route.ts",
   },
   "DELETE /api/v1/apps/{id}/domains": {
     method: "DELETE",
@@ -103,7 +103,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/route.ts",
   },
   "DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": {
     method: "DELETE",
@@ -112,7 +112,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id", "domain", "recordId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts",
   },
   "DELETE /api/v1/apps/{id}/generate-image": {
     method: "DELETE",
@@ -121,7 +121,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/generate-image/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/generate-image/route.ts",
   },
   "DELETE /api/v1/apps/{id}/telegram-automation": {
     method: "DELETE",
@@ -130,7 +130,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/telegram-automation/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/telegram-automation/route.ts",
   },
   "DELETE /api/v1/apps/{id}/twitter-automation": {
     method: "DELETE",
@@ -139,7 +139,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/twitter-automation/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/twitter-automation/route.ts",
   },
   "DELETE /api/v1/blooio/disconnect": {
     method: "DELETE",
@@ -148,7 +148,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/blooio/disconnect/route.ts",
+    file: "packages/cloud/api/v1/blooio/disconnect/route.ts",
   },
   "DELETE /api/v1/browser/sessions/{id}": {
     method: "DELETE",
@@ -157,7 +157,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/browser/sessions/[id]/route.ts",
+    file: "packages/cloud/api/v1/browser/sessions/[id]/route.ts",
   },
   "DELETE /api/v1/connections/{platform}": {
     method: "DELETE",
@@ -166,7 +166,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["platform"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/connections/[platform]/route.ts",
+    file: "packages/cloud/api/v1/connections/[platform]/route.ts",
   },
   "DELETE /api/v1/containers/{id}": {
     method: "DELETE",
@@ -175,7 +175,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/containers/[id]/route.ts",
+    file: "packages/cloud/api/v1/containers/[id]/route.ts",
   },
   "DELETE /api/v1/discord/connections/{id}": {
     method: "DELETE",
@@ -184,7 +184,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/connections/[id]/route.ts",
+    file: "packages/cloud/api/v1/discord/connections/[id]/route.ts",
   },
   "DELETE /api/v1/documents/{id}": {
     method: "DELETE",
@@ -193,7 +193,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/[id]/route.ts",
+    file: "packages/cloud/api/v1/documents/[id]/route.ts",
   },
   "DELETE /api/v1/documents/pre-upload": {
     method: "DELETE",
@@ -202,7 +202,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/pre-upload/route.ts",
+    file: "packages/cloud/api/v1/documents/pre-upload/route.ts",
   },
   "DELETE /api/v1/eliza/agents/{agentId}": {
     method: "DELETE",
@@ -211,7 +211,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/route.ts",
   },
   "DELETE /api/v1/eliza/agents/{agentId}/discord": {
     method: "DELETE",
@@ -220,7 +220,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/discord/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/discord/route.ts",
   },
   "DELETE /api/v1/eliza/agents/{agentId}/github": {
     method: "DELETE",
@@ -229,7 +229,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/github/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/github/route.ts",
   },
   "DELETE /api/v1/eliza/gateway-relay/sessions/{sessionId}": {
     method: "DELETE",
@@ -238,7 +238,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["sessionId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/gateway-relay/sessions/[sessionId]/route.ts",
+    file: "packages/cloud/api/v1/eliza/gateway-relay/sessions/[sessionId]/route.ts",
   },
   "DELETE /api/v1/eliza/google/calendar/events/{eventId}": {
     method: "DELETE",
@@ -247,7 +247,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["eventId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/calendar/events/[eventId]/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/calendar/events/[eventId]/route.ts",
   },
   "DELETE /api/v1/gallery/{id}": {
     method: "DELETE",
@@ -256,7 +256,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/gallery/[id]/route.ts",
+    file: "packages/cloud/api/v1/gallery/[id]/route.ts",
   },
   "DELETE /api/v1/generate-image": {
     method: "DELETE",
@@ -265,7 +265,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-image/route.ts",
+    file: "packages/cloud/api/v1/generate-image/route.ts",
   },
   "DELETE /api/v1/generate-music": {
     method: "DELETE",
@@ -274,7 +274,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-music/route.ts",
+    file: "packages/cloud/api/v1/generate-music/route.ts",
   },
   "DELETE /api/v1/generate-video": {
     method: "DELETE",
@@ -283,7 +283,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-video/route.ts",
+    file: "packages/cloud/api/v1/generate-video/route.ts",
   },
   "DELETE /api/v1/mcps/{mcpId}": {
     method: "DELETE",
@@ -292,7 +292,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["mcpId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/mcps/[mcpId]/route.ts",
+    file: "packages/cloud/api/v1/mcps/[mcpId]/route.ts",
   },
   "DELETE /api/v1/mcps/{mcpId}/publish": {
     method: "DELETE",
@@ -301,7 +301,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["mcpId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/mcps/[mcpId]/publish/route.ts",
+    file: "packages/cloud/api/v1/mcps/[mcpId]/publish/route.ts",
   },
   "DELETE /api/v1/oauth/connections/{id}": {
     method: "DELETE",
@@ -310,7 +310,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/connections/[id]/route.ts",
+    file: "packages/cloud/api/v1/oauth/connections/[id]/route.ts",
   },
   "DELETE /api/v1/proxy/birdeye/{path}": {
     method: "DELETE",
@@ -319,7 +319,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/proxy/birdeye/[...path]/route.ts",
+    file: "packages/cloud/api/v1/proxy/birdeye/[...path]/route.ts",
   },
   "DELETE /api/v1/telegram/disconnect": {
     method: "DELETE",
@@ -328,7 +328,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/telegram/disconnect/route.ts",
+    file: "packages/cloud/api/v1/telegram/disconnect/route.ts",
   },
   "DELETE /api/v1/twilio/disconnect": {
     method: "DELETE",
@@ -337,7 +337,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twilio/disconnect/route.ts",
+    file: "packages/cloud/api/v1/twilio/disconnect/route.ts",
   },
   "DELETE /api/v1/twitter/disconnect": {
     method: "DELETE",
@@ -346,7 +346,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twitter/disconnect/route.ts",
+    file: "packages/cloud/api/v1/twitter/disconnect/route.ts",
   },
   "DELETE /api/v1/user/avatar": {
     method: "DELETE",
@@ -355,7 +355,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/avatar/route.ts",
+    file: "packages/cloud/api/v1/user/avatar/route.ts",
   },
   "DELETE /api/v1/voice/{id}": {
     method: "DELETE",
@@ -364,7 +364,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/voice/[id]/route.ts",
+    file: "packages/cloud/api/v1/voice/[id]/route.ts",
   },
   "DELETE /api/v1/whatsapp/disconnect": {
     method: "DELETE",
@@ -373,7 +373,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/whatsapp/disconnect/route.ts",
+    file: "packages/cloud/api/v1/whatsapp/disconnect/route.ts",
   },
   "GET /api/elevenlabs/voices": {
     method: "GET",
@@ -382,7 +382,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/elevenlabs/voices/route.ts",
+    file: "packages/cloud/api/elevenlabs/voices/route.ts",
   },
   "GET /api/elevenlabs/voices/{id}": {
     method: "GET",
@@ -391,7 +391,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/elevenlabs/voices/[id]/route.ts",
+    file: "packages/cloud/api/elevenlabs/voices/[id]/route.ts",
   },
   "GET /api/elevenlabs/voices/jobs": {
     method: "GET",
@@ -400,7 +400,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/elevenlabs/voices/jobs/route.ts",
+    file: "packages/cloud/api/elevenlabs/voices/jobs/route.ts",
   },
   "GET /api/elevenlabs/voices/user": {
     method: "GET",
@@ -409,7 +409,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/elevenlabs/voices/user/route.ts",
+    file: "packages/cloud/api/elevenlabs/voices/user/route.ts",
   },
   "GET /api/elevenlabs/voices/verify/{id}": {
     method: "GET",
@@ -418,7 +418,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/elevenlabs/voices/verify/[id]/route.ts",
+    file: "packages/cloud/api/elevenlabs/voices/verify/[id]/route.ts",
   },
   "GET /api/v1/advertising/accounts": {
     method: "GET",
@@ -427,7 +427,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/accounts/route.ts",
+    file: "packages/cloud/api/v1/advertising/accounts/route.ts",
   },
   "GET /api/v1/advertising/accounts/{id}": {
     method: "GET",
@@ -436,7 +436,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/accounts/[id]/route.ts",
+    file: "packages/cloud/api/v1/advertising/accounts/[id]/route.ts",
   },
   "GET /api/v1/advertising/accounts/{id}/media": {
     method: "GET",
@@ -445,7 +445,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/accounts/[id]/media/route.ts",
+    file: "packages/cloud/api/v1/advertising/accounts/[id]/media/route.ts",
   },
   "GET /api/v1/advertising/campaigns": {
     method: "GET",
@@ -454,7 +454,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/route.ts",
   },
   "GET /api/v1/advertising/campaigns/{id}": {
     method: "GET",
@@ -463,7 +463,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/[id]/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/[id]/route.ts",
   },
   "GET /api/v1/advertising/campaigns/{id}/analytics": {
     method: "GET",
@@ -472,7 +472,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/[id]/analytics/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/[id]/analytics/route.ts",
   },
   "GET /api/v1/advertising/campaigns/{id}/creatives": {
     method: "GET",
@@ -481,7 +481,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/[id]/creatives/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/[id]/creatives/route.ts",
   },
   "GET /api/v1/advertising/creatives/{id}": {
     method: "GET",
@@ -490,7 +490,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/creatives/[id]/route.ts",
+    file: "packages/cloud/api/v1/advertising/creatives/[id]/route.ts",
   },
   "GET /api/v1/affiliates": {
     method: "GET",
@@ -499,7 +499,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/affiliates/route.ts",
+    file: "packages/cloud/api/v1/affiliates/route.ts",
   },
   "GET /api/v1/agents/{agentId}": {
     method: "GET",
@@ -508,7 +508,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/route.ts",
   },
   "GET /api/v1/agents/{agentId}/logs": {
     method: "GET",
@@ -517,7 +517,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/logs/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/logs/route.ts",
   },
   "GET /api/v1/agents/{agentId}/monetization": {
     method: "GET",
@@ -526,7 +526,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/monetization/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/monetization/route.ts",
   },
   "GET /api/v1/agents/{agentId}/status": {
     method: "GET",
@@ -535,7 +535,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/status/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/status/route.ts",
   },
   "GET /api/v1/agents/{agentId}/usage": {
     method: "GET",
@@ -544,7 +544,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/usage/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/usage/route.ts",
   },
   "GET /api/v1/agents/{agentId}/workflows": {
     method: "GET",
@@ -553,7 +553,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/workflows/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/workflows/route.ts",
   },
   "GET /api/v1/agents/{agentId}/workflows/{workflowId}": {
     method: "GET",
@@ -562,7 +562,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "workflowId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/workflows/[workflowId]/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/workflows/[workflowId]/route.ts",
   },
   "GET /api/v1/agents/{agentId}/workflows/executions/{executionId}": {
     method: "GET",
@@ -571,7 +571,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "executionId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/workflows/executions/[executionId]/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/workflows/executions/[executionId]/route.ts",
   },
   "GET /api/v1/agents/by-token": {
     method: "GET",
@@ -580,7 +580,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/by-token/route.ts",
+    file: "packages/cloud/api/v1/agents/by-token/route.ts",
   },
   "GET /api/v1/api-keys": {
     method: "GET",
@@ -589,7 +589,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/api-keys/route.ts",
+    file: "packages/cloud/api/v1/api-keys/route.ts",
   },
   "GET /api/v1/apis/birdeye/{path}": {
     method: "GET",
@@ -598,7 +598,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/apis/birdeye/[...path]/route.ts",
+    file: "packages/cloud/api/v1/apis/birdeye/[...path]/route.ts",
   },
   "GET /api/v1/apis/dexscreener/{path}": {
     method: "GET",
@@ -607,7 +607,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/apis/dexscreener/[...path]/route.ts",
+    file: "packages/cloud/api/v1/apis/dexscreener/[...path]/route.ts",
   },
   "GET /api/v1/apis/storage/list": {
     method: "GET",
@@ -616,7 +616,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apis/storage/list/route.ts",
+    file: "packages/cloud/api/v1/apis/storage/list/route.ts",
   },
   "GET /api/v1/apis/storage/objects/{key}": {
     method: "GET",
@@ -625,7 +625,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["key"],
     catchAllPathParams: ["key"],
-    file: "packages/cloud-api/v1/apis/storage/objects/[...key]/route.ts",
+    file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
   },
   "GET /api/v1/app-auth/session": {
     method: "GET",
@@ -634,7 +634,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/app-auth/session/route.ts",
+    file: "packages/cloud/api/v1/app-auth/session/route.ts",
   },
   "GET /api/v1/app-credits/balance": {
     method: "GET",
@@ -643,7 +643,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/app-credits/balance/route.ts",
+    file: "packages/cloud/api/v1/app-credits/balance/route.ts",
   },
   "GET /api/v1/app-credits/verify": {
     method: "GET",
@@ -652,7 +652,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/app-credits/verify/route.ts",
+    file: "packages/cloud/api/v1/app-credits/verify/route.ts",
   },
   "GET /api/v1/approval-requests": {
     method: "GET",
@@ -661,7 +661,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/approval-requests/route.ts",
+    file: "packages/cloud/api/v1/approval-requests/route.ts",
   },
   "GET /api/v1/approval-requests/{id}": {
     method: "GET",
@@ -670,7 +670,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/approval-requests/[id]/route.ts",
+    file: "packages/cloud/api/v1/approval-requests/[id]/route.ts",
   },
   "GET /api/v1/apps": {
     method: "GET",
@@ -679,7 +679,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/route.ts",
+    file: "packages/cloud/api/v1/apps/route.ts",
   },
   "GET /api/v1/apps-ingress/ask": {
     method: "GET",
@@ -688,7 +688,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps-ingress/ask/route.ts",
+    file: "packages/cloud/api/v1/apps-ingress/ask/route.ts",
   },
   "GET /api/v1/apps/{id}": {
     method: "GET",
@@ -697,7 +697,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/route.ts",
   },
   "GET /api/v1/apps/{id}/analytics": {
     method: "GET",
@@ -706,7 +706,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/analytics/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/analytics/route.ts",
   },
   "GET /api/v1/apps/{id}/analytics/requests": {
     method: "GET",
@@ -715,7 +715,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/analytics/requests/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/analytics/requests/route.ts",
   },
   "GET /api/v1/apps/{id}/characters": {
     method: "GET",
@@ -724,7 +724,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/characters/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/characters/route.ts",
   },
   "GET /api/v1/apps/{id}/charges": {
     method: "GET",
@@ -733,7 +733,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/charges/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/charges/route.ts",
   },
   "GET /api/v1/apps/{id}/charges/{chargeId}": {
     method: "GET",
@@ -742,7 +742,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id", "chargeId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/charges/[chargeId]/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/charges/[chargeId]/route.ts",
   },
   "GET /api/v1/apps/{id}/database": {
     method: "GET",
@@ -751,7 +751,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/database/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/database/route.ts",
   },
   "GET /api/v1/apps/{id}/deploy/status": {
     method: "GET",
@@ -760,7 +760,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/deploy/status/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/deploy/status/route.ts",
   },
   "GET /api/v1/apps/{id}/discord-automation": {
     method: "GET",
@@ -769,7 +769,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/discord-automation/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/discord-automation/route.ts",
   },
   "GET /api/v1/apps/{id}/domains": {
     method: "GET",
@@ -778,7 +778,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/route.ts",
   },
   "GET /api/v1/apps/{id}/domains/{domain}/dns": {
     method: "GET",
@@ -787,7 +787,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id", "domain"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/[domain]/dns/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/[domain]/dns/route.ts",
   },
   "GET /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": {
     method: "GET",
@@ -796,7 +796,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id", "domain", "recordId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts",
   },
   "GET /api/v1/apps/{id}/earnings": {
     method: "GET",
@@ -805,7 +805,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/earnings/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/earnings/route.ts",
   },
   "GET /api/v1/apps/{id}/earnings/history": {
     method: "GET",
@@ -814,7 +814,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/earnings/history/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/earnings/history/route.ts",
   },
   "GET /api/v1/apps/{id}/generate-image": {
     method: "GET",
@@ -823,7 +823,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/generate-image/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/generate-image/route.ts",
   },
   "GET /api/v1/apps/{id}/monetization": {
     method: "GET",
@@ -832,7 +832,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/monetization/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/monetization/route.ts",
   },
   "GET /api/v1/apps/{id}/promote": {
     method: "GET",
@@ -841,7 +841,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/promote/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/promote/route.ts",
   },
   "GET /api/v1/apps/{id}/promote/analytics": {
     method: "GET",
@@ -850,7 +850,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/promote/analytics/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/promote/analytics/route.ts",
   },
   "GET /api/v1/apps/{id}/promote/assets": {
     method: "GET",
@@ -859,7 +859,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/promote/assets/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/promote/assets/route.ts",
   },
   "GET /api/v1/apps/{id}/public": {
     method: "GET",
@@ -868,7 +868,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/public/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/public/route.ts",
   },
   "GET /api/v1/apps/{id}/telegram-automation": {
     method: "GET",
@@ -877,7 +877,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/telegram-automation/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/telegram-automation/route.ts",
   },
   "GET /api/v1/apps/{id}/twitter-automation": {
     method: "GET",
@@ -886,7 +886,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/twitter-automation/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/twitter-automation/route.ts",
   },
   "GET /api/v1/apps/{id}/users": {
     method: "GET",
@@ -895,7 +895,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/users/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/users/route.ts",
   },
   "GET /api/v1/ballots": {
     method: "GET",
@@ -904,7 +904,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/ballots/route.ts",
+    file: "packages/cloud/api/v1/ballots/route.ts",
   },
   "GET /api/v1/ballots/{id}": {
     method: "GET",
@@ -913,7 +913,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/ballots/[id]/route.ts",
+    file: "packages/cloud/api/v1/ballots/[id]/route.ts",
   },
   "GET /api/v1/billing/active": {
     method: "GET",
@@ -922,7 +922,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/billing/active/route.ts",
+    file: "packages/cloud/api/v1/billing/active/route.ts",
   },
   "GET /api/v1/billing/ledger": {
     method: "GET",
@@ -931,7 +931,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/billing/ledger/route.ts",
+    file: "packages/cloud/api/v1/billing/ledger/route.ts",
   },
   "GET /api/v1/billing/settings": {
     method: "GET",
@@ -940,7 +940,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/billing/settings/route.ts",
+    file: "packages/cloud/api/v1/billing/settings/route.ts",
   },
   "GET /api/v1/blooio/status": {
     method: "GET",
@@ -949,7 +949,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/blooio/status/route.ts",
+    file: "packages/cloud/api/v1/blooio/status/route.ts",
   },
   "GET /api/v1/browser/sessions": {
     method: "GET",
@@ -958,7 +958,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/browser/sessions/route.ts",
+    file: "packages/cloud/api/v1/browser/sessions/route.ts",
   },
   "GET /api/v1/browser/sessions/{id}": {
     method: "GET",
@@ -967,7 +967,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/browser/sessions/[id]/route.ts",
+    file: "packages/cloud/api/v1/browser/sessions/[id]/route.ts",
   },
   "GET /api/v1/browser/sessions/{id}/snapshot": {
     method: "GET",
@@ -976,7 +976,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/browser/sessions/[id]/snapshot/route.ts",
+    file: "packages/cloud/api/v1/browser/sessions/[id]/snapshot/route.ts",
   },
   "GET /api/v1/chain/nfts/{chain}/{address}": {
     method: "GET",
@@ -985,7 +985,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/chain/nfts/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/chain/nfts/[chain]/[address]/route.ts",
   },
   "GET /api/v1/chain/tokens/{chain}/{address}": {
     method: "GET",
@@ -994,7 +994,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/chain/tokens/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/chain/tokens/[chain]/[address]/route.ts",
   },
   "GET /api/v1/chain/transfers/{chain}/{address}": {
     method: "GET",
@@ -1003,7 +1003,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/chain/transfers/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/chain/transfers/[chain]/[address]/route.ts",
   },
   "GET /api/v1/cli-auth/{session}/token": {
     method: "GET",
@@ -1012,7 +1012,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["session"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/cli-auth/[session]/token/route.ts",
+    file: "packages/cloud/api/v1/cli-auth/[session]/token/route.ts",
   },
   "GET /api/v1/connections/{platform}": {
     method: "GET",
@@ -1021,7 +1021,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["platform"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/connections/[platform]/route.ts",
+    file: "packages/cloud/api/v1/connections/[platform]/route.ts",
   },
   "GET /api/v1/containers": {
     method: "GET",
@@ -1030,7 +1030,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/containers/route.ts",
+    file: "packages/cloud/api/v1/containers/route.ts",
   },
   "GET /api/v1/credits/balance": {
     method: "GET",
@@ -1039,7 +1039,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/credits/balance/route.ts",
+    file: "packages/cloud/api/v1/credits/balance/route.ts",
   },
   "GET /api/v1/credits/summary": {
     method: "GET",
@@ -1048,7 +1048,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/credits/summary/route.ts",
+    file: "packages/cloud/api/v1/credits/summary/route.ts",
   },
   "GET /api/v1/credits/verify": {
     method: "GET",
@@ -1057,7 +1057,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/credits/verify/route.ts",
+    file: "packages/cloud/api/v1/credits/verify/route.ts",
   },
   "GET /api/v1/device-bus/devices/{deviceId}/intents": {
     method: "GET",
@@ -1066,7 +1066,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["deviceId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/device-bus/devices/[deviceId]/intents/route.ts",
+    file: "packages/cloud/api/v1/device-bus/devices/[deviceId]/intents/route.ts",
   },
   "GET /api/v1/discord/callback": {
     method: "GET",
@@ -1075,7 +1075,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/callback/route.ts",
+    file: "packages/cloud/api/v1/discord/callback/route.ts",
   },
   "GET /api/v1/discord/channels": {
     method: "GET",
@@ -1084,7 +1084,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/channels/route.ts",
+    file: "packages/cloud/api/v1/discord/channels/route.ts",
   },
   "GET /api/v1/discord/connections": {
     method: "GET",
@@ -1093,7 +1093,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/connections/route.ts",
+    file: "packages/cloud/api/v1/discord/connections/route.ts",
   },
   "GET /api/v1/discord/connections/{id}": {
     method: "GET",
@@ -1102,7 +1102,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/connections/[id]/route.ts",
+    file: "packages/cloud/api/v1/discord/connections/[id]/route.ts",
   },
   "GET /api/v1/discord/guilds": {
     method: "GET",
@@ -1111,7 +1111,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/guilds/route.ts",
+    file: "packages/cloud/api/v1/discord/guilds/route.ts",
   },
   "GET /api/v1/discord/oauth": {
     method: "GET",
@@ -1120,7 +1120,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/oauth/route.ts",
+    file: "packages/cloud/api/v1/discord/oauth/route.ts",
   },
   "GET /api/v1/discord/status": {
     method: "GET",
@@ -1129,7 +1129,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/status/route.ts",
+    file: "packages/cloud/api/v1/discord/status/route.ts",
   },
   "GET /api/v1/discovery": {
     method: "GET",
@@ -1138,7 +1138,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discovery/route.ts",
+    file: "packages/cloud/api/v1/discovery/route.ts",
   },
   "GET /api/v1/documents": {
     method: "GET",
@@ -1147,7 +1147,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/route.ts",
+    file: "packages/cloud/api/v1/documents/route.ts",
   },
   "GET /api/v1/documents/{id}": {
     method: "GET",
@@ -1156,7 +1156,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/[id]/route.ts",
+    file: "packages/cloud/api/v1/documents/[id]/route.ts",
   },
   "GET /api/v1/documents/check": {
     method: "GET",
@@ -1165,7 +1165,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/check/route.ts",
+    file: "packages/cloud/api/v1/documents/check/route.ts",
   },
   "GET /api/v1/domains": {
     method: "GET",
@@ -1174,7 +1174,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/domains/route.ts",
+    file: "packages/cloud/api/v1/domains/route.ts",
   },
   "GET /api/v1/domains/resolve": {
     method: "GET",
@@ -1183,7 +1183,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/domains/resolve/route.ts",
+    file: "packages/cloud/api/v1/domains/resolve/route.ts",
   },
   "GET /api/v1/eliza/agents": {
     method: "GET",
@@ -1192,7 +1192,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}": {
     method: "GET",
@@ -1201,7 +1201,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/api/{path}": {
     method: "GET",
@@ -1210,7 +1210,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/api/conversations": {
     method: "GET",
@@ -1219,7 +1219,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/conversations/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages":
     {
@@ -1230,7 +1230,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
       responseMode: "json",
       pathParams: ["agentId", "conversationId"],
       catchAllPathParams: [],
-      file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/route.ts",
+      file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/route.ts",
     },
   "GET /api/v1/eliza/agents/{agentId}/api/health": {
     method: "GET",
@@ -1239,7 +1239,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/health/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/health/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/api/identity": {
     method: "GET",
@@ -1248,7 +1248,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/identity/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/identity/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/api/identity/onchain": {
     method: "GET",
@@ -1257,7 +1257,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/identity/onchain/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/identity/onchain/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/api/wallet/{path}": {
     method: "GET",
@@ -1266,7 +1266,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/backups": {
     method: "GET",
@@ -1275,7 +1275,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/backups/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/backups/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/discord": {
     method: "GET",
@@ -1284,7 +1284,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/discord/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/discord/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/github": {
     method: "GET",
@@ -1293,7 +1293,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/github/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/github/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/github/token": {
     method: "GET",
@@ -1302,7 +1302,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/github/token/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/github/token/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/lifeops/schedule/merged-state": {
     method: "GET",
@@ -1311,7 +1311,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/lifeops/schedule/merged-state/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/lifeops/schedule/merged-state/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/wallet": {
     method: "GET",
@@ -1320,7 +1320,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/wallet/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/wallet/route.ts",
   },
   "GET /api/v1/eliza/gateway-relay/sessions/{sessionId}/next": {
     method: "GET",
@@ -1329,7 +1329,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["sessionId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/gateway-relay/sessions/[sessionId]/next/route.ts",
+    file: "packages/cloud/api/v1/eliza/gateway-relay/sessions/[sessionId]/next/route.ts",
   },
   "GET /api/v1/eliza/github-oauth-complete": {
     method: "GET",
@@ -1338,7 +1338,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/github-oauth-complete/route.ts",
+    file: "packages/cloud/api/v1/eliza/github-oauth-complete/route.ts",
   },
   "GET /api/v1/eliza/google/accounts": {
     method: "GET",
@@ -1347,7 +1347,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/accounts/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/accounts/route.ts",
   },
   "GET /api/v1/eliza/google/calendar/calendars": {
     method: "GET",
@@ -1356,7 +1356,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/calendar/calendars/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/calendar/calendars/route.ts",
   },
   "GET /api/v1/eliza/google/calendar/feed": {
     method: "GET",
@@ -1365,7 +1365,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/calendar/feed/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/calendar/feed/route.ts",
   },
   "GET /api/v1/eliza/google/gmail/read": {
     method: "GET",
@@ -1374,7 +1374,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/gmail/read/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/gmail/read/route.ts",
   },
   "GET /api/v1/eliza/google/gmail/search": {
     method: "GET",
@@ -1383,7 +1383,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/gmail/search/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/gmail/search/route.ts",
   },
   "GET /api/v1/eliza/google/gmail/subscription-headers": {
     method: "GET",
@@ -1392,7 +1392,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/gmail/subscription-headers/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/gmail/subscription-headers/route.ts",
   },
   "GET /api/v1/eliza/google/gmail/triage": {
     method: "GET",
@@ -1401,7 +1401,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/gmail/triage/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/gmail/triage/route.ts",
   },
   "GET /api/v1/eliza/google/status": {
     method: "GET",
@@ -1410,7 +1410,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/status/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/status/route.ts",
   },
   "GET /api/v1/eliza/launch-sessions/{sessionId}": {
     method: "GET",
@@ -1419,7 +1419,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["sessionId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/launch-sessions/[sessionId]/route.ts",
+    file: "packages/cloud/api/v1/eliza/launch-sessions/[sessionId]/route.ts",
   },
   "GET /api/v1/eliza/lifeops/github-complete": {
     method: "GET",
@@ -1428,7 +1428,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/lifeops/github-complete/route.ts",
+    file: "packages/cloud/api/v1/eliza/lifeops/github-complete/route.ts",
   },
   "GET /api/v1/eliza/paypal/popup-callback": {
     method: "GET",
@@ -1437,7 +1437,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "text",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/paypal/popup-callback/route.ts",
+    file: "packages/cloud/api/v1/eliza/paypal/popup-callback/route.ts",
   },
   "GET /api/v1/eliza/paypal/status": {
     method: "GET",
@@ -1446,7 +1446,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/paypal/status/route.ts",
+    file: "packages/cloud/api/v1/eliza/paypal/status/route.ts",
   },
   "GET /api/v1/eliza/plaid/status": {
     method: "GET",
@@ -1455,7 +1455,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/plaid/status/route.ts",
+    file: "packages/cloud/api/v1/eliza/plaid/status/route.ts",
   },
   "GET /api/v1/gallery": {
     method: "GET",
@@ -1464,7 +1464,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/gallery/route.ts",
+    file: "packages/cloud/api/v1/gallery/route.ts",
   },
   "GET /api/v1/gallery/explore": {
     method: "GET",
@@ -1473,7 +1473,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/gallery/explore/route.ts",
+    file: "packages/cloud/api/v1/gallery/explore/route.ts",
   },
   "GET /api/v1/gallery/stats": {
     method: "GET",
@@ -1482,7 +1482,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/gallery/stats/route.ts",
+    file: "packages/cloud/api/v1/gallery/stats/route.ts",
   },
   "GET /api/v1/generate-image": {
     method: "GET",
@@ -1491,7 +1491,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-image/route.ts",
+    file: "packages/cloud/api/v1/generate-image/route.ts",
   },
   "GET /api/v1/generate-music": {
     method: "GET",
@@ -1500,7 +1500,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-music/route.ts",
+    file: "packages/cloud/api/v1/generate-music/route.ts",
   },
   "GET /api/v1/generate-video": {
     method: "GET",
@@ -1509,7 +1509,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-video/route.ts",
+    file: "packages/cloud/api/v1/generate-video/route.ts",
   },
   "GET /api/v1/jobs/{jobId}": {
     method: "GET",
@@ -1518,7 +1518,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["jobId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/jobs/[jobId]/route.ts",
+    file: "packages/cloud/api/v1/jobs/[jobId]/route.ts",
   },
   "GET /api/v1/market/candles/{chain}/{address}": {
     method: "GET",
@@ -1527,7 +1527,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/candles/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/market/candles/[chain]/[address]/route.ts",
   },
   "GET /api/v1/market/portfolio/{chain}/{address}": {
     method: "GET",
@@ -1536,7 +1536,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/portfolio/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/market/portfolio/[chain]/[address]/route.ts",
   },
   "GET /api/v1/market/preview/portfolio/{chain}/{address}": {
     method: "GET",
@@ -1545,7 +1545,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/preview/portfolio/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/market/preview/portfolio/[chain]/[address]/route.ts",
   },
   "GET /api/v1/market/preview/predictions": {
     method: "GET",
@@ -1554,7 +1554,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/preview/predictions/route.ts",
+    file: "packages/cloud/api/v1/market/preview/predictions/route.ts",
   },
   "GET /api/v1/market/preview/price/{chain}/{address}": {
     method: "GET",
@@ -1563,7 +1563,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/preview/price/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/market/preview/price/[chain]/[address]/route.ts",
   },
   "GET /api/v1/market/preview/token/{chain}/{address}": {
     method: "GET",
@@ -1572,7 +1572,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/preview/token/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/market/preview/token/[chain]/[address]/route.ts",
   },
   "GET /api/v1/market/preview/wallet-overview": {
     method: "GET",
@@ -1581,7 +1581,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/preview/wallet-overview/route.ts",
+    file: "packages/cloud/api/v1/market/preview/wallet-overview/route.ts",
   },
   "GET /api/v1/market/price/{chain}/{address}": {
     method: "GET",
@@ -1590,7 +1590,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/price/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/market/price/[chain]/[address]/route.ts",
   },
   "GET /api/v1/market/token/{chain}/{address}": {
     method: "GET",
@@ -1599,7 +1599,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/token/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/market/token/[chain]/[address]/route.ts",
   },
   "GET /api/v1/market/trades/{chain}/{address}": {
     method: "GET",
@@ -1608,7 +1608,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain", "address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/market/trades/[chain]/[address]/route.ts",
+    file: "packages/cloud/api/v1/market/trades/[chain]/[address]/route.ts",
   },
   "GET /api/v1/mcps": {
     method: "GET",
@@ -1617,7 +1617,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/mcps/route.ts",
+    file: "packages/cloud/api/v1/mcps/route.ts",
   },
   "GET /api/v1/mcps/{mcpId}": {
     method: "GET",
@@ -1626,7 +1626,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["mcpId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/mcps/[mcpId]/route.ts",
+    file: "packages/cloud/api/v1/mcps/[mcpId]/route.ts",
   },
   "GET /api/v1/models": {
     method: "GET",
@@ -1635,7 +1635,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/models/route.ts",
+    file: "packages/cloud/api/v1/models/route.ts",
   },
   "GET /api/v1/models/{model}": {
     method: "GET",
@@ -1644,7 +1644,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["model"],
     catchAllPathParams: ["model"],
-    file: "packages/cloud-api/v1/models/[...model]/route.ts",
+    file: "packages/cloud/api/v1/models/[...model]/route.ts",
   },
   "GET /api/v1/models/status": {
     method: "GET",
@@ -1653,7 +1653,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/models/status/route.ts",
+    file: "packages/cloud/api/v1/models/status/route.ts",
   },
   "GET /api/v1/oauth-intents": {
     method: "GET",
@@ -1662,7 +1662,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth-intents/route.ts",
+    file: "packages/cloud/api/v1/oauth-intents/route.ts",
   },
   "GET /api/v1/oauth-intents/{id}": {
     method: "GET",
@@ -1671,7 +1671,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth-intents/[id]/route.ts",
+    file: "packages/cloud/api/v1/oauth-intents/[id]/route.ts",
   },
   "GET /api/v1/oauth/{platform}/callback": {
     method: "GET",
@@ -1680,7 +1680,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["platform"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/[platform]/callback/route.ts",
+    file: "packages/cloud/api/v1/oauth/[platform]/callback/route.ts",
   },
   "GET /api/v1/oauth/callback": {
     method: "GET",
@@ -1689,7 +1689,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/callback/route.ts",
+    file: "packages/cloud/api/v1/oauth/callback/route.ts",
   },
   "GET /api/v1/oauth/callback/{provider}": {
     method: "GET",
@@ -1698,7 +1698,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["provider"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/callback/[provider]/route.ts",
+    file: "packages/cloud/api/v1/oauth/callback/[provider]/route.ts",
   },
   "GET /api/v1/oauth/connections": {
     method: "GET",
@@ -1707,7 +1707,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/connections/route.ts",
+    file: "packages/cloud/api/v1/oauth/connections/route.ts",
   },
   "GET /api/v1/oauth/connections/{id}": {
     method: "GET",
@@ -1716,7 +1716,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/connections/[id]/route.ts",
+    file: "packages/cloud/api/v1/oauth/connections/[id]/route.ts",
   },
   "GET /api/v1/oauth/connections/{id}/token": {
     method: "GET",
@@ -1725,7 +1725,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/connections/[id]/token/route.ts",
+    file: "packages/cloud/api/v1/oauth/connections/[id]/token/route.ts",
   },
   "GET /api/v1/oauth/initiate": {
     method: "GET",
@@ -1734,7 +1734,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/initiate/route.ts",
+    file: "packages/cloud/api/v1/oauth/initiate/route.ts",
   },
   "GET /api/v1/oauth/providers": {
     method: "GET",
@@ -1743,7 +1743,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/providers/route.ts",
+    file: "packages/cloud/api/v1/oauth/providers/route.ts",
   },
   "GET /api/v1/oauth/status": {
     method: "GET",
@@ -1752,7 +1752,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/status/route.ts",
+    file: "packages/cloud/api/v1/oauth/status/route.ts",
   },
   "GET /api/v1/oauth/token/{platform}": {
     method: "GET",
@@ -1761,7 +1761,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["platform"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/token/[platform]/route.ts",
+    file: "packages/cloud/api/v1/oauth/token/[platform]/route.ts",
   },
   "GET /api/v1/payment-requests": {
     method: "GET",
@@ -1770,7 +1770,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/payment-requests/route.ts",
+    file: "packages/cloud/api/v1/payment-requests/route.ts",
   },
   "GET /api/v1/payment-requests/{id}": {
     method: "GET",
@@ -1779,7 +1779,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/payment-requests/[id]/route.ts",
+    file: "packages/cloud/api/v1/payment-requests/[id]/route.ts",
   },
   "GET /api/v1/pricing/summary": {
     method: "GET",
@@ -1788,7 +1788,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/pricing/summary/route.ts",
+    file: "packages/cloud/api/v1/pricing/summary/route.ts",
   },
   "GET /api/v1/proxy/birdeye/{path}": {
     method: "GET",
@@ -1797,7 +1797,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/proxy/birdeye/[...path]/route.ts",
+    file: "packages/cloud/api/v1/proxy/birdeye/[...path]/route.ts",
   },
   "GET /api/v1/redemptions": {
     method: "GET",
@@ -1806,7 +1806,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/redemptions/route.ts",
+    file: "packages/cloud/api/v1/redemptions/route.ts",
   },
   "GET /api/v1/redemptions/{id}": {
     method: "GET",
@@ -1815,7 +1815,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/redemptions/[id]/route.ts",
+    file: "packages/cloud/api/v1/redemptions/[id]/route.ts",
   },
   "GET /api/v1/redemptions/balance": {
     method: "GET",
@@ -1824,7 +1824,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/redemptions/balance/route.ts",
+    file: "packages/cloud/api/v1/redemptions/balance/route.ts",
   },
   "GET /api/v1/redemptions/quote": {
     method: "GET",
@@ -1833,7 +1833,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/redemptions/quote/route.ts",
+    file: "packages/cloud/api/v1/redemptions/quote/route.ts",
   },
   "GET /api/v1/redemptions/status": {
     method: "GET",
@@ -1842,7 +1842,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/redemptions/status/route.ts",
+    file: "packages/cloud/api/v1/redemptions/status/route.ts",
   },
   "GET /api/v1/referrals": {
     method: "GET",
@@ -1851,7 +1851,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/referrals/route.ts",
+    file: "packages/cloud/api/v1/referrals/route.ts",
   },
   "GET /api/v1/remote/sessions": {
     method: "GET",
@@ -1860,7 +1860,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/remote/sessions/route.ts",
+    file: "packages/cloud/api/v1/remote/sessions/route.ts",
   },
   "GET /api/v1/sensitive-requests/{id}": {
     method: "GET",
@@ -1869,7 +1869,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/sensitive-requests/[id]/route.ts",
+    file: "packages/cloud/api/v1/sensitive-requests/[id]/route.ts",
   },
   "GET /api/v1/solana/assets/{address}": {
     method: "GET",
@@ -1878,7 +1878,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/solana/assets/[address]/route.ts",
+    file: "packages/cloud/api/v1/solana/assets/[address]/route.ts",
   },
   "GET /api/v1/solana/methods": {
     method: "GET",
@@ -1887,7 +1887,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/solana/methods/route.ts",
+    file: "packages/cloud/api/v1/solana/methods/route.ts",
   },
   "GET /api/v1/solana/token-accounts/{address}": {
     method: "GET",
@@ -1896,7 +1896,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/solana/token-accounts/[address]/route.ts",
+    file: "packages/cloud/api/v1/solana/token-accounts/[address]/route.ts",
   },
   "GET /api/v1/solana/transactions/{address}": {
     method: "GET",
@@ -1905,7 +1905,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["address"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/solana/transactions/[address]/route.ts",
+    file: "packages/cloud/api/v1/solana/transactions/[address]/route.ts",
   },
   "GET /api/v1/steward/tenants/credentials": {
     method: "GET",
@@ -1914,7 +1914,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/steward/tenants/credentials/route.ts",
+    file: "packages/cloud/api/v1/steward/tenants/credentials/route.ts",
   },
   "GET /api/v1/telegram/chats": {
     method: "GET",
@@ -1923,7 +1923,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/telegram/chats/route.ts",
+    file: "packages/cloud/api/v1/telegram/chats/route.ts",
   },
   "GET /api/v1/telegram/scan-chats": {
     method: "GET",
@@ -1932,7 +1932,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/telegram/scan-chats/route.ts",
+    file: "packages/cloud/api/v1/telegram/scan-chats/route.ts",
   },
   "GET /api/v1/telegram/status": {
     method: "GET",
@@ -1941,7 +1941,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/telegram/status/route.ts",
+    file: "packages/cloud/api/v1/telegram/status/route.ts",
   },
   "GET /api/v1/twilio/status": {
     method: "GET",
@@ -1950,7 +1950,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twilio/status/route.ts",
+    file: "packages/cloud/api/v1/twilio/status/route.ts",
   },
   "GET /api/v1/twitter/callback": {
     method: "GET",
@@ -1959,7 +1959,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twitter/callback/route.ts",
+    file: "packages/cloud/api/v1/twitter/callback/route.ts",
   },
   "GET /api/v1/twitter/status": {
     method: "GET",
@@ -1968,7 +1968,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twitter/status/route.ts",
+    file: "packages/cloud/api/v1/twitter/status/route.ts",
   },
   "GET /api/v1/twitter/token": {
     method: "GET",
@@ -1977,7 +1977,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twitter/token/route.ts",
+    file: "packages/cloud/api/v1/twitter/token/route.ts",
   },
   "GET /api/v1/user": {
     method: "GET",
@@ -1986,7 +1986,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/route.ts",
+    file: "packages/cloud/api/v1/user/route.ts",
   },
   "GET /api/v1/user/avatar": {
     method: "GET",
@@ -1995,7 +1995,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/avatar/route.ts",
+    file: "packages/cloud/api/v1/user/avatar/route.ts",
   },
   "GET /api/v1/user/wallets": {
     method: "GET",
@@ -2004,7 +2004,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/wallets/route.ts",
+    file: "packages/cloud/api/v1/user/wallets/route.ts",
   },
   "GET /api/v1/video/featured": {
     method: "GET",
@@ -2013,7 +2013,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/video/featured/route.ts",
+    file: "packages/cloud/api/v1/video/featured/route.ts",
   },
   "GET /api/v1/video/usage": {
     method: "GET",
@@ -2022,7 +2022,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/video/usage/route.ts",
+    file: "packages/cloud/api/v1/video/usage/route.ts",
   },
   "GET /api/v1/voice-models/catalog": {
     method: "GET",
@@ -2031,7 +2031,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/voice-models/catalog/route.ts",
+    file: "packages/cloud/api/v1/voice-models/catalog/route.ts",
   },
   "GET /api/v1/voice/{id}": {
     method: "GET",
@@ -2040,7 +2040,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/voice/[id]/route.ts",
+    file: "packages/cloud/api/v1/voice/[id]/route.ts",
   },
   "GET /api/v1/voice/jobs": {
     method: "GET",
@@ -2049,7 +2049,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/voice/jobs/route.ts",
+    file: "packages/cloud/api/v1/voice/jobs/route.ts",
   },
   "GET /api/v1/voice/list": {
     method: "GET",
@@ -2058,7 +2058,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/voice/list/route.ts",
+    file: "packages/cloud/api/v1/voice/list/route.ts",
   },
   "GET /api/v1/whatsapp/status": {
     method: "GET",
@@ -2067,7 +2067,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/whatsapp/status/route.ts",
+    file: "packages/cloud/api/v1/whatsapp/status/route.ts",
   },
   "GET /api/v1/x/dms/digest": {
     method: "GET",
@@ -2076,7 +2076,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x/dms/digest/route.ts",
+    file: "packages/cloud/api/v1/x/dms/digest/route.ts",
   },
   "GET /api/v1/x/feed": {
     method: "GET",
@@ -2085,7 +2085,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x/feed/route.ts",
+    file: "packages/cloud/api/v1/x/feed/route.ts",
   },
   "GET /api/v1/x/status": {
     method: "GET",
@@ -2094,7 +2094,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x/status/route.ts",
+    file: "packages/cloud/api/v1/x/status/route.ts",
   },
   "GET /api/v1/x402": {
     method: "GET",
@@ -2103,7 +2103,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x402/route.ts",
+    file: "packages/cloud/api/v1/x402/route.ts",
   },
   "GET /api/v1/x402/requests": {
     method: "GET",
@@ -2112,7 +2112,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x402/requests/route.ts",
+    file: "packages/cloud/api/v1/x402/requests/route.ts",
   },
   "GET /api/v1/x402/requests/{id}": {
     method: "GET",
@@ -2121,7 +2121,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x402/requests/[id]/route.ts",
+    file: "packages/cloud/api/v1/x402/requests/[id]/route.ts",
   },
   "PATCH /api/elevenlabs/voices/{id}": {
     method: "PATCH",
@@ -2130,7 +2130,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/elevenlabs/voices/[id]/route.ts",
+    file: "packages/cloud/api/elevenlabs/voices/[id]/route.ts",
   },
   "PATCH /api/v1/advertising/campaigns/{id}": {
     method: "PATCH",
@@ -2139,7 +2139,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/[id]/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/[id]/route.ts",
   },
   "PATCH /api/v1/advertising/creatives/{id}": {
     method: "PATCH",
@@ -2148,7 +2148,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/creatives/[id]/route.ts",
+    file: "packages/cloud/api/v1/advertising/creatives/[id]/route.ts",
   },
   "PATCH /api/v1/api-keys/{id}": {
     method: "PATCH",
@@ -2157,7 +2157,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/api-keys/[id]/route.ts",
+    file: "packages/cloud/api/v1/api-keys/[id]/route.ts",
   },
   "PATCH /api/v1/apps/{id}": {
     method: "PATCH",
@@ -2166,7 +2166,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/route.ts",
   },
   "PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": {
     method: "PATCH",
@@ -2175,7 +2175,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id", "domain", "recordId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts",
   },
   "PATCH /api/v1/apps/{id}/generate-image": {
     method: "PATCH",
@@ -2184,7 +2184,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/generate-image/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/generate-image/route.ts",
   },
   "PATCH /api/v1/connections/{platform}": {
     method: "PATCH",
@@ -2193,7 +2193,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["platform"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/connections/[platform]/route.ts",
+    file: "packages/cloud/api/v1/connections/[platform]/route.ts",
   },
   "PATCH /api/v1/containers/{id}": {
     method: "PATCH",
@@ -2202,7 +2202,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/containers/[id]/route.ts",
+    file: "packages/cloud/api/v1/containers/[id]/route.ts",
   },
   "PATCH /api/v1/discord/connections/{id}": {
     method: "PATCH",
@@ -2211,7 +2211,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/connections/[id]/route.ts",
+    file: "packages/cloud/api/v1/discord/connections/[id]/route.ts",
   },
   "PATCH /api/v1/eliza/agents/{agentId}": {
     method: "PATCH",
@@ -2220,7 +2220,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/route.ts",
   },
   "PATCH /api/v1/eliza/agents/{agentId}/environment": {
     method: "PATCH",
@@ -2229,7 +2229,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/environment/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/environment/route.ts",
   },
   "PATCH /api/v1/eliza/google/calendar/events/{eventId}": {
     method: "PATCH",
@@ -2238,7 +2238,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["eventId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/calendar/events/[eventId]/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/calendar/events/[eventId]/route.ts",
   },
   "PATCH /api/v1/generate-image": {
     method: "PATCH",
@@ -2247,7 +2247,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-image/route.ts",
+    file: "packages/cloud/api/v1/generate-image/route.ts",
   },
   "PATCH /api/v1/generate-music": {
     method: "PATCH",
@@ -2256,7 +2256,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-music/route.ts",
+    file: "packages/cloud/api/v1/generate-music/route.ts",
   },
   "PATCH /api/v1/generate-video": {
     method: "PATCH",
@@ -2265,7 +2265,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-video/route.ts",
+    file: "packages/cloud/api/v1/generate-video/route.ts",
   },
   "PATCH /api/v1/proxy/birdeye/{path}": {
     method: "PATCH",
@@ -2274,7 +2274,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/proxy/birdeye/[...path]/route.ts",
+    file: "packages/cloud/api/v1/proxy/birdeye/[...path]/route.ts",
   },
   "PATCH /api/v1/user": {
     method: "PATCH",
@@ -2283,7 +2283,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/route.ts",
+    file: "packages/cloud/api/v1/user/route.ts",
   },
   "PATCH /api/v1/user/avatar": {
     method: "PATCH",
@@ -2292,7 +2292,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/avatar/route.ts",
+    file: "packages/cloud/api/v1/user/avatar/route.ts",
   },
   "PATCH /api/v1/user/email": {
     method: "PATCH",
@@ -2301,7 +2301,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/email/route.ts",
+    file: "packages/cloud/api/v1/user/email/route.ts",
   },
   "PATCH /api/v1/voice/{id}": {
     method: "PATCH",
@@ -2310,7 +2310,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/voice/[id]/route.ts",
+    file: "packages/cloud/api/v1/voice/[id]/route.ts",
   },
   "POST /api/elevenlabs/stt": {
     method: "POST",
@@ -2319,7 +2319,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/elevenlabs/stt/route.ts",
+    file: "packages/cloud/api/elevenlabs/stt/route.ts",
   },
   "POST /api/elevenlabs/tts": {
     method: "POST",
@@ -2328,7 +2328,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "binary",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/elevenlabs/tts/route.ts",
+    file: "packages/cloud/api/elevenlabs/tts/route.ts",
   },
   "POST /api/v1/advertising/accounts": {
     method: "POST",
@@ -2337,7 +2337,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/accounts/route.ts",
+    file: "packages/cloud/api/v1/advertising/accounts/route.ts",
   },
   "POST /api/v1/advertising/accounts/{id}/media": {
     method: "POST",
@@ -2346,7 +2346,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/accounts/[id]/media/route.ts",
+    file: "packages/cloud/api/v1/advertising/accounts/[id]/media/route.ts",
   },
   "POST /api/v1/advertising/accounts/discover": {
     method: "POST",
@@ -2355,7 +2355,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/accounts/discover/route.ts",
+    file: "packages/cloud/api/v1/advertising/accounts/discover/route.ts",
   },
   "POST /api/v1/advertising/campaigns": {
     method: "POST",
@@ -2364,7 +2364,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/route.ts",
   },
   "POST /api/v1/advertising/campaigns/{id}/creatives": {
     method: "POST",
@@ -2373,7 +2373,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/[id]/creatives/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/[id]/creatives/route.ts",
   },
   "POST /api/v1/advertising/campaigns/{id}/pause": {
     method: "POST",
@@ -2382,7 +2382,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/[id]/pause/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/[id]/pause/route.ts",
   },
   "POST /api/v1/advertising/campaigns/{id}/start": {
     method: "POST",
@@ -2391,7 +2391,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/advertising/campaigns/[id]/start/route.ts",
+    file: "packages/cloud/api/v1/advertising/campaigns/[id]/start/route.ts",
   },
   "POST /api/v1/affiliates": {
     method: "POST",
@@ -2400,7 +2400,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/affiliates/route.ts",
+    file: "packages/cloud/api/v1/affiliates/route.ts",
   },
   "POST /api/v1/affiliates/link": {
     method: "POST",
@@ -2409,7 +2409,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/affiliates/link/route.ts",
+    file: "packages/cloud/api/v1/affiliates/link/route.ts",
   },
   "POST /api/v1/agent-tokens": {
     method: "POST",
@@ -2418,7 +2418,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agent-tokens/route.ts",
+    file: "packages/cloud/api/v1/agent-tokens/route.ts",
   },
   "POST /api/v1/agents": {
     method: "POST",
@@ -2427,7 +2427,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/route.ts",
+    file: "packages/cloud/api/v1/agents/route.ts",
   },
   "POST /api/v1/agents/{agentId}/message": {
     method: "POST",
@@ -2436,7 +2436,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/message/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/message/route.ts",
   },
   "POST /api/v1/agents/{agentId}/publish": {
     method: "POST",
@@ -2445,7 +2445,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/publish/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/publish/route.ts",
   },
   "POST /api/v1/agents/{agentId}/restart": {
     method: "POST",
@@ -2454,7 +2454,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/restart/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/restart/route.ts",
   },
   "POST /api/v1/agents/{agentId}/resume": {
     method: "POST",
@@ -2463,7 +2463,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/resume/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/resume/route.ts",
   },
   "POST /api/v1/agents/{agentId}/suspend": {
     method: "POST",
@@ -2472,7 +2472,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/suspend/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/suspend/route.ts",
   },
   "POST /api/v1/agents/{agentId}/workflows": {
     method: "POST",
@@ -2481,7 +2481,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/workflows/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/workflows/route.ts",
   },
   "POST /api/v1/agents/{agentId}/workflows/{workflowId}/run": {
     method: "POST",
@@ -2490,7 +2490,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "workflowId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/workflows/[workflowId]/run/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/workflows/[workflowId]/run/route.ts",
   },
   "POST /api/v1/api-keys": {
     method: "POST",
@@ -2499,7 +2499,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/api-keys/route.ts",
+    file: "packages/cloud/api/v1/api-keys/route.ts",
   },
   "POST /api/v1/api-keys/{id}/regenerate": {
     method: "POST",
@@ -2508,7 +2508,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/api-keys/[id]/regenerate/route.ts",
+    file: "packages/cloud/api/v1/api-keys/[id]/regenerate/route.ts",
   },
   "POST /api/v1/apis/storage/presign": {
     method: "POST",
@@ -2517,7 +2517,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apis/storage/presign/route.ts",
+    file: "packages/cloud/api/v1/apis/storage/presign/route.ts",
   },
   "POST /api/v1/apis/tunnels/tailscale/auth-key": {
     method: "POST",
@@ -2526,7 +2526,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apis/tunnels/tailscale/auth-key/route.ts",
+    file: "packages/cloud/api/v1/apis/tunnels/tailscale/auth-key/route.ts",
   },
   "POST /api/v1/app-auth/connect": {
     method: "POST",
@@ -2535,7 +2535,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/app-auth/connect/route.ts",
+    file: "packages/cloud/api/v1/app-auth/connect/route.ts",
   },
   "POST /api/v1/app-credits/checkout": {
     method: "POST",
@@ -2544,7 +2544,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/app-credits/checkout/route.ts",
+    file: "packages/cloud/api/v1/app-credits/checkout/route.ts",
   },
   "POST /api/v1/app/agents": {
     method: "POST",
@@ -2553,7 +2553,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/app/agents/route.ts",
+    file: "packages/cloud/api/v1/app/agents/route.ts",
   },
   "POST /api/v1/approval-requests": {
     method: "POST",
@@ -2562,7 +2562,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/approval-requests/route.ts",
+    file: "packages/cloud/api/v1/approval-requests/route.ts",
   },
   "POST /api/v1/approval-requests/{id}/approve": {
     method: "POST",
@@ -2571,7 +2571,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/approval-requests/[id]/approve/route.ts",
+    file: "packages/cloud/api/v1/approval-requests/[id]/approve/route.ts",
   },
   "POST /api/v1/approval-requests/{id}/cancel": {
     method: "POST",
@@ -2580,7 +2580,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/approval-requests/[id]/cancel/route.ts",
+    file: "packages/cloud/api/v1/approval-requests/[id]/cancel/route.ts",
   },
   "POST /api/v1/approval-requests/{id}/deny": {
     method: "POST",
@@ -2589,7 +2589,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/approval-requests/[id]/deny/route.ts",
+    file: "packages/cloud/api/v1/approval-requests/[id]/deny/route.ts",
   },
   "POST /api/v1/apps": {
     method: "POST",
@@ -2598,7 +2598,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/route.ts",
+    file: "packages/cloud/api/v1/apps/route.ts",
   },
   "POST /api/v1/apps/{id}/charges": {
     method: "POST",
@@ -2607,7 +2607,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/charges/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/charges/route.ts",
   },
   "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": {
     method: "POST",
@@ -2616,7 +2616,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id", "chargeId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/charges/[chargeId]/checkout/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/charges/[chargeId]/checkout/route.ts",
   },
   "POST /api/v1/apps/{id}/chat": {
     method: "POST",
@@ -2625,7 +2625,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "mixed",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/chat/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/chat/route.ts",
   },
   "POST /api/v1/apps/{id}/deploy": {
     method: "POST",
@@ -2634,7 +2634,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/deploy/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/deploy/route.ts",
   },
   "POST /api/v1/apps/{id}/discord-automation": {
     method: "POST",
@@ -2643,7 +2643,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/discord-automation/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/discord-automation/route.ts",
   },
   "POST /api/v1/apps/{id}/discord-automation/post": {
     method: "POST",
@@ -2652,7 +2652,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/discord-automation/post/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/discord-automation/post/route.ts",
   },
   "POST /api/v1/apps/{id}/domains": {
     method: "POST",
@@ -2661,7 +2661,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/route.ts",
   },
   "POST /api/v1/apps/{id}/domains/{domain}/dns": {
     method: "POST",
@@ -2670,7 +2670,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id", "domain"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/[domain]/dns/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/[domain]/dns/route.ts",
   },
   "POST /api/v1/apps/{id}/domains/buy": {
     method: "POST",
@@ -2679,7 +2679,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/buy/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/buy/route.ts",
   },
   "POST /api/v1/apps/{id}/domains/check": {
     method: "POST",
@@ -2688,7 +2688,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/check/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/check/route.ts",
   },
   "POST /api/v1/apps/{id}/domains/status": {
     method: "POST",
@@ -2697,7 +2697,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/status/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/status/route.ts",
   },
   "POST /api/v1/apps/{id}/domains/sync": {
     method: "POST",
@@ -2706,7 +2706,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/sync/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/sync/route.ts",
   },
   "POST /api/v1/apps/{id}/domains/verify": {
     method: "POST",
@@ -2715,7 +2715,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/domains/verify/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/domains/verify/route.ts",
   },
   "POST /api/v1/apps/{id}/earnings/withdraw": {
     method: "POST",
@@ -2724,7 +2724,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/earnings/withdraw/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/earnings/withdraw/route.ts",
   },
   "POST /api/v1/apps/{id}/generate-image": {
     method: "POST",
@@ -2733,7 +2733,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/generate-image/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/generate-image/route.ts",
   },
   "POST /api/v1/apps/{id}/promote": {
     method: "POST",
@@ -2742,7 +2742,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/promote/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/promote/route.ts",
   },
   "POST /api/v1/apps/{id}/promote/assets": {
     method: "POST",
@@ -2751,7 +2751,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/promote/assets/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/promote/assets/route.ts",
   },
   "POST /api/v1/apps/{id}/promote/preview": {
     method: "POST",
@@ -2760,7 +2760,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/promote/preview/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/promote/preview/route.ts",
   },
   "POST /api/v1/apps/{id}/regenerate-api-key": {
     method: "POST",
@@ -2769,7 +2769,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/regenerate-api-key/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/regenerate-api-key/route.ts",
   },
   "POST /api/v1/apps/{id}/telegram-automation": {
     method: "POST",
@@ -2778,7 +2778,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/telegram-automation/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/telegram-automation/route.ts",
   },
   "POST /api/v1/apps/{id}/telegram-automation/post": {
     method: "POST",
@@ -2787,7 +2787,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/telegram-automation/post/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/telegram-automation/post/route.ts",
   },
   "POST /api/v1/apps/{id}/twitter-automation": {
     method: "POST",
@@ -2796,7 +2796,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/twitter-automation/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/twitter-automation/route.ts",
   },
   "POST /api/v1/apps/{id}/twitter-automation/post": {
     method: "POST",
@@ -2805,7 +2805,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/twitter-automation/post/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/twitter-automation/post/route.ts",
   },
   "POST /api/v1/apps/check-name": {
     method: "POST",
@@ -2814,7 +2814,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/check-name/route.ts",
+    file: "packages/cloud/api/v1/apps/check-name/route.ts",
   },
   "POST /api/v1/ballots": {
     method: "POST",
@@ -2823,7 +2823,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/ballots/route.ts",
+    file: "packages/cloud/api/v1/ballots/route.ts",
   },
   "POST /api/v1/ballots/{id}/cancel": {
     method: "POST",
@@ -2832,7 +2832,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/ballots/[id]/cancel/route.ts",
+    file: "packages/cloud/api/v1/ballots/[id]/cancel/route.ts",
   },
   "POST /api/v1/ballots/{id}/distribute": {
     method: "POST",
@@ -2841,7 +2841,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/ballots/[id]/distribute/route.ts",
+    file: "packages/cloud/api/v1/ballots/[id]/distribute/route.ts",
   },
   "POST /api/v1/ballots/{id}/tally": {
     method: "POST",
@@ -2850,7 +2850,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/ballots/[id]/tally/route.ts",
+    file: "packages/cloud/api/v1/ballots/[id]/tally/route.ts",
   },
   "POST /api/v1/ballots/{id}/vote": {
     method: "POST",
@@ -2859,7 +2859,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/ballots/[id]/vote/route.ts",
+    file: "packages/cloud/api/v1/ballots/[id]/vote/route.ts",
   },
   "POST /api/v1/billing/resources/{id}/cancel": {
     method: "POST",
@@ -2868,7 +2868,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/billing/resources/[id]/cancel/route.ts",
+    file: "packages/cloud/api/v1/billing/resources/[id]/cancel/route.ts",
   },
   "POST /api/v1/blooio/connect": {
     method: "POST",
@@ -2877,7 +2877,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/blooio/connect/route.ts",
+    file: "packages/cloud/api/v1/blooio/connect/route.ts",
   },
   "POST /api/v1/blooio/disconnect": {
     method: "POST",
@@ -2886,7 +2886,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/blooio/disconnect/route.ts",
+    file: "packages/cloud/api/v1/blooio/disconnect/route.ts",
   },
   "POST /api/v1/browser/sessions": {
     method: "POST",
@@ -2895,7 +2895,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/browser/sessions/route.ts",
+    file: "packages/cloud/api/v1/browser/sessions/route.ts",
   },
   "POST /api/v1/browser/sessions/{id}/command": {
     method: "POST",
@@ -2904,7 +2904,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/browser/sessions/[id]/command/route.ts",
+    file: "packages/cloud/api/v1/browser/sessions/[id]/command/route.ts",
   },
   "POST /api/v1/browser/sessions/{id}/navigate": {
     method: "POST",
@@ -2913,7 +2913,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/browser/sessions/[id]/navigate/route.ts",
+    file: "packages/cloud/api/v1/browser/sessions/[id]/navigate/route.ts",
   },
   "POST /api/v1/chat": {
     method: "POST",
@@ -2922,7 +2922,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/chat/route.ts",
+    file: "packages/cloud/api/v1/chat/route.ts",
   },
   "POST /api/v1/chat/completions": {
     method: "POST",
@@ -2931,7 +2931,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "mixed",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/chat/completions/route.ts",
+    file: "packages/cloud/api/v1/chat/completions/route.ts",
   },
   "POST /api/v1/coding-containers": {
     method: "POST",
@@ -2940,7 +2940,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/coding-containers/route.ts",
+    file: "packages/cloud/api/v1/coding-containers/route.ts",
   },
   "POST /api/v1/coding-containers/{containerId}/sync": {
     method: "POST",
@@ -2949,7 +2949,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["containerId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/coding-containers/[containerId]/sync/route.ts",
+    file: "packages/cloud/api/v1/coding-containers/[containerId]/sync/route.ts",
   },
   "POST /api/v1/coding-containers/promotions": {
     method: "POST",
@@ -2958,7 +2958,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/coding-containers/promotions/route.ts",
+    file: "packages/cloud/api/v1/coding-containers/promotions/route.ts",
   },
   "POST /api/v1/connections/{platform}": {
     method: "POST",
@@ -2967,7 +2967,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["platform"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/connections/[platform]/route.ts",
+    file: "packages/cloud/api/v1/connections/[platform]/route.ts",
   },
   "POST /api/v1/containers": {
     method: "POST",
@@ -2976,7 +2976,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/containers/route.ts",
+    file: "packages/cloud/api/v1/containers/route.ts",
   },
   "POST /api/v1/credits/checkout": {
     method: "POST",
@@ -2985,7 +2985,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/credits/checkout/route.ts",
+    file: "packages/cloud/api/v1/credits/checkout/route.ts",
   },
   "POST /api/v1/device-bus/devices": {
     method: "POST",
@@ -2994,7 +2994,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/device-bus/devices/route.ts",
+    file: "packages/cloud/api/v1/device-bus/devices/route.ts",
   },
   "POST /api/v1/device-bus/intents": {
     method: "POST",
@@ -3003,7 +3003,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/device-bus/intents/route.ts",
+    file: "packages/cloud/api/v1/device-bus/intents/route.ts",
   },
   "POST /api/v1/discord/channels/refresh": {
     method: "POST",
@@ -3012,7 +3012,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/channels/refresh/route.ts",
+    file: "packages/cloud/api/v1/discord/channels/refresh/route.ts",
   },
   "POST /api/v1/discord/connections": {
     method: "POST",
@@ -3021,7 +3021,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/connections/route.ts",
+    file: "packages/cloud/api/v1/discord/connections/route.ts",
   },
   "POST /api/v1/discord/disconnect": {
     method: "POST",
@@ -3030,7 +3030,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/discord/disconnect/route.ts",
+    file: "packages/cloud/api/v1/discord/disconnect/route.ts",
   },
   "POST /api/v1/documents": {
     method: "POST",
@@ -3039,7 +3039,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/route.ts",
+    file: "packages/cloud/api/v1/documents/route.ts",
   },
   "POST /api/v1/documents/pre-upload": {
     method: "POST",
@@ -3048,7 +3048,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/pre-upload/route.ts",
+    file: "packages/cloud/api/v1/documents/pre-upload/route.ts",
   },
   "POST /api/v1/documents/query": {
     method: "POST",
@@ -3057,7 +3057,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/query/route.ts",
+    file: "packages/cloud/api/v1/documents/query/route.ts",
   },
   "POST /api/v1/documents/submit": {
     method: "POST",
@@ -3066,7 +3066,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/submit/route.ts",
+    file: "packages/cloud/api/v1/documents/submit/route.ts",
   },
   "POST /api/v1/documents/upload-file": {
     method: "POST",
@@ -3075,7 +3075,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/documents/upload-file/route.ts",
+    file: "packages/cloud/api/v1/documents/upload-file/route.ts",
   },
   "POST /api/v1/domains/search": {
     method: "POST",
@@ -3084,7 +3084,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/domains/search/route.ts",
+    file: "packages/cloud/api/v1/domains/search/route.ts",
   },
   "POST /api/v1/eliza/agents": {
     method: "POST",
@@ -3093,7 +3093,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/api/{path}": {
     method: "POST",
@@ -3102,7 +3102,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/api/conversations": {
     method: "POST",
@@ -3111,7 +3111,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/conversations/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages":
     {
@@ -3122,7 +3122,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
       responseMode: "json",
       pathParams: ["agentId", "conversationId"],
       catchAllPathParams: [],
-      file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/route.ts",
+      file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/route.ts",
     },
   "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream":
     {
@@ -3133,7 +3133,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
       responseMode: "stream",
       pathParams: ["agentId", "conversationId"],
       catchAllPathParams: [],
-      file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/stream/route.ts",
+      file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/stream/route.ts",
     },
   "POST /api/v1/eliza/agents/{agentId}/api/identity/register": {
     method: "POST",
@@ -3142,7 +3142,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/identity/register/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/identity/register/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": {
     method: "POST",
@@ -3151,7 +3151,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/bridge": {
     method: "POST",
@@ -3160,7 +3160,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/bridge/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/bridge/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/discord/oauth": {
     method: "POST",
@@ -3169,7 +3169,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/discord/oauth/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/discord/oauth/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/github/link": {
     method: "POST",
@@ -3178,7 +3178,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/github/link/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/github/link/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/github/oauth": {
     method: "POST",
@@ -3187,7 +3187,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/github/oauth/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/github/oauth/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/lifeops/schedule/observations": {
     method: "POST",
@@ -3196,7 +3196,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/lifeops/schedule/observations/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/lifeops/schedule/observations/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/pairing-token": {
     method: "POST",
@@ -3205,7 +3205,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/pairing-token/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/pairing-token/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/provision": {
     method: "POST",
@@ -3214,7 +3214,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/provision/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/provision/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/restore": {
     method: "POST",
@@ -3223,7 +3223,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/restore/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/restore/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/resume": {
     method: "POST",
@@ -3232,7 +3232,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/resume/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/resume/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/sleep": {
     method: "POST",
@@ -3241,7 +3241,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/sleep/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/sleep/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/snapshot": {
     method: "POST",
@@ -3250,7 +3250,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/snapshot/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/snapshot/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/stream": {
     method: "POST",
@@ -3259,7 +3259,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "stream",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/stream/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/stream/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/suspend": {
     method: "POST",
@@ -3268,7 +3268,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/suspend/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/suspend/route.ts",
   },
   "POST /api/v1/eliza/agents/{agentId}/wake": {
     method: "POST",
@@ -3277,7 +3277,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/wake/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/wake/route.ts",
   },
   "POST /api/v1/eliza/discord/gateway-agent": {
     method: "POST",
@@ -3286,7 +3286,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/discord/gateway-agent/route.ts",
+    file: "packages/cloud/api/v1/eliza/discord/gateway-agent/route.ts",
   },
   "POST /api/v1/eliza/gateway-relay/sessions": {
     method: "POST",
@@ -3295,7 +3295,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/gateway-relay/sessions/route.ts",
+    file: "packages/cloud/api/v1/eliza/gateway-relay/sessions/route.ts",
   },
   "POST /api/v1/eliza/gateway-relay/sessions/{sessionId}/responses": {
     method: "POST",
@@ -3304,7 +3304,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["sessionId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/gateway-relay/sessions/[sessionId]/responses/route.ts",
+    file: "packages/cloud/api/v1/eliza/gateway-relay/sessions/[sessionId]/responses/route.ts",
   },
   "POST /api/v1/eliza/google/calendar/events": {
     method: "POST",
@@ -3313,7 +3313,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/calendar/events/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/calendar/events/route.ts",
   },
   "POST /api/v1/eliza/google/connect/initiate": {
     method: "POST",
@@ -3322,7 +3322,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/connect/initiate/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/connect/initiate/route.ts",
   },
   "POST /api/v1/eliza/google/disconnect": {
     method: "POST",
@@ -3331,7 +3331,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/disconnect/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/disconnect/route.ts",
   },
   "POST /api/v1/eliza/google/gmail/message-send": {
     method: "POST",
@@ -3340,7 +3340,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/gmail/message-send/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/gmail/message-send/route.ts",
   },
   "POST /api/v1/eliza/google/gmail/reply-send": {
     method: "POST",
@@ -3349,7 +3349,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/google/gmail/reply-send/route.ts",
+    file: "packages/cloud/api/v1/eliza/google/gmail/reply-send/route.ts",
   },
   "POST /api/v1/eliza/paypal/authorize": {
     method: "POST",
@@ -3358,7 +3358,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/paypal/authorize/route.ts",
+    file: "packages/cloud/api/v1/eliza/paypal/authorize/route.ts",
   },
   "POST /api/v1/eliza/paypal/callback": {
     method: "POST",
@@ -3367,7 +3367,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/paypal/callback/route.ts",
+    file: "packages/cloud/api/v1/eliza/paypal/callback/route.ts",
   },
   "POST /api/v1/eliza/paypal/refresh": {
     method: "POST",
@@ -3376,7 +3376,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/paypal/refresh/route.ts",
+    file: "packages/cloud/api/v1/eliza/paypal/refresh/route.ts",
   },
   "POST /api/v1/eliza/paypal/transactions": {
     method: "POST",
@@ -3385,7 +3385,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/paypal/transactions/route.ts",
+    file: "packages/cloud/api/v1/eliza/paypal/transactions/route.ts",
   },
   "POST /api/v1/eliza/plaid/exchange": {
     method: "POST",
@@ -3394,7 +3394,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/plaid/exchange/route.ts",
+    file: "packages/cloud/api/v1/eliza/plaid/exchange/route.ts",
   },
   "POST /api/v1/eliza/plaid/link-token": {
     method: "POST",
@@ -3403,7 +3403,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/plaid/link-token/route.ts",
+    file: "packages/cloud/api/v1/eliza/plaid/link-token/route.ts",
   },
   "POST /api/v1/eliza/plaid/sync": {
     method: "POST",
@@ -3412,7 +3412,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/plaid/sync/route.ts",
+    file: "packages/cloud/api/v1/eliza/plaid/sync/route.ts",
   },
   "POST /api/v1/embeddings": {
     method: "POST",
@@ -3421,7 +3421,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/embeddings/route.ts",
+    file: "packages/cloud/api/v1/embeddings/route.ts",
   },
   "POST /api/v1/extract": {
     method: "POST",
@@ -3430,7 +3430,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/extract/route.ts",
+    file: "packages/cloud/api/v1/extract/route.ts",
   },
   "POST /api/v1/generate-image": {
     method: "POST",
@@ -3439,7 +3439,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-image/route.ts",
+    file: "packages/cloud/api/v1/generate-image/route.ts",
   },
   "POST /api/v1/generate-music": {
     method: "POST",
@@ -3448,7 +3448,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-music/route.ts",
+    file: "packages/cloud/api/v1/generate-music/route.ts",
   },
   "POST /api/v1/generate-prompts": {
     method: "POST",
@@ -3457,7 +3457,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-prompts/route.ts",
+    file: "packages/cloud/api/v1/generate-prompts/route.ts",
   },
   "POST /api/v1/generate-video": {
     method: "POST",
@@ -3466,7 +3466,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-video/route.ts",
+    file: "packages/cloud/api/v1/generate-video/route.ts",
   },
   "POST /api/v1/mcps": {
     method: "POST",
@@ -3475,7 +3475,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/mcps/route.ts",
+    file: "packages/cloud/api/v1/mcps/route.ts",
   },
   "POST /api/v1/mcps/{mcpId}/publish": {
     method: "POST",
@@ -3484,7 +3484,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["mcpId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/mcps/[mcpId]/publish/route.ts",
+    file: "packages/cloud/api/v1/mcps/[mcpId]/publish/route.ts",
   },
   "POST /api/v1/messages": {
     method: "POST",
@@ -3493,7 +3493,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "mixed",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/messages/route.ts",
+    file: "packages/cloud/api/v1/messages/route.ts",
   },
   "POST /api/v1/models/status": {
     method: "POST",
@@ -3502,7 +3502,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/models/status/route.ts",
+    file: "packages/cloud/api/v1/models/status/route.ts",
   },
   "POST /api/v1/oauth-intents": {
     method: "POST",
@@ -3511,7 +3511,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth-intents/route.ts",
+    file: "packages/cloud/api/v1/oauth-intents/route.ts",
   },
   "POST /api/v1/oauth-intents/{id}/cancel": {
     method: "POST",
@@ -3520,7 +3520,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth-intents/[id]/cancel/route.ts",
+    file: "packages/cloud/api/v1/oauth-intents/[id]/cancel/route.ts",
   },
   "POST /api/v1/oauth/{platform}/initiate": {
     method: "POST",
@@ -3529,7 +3529,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["platform"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/[platform]/initiate/route.ts",
+    file: "packages/cloud/api/v1/oauth/[platform]/initiate/route.ts",
   },
   "POST /api/v1/oauth/callback/{provider}": {
     method: "POST",
@@ -3538,7 +3538,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["provider"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/callback/[provider]/route.ts",
+    file: "packages/cloud/api/v1/oauth/callback/[provider]/route.ts",
   },
   "POST /api/v1/oauth/connect": {
     method: "POST",
@@ -3547,7 +3547,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/connect/route.ts",
+    file: "packages/cloud/api/v1/oauth/connect/route.ts",
   },
   "POST /api/v1/oauth/initiate": {
     method: "POST",
@@ -3556,7 +3556,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/oauth/initiate/route.ts",
+    file: "packages/cloud/api/v1/oauth/initiate/route.ts",
   },
   "POST /api/v1/payment-requests": {
     method: "POST",
@@ -3565,7 +3565,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/payment-requests/route.ts",
+    file: "packages/cloud/api/v1/payment-requests/route.ts",
   },
   "POST /api/v1/payment-requests/{id}/cancel": {
     method: "POST",
@@ -3574,7 +3574,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/payment-requests/[id]/cancel/route.ts",
+    file: "packages/cloud/api/v1/payment-requests/[id]/cancel/route.ts",
   },
   "POST /api/v1/payment-requests/{id}/expire": {
     method: "POST",
@@ -3583,7 +3583,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/payment-requests/[id]/expire/route.ts",
+    file: "packages/cloud/api/v1/payment-requests/[id]/expire/route.ts",
   },
   "POST /api/v1/proxy/birdeye/{path}": {
     method: "POST",
@@ -3592,7 +3592,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/proxy/birdeye/[...path]/route.ts",
+    file: "packages/cloud/api/v1/proxy/birdeye/[...path]/route.ts",
   },
   "POST /api/v1/proxy/evm-rpc/{chain}": {
     method: "POST",
@@ -3601,7 +3601,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/proxy/evm-rpc/[chain]/route.ts",
+    file: "packages/cloud/api/v1/proxy/evm-rpc/[chain]/route.ts",
   },
   "POST /api/v1/proxy/solana-rpc": {
     method: "POST",
@@ -3610,7 +3610,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/proxy/solana-rpc/route.ts",
+    file: "packages/cloud/api/v1/proxy/solana-rpc/route.ts",
   },
   "POST /api/v1/redemptions": {
     method: "POST",
@@ -3619,7 +3619,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/redemptions/route.ts",
+    file: "packages/cloud/api/v1/redemptions/route.ts",
   },
   "POST /api/v1/referrals/apply": {
     method: "POST",
@@ -3628,7 +3628,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/referrals/apply/route.ts",
+    file: "packages/cloud/api/v1/referrals/apply/route.ts",
   },
   "POST /api/v1/remote/pair": {
     method: "POST",
@@ -3637,7 +3637,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/remote/pair/route.ts",
+    file: "packages/cloud/api/v1/remote/pair/route.ts",
   },
   "POST /api/v1/remote/sessions/{id}/revoke": {
     method: "POST",
@@ -3646,7 +3646,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/remote/sessions/[id]/revoke/route.ts",
+    file: "packages/cloud/api/v1/remote/sessions/[id]/revoke/route.ts",
   },
   "POST /api/v1/reports/bug": {
     method: "POST",
@@ -3655,7 +3655,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/reports/bug/route.ts",
+    file: "packages/cloud/api/v1/reports/bug/route.ts",
   },
   "POST /api/v1/responses": {
     method: "POST",
@@ -3664,7 +3664,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/responses/route.ts",
+    file: "packages/cloud/api/v1/responses/route.ts",
   },
   "POST /api/v1/rpc/{chain}": {
     method: "POST",
@@ -3673,7 +3673,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["chain"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/rpc/[chain]/route.ts",
+    file: "packages/cloud/api/v1/rpc/[chain]/route.ts",
   },
   "POST /api/v1/search": {
     method: "POST",
@@ -3682,7 +3682,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/search/route.ts",
+    file: "packages/cloud/api/v1/search/route.ts",
   },
   "POST /api/v1/security/audit": {
     method: "POST",
@@ -3691,7 +3691,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/security/audit/route.ts",
+    file: "packages/cloud/api/v1/security/audit/route.ts",
   },
   "POST /api/v1/sensitive-requests": {
     method: "POST",
@@ -3700,7 +3700,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/sensitive-requests/route.ts",
+    file: "packages/cloud/api/v1/sensitive-requests/route.ts",
   },
   "POST /api/v1/sensitive-requests/{id}/cancel": {
     method: "POST",
@@ -3709,7 +3709,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/sensitive-requests/[id]/cancel/route.ts",
+    file: "packages/cloud/api/v1/sensitive-requests/[id]/cancel/route.ts",
   },
   "POST /api/v1/sensitive-requests/{id}/expire": {
     method: "POST",
@@ -3718,7 +3718,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/sensitive-requests/[id]/expire/route.ts",
+    file: "packages/cloud/api/v1/sensitive-requests/[id]/expire/route.ts",
   },
   "POST /api/v1/sensitive-requests/{id}/submit": {
     method: "POST",
@@ -3727,7 +3727,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/sensitive-requests/[id]/submit/route.ts",
+    file: "packages/cloud/api/v1/sensitive-requests/[id]/submit/route.ts",
   },
   "POST /api/v1/solana/rpc": {
     method: "POST",
@@ -3736,7 +3736,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/solana/rpc/route.ts",
+    file: "packages/cloud/api/v1/solana/rpc/route.ts",
   },
   "POST /api/v1/steward/tenants": {
     method: "POST",
@@ -3745,7 +3745,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/steward/tenants/route.ts",
+    file: "packages/cloud/api/v1/steward/tenants/route.ts",
   },
   "POST /api/v1/stripe/checkout": {
     method: "POST",
@@ -3754,7 +3754,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/stripe/checkout/route.ts",
+    file: "packages/cloud/api/v1/stripe/checkout/route.ts",
   },
   "POST /api/v1/telegram/connect": {
     method: "POST",
@@ -3763,7 +3763,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/telegram/connect/route.ts",
+    file: "packages/cloud/api/v1/telegram/connect/route.ts",
   },
   "POST /api/v1/telegram/scan-chats": {
     method: "POST",
@@ -3772,7 +3772,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/telegram/scan-chats/route.ts",
+    file: "packages/cloud/api/v1/telegram/scan-chats/route.ts",
   },
   "POST /api/v1/topup/10": {
     method: "POST",
@@ -3781,7 +3781,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/topup/10/route.ts",
+    file: "packages/cloud/api/v1/topup/10/route.ts",
   },
   "POST /api/v1/topup/100": {
     method: "POST",
@@ -3790,7 +3790,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/topup/100/route.ts",
+    file: "packages/cloud/api/v1/topup/100/route.ts",
   },
   "POST /api/v1/topup/50": {
     method: "POST",
@@ -3799,7 +3799,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/topup/50/route.ts",
+    file: "packages/cloud/api/v1/topup/50/route.ts",
   },
   "POST /api/v1/track/pageview": {
     method: "POST",
@@ -3808,7 +3808,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/track/pageview/route.ts",
+    file: "packages/cloud/api/v1/track/pageview/route.ts",
   },
   "POST /api/v1/twilio/connect": {
     method: "POST",
@@ -3817,7 +3817,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twilio/connect/route.ts",
+    file: "packages/cloud/api/v1/twilio/connect/route.ts",
   },
   "POST /api/v1/twilio/disconnect": {
     method: "POST",
@@ -3826,7 +3826,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twilio/disconnect/route.ts",
+    file: "packages/cloud/api/v1/twilio/disconnect/route.ts",
   },
   "POST /api/v1/twilio/voice/inbound": {
     method: "POST",
@@ -3835,7 +3835,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twilio/voice/inbound/route.ts",
+    file: "packages/cloud/api/v1/twilio/voice/inbound/route.ts",
   },
   "POST /api/v1/twitter/connect": {
     method: "POST",
@@ -3844,7 +3844,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/twitter/connect/route.ts",
+    file: "packages/cloud/api/v1/twitter/connect/route.ts",
   },
   "POST /api/v1/user/avatar": {
     method: "POST",
@@ -3853,7 +3853,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/avatar/route.ts",
+    file: "packages/cloud/api/v1/user/avatar/route.ts",
   },
   "POST /api/v1/user/wallets/provision": {
     method: "POST",
@@ -3862,7 +3862,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/wallets/provision/route.ts",
+    file: "packages/cloud/api/v1/user/wallets/provision/route.ts",
   },
   "POST /api/v1/user/wallets/rpc": {
     method: "POST",
@@ -3871,7 +3871,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/wallets/rpc/route.ts",
+    file: "packages/cloud/api/v1/user/wallets/rpc/route.ts",
   },
   "POST /api/v1/voice/clone": {
     method: "POST",
@@ -3880,7 +3880,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/voice/clone/route.ts",
+    file: "packages/cloud/api/v1/voice/clone/route.ts",
   },
   "POST /api/v1/voice/stt": {
     method: "POST",
@@ -3889,7 +3889,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/voice/stt/route.ts",
+    file: "packages/cloud/api/v1/voice/stt/route.ts",
   },
   "POST /api/v1/voice/tts": {
     method: "POST",
@@ -3898,7 +3898,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "binary",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/voice/tts/route.ts",
+    file: "packages/cloud/api/v1/voice/tts/route.ts",
   },
   "POST /api/v1/whatsapp/connect": {
     method: "POST",
@@ -3907,7 +3907,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/whatsapp/connect/route.ts",
+    file: "packages/cloud/api/v1/whatsapp/connect/route.ts",
   },
   "POST /api/v1/whatsapp/disconnect": {
     method: "POST",
@@ -3916,7 +3916,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/whatsapp/disconnect/route.ts",
+    file: "packages/cloud/api/v1/whatsapp/disconnect/route.ts",
   },
   "POST /api/v1/x/dms/conversations/send": {
     method: "POST",
@@ -3925,7 +3925,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x/dms/conversations/send/route.ts",
+    file: "packages/cloud/api/v1/x/dms/conversations/send/route.ts",
   },
   "POST /api/v1/x/dms/curate": {
     method: "POST",
@@ -3934,7 +3934,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x/dms/curate/route.ts",
+    file: "packages/cloud/api/v1/x/dms/curate/route.ts",
   },
   "POST /api/v1/x/dms/groups": {
     method: "POST",
@@ -3943,7 +3943,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x/dms/groups/route.ts",
+    file: "packages/cloud/api/v1/x/dms/groups/route.ts",
   },
   "POST /api/v1/x/dms/send": {
     method: "POST",
@@ -3952,7 +3952,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x/dms/send/route.ts",
+    file: "packages/cloud/api/v1/x/dms/send/route.ts",
   },
   "POST /api/v1/x/posts": {
     method: "POST",
@@ -3961,7 +3961,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x/posts/route.ts",
+    file: "packages/cloud/api/v1/x/posts/route.ts",
   },
   "POST /api/v1/x402/requests": {
     method: "POST",
@@ -3970,7 +3970,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x402/requests/route.ts",
+    file: "packages/cloud/api/v1/x402/requests/route.ts",
   },
   "POST /api/v1/x402/requests/{id}/settle": {
     method: "POST",
@@ -3979,7 +3979,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x402/requests/[id]/settle/route.ts",
+    file: "packages/cloud/api/v1/x402/requests/[id]/settle/route.ts",
   },
   "POST /api/v1/x402/settle": {
     method: "POST",
@@ -3988,7 +3988,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x402/settle/route.ts",
+    file: "packages/cloud/api/v1/x402/settle/route.ts",
   },
   "POST /api/v1/x402/verify": {
     method: "POST",
@@ -3997,7 +3997,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/x402/verify/route.ts",
+    file: "packages/cloud/api/v1/x402/verify/route.ts",
   },
   "PUT /api/v1/affiliates": {
     method: "PUT",
@@ -4006,7 +4006,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/affiliates/route.ts",
+    file: "packages/cloud/api/v1/affiliates/route.ts",
   },
   "PUT /api/v1/agents/{agentId}/monetization": {
     method: "PUT",
@@ -4015,7 +4015,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/monetization/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/monetization/route.ts",
   },
   "PUT /api/v1/agents/{agentId}/workflows/{workflowId}": {
     method: "PUT",
@@ -4024,7 +4024,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "workflowId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/agents/[agentId]/workflows/[workflowId]/route.ts",
+    file: "packages/cloud/api/v1/agents/[agentId]/workflows/[workflowId]/route.ts",
   },
   "PUT /api/v1/apis/storage/objects/{key}": {
     method: "PUT",
@@ -4033,7 +4033,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["key"],
     catchAllPathParams: ["key"],
-    file: "packages/cloud-api/v1/apis/storage/objects/[...key]/route.ts",
+    file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
   },
   "PUT /api/v1/apps/{id}": {
     method: "PUT",
@@ -4042,7 +4042,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/route.ts",
   },
   "PUT /api/v1/apps/{id}/characters": {
     method: "PUT",
@@ -4051,7 +4051,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/characters/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/characters/route.ts",
   },
   "PUT /api/v1/apps/{id}/database": {
     method: "PUT",
@@ -4060,7 +4060,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/database/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/database/route.ts",
   },
   "PUT /api/v1/apps/{id}/generate-image": {
     method: "PUT",
@@ -4069,7 +4069,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/generate-image/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/generate-image/route.ts",
   },
   "PUT /api/v1/apps/{id}/monetization": {
     method: "PUT",
@@ -4078,7 +4078,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/apps/[id]/monetization/route.ts",
+    file: "packages/cloud/api/v1/apps/[id]/monetization/route.ts",
   },
   "PUT /api/v1/billing/settings": {
     method: "PUT",
@@ -4087,7 +4087,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/billing/settings/route.ts",
+    file: "packages/cloud/api/v1/billing/settings/route.ts",
   },
   "PUT /api/v1/connections/{platform}": {
     method: "PUT",
@@ -4096,7 +4096,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["platform"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/connections/[platform]/route.ts",
+    file: "packages/cloud/api/v1/connections/[platform]/route.ts",
   },
   "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": {
     method: "PUT",
@@ -4105,7 +4105,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/identity/uri/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/identity/uri/route.ts",
   },
   "PUT /api/v1/eliza/agents/{agentId}/api/wallet/{path}": {
     method: "PUT",
@@ -4114,7 +4114,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["agentId", "path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts",
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts",
   },
   "PUT /api/v1/generate-image": {
     method: "PUT",
@@ -4123,7 +4123,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-image/route.ts",
+    file: "packages/cloud/api/v1/generate-image/route.ts",
   },
   "PUT /api/v1/generate-music": {
     method: "PUT",
@@ -4132,7 +4132,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-music/route.ts",
+    file: "packages/cloud/api/v1/generate-music/route.ts",
   },
   "PUT /api/v1/generate-video": {
     method: "PUT",
@@ -4141,7 +4141,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/generate-video/route.ts",
+    file: "packages/cloud/api/v1/generate-video/route.ts",
   },
   "PUT /api/v1/mcps/{mcpId}": {
     method: "PUT",
@@ -4150,7 +4150,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["mcpId"],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/mcps/[mcpId]/route.ts",
+    file: "packages/cloud/api/v1/mcps/[mcpId]/route.ts",
   },
   "PUT /api/v1/proxy/birdeye/{path}": {
     method: "PUT",
@@ -4159,7 +4159,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: ["path"],
     catchAllPathParams: ["path"],
-    file: "packages/cloud-api/v1/proxy/birdeye/[...path]/route.ts",
+    file: "packages/cloud/api/v1/proxy/birdeye/[...path]/route.ts",
   },
   "PUT /api/v1/user/avatar": {
     method: "PUT",
@@ -4168,7 +4168,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     responseMode: "json",
     pathParams: [],
     catchAllPathParams: [],
-    file: "packages/cloud-api/v1/user/avatar/route.ts",
+    file: "packages/cloud/api/v1/user/avatar/route.ts",
   },
 } as const;
 

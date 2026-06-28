@@ -26,8 +26,8 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
             repo = Path(tmp)
             spec = freshness.ReportSpec(
                 "demo",
-                "packages/chip/build/reports/demo.json",
-                ("packages/chip/scripts/missing.py",),
+                "packages/research/chip/build/reports/demo.json",
+                ("packages/research/chip/scripts/missing.py",),
                 "demo report",
             )
             with mock.patch.object(freshness, "REPO", repo):
@@ -40,8 +40,8 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
     def test_source_newer_than_report_is_stale(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            source = repo / "packages/chip/scripts/demo.py"
-            report = repo / "packages/chip/build/reports/demo.json"
+            source = repo / "packages/research/chip/scripts/demo.py"
+            report = repo / "packages/research/chip/build/reports/demo.json"
             source.parent.mkdir(parents=True)
             report.parent.mkdir(parents=True)
             report.write_text("{}\n", encoding="utf-8")
@@ -51,8 +51,8 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
             os.utime(source, (now, now))
             spec = freshness.ReportSpec(
                 "demo",
-                "packages/chip/build/reports/demo.json",
-                ("packages/chip/scripts/demo.py",),
+                "packages/research/chip/build/reports/demo.json",
+                ("packages/research/chip/scripts/demo.py",),
                 "demo report",
             )
             with mock.patch.object(freshness, "REPO", repo):
@@ -63,8 +63,8 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
     def test_fresh_report_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            source = repo / "packages/chip/scripts/demo.py"
-            report = repo / "packages/chip/build/reports/demo.json"
+            source = repo / "packages/research/chip/scripts/demo.py"
+            report = repo / "packages/research/chip/build/reports/demo.json"
             source.parent.mkdir(parents=True)
             report.parent.mkdir(parents=True)
             source.write_text("print('demo')\n", encoding="utf-8")
@@ -74,8 +74,8 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
             os.utime(report, (now, now))
             spec = freshness.ReportSpec(
                 "demo",
-                "packages/chip/build/reports/demo.json",
-                ("packages/chip/scripts/demo.py",),
+                "packages/research/chip/build/reports/demo.json",
+                ("packages/research/chip/scripts/demo.py",),
                 "demo report",
             )
             with mock.patch.object(freshness, "REPO", repo):
@@ -85,7 +85,7 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
 
     def test_dynamic_gate_specs_watch_existing_detail_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "packages/chip"
+            root = Path(tmp) / "packages/research/chip"
             source = root / "scripts/check_demo_gate.py"
             report = root / "build/reports/demo_gate.json"
             source.parent.mkdir(parents=True)
@@ -104,22 +104,22 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
             ):
                 specs = freshness.dynamic_gate_report_specs()
         self.assertEqual(len(specs), 1)
-        self.assertEqual(specs[0].report, "packages/chip/build/reports/demo_gate.json")
-        self.assertEqual(specs[0].sources, ("packages/chip/scripts/check_demo_gate.py",))
+        self.assertEqual(specs[0].report, "packages/research/chip/build/reports/demo_gate.json")
+        self.assertEqual(specs[0].sources, ("packages/research/chip/scripts/check_demo_gate.py",))
 
     def test_report_freshness_payload_denies_boot_launcher_and_release_claims(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            source = repo / "packages/chip/scripts/demo.py"
-            report_path = repo / "packages/chip/build/reports/demo.json"
+            source = repo / "packages/research/chip/scripts/demo.py"
+            report_path = repo / "packages/research/chip/build/reports/demo.json"
             source.parent.mkdir(parents=True)
             report_path.parent.mkdir(parents=True)
             source.write_text("print('demo')\n", encoding="utf-8")
             report_path.write_text("{}\n", encoding="utf-8")
             spec = freshness.ReportSpec(
                 "demo",
-                "packages/chip/build/reports/demo.json",
-                ("packages/chip/scripts/demo.py",),
+                "packages/research/chip/build/reports/demo.json",
+                ("packages/research/chip/scripts/demo.py",),
                 "demo report",
             )
             with (
@@ -134,7 +134,7 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
 
     def test_dynamic_alias_reports_use_real_report_producer_sources(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "packages/chip"
+            root = Path(tmp) / "packages/research/chip"
             gate_source = root / "scripts/check_aosp_simulator_completion_gate.py"
             producer = root / "scripts/run_mvp_simulator.py"
             checker = root / "scripts/check_mvp_simulator.py"
@@ -160,8 +160,8 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
         self.assertEqual(
             mvp_specs[0].sources,
             (
-                "packages/chip/scripts/run_mvp_simulator.py",
-                "packages/chip/scripts/check_mvp_simulator.py",
+                "packages/research/chip/scripts/run_mvp_simulator.py",
+                "packages/research/chip/scripts/check_mvp_simulator.py",
             ),
         )
 
@@ -170,14 +170,14 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
         spec = specs["android_evidence_capture_contract"]
         self.assertEqual(
             spec.report,
-            "packages/chip/build/reports/android_evidence_capture_contract.json",
+            "packages/research/chip/build/reports/android_evidence_capture_contract.json",
         )
         for source in (
-            "packages/chip/scripts/check_android_evidence_capture_contract.py",
-            "packages/chip/sw/aosp-device/capture-aosp-evidence.sh",
-            "packages/chip/sw/aosp-device/cuttlefish-boot-gate.sh",
-            "packages/chip/sw/aosp-device/evidence_manifest.json",
-            "packages/chip/docs/project/aosp-simulator-completion-gate.yaml",
+            "packages/research/chip/scripts/check_android_evidence_capture_contract.py",
+            "packages/research/chip/sw/aosp-device/capture-aosp-evidence.sh",
+            "packages/research/chip/sw/aosp-device/cuttlefish-boot-gate.sh",
+            "packages/research/chip/sw/aosp-device/evidence_manifest.json",
+            "packages/research/chip/docs/project/aosp-simulator-completion-gate.yaml",
         ):
             self.assertIn(source, spec.sources)
 
@@ -185,7 +185,7 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
         specs = {spec.ident: spec for spec in freshness.BASE_REPORTS}
         spec = specs["android_app_runtime_contract"]
         for source in (
-            "packages/chip/scripts/check_android_app_runtime_contract.py",
+            "packages/research/chip/scripts/check_android_app_runtime_contract.py",
             "packages/app-core/platforms/android/app/build.gradle",
             "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
             "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
@@ -193,21 +193,21 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
             "packages/os/android/vendor/eliza/eliza_common.mk",
             "packages/os/android/vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml",
             "packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml",
-            "packages/chip/sw/aosp-device/start-eliza-agent-riscv64.sh",
-            "packages/chip/sw/aosp-device/agent-smoke-riscv64.sh",
-            "packages/chip/sw/aosp-device/scripts/cuttlefish_agent_smoke.py",
-            "packages/chip/sw/aosp-device/capture-aosp-evidence.sh",
-            "packages/chip/sw/aosp-device/install-eliza-apk-riscv64.sh",
+            "packages/research/chip/sw/aosp-device/start-eliza-agent-riscv64.sh",
+            "packages/research/chip/sw/aosp-device/agent-smoke-riscv64.sh",
+            "packages/research/chip/sw/aosp-device/scripts/cuttlefish_agent_smoke.py",
+            "packages/research/chip/sw/aosp-device/capture-aosp-evidence.sh",
+            "packages/research/chip/sw/aosp-device/install-eliza-apk-riscv64.sh",
         ):
             self.assertIn(source, spec.sources)
 
     def test_aosp_product_contract_alias_watches_product_workflow_sources(self) -> None:
         sources = freshness.GATE_REPORT_ALIAS_SOURCES["aosp_product_contract.json"]
         for source in (
-            "packages/chip/scripts/check_aosp_product_contract.py",
-            "packages/chip/sw/aosp-device/build-aosp-riscv64.sh",
-            "packages/chip/scripts/boot_android_simulator.sh",
-            "packages/chip/sw/aosp-device/capture-aosp-evidence.sh",
+            "packages/research/chip/scripts/check_aosp_product_contract.py",
+            "packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh",
+            "packages/research/chip/scripts/boot_android_simulator.sh",
+            "packages/research/chip/sw/aosp-device/capture-aosp-evidence.sh",
             "packages/os/android/vendor/eliza/eliza_common.mk",
             "packages/os/android/vendor/eliza/products/eliza_openagent_ai_soc_phone.mk",
         ):
@@ -216,22 +216,22 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
     def test_aosp_hal_contract_alias_watches_hal_sources(self) -> None:
         sources = freshness.GATE_REPORT_ALIAS_SOURCES["aosp_hal_service_contract.json"]
         for source in (
-            "packages/chip/scripts/check_aosp_hal_service_contract.py",
-            "packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/Android.bp",
-            "packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/E1Npu.h",
-            "packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/1.0/IE1Npu.hal",
-            "packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/Android.bp",
-            "packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/E1NpuSim.h",
-            "packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/Android.bp",
-            "packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/hwcomposer.cpp",
-            "packages/chip/sw/linux/drivers/e1/e1_platform_contract.h",
+            "packages/research/chip/scripts/check_aosp_hal_service_contract.py",
+            "packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/Android.bp",
+            "packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/E1Npu.h",
+            "packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/1.0/IE1Npu.hal",
+            "packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/Android.bp",
+            "packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/E1NpuSim.h",
+            "packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/Android.bp",
+            "packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/hwcomposer.cpp",
+            "packages/research/chip/sw/linux/drivers/e1/e1_platform_contract.h",
         ):
             self.assertIn(source, sources)
 
     def test_android_system_apk_payload_alias_watches_apk_sources(self) -> None:
         sources = freshness.GATE_REPORT_ALIAS_SOURCES["android_system_apk_payload.json"]
         for source in (
-            "packages/chip/scripts/check_android_system_apk_payload.py",
+            "packages/research/chip/scripts/check_android_system_apk_payload.py",
             "packages/os/android/vendor/eliza/apps/Eliza/Android.bp",
             "packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk",
             "packages/os/android/vendor/eliza/eliza_common.mk",
@@ -242,7 +242,7 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
     def test_cross_fork_agent_payload_alias_watches_both_forks(self) -> None:
         sources = freshness.GATE_REPORT_ALIAS_SOURCES["cross_fork_agent_payload_contract.json"]
         for source in (
-            "packages/chip/scripts/check_cross_fork_agent_payload_contract.py",
+            "packages/research/chip/scripts/check_cross_fork_agent_payload_contract.py",
             "packages/app-core/scripts/bun-riscv64/bun-version.json",
             "packages/app-core/scripts/lib/stage-android-agent.mjs",
             "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
@@ -258,7 +258,7 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
     def test_android_system_bridge_contract_alias_watches_bridge_sources(self) -> None:
         sources = freshness.GATE_REPORT_ALIAS_SOURCES["android_system_bridge_contract.json"]
         for source in (
-            "packages/chip/scripts/check_android_system_bridge_contract.py",
+            "packages/research/chip/scripts/check_android_system_bridge_contract.py",
             "packages/os/android/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridge.kt",
             "packages/os/android/system-ui/native/src/main/AndroidManifest.xml",
             "packages/os/android/system-ui/native/build.gradle.kts",
@@ -268,7 +268,7 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
             "packages/os/android/system-ui/src/bridge/bridge-contract.ts",
             "packages/os/android/vendor/eliza/eliza_common.mk",
             "packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
-            "packages/chip/sw/aosp-device/local_manifests/eliza.xml",
+            "packages/research/chip/sw/aosp-device/local_manifests/eliza.xml",
         ):
             self.assertIn(source, sources)
 

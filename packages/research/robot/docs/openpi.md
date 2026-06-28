@@ -46,7 +46,7 @@ PerceptionAggregator ──> bridge.openpi_adapter.build_observation
 ```
 
 The adapter and safety modules are imported lazily. If the bridge port
-(`packages/robot/eliza_robot/bridge/openpi_adapter.py`) is not yet in
+(`packages/research/robot/eliza_robot/bridge/openpi_adapter.py`) is not yet in
 place when `OpenPIPolicyClient.start()` runs, the client raises a clear
 `ImportError` pointing back to this doc.
 
@@ -154,4 +154,4 @@ class). The clamp limits are documented in
 
 The bridge additionally enforces command rate limiting (30 cmd/s),
 deadman heartbeats (2 s), and manual preemption — see
-`packages/robot/eliza_robot/bridge/safety.py`.
+`packages/research/robot/eliza_robot/bridge/safety.py`.

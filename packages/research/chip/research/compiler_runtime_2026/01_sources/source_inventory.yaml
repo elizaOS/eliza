@@ -20,7 +20,7 @@ claim_boundary: >
   All entries below are public papers, vendor pages, RFCs, or open-source
   repositories. They do not establish that the E1 NPU's compiler/runtime
   implements any of these techniques. E1 implementation evidence lives in
-  packages/chip/docs/, packages/chip/compiler/runtime/, and packages/chip/rtl/.
+  packages/research/chip/docs/, packages/research/chip/compiler/runtime/, and packages/research/chip/rtl/.
 
 mlir_and_circt:
   - id: repo_llvm_mlir

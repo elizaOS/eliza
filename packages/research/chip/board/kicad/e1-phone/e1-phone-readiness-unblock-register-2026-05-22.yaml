@@ -948,9 +948,9 @@ blockers:
   status: blocked_current_kicad_concept_board_not_routed_or_fabrication_ready
   evidence_class: local_generated_outputs_plus_external_review
   source_artifacts:
-  - packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
-  - packages/chip/board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml
-  - packages/chip/board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+  - packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  - packages/research/chip/board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml
+  - packages/research/chip/board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
   required_evidence:
   - supplier footprints replace all placeholders
   - routed KiCad PCB with tracks, vias, filled zones, net classes, and DRC/ERC reports

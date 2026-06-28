@@ -7,9 +7,9 @@ claim_boundary: >
   joints.
 
 mapped_source_artifacts:
-  - packages/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
-  - packages/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
-  - packages/chip/board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+  - packages/research/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+  - packages/research/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+  - packages/research/chip/board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
 
 intake_metadata:
   review_id: null
@@ -24,7 +24,7 @@ required_inputs:
   side_key_signed_drawing: null
   side_key_step_or_brep: null
   cap_rib_elastomer_or_stiffener_geometry: null
-  routed_board_step: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
+  routed_board_step: packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
   force_travel_csv: null
   side_load_test_log: null
   wake_and_recovery_combo_logs: []

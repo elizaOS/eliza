@@ -53,8 +53,8 @@ def test_next_command_uses_exact_located_payload() -> None:
 
 def test_report_provenance_sanitizer_strips_host_local_paths() -> None:
     payload = {
-        "payload": "/path/to/eliza/packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
-        "dtc_output": "/path/to/eliza/packages/chip/build/chipyard/eliza_rocket/generated-src/foo.dts:90: warning",
+        "payload": "/path/to/eliza/packages/research/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
+        "dtc_output": "/path/to/eliza/packages/research/chip/build/chipyard/eliza_rocket/generated-src/foo.dts:90: warning",
         "tmp": "/tmp/simulator-chipyard.harness-ElizaRocketConfig +loadmem=/tmp/eliza-e1-linux-smoke-bin-nodisk",
     }
 
@@ -63,7 +63,7 @@ def test_report_provenance_sanitizer_strips_host_local_paths() -> None:
     if "/home/shaw" in text or "/tmp/" in text:
         raise AssertionError(text)
     if sanitized["payload"] != (
-        "packages/chip/external/chipyard/software/firemarshal/images/firechip/"
+        "packages/research/chip/external/chipyard/software/firemarshal/images/firechip/"
         "eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk"
     ):
         raise AssertionError(sanitized)

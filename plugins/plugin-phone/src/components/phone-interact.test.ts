@@ -1,13 +1,8 @@
-// @vitest-environment jsdom
+// Agent-facing terminal capability bridge (interact). The terminal SURFACE
+// itself is the unified PhoneSpatialView (covered in PhoneSpatialView.test.tsx);
+// this file guards the capability handler the agent terminal calls — its DTO
+// projection, native-bridge dispatch, and hostile-param sanitization.
 
-// Agent-facing terminal capability bridge (interact) + the PhoneAppView overlay
-// dialer resilience. The terminal SURFACE itself is now the unified
-// PhoneSpatialView (covered in PhoneSpatialView.test.tsx); this file guards the
-// capability handler the agent terminal calls and the overlay dialer's
-// post-failure usability.
-
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const phoneBridge = vi.hoisted(() => ({
@@ -22,11 +17,7 @@ vi.mock("@elizaos/capacitor-phone", () => ({
   Phone: phoneBridge,
 }));
 
-import { PhoneAppView } from "./PhoneAppView";
-import { interact } from "./PhoneAppView.interact";
-
-const t = (key: string, opts?: { defaultValue?: string }) =>
-  opts?.defaultValue ?? key;
+import { interact } from "./phone-interact";
 
 const sampleStatus = {
   hasTelecom: true,
@@ -82,16 +73,7 @@ function mockBridge() {
   });
 }
 
-function overlayContext(exitToApps = vi.fn()) {
-  return {
-    exitToApps,
-    uiTheme: "light" as const,
-    t,
-  };
-}
-
 afterEach(() => {
-  cleanup();
   vi.clearAllMocks();
 });
 
@@ -187,18 +169,9 @@ describe("phone terminal capability bridge", () => {
     });
   });
 
-  it("keeps PhoneAppView dialer state usable after a native place-call failure", async () => {
-    phoneBridge.placeCall.mockRejectedValue(new Error("CALL_PHONE denied"));
-
-    render(React.createElement(PhoneAppView, overlayContext()));
-
-    fireEvent.click(screen.getByTestId("phone-dial-key-5"));
-    fireEvent.click(screen.getByTestId("phone-dial-call"));
-
-    await screen.findByText("CALL_PHONE denied");
-    expect(phoneBridge.placeCall).toHaveBeenCalledWith({ number: "5" });
-
-    fireEvent.click(screen.getByTestId("phone-dial-backspace"));
-    expect(screen.getByText("Enter a number")).toBeTruthy();
+  it("rejects an unsupported capability", async () => {
+    await expect(interact("terminal-not-a-thing")).rejects.toThrow(
+      'Unsupported capability "terminal-not-a-thing"',
+    );
   });
 });

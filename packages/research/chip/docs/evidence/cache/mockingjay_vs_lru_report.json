@@ -76,7 +76,7 @@
   "release_claim_allowed": false,
   "results": [
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_lru",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_repl_lru",
       "cycles": 1329731,
       "instructions": 2000004,
       "ipc": 1.504066611968887,
@@ -107,7 +107,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_lru",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_repl_lru",
       "cycles": 1432126,
       "instructions": 2000000,
       "ipc": 1.3965251660817555,
@@ -138,7 +138,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_drrip",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_repl_drrip",
       "cycles": 1329731,
       "instructions": 2000004,
       "ipc": 1.504066611968887,
@@ -169,7 +169,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_drrip",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_repl_drrip",
       "cycles": 1432126,
       "instructions": 2000000,
       "ipc": 1.3965251660817555,
@@ -200,7 +200,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_ship",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_repl_ship",
       "cycles": 1329731,
       "instructions": 2000004,
       "ipc": 1.504066611968887,
@@ -231,7 +231,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_ship",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_repl_ship",
       "cycles": 1432126,
       "instructions": 2000000,
       "ipc": 1.3965251660817555,
@@ -262,7 +262,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_srrip",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_repl_srrip",
       "cycles": 1329731,
       "instructions": 2000004,
       "ipc": 1.504066611968887,
@@ -293,7 +293,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_srrip",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_repl_srrip",
       "cycles": 1432126,
       "instructions": 2000000,
       "ipc": 1.3965251660817555,

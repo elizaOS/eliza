@@ -7,8 +7,9 @@
 //
 // This pins: exactly one views-manager declaration, the collapsed `modalities`
 // literal, no `viewType` (the duplicate-per-surface escape hatch is gone), the
-// componentExport, and that ViewManagerView.tsx keeps inheriting shell theme
-// tokens rather than the old hardcoded cyan terminal chrome.
+// componentExport, and that ViewManagerView.tsx is the thin data wrapper that
+// renders the single ViewManagerSpatialView inside a SpatialSurface (no
+// hand-rolled rich-DOM chrome).
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -61,12 +62,13 @@ describe("views-manager manifest (collapsed tri-modal declaration)", () => {
 		expect(views).toContain("terminal-list-views");
 	});
 
-	it("inherits shell theme tokens instead of hardcoded cyan terminal chrome", () => {
-		expect(viewSource).toContain("viewManagerTheme");
-		expect(viewSource).toContain("var(--background");
-		expect(viewSource).toContain("var(--accent");
-		expect(viewSource).not.toContain('background: "#0f0f1a"');
-		expect(viewSource).not.toContain('background: "#020617"');
+	it("is the thin SpatialSurface wrapper around the single ViewManagerSpatialView", () => {
+		// The wrapper owns the live fetch and renders the one presentational
+		// spatial view inside a SpatialSurface — no hand-rolled rich-DOM chrome.
+		expect(viewSource).toContain("SpatialSurface");
+		expect(viewSource).toContain("ViewManagerSpatialView");
+		expect(viewSource).toContain("fetchViewEntries");
+		// No hardcoded terminal-chrome colors leak back into the wrapper.
 		expect(viewSource).not.toContain("#7dd3fc");
 		expect(viewSource).not.toContain("#6c63ff");
 		expect(viewSource).not.toContain("rgba(");

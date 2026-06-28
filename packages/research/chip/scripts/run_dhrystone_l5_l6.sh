@@ -77,7 +77,7 @@ write_passed_from_transcript() {
   "release_claim_allowed": false,
   "dut": ${dut_json},
   "claim_level": "L5_PROTOTYPE_SILICON",
-  "reason": "E1_DHRYSTONE_RAW_OUTPUT must be an archived artifact under packages/chip before a Dhrystone L5/L6 transcript can be promoted",
+  "reason": "E1_DHRYSTONE_RAW_OUTPUT must be an archived artifact under packages/research/chip before a Dhrystone L5/L6 transcript can be promoted",
   "result_recorded_at": "$(now)",
   "manifest": "benchmarks/cpu/dhrystone/manifest.json",
   "result_artifact": "benchmarks/results/cpu/dhrystone/l5_l6_result.json",
@@ -86,7 +86,7 @@ write_passed_from_transcript() {
     "raw_output": ${raw_output_json}
   },
   "blocked_requirements": [
-    {"name": "artifacts.raw_output", "reason": "raw target output must be archived under packages/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}
+    {"name": "artifacts.raw_output", "reason": "raw target output must be archived under packages/research/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}
   ],
   "metrics": {}
 }
@@ -164,7 +164,7 @@ EOF
   "release_claim_allowed": false,
   "dut": ${dut_json},
   "claim_level": "L5_PROTOTYPE_SILICON",
-  "reason": "E1_DHRYSTONE_TARGET_METADATA must be an archived artifact under packages/chip before a Dhrystone L5/L6 transcript can be promoted",
+  "reason": "E1_DHRYSTONE_TARGET_METADATA must be an archived artifact under packages/research/chip before a Dhrystone L5/L6 transcript can be promoted",
   "result_recorded_at": "$(now)",
   "manifest": "benchmarks/cpu/dhrystone/manifest.json",
   "result_artifact": "benchmarks/results/cpu/dhrystone/l5_l6_result.json",
@@ -174,7 +174,7 @@ EOF
     "target_metadata": ${metadata_json}
   },
   "blocked_requirements": [
-    {"name": "artifacts.target_metadata", "reason": "target metadata must be archived under packages/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}
+    {"name": "artifacts.target_metadata", "reason": "target metadata must be archived under packages/research/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}
   ],
   "metrics": {}
 }

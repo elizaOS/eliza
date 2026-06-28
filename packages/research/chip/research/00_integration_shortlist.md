@@ -89,7 +89,7 @@ RISC-V board has come up. The fail-closed gate
 exists precisely so a future contributor cannot promote the build
 past `planned` without producing the missing artifacts.
 
-The userspace bring-up of the RV64 stack lives outside `packages/chip/`,
+The userspace bring-up of the RV64 stack lives outside `packages/research/chip/`,
 under `packages/os/linux/elizaos/` (`ARCH=riscv64`). The four
 commits below land the build config, the qemu-virt boot harness, the
 systemd userland bootstrap, and the e2e release-manifest gate. They are
@@ -138,7 +138,7 @@ make -C packages/os/linux/elizaos release-check ARCH=riscv64                    
 
 ### Cross-references
 
-- Chip-side tape-out aggregator: `make -C packages/chip tapeout-readiness`
+- Chip-side tape-out aggregator: `make -C packages/research/chip tapeout-readiness`
   (39 PASS / 0 FAIL / 8 BLOCKED on 2026-05-19) — the chip-side mirror of
   the OS-side `release-check` gate.
 - A future top-level `make chip-os-bring-up-status` aggregator (owned by
@@ -149,10 +149,10 @@ make -C packages/os/linux/elizaos release-check ARCH=riscv64                    
 - One-page OS-side status doc:
   [`packages/os/linux/elizaos/README.md`](../../os/linux/elizaos/README.md).
 - chip-side software dependencies the OS variant consumes:
-  `packages/chip/docs/sw/opensbi/README.md`,
-  `packages/chip/docs/sw/u-boot/README.md`,
-  `packages/chip/docs/sw/linux/README.md`,
-  `packages/chip/docs/android/riscv-bringup.md`.
+  `packages/research/chip/docs/sw/opensbi/README.md`,
+  `packages/research/chip/docs/sw/u-boot/README.md`,
+  `packages/research/chip/docs/sw/linux/README.md`,
+  `packages/research/chip/docs/android/riscv-bringup.md`.
 
 No OS RV64 boot, ISO, or hardware claim has been promoted past its
 existing BLOCKED status.
@@ -336,7 +336,7 @@ These are real but premature for the current phase:
 ## Implementation experiments by sub-agent
 
 Each sub-agent below owns a non-overlapping path scope, may commit to the
-current `develop` branch, must respect `packages/chip/CLAUDE.md` and
+current `develop` branch, must respect `packages/research/chip/CLAUDE.md` and
 `AGENTS.md`, and must keep every claim evidence-backed.
 
 | Sub-agent | Path scope | Items in scope |

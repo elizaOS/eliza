@@ -31,7 +31,7 @@ the LocalKmsAdapter (HKDF-derived Ed25519 over a passphrase root key).
   RSA-PKCS#1 / RSA-PSS).
 
 Pick the algorithm at fab-time based on the boot ROM's hardware verify
-support. Document the choice in ``packages/chip/AGENTS.md``.
+support. Document the choice in ``packages/research/chip/AGENTS.md``.
 
 ## Attestation chain
 

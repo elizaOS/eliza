@@ -27,10 +27,6 @@ async function resolveAllowedPlugin(name: string): Promise<Plugin> {
       const { shopifyPlugin } = await import("@elizaos/plugin-shopify-ui");
       return shopifyPlugin;
     }
-    case "@elizaos/plugin-vincent": {
-      const { vincentPlugin } = await import("@elizaos/plugin-vincent");
-      return vincentPlugin;
-    }
     default:
       throw new Error(`Unsupported live test plugin allow entry: ${name}`);
   }

@@ -3,7 +3,7 @@ import type { Check, CheckResult } from "../types.js";
 import { fileExists, readUtf8 } from "../util/fs.js";
 
 const SENSITIVE_PATTERNS = [
-  /cloud-api/,
+  /cloud\/api/,
   /security/,
   /vault/,
   /deploy/,

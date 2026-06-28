@@ -95,10 +95,10 @@ backup; BitRouter is deleted.
   `ai_pricing` rows use it; renaming is a risky DB migration, deferred).
 
 ### Phase 3 — decommission
-- Delete `packages/cloud-infra/cloud/bitrouter/` (Dockerfile, `auth-proxy.mjs`,
+- Delete `packages/cloud/infra/cloud/bitrouter/` (Dockerfile, `auth-proxy.mjs`,
   `bitrouter.yaml`, `entrypoint.sh`, `railway.toml`, README) and
-  `packages/cloud-infra/tests/bitrouter-service.test.ts`.
-- Remove `BITROUTER_API_KEY` / `BITROUTER_BASE_URL` from `cloud-api/wrangler.toml`
+  `packages/cloud/infra/tests/bitrouter-service.test.ts`.
+- Remove `BITROUTER_API_KEY` / `BITROUTER_BASE_URL` from `cloud/api/wrangler.toml`
   (vars), the secret-push loop in `.github/workflows/cloud-cf-deploy.yml`,
   `types/cloud-worker-env.ts`, and any provider-env reads.
 - Update `RAILWAY.md` and `cloud-infra` CLAUDE.md/AGENTS.md (drop the BitRouter
@@ -111,9 +111,9 @@ backup; BitRouter is deleted.
 - Unit: routing-order tests (native-first, OpenRouter-backup), `withOpenRouterFallback`
   on-error failover, raw-fetch selector, OpenRouter-only deployment. Keep the
   whole pricing suite green.
-- `bun run --cwd packages/cloud-shared typecheck` and
-  `bun run --cwd packages/cloud-api typecheck` clean.
-- `bun run --cwd packages/cloud-shared test` (provider + pricing).
+- `bun run --cwd packages/cloud/shared typecheck` and
+  `bun run --cwd packages/cloud/api typecheck` clean.
+- `bun run --cwd packages/cloud/shared test` (provider + pricing).
 - **Staging (operator):** set `OPENROUTER_API_KEY` + native keys, deploy, live
   smoke across Cerebras / OpenAI / Anthropic (direct) + one OpenRouter-only
   model (`x-ai/*` or `google/*`); confirm `usage_records` rows + costs are

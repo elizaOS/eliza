@@ -6,9 +6,9 @@ claim_boundary: >
   insertion-force review. This file records future review inputs only.
 
 mapped_source_artifacts:
-  - packages/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
-  - packages/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
-  - packages/chip/board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+  - packages/research/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+  - packages/research/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+  - packages/research/chip/board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
 
 intake_metadata:
   review_id: null
@@ -24,7 +24,7 @@ required_inputs:
   usb_connector_signed_drawing: null
   usb_connector_step_or_brep: null
   land_pattern_review: null
-  routed_board_step: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
+  routed_board_step: packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
   enclosure_aperture_cad: null
   plug_overmold_sweep_body: null
   insertion_extraction_force_data: null

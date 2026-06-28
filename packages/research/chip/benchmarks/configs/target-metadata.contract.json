@@ -71,7 +71,7 @@
     "evidence"
   ],
   "calibration_asset_sha256": "64-character lowercase SHA-256 hex digest of the exact archived evidence file",
-  "calibration_asset_evidence_root": "packages/chip",
+  "calibration_asset_evidence_root": "packages/research/chip",
   "process_effects_contract": {
     "path": "docs/spec-db/process-14a-effects.yaml",
     "sha256": "64-character lowercase SHA-256 hex digest of the archived process effects contract"
@@ -89,7 +89,7 @@
   "release_gate_notes": [
     "Every required section must be present for dry_run=false L5/L6 benchmark reports.",
     "Every passed measured result must reference calibrated clock_source and power_meter assets.",
-    "Every calibration asset evidence path must be archived under packages/chip and match its SHA-256 digest.",
+    "Every calibration asset evidence path must be archived under packages/research/chip and match its SHA-256 digest.",
     "Simulator wall-clock, host-smoke tools, and FPGA power are excluded from phone efficiency comparisons."
   ]
 }

@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-ROBOT = Path("/path/to/eliza/packages/robot")
+ROBOT = Path("/path/to/eliza/packages/research/robot")
 MJCF = ROBOT / "cad/asimov-feminine/output/mjcf/asimov_fembot_slim_visuals.xml"
 TOL_CM3 = 1.0   # overlaps below this are treated as touching/noise
 

@@ -368,10 +368,6 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
         /* @vite-ignore */ "@elizaos/plugin-background-runner"
       );
     }
-    if (packageName === "@elizaos/plugin-simple-views") {
-      const simpleViewsPackageName = packageName;
-      return await import(/* @vite-ignore */ simpleViewsPackageName);
-    }
     if (packageName === "@elizaos/plugin-anthropic") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-anthropic");
     }
@@ -518,12 +514,6 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       phase: "deferred",
       required: false,
       load: () => getOptionalPlugin("@elizaos/plugin-background-runner"),
-    },
-    {
-      packageName: "@elizaos/plugin-simple-views",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-simple-views"),
     },
     {
       packageName: "@elizaos/plugin-elizacloud",

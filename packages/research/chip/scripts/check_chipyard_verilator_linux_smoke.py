@@ -281,7 +281,7 @@ def generated_utc() -> str:
 def provenance_safe_text(value: str) -> str:
     sanitized = value
     replacements = (
-        (str(ROOT), "packages/chip"),
+        (str(ROOT), "packages/research/chip"),
         (str(ROOT.parent), "packages"),
         (str(ROOT.parent.parent), "."),
     )

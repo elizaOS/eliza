@@ -1,6 +1,6 @@
 /**
  * Smoke tests for the Kubernetes manifests under
- * `cloud-infra/cloud/local/manifests/`. These get applied verbatim by
+ * `cloud/infra/cloud/local/manifests/`. These get applied verbatim by
  * `local/setup.sh` to a kind cluster, so they must parse as valid
  * multi-document YAML and contain the apiVersion/kind/metadata each cluster
  * resource requires. A typo here breaks `bun run dev:cloud:local`.

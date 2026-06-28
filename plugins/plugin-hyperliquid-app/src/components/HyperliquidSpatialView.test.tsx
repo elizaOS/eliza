@@ -119,3 +119,66 @@ describe("HyperliquidSpatialView one source, three modalities", () => {
     }
   });
 });
+
+// Ported from the retired rich-DOM HyperliquidAppView + HyperliquidPositionsPanel:
+// the account-health summary strip and the per-position detail (side, leverage,
+// notional, entry, distance-to-liquidation, pnl) now live in the one spatial
+// source, plus the #8796 missing-DTO-field crash guard.
+describe("HyperliquidSpatialView account-health + position detail", () => {
+  const withSummary: HyperliquidSnapshot = {
+    ...snapshot,
+    summary: {
+      accountValue: "996.19",
+      totalNotionalPosition: "7000",
+      totalMarginUsed: "700",
+      totalRawUsd: "996.19",
+      withdrawable: "296.19",
+      totalUnrealizedPnl: "10.00",
+      effectiveLeverage: 7.02,
+    },
+  };
+
+  it("renders the account-health strip and the position detail", () => {
+    const html = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <HyperliquidSpatialView snapshot={withSummary} />
+      </SpatialSurface>,
+    );
+    // Account-health summary (effective leverage + withdrawable + pnl).
+    expect(html).toContain("7.02x");
+    expect(html).toContain("296");
+    // Position detail: side, derived liquidation distance, notional.
+    expect(html).toContain("long");
+    expect(html).toContain("25% to liq");
+    expect(html).toContain("30,000");
+  });
+
+  it("does not crash when distanceToLiquidationPct is a missing DTO field (#8796)", () => {
+    const broken: HyperliquidSnapshot = {
+      ...snapshot,
+      positions: [{ ...snapshot.positions[0] }],
+    };
+    delete (broken.positions[0] as { distanceToLiquidationPct?: number | null })
+      .distanceToLiquidationPct;
+    expect(() =>
+      renderToStaticMarkup(
+        <SpatialSurface modality="gui">
+          <HyperliquidSpatialView snapshot={broken} />
+        </SpatialSurface>,
+      ),
+    ).not.toThrow();
+  });
+
+  it("hides closed (zero-size) positions, matching the retired open-only table", () => {
+    const closed: HyperliquidSnapshot = {
+      ...snapshot,
+      positions: [{ ...snapshot.positions[0], size: "0", coin: "FLAT" }],
+    };
+    const html = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <HyperliquidSpatialView snapshot={closed} />
+      </SpatialSurface>,
+    );
+    expect(html).not.toContain("FLAT");
+  });
+});

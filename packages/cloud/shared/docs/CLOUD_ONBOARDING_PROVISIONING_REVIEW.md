@@ -22,17 +22,17 @@ Hetzner/Cloudflare secrets.
 | **Remote (separate Eliza instance)** | `runtime: "remote"` | exists |
 
 Inference routing for the "local agent + cloud inference" shape is in
-`packages/cloud-routing` (`resolve.ts`, `features.ts`): per-feature
+`packages/cloud/routing` (`resolve.ts`, `features.ts`): per-feature
 `local | cloud | auto` policy, local key preferred, cloud proxy fallback to
 `/api/v1/apis/<service>` with a Bearer key. Credits are reserved/reconciled with
-a platform markup in `cloud-shared/lib/services/ai-billing.ts`.
+a platform markup in `cloud/shared/lib/services/ai-billing.ts`.
 
 ## 2. Login / auth (reviewed)
 
-- **Steward JWT** session: `cloud-api/auth/steward-session/route.ts` (CSRF origin
-  check, httpOnly cookies) → `cloud-shared/lib/auth.ts#getCurrentUserFromRequest`
+- **Steward JWT** session: `cloud/api/auth/steward-session/route.ts` (CSRF origin
+  check, httpOnly cookies) → `cloud/shared/lib/auth.ts#getCurrentUserFromRequest`
   (cached verify + JIT user sync).
-- **Wallet (SIWE/SIWS)**: `cloud-api/auth/siwe|siws/*` → issues an API key.
+- **Wallet (SIWE/SIWS)**: `cloud/api/auth/siwe|siws/*` → issues an API key.
 - **CLI pairing** and **anonymous sessions** also exist.
 - **API keys** are SHA-256 hashed + KMS-encrypted; validated via a 3-tier cache
   (`api-keys.ts`).
@@ -52,7 +52,7 @@ The product requirement — _while a cloud agent provisions, the user keeps
 chatting with an info-only onboarding agent_ — **is implemented for the cloud
 web flow**:
 
-- `cloud-shared/lib/services/eliza-app/onboarding-chat.ts#runOnboardingChat`
+- `cloud/shared/lib/services/eliza-app/onboarding-chat.ts#runOnboardingChat`
   drives an info-only chat (Cerebras-backed, no actions/view-building), calls
   `ensureElizaAppProvisioning()` (async, non-blocking), and reports
   `pending → provisioning → running` inline.
@@ -260,7 +260,7 @@ nightly `hetzner-e2e`, which had been silently skipping/failing):
 | Topology | Tests | Vehicle |
 | --- | --- | --- |
 | Cloud agent (provisioned) | `packages/test/cloud-e2e` — provision, deprovision, stuck-cleanup, dashboard, **sleep-wake**, **scheduled-backup**, **suspend-resume**, **auth-errors** (11 specs / 15 tests) | mock stack (real router/worker/job-queue/provisioning svc) |
-| Local agent + **cloud inference** | `packages/cloud-routing/src/resolve.test.ts` (**57 tests**: local/cloud/auto per-feature routing, Bearer/header proxy assembly) | vitest |
+| Local agent + **cloud inference** | `packages/cloud/routing/src/resolve.test.ts` (**57 tests**: local/cloud/auto per-feature routing, Bearer/header proxy assembly) | vitest |
 | Automatic setup / local setup | `packages/app/test/ui-smoke/first-run-startup.spec.ts`, `packages/app-core/test/app/first-run-companion.live.e2e.test.ts`, `packages/shared/src/contracts/first-run-routes.test.ts` | Playwright + bun |
 | Reset / re-onboard | `packages/app/test/ui-smoke/reset-returns-to-onboarding.spec.ts` | Playwright |
 | All-local agent + inference | first-run local path + agent suites; `first-run-config.ts` builder selects local provider | — |

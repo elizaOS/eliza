@@ -2,7 +2,7 @@
 
 This package trains robot policies that **learn a sequence of tasks without
 catastrophically forgetting** earlier ones — using the vendored
-[Alberta framework](../../../../alberta) (`packages/alberta`), an implementation
+[Alberta framework](../../../../alberta) (`packages/research/alberta`), an implementation
 of [The Alberta Plan for AI Research](https://arxiv.org/abs/2208.11173).
 
 Standard deep-RL (PPO) trained on tasks one after another *overwrites* earlier

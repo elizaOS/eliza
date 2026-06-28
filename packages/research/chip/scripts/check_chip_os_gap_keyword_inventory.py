@@ -41,12 +41,12 @@ FALSE_CLAIM_FLAGS = {
 }
 
 DEFAULT_SCAN_ROOTS = (
-    "packages/chip/rtl",
-    "packages/chip/fw",
-    "packages/chip/sw",
-    "packages/chip/scripts",
-    "packages/chip/verify",
-    "packages/chip/docs",
+    "packages/research/chip/rtl",
+    "packages/research/chip/fw",
+    "packages/research/chip/sw",
+    "packages/research/chip/scripts",
+    "packages/research/chip/verify",
+    "packages/research/chip/docs",
     "packages/os/linux/elizaos/README.md",
     "packages/os/linux/elizaos/STATUS.md",
     "packages/os/linux/elizaos/manifest.json",
@@ -98,7 +98,7 @@ EXCLUDED_FILENAMES = {
 }
 CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
     re.compile(
-        r"^packages/chip/(docs|verify)/.*"
+        r"^packages/research/chip/(docs|verify)/.*"
         r"("
         r"gap|gaps|audit|blocker|work[-_]order|inventory|"
         r"critical[-_]gap[-_]review|workstream[-_]gap[-_]review|"
@@ -108,13 +108,13 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
         r").*\.(json|md|yaml|yml)$",
         re.I,
     ),
-    re.compile(r"^packages/chip/docs/.+evidence-manifest\.json$", re.I),
-    re.compile(r"^packages/chip/docs/security/tee-plan/.*\.md$", re.I),
+    re.compile(r"^packages/research/chip/docs/.+evidence-manifest\.json$", re.I),
+    re.compile(r"^packages/research/chip/docs/security/tee-plan/.*\.md$", re.I),
     re.compile(
-        r"^packages/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$", re.I
+        r"^packages/research/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$", re.I
     ),
-    re.compile(r"^packages/chip/docs/spec-db/competitor-.*\.(?:json|md|yaml|yml)$", re.I),
-    re.compile(r"^packages/chip/docs/spec-db/requirements/.*\.(?:json|md|yaml|yml)$", re.I),
+    re.compile(r"^packages/research/chip/docs/spec-db/competitor-.*\.(?:json|md|yaml|yml)$", re.I),
+    re.compile(r"^packages/research/chip/docs/spec-db/requirements/.*\.(?:json|md|yaml|yml)$", re.I),
 )
 TEST_FILE_PATTERNS = (
     re.compile(r"(^|/)test_[^/]+\.(c|cc|cpp|h|java|kt|py|rs|ts|tsx)$"),
@@ -136,19 +136,19 @@ BENIGN_LINE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS = (
-    re.compile(r"^packages/chip/fw/(?:.*/)?(?:check|build)_[^/]+\.py$"),
-    re.compile(r"^packages/chip/fw/signing/[^/]+\.sh$"),
-    re.compile(r"^packages/chip/scripts/(?:ai_eda|alphachip)/.*\.(?:py|sh)$"),
-    re.compile(r"^packages/chip/scripts/(?:.*/)?(?:check|capture)_[^/]*\.(?:py|sh)$"),
+    re.compile(r"^packages/research/chip/fw/(?:.*/)?(?:check|build)_[^/]+\.py$"),
+    re.compile(r"^packages/research/chip/fw/signing/[^/]+\.sh$"),
+    re.compile(r"^packages/research/chip/scripts/(?:ai_eda|alphachip)/.*\.(?:py|sh)$"),
+    re.compile(r"^packages/research/chip/scripts/(?:.*/)?(?:check|capture)_[^/]*\.(?:py|sh)$"),
     re.compile(
-        r"^packages/chip/scripts/(?:"
+        r"^packages/research/chip/scripts/(?:"
         r"aggregate_tapeout_readiness|product_check|docs_check|"
         r"e1_phone_objective_completion_audit|"
         r"e1_phone_release_evidence_validation_dry_run"
         r")\.py$"
     ),
     re.compile(
-        r"^packages/chip/scripts/(?:"
+        r"^packages/research/chip/scripts/(?:"
         r"pipeline_check|champsim_sweep|cpu_ap_evidence_lib|"
         r"target_metadata_contract|qor_regression|run_sky130_qor_baseline|"
         r"gen_dvfs_table_placeholders|build_node_profile|"
@@ -163,25 +163,25 @@ CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS = (
         r"generate_e1_phone_factory_output_candidates"
         r")\.py$"
     ),
-    re.compile(r"^packages/chip/scripts/generate_e1x3d_tier_split_manifest\.py$"),
-    re.compile(r"^packages/chip/scripts/setup_kicad_tools\.sh$"),
-    re.compile(r"^packages/chip/scripts/tee/[^/]+\.py$"),
-    re.compile(r"^packages/chip/scripts/run_[^/]+\.sh$"),
-    re.compile(r"^packages/chip/sw/check_[^/]+\.py$"),
-    re.compile(r"^packages/chip/sw/.*/scripts/check_[^/]+\.py$"),
-    re.compile(r"^packages/chip/verify/check_[^/]+\.py$"),
+    re.compile(r"^packages/research/chip/scripts/generate_e1x3d_tier_split_manifest\.py$"),
+    re.compile(r"^packages/research/chip/scripts/setup_kicad_tools\.sh$"),
+    re.compile(r"^packages/research/chip/scripts/tee/[^/]+\.py$"),
+    re.compile(r"^packages/research/chip/scripts/run_[^/]+\.sh$"),
+    re.compile(r"^packages/research/chip/sw/check_[^/]+\.py$"),
+    re.compile(r"^packages/research/chip/sw/.*/scripts/check_[^/]+\.py$"),
+    re.compile(r"^packages/research/chip/verify/check_[^/]+\.py$"),
     re.compile(r"^packages/os/linux/elizaos/scripts/(?:check|capture)[^/]*\.py$"),
     re.compile(r"^packages/os/linux/elizaos/scripts/[^/]+\.sh$"),
 )
 CLASSIFIED_GENERATOR_PATH_PATTERNS = (
-    re.compile(r"^packages/chip/scripts/(?:.*/)?generate_[^/]+\.py$"),
+    re.compile(r"^packages/research/chip/scripts/(?:.*/)?generate_[^/]+\.py$"),
 )
 CLASSIFIED_OPERATOR_DOC_PATH_PATTERNS = (
     re.compile(
-        r"^packages/chip/docs/(?:android|arch|architecture-optimization|board|manufacturing|package|pd|project|sw|toolchain|benchmarks|npu|risks|tapeout-checklist|rtl|generators|spec-db)/.*\.(?:json|md|yaml|yml)$",
+        r"^packages/research/chip/docs/(?:android|arch|architecture-optimization|board|manufacturing|package|pd|project|sw|toolchain|benchmarks|npu|risks|tapeout-checklist|rtl|generators|spec-db)/.*\.(?:json|md|yaml|yml)$",
         re.I,
     ),
-    re.compile(r"^packages/chip/docs/README\.md$", re.I),
+    re.compile(r"^packages/research/chip/docs/README\.md$", re.I),
 )
 CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"("
@@ -411,7 +411,7 @@ PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     ),
 )
 
-GENERIC_RECHECK_COMMAND = "python3 packages/chip/scripts/check_chip_os_gap_keyword_inventory.py"
+GENERIC_RECHECK_COMMAND = "python3 packages/research/chip/scripts/check_chip_os_gap_keyword_inventory.py"
 
 
 def cleanup_commands(path: Path, line_number: int) -> list[str]:
@@ -422,19 +422,19 @@ def cleanup_commands(path: Path, line_number: int) -> list[str]:
     ]
     lower_path = path_text.lower()
     if "npu" in lower_path:
-        commands.append("python3 packages/chip/scripts/check_npu_scope.py")
+        commands.append("python3 packages/research/chip/scripts/check_npu_scope.py")
     if "benchmark" in lower_path or "benchmarks" in parts:
-        commands.append("python3 packages/chip/scripts/check_benchmark_efficiency_scope.py")
+        commands.append("python3 packages/research/chip/scripts/check_benchmark_efficiency_scope.py")
     if "cpu_ap" in lower_path or "chipyard" in lower_path or "riscv" in lower_path:
-        commands.append("python3 packages/chip/scripts/check_cpu_ap_scope.py")
+        commands.append("python3 packages/research/chip/scripts/check_cpu_ap_scope.py")
     if "android" in parts or "aosp" in lower_path:
-        commands.append("python3 packages/chip/scripts/check_android_sim_boot.py")
+        commands.append("python3 packages/research/chip/scripts/check_android_sim_boot.py")
     if "linux" in parts or "elizaos" in parts:
         commands.append(
-            "python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
+            "python3 packages/research/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
         )
     if "runtime" in lower_path or "peripheral" in lower_path:
-        commands.append("python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py")
+        commands.append("python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py")
     commands.append(GENERIC_RECHECK_COMMAND)
     deduped: list[str] = []
     for command in commands:

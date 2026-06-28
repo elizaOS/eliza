@@ -5,7 +5,7 @@ Date: 2026-05-19
 This file ranks recommendations by confidence and links each to the
 existing E1 spec docs, phase gates, and validation scripts. Nothing here
 is a license to modify chip RTL, docs, or scripts; the
-`packages/chip/CLAUDE.md` rules and the existing validation gates remain
+`packages/research/chip/CLAUDE.md` rules and the existing validation gates remain
 authoritative. Every recommendation must run through normal review and
 test before any spec or RTL change lands.
 

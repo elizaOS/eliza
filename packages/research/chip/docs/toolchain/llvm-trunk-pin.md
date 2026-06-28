@@ -30,7 +30,7 @@ and is consumed by `scripts/build_llvm_riscv.sh`.
 
 ## Build environment (canonical)
 
-- Linux x86_64 (or aarch64) container built from `packages/chip/Dockerfile`.
+- Linux x86_64 (or aarch64) container built from `packages/research/chip/Dockerfile`.
 - The macOS arm64 host CAN build clang itself, but it cannot link against
   glibc-targeted RISC-V userspace. The cross-compiled RVA23 sample target
   used as evidence requires `gcc-riscv64-linux-gnu` sysroot, available only

@@ -9,7 +9,7 @@ existing deterministic RTL, formal, simulator, OpenLane/OpenROAD, software, and
 evidence gates.
 
 This document incorporates the user-provided public RISC-V / AlphaChip corpus,
-the current `packages/chip` tree, and a fresh public-source check on
+the current `packages/research/chip` tree, and a fresh public-source check on
 2026-05-20. It is research and implementation planning evidence only. No AI
 prediction, generated script, model score, or proxy cost is an E1 design claim
 until the corresponding deterministic E1 gate passes.
@@ -52,27 +52,27 @@ spine:
 
 The current repository is already unusually prepared for this work:
 
-- `packages/chip` is the E1 chip package. Its `AGENTS.md` says to treat it as a
+- `packages/research/chip` is the E1 chip package. Its `AGENTS.md` says to treat it as a
   pre-tapeout hardware/software evidence package for an open RISC-V AI SoC
   scaffold and to make claims only through evidence gates.
-- `packages/chip/README.md` defines E1 as the smallest end-to-end system used
+- `packages/research/chip/README.md` defines E1 as the smallest end-to-end system used
   to prove conventions, evidence gates, and tool setup before scaling the final
   phone SoC.
-- `packages/chip/research/00_index.md` already contains research packets for
+- `packages/research/chip/research/00_index.md` already contains research packets for
   NPU, compiler/runtime, CPU, memory, PD/EDA, process/packaging, security, BSP,
   benchmarks/formal, mobile platform, and AlphaChip macro placement.
-- `packages/chip/research/alpha_chip_macro_placement/00_index.md` already
+- `packages/research/chip/research/alpha_chip_macro_placement/00_index.md` already
   describes an AlphaChip path: Circuit Training, MacroPlacement, E1 softmacro
   benchmarks, OpenLane replay, and post-route validation.
-- `packages/chip/docs/toolchain/alphachip-checkpoint-blocker.md` already
+- `packages/research/chip/docs/toolchain/alphachip-checkpoint-blocker.md` already
   records the main external blocker: Google-hosted AlphaChip checkpoint,
   DREAMPlace tarballs, and `plc_wrapper_main` return HTTP 403 from documented
   GCS URLs.
-- `packages/chip/scripts/alphachip/` already has wrappers for Circuit Training
+- `packages/research/chip/scripts/alphachip/` already has wrappers for Circuit Training
   setup, conversion, smoke tests, toy training, E1 softmacro benchmark
   preparation, single-host training, H200 payload packaging, proxy-cost
   comparison, coordinate descent, and checkpoint mirror/bootstrap handling.
-- `packages/chip/scripts/ai_eda/` already contains target-capture and dry-run
+- `packages/research/chip/scripts/ai_eda/` already contains target-capture and dry-run
   scripts for most AI-EDA lanes: local RAG, external metadata probing,
   OpenROAD ML snapshots, OpenROAD autotune, RTL model evaluation, cocotb
   stimulus search, ZigZag NPU DSE, RTL PPA advisory, HLS, timing, routing,
@@ -84,27 +84,27 @@ The current repository is already unusually prepared for this work:
   spec traceability, IP/register contracts, memory macro libraries, 3DIC, logic
   synthesis, netlist equivalence, physical verification, placement, and
   legalization.
-- `packages/chip/scripts/check_ai_eda_source_inventory.py` is already the main
+- `packages/research/chip/scripts/check_ai_eda_source_inventory.py` is already the main
   fail-closed guard for these lanes. `make docs-check` depends on it.
-- `packages/chip/pd/openlane/` has OpenLane/OpenROAD configs for SKY130, GF180,
+- `packages/research/chip/pd/openlane/` has OpenLane/OpenROAD configs for SKY130, GF180,
   IHP SG13G2, ASAP7, exploratory variants, padframe inputs, and portability
   metadata.
-- `packages/chip/verify/` has cocotb and formal collateral, including NPU, DMA,
+- `packages/research/chip/verify/` has cocotb and formal collateral, including NPU, DMA,
   top-level, IOMMU, and AI-EDA assertion/coverage/seed candidate artifacts.
-- `packages/chip/compiler/runtime/` has E1 NPU runtime, delegate, partitioner,
+- `packages/research/chip/compiler/runtime/` has E1 NPU runtime, delegate, partitioner,
   StableHLO/lowering, simulation-scale model, and tests.
-- `packages/chip/benchmarks/` has benchmark plans, CPU/memory/ML parsers, local
+- `packages/research/chip/benchmarks/` has benchmark plans, CPU/memory/ML parsers, local
   TFLite smoke model generation, power workload plans, and simulation drivers
   for NPU scale, NPU context queues, memory/IOMMU/QoS, thermal sweeps, and
   operating-point optimization.
-- `packages/chip/docs/project/chip-os-boot-gap-survey-2026-05-20.md` is honest
+- `packages/research/chip/docs/project/chip-os-boot-gap-survey-2026-05-20.md` is honest
   about the main product blocker: the checked-in E1 RTL is still a debug/MMIO
   scaffold, generated Chipyard AP boot reaches only a partial Linux banner, and
   no Linux/AOSP phone claim should be made yet.
 
 The implication: this plan should extend existing mechanisms, not create a
 second project. All new assets should land behind manifests, scripts, and gates
-that match the current `packages/chip` style.
+that match the current `packages/research/chip` style.
 
 ## Public-source findings checked on 2026-05-20
 
@@ -814,7 +814,7 @@ Current local validation on the 128 GiB M4 host:
   `/usr/bin/python3` runtime for non-Torch checks: `datetime.UTC` imports were
   replaced with `datetime.timezone.utc`, and `zip(..., strict=False)` call sites
   were removed from `scripts/ai_eda/*.py`. `find
-  packages/chip/scripts/ai_eda -name '*.py' -print0 | xargs -0 /usr/bin/python3
+  packages/research/chip/scripts/ai_eda -name '*.py' -print0 | xargs -0 /usr/bin/python3
   -m py_compile` passes after the sweep. Torch training/inference still require
   the managed Python with PyTorch installed; on this Mac that is
   `/opt/miniconda3/bin/python` with MPS available and CUDA unavailable.
@@ -1225,12 +1225,12 @@ Current local validation on the 128 GiB M4 host:
 
 Add a repo-owned external manifest convention:
 
-- `packages/chip/external/README.md`
-- `packages/chip/external/SOURCES.lock.yaml`
-- `packages/chip/external/datasets/<name>/manifest.yaml`
-- `packages/chip/external/models/<name>/manifest.yaml`
-- `packages/chip/external/repos/<name>/manifest.yaml`
-- `packages/chip/external/cache/` ignored by git
+- `packages/research/chip/external/README.md`
+- `packages/research/chip/external/SOURCES.lock.yaml`
+- `packages/research/chip/external/datasets/<name>/manifest.yaml`
+- `packages/research/chip/external/models/<name>/manifest.yaml`
+- `packages/research/chip/external/repos/<name>/manifest.yaml`
+- `packages/research/chip/external/cache/` ignored by git
 
 Each manifest must record:
 
@@ -1730,7 +1730,7 @@ Acceptance:
 - Every converted sample has a source manifest, file hashes, schema version,
   and split ID.
 - Converters can run on tiny fixtures committed under
-  `packages/chip/docs/spec-db/ai-eda/examples/` and materialized into
+  `packages/research/chip/docs/spec-db/ai-eda/examples/` and materialized into
   `build/ai_eda/internal_dataset_fixtures/<run-id>/`.
 - No full external dataset is committed.
 
@@ -2104,7 +2104,7 @@ Metrics:
 Implemented and recommended local layout:
 
 ```text
-packages/chip/
+packages/research/chip/
   external/
     SOURCES.lock.yaml
     repos/

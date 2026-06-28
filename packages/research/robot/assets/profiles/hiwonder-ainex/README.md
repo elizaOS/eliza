@@ -1,6 +1,6 @@
 # Hiwonder AiNex — robot assets
 
-Source-of-truth assets for the Hiwonder AiNex humanoid (URDF + meshes + MJCF). Used by `packages/robot/` simulation/training and by `plugins/plugin-ainex/` runtime.
+Source-of-truth assets for the Hiwonder AiNex humanoid (URDF + meshes + MJCF). Used by `packages/research/robot/` simulation/training and by `plugins/plugin-ainex/` runtime.
 
 ## Layout
 
@@ -41,8 +41,8 @@ Outside of ROS, install `xacro` from PyPI:
 
 ```bash
 pip install xacro
-xacro packages/robot/assets/profiles/hiwonder-ainex/urdf/ainex.urdf.xacro \
-  -o packages/robot/assets/profiles/hiwonder-ainex/urdf/ainex.urdf
+xacro packages/research/robot/assets/profiles/hiwonder-ainex/urdf/ainex.urdf.xacro \
+  -o packages/research/robot/assets/profiles/hiwonder-ainex/urdf/ainex.urdf
 ```
 
 If the catkin-only `gazebo.xacro` block fails (it references the `libgazebo_ros_control` plugin), use `ainex.urdf.xacro` directly instead of the wrapper `ainex.xacro` — `gazebo.xacro` is only needed for Gazebo simulation, not for kinematics/MuJoCo work.

@@ -33,16 +33,16 @@ Import via subpath: `@elizaos/cloud-shared/billing`, `/db`, `/db/repositories/ap
 ## Commands
 
 ```bash
-bun run --cwd packages/cloud-shared typecheck            # tsc --noEmit
-bun run --cwd packages/cloud-shared lint                 # biome check
-bun run --cwd packages/cloud-shared lint:fix
-bun run --cwd packages/cloud-shared test                 # bun test
-bun run --cwd packages/cloud-shared db:generate          # drizzle-kit generate
-bun run --cwd packages/cloud-shared db:migrate           # migrate-with-diagnostics.ts
-bun run --cwd packages/cloud-shared db:migrate:drizzle   # drizzle-kit migrate
-bun run --cwd packages/cloud-shared db:studio            # drizzle-kit studio
-bun run --cwd packages/cloud-shared db:check-migrations  # drizzle-kit check
-bun run --cwd packages/cloud-shared preflight:messaging-gateways
+bun run --cwd packages/cloud/shared typecheck            # tsc --noEmit
+bun run --cwd packages/cloud/shared lint                 # biome check
+bun run --cwd packages/cloud/shared lint:fix
+bun run --cwd packages/cloud/shared test                 # bun test
+bun run --cwd packages/cloud/shared db:generate          # drizzle-kit generate
+bun run --cwd packages/cloud/shared db:migrate           # migrate-with-diagnostics.ts
+bun run --cwd packages/cloud/shared db:migrate:drizzle   # drizzle-kit migrate
+bun run --cwd packages/cloud/shared db:studio            # drizzle-kit studio
+bun run --cwd packages/cloud/shared db:check-migrations  # drizzle-kit check
+bun run --cwd packages/cloud/shared preflight:messaging-gateways
 ```
 
 There is no build step here (`build:linked-workspaces` defers to the repo-root `build:core`).

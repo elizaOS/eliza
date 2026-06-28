@@ -170,7 +170,7 @@ From `review/mechanical-stress-blockers.json`:
 Focused test command:
 
 ```bash
-cd packages/robot
+cd packages/research/robot
 uv run pytest tests/test_profiles.py tests/test_unitree_r1_bodykit.py -q
 ```
 
@@ -214,7 +214,7 @@ remaining production blockers are:
   specs are not complete.
 - Mold-flow analysis and supplier RFQ are not completed.
 - The Blender MCP/plugin was not available in this session; Blender itself was
-  installed as a local portable tool at `packages/robot/.tools/blender`.
+  installed as a local portable tool at `packages/research/robot/.tools/blender`.
 
 The project is ready for the next surfacing/CAD pass, not for injection mold
 purchase.

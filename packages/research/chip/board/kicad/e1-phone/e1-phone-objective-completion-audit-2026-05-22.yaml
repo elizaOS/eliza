@@ -33,7 +33,7 @@ summary:
   manufacturing_closure_has_blocked_candidate_outputs: true
 live_pcb_evidence:
   scope: legacy_concept_planning_board_not_current_local_routed_candidate
-  board_file: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  board_file: packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
   footprint_count: 87
   placeholder_footprint_count: 87
   segment_count: 0

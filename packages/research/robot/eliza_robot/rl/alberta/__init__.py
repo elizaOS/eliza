@@ -1,6 +1,6 @@
 """Alberta-Plan continual learning for robot control.
 
-This subpackage integrates the vendored Alberta framework (``packages/alberta``)
+This subpackage integrates the vendored Alberta framework (``packages/research/alberta``)
 into the robot RL stack. It provides a streaming, continual-learning controller
 that learns a sequence of robot tasks **without catastrophically forgetting**
 earlier ones — the failure mode that cripples standard RL (PPO) when tasks are

@@ -361,13 +361,6 @@ export const trainingPlugin = {
 export const registerTrainingRuntimeHooks = async () => undefined;
 export default trainingPlugin;
 `,
-    "@elizaos/plugin-vincent": `
-export const vincentPlugin = {
-  name: "vincent",
-  routes: [],
-};
-export default vincentPlugin;
-`,
     "@elizaos/plugin-whatsapp": `
 const inert = () => undefined;
 const falseRoute = async () => false;
@@ -508,7 +501,6 @@ const forceLiveStubPackages = new Set([
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
   "@elizaos/plugin-training",
-  "@elizaos/plugin-vincent",
 ]);
 
 const chromiumFlags = {

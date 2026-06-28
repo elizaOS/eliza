@@ -191,7 +191,7 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
         )
         self.assertEqual(
             wifi_disabled["next_command"],
-            "python3 packages/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only",
+            "python3 packages/research/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only",
         )
 
     def test_all_pass_logs_and_consistent_sources_pass(self) -> None:

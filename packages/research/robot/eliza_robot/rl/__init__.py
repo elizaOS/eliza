@@ -17,12 +17,12 @@ Environment variables
     Root directory where named checkpoint subdirectories are looked up. Each
     skill resolves its default checkpoint as
     ``<ELIZA_ROBOT_CHECKPOINT_DIR>/<checkpoint_name>``. Defaults to
-    ``packages/robot/checkpoints`` (i.e. the gitignored checkpoint store at
+    ``packages/research/robot/checkpoints`` (i.e. the gitignored checkpoint store at
     the package root). Override this to point at a Nebius-mounted volume,
     object-storage cache, or an explicit per-environment path.
 
 The directory itself is gitignored. Tiny smoke-test checkpoints used in CI
-live under ``packages/robot/checkpoints/_validator/`` — see the README in
+live under ``packages/research/robot/checkpoints/_validator/`` — see the README in
 that directory.
 """
 
@@ -36,7 +36,7 @@ def checkpoint_root() -> Path:
     """Return the configured checkpoint root.
 
     Resolves ``ELIZA_ROBOT_CHECKPOINT_DIR`` if set, otherwise falls back to
-    ``packages/robot/checkpoints`` relative to this file's package install
+    ``packages/research/robot/checkpoints`` relative to this file's package install
     location.
     """
     env = os.environ.get("ELIZA_ROBOT_CHECKPOINT_DIR")

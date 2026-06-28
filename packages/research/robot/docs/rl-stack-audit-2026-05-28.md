@@ -1,4 +1,4 @@
-# packages/robot RL-stack audit — 2026-05-28
+# packages/research/robot RL-stack audit — 2026-05-28
 
 Adversarially-verified audit (43 agents: 8 read-only reviewers across subsystems
 → per-finding refutation verifiers). 30 findings survived verification; each was

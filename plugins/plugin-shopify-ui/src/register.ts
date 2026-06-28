@@ -1,5 +1,3 @@
-// Self-register Shopify overlay app at import time.
-import "./shopify-app";
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 
 // In a terminal host (the Node agent, no DOM), register the Shopify view so it

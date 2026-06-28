@@ -293,7 +293,7 @@ class BuildReportTests(unittest.TestCase):
         )
         self.assertEqual(
             report["blocker_action_plan"]["live_device_validation"][0]["validation_command"],
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
         )
         self.assertIn(
             "Boot a target phone/emulator",
@@ -777,7 +777,7 @@ class BuildReportTests(unittest.TestCase):
         )
         self.assertEqual(
             runtime["validation_commands"],
-            ["python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"],
+            ["python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"],
         )
         self.assertIn(
             "python3 scripts/aggregate_tapeout_readiness.py --scope phone --strict",
@@ -934,7 +934,7 @@ class BuildReportTests(unittest.TestCase):
                             "next_artifacts": ["docs/evidence/android/rear_camera.json"],
                             "next_commands": ["scripts/capture_phone_media.sh"],
                             "validation_commands": [
-                                "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+                                "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"
                             ],
                         }
                     }
@@ -975,7 +975,7 @@ class BuildReportTests(unittest.TestCase):
             )
             self.assertEqual(
                 report["next_runtime_capture_action"]["validation_commands"],
-                ["python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"],
+                ["python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"],
             )
         finally:
             if original is None:
@@ -3148,7 +3148,7 @@ class E1PhoneMechanicalCadEvidenceInventoryTests(unittest.TestCase):
             report["scope"]["cad_output_dir"],
             "mechanical/e1-phone/out",
         )
-        self.assertFalse(report["scope"]["cad_output_dir"].startswith("packages/chip/"))
+        self.assertFalse(report["scope"]["cad_output_dir"].startswith("packages/research/chip/"))
         assembly = report["manifest_inventory"]["assembly"]
         self.assertEqual(
             assembly["path"],
@@ -3162,7 +3162,7 @@ class E1PhoneMechanicalCadEvidenceInventoryTests(unittest.TestCase):
 
     def test_mechanical_resolvers_accept_chip_and_repo_relative_paths(self) -> None:
         chip_relative = "mechanical/e1-phone/review/board-step-readiness.json"
-        repo_relative = "packages/chip/mechanical/e1-phone/review/board-step-readiness.json"
+        repo_relative = "packages/research/chip/mechanical/e1-phone/review/board-step-readiness.json"
 
         self.assertEqual(
             release_contract.resolve_repo_path(chip_relative),

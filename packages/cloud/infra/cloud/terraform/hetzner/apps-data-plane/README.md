@@ -82,7 +82,7 @@ gh workflow run terraform-apps-data-plane.yml --ref develop \
 Or locally for debugging:
 
 ```bash
-cd packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane
+cd packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane
 cp tfvars/staging.tfvars.example staging.tfvars   # fill in real values
 export HCLOUD_TOKEN=...      # the HCLOUD_APPS_TOKEN value
 terraform init -backend-config=backend-staging.hcl

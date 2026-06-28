@@ -12,9 +12,9 @@
  *   POST   /api/v1/apps/check-name   — name availability
  *
  * Route handlers under test:
- *   packages/cloud-api/v1/apps/route.ts
- *   packages/cloud-api/v1/apps/[id]/route.ts
- *   packages/cloud-api/v1/apps/check-name/route.ts
+ *   packages/cloud/api/v1/apps/route.ts
+ *   packages/cloud/api/v1/apps/[id]/route.ts
+ *   packages/cloud/api/v1/apps/check-name/route.ts
  *
  * Mirrors the gate/cleanup shape of group-l-app-charges: a `serverReachable`
  * probe, a `hasTestApiKey` flag, a `shouldRunAuthed()` gate, a `createTestApp()`

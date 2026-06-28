@@ -84,7 +84,7 @@ class AndroidReleaseManifestValidatorTests(unittest.TestCase):
             self.assertIn("artifact file not found", payload["errors"][0])
             instructions = payload["release_artifact_instructions"]
             self.assertIn(
-                "packages/chip/sw/aosp-device/build-aosp-riscv64.sh",
+                "packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh",
                 instructions["build_commands"][0],
             )
             self.assertIn("cp ", instructions["stage_commands"][1])

@@ -8,8 +8,8 @@
  *   2. Local Postgres seeded with the test org/user/api-key, which exports
  *      TEST_API_KEY into process.env.
  *
- * Run with: bun test --preload packages/cloud-api/test/e2e/preload.ts \
- *           packages/cloud-api/test/e2e
+ * Run with: bun test --preload packages/cloud/api/test/e2e/preload.ts \
+ *           packages/cloud/api/test/e2e
  */
 
 import { createHash } from "node:crypto";

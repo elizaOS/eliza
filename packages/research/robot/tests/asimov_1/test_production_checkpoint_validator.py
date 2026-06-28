@@ -532,7 +532,7 @@ def test_production_checkpoint_validator_cli(tmp_path: Path) -> None:
     proc = subprocess.run(
         [
             sys.executable,
-            "packages/robot/scripts/validate_asimov1_production_checkpoint.py",
+            "packages/research/robot/scripts/validate_asimov1_production_checkpoint.py",
             str(tmp_path),
             "--min-steps",
             "128",

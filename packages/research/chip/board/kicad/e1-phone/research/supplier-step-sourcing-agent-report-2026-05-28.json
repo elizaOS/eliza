@@ -18,7 +18,7 @@
       "license_access_constraints": "Datasheets are public; exact CAD/STEP and land pattern require selected MPN and license review.",
       "can_be_used_for_release": false,
       "blocked_reason": "No exact QFN48 codec MPN selected; current footprint is only a generic audio signal contract.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/audio_codec/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/audio_codec/"
     },
     {
       "footprint": "BACKLIGHT_BIAS_POWER_DEV",
@@ -33,7 +33,7 @@
       "license_access_constraints": "Public datasheets; STEP model must be downloaded from manufacturer/distributor CAD portal and checked for reuse terms.",
       "can_be_used_for_release": false,
       "blocked_reason": "LM3697 is DSBGA12 and does not match the repo QFN24 placeholder; exact QFN24 driver is not selected.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/display_backlight/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/display_backlight/"
     },
     {
       "footprint": "BATTERY_4P_1P00_DEV",
@@ -47,7 +47,7 @@
       "license_access_constraints": "Signed pack drawing, safety documents, and sample inspection are external supplier artifacts.",
       "can_be_used_for_release": false,
       "blocked_reason": "Pin order, connector, cell/PCM dimensions, safety docs, and STEP are supplier-specific.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/battery_pack/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/battery_pack/"
     },
     {
       "footprint": "CAMERA_24P_0P50_DEV",
@@ -64,7 +64,7 @@
       "license_access_constraints": "Public listings are not signed drawings; exact FPC pinout and STEP require RFQ/supplier release pack.",
       "can_be_used_for_release": false,
       "blocked_reason": "Exact 24-pin FPC pin order, connector, optical datum, and STEP are missing.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/rear_camera/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/rear_camera/"
     },
     {
       "footprint": "CAMERA_30P_0P50_DEV",
@@ -79,7 +79,7 @@
       "license_access_constraints": "Exact module drawing and STEP are external supplier artifacts.",
       "can_be_used_for_release": false,
       "blocked_reason": "Exact SF-G5035S60FY public evidence, 30-pin FPC pin order, connector, and STEP are missing.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/front_camera/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/front_camera/"
     },
     {
       "footprint": "DISPLAY_40P_0P30_DEV",
@@ -96,7 +96,7 @@
       "license_access_constraints": "Exact signed outline/FPC drawing, pinout, display init, touch data, and STEP require supplier pack.",
       "can_be_used_for_release": false,
       "blocked_reason": "Public sources conflict on pin count; exact 40-pin 0.30 mm FPC order is not proven.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/display_touch/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/display_touch/"
     },
     {
       "footprint": "FUEL_GAUGE_WLCSP_DEV",
@@ -112,7 +112,7 @@
       "license_access_constraints": "Public datasheets; exact STEP/EDA model must be checked through official/distributor CAD portals.",
       "can_be_used_for_release": false,
       "blocked_reason": "Current WLCSP12 placeholder is not tied to an exact selected MPN; BQ27426 is 9-ball DSBGA.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/fuel_gauge/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/fuel_gauge/"
     },
     {
       "footprint": "HAPTIC_DRIVER_WLCSP_DEV",
@@ -127,7 +127,7 @@
       "license_access_constraints": "Datasheet is public; CAD/STEP model download terms must be checked before committing vendor model.",
       "can_be_used_for_release": false,
       "blocked_reason": "Good candidate, but exact MPN/CAD intake and footprint replacement are not committed.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/haptics/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/haptics/"
     },
     {
       "footprint": "NFC_CONTROLLER_QFN_DEV",
@@ -143,7 +143,7 @@
       "license_access_constraints": "ST CAD resources require download/license review; antenna tuning remains design-specific.",
       "can_be_used_for_release": false,
       "blocked_reason": "Exact variant, antenna/matching design, and CAD intake are not frozen.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/nfc/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/nfc/"
     },
     {
       "footprint": "NFC_LOOP_MATCH_DEV",
@@ -158,7 +158,7 @@
       "license_access_constraints": "Release values require antenna supplier drawing and VNA/tuning report.",
       "can_be_used_for_release": false,
       "blocked_reason": "No fixed off-the-shelf loop-match footprint can be released without antenna tuning.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/nfc_antenna_match/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/nfc_antenna_match/"
     },
     {
       "footprint": "QUECTEL_RG255C_GEOMETRY_DEV",
@@ -174,7 +174,7 @@
       "license_access_constraints": "Official hardware design/reference layout/STEP may require Quectel portal, NDA, or direct supplier request; third-party CAD requires independent verification.",
       "can_be_used_for_release": false,
       "blocked_reason": "Exact regional SKU pack, official land pattern, official STEP, RF layout notes, and certification scope are missing.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/cellular/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/cellular/"
     },
     {
       "footprint": "SENSOR_HUB_QFN_DEV",
@@ -191,7 +191,7 @@
       "license_access_constraints": "Public datasheets and CAD resources; exact selected part model license must be reviewed.",
       "can_be_used_for_release": false,
       "blocked_reason": "No selected QFN24 sensor hub has been identified; public IMU candidates use LGA14 packages.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/sensors/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/sensors/"
     },
     {
       "footprint": "USIM_ESD_LEVELSHIFT_DEV",
@@ -208,7 +208,7 @@
       "license_access_constraints": "Public datasheets exist; exact selected package and CAD/STEP model license must be checked before intake.",
       "can_be_used_for_release": false,
       "blocked_reason": "No exact USIM level-shift/ESD MPN and package has been selected to match the current 10-pad placeholder.",
-      "recommended_repo_intake_path": "packages/chip/board/kicad/e1-phone/production/sourcing/usim_esd_levelshift/"
+      "recommended_repo_intake_path": "packages/research/chip/board/kicad/e1-phone/production/sourcing/usim_esd_levelshift/"
     }
   ],
   "selected_hardware_supplement": [

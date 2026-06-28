@@ -44,7 +44,7 @@
       "commands": [
         "sw/opensbi/scripts/import-opensbi-platform.sh --check <repo>/external/opensbi/opensbi",
         "ELIZA_OPENSBI_CMD='make PLATFORM=generic FW_DYNAMIC=y' docs/sw/opensbi/capture-opensbi-evidence.sh <repo>/external/opensbi/opensbi build",
-        "ELIZA_OPENSBI_HANDOFF_CMD='PATH=packages/chip/external/deb-tools/verilator/usr/bin:packages/chip/external/deb-tools/dtc/usr/bin:packages/chip/external/circt/1.147.0/bin:$PATH CHIPYARD_LINUX_BINARY=packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS=14400 CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES=4000000000 CHIPYARD_LINUX_SMOKE_DISABLE_DRAMSIM=1 CHIPYARD_LINUX_SMOKE_BREAK_SIM_PREREQ=0 CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary-fast scripts/run_chipyard_eliza_linux_smoke.sh' docs/sw/opensbi/capture-opensbi-evidence.sh <repo>/external/opensbi/opensbi handoff",
+        "ELIZA_OPENSBI_HANDOFF_CMD='PATH=packages/research/chip/external/deb-tools/verilator/usr/bin:packages/research/chip/external/deb-tools/dtc/usr/bin:packages/research/chip/external/circt/1.147.0/bin:$PATH CHIPYARD_LINUX_BINARY=packages/research/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS=14400 CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES=4000000000 CHIPYARD_LINUX_SMOKE_DISABLE_DRAMSIM=1 CHIPYARD_LINUX_SMOKE_BREAK_SIM_PREREQ=0 CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary-fast scripts/run_chipyard_eliza_linux_smoke.sh' docs/sw/opensbi/capture-opensbi-evidence.sh <repo>/external/opensbi/opensbi handoff",
         "python3 scripts/check_software_bsp.py opensbi --require-evidence"
       ],
       "status": "READY_TO_CAPTURE",

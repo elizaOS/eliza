@@ -7,7 +7,7 @@ hard stylized face shell. Hair and glasses are intentionally excluded.
 ## Generate
 
 ```bash
-cd packages/robot
+cd packages/research/robot
 uv run python scripts/generate_unitree_profile.py --robot r1
 ./.tools/blender/blender --background --python scripts/generate_eliza_human_donor_blender.py
 uv run python scripts/analyze_unitree_r1_oem_envelopes.py
@@ -38,7 +38,7 @@ Outputs:
 
 ## Blender
 
-This checkout uses a portable Blender build under `packages/robot/.tools/blender`
+This checkout uses a portable Blender build under `packages/research/robot/.tools/blender`
 when available. It is intentionally ignored by git because the install is large.
 The render script imports the generated assembled bodykit GLB and writes a
 headless Blender review render plus `.blend` scene to `review/`.
@@ -55,4 +55,4 @@ interiors, real mounts, bosses, ribs, inserts, parting lines, and production
 surface review.
 
 The R1 base assets are sourced from Unitree's `unitree_mujoco` repository and
-vendored under `packages/robot/vendor/unitree_mujoco`.
+vendored under `packages/research/robot/vendor/unitree_mujoco`.

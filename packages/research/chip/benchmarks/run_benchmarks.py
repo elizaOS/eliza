@@ -1403,7 +1403,7 @@ def metadata_blockers(
                             "reason": reason,
                             "resolution": (
                                 f"Archive calibration.assets.{asset_name}.evidence under "
-                                "packages/chip and record its matching SHA-256 digest."
+                                "packages/research/chip and record its matching SHA-256 digest."
                             ),
                         }
                     )

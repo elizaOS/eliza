@@ -222,7 +222,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             runtime_batch["commands"],
         )
         self.assertIn(
-            "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
+            "python3 packages/research/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
             runtime_commands,
         )
         self.assertIn('--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT"', runtime_commands)
@@ -230,11 +230,11 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn("--adb-connect 127.0.0.1:5555", runtime_commands)
         self.assertIn('--adb-serial "$CHIP_ANDROID_ADB_SERIAL"', runtime_commands)
         self.assertIn(
-            "--output packages/chip/docs/evidence/android/system_bridge_runtime_evidence.json",
+            "--output packages/research/chip/docs/evidence/android/system_bridge_runtime_evidence.json",
             runtime_commands,
         )
         self.assertIn(
-            "--logcat packages/chip/docs/evidence/android/system_bridge_runtime_logcat.log",
+            "--logcat packages/research/chip/docs/evidence/android/system_bridge_runtime_logcat.log",
             runtime_commands,
         )
         missing_runtime = next(

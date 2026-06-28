@@ -54,7 +54,7 @@ Sub-report of [2028-sota-integrated-report.md](../2028-sota-integrated-report.md
 - CoWoS / EMIB / FOCoS-CL dominate HPC; InFO-LSI / InFO_oS dominate mobile. FoPLP emerging for cost but panel warpage and >10 µm RDL line widths — not bleeding-edge mobile.
 - **Thermal**: 2.5D interposer hotspots >120 °C at 600-700 W board power for HPC. Mobile much lower power, but stacked DRAM-on-SoC adds 5-15 °C ΔT and forces PD to consider top-die TSV keepouts.
 
-## B. Current state in `packages/chip`
+## B. Current state in `packages/research/chip`
 
 ### B.1 OpenLane Sky130 release run (RUN_2026-05-19_05-08-54)
 

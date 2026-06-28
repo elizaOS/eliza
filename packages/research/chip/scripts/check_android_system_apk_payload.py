@@ -108,7 +108,7 @@ RISCV64_RUNTIME_BUILD_COMMANDS = (
     "export ELIZA_BUN_RISCV64_SHA256=$(sha256sum \"$ELIZA_BUN_RISCV64_FILE\" | awk '{print $1}')",
     "node --test packages/app-core/scripts/stage-android-agent.test.mjs",
     "bun run build:android:system",
-    "python3 packages/chip/scripts/check_android_system_apk_payload.py --allow-missing-aapt",
+    "python3 packages/research/chip/scripts/check_android_system_apk_payload.py --allow-missing-aapt",
 )
 RISCV64_RUNTIME_PROVENANCE_REQUIREMENTS = (
     f"{RUNTIME_PROVENANCE_ENTRY} must use schema eliza.android_agent_runtime_provenance.v1",

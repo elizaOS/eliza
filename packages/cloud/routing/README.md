@@ -82,7 +82,7 @@ const route = resolveFeatureCloudRoute(toRuntimeSettings(runtime), "llm", SPEC);
 ## Building
 
 ```bash
-bun run --cwd packages/cloud-routing build
-bun run --cwd packages/cloud-routing typecheck
-bun run --cwd packages/cloud-routing lint
+bun run --cwd packages/cloud/routing build
+bun run --cwd packages/cloud/routing typecheck
+bun run --cwd packages/cloud/routing lint
 ```

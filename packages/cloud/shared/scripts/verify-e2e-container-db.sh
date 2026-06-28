@@ -4,7 +4,7 @@
 # (REVOKE CONNECT, over real docker networking), and our REAL --internal network
 # builder blocks egress. No mocks, no VPS, no prod — throwaway resources only.
 #
-# Requires: sudo docker, bun. Run from packages/cloud-shared/.
+# Requires: sudo docker, bun. Run from packages/cloud/shared/.
 #   bash scripts/verify-e2e-container-db.sh
 set -uo pipefail
 

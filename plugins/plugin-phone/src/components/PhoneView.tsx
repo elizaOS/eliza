@@ -14,7 +14,7 @@ import { Phone } from "@elizaos/capacitor-phone";
 import { consumePendingPhoneNumber } from "@elizaos/ui/app-navigate-view";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { normalizeNumber } from "./PhoneAppView.helpers.ts";
+import { normalizeNumber } from "./phone-view-helpers.ts";
 import {
   type PhoneCallRow,
   type PhoneSnapshot,

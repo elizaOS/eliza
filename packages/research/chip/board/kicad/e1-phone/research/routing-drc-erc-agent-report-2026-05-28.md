@@ -2,7 +2,7 @@
 
 Lane: KiCad production routing plus DRC/ERC evidence feasibility.
 
-Status: blocked. Current follow-up found a local KiCad CLI extraction at `packages/chip/.tools/kicad-local`, but it is KiCad `7.0.11` and is not sufficient for release DRC/ERC/STEP evidence. The release gate now requires a KiCad CLI capable of `kicad-cli sch erc`, `kicad-cli pcb drc`, and routed-board STEP export from `e1-phone-mainboard-routed.kicad_pcb`.
+Status: blocked. Current follow-up found a local KiCad CLI extraction at `packages/research/chip/.tools/kicad-local`, but it is KiCad `7.0.11` and is not sufficient for release DRC/ERC/STEP evidence. The release gate now requires a KiCad CLI capable of `kicad-cli sch erc`, `kicad-cli pcb drc`, and routed-board STEP export from `e1-phone-mainboard-routed.kicad_pcb`.
 
 ## Tool Preflight
 
@@ -43,13 +43,13 @@ The official KiCad CLI documentation shows the relevant command families are `ki
 Found KiCad sources:
 
 ```text
-packages/chip/board/kicad/e1-phone/e1-phone.kicad_pro
-packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
-packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-demo.kicad_pcb
-packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
-packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
-packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-packages/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch
+packages/research/chip/board/kicad/e1-phone/e1-phone.kicad_pro
+packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-demo.kicad_pcb
+packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
+packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
+packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+packages/research/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch
 ```
 
 No `.dsn` or `.ses` autorouter exchange files were found under the checked E1 phone tree.
@@ -72,9 +72,9 @@ Command:
 
 ```bash
 sha256sum \
-  packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb \
-  packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb \
-  packages/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch
+  packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb \
+  packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb \
+  packages/research/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch
 ```
 
 Observed hashes:
@@ -106,8 +106,8 @@ This confirms there are local copper segments and vias, but not production relea
 Existing files:
 
 ```text
-packages/chip/board/kicad/e1-phone/production/reports/drc.json
-packages/chip/board/kicad/e1-phone/production/reports/erc.json
+packages/research/chip/board/kicad/e1-phone/production/reports/drc.json
+packages/research/chip/board/kicad/e1-phone/production/reports/erc.json
 ```
 
 Assessment: these are not raw KiCad CLI DRC/ERC reports. Both identify as candidate artifacts:
@@ -125,16 +125,16 @@ They include local CAD connection coverage and non-release metadata. I found no 
 These remain not run as release evidence because the available `kicad-cli` is KiCad 7.0.11 and lacks the required commands:
 
 ```bash
-kicad-cli pcb drc packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb \
+kicad-cli pcb drc packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb \
   --format json \
-  --output packages/chip/board/kicad/e1-phone/production/reports/drc.json
+  --output packages/research/chip/board/kicad/e1-phone/production/reports/drc.json
 
-kicad-cli sch erc packages/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch \
+kicad-cli sch erc packages/research/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch \
   --format json \
-  --output packages/chip/board/kicad/e1-phone/production/reports/erc.json
+  --output packages/research/chip/board/kicad/e1-phone/production/reports/erc.json
 
-kicad-cli pcb export step packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb \
-  --output packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
+kicad-cli pcb export step packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb \
+  --output packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
 ```
 
 I did not overwrite any existing production output paths.

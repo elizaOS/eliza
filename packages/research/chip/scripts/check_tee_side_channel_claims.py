@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_MATRIX = REPO_ROOT / "packages/chip/docs/spec-db/tee-side-channel-claim-matrix.json"
+DEFAULT_MATRIX = REPO_ROOT / "packages/research/chip/docs/spec-db/tee-side-channel-claim-matrix.json"
 REQUIRED_STATE_HANDLING = {"cache", "tlb", "bpu", "prefetcher"}
 
 

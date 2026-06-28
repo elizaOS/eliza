@@ -12,7 +12,7 @@ evidence required by tee-plan/02-root-of-trust.md §8 (W7) and threat-model
 M1/M2/M8.
 
 Reproduce:
-    cd packages/chip && source tools/env.sh
+    cd packages/research/chip && source tools/env.sh
     python3 tests/security/negative/run.py
 """
 

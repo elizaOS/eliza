@@ -4,7 +4,7 @@
 -- `parent_backup_id`. Restoring an incremental backup replays its parent
 -- chain back to the nearest full backup. `content_hash` is the sha256 of the
 -- reconstructed full state, used to verify chain integrity. See
--- packages/cloud-shared/src/lib/services/agent-backup-diff.ts.
+-- packages/cloud/shared/src/lib/services/agent-backup-diff.ts.
 
 ALTER TABLE "agent_sandbox_backups"
   ADD COLUMN IF NOT EXISTS "backup_kind" text NOT NULL DEFAULT 'full',

@@ -1416,7 +1416,7 @@ def next_command_plan(blocked_findings: list[dict[str, Any]]) -> list[dict[str, 
             {
                 "id": f"capture_cpu_phone_{name}_benchmark_evidence",
                 "area": "benchmarks",
-                "source": "packages/chip/build/reports/cpu_phone_benchmark_claim_gate.json",
+                "source": "packages/research/chip/build/reports/cpu_phone_benchmark_claim_gate.json",
                 "claim_boundary": "operator_commands_only_not_cpu_phone_benchmark_or_release_evidence",
                 "commands": [command],
                 "requires": [

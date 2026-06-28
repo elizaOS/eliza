@@ -186,7 +186,7 @@ def test_real_hardware_evidence_validator_cli(tmp_path: Path) -> None:
     proc = subprocess.run(
         [
             sys.executable,
-            "packages/robot/scripts/validate_asimov1_real_hardware_evidence.py",
+            "packages/research/robot/scripts/validate_asimov1_real_hardware_evidence.py",
             str(report_path),
         ],
         cwd=Path(__file__).resolve().parents[4],

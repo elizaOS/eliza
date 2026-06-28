@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[1]  # packages/chip
+ROOT = HERE.parents[1]  # packages/research/chip
 LINUX_SRC = ROOT / "external/linux"
 LINUX_GNU = ROOT / "external/riscv64-linux-gnu"
 

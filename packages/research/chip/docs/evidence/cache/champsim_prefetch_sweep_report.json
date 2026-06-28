@@ -103,7 +103,7 @@
   "release_claim_allowed": false,
   "results": [
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_no",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_no",
       "cycles": 1329731,
       "instructions": 2000004,
       "ipc": 1.504066611968887,
@@ -134,7 +134,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_no",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_no",
       "cycles": 1432126,
       "instructions": 2000000,
       "ipc": 1.3965251660817555,
@@ -165,7 +165,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_no",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_no",
       "cycles": 4577548,
       "instructions": 2000002,
       "ipc": 0.4369155713932437,
@@ -196,7 +196,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_next_line",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_next_line",
       "cycles": 1291710,
       "instructions": 2000004,
       "ipc": 1.548338249297443,
@@ -227,7 +227,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_next_line",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_next_line",
       "cycles": 1399829,
       "instructions": 2000000,
       "ipc": 1.4287459396826327,
@@ -258,7 +258,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_next_line",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_next_line",
       "cycles": 4209929,
       "instructions": 2000001,
       "ipc": 0.47506763178191364,
@@ -289,7 +289,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_ip_stride",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_ip_stride",
       "cycles": 1298941,
       "instructions": 2000003,
       "ipc": 1.5397181242258116,
@@ -320,7 +320,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_ip_stride",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_ip_stride",
       "cycles": 1422036,
       "instructions": 2000000,
       "ipc": 1.4064341549721666,
@@ -351,7 +351,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_ip_stride",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_ip_stride",
       "cycles": 3007201,
       "instructions": 2000001,
       "ipc": 0.6650706088485605,
@@ -382,7 +382,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_spp_dev",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_spp_dev",
       "cycles": 1306869,
       "instructions": 2000004,
       "ipc": 1.5303783317226134,
@@ -413,7 +413,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_spp_dev",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_spp_dev",
       "cycles": 1420089,
       "instructions": 2000000,
       "ipc": 1.408362433622118,
@@ -444,7 +444,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_spp_dev",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_spp_dev",
       "cycles": 3130293,
       "instructions": 2000001,
       "ipc": 0.6389181460010293,
@@ -475,7 +475,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_va_ampm_lite",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_va_ampm_lite",
       "cycles": 1288979,
       "instructions": 2000004,
       "ipc": 1.5516187618262205,
@@ -506,7 +506,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_va_ampm_lite",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_va_ampm_lite",
       "cycles": 1409036,
       "instructions": 2000000,
       "ipc": 1.4194101499181,
@@ -537,7 +537,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_va_ampm_lite",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_va_ampm_lite",
       "cycles": 2965220,
       "instructions": 2000002,
       "ipc": 0.674486884615644,
@@ -568,7 +568,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_berti",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_berti",
       "cycles": 1288703,
       "instructions": 2000001,
       "ipc": 1.5519487422625695,
@@ -599,7 +599,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_berti",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_berti",
       "cycles": 1428126,
       "instructions": 2000000,
       "ipc": 1.4004366561493873,
@@ -630,7 +630,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_berti",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_berti",
       "cycles": 2853795,
       "instructions": 2000002,
       "ipc": 0.7008218880473195,
@@ -661,7 +661,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_ipcp",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_ipcp",
       "cycles": 1290523,
       "instructions": 2000004,
       "ipc": 1.549762383157836,
@@ -692,7 +692,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_ipcp",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_ipcp",
       "cycles": 1406875,
       "instructions": 2000000,
       "ipc": 1.4215904042647711,
@@ -723,7 +723,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_ipcp",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_ipcp",
       "cycles": 2848320,
       "instructions": 2000002,
       "ipc": 0.7021689978654084,
@@ -754,7 +754,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_bop",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_bop",
       "cycles": 1296467,
       "instructions": 2000004,
       "ipc": 1.542657082671599,
@@ -785,7 +785,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_bop",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_bop",
       "cycles": 1409063,
       "instructions": 2000000,
       "ipc": 1.4193829516494294,
@@ -816,7 +816,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_bop",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_bop",
       "cycles": 4264785,
       "instructions": 2000001,
       "ipc": 0.4689570517622811,
@@ -847,7 +847,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_pythia",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_pythia",
       "cycles": 1298009,
       "instructions": 2000004,
       "ipc": 1.5408244472881159,
@@ -878,7 +878,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_pythia",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_pythia",
       "cycles": 1406655,
       "instructions": 2000000,
       "ipc": 1.4218127401530583,
@@ -909,7 +909,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_pythia",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_pythia",
       "cycles": 4046413,
       "instructions": 2000001,
       "ipc": 0.4942651676929666,
@@ -940,7 +940,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_bingo",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_bingo",
       "cycles": 1306871,
       "instructions": 2000001,
       "ipc": 1.53037369411365,
@@ -971,7 +971,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_bingo",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_bingo",
       "cycles": 1424481,
       "instructions": 2000000,
       "ipc": 1.404020130840636,
@@ -1002,7 +1002,7 @@
       "warmup_instructions": 2000000
     },
     {
-      "binary": "packages/chip/external/ChampSim/bin/champsim_pref_bingo",
+      "binary": "packages/research/chip/external/ChampSim/bin/champsim_pref_bingo",
       "cycles": 3355416,
       "instructions": 2000002,
       "ipc": 0.596051875534956,

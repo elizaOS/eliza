@@ -4,5 +4,5 @@
 // Kept separate from PhoneView.tsx so that file exports only React components
 // and stays Fast-Refresh-compatible in dev.
 
-export { interact } from "./PhoneAppView.interact.ts";
+export { interact } from "./phone-interact.ts";
 export { PhoneView } from "./PhoneView.tsx";

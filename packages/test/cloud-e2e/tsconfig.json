@@ -14,7 +14,7 @@
     "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
-      "@elizaos/cloud-shared/*": ["../../cloud-shared/src/*"],
+      "@elizaos/cloud-shared/*": ["../../cloud/shared/src/*"],
       "@elizaos/cloud-test-mocks/*": ["../cloud-mocks/src/*"],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"]

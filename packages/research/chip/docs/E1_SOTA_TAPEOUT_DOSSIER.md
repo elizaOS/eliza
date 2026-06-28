@@ -156,7 +156,7 @@ Grouped by surface. Every item has `file:line` anchors. Confidence rating: **H**
 | H44 | 58 `eliza.*.v1` schemas declared as string constants in check scripts; only 3 have external schema files | search `'schema': 'eliza\.'` across scripts | M | Single `schemas/` directory + pydantic validators |
 | H45 | Dead scripts: `check_pmic_daughtercard_bom.py`, `check_pad_consistency.py`, `check_bsp_next_import_step.py`, two `zzz-root-owned-build-preserved*/` escape dirs | search | H | Confirm + delete |
 | H46 | ~40 near-identical `cocotb-*` Makefile rules + ~80 trivial `@python scripts/check_*.py` one-liners | `Makefile` | M | Pattern rules |
-| H47 | Docker policy violations — `scripts/build/docker_build_tier2.sh` forces Docker on Linux x86_64 (against `packages/chip/CLAUDE.md`) | also `scripts/bootstrap_llvm_container.sh`, `scripts/alphachip/*` | M | Refactor to native-first wrapper |
+| H47 | Docker policy violations — `scripts/build/docker_build_tier2.sh` forces Docker on Linux x86_64 (against `packages/research/chip/CLAUDE.md`) | also `scripts/bootstrap_llvm_container.sh`, `scripts/alphachip/*` | M | Refactor to native-first wrapper |
 
 ---
 

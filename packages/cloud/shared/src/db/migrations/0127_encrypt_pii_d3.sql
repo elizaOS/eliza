@@ -79,11 +79,11 @@ ALTER TABLE conversation_messages
 -- We do NOT iterate over rows here — Drizzle migrations run inside a
 -- single transaction and cannot call into the KMS. The actual backfill
 -- of existing rows is performed by an out-of-band job at
--- packages/cloud-api/src/jobs/encrypt-pii-backfill.ts (TODO) which:
+-- packages/cloud/api/src/jobs/encrypt-pii-backfill.ts (TODO) which:
 --   1. SELECTs rows where ciphertext IS NULL and plaintext IS NOT NULL
 --      in batches of 500.
 --   2. Calls the per-table crypto helpers in
---      packages/cloud-shared/src/db/crypto/.
+--      packages/cloud/shared/src/db/crypto/.
 --   3. UPDATEs the row WHERE ciphertext IS NULL (idempotent).
 --   4. Continues until no rows remain.
 -- A follow-up migration drops the plaintext columns once backfill is

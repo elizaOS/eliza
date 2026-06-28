@@ -186,6 +186,48 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
     expect(gui).not.toContain('data-agent-id="strip-now"');
   });
 
+  it("ACTION drilldown surfaces tool args and result", () => {
+    const actionWithIo: PhaseSummary = {
+      phase: "ACTION",
+      status: "done",
+      summary: "REPLY",
+      llmCalls: [],
+      providerAccesses: [],
+      toolEvents: [
+        {
+          id: "io1",
+          type: "tool_result",
+          actionName: "REPLY",
+          status: "completed",
+          success: true,
+          durationMs: 42,
+          args: { text: "hello world" },
+          result: { sent: true },
+        },
+      ],
+      evaluationEvents: [],
+    };
+    const snap: TrajectorySnapshot = {
+      ready: true,
+      recording: false,
+      error: null,
+      now: {
+        hasTrajectory: true,
+        phases: [handle, plan, actionWithIo, evaluate],
+      },
+      last: { hasTrajectory: false, phases: [handle, plan, action, evaluate] },
+      selected: { slot: "now", phase: "ACTION" },
+    };
+    const html = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <TrajectoryLoggerSpatialView snapshot={snap} />
+      </SpatialSurface>,
+    );
+    // args + result values surface in the expanded ACTION drilldown body.
+    expect(html).toContain("hello world");
+    expect(html).toContain("sent");
+  });
+
   it("exposes a Back affordance that dispatches the back action", () => {
     const actions: string[] = [];
     const gui = renderToStaticMarkup(

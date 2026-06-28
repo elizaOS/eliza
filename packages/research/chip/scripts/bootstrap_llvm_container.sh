@@ -3,7 +3,7 @@
 # build for the e1 RISC-V toolchain.
 #
 # Two-step process:
-#   1. Build the base chip image (packages/chip/Dockerfile) tagged
+#   1. Build the base chip image (packages/research/chip/Dockerfile) tagged
 #      eliza-chip:linux-x86_64. This carries the apt manifest snapshot consumed
 #      by scripts/record_tool_versions.sh.
 #   2. Build the LLVM build image (compiler/llvm-build/Dockerfile) tagged
@@ -12,7 +12,7 @@
 #
 # Fails closed if:
 #   - docker is not on PATH
-#   - the chip repo root cannot be located (must run from packages/chip)
+#   - the chip repo root cannot be located (must run from packages/research/chip)
 #   - either docker build invocation fails
 #
 # Outputs:

@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLOUD_V2_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-CLOUD_SERVICES_DIR="$CLOUD_V2_DIR/cloud-services"
-CLOUD_INFRA_DIR="$CLOUD_V2_DIR/cloud-infra/cloud"
+CLOUD_SERVICES_DIR="$CLOUD_V2_DIR/services"
+CLOUD_INFRA_DIR="$CLOUD_V2_DIR/infra/cloud"
 CLUSTER_NAME="eliza-local"
 REGISTRY_NAME="kind-registry"
 REGISTRY_PORT="5001"
@@ -243,7 +243,7 @@ pass "Agent-server image pushed to localhost:${REGISTRY_PORT}"
 
 # 19-21. gateway-webhook is no longer deployed via Helm/Kind in local dev — see
 # the gateway-discord note above. Production runs on Railway via
-# packages/cloud-services/gateway-webhook/railway.toml.
+# packages/cloud/services/gateway-webhook/railway.toml.
 
 # 22. Apply Server CRs
 info "Applying Server CRs..."
@@ -351,7 +351,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Start Eliza Cloud locally:  cd cloud && bun dev"
 echo "  2. For gateway-discord / gateway-webhook, run them on the host:"
-echo "       bun run --cwd packages/cloud-services/gateway-discord  dev:local"
-echo "       bun run --cwd packages/cloud-services/gateway-webhook  dev"
+echo "       bun run --cwd packages/cloud/services/gateway-discord  dev:local"
+echo "       bun run --cwd packages/cloud/services/gateway-webhook  dev"
 echo "     (production deploys: Railway via each service's railway.toml)"
 echo "  3. Send a DM to the Eliza App bot on Discord"

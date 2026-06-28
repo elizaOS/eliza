@@ -2,7 +2,7 @@
   "blocked_evidence_inventory": [
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
@@ -149,7 +149,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/fab-quote",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/fab-quote",
@@ -224,7 +224,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/first-article",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/first-article",
@@ -444,7 +444,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/pdf/assembly.pdf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/pdf/assembly.pdf",
@@ -519,7 +519,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf",
@@ -665,7 +665,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json",
@@ -739,7 +739,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/camera-capture-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/camera-capture-log.json",
@@ -813,7 +813,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json",
@@ -1009,7 +1009,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json",
@@ -1221,7 +1221,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
@@ -1295,7 +1295,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/length-skew.csv",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/length-skew.csv",
@@ -1366,7 +1366,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/memory-training-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/memory-training-log.json",
@@ -1440,7 +1440,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/power-thermal",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/power-thermal",
@@ -1639,7 +1639,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf",
@@ -1714,7 +1714,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json",
@@ -1788,7 +1788,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json",
@@ -1862,7 +1862,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json",
@@ -1936,7 +1936,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json",
@@ -2077,7 +2077,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml",
@@ -2154,7 +2154,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi",
@@ -2229,7 +2229,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/camera-csi.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/camera-csi.json",
@@ -2303,7 +2303,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json",
@@ -2377,7 +2377,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json",
@@ -2513,7 +2513,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json",
@@ -2587,7 +2587,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json",
@@ -2661,7 +2661,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json",
@@ -2735,7 +2735,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json",
@@ -2809,7 +2809,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/ufs-link-training-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/ufs-link-training-log.json",
@@ -2883,7 +2883,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json",
@@ -2957,7 +2957,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/usb2-length-skew.csv",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/usb2-length-skew.csv",
@@ -3028,7 +3028,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/zone-fill.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/zone-fill.json",
@@ -3173,7 +3173,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf",
@@ -3245,7 +3245,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/step",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/step",
@@ -3320,7 +3320,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml",
@@ -3455,7 +3455,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
@@ -3527,7 +3527,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/test/factory-test-limits.yaml",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/test/factory-test-limits.yaml",
@@ -3604,7 +3604,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/test/probe-coordinates.csv",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/test/probe-coordinates.csv",
@@ -4383,7 +4383,7 @@
   "next_unblock_actions": [
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
@@ -4530,7 +4530,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/fab-quote",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/fab-quote",
@@ -4605,7 +4605,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/first-article",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/first-article",
@@ -4825,7 +4825,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/pdf/assembly.pdf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/pdf/assembly.pdf",
@@ -4900,7 +4900,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf",
@@ -5046,7 +5046,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json",
@@ -5120,7 +5120,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/camera-capture-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/camera-capture-log.json",
@@ -5194,7 +5194,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json",
@@ -5390,7 +5390,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json",
@@ -5602,7 +5602,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
@@ -5676,7 +5676,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/length-skew.csv",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/length-skew.csv",
@@ -5747,7 +5747,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/memory-training-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/memory-training-log.json",
@@ -6084,7 +6084,7 @@
   "routed_execution_packet_inventory": [
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
@@ -6335,7 +6335,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/fab-quote",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/fab-quote",
@@ -6462,7 +6462,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/first-article",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/first-article",
@@ -6838,7 +6838,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/pdf/assembly.pdf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/pdf/assembly.pdf",
@@ -6965,7 +6965,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf",
@@ -7215,7 +7215,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json",
@@ -7341,7 +7341,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/camera-capture-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/camera-capture-log.json",
@@ -7467,7 +7467,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json",
@@ -7819,7 +7819,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json",
@@ -8187,7 +8187,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
@@ -8313,7 +8313,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/length-skew.csv",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/length-skew.csv",
@@ -8436,7 +8436,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/memory-training-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/memory-training-log.json",
@@ -8562,7 +8562,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/power-thermal",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/power-thermal",
@@ -8917,7 +8917,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf",
@@ -9044,7 +9044,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json",
@@ -9170,7 +9170,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json",
@@ -9296,7 +9296,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json",
@@ -9422,7 +9422,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json",
@@ -9667,7 +9667,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml",
@@ -9796,7 +9796,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi",
@@ -9923,7 +9923,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/camera-csi.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/camera-csi.json",
@@ -10049,7 +10049,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json",
@@ -10175,7 +10175,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json",
@@ -10415,7 +10415,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json",
@@ -10541,7 +10541,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json",
@@ -10667,7 +10667,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json",
@@ -10793,7 +10793,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json",
@@ -10919,7 +10919,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/ufs-link-training-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/ufs-link-training-log.json",
@@ -11045,7 +11045,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json",
@@ -11171,7 +11171,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/usb2-length-skew.csv",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/usb2-length-skew.csv",
@@ -11294,7 +11294,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/reports/zone-fill.json",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/reports/zone-fill.json",
@@ -11543,7 +11543,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf",
@@ -11667,7 +11667,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/step",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/step",
@@ -11794,7 +11794,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml",
@@ -12033,7 +12033,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
@@ -12157,7 +12157,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/test/factory-test-limits.yaml",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/test/factory-test-limits.yaml",
@@ -12286,7 +12286,7 @@
     },
     {
       "action": "Replace the candidate/presence-only output with approved routed release metadata, hashes, review authority, and signoff, then rerun validation.",
-      "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+      "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
       "candidate_path": "board/kicad/e1-phone/production/test/probe-coordinates.csv",
       "candidate_present_blocked": true,
       "current_path": "board/kicad/e1-phone/production/test/probe-coordinates.csv",
@@ -12550,7 +12550,7 @@
     "by_path": {
       "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -12707,7 +12707,7 @@
       },
       "board/kicad/e1-phone/production/fab-quote": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -12786,7 +12786,7 @@
       },
       "board/kicad/e1-phone/production/first-article": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -13021,7 +13021,7 @@
       },
       "board/kicad/e1-phone/production/pdf/assembly.pdf": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -13097,7 +13097,7 @@
       },
       "board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -13251,7 +13251,7 @@
       },
       "board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -13329,7 +13329,7 @@
       },
       "board/kicad/e1-phone/production/reports/camera-capture-log.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -13407,7 +13407,7 @@
       },
       "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -13639,7 +13639,7 @@
       },
       "board/kicad/e1-phone/production/reports/display-touch-bringup-log.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -13873,7 +13873,7 @@
       },
       "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -13951,7 +13951,7 @@
       },
       "board/kicad/e1-phone/production/reports/length-skew.csv": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14026,7 +14026,7 @@
       },
       "board/kicad/e1-phone/production/reports/memory-training-log.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14104,7 +14104,7 @@
       },
       "board/kicad/e1-phone/production/reports/power-thermal": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14339,7 +14339,7 @@
       },
       "board/kicad/e1-phone/production/reports/rf": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14418,7 +14418,7 @@
       },
       "board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14496,7 +14496,7 @@
       },
       "board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14574,7 +14574,7 @@
       },
       "board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14652,7 +14652,7 @@
       },
       "board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14807,7 +14807,7 @@
       },
       "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14885,7 +14885,7 @@
       },
       "board/kicad/e1-phone/production/reports/si-pi": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -14964,7 +14964,7 @@
       },
       "board/kicad/e1-phone/production/reports/si-pi/camera-csi.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15042,7 +15042,7 @@
       },
       "board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15120,7 +15120,7 @@
       },
       "board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15276,7 +15276,7 @@
       },
       "board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15354,7 +15354,7 @@
       },
       "board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15432,7 +15432,7 @@
       },
       "board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15510,7 +15510,7 @@
       },
       "board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15588,7 +15588,7 @@
       },
       "board/kicad/e1-phone/production/reports/ufs-link-training-log.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15666,7 +15666,7 @@
       },
       "board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15744,7 +15744,7 @@
       },
       "board/kicad/e1-phone/production/reports/usb2-length-skew.csv": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15819,7 +15819,7 @@
       },
       "board/kicad/e1-phone/production/reports/zone-fill.json": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -15975,7 +15975,7 @@
       },
       "board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -16051,7 +16051,7 @@
       },
       "board/kicad/e1-phone/production/step": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -16130,7 +16130,7 @@
       },
       "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -16285,7 +16285,7 @@
       },
       "board/kicad/e1-phone/production/step/routed-board-with-components.step": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -16361,7 +16361,7 @@
       },
       "board/kicad/e1-phone/production/test/factory-test-limits.yaml": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,
@@ -16439,7 +16439,7 @@
       },
       "board/kicad/e1-phone/production/test/probe-coordinates.csv": {
         "candidate_fail_closed_metadata": {
-          "candidate_manifest": "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+          "candidate_manifest": "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
           "candidate_present_blocked": true,
           "candidate_release_credit": false,
           "required_artifact_sha256": true,

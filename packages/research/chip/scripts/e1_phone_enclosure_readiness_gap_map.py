@@ -95,7 +95,7 @@ def provenance_safe(value: Any) -> Any:
     if isinstance(value, list):
         return [provenance_safe(item) for item in value]
     if isinstance(value, str):
-        return value.replace(str(ROOT), "packages/chip")
+        return value.replace(str(ROOT), "packages/research/chip")
     return value
 
 

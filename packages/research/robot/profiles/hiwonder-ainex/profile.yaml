@@ -10,7 +10,7 @@
 # Actuator order matches `ALL_JOINT_NAMES = LEG + HEAD + ARM` from
 # ainex_constants.py, which is the order the bridge servo_set payloads use.
 #
-# Asset paths are relative to `packages/robot/assets/profiles/hiwonder-ainex/`;
+# Asset paths are relative to `packages/research/robot/assets/profiles/hiwonder-ainex/`;
 # the loader resolves them to absolute paths. Asset files themselves are
 # populated by sibling agent W2.2.
 

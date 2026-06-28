@@ -17,14 +17,14 @@ Check that the submodule is configured, checked out, and registered as a parent
 gitlink:
 
 ```bash
-python3 packages/robot/scripts/check_asimov1_source_inventory.py
+python3 packages/research/robot/scripts/check_asimov1_source_inventory.py
 ```
 
 Regenerate the profile MuJoCo model, URDF, and asset manifest from the pinned
 source:
 
 ```bash
-python3 packages/robot/scripts/generate_asimov1_mujoco.py
+python3 packages/research/robot/scripts/generate_asimov1_mujoco.py
 ```
 
 The generated MJCF must compile with MuJoCo and expose 25 actuators. The
@@ -36,7 +36,7 @@ references.
 Run the profile simulation gate:
 
 ```bash
-python3 packages/robot/scripts/sim_validation_gate.py \
+python3 packages/research/robot/scripts/sim_validation_gate.py \
   --profile asimov-1 \
   --checkpoint /tmp/asimov-full-training \
   --require-asimov-model-provenance
@@ -50,11 +50,11 @@ generated MJCF and asset manifest hashes.
 Create and validate the ASIMOV-1 Brax/MJX PPO baseline job:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_full_training_job.py \
+python3 packages/research/robot/scripts/validate_asimov1_full_training_job.py \
   --create \
   --job-dir /tmp/asimov-full-training
 
-python3 packages/robot/scripts/run_asimov1_full_training.py \
+python3 packages/research/robot/scripts/run_asimov1_full_training.py \
   --job-dir /tmp/asimov-full-training \
   --check-only \
   --require-ready
@@ -84,7 +84,7 @@ machines; use a GPU training host and keep checkpoints out of git.
 For the current default continual-learning path, use Alberta:
 
 ```bash
-cd packages/robot
+cd packages/research/robot
 uv run eliza-robot-train \
   --profile asimov-1 \
   --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right \
@@ -119,7 +119,7 @@ For a bounded proof of the real Brax/MJX trainer entrypoint, create a tiny
 non-production job first:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_tiny_brax_training.py \
+python3 packages/research/robot/scripts/validate_asimov1_tiny_brax_training.py \
   --job-dir /tmp/asimov-tiny-brax \
   --create
 ```
@@ -129,7 +129,7 @@ acceptable:
 
 ```bash
 CUDA_VISIBLE_DEVICES='' JAX_PLATFORMS=cpu JAX_PLATFORM_NAME=cpu \
-python3 packages/robot/scripts/validate_asimov1_tiny_brax_training.py \
+python3 packages/research/robot/scripts/validate_asimov1_tiny_brax_training.py \
   --job-dir /tmp/asimov-tiny-brax \
   --run-training
 ```
@@ -141,7 +141,7 @@ and `tiny_brax_training_validation.json`, then loads the checkpoint through
 Evaluate a checkpoint in the ASIMOV MJX environment:
 
 ```bash
-python3 packages/robot/scripts/eval_text_policy.py \
+python3 packages/research/robot/scripts/eval_text_policy.py \
   --profile asimov-1 \
   --backend mjx \
   --ckpt /tmp/asimov-full-training \
@@ -159,9 +159,9 @@ quick local smoke checks.
 Local command loop validation:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_controller_contract.py
-python3 packages/robot/scripts/validate_asimov1_policy_loop.py --max-steps 2
-python3 packages/robot/scripts/validate_asimov1_server_command_surface.py
+python3 packages/research/robot/scripts/validate_asimov1_controller_contract.py
+python3 packages/research/robot/scripts/validate_asimov1_policy_loop.py --max-steps 2
+python3 packages/research/robot/scripts/validate_asimov1_server_command_surface.py
 ```
 
 The controller contract check exercises local mode transitions, velocity
@@ -190,7 +190,7 @@ The real bridge publishes Menlo `CloudCommand` protobufs to the LiveKit
 before using it:
 
 ```bash
-python3 packages/robot/scripts/check_asimov1_real_prereqs.py
+python3 packages/research/robot/scripts/check_asimov1_real_prereqs.py
 ```
 
 Dry-run the real command path locally, without hardware, by injecting dry-run
@@ -199,7 +199,7 @@ publishes mode, velocity, and trajectory `CloudCommand` payloads to the
 `commands` topic, parses an `EdgeTelemetry` payload, and shuts down cleanly:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_real_bridge_dry_run.py
+python3 packages/research/robot/scripts/validate_asimov1_real_bridge_dry_run.py
 ```
 
 Strict real-mode validation requires the LiveKit SDK, the Menlo edge protobuf
@@ -210,7 +210,7 @@ On a hardware host, run the telemetry-only probe before any motion command:
 
 ```bash
 ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
-python3 packages/robot/scripts/validate_asimov1_real_telemetry_probe.py \
+python3 packages/research/robot/scripts/validate_asimov1_real_telemetry_probe.py \
   --timeout 15
 ```
 
@@ -222,7 +222,7 @@ staged command probe sends only DAMP by default:
 
 ```bash
 ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
-python3 packages/robot/scripts/validate_asimov1_real_command_probe.py \
+python3 packages/research/robot/scripts/validate_asimov1_real_command_probe.py \
   --timeout 15
 ```
 
@@ -230,7 +230,7 @@ STAND and zero-velocity are opt-in:
 
 ```bash
 ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
-python3 packages/robot/scripts/validate_asimov1_real_command_probe.py \
+python3 packages/research/robot/scripts/validate_asimov1_real_command_probe.py \
   --timeout 15 \
   --allow-stand \
   --allow-zero-velocity
@@ -241,7 +241,7 @@ the staged command probe into one JSON report:
 
 ```bash
 ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
-python3 packages/robot/scripts/collect_asimov1_real_hardware_evidence.py \
+python3 packages/research/robot/scripts/collect_asimov1_real_hardware_evidence.py \
   --timeout 15 \
   --require-modules \
   --out /tmp/asimov-real-hardware/
@@ -255,7 +255,7 @@ for those command stages.
 Validate a captured report before treating it as real-hardware evidence:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_real_hardware_evidence.py \
+python3 packages/research/robot/scripts/validate_asimov1_real_hardware_evidence.py \
   /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json
 ```
 
@@ -269,7 +269,7 @@ Validate the real-agent command and policy-loop contract before enabling a
 physical robot:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_real_agent_readiness.py \
+python3 packages/research/robot/scripts/validate_asimov1_real_agent_readiness.py \
   --max-steps 2
 ```
 
@@ -278,7 +278,7 @@ The production checkpoint check also requires the verifier-generated
 `inference_check.json` from `verify_brax_text_policy.py`:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_real_agent_readiness.py \
+python3 packages/research/robot/scripts/validate_asimov1_real_agent_readiness.py \
   --checkpoint /path/to/asimov-production-checkpoint \
   --production-min-steps 150000000 \
   --hardware-evidence /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json \
@@ -293,7 +293,7 @@ pass:
 
 ```bash
 ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
-python3 packages/robot/scripts/run_asimov1_real_agent.py \
+python3 packages/research/robot/scripts/run_asimov1_real_agent.py \
   --checkpoint /path/to/asimov-production-checkpoint \
   --production-min-steps 150000000 \
   --hardware-evidence /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json \
@@ -308,7 +308,7 @@ flag the script does not connect to LiveKit or publish commands.
 Validate and archive the runner report before using it as real-agent evidence:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_real_agent_run.py \
+python3 packages/research/robot/scripts/validate_asimov1_real_agent_run.py \
   /tmp/asimov-real-agent-run.json \
   --checkpoint /path/to/asimov-production-checkpoint \
   --hardware-evidence /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json \
@@ -344,7 +344,7 @@ that the checkpoint was validated against the generated MuJoCo assets.
 Run the full integration gate:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_e2e.py \
+python3 packages/research/robot/scripts/validate_asimov1_e2e.py \
   --out /tmp/asimov-e2e \
   --steps 2
 ```
@@ -377,12 +377,12 @@ trainer. With `--require-inference-check`, stale verifier reports are rejected
 for Brax/MJX and Alberta checkpoints must pass the Alberta inference check.
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_production_checkpoint.py \
+python3 packages/research/robot/scripts/validate_asimov1_production_checkpoint.py \
   /path/to/asimov-production-checkpoint \
   --min-steps 150000000 \
   --require-inference-check
 
-python3 packages/robot/scripts/validate_asimov1_full_training_run.py \
+python3 packages/research/robot/scripts/validate_asimov1_full_training_run.py \
   /path/to/asimov-production-checkpoint/full_training_run.json \
   --job-dir /path/to/asimov-production-checkpoint
 ```
@@ -400,7 +400,7 @@ sidecars that do not exist.
 When a hardware-host report exists, include it in the gate:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_e2e.py \
+python3 packages/research/robot/scripts/validate_asimov1_e2e.py \
   --out /tmp/asimov-e2e \
   --steps 2 \
   --real-hardware-evidence /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json
@@ -409,7 +409,7 @@ python3 packages/robot/scripts/validate_asimov1_e2e.py \
 When both production training and hardware evidence exist, include both:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_e2e.py \
+python3 packages/research/robot/scripts/validate_asimov1_e2e.py \
   --out /tmp/asimov-e2e \
   --steps 2 \
   --production-checkpoint /path/to/asimov-production-checkpoint \
@@ -422,7 +422,7 @@ python3 packages/robot/scripts/validate_asimov1_e2e.py \
 To include CAD/MJCF promotion evidence in the same gate, add the workspace:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_e2e.py \
+python3 packages/research/robot/scripts/validate_asimov1_e2e.py \
   --out /tmp/asimov-e2e \
   --steps 2 \
   --workspace-promotion /tmp/asimov-edit-workspace
@@ -439,7 +439,7 @@ validates the artifacts again with production inference-check, full-training
 run, and motion-run evidence required:
 
 ```bash
-python3 packages/robot/scripts/validate_asimov1_completion.py \
+python3 packages/research/robot/scripts/validate_asimov1_completion.py \
   --e2e-report /tmp/asimov-e2e/asimov1_e2e_report.json \
   --production-checkpoint /path/to/asimov-production-checkpoint \
   --production-min-steps 150000000 \

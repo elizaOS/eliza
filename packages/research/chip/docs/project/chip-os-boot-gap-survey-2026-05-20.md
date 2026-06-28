@@ -1,12 +1,12 @@
 # Chip-to-OS Boot Gap Survey - 2026-05-20
 
-Scope: every current blocker found while surveying whether `packages/chip`
+Scope: every current blocker found while surveying whether `packages/research/chip`
 can run the Linux and AOSP forks under `packages/os`, boot them on the chip
 emulator path, start the Eliza launcher/agent, and run without issues.
 
 This is evidence-only. It is not a boot-readiness claim. The current state is:
 
-- `packages/chip` generated a Chipyard `ElizaRocketConfig` simulator and a
+- `packages/research/chip` generated a Chipyard `ElizaRocketConfig` simulator and a
   Linux payload, but the current generated-AP smoke report is blocked in the
   `linux_boot` stage after only an early kernel command-line marker and before
   required OpenSBI/Linux completion markers. A previous quiet-workload
@@ -14,7 +14,7 @@ This is evidence-only. It is not a boot-readiness claim. The current state is:
 - `packages/os/linux/elizaos` (`ARCH=riscv64`) has qemu-virt emulator
   boot evidence for the Debian fork, but that is generic QEMU virt evidence,
   not Eliza chip/AP evidence. The image still lacks a real Eliza agent binary.
-- `packages/chip` AOSP preflight can see an external AOSP checkout only when
+- `packages/research/chip` AOSP preflight can see an external AOSP checkout only when
   `AOSP_DIR` is supplied. Full Cuttlefish/CTS/VTS/QEMU/Renode evidence is not
   captured in the current report, and no Android boot is tied to the generated
   Eliza AP simulator.
@@ -23,7 +23,7 @@ This is evidence-only. It is not a boot-readiness claim. The current state is:
 
 ## Current Aggregate Snapshot
 
-Commands run from `packages/chip` on 2026-05-22:
+Commands run from `packages/research/chip` on 2026-05-22:
 
 | Command | Result | Evidence |
 | --- | --- | --- |
@@ -142,12 +142,12 @@ Findings by scan root:
 
 | Scan root | Findings | Paths | Dominant markers |
 | --- | ---: | ---: | --- |
-| `packages/chip/scripts` | 814 | 223 | 581 stub/placeholder, 131 deferred/blocked, 88 implementation-missing, 14 open-task markers. |
-| `packages/chip/docs` | 759 | 187 | 491 stub/placeholder, 170 deferred/blocked, 90 implementation-missing, 8 open-task markers. |
-| `packages/chip/verify` | 146 | 22 | 95 stub/placeholder, 32 deferred/blocked, 16 implementation-missing, 3 open-task markers. |
-| `packages/chip/sw` | 52 | 21 | 44 stub/placeholder, 4 deferred/blocked, 4 implementation-missing. |
-| `packages/chip/rtl` | 40 | 15 | 31 stub/placeholder, 8 deferred/blocked, 1 open-task marker. |
-| `packages/chip/fw` | 20 | 12 | 16 stub/placeholder, 1 deferred/blocked, 2 implementation-missing, 1 open-task marker. |
+| `packages/research/chip/scripts` | 814 | 223 | 581 stub/placeholder, 131 deferred/blocked, 88 implementation-missing, 14 open-task markers. |
+| `packages/research/chip/docs` | 759 | 187 | 491 stub/placeholder, 170 deferred/blocked, 90 implementation-missing, 8 open-task markers. |
+| `packages/research/chip/verify` | 146 | 22 | 95 stub/placeholder, 32 deferred/blocked, 16 implementation-missing, 3 open-task markers. |
+| `packages/research/chip/sw` | 52 | 21 | 44 stub/placeholder, 4 deferred/blocked, 4 implementation-missing. |
+| `packages/research/chip/rtl` | 40 | 15 | 31 stub/placeholder, 8 deferred/blocked, 1 open-task marker. |
+| `packages/research/chip/fw` | 20 | 12 | 16 stub/placeholder, 1 deferred/blocked, 2 implementation-missing, 1 open-task marker. |
 | `packages/os/linux/elizaos/scripts` | 10 | 3 | 6 stub/placeholder, 3 implementation-missing, 1 deferred/blocked. |
 | `packages/app/src` | 8 | 2 | 8 stub/placeholder. |
 | `packages/app/android/app/src/main` | 5 | 4 | 4 implementation-missing, 1 deferred/blocked. |
@@ -159,11 +159,11 @@ Top current source paths by keyword findings:
 
 | Path | Findings | Survey implication |
 | --- | ---: | --- |
-| `packages/chip/verify/check_stub_audit.py` | 62 | The stub audit itself carries the allowlist and marker vocabulary; it is an inventory/control surface, not closure evidence. |
-| `packages/chip/docs/project/critical-gap-review-2026-05-17.md` | 43 | Historical critical-gap review content still carries many blocked/stub markers; it is context for blockers, not current closure evidence. |
-| `packages/chip/docs/project/workstream-gap-review.md` | 40 | Workstream review notes remain marker-heavy and should not be promoted as implementation or runtime proof. |
-| `packages/chip/verify/rtl_gap_work_order.yaml` | 32 | RTL/firmware blockers remain explicitly tracked outside runtime boot evidence. |
-| `packages/chip/scripts/check_software_bsp.py` | 26 | BSP evidence parsing still has many placeholder/failure guards; external Buildroot/Linux/OpenSBI/AOSP evidence remains required. |
+| `packages/research/chip/verify/check_stub_audit.py` | 62 | The stub audit itself carries the allowlist and marker vocabulary; it is an inventory/control surface, not closure evidence. |
+| `packages/research/chip/docs/project/critical-gap-review-2026-05-17.md` | 43 | Historical critical-gap review content still carries many blocked/stub markers; it is context for blockers, not current closure evidence. |
+| `packages/research/chip/docs/project/workstream-gap-review.md` | 40 | Workstream review notes remain marker-heavy and should not be promoted as implementation or runtime proof. |
+| `packages/research/chip/verify/rtl_gap_work_order.yaml` | 32 | RTL/firmware blockers remain explicitly tracked outside runtime boot evidence. |
+| `packages/research/chip/scripts/check_software_bsp.py` | 26 | BSP evidence parsing still has many placeholder/failure guards; external Buildroot/Linux/OpenSBI/AOSP evidence remains required. |
 
 Selected OS/app source markers that directly affect the objective:
 
@@ -203,8 +203,8 @@ Findings by provenance root:
 
 | Root | Findings | Paths | Dominant provenance problems |
 | --- | ---: | ---: | --- |
-| `packages/chip/build/reports` | 1682 | 133 | 1163 blocked, 194 host-local, 42 missing-claim-boundary, 123 missing-timestamp, 53 nonpassing, 76 placeholder, 31 weak-reference. |
-| `packages/chip/docs/evidence` | 603 | 99 | 162 blocked, 238 host-local, 28 missing-claim-boundary, 64 missing-timestamp, 10 nonpassing, 100 placeholder, 1 weak-reference. |
+| `packages/research/chip/build/reports` | 1682 | 133 | 1163 blocked, 194 host-local, 42 missing-claim-boundary, 123 missing-timestamp, 53 nonpassing, 76 placeholder, 31 weak-reference. |
+| `packages/research/chip/docs/evidence` | 603 | 99 | 162 blocked, 238 host-local, 28 missing-claim-boundary, 64 missing-timestamp, 10 nonpassing, 100 placeholder, 1 weak-reference. |
 | `packages/os/linux/elizaos/evidence` | 47 | 13 | 8 blocked, 9 host-local, 1 missing-claim-boundary, 1 missing-timestamp, 1 nonpassing, 21 placeholder, 6 weak-reference. |
 | `packages/os/release/confidential-2026-05-21` | 9 | 1 | 6 blocked, 1 missing-claim-boundary, 1 missing-timestamp, 1 placeholder. |
 | `packages/os/android/installer/manifests` | 5 | 2 | 1 blocked, 2 missing-claim-boundary, 2 missing-timestamp. |
@@ -386,22 +386,22 @@ Commands run on 2026-05-20:
 
 | Command | Result | Evidence |
 | --- | --- | --- |
-| `python3 scripts/check_chipyard_verilator_linux_smoke.py` from `packages/chip` | `BLOCKED` | `build/chipyard/eliza_rocket/verilator-linux-smoke.json` reports progress stage `linux_boot`: wrapper `exit_code=124`, last progress marker is the forced kernel command line, and the required OpenSBI/SBI handoff marker is missing. |
-| `python3 scripts/check_android_sim_boot.py` from `packages/chip` | `BLOCKED` | `build/reports/android_sim_boot.json` is build-only and says virtual-device smoke plus CTS/VTS were not requested. |
-| `python3 scripts/check_aosp_linux_preflight.py --json` from `packages/chip` with no `AOSP_DIR` in the command environment | `BLOCKED` | Reports `AOSP_DIR is not set`, broken `repo`, missing `qemu-system-riscv64`, missing `renode`, and unset AOSP QEMU/Renode smoke commands. |
+| `python3 scripts/check_chipyard_verilator_linux_smoke.py` from `packages/research/chip` | `BLOCKED` | `build/chipyard/eliza_rocket/verilator-linux-smoke.json` reports progress stage `linux_boot`: wrapper `exit_code=124`, last progress marker is the forced kernel command line, and the required OpenSBI/SBI handoff marker is missing. |
+| `python3 scripts/check_android_sim_boot.py` from `packages/research/chip` | `BLOCKED` | `build/reports/android_sim_boot.json` is build-only and says virtual-device smoke plus CTS/VTS were not requested. |
+| `python3 scripts/check_aosp_linux_preflight.py --json` from `packages/research/chip` with no `AOSP_DIR` in the command environment | `BLOCKED` | Reports `AOSP_DIR is not set`, broken `repo`, missing `qemu-system-riscv64`, missing `renode`, and unset AOSP QEMU/Renode smoke commands. |
 | `make -C packages/os/linux/elizaos release-check ARCH=riscv64` | `PASS` | Validates qemu-virt/GRUB emulator evidence and ISO checksum only. It does not prove Eliza chip boot or agent liveness. |
 
 ## Critical Blockers
 
 | Area | Gap | Why it blocks the objective | Current evidence | Required closure evidence |
 | --- | --- | --- | --- | --- |
-| Generated AP Linux boundary | The Chipyard AP smoke gate is currently blocked in `linux_boot` after an early kernel command-line marker but before accepted OpenSBI/Linux completion markers. | The generated AP path does not currently prove even its bounded Linux completion prerequisite, so it cannot support OS fork, launcher, or agent readiness claims. | `packages/chip/build/reports/chipyard_verilator_linux_smoke.json` status `blocked`, progress stage `linux_boot`; blockers include wrapper `exit_code=124` and missing OpenSBI/SBI handoff. | Rerun with fresh PC evidence or enough timeout/trace to identify the payload stage, then capture accepted generated-AP completion before using it as a prerequisite. |
+| Generated AP Linux boundary | The Chipyard AP smoke gate is currently blocked in `linux_boot` after an early kernel command-line marker but before accepted OpenSBI/Linux completion markers. | The generated AP path does not currently prove even its bounded Linux completion prerequisite, so it cannot support OS fork, launcher, or agent readiness claims. | `packages/research/chip/build/reports/chipyard_verilator_linux_smoke.json` status `blocked`, progress stage `linux_boot`; blockers include wrapper `exit_code=124` and missing OpenSBI/SBI handoff. | Rerun with fresh PC evidence or enough timeout/trace to identify the payload stage, then capture accepted generated-AP completion before using it as a prerequisite. |
 | Smoke-log status source of truth | The authoritative classification lives in the JSON gate, not in cherry-picked raw serial snippets. | Downstream review can misread partial UART/device-model output as broader readiness unless it follows the JSON checker. | `check_chipyard_verilator_linux_smoke.py` reports the blocked `linux_boot` state; raw log snippets do not override that report. | Keep the JSON report and checker output as the source of truth; do not promote raw serial snippets without the required OS fork and launcher/agent evidence. |
 | Actual e1 RTL CPU/AP | `e1_chip` contract says `has_cpu: false`; `e1_soc_top` warns the CPU compiles as idle unless `E1_HAVE_CVA6` is defined; the old `e1_cpu_subsystem_stub` is a tiny RV-style executor. | The checked-in chip RTL cannot directly boot Linux/AOSP; generated Chipyard AP is a separate bring-up path. | `sw/platform/e1_platform_contract.json`, `rtl/top/e1_soc_top.sv`, `rtl/cpu/e1_cpu_subsystem_stub.sv`. | A selected top-level AP integration with real CPU, MMU, privilege, timer, IRQ, DRAM, UART, reset, and boot transcript. |
 | Chipyard AP hardware ABI | The static Chipyard AP ABI detail report now passes, but that only proves the checked static ABI contract, not Linux/AOSP boot or driver operation. | Linux/AOSP readiness still depends on firmware handoff, memory/platform evidence, OS fork chip-target evidence, and runtime driver smoke. | `scripts/check_chipyard_ap_abi_contract.py` and `scripts/check_chipyard_verilator_linux_smoke.py` report `PASS`; `linux_firmware_boot_chain_contract` and `linux_memory_platform_contract` remain blocked. | Keep ABI drift gated while capturing DTB, OpenSBI, kernel, init/userland, OS fork chip-target, and driver smoke evidence. |
 | Linux/Android memory-platform evidence | The unified memory-platform gate is no longer a static `FAIL`, but it remains `BLOCKED` because there is no external Linux kernel build, DTB check, generated-AP serial boot, OpenSBI handoff, Buildroot manifest, or e1 MMIO smoke evidence. | Matching DTS text is necessary but does not prove Linux or Android can boot through the memory/interrupt/platform path. | `scripts/check_linux_memory_platform_contract.py` reports `STATUS: BLOCKED linux_memory_platform_contract` and lists the six missing evidence producers. | Capture Linux kernel build, DTB check, serial boot, OpenSBI handoff, Buildroot manifest, and e1 MMIO smoke evidence for the selected chip/AP emulator target. |
 | Memory/boot handoff | Generated DTS exposes 256 MiB at `0x80000000`, but the smoke log forces `mem=64M` and panics during Linux memory initialization. | Kernel memory topology is not valid for the selected payload/handoff. | `verilator-linux-smoke.log`, generated DTS, generated memmap. | Reconciled bootargs, DTB memory range, payload load addresses, and OpenSBI/Linux handoff evidence. |
-| Linux fork mismatch | Debian RV64 qemu-virt boots on generic QEMU firmware/GRUB, not on the generated Eliza AP simulator. | It proves the OS image can boot in QEMU virt, not that `packages/chip` can run it. | `packages/os/linux/elizaos/evidence/qemu_virt_boot.json` claim boundary is qemu-virt only; `manifest.json` target has `device: null` and `hypervisor: qemu-virt`. | Boot the same OS artifact, or a declared chip-target variant, on the Eliza AP simulator and bind evidence into both chip and OS manifests. |
+| Linux fork mismatch | Debian RV64 qemu-virt boots on generic QEMU firmware/GRUB, not on the generated Eliza AP simulator. | It proves the OS image can boot in QEMU virt, not that `packages/research/chip` can run it. | `packages/os/linux/elizaos/evidence/qemu_virt_boot.json` claim boundary is qemu-virt only; `manifest.json` target has `device: null` and `hypervisor: qemu-virt`. | Boot the same OS artifact, or a declared chip-target variant, on the Eliza AP simulator and bind evidence into both chip and OS manifests. |
 | Linux launcher/agent | The RV64 manifest marks `elizaos-agent-live` as collected, but that row reuses the same qemu-virt evidence file and the image can install a fallback Python health server when real agent artifacts are absent. | Objective requires the actual Eliza launcher/app/agent to start on the chip emulator, not a generic qemu-virt health endpoint or fallback `/api/health` responder. | `scripts/check_os_rv64_chip_boot_contract.py` reports `agent_live_evidence_reuses_qemu_virt_reference` and `linux_agent_fallback_payload_allowed`; `0010-elizaos-agent.hook.chroot` writes `fallback_agent.py` and `elizaos-fallback`. | Real agent bundle packaged fail-closed, fallback disabled for objective evidence, `elizaos-agent.service` active on the chip/AP emulator, and API/health smoke captured in chip-target transcript/evidence JSON. |
 | Linux release gate scope | `check_release_manifest.py` correctly validates the qemu-virt/GRUB release artifact and required qemu transcript markers, but the chip-side contract now keeps that separate from chip-target boot and real-agent liveness. | A passing OS release gate can still leave the user objective blocked because it is not generated-AP/chip-emulator evidence. | `release-check` passes while `os_rv64_chip_boot_contract.json` blocks on `missing_chip_target_boot_evidence_row`, `manifest_target_not_chip_emulator`, `qemu_virt_evidence_is_reference_only`, `agent_live_evidence_reuses_qemu_virt_reference`, and `linux_agent_fallback_payload_allowed`. | Keep qemu-virt release evidence scoped as generic OS artifact evidence and add separate generated-AP/chip-emulator boot plus real-agent-live evidence rows. |
 | AOSP full evidence | Current Android simulator report is build-only. It did not run Cuttlefish, CTS/VTS intake, QEMU, or Renode. | No evidence that AOSP boots, completes `sys.boot_completed`, or can run Eliza on any target. | `build/reports/android_sim_boot.json` has `require_full_evidence: false` and only five attempted logs. | Full mode report with all required evidence logs passing: lunch, vendorimage, VINTF, SELinux build, neverallow, CTS/VTS plan, Cuttlefish, QEMU, Renode. |
@@ -413,14 +413,14 @@ Commands run on 2026-05-20:
 
 | Area | Gap | Why it blocks the objective | Current evidence | Required closure evidence |
 | --- | --- | --- | --- | --- |
-| Android package identity | The OS vendor layer grants roles and permissions to `ai.elizaos.app`, the actual Android app declares `applicationId "app.eliza"`, and one operator recipe still documents legacy `com.elizaos.agent` defaults. | HOME replacement, privileged permission grants, role holders, service startup, and human-run smoke scripts can target different package names. A booted image can still fail to launch Eliza or fail agent smoke because app build, vendor policy, and operator evidence are not normalized to one identity. | `packages/os/android/vendor/eliza/eliza_common.mk`, overlay `config.xml`, permission XMLs, `packages/app/android/app/build.gradle`, `packages/chip/docs/android/cuttlefish-agent-smoke-operator-recipe.md`, `packages/chip/sw/aosp-device/*agent*`. | One package ID chosen across app build, vendor privapp import, role/default-permission XML, manifests, smoke scripts, operator docs, and evidence. Capture `pm path`, `cmd role holders`, `dumpsys package`, and HOME foreground for that package. |
+| Android package identity | The OS vendor layer grants roles and permissions to `ai.elizaos.app`, the actual Android app declares `applicationId "app.eliza"`, and one operator recipe still documents legacy `com.elizaos.agent` defaults. | HOME replacement, privileged permission grants, role holders, service startup, and human-run smoke scripts can target different package names. A booted image can still fail to launch Eliza or fail agent smoke because app build, vendor policy, and operator evidence are not normalized to one identity. | `packages/os/android/vendor/eliza/eliza_common.mk`, overlay `config.xml`, permission XMLs, `packages/app/android/app/build.gradle`, `packages/research/chip/docs/android/cuttlefish-agent-smoke-operator-recipe.md`, `packages/research/chip/sw/aosp-device/*agent*`. | One package ID chosen across app build, vendor privapp import, role/default-permission XML, manifests, smoke scripts, operator docs, and evidence. Capture `pm path`, `cmd role holders`, `dumpsys package`, and HOME foreground for that package. |
 | Android service start workflow | The chip smoke now launches the exported app surface and lets `MainActivity` start the private `ElizaAgentService` from the app UID on branded AOSP. One operator recipe still documents legacy `com.elizaos.agent/.AgentService`. | The host no longer directly starts a non-exported service, but booted evidence still has to prove that app launch actually starts the service and health endpoint on riscv64. | `scripts/check_android_app_runtime_contract.py` no longer reports `android_agent_service_not_exported_for_adb_smoke`; remaining app-runtime blockers are the missing riscv64 APK assets and native libs. | Capture `dumpsys activity services`, service PID, `/api/health`, and logcat evidence showing app-owned startup works without crash/restart loops. |
 | Agent HTTP contract | `start-eliza-agent-riscv64.sh` asserts `/api/agent/self-status` has `status: "ready"`, while `cuttlefish_agent_smoke.py` asserts `agentId` and `plugins[]` with ready plugin state. | The agent can satisfy one smoke and fail the other, so the gate does not define a stable liveness API. | `start-eliza-agent-riscv64.sh`, `scripts/cuttlefish_agent_smoke.py`. | Versioned self-status schema used by app, docs, and all chip/OS gates; transcript captures the response body. |
 | Agent fixture availability | Cuttlefish agent smoke requires APK, llama model, golden audio/transcript, wakeword model/audio, and VAD audio through environment variables or defaults. | Missing model/audio fixtures block a real agent smoke independently of Android boot. | `agent-smoke-riscv64.sh`, `scripts/cuttlefish_agent_smoke.py`, `capture-aosp-evidence.sh`. | Checked-in small test fixtures or documented artifact fetch with hashes; smoke fails closed when any required fixture is missing. |
 | Android system bridge | The native bridge no longer trips the static stub/package checks, but the contract now blocks because `docs/evidence/android/system_bridge_runtime_evidence.json` is missing. | UI status and controls can still be claimed from source/package inspection without proving the bridge is installed, registered, permissioned, JS-bound, non-mock, and clean on a booted Android target. | `build/reports/android_system_bridge_contract.json` reports `system_bridge_runtime_evidence_missing`; inputs include `SystemBridge.kt`, `AndroidSystemProvider.tsx`, the bridge contract, vendor package list, and privapp allowlist. | Capture booted bridge runtime evidence from the selected product with package install, service registration, permission grants, JS bridge binding, live-state UI consumption, no production mock fallback, and clean logcat/SELinux counts. |
 | System UI packaging | The AOSP vendor layer covers the Eliza APK, role permissions, and static bridge package/privapp entries, but no evidence shows the native system bridge is running as a privileged component in the selected product. | Launcher foreground alone would not prove power/audio/network/system-control paths work. | `packages/os/android/vendor/eliza` package lists, bridge permission XML, and `build/reports/android_system_bridge_contract.json`. | Product package and permission XML kept aligned, plus boot evidence that the bridge service is registered and consumed by the UI. |
 | Privapp/SELinux scope | `eliza_agent.te` includes broad userdebug-only allowances such as executing app data files. | A userdebug image may run in ways a production-like image would reject, and security policy can mask packaging mistakes. | `packages/os/android/vendor/eliza/sepolicy/eliza_agent.te`. | Narrow policy for production target or an explicit userdebug-only milestone boundary; neverallow pass and denial-free logcat for the chosen product. |
-| AOSP missing dependency mask | Chip AOSP `BoardConfig.mk` sets `ALLOW_MISSING_DEPENDENCIES := true`. | AOSP builds can proceed while HAL/app/vendor dependencies are absent, producing evidence that does not prove the final product is complete. | `packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk`. | Remove or tightly scope the flag before claiming boot readiness; build must fail when required Eliza packages/HALs are missing. |
+| AOSP missing dependency mask | Chip AOSP `BoardConfig.mk` sets `ALLOW_MISSING_DEPENDENCIES := true`. | AOSP builds can proceed while HAL/app/vendor dependencies are absent, producing evidence that does not prove the final product is complete. | `packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk`. | Remove or tightly scope the flag before claiming boot readiness; build must fail when required Eliza packages/HALs are missing. |
 | HAL docs/config drift | `eliza_ai_soc/README.md` describes `m vendorimage` building stub HALs, the packaged e1 NPU HAL still documents smoke-only stub/fail-closed behavior, HWC is framebuffer-only, and a separate Cuttlefish simulator HAL exposes the same `IE1Npu/default` service identity. | Reviewers can mistake scaffold HAL source, Cuttlefish sim behavior, or active VINTF fragments for chip-product HAL integration. | `device/eliza/eliza_ai_soc/README.md`, `device.mk`, `eliza_e1.xml`, `hal/e1_npu/*.rc`, `hal/e1_npu/E1Npu.h`, `hal/hwcomposer/hwcomposer.cpp`, `hal/e1_npu_sim/E1NpuSim.h`, `device/eliza/cuttlefish_e1/eliza_e1_cuttlefish.mk`, `manifest.fragment.xml`. | Product-specific matrix showing exactly which HALs are built, installed, declared in VINTF, started, and smoke-tested for chip AP versus Cuttlefish. |
 | Launcher evidence | No current evidence captures role assignment, default HOME resolution, foreground Eliza activity, PackageManager grants, or crash-free logcat after Android boot. | The objective says the launcher app starts up; boot completion alone is insufficient. | Android reports are build-only; no `dumpsys activity`/`cmd role`/logcat launcher transcript is recorded. | Evidence bundle with `sys.boot_completed=1`, `cmd role holders`, `cmd package resolve-activity HOME`, foreground activity, app/service process, permission grants, and no fatal crash loop. |
 | Product selection | Android targets are split across reference Cuttlefish, OS vendor Cuttlefish, OS chip phone, and chip scaffold products, but the capture defaults now match the fused Eliza chip product and Eliza Cuttlefish product. | Product naming can still confuse evidence review unless every transcript records the exact lunch target and claim boundary. | `scripts/check_aosp_product_contract.py` now reports `PASS` after `capture-aosp-evidence.sh` was aligned with `eliza_openagent_ai_soc_phone-trunk_staging-userdebug` and `eliza_cf_riscv64_phone-trunk_staging-userdebug`. | Keep a single named product for each claim: reference Cuttlefish, chip-emulator Android, and eventual hardware. Every evidence file must record the exact lunch target and imported vendor/device trees. |
@@ -454,7 +454,7 @@ The local stub audit is useful but easy to misread. `python3
 verify/check_stub_audit.py` currently passes and writes
 `build/reports/stub_audit.json`: owned placeholders are allowlisted or tied to
 documented open gaps. It does not close any RTL gap. The blocking source of truth is
-`packages/chip/verify/rtl_gap_work_order.yaml`.
+`packages/research/chip/verify/rtl_gap_work_order.yaml`.
 
 | Area | Open gap | Why it blocks Linux/AOSP-on-chip | Current evidence | Required closure evidence |
 | --- | --- | --- | --- | --- |
@@ -587,7 +587,7 @@ or AOSP booted or that the Eliza launcher/agent is live.
    layer into `eliza_ai_soc`, or make a declared Cuttlefish/e1 product that
    includes both the app and chip HAL/device tree.
 7. Normalize Android package/service identity across `packages/app`,
-   `packages/os/android/vendor/eliza`, and `packages/chip/sw/aosp-device`,
+   `packages/os/android/vendor/eliza`, and `packages/research/chip/sw/aosp-device`,
    then capture HOME, role, service, `/api/health`, and any supported
    external agent-status endpoint evidence.
 8. Replace AOSP QEMU/Renode placeholder stages with real commands or remove

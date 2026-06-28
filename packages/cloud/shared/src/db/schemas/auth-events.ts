@@ -7,7 +7,7 @@ import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-cor
  *
  * Mirrors the `AuditEvent` shape exported by `@elizaos/security/audit`. Rows
  * are written by the `AuditEventsSink` registered on the global dispatcher in
- * `cloud-api/bootstrap-app.ts`.
+ * `cloud/api/bootstrap-app.ts`.
  *
  * SOC2 references: CC6.1 (logical access), CC6.3 (authorization), CC7.2
  * (monitoring), CC4.1 (control monitoring).

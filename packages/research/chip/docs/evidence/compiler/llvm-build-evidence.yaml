@@ -1,6 +1,6 @@
 as_of: 2026-05-19
 blocked_until:
-  - packages/chip/requirements.txt cocotb-coverage<=>cocotb conflict resolved
+  - packages/research/chip/requirements.txt cocotb-coverage<=>cocotb conflict resolved
   - eliza-chip:linux-x86_64 docker image built
   - eliza-chip:llvm-build docker image built
   - build/llvm-stage2/bin/clang exists
@@ -56,7 +56,7 @@ round3_attempt:
 
     <host-tmp>/requirements.txt) because the uncommitted WIP edit to
 
-    packages/chip/requirements.txt added ''cocotb-coverage>=2,<3'' alongside
+    packages/research/chip/requirements.txt added ''cocotb-coverage>=2,<3'' alongside
 
     ''cocotb>=1.9,<2''; cocotb-coverage 2.0 requires cocotb>=2.0, so pip
 

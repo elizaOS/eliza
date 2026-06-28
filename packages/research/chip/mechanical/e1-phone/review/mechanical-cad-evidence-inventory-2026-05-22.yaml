@@ -1,6 +1,6 @@
 report: "E1 phone mechanical CAD evidence inventory"
 date: "2026-05-22"
-script: "packages/chip/scripts/e1_phone_mechanical_cad_evidence_inventory.py"
+script: "packages/research/chip/scripts/e1_phone_mechanical_cad_evidence_inventory.py"
 scope:
   mode: "read_only_inventory"
   cad_output_dir: "mechanical/e1-phone/out"

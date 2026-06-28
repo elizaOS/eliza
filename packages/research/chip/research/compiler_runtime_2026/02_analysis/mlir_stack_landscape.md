@@ -3,7 +3,7 @@
 This is a research-only summary of public stacks that could feed a production
 E1 NPU compiler backend. It does not certify E1 implementation status; the
 E1 software stack today is a Python smoke harness in
-`packages/chip/compiler/runtime/e1_npu_lowering.py`.
+`packages/research/chip/compiler/runtime/e1_npu_lowering.py`.
 
 ## 1. MLIR upstream — the IR substrate
 

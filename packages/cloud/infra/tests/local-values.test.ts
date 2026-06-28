@@ -1,6 +1,6 @@
 /**
  * Smoke tests for the local-dev Helm values files in
- * `cloud-infra/cloud/local/`. These files are consumed by external charts
+ * `cloud/infra/cloud/local/`. These files are consumed by external charts
  * (CNPG, Bitnami Redis) when bringing up the local kind cluster — a typo
  * here will break `setup.sh` silently, so we verify them as structured YAML
  * with the keys those charts require.

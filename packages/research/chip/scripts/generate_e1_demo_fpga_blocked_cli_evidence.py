@@ -412,7 +412,7 @@ def main() -> int:
                     if not available and not required
                 )
                 + "]",
-                "next_unblock_action: Use packages/chip/external/oss-cad-suite/bin or source scripts/env_oss_cad_suite.sh, then run the e1_chip_top release commands.",
+                "next_unblock_action: Use packages/research/chip/external/oss-cad-suite/bin or source scripts/env_oss_cad_suite.sh, then run the e1_chip_top release commands.",
                 "",
             ]
         ),

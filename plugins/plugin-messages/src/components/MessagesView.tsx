@@ -16,7 +16,7 @@ import { System, type SystemStatus } from "@elizaos/capacitor-system";
 import { consumePendingMessageRecipient } from "@elizaos/ui/app-navigate-view";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildThreads, smsRole } from "./MessagesAppView.helpers.ts";
+import { buildThreads, smsRole } from "./messages-view-helpers.ts";
 import {
   type MessagesSnapshot,
   MessagesSpatialView,

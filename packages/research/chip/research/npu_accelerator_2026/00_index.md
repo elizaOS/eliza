@@ -4,7 +4,7 @@ Date: 2026-05-19
 
 This packet is the second pass of NPU / AI accelerator research for the Eliza
 E1 chip. The earlier packet under
-`packages/chip/research/ai_accelerator_sota/` is preserved as the TPU /
+`packages/research/chip/research/ai_accelerator_sota/` is preserved as the TPU /
 rack-scale / sub-2 nm reference. This packet extends scope to the **mobile NPU
 microarchitecture and on-device LLM serving design space** that drives the
 2028 phone-class NPU targets in
@@ -77,5 +77,5 @@ or peer-reviewed paper.
   vendor whitepaper from this inventory over secondary press articles.
 - Do not modify upstream chip RTL or specs from this packet. Recommendations
   are routed through `03_implementation/npu_e1_recommendations.md` and must
-  pass the existing `packages/chip` validation gates before any RTL or spec
+  pass the existing `packages/research/chip` validation gates before any RTL or spec
   change is made.

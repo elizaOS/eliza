@@ -307,6 +307,15 @@ function preview(text: string, max = 160): string {
   return `${trimmed.slice(0, max)}...`;
 }
 
+/** Compact single-line JSON (TUI-safe: no embedded newlines to break width). */
+function jsonLine(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function HandleBody({
   calls,
   ctx,
@@ -384,25 +393,41 @@ function ActionBody({ events }: { events: UIToolEvent[] }) {
       {events.map((e) => {
         const name = e.actionName || e.toolName || e.name || "action";
         const tone = toolTone(e);
+        const args = e.args ?? e.input ?? null;
+        const result = e.result ?? e.output ?? null;
+        const hasArgs = !!args && Object.keys(args).length > 0;
+        const hasResult = result !== null && result !== undefined;
         return (
-          <HStack key={e.id} gap={1} align="center" agent={`tool-${e.id}`}>
-            <Text tone={tone} bold>
-              {toolMark(e)}
-            </Text>
-            <Text grow={1} wrap={false}>
-              {name}
-            </Text>
-            {typeof e.durationMs === "number" ? (
-              <Text style="caption" tone="muted">
-                {`${e.durationMs}ms`}
+          <VStack key={e.id} gap={0} agent={`tool-${e.id}`}>
+            <HStack gap={1} align="center">
+              <Text tone={tone} bold>
+                {toolMark(e)}
               </Text>
-            ) : null}
+              <Text grow={1} wrap={false}>
+                {name}
+              </Text>
+              {typeof e.durationMs === "number" ? (
+                <Text style="caption" tone="muted">
+                  {`${e.durationMs}ms`}
+                </Text>
+              ) : null}
+            </HStack>
             {e.error ? (
-              <Text style="caption" tone="danger" wrap={false}>
-                {preview(e.error, 40)}
+              <Text style="caption" tone="danger">
+                {preview(e.error, 80)}
               </Text>
             ) : null}
-          </HStack>
+            {hasArgs ? (
+              <Text style="caption" tone="muted">
+                {preview(jsonLine(args), 200)}
+              </Text>
+            ) : null}
+            {hasResult ? (
+              <Text style="caption" tone="muted">
+                {preview(jsonLine(result), 200)}
+              </Text>
+            ) : null}
+          </VStack>
         );
       })}
     </List>

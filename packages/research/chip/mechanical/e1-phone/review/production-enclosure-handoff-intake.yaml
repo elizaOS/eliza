@@ -6,8 +6,8 @@ claim_boundary: >
   release, factory acceptance, or enclosure approval.
 
 mapped_source_artifacts:
-  - packages/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
-  - packages/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+  - packages/research/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+  - packages/research/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
 
 intake_metadata:
   handoff_id: null
@@ -29,7 +29,7 @@ required_inputs:
   approved_deviations: []
   routed_board_clearance_release: mechanical/e1-phone/review/routed-board-clearance-release-intake.yaml
   enclosure_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article-intake.yaml
-  factory_test_limits: packages/chip/board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  factory_test_limits: packages/research/chip/board/kicad/e1-phone/production/test/factory-test-limits.yaml
   inspection_plan: null
   fixture_references: []
   serialization_plan: null

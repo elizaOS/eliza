@@ -57,17 +57,17 @@ Subpath imports: `import { ... } from "@elizaos/cloud-shared/db"`, `".../billing
 ## Commands
 
 ```bash
-bun run --cwd packages/cloud-shared typecheck              # tsc --noEmit
-bun run --cwd packages/cloud-shared lint                   # biome check
-bun run --cwd packages/cloud-shared lint:fix
-bun run --cwd packages/cloud-shared test                   # bun test
-bun run --cwd packages/cloud-shared db:generate            # drizzle-kit generate
-bun run --cwd packages/cloud-shared db:migrate             # migrate-with-diagnostics.ts
-bun run --cwd packages/cloud-shared db:migrate:drizzle     # drizzle-kit migrate
-bun run --cwd packages/cloud-shared db:studio              # drizzle-kit studio
-bun run --cwd packages/cloud-shared db:check-migrations    # drizzle-kit check
-bun run --cwd packages/cloud-shared preflight:messaging-gateways
-bun run --cwd packages/cloud-shared generate:email-templates
+bun run --cwd packages/cloud/shared typecheck              # tsc --noEmit
+bun run --cwd packages/cloud/shared lint                   # biome check
+bun run --cwd packages/cloud/shared lint:fix
+bun run --cwd packages/cloud/shared test                   # bun test
+bun run --cwd packages/cloud/shared db:generate            # drizzle-kit generate
+bun run --cwd packages/cloud/shared db:migrate             # migrate-with-diagnostics.ts
+bun run --cwd packages/cloud/shared db:migrate:drizzle     # drizzle-kit migrate
+bun run --cwd packages/cloud/shared db:studio              # drizzle-kit studio
+bun run --cwd packages/cloud/shared db:check-migrations    # drizzle-kit check
+bun run --cwd packages/cloud/shared preflight:messaging-gateways
+bun run --cwd packages/cloud/shared generate:email-templates
 ```
 
 `build:linked-workspaces` defers to the repo-root `build:core`; there is no standalone build step here (consumers import `src/` directly).
@@ -78,7 +78,7 @@ bun run --cwd packages/cloud-shared generate:email-templates
 
 ## How to extend
 
-- **New table:** add a schema in `src/db/schemas/`, then `bun run --cwd packages/cloud-shared db:generate`, review the SQL in `src/db/migrations/`, run `db:migrate`, commit schema + migration together. Add a repository in `src/db/repositories/` (reader and writer split per CQRS).
+- **New table:** add a schema in `src/db/schemas/`, then `bun run --cwd packages/cloud/shared db:generate`, review the SQL in `src/db/migrations/`, run `db:migrate`, commit schema + migration together. Add a repository in `src/db/repositories/` (reader and writer split per CQRS).
 - **New service / use-case:** add a module under `src/lib/services/` (or the relevant `lib/` subdir). Keep business computation here, not in `cloud-api` routes. Import `logger` from `../utils/logger`. Export from `lib/index.ts` only if a consumer needs the top barrel; otherwise rely on the `./lib/*` subpath.
 - **New DTO type:** add to `src/types/cloud-api.ts` (or a sibling) and export via `types/index.ts`.
 
@@ -86,5 +86,5 @@ bun run --cwd packages/cloud-shared generate:email-templates
 
 - **`src/lib/` is server-only.** Browser code (React, hooks, stores, tailwind utils) lives in `cloud-frontend`, not here. Only pure isomorphic helpers (`billing/`, math/string/validation) are safe to import from the frontend.
 - **Migrations are append-only.** Never edit an applied migration. No `CREATE INDEX CONCURRENTLY` (runs in a transaction). Use `IF NOT EXISTS` / `IF EXISTS`. Keep migrations small and targeted (<100 lines): add objects, backfill, and drop in separate migrations — no omnibus recreate-the-schema files (they lock active prod tables). Never `db:push`.
-- **`typecheck` noise:** errors that surface are often from transitive imports (e.g. `plugins/plugin-elizacloud/...`) pulled in via tsconfig paths, not this package's own source. Filter to your files: `bun run --cwd packages/cloud-shared typecheck 2>&1 | grep <your-file>`.
+- **`typecheck` noise:** errors that surface are often from transitive imports (e.g. `plugins/plugin-elizacloud/...`) pulled in via tsconfig paths, not this package's own source. Filter to your files: `bun run --cwd packages/cloud/shared typecheck 2>&1 | grep <your-file>`.
 - **Repo-wide rules** (logger-only/no-console, ESM, naming, clean-architecture commandments, CQRS, validate-at-boundary, DTO fields required) live in the root `AGENTS.md`. The WHY docs under `docs/` explain non-obvious choices: `messaging-onboarding-gateway-design.md` and `CLOUD_ONBOARDING_PROVISIONING_REVIEW.md`.

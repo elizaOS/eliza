@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SPEC_DB = REPO_ROOT / "packages/chip/docs/spec-db"
+SPEC_DB = REPO_ROOT / "packages/research/chip/docs/spec-db"
 DEFAULT_EVIDENCE = SPEC_DB / "tee-attestation-evidence.example.json"
 # Every committed attestation-evidence fixture must validate. The .e1-rot
 # fixture is the pre-silicon E1 RoT DICE-alias evidence and was previously

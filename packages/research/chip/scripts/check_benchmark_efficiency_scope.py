@@ -430,7 +430,7 @@ def target_metadata_contract_matches_runner(contract: dict[str, Any]) -> bool:
         (
             "dry_run=false L5/L6 benchmark reports",
             "calibrated clock_source and power_meter assets",
-            "archived under packages/chip",
+            "archived under packages/research/chip",
             "Simulator wall-clock",
         ),
     )

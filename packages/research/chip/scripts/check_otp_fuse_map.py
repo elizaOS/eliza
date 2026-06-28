@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from chip_utils import load_json_object, require  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_FUSE_MAP = REPO_ROOT / "packages/chip/docs/spec-db/tee-otp-fuse-map.json"
+DEFAULT_FUSE_MAP = REPO_ROOT / "packages/research/chip/docs/spec-db/tee-otp-fuse-map.json"
 REQUIRED_FALSE_CLAIM_FLAGS = {
     "claim_allowed",
     "release_claim_allowed",

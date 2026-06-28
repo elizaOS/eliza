@@ -198,7 +198,7 @@ SoC.
 - No edits to `verify/`, `benchmarks/`, or `docs/benchmarks/` are
   proposed inside this packet; the recommendations above name target
   files but the work belongs to a follow-up change set per the chip
-  package working rules in `packages/chip/CLAUDE.md`.
+  package working rules in `packages/research/chip/CLAUDE.md`.
 - No new claim levels. The claim ladder is correct as written.
 - No vendor-tool acquisitions. The open-tool lane (Verilator + cocotb +
   SBY + Yosys + Bitwuzla + Z3) is sufficient for L0_RTL_UNIT through

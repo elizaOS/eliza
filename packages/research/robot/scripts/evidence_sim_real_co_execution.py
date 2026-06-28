@@ -20,7 +20,7 @@ What this does:
 
 Usage:
 
-    PYTHONPATH=packages/robot python packages/robot/scripts/evidence_sim_real_co_execution.py \
+    PYTHONPATH=packages/research/robot python packages/research/robot/scripts/evidence_sim_real_co_execution.py \
         --host 192.168.1.218 --port 9090 --obsbot-device 4 \
         --tasks stand_up,walk_forward,turn_left --use-rl=false
 

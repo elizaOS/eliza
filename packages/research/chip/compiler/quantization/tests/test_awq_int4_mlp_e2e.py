@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 THIS_DIR = Path(__file__).resolve().parent
-# THIS_DIR is .../packages/chip/compiler/quantization/tests, so the chip
+# THIS_DIR is .../packages/research/chip/compiler/quantization/tests, so the chip
 # package root (which contains compiler/) is parents[2].
 REPO_ROOT = THIS_DIR.parents[2]
 if str(REPO_ROOT) not in sys.path:

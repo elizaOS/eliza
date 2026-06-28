@@ -64,7 +64,7 @@ Mobile-vendor public prefetcher detail is thin. Apple uses multiple AMP/spatial/
 - Snapdragon SLC: undocumented; CCC traces suggest pseudo-LRU + DIP family.
 - Academic SOTA: Mockingjay is the strongest single-policy LLC replacement; Drishti (MICRO'25) adds +5.6% on Hawkeye / +13.2% on Mockingjay at 32-core scale.
 
-## B. Current state in `packages/chip`
+## B. Current state in `packages/research/chip`
 
 Inspected files: `docs/arch/{cache-hierarchy,cpu-subsystem,memory-subsystem,interconnect}.md`, `rtl/cache/`, `rtl/memory/`, and the cache evidence gates.
 

@@ -138,15 +138,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "vincent",
-    path: "/vincent",
-    readyChecks: [
-      { text: "Vincent" },
-      { selector: '[data-testid="vincent-shell"]' },
-    ],
-    timeoutMs: 90_000,
-  },
-  {
     name: "runtime app window",
     path: "/apps/runtime",
     selector: '[data-testid="runtime-view"]',
@@ -270,8 +261,6 @@ const managerVisibleViewTileCases = [
   { viewId: "relationships", path: "/relationships" },
   { viewId: "screenshare", path: "/screenshare" },
   { viewId: "shopify", path: "/shopify" },
-  { viewId: "notes", path: "/notes" },
-  { viewId: "simple-calendar", path: "/simple-calendar" },
   { viewId: "smartglasses", path: "/apps/smartglasses" },
   { viewId: "social-alpha", path: "/social-alpha" },
   { viewId: "steward", path: "/steward" },
@@ -280,9 +269,6 @@ const managerVisibleViewTileCases = [
   { viewId: "training", path: "/apps/fine-tuning" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
-  { viewId: "vincent", path: "/vincent" },
-  { viewId: "waifu-imagegen", path: "/waifu-imagegen" },
-  { viewId: "waifu-swap", path: "/waifu-swap" },
   { viewId: "wallet", path: "/wallet" },
   { viewId: "vector-browser", path: "/vector-browser" },
 ];

@@ -31,7 +31,7 @@ describe("credit-markup wiring (used by monetized routes)", () => {
   });
 
   test("reconciles total = base + markup + platformFee for the MCP-proxy shape", () => {
-    // Mirrors the call in packages/cloud-api/mcp/proxy/[mcpId]/route.ts.
+    // Mirrors the call in packages/cloud/api/mcp/proxy/[mcpId]/route.ts.
     const breakdown = calculateCreditMarkup({
       baseCredits: 1,
       markupPercent: 25,
@@ -53,7 +53,7 @@ describe("credit-markup wiring (used by monetized routes)", () => {
   });
 
   test("agents/.../mcp route shape (no platform fee, just creator markup)", () => {
-    // Mirrors packages/cloud-api/agents/[id]/mcp/route.ts: monetized agents
+    // Mirrors packages/cloud/api/agents/[id]/mcp/route.ts: monetized agents
     // pass creator markup only; no platform fee.
     const breakdown = calculateCreditMarkup({
       baseCredits: 100,
@@ -66,7 +66,7 @@ describe("credit-markup wiring (used by monetized routes)", () => {
   });
 
   test("agents/.../a2a route shape (creator markup, no platform fee)", () => {
-    // Mirrors packages/cloud-api/agents/[id]/a2a/route.ts.
+    // Mirrors packages/cloud/api/agents/[id]/a2a/route.ts.
     const breakdown = calculateCreditMarkup({
       baseCredits: 0.005, // input-token cost per 1k from the agent card
       markupPercent: 10,

@@ -37,6 +37,7 @@ plugins/plugin-feed/
     feed-auth.ts                    Auth helpers: resolveFeedConfig, proxyFeedRequest,
                                     persistFeedCredential, resolveSettingLike, FeedConfig
     routes.ts                       Full HTTP proxy layer — all /api/apps/feed/* routes
+    register.ts                     Renderer/native app-shell registration entry
     register-terminal-view.tsx      Registers FeedSpatialView for the terminal (TUI)
     components/
       FeedView.tsx                  GUI/XR wrapper: live data layer + <SpatialSurface>
@@ -59,7 +60,7 @@ All scripts in this package's `package.json`:
 ```bash
 bun run --cwd plugins/plugin-feed build          # JS + views bundle + types
 bun run --cwd plugins/plugin-feed build:js       # tsup (../tsup.plugin-packages.shared.ts): transpiles every src file → dist/
-bun run --cwd plugins/plugin-feed build:views    # Vite: src/feed-view-bundle.ts → dist/views/bundle.js
+bun run --cwd plugins/plugin-feed build:views    # Vite: src/ui/feed-view-bundle.ts → dist/views/bundle.js
 bun run --cwd plugins/plugin-feed build:types    # tsc: type declarations
 bun run --cwd plugins/plugin-feed clean          # rm -rf dist
 bun run --cwd plugins/plugin-feed test           # vitest run

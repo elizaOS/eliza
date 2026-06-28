@@ -7,7 +7,7 @@ export const meta = {
   ],
 }
 
-const BASE = args && args.base ? args.base : 'packages/robot/evidence/alberta_retention_tournament'
+const BASE = args && args.base ? args.base : 'packages/research/robot/evidence/alberta_retention_tournament'
 const VARIANTS = [
   { name: 'linear', learner: 'alberta', label: 'linear sparse_gated (lookup retention)' },
   { name: 'cbp_none', learner: 'alberta_cbp', label: 'MLP+CBP, single head (no retention mechanism)' },
@@ -69,7 +69,7 @@ const verified = await parallel(VARIANTS.map((v) => () =>
 
 This run trained learners sequentially on a 4-task continual benchmark; for each (learner, seed) the JSON's \`results\` list has an entry {name, matrix (TxT), baseline, metrics, seed}. \`matrix[i][j]\` = eval return on task j after training phase i.
 
-Do NOT trust the reported \`metrics\`/\`summary\`. Independently recompute, for the PRIMARY learner "${v.learner}" (averaged over its seeds), using numpy via the repo venv (\`cd packages/robot && JAX_PLATFORMS=cpu .venv/bin/python\`):
+Do NOT trust the reported \`metrics\`/\`summary\`. Independently recompute, for the PRIMARY learner "${v.learner}" (averaged over its seeds), using numpy via the repo venv (\`cd packages/research/robot && JAX_PLATFORMS=cpu .venv/bin/python\`):
   - ACC = mean_j R[T-1][j]
   - BWT = mean_{j<T-1} (R[T-1][j] - R[j][j])
   - Forgetting = mean_{j<T-1} max(0, max_{j<=l<T} R[l][j] - R[T-1][j])

@@ -39,7 +39,6 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
   "@elizaos/plugin-training",
-  "@elizaos/plugin-vincent",
 ] as const;
 
 // Plugins excluded from the baseline release that can only be installed on a

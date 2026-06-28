@@ -76,7 +76,10 @@ export default defineConfig({
       { find: /^@\//, replacement: `${path.resolve(packageDir, "./src")}/` },
       {
         find: /^@elizaos\/shared\/brand$/,
-        replacement: path.resolve(packageDir, "../../shared/src/brand/index.ts"),
+        replacement: path.resolve(
+          packageDir,
+          "../../shared/src/brand/index.ts",
+        ),
       },
       {
         find: /^@elizaos\/shared\/checkout$/,

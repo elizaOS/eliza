@@ -37,8 +37,8 @@ FALSE_CLAIM_FLAGS = {
 }
 
 DEFAULT_SCAN_ROOTS = (
-    "packages/chip/build/reports",
-    "packages/chip/docs/evidence",
+    "packages/research/chip/build/reports",
+    "packages/research/chip/docs/evidence",
     "packages/os/linux/elizaos/evidence",
     "packages/os/android/installer/manifests",
     "packages/os/android/vendor/eliza/manifests",
@@ -170,7 +170,7 @@ TIMESTAMP_KEYS = {
     "result_recorded_at",
 }
 
-GENERIC_RECHECK_COMMAND = "python3 packages/chip/scripts/check_chip_os_evidence_provenance.py"
+GENERIC_RECHECK_COMMAND = "python3 packages/research/chip/scripts/check_chip_os_evidence_provenance.py"
 NPU_NNAPI_CAPTURE_COMMAND = (
     "E1_NPU_WRITE_PROOF_JSON=1 "
     "E1_NPU_MACS_PER_INFERENCE=<measured-macs> "
@@ -185,18 +185,18 @@ NPU_NNAPI_CAPTURE_COMMAND = (
     "E1_NPU_DATAFLOW_NAME=<measured-dataflow> "
     "E1_NPU_GENERATED_BY=<operator-or-job-id> "
     "E1_NPU_TARGET=<target-id> "
-    "packages/chip/scripts/android/capture_e1_npu_nnapi_evidence.sh"
+    "packages/research/chip/scripts/android/capture_e1_npu_nnapi_evidence.sh"
 )
 BENCHMARK_CAPTURE_COMMANDS = (
-    "python3 packages/chip/benchmarks/run_benchmarks.py run "
-    "--config packages/chip/benchmarks/configs/benchmark_plan.json "
-    "--out-dir packages/chip/benchmarks/results/target-phone "
+    "python3 packages/research/chip/benchmarks/run_benchmarks.py run "
+    "--config packages/research/chip/benchmarks/configs/benchmark_plan.json "
+    "--out-dir packages/research/chip/benchmarks/results/target-phone "
     "--claim-level L5_PROTOTYPE_SILICON "
-    "--metadata packages/chip/benchmarks/results/target-phone/target-metadata.json",
-    "python3 packages/chip/benchmarks/run_benchmarks.py validate-report "
-    "packages/chip/benchmarks/results/target-phone/report.json --artifact-root packages/chip",
-    "python3 packages/chip/scripts/check_benchmark_efficiency_scope.py",
-    "python3 packages/chip/scripts/check_cpu_phone_benchmark_claim_gate.py",
+    "--metadata packages/research/chip/benchmarks/results/target-phone/target-metadata.json",
+    "python3 packages/research/chip/benchmarks/run_benchmarks.py validate-report "
+    "packages/research/chip/benchmarks/results/target-phone/report.json --artifact-root packages/research/chip",
+    "python3 packages/research/chip/scripts/check_benchmark_efficiency_scope.py",
+    "python3 packages/research/chip/scripts/check_cpu_phone_benchmark_claim_gate.py",
 )
 
 
@@ -205,25 +205,25 @@ def provenance_commands(category: str, path: Path) -> list[str]:
     path_parts = set(path.parts)
     commands: list[str] = []
     if category == "host_local_path":
-        commands.append(f"python3 packages/chip/scripts/provenance_sanitize.py {path_text}")
+        commands.append(f"python3 packages/research/chip/scripts/provenance_sanitize.py {path_text}")
     if category in {"missing_timestamp", "missing_claim_boundary"}:
-        commands.append(f"python3 packages/chip/scripts/normalize_report_provenance.py {path_text}")
+        commands.append(f"python3 packages/research/chip/scripts/normalize_report_provenance.py {path_text}")
 
     if "peripherals" in path_parts or path_text.endswith("_sim.log"):
         commands.append(
-            "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py"
+            "python3 packages/research/chip/scripts/android/capture_simulated_peripheral_evidence.py"
         )
     elif "eliza_launcher_runtime" in path.name or "android_launcher_runtime" in path_text:
         commands.append(
-            "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py"
+            "python3 packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py"
         )
     elif "android_system_bridge" in path_text:
         commands.append(
-            "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
+            "python3 packages/research/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
         )
     elif "android" in path_parts:
         commands.append(
-            "AOSP_DIR=/path/to/aosp packages/chip/scripts/boot_android_simulator.sh "
+            "AOSP_DIR=/path/to/aosp packages/research/chip/scripts/boot_android_simulator.sh "
             "--run-cuttlefish --run-cts --run-vts --run-qemu --run-renode"
         )
     elif "e1-npu" in path_parts or "npu" in path_text.lower():
@@ -231,15 +231,15 @@ def provenance_commands(category: str, path: Path) -> list[str]:
     elif "benchmark" in path_text.lower():
         commands.extend(BENCHMARK_CAPTURE_COMMANDS)
     elif path.name == "mvp_simulator.json":
-        commands.append("python3 packages/chip/scripts/run_mvp_simulator.py")
+        commands.append("python3 packages/research/chip/scripts/run_mvp_simulator.py")
     elif path.name == "os_rv64_chip_boot_contract.json" or "elizaos" in path_parts:
         commands.append(
-            "python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
+            "python3 packages/research/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
         )
     elif path.name == "chip-os-optimization-gap-inventory.json":
-        commands.append("python3 packages/chip/scripts/check_chip_os_optimization_gap_inventory.py")
-    elif path_text.startswith("packages/chip/build/reports/"):
-        commands.append("python3 packages/chip/scripts/check_chip_os_report_freshness.py")
+        commands.append("python3 packages/research/chip/scripts/check_chip_os_optimization_gap_inventory.py")
+    elif path_text.startswith("packages/research/chip/build/reports/"):
+        commands.append("python3 packages/research/chip/scripts/check_chip_os_report_freshness.py")
 
     commands.append(GENERIC_RECHECK_COMMAND)
     deduped: list[str] = []

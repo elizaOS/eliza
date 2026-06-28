@@ -9,8 +9,8 @@ claim_boundary: >
   and not approval to fabricate or release an enclosure.
 
 source_artifacts:
-  - packages/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
-  - packages/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+  - packages/research/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+  - packages/research/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
 
 template_policy:
   template_set_revision: mechanical-intake-2026-05-22

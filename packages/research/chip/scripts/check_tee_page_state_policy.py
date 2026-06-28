@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_POLICY = REPO_ROOT / "packages/chip/docs/spec-db/tee-page-state-transitions.json"
+DEFAULT_POLICY = REPO_ROOT / "packages/research/chip/docs/spec-db/tee-page-state-transitions.json"
 REQUIRED_STATES = {
     "free",
     "measured",

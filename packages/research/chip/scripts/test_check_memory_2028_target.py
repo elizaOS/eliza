@@ -7,7 +7,7 @@ and ``NPU_SPEC`` constants so the validator runs against the synthetic
 spec. Mutates the spec to drive every fail-closed branch.
 
 Run:
-    cd packages/chip && python3 -m unittest scripts.test_check_memory_2028_target
+    cd packages/research/chip && python3 -m unittest scripts.test_check_memory_2028_target
 """
 
 from __future__ import annotations

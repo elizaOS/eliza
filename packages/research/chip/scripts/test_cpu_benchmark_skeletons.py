@@ -985,7 +985,7 @@ def test_out_of_tree_transcript_does_not_promote_l5_l6() -> None:
         raise AssertionError(proc.stdout)
     if result.get("status") != "blocked":
         raise AssertionError(result)
-    if "archived artifact under packages/chip" not in result.get("reason", ""):
+    if "archived artifact under packages/research/chip" not in result.get("reason", ""):
         raise AssertionError(result)
     print("PASS out-of-tree transcript cannot promote L5/L6 result")
 

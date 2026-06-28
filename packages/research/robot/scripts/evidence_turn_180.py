@@ -12,7 +12,7 @@ snapshot, computes per-pixel diff, and saves:
 
 Usage:
     JAX_PLATFORMS=cpu python -m eliza_robot.scripts.evidence_turn_180 \
-        --out packages/robot/examples/robot-mujoco-demo/evidence/
+        --out packages/research/robot/examples/robot-mujoco-demo/evidence/
 
 This is the programmatic equivalent of: chat "turn around" → photograph
 before/after → assert the photos differ. We run it against MuJoCo because

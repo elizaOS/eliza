@@ -123,15 +123,15 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
         capture_command = report["next_command_plan"][0]["commands"][1]
         self.assertIn('--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT"', capture_command)
         self.assertIn(
-            "--output packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+            "--output packages/research/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
             capture_command,
         )
         self.assertIn(
-            "--logcat packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt",
+            "--logcat packages/research/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt",
             capture_command,
         )
         self.assertIn(
-            "--transcript packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log",
+            "--transcript packages/research/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log",
             capture_command,
         )
         fallback_capture_command = report["next_command_plan"][0]["commands"][2]

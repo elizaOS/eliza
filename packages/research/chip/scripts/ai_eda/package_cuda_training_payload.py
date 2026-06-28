@@ -298,7 +298,7 @@ def select_assets(lock: dict[str, Any], requested: list[str]) -> list[dict[str, 
 
 
 def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse.Namespace) -> Path:
-    dirty = git_output(["status", "--short", "--", "packages/chip"])
+    dirty = git_output(["status", "--short", "--", "packages/research/chip"])
     plan = {
         "schema": "eliza.ai_eda.cuda_training_payload.v1",
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),

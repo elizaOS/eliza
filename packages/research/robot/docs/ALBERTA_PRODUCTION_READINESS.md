@@ -7,12 +7,12 @@ comparison, and Brax/MJX remains the ASIMOV-1 full-training comparison path.
 
 ## Upstream
 
-- Vendored source: `packages/alberta`
+- Vendored source: `packages/research/alberta`
 - Upstream: `https://github.com/lalalune/alberta`
 - Verified upstream HEAD: `2ac35333efae45cf969ce02ec1f2703476fed6c2`
-- Local vendoring metadata: `packages/alberta/VENDORING.md`
+- Local vendoring metadata: `packages/research/alberta/VENDORING.md`
 - Clean `uv` installs resolve `alberta-framework` from the editable source
-  mapping in `packages/robot/uv.lock`, not from PyPI:
+  mapping in `packages/research/robot/uv.lock`, not from PyPI:
   `source = { editable = "../alberta" }`.
 
 ## Default Training Path
@@ -72,8 +72,8 @@ The bridge-facing policy-load smoke for `hiwonder-ainex` returned a finite
 validator now generates an Alberta-format validation checkpoint and has run
 through both mock and MuJoCo bridge backends.
 
-Source checkouts resolve profile manifests from `packages/robot/profiles` and
-MuJoCo/URDF assets from `packages/robot/assets/profiles`. Wheel-style or mounted
+Source checkouts resolve profile manifests from `packages/research/robot/profiles` and
+MuJoCo/URDF assets from `packages/research/robot/assets/profiles`. Wheel-style or mounted
 deployments can set `ELIZA_ROBOT_PROFILES_ROOT` and `ELIZA_ROBOT_ASSETS_ROOT`
 to the external profile and asset roots instead of bundling the 100MB mesh tree
 inside the Python wheel.
@@ -108,92 +108,92 @@ setting, evaluates both with `scripts/eval_text_policy.py`, and writes one
 
 ```bash
 python3 -m py_compile \
-  packages/robot/scripts/train_text_conditioned.py \
-  packages/robot/eliza_robot/rl/alberta/train_robot.py \
-  packages/robot/eliza_robot/rl/text_conditioned/train.py \
-  packages/robot/eliza_robot/rl/text_conditioned/policy.py \
-  packages/robot/scripts/compare_text_conditioned_backends.py \
-  packages/robot/scripts/evidence_final_e2e.py \
-  packages/robot/scripts/evidence_state_mirror_e2e.py \
-  packages/robot/scripts/evidence_text_to_action_calibrated_e2e.py \
-  packages/robot/scripts/evidence_text_to_action_e2e.py \
-  packages/robot/scripts/evidence_vlm_evaluation_e2e.py \
-  packages/robot/scripts/interactive_viewer.py \
-  packages/robot/scripts/sim_validation_gate.py \
-  packages/robot/scripts/prepare_end_to_end_full_training.py \
-  packages/robot/scripts/validate_alberta_benchmark_artifacts.py \
-  packages/robot/scripts/validate_alberta_robot_checkpoint.py \
-  packages/robot/scripts/validate_alberta_vendoring.py \
-  packages/robot/scripts/validate_robot_training_inputs.py \
-  packages/robot/scripts/validate_asimov1_e2e.py \
-  packages/robot/scripts/validate_asimov1_policy_loop.py \
-  packages/robot/scripts/validate_asimov1_full_training_job.py \
-  packages/robot/scripts/validate_asimov1_production_checkpoint.py \
-  packages/robot/scripts/validate_asimov1_real_agent_run.py \
-  packages/robot/scripts/validate_multi_robot_training_readiness.py
+  packages/research/robot/scripts/train_text_conditioned.py \
+  packages/research/robot/eliza_robot/rl/alberta/train_robot.py \
+  packages/research/robot/eliza_robot/rl/text_conditioned/train.py \
+  packages/research/robot/eliza_robot/rl/text_conditioned/policy.py \
+  packages/research/robot/scripts/compare_text_conditioned_backends.py \
+  packages/research/robot/scripts/evidence_final_e2e.py \
+  packages/research/robot/scripts/evidence_state_mirror_e2e.py \
+  packages/research/robot/scripts/evidence_text_to_action_calibrated_e2e.py \
+  packages/research/robot/scripts/evidence_text_to_action_e2e.py \
+  packages/research/robot/scripts/evidence_vlm_evaluation_e2e.py \
+  packages/research/robot/scripts/interactive_viewer.py \
+  packages/research/robot/scripts/sim_validation_gate.py \
+  packages/research/robot/scripts/prepare_end_to_end_full_training.py \
+  packages/research/robot/scripts/validate_alberta_benchmark_artifacts.py \
+  packages/research/robot/scripts/validate_alberta_robot_checkpoint.py \
+  packages/research/robot/scripts/validate_alberta_vendoring.py \
+  packages/research/robot/scripts/validate_robot_training_inputs.py \
+  packages/research/robot/scripts/validate_asimov1_e2e.py \
+  packages/research/robot/scripts/validate_asimov1_policy_loop.py \
+  packages/research/robot/scripts/validate_asimov1_full_training_job.py \
+  packages/research/robot/scripts/validate_asimov1_production_checkpoint.py \
+  packages/research/robot/scripts/validate_asimov1_real_agent_run.py \
+  packages/research/robot/scripts/validate_multi_robot_training_readiness.py
 
 python3 -m pytest \
-  packages/robot/tests/test_profiles.py \
-  packages/robot/tests/rl/test_unified_training_cli.py \
-  packages/robot/tests/rl/alberta/test_continual_env.py \
-  packages/robot/tests/rl/alberta/test_agent_loop.py \
-  packages/robot/tests/rl/alberta/test_benchmark_harness.py \
-  packages/robot/tests/rl/alberta/test_checkpoint_validator.py \
-  packages/robot/tests/rl/alberta/test_metrics.py \
-  packages/robot/tests/rl/alberta/test_obstacle_course.py \
-  packages/robot/tests/rl/alberta/test_policy_adapter.py \
-  packages/robot/tests/rl/alberta/test_vendoring_validator.py \
-  packages/robot/tests/rl/test_alberta_evidence_script_defaults.py \
-  packages/robot/tests/rl/test_robot_training_inputs_validator.py \
-  packages/robot/tests/rl/test_multi_robot_training_readiness.py \
-  packages/robot/tests/bridge/test_policy_start_e2e.py \
-  packages/robot/tests/asimov_1/test_asimov_docs.py \
-  packages/robot/tests/asimov_1/test_eval_text_policy_asimov.py \
-  packages/robot/tests/asimov_1/test_completion_gate.py \
-  packages/robot/tests/asimov_1/test_e2e_real_hardware_evidence_hook.py \
-  packages/robot/tests/asimov_1/test_production_checkpoint_validator.py \
-  packages/robot/tests/asimov_1/test_real_agent_readiness.py \
-  packages/robot/tests/asimov_1/test_real_agent_runner.py \
-  packages/robot/tests/asimov_1/test_real_agent_run_validator.py \
-  packages/robot/tests/rl/test_backend_comparison.py \
-  packages/robot/tests/rl/test_full_training_preflight.py \
-  packages/robot/tests/rl/test_full_training_preflight_validator.py \
-  packages/robot/tests/rl/test_text_to_action_e2e_evidence.py \
+  packages/research/robot/tests/test_profiles.py \
+  packages/research/robot/tests/rl/test_unified_training_cli.py \
+  packages/research/robot/tests/rl/alberta/test_continual_env.py \
+  packages/research/robot/tests/rl/alberta/test_agent_loop.py \
+  packages/research/robot/tests/rl/alberta/test_benchmark_harness.py \
+  packages/research/robot/tests/rl/alberta/test_checkpoint_validator.py \
+  packages/research/robot/tests/rl/alberta/test_metrics.py \
+  packages/research/robot/tests/rl/alberta/test_obstacle_course.py \
+  packages/research/robot/tests/rl/alberta/test_policy_adapter.py \
+  packages/research/robot/tests/rl/alberta/test_vendoring_validator.py \
+  packages/research/robot/tests/rl/test_alberta_evidence_script_defaults.py \
+  packages/research/robot/tests/rl/test_robot_training_inputs_validator.py \
+  packages/research/robot/tests/rl/test_multi_robot_training_readiness.py \
+  packages/research/robot/tests/bridge/test_policy_start_e2e.py \
+  packages/research/robot/tests/asimov_1/test_asimov_docs.py \
+  packages/research/robot/tests/asimov_1/test_eval_text_policy_asimov.py \
+  packages/research/robot/tests/asimov_1/test_completion_gate.py \
+  packages/research/robot/tests/asimov_1/test_e2e_real_hardware_evidence_hook.py \
+  packages/research/robot/tests/asimov_1/test_production_checkpoint_validator.py \
+  packages/research/robot/tests/asimov_1/test_real_agent_readiness.py \
+  packages/research/robot/tests/asimov_1/test_real_agent_runner.py \
+  packages/research/robot/tests/asimov_1/test_real_agent_run_validator.py \
+  packages/research/robot/tests/rl/test_backend_comparison.py \
+  packages/research/robot/tests/rl/test_full_training_preflight.py \
+  packages/research/robot/tests/rl/test_full_training_preflight_validator.py \
+  packages/research/robot/tests/rl/test_text_to_action_e2e_evidence.py \
   -q
 
-python3 packages/robot/scripts/validate_asimov1_policy_loop.py --max-steps 1
+python3 packages/research/robot/scripts/validate_asimov1_policy_loop.py --max-steps 1
 
-python3 packages/robot/scripts/validate_multi_robot_training_readiness.py \
+python3 packages/research/robot/scripts/validate_multi_robot_training_readiness.py \
   --profiles hiwonder-ainex asimov-1 unitree-g1 unitree-h1 unitree-r1 \
   --commands "stand up" "walk forward" "turn left" "turn right" \
-  --video-evidence packages/robot/evidence/agent_videos
+  --video-evidence packages/research/robot/evidence/agent_videos
 
-cd packages/robot && uv lock --check
+cd packages/research/robot && uv lock --check
 
-cd packages/robot && uv run eliza-robot-train \
+cd packages/research/robot && uv run eliza-robot-train \
   --profile hiwonder-ainex \
   --dry-run \
   --out /tmp/eliza_robot_train_entrypoint
 
-cd packages/robot && uv run eliza-robot-train-alberta --help
-cd packages/robot && uv run eliza-robot-benchmark-alberta --help
-cd packages/robot && uv run eliza-robot-compare-backends --help
-cd packages/robot && uv run eliza-robot-prepare-full-training --help
-cd packages/robot && uv run eliza-robot-validate-alberta-checkpoint --help
-cd packages/robot && uv run eliza-robot-validate-asimov1-production-checkpoint --help
-cd packages/robot && uv run eliza-robot-validate-alberta-vendoring \
+cd packages/research/robot && uv run eliza-robot-train-alberta --help
+cd packages/research/robot && uv run eliza-robot-benchmark-alberta --help
+cd packages/research/robot && uv run eliza-robot-compare-backends --help
+cd packages/research/robot && uv run eliza-robot-prepare-full-training --help
+cd packages/research/robot && uv run eliza-robot-validate-alberta-checkpoint --help
+cd packages/research/robot && uv run eliza-robot-validate-asimov1-production-checkpoint --help
+cd packages/research/robot && uv run eliza-robot-validate-alberta-vendoring \
   --expected-upstream-head 2ac35333efae45cf969ce02ec1f2703476fed6c2
-cd packages/robot && uv run eliza-robot-validate-training-inputs \
+cd packages/research/robot && uv run eliza-robot-validate-training-inputs \
   --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right \
   --out /tmp/eliza_training_inputs_report.json
 
-cd packages/robot && uv run python - <<'PY'
+cd packages/research/robot && uv run python - <<'PY'
 from pathlib import Path
 import alberta_framework
 print(Path(alberta_framework.__file__).resolve())
 PY
 
-cd packages/robot && uv run python -m eliza_robot.rl.alberta.benchmark \
+cd packages/research/robot && uv run python -m eliza_robot.rl.alberta.benchmark \
   --env obstacle_course \
   --learners alberta ppo sac \
   --n-tasks 2 \
@@ -202,7 +202,7 @@ cd packages/robot && uv run python -m eliza_robot.rl.alberta.benchmark \
   --seeds 1 \
   --out-dir /tmp/eliza_obstacle_benchmark
 
-cd packages/robot && uv run python scripts/compare_text_conditioned_backends.py \
+cd packages/research/robot && uv run python scripts/compare_text_conditioned_backends.py \
   --profile unitree-g1 \
   --tasks stand_up walk_forward \
   --steps 100 \
@@ -210,7 +210,7 @@ cd packages/robot && uv run python scripts/compare_text_conditioned_backends.py 
   --max-steps 20 \
   --out-root /tmp/eliza_backend_compare_unitree_g1
 
-cd packages/robot && uv run python scripts/prepare_end_to_end_full_training.py \
+cd packages/research/robot && uv run python scripts/prepare_end_to_end_full_training.py \
   --out-dir /tmp/eliza_full_training_preflight \
   --profile asimov-1 \
   --tasks stand_up walk_forward \

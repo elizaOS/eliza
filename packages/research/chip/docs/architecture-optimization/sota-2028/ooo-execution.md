@@ -24,7 +24,7 @@ Numbers are public/disclosed where vendors provided them and reverse-engineered 
 
 Reference rows: D9500 (C1-Ultra 4.21 / Premium 3.5 / Pro 2.7 GHz), S8 Elite Gen 5 (Oryon Gen 3 Prime 4.6-4.74 / Perf 3.62 GHz), Tensor G5 (X4 3.78 / A725 3.05 / A520 2.25 GHz), Exynos 2600 (Samsung 2 nm GAA, GB6 ST 3197). Source: `docs/spec-db/mobile-sota-2026.yaml`.
 
-## B. Current state in `packages/chip`
+## B. Current state in `packages/research/chip`
 
 - `rtl/cpu/e1_cpu_subsystem_stub.sv` — tiny in-order RV64 fetch/execute: 32-bit AXI-Lite manager, 32 archregs as 64-bit, supports JAL/JALR/BEQ/BNE/LUI/AUIPC/ADDI/ADD/SUB/LW/SW, halts on ECALL/EBREAK/illegal/AXI error. Not Linux-capable. No CSR, privilege, MMU, traps, atomics, compressed, float, vector.
 - `rtl/cpu/e1_cva6_wrapper.sv` — drop-in wrapper for OpenHW CVA6 (`ArianeDefaultConfig`, RV64IMAFDC + S-mode + Sv39), guarded by `+define+E1_HAVE_CVA6`. CVA6 = 6-stage single-issue in-order with limited speculation. Closest commercial peer: Cortex-A55-class. Expected SPEC2017 int IPC: ~1.5-1.8 on RTL, ~10× behind Cortex-X925.

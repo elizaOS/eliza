@@ -328,7 +328,7 @@ The verifier returns `verified:true` on the genuine quote and rejects both a
 single flipped measurement byte (`alias-signature-invalid`) and a wrong trust
 anchor (`root-anchor-mismatch`). The fail-closed gate
 `scripts/check_cove_quote.py` builds the firmware and runs this proof; it FAILs
-if the quote does not verify (run after `source packages/chip/tools/env.sh`;
+if the quote does not verify (run after `source packages/research/chip/tools/env.sh`;
 requires `gcc`, `make`, and `bun`).
 
 **What stays BLOCKED.** The cryptography and serialization are real and proven,

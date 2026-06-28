@@ -59,7 +59,7 @@ def resolve_repo_path(path_text: str) -> Path:
     path = Path(path_text)
     if path.is_absolute():
         return path
-    if path_text.startswith("packages/chip/"):
+    if path_text.startswith("packages/research/chip/"):
         return REPO_ROOT / path
     if path_text.startswith("board/"):
         return ROOT / path
@@ -107,7 +107,7 @@ def annotate_candidate_rows(
 
 
 def is_path_like(value: str) -> bool:
-    if value.startswith(("board/", "packages/chip/", "/")):
+    if value.startswith(("board/", "packages/research/chip/", "/")):
         return True
     return "/" in value and "." in Path(value).name
 

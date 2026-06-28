@@ -44,12 +44,12 @@ Public marketplace listings from Alibaba, Made-in-China, Chinax, or reseller pag
 
 ## Recommended Repo Intake Paths
 
-- Manufacturer datasheets and land-pattern PDFs: `packages/chip/board/kicad/e1-phone/production/sourcing/<family>/`
-- Supplier STEP or native CAD files: `packages/chip/board/kicad/e1-phone/production/step/component-models/vendor/`
-- KiCad footprint replacements: `packages/chip/board/kicad/e1-phone/e1-phone-dev.pretty/`, with source metadata linked from `footprint-3d-model-library-map.yaml`
-- Signed display/camera/battery/interconnect drawing packs: `packages/chip/board/kicad/e1-phone/production/sourcing/<family>/signed-2d-drawing.pdf`
-- Machine-readable pinout/pad-map CSVs: `packages/chip/board/kicad/e1-phone/production/sourcing/<family>/pinout-or-pad-map.csv`
-- Release decision trail: `packages/chip/board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml`
+- Manufacturer datasheets and land-pattern PDFs: `packages/research/chip/board/kicad/e1-phone/production/sourcing/<family>/`
+- Supplier STEP or native CAD files: `packages/research/chip/board/kicad/e1-phone/production/step/component-models/vendor/`
+- KiCad footprint replacements: `packages/research/chip/board/kicad/e1-phone/e1-phone-dev.pretty/`, with source metadata linked from `footprint-3d-model-library-map.yaml`
+- Signed display/camera/battery/interconnect drawing packs: `packages/research/chip/board/kicad/e1-phone/production/sourcing/<family>/signed-2d-drawing.pdf`
+- Machine-readable pinout/pad-map CSVs: `packages/research/chip/board/kicad/e1-phone/production/sourcing/<family>/pinout-or-pad-map.csv`
+- Release decision trail: `packages/research/chip/board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml`
 
 ## External Sources Checked
 

@@ -13,7 +13,7 @@ End-to-end recipe to take the AOSP build tree produced by
 | `docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log` | `DEVICE_NODE_PRESENT=true`, `DEVICE_NODE_LABEL=e1_npu_device`, `HAL_REGISTERED=true`, `INTERFACE_AVAILABLE=true` |
 
 All commands run from the chip-package working directory
-(`packages/chip`). Replace `/path/to/aosp` with the AOSP workspace
+(`packages/research/chip`). Replace `/path/to/aosp` with the AOSP workspace
 produced by `sw/aosp-device/build-aosp-riscv64.sh`.
 
 ## Prerequisites

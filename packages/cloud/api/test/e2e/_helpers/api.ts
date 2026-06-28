@@ -9,7 +9,7 @@
  *   CRON_SECRET        — for cron-route tests; defaults to "test-cron-secret".
  *
  * The helpers throw if you call them before `ensureLocalTestAuth()` has run.
- * The preload is `packages/cloud-api/test/e2e/preload.ts`, which seeds
+ * The preload is `packages/cloud/api/test/e2e/preload.ts`, which seeds
  * the DB and exports `TEST_API_KEY`.
  */
 
@@ -36,7 +36,7 @@ export function getApiKey(): string {
   if (!key) {
     throw new Error(
       "TEST_API_KEY is not set. Run with the e2e preload " +
-        "(packages/cloud-api/test/e2e/preload.ts) so ensureLocalTestAuth() seeds the DB " +
+        "(packages/cloud/api/test/e2e/preload.ts) so ensureLocalTestAuth() seeds the DB " +
         "and exports the bootstrapped key.",
     );
   }
@@ -48,7 +48,7 @@ export function getMemberApiKey(): string {
   if (!key) {
     throw new Error(
       "TEST_MEMBER_API_KEY is not set. Run with the e2e preload " +
-        "(packages/cloud-api/test/e2e/preload.ts) so ensureLocalTestAuth() seeds the DB " +
+        "(packages/cloud/api/test/e2e/preload.ts) so ensureLocalTestAuth() seeds the DB " +
         "and exports the bootstrapped member key.",
     );
   }
@@ -78,7 +78,7 @@ export function getAffiliateApiKey(): string {
   if (!key) {
     throw new Error(
       "TEST_AFFILIATE_API_KEY (or TEST_API_KEY) is not set. Run with the e2e preload " +
-        "(packages/cloud-api/test/e2e/preload.ts) so ensureLocalTestAuth() seeds the DB " +
+        "(packages/cloud/api/test/e2e/preload.ts) so ensureLocalTestAuth() seeds the DB " +
         "and exports the bootstrapped affiliate key.",
     );
   }

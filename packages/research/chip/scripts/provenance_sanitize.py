@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-# In the regression Docker container packages/chip is bind-mounted at the
+# In the regression Docker container packages/research/chip is bind-mounted at the
 # filesystem root (/work), so ROOT has no grandparent; fall back to ROOT rather
 # than raising IndexError on ROOT.parents[1].
 REPO = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT

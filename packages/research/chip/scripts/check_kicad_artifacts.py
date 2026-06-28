@@ -658,7 +658,7 @@ def blocker_groups(
                 "tool": "kicad-cli",
                 "reason": "missing_release_capable_tool",
                 "required_for": "headless ERC/DRC/Gerber/drill/BOM/position/fab drawing generation",
-                "unblock_action": "install or expose a KiCad CLI build that supports `kicad-cli sch erc` and `kicad-cli pcb drc`, then rerun packages/chip/scripts/check_kicad_artifacts.py --release from packages/chip",
+                "unblock_action": "install or expose a KiCad CLI build that supports `kicad-cli sch erc` and `kicad-cli pcb drc`, then rerun packages/research/chip/scripts/check_kicad_artifacts.py --release from packages/research/chip",
                 "non_destructive_local_probe_commands": LOCAL_TMP_UNBLOCK_COMMANDS,
                 "tool_probes": tool["probes"],
             }

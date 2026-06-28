@@ -1,7 +1,7 @@
 name: ElizaOS OpenAgent E1 (RISC-V AI SoC)
 
 # Fused-product AOSP build pipeline for `eliza_openagent_ai_soc_phone`:
-# OpenAgent E1 RISC-V AI phone SoC base device tree (from packages/chip/)
+# OpenAgent E1 RISC-V AI phone SoC base device tree (from packages/research/chip/)
 # plus the shared ElizaOS system overlay (packages/os/android/vendor/eliza/).
 #
 # Manual-only trigger (workflow_dispatch): a real AOSP riscv64 build is a
@@ -17,7 +17,7 @@ name: ElizaOS OpenAgent E1 (RISC-V AI SoC)
 # bench, not in CI. The `--launch` / `--boot-validate` flags on
 # build-aosp.mjs are intentionally omitted; that phase lives in the
 # chip-team bench harness and the evidence files listed under
-# `packages/chip/sw/aosp-device/evidence_manifest.json`.
+# `packages/research/chip/sw/aosp-device/evidence_manifest.json`.
 
 on:
   workflow_dispatch:
@@ -94,7 +94,7 @@ jobs:
         if: ${{ inputs.skip-apk-rebuild != true }}
         run: ${{ steps.brand.outputs.build-cmd }}
 
-      # The chip device tree is vendored in-tree under packages/chip/ and
+      # The chip device tree is vendored in-tree under packages/research/chip/ and
       # must be rsynced into the AOSP checkout before the fused product
       # makefile can `$(call inherit-product, device/eliza/eliza_ai_soc/eliza_ai_soc.mk)`.
       # The chip import script is owned by the chip team — we only invoke
@@ -120,7 +120,7 @@ jobs:
           # No --launch / --boot-validate: there is no virtual device for
           # the OpenAgent E1 fusion in this workflow. Real-hardware boot
           # validation runs on the chip-team bench harness and is captured
-          # as evidence under packages/chip/docs/evidence/android/.
+          # as evidence under packages/research/chip/docs/evidence/android/.
           node packages/scripts/distro-android/build-aosp.mjs \
             --brand-config "${{ steps.brand.outputs.config }}" \
             --aosp-root "${{ inputs.aosp-root }}" \
@@ -130,14 +130,14 @@ jobs:
         if: always()
         run: |
           # The 9 evidence logs listed in
-          # packages/chip/sw/aosp-device/evidence_manifest.json land in
-          # packages/chip/docs/evidence/android/ when the chip evidence
+          # packages/research/chip/sw/aosp-device/evidence_manifest.json land in
+          # packages/research/chip/docs/evidence/android/ when the chip evidence
           # capture script has been run against the same AOSP checkout.
           # We surface them as build artifacts so the chip team can audit
           # the run without needing direct runner access. Missing logs
           # are not a failure here (the chip-team capture is a separate,
           # bench-driven phase) — this step is best-effort archival only.
-          EVIDENCE_DIR="packages/chip/docs/evidence/android"
+          EVIDENCE_DIR="packages/research/chip/docs/evidence/android"
           if [ -d "$EVIDENCE_DIR" ]; then
             ls -la "$EVIDENCE_DIR" || true
           else
@@ -161,6 +161,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: openagent-e1-chip-evidence
-          path: packages/chip/docs/evidence/android/*.log
+          path: packages/research/chip/docs/evidence/android/*.log
           if-no-files-found: warn
           retention-days: 7

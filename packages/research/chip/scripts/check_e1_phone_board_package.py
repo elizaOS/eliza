@@ -157,7 +157,7 @@ def collect_board_file_references(value: object) -> set[str]:
         for nested in value:
             refs.update(collect_board_file_references(nested))
     elif isinstance(value, str):
-        normalized = value.removeprefix("packages/chip/")
+        normalized = value.removeprefix("packages/research/chip/")
         for match in re.findall(r"board/kicad/e1-phone/[^\"'\s,)\]]+", normalized):
             refs.add(match.rstrip(".,:;"))
     return refs
@@ -17138,7 +17138,7 @@ def check_routed_board_clearance_release_intake() -> None:
         require_path(path)
 
     def repo_path_from_packaged(value: str) -> Path:
-        return ROOT / value.removeprefix("packages/chip/")
+        return ROOT / value.removeprefix("packages/research/chip/")
 
     intake = load_yaml(intake_path)
     board_step = load_yaml(board_step_path)
@@ -17157,17 +17157,17 @@ def check_routed_board_clearance_release_intake() -> None:
     metadata = intake["intake_metadata"]
     expected_paths = {
         "routed_pcb_path": (
-            "packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+            "packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
         ),
         "routed_board_step_path": (
-            "packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step"
+            "packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step"
         ),
         "component_model_bundle_path": (
-            "packages/chip/board/kicad/e1-phone/production/step/component-models/"
+            "packages/research/chip/board/kicad/e1-phone/production/step/component-models/"
             "release-manifest.yaml"
         ),
         "component_model_manifest_path": (
-            "packages/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
+            "packages/research/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
         ),
     }
     for key, expected in expected_paths.items():
@@ -17203,14 +17203,14 @@ def check_routed_board_clearance_release_intake() -> None:
         "evidence_class": "blocked_local_candidate_outputs_not_release",
         "release_credit": False,
         "routed_output_metadata": (
-            "packages/chip/board/kicad/e1-phone/production/step/"
+            "packages/research/chip/board/kicad/e1-phone/production/step/"
             "routed-board-with-components.step.metadata.yaml"
         ),
         "board_step_readiness": (
-            "packages/chip/mechanical/e1-phone/review/board-step-readiness.json"
+            "packages/research/chip/mechanical/e1-phone/review/board-step-readiness.json"
         ),
         "kicad_cli_preflight": (
-            "packages/chip/mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json"
+            "packages/research/chip/mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json"
         ),
         "route_count": detailed_candidate.get("route_count"),
         "segment_count": detailed_candidate.get("segment_count"),

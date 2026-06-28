@@ -53,7 +53,7 @@ compiler/iree-eliza-npu/
 ### Standalone dialect smoke
 
 Requires MLIR + LLVM installed (e.g. inside the canonical Linux container
-built from `packages/chip/Dockerfile`, with the LLVM-trunk pin from
+built from `packages/research/chip/Dockerfile`, with the LLVM-trunk pin from
 [`llvm-trunk-pin.md`](../../docs/toolchain/llvm-trunk-pin.md)):
 
 ```sh

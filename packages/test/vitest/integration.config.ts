@@ -52,7 +52,6 @@ const integrationResolveAlias: ModuleAlias[] = [
     "app-companion",
     "plugin-personal-assistant",
     "app-task-coordinator",
-    "app-vincent",
     "plugin-workflow",
     "plugin-shopify",
     "plugin-steward-app",

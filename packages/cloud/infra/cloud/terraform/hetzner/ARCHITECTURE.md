@@ -59,8 +59,8 @@ to coordinate it.
 |---|---|---|
 | Control plane VM | [`packages/scripts/cloud/admin/daemons/provisioning-worker.ts`](../../../../scripts/cloud/admin/daemons/provisioning-worker.ts) | [Terraform: `control-plane/`](./control-plane/) |
 | Agent router | [`packages/scripts/cloud/admin/daemons/agent-router.ts`](../../../../scripts/cloud/admin/daemons/agent-router.ts) | systemd unit on control-plane VM |
-| Data plane autoscaler | [`packages/cloud-shared/src/lib/services/containers/node-autoscaler.ts`](../../../../cloud-shared/src/lib/services/containers/node-autoscaler.ts) | Hetzner Cloud API at runtime |
-| Sandbox provisioning | [`packages/cloud-shared/src/lib/services/docker-sandbox-provider.ts`](../../../../cloud-shared/src/lib/services/docker-sandbox-provider.ts) | SSH from control plane to data plane |
+| Data plane autoscaler | [`packages/cloud/shared/src/lib/services/containers/node-autoscaler.ts`](../../../../shared/src/lib/services/containers/node-autoscaler.ts) | Hetzner Cloud API at runtime |
+| Sandbox provisioning | [`packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts`](../../../../shared/src/lib/services/docker-sandbox-provider.ts) | SSH from control plane to data plane |
 
 ## Naming convention
 
@@ -68,7 +68,7 @@ to coordinate it.
 |---|---|---|---|
 | Control plane VM | `eliza-<env>-1` | `eliza-staging-1`, `eliza-production-1` | Terraform `hcloud_server.control_plane` |
 | Data plane node — dedicated | `eliza-core-<env>-<n>` | `eliza-core-staging-1`, `eliza-core-prod-2` | `docker_nodes` table (authoritative); `CONTAINERS_DOCKER_NODES` env only seeds it when empty |
-| Data plane node — autoscaled burst | `eliza-core-<hex>` | `eliza-core-38ea87b1` | [`generateNodeId()`](../../../../cloud-shared/src/lib/services/containers/node-autoscaler.ts) at runtime |
+| Data plane node — autoscaled burst | `eliza-core-<hex>` | `eliza-core-38ea87b1` | [`generateNodeId()`](../../../../shared/src/lib/services/containers/node-autoscaler.ts) at runtime |
 
 Two distinct data-plane node shapes share the `eliza-core-` prefix:
 
@@ -168,7 +168,7 @@ the daemon stays running on its own VM.
       `container-control-plane` service onto the daemon-queue pattern
       (`pool-replenish`, `pool-health-check`, `pool-image-rollout`,
       `deployment-monitor`). Once done, retire the
-      `packages/cloud-services/container-control-plane/` package entirely.
+      `packages/cloud/services/container-control-plane/` package entirely.
 - [ ] Raise Hetzner Cloud server limit (open ticket) — only if the
       per-project default 5 isn't enough after the multi-project split.
 

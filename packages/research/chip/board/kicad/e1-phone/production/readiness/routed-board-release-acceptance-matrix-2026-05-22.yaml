@@ -5,12 +5,12 @@ claim_boundary: Fail-closed acceptance matrix generated from routed-board source
   not a routed PCB, DRC/ERC result, SI/PI/RF signoff, manufacturing package, routed STEP, enclosure release,
   factory release, or end-to-end phone readiness claim.
 inputs:
-  kicad_route_readiness_inventory: packages/chip/board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
-  routed_layout_si_drc_burndown: packages/chip/board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml
-  routed_release_plan: packages/chip/board/kicad/e1-phone/routed-release-plan.yaml
-  routed_output_candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
-  yaml_report_path: packages/chip/board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
-  markdown_report_path: packages/chip/board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.md
+  kicad_route_readiness_inventory: packages/research/chip/board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+  routed_layout_si_drc_burndown: packages/research/chip/board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml
+  routed_release_plan: packages/research/chip/board/kicad/e1-phone/routed-release-plan.yaml
+  routed_output_candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  yaml_report_path: packages/research/chip/board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  markdown_report_path: packages/research/chip/board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.md
   source_statuses:
     kicad_route_readiness_inventory: blocked_current_kicad_concept_board_not_routed_or_fabrication_ready
     routed_layout_si_drc_burndown: blocked_routed_layout_si_drc_burndown_requires_real_route_drc_erc_si_pi_rf_and_manufacturing_evidence
@@ -54,11 +54,11 @@ fail_closed_policy:
   end_to_end_phone_ready: false
   acceptance_unlock_requires_all_route_domains_outputs_and_validation_evidence_present: true
 candidate_end_to_end_context:
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
-  component_model_manifest: packages/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
-  component_model_directory: packages/chip/board/kicad/e1-phone/production/step/component-models
-  component_3d_binding_report: packages/chip/board/kicad/e1-phone/production/reports/component-3d-binding.yaml
-  component_3d_binding_matrix: packages/chip/board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  component_model_manifest: packages/research/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
+  component_model_directory: packages/research/chip/board/kicad/e1-phone/production/step/component-models
+  component_3d_binding_report: packages/research/chip/board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  component_3d_binding_matrix: packages/research/chip/board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
   status: blocked_local_candidate_outputs_not_release
   release_credit: false
   source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
@@ -8495,7 +8495,7 @@ candidate_end_to_end_context:
     first-article evidence.
 development_route_context:
   present: true
-  board_file: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
+  board_file: packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
   route_count: 153
   segment_count: 306
   via_count: 24
@@ -8536,27 +8536,27 @@ route_domain_acceptance_matrix:
     board_net: USBPD_RESET
   required_production_outputs:
   - path: board/kicad/e1-phone/production/reports/usb2-length-skew.csv
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/usb2-length-skew.csv
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/usb2-length-skew.csv
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -8628,17 +8628,17 @@ route_domain_acceptance_matrix:
     board_net: DISP_TE
   required_production_outputs:
   - path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -8690,17 +8690,17 @@ route_domain_acceptance_matrix:
     board_net: IO_1V8
   required_production_outputs:
   - path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/camera-capture-log.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/camera-capture-log.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -8761,22 +8761,22 @@ route_domain_acceptance_matrix:
     board_net: WIFI_EN
   required_production_outputs:
   - path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -8827,22 +8827,22 @@ route_domain_acceptance_matrix:
   alias_satisfied_exact_nets: []
   required_production_outputs:
   - path: board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/memory-training-log.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/memory-training-log.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/memory-training-log.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/ufs-link-training-log.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/ufs-link-training-log.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/ufs-link-training-log.json
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -8899,17 +8899,17 @@ route_domain_acceptance_matrix:
     board_net: SPK_P
   required_production_outputs:
   - path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
-    resolved_path: packages/chip/board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -8969,42 +8969,42 @@ route_domain_acceptance_matrix:
   alias_satisfied_exact_nets: []
   required_production_outputs:
   - path: board/kicad/e1-phone/production/test/probe-coordinates.csv
-    resolved_path: packages/chip/board/kicad/e1-phone/production/test/probe-coordinates.csv
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/test/probe-coordinates.csv
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
-    resolved_path: packages/chip/board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/test/factory-test-limits.yaml
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
-    resolved_path: packages/chip/board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/gerbers
-    resolved_path: packages/chip/board/kicad/e1-phone/production/gerbers
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/gerbers
     present: true
     artifact_kind: directory
     source_declared_present: null
   - path: board/kicad/e1-phone/production/ipc-2581
-    resolved_path: packages/chip/board/kicad/e1-phone/production/ipc-2581
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/ipc-2581
     present: true
     artifact_kind: directory
     source_declared_present: null
   - path: board/kicad/e1-phone/production/pos
-    resolved_path: packages/chip/board/kicad/e1-phone/production/pos
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/pos
     present: true
     artifact_kind: directory
     source_declared_present: null
   - path: board/kicad/e1-phone/production/bom
-    resolved_path: packages/chip/board/kicad/e1-phone/production/bom
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/bom
     present: true
     artifact_kind: directory
     source_declared_present: null
   - path: board/kicad/e1-phone/production/pdf/assembly.pdf
-    resolved_path: packages/chip/board/kicad/e1-phone/production/pdf/assembly.pdf
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/pdf/assembly.pdf
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -9047,7 +9047,7 @@ route_domain_acceptance_matrix:
     drawings exist
 required_production_outputs:
 - path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  resolved_path: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  resolved_path: packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9061,10 +9061,10 @@ required_production_outputs:
   - routed KiCad PCB exists only as a blocked local candidate; production source remains a concept placeholder
     scaffold
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/bom
-  resolved_path: packages/chip/board/kicad/e1-phone/production/bom
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/bom
   present: true
   artifact_kind: directory
   source_declared_present: null
@@ -9081,7 +9081,7 @@ required_production_outputs:
   candidate_manifest: ''
   candidate_release_credit: null
 - path: board/kicad/e1-phone/production/fab-quote
-  resolved_path: packages/chip/board/kicad/e1-phone/production/fab-quote
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/fab-quote
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9094,10 +9094,10 @@ required_production_outputs:
   required_statuses:
   - quote tied to layer count, HDI, impedance, finish, tolerances, assembly, and test missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/first-article
-  resolved_path: packages/chip/board/kicad/e1-phone/production/first-article
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/first-article
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9110,10 +9110,10 @@ required_production_outputs:
   required_statuses:
   - first-article traveler, current limits, stop-on-fail rules, and signoff missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/gerbers
-  resolved_path: packages/chip/board/kicad/e1-phone/production/gerbers
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/gerbers
   present: true
   artifact_kind: directory
   source_declared_present: null
@@ -9132,7 +9132,7 @@ required_production_outputs:
   candidate_manifest: ''
   candidate_release_credit: null
 - path: board/kicad/e1-phone/production/ipc-2581
-  resolved_path: packages/chip/board/kicad/e1-phone/production/ipc-2581
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/ipc-2581
   present: true
   artifact_kind: directory
   source_declared_present: null
@@ -9149,7 +9149,7 @@ required_production_outputs:
   candidate_manifest: ''
   candidate_release_credit: null
 - path: board/kicad/e1-phone/production/pdf/assembly.pdf
-  resolved_path: packages/chip/board/kicad/e1-phone/production/pdf/assembly.pdf
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/pdf/assembly.pdf
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9163,10 +9163,10 @@ required_production_outputs:
   - domain_acceptance_required
   - assembly drawing with polarity, shield, DNP, connector, and inspection notes missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
-  resolved_path: packages/chip/board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9180,10 +9180,10 @@ required_production_outputs:
   - domain_acceptance_required
   - top/bottom flex mating order, stiffener, strain relief, and inspection drawing missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/pos
-  resolved_path: packages/chip/board/kicad/e1-phone/production/pos
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/pos
   present: true
   artifact_kind: directory
   source_declared_present: null
@@ -9200,7 +9200,7 @@ required_production_outputs:
   candidate_manifest: ''
   candidate_release_credit: null
 - path: board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9212,10 +9212,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/camera-capture-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/camera-capture-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9227,10 +9227,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9242,10 +9242,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9257,10 +9257,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/drc.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/drc.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/drc.json
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9276,7 +9276,7 @@ required_production_outputs:
   candidate_manifest: ''
   candidate_release_credit: null
 - path: board/kicad/e1-phone/production/reports/erc.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/erc.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/erc.json
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9292,7 +9292,7 @@ required_production_outputs:
   candidate_manifest: ''
   candidate_release_credit: null
 - path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9304,10 +9304,10 @@ required_production_outputs:
   required_statuses:
   - replaces_concept_density_estimate
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/length-skew.csv
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/length-skew.csv
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/length-skew.csv
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9319,10 +9319,10 @@ required_production_outputs:
   required_statuses:
   - covers_usb2_mipi_pcie_lpddr_ufs_and_split_interconnect
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/memory-training-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/memory-training-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/memory-training-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9334,10 +9334,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/power-thermal
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/power-thermal
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/power-thermal
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9350,10 +9350,10 @@ required_production_outputs:
   required_statuses:
   - rail sequencing, load-step, charge, discharge, and thermal measurements missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9366,10 +9366,10 @@ required_production_outputs:
   required_statuses:
   - antenna matching, conducted, coexistence, GNSS, and SAR evidence missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9381,10 +9381,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9396,10 +9396,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9411,10 +9411,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9426,10 +9426,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9444,7 +9444,7 @@ required_production_outputs:
   candidate_manifest: ''
   candidate_release_credit: null
 - path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9458,10 +9458,10 @@ required_production_outputs:
   - generated_from_supplier_footprints_and_keepouts
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9474,10 +9474,10 @@ required_production_outputs:
   required_statuses:
   - USB, MIPI, PCIe, LPDDR, UFS, power-rail, and return-path reports missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9489,10 +9489,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9504,10 +9504,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9519,10 +9519,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9534,10 +9534,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9549,10 +9549,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9564,10 +9564,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9579,10 +9579,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/ufs-link-training-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/ufs-link-training-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/ufs-link-training-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9594,10 +9594,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9609,10 +9609,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/usb2-length-skew.csv
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/usb2-length-skew.csv
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/usb2-length-skew.csv
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9624,10 +9624,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/zone-fill.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/zone-fill.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/zone-fill.json
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9641,10 +9641,10 @@ required_production_outputs:
   - all_required_zones_filled_and_reviewed
   - no copper zones are present in the current board state
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/stackup
-  resolved_path: packages/chip/board/kicad/e1-phone/production/stackup
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/stackup
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9660,7 +9660,7 @@ required_production_outputs:
   candidate_manifest: ''
   candidate_release_credit: null
 - path: board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
-  resolved_path: packages/chip/board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9672,10 +9672,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/step
-  resolved_path: packages/chip/board/kicad/e1-phone/production/step
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/step
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9688,10 +9688,10 @@ required_production_outputs:
   required_statuses:
   - routed board STEP with supplier connector/module/shield models missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
-  resolved_path: packages/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9704,10 +9704,10 @@ required_production_outputs:
   required_statuses:
   - supplier-approved component 3D model manifest and model-to-footprint approval missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/step/routed-board-with-components.step
-  resolved_path: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9719,10 +9719,10 @@ required_production_outputs:
   required_statuses:
   - imported_into_enclosure_cad_and_clearance_checked
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
-  resolved_path: packages/chip/board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/test/factory-test-limits.yaml
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9737,10 +9737,10 @@ required_production_outputs:
   - factory limits for rails, USB-C, radios, display, cameras, audio, buttons, and split interconnect
     missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/test/probe-coordinates.csv
-  resolved_path: packages/chip/board/kicad/e1-phone/production/test/probe-coordinates.csv
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/test/probe-coordinates.csv
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9752,10 +9752,10 @@ required_production_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: mechanical/e1-phone/review/routed-board-clearance.json
-  resolved_path: packages/chip/mechanical/e1-phone/review/routed-board-clearance.json
+  resolved_path: packages/research/chip/mechanical/e1-phone/review/routed-board-clearance.json
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9774,7 +9774,7 @@ required_production_outputs:
 missing_production_outputs: []
 candidate_present_blocked_required_outputs:
 - path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  resolved_path: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  resolved_path: packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9788,10 +9788,10 @@ candidate_present_blocked_required_outputs:
   - routed KiCad PCB exists only as a blocked local candidate; production source remains a concept placeholder
     scaffold
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/fab-quote
-  resolved_path: packages/chip/board/kicad/e1-phone/production/fab-quote
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/fab-quote
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9804,10 +9804,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - quote tied to layer count, HDI, impedance, finish, tolerances, assembly, and test missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/first-article
-  resolved_path: packages/chip/board/kicad/e1-phone/production/first-article
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/first-article
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9820,10 +9820,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - first-article traveler, current limits, stop-on-fail rules, and signoff missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/pdf/assembly.pdf
-  resolved_path: packages/chip/board/kicad/e1-phone/production/pdf/assembly.pdf
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/pdf/assembly.pdf
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9837,10 +9837,10 @@ candidate_present_blocked_required_outputs:
   - domain_acceptance_required
   - assembly drawing with polarity, shield, DNP, connector, and inspection notes missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
-  resolved_path: packages/chip/board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9854,10 +9854,10 @@ candidate_present_blocked_required_outputs:
   - domain_acceptance_required
   - top/bottom flex mating order, stiffener, strain relief, and inspection drawing missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9869,10 +9869,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/camera-capture-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/camera-capture-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9884,10 +9884,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9899,10 +9899,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9914,10 +9914,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9929,10 +9929,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - replaces_concept_density_estimate
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/length-skew.csv
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/length-skew.csv
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/length-skew.csv
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -9944,10 +9944,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - covers_usb2_mipi_pcie_lpddr_ufs_and_split_interconnect
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/memory-training-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/memory-training-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/memory-training-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -9959,10 +9959,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/power-thermal
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/power-thermal
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/power-thermal
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9975,10 +9975,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - rail sequencing, load-step, charge, discharge, and thermal measurements missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -9991,10 +9991,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - antenna matching, conducted, coexistence, GNSS, and SAR evidence missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10006,10 +10006,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10021,10 +10021,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10036,10 +10036,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10051,10 +10051,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -10068,10 +10068,10 @@ candidate_present_blocked_required_outputs:
   - generated_from_supplier_footprints_and_keepouts
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -10084,10 +10084,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - USB, MIPI, PCIe, LPDDR, UFS, power-rail, and return-path reports missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10099,10 +10099,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10114,10 +10114,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10129,10 +10129,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10144,10 +10144,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10159,10 +10159,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10174,10 +10174,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10189,10 +10189,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/ufs-link-training-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/ufs-link-training-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/ufs-link-training-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10204,10 +10204,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10219,10 +10219,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/usb2-length-skew.csv
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/usb2-length-skew.csv
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/usb2-length-skew.csv
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10234,10 +10234,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/zone-fill.json
-  resolved_path: packages/chip/board/kicad/e1-phone/production/reports/zone-fill.json
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/zone-fill.json
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -10251,10 +10251,10 @@ candidate_present_blocked_required_outputs:
   - all_required_zones_filled_and_reviewed
   - no copper zones are present in the current board state
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
-  resolved_path: packages/chip/board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10266,10 +10266,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/step
-  resolved_path: packages/chip/board/kicad/e1-phone/production/step
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/step
   present: true
   artifact_kind: directory
   source_declared_present: false
@@ -10282,10 +10282,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - routed board STEP with supplier connector/module/shield models missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
-  resolved_path: packages/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -10298,10 +10298,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - supplier-approved component 3D model manifest and model-to-footprint approval missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/step/routed-board-with-components.step
-  resolved_path: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
   present: true
   artifact_kind: file
   source_declared_present: false
@@ -10313,10 +10313,10 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - imported_into_enclosure_cad_and_clearance_checked
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
-  resolved_path: packages/chip/board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/test/factory-test-limits.yaml
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10331,10 +10331,10 @@ candidate_present_blocked_required_outputs:
   - factory limits for rails, USB-C, radios, display, cameras, audio, buttons, and split interconnect
     missing
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/test/probe-coordinates.csv
-  resolved_path: packages/chip/board/kicad/e1-phone/production/test/probe-coordinates.csv
+  resolved_path: packages/research/chip/board/kicad/e1-phone/production/test/probe-coordinates.csv
   present: true
   artifact_kind: file
   source_declared_present: null
@@ -10346,7 +10346,7 @@ candidate_present_blocked_required_outputs:
   required_statuses:
   - domain_acceptance_required
   candidate_present_blocked: true
-  candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  candidate_manifest: packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 truly_missing_required_outputs: []
 required_acceptance_evidence:
@@ -10361,17 +10361,17 @@ required_acceptance_evidence:
   release_blocker: source_inventory_declares_validation_evidence_absent
   required_artifacts:
   - path: board/kicad/e1-phone/production/reports/erc.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/erc.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/erc.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/drc.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/drc.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/drc.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/zone-fill.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/zone-fill.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/zone-fill.json
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -10387,32 +10387,32 @@ required_acceptance_evidence:
   release_blocker: source_inventory_declares_validation_evidence_absent
   required_artifacts:
   - path: board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/si-pi/pcie-cellular-wifi.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/pcie-cellular-wifi.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/pcie-cellular-wifi.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -10428,22 +10428,22 @@ required_acceptance_evidence:
   release_blocker: source_inventory_declares_validation_evidence_absent
   required_artifacts:
   - path: board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/power-thermal/load-step.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/power-thermal/load-step.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/power-thermal/load-step.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -10459,22 +10459,22 @@ required_acceptance_evidence:
   release_blocker: source_inventory_declares_validation_evidence_absent
   required_artifacts:
   - path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -10490,17 +10490,17 @@ required_acceptance_evidence:
   release_blocker: source_inventory_declares_validation_evidence_absent
   required_artifacts:
   - path: board/kicad/e1-phone/production/step/routed-board-with-components.step
-    resolved_path: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: mechanical/e1-phone/review/routed-board-clearance.json
-    resolved_path: packages/chip/mechanical/e1-phone/review/routed-board-clearance.json
+    resolved_path: packages/research/chip/mechanical/e1-phone/review/routed-board-clearance.json
     present: true
     artifact_kind: file
     source_declared_present: null
@@ -10516,17 +10516,17 @@ required_acceptance_evidence:
   release_blocker: source_inventory_declares_validation_evidence_absent
   required_artifacts:
   - path: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/component-3d-binding.yaml
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
-    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
     present: true
     artifact_kind: file
     source_declared_present: null
   - path: board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
-    resolved_path: packages/chip/board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
+    resolved_path: packages/research/chip/board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
     present: true
     artifact_kind: file
     source_declared_present: null

@@ -603,7 +603,7 @@ def test_alberta_checkpoint_validator_cli(tmp_path: Path) -> None:
     proc = subprocess.run(
         [
             sys.executable,
-            "packages/robot/scripts/validate_alberta_robot_checkpoint.py",
+            "packages/research/robot/scripts/validate_alberta_robot_checkpoint.py",
             str(tmp_path),
             "--profile",
             "hiwonder-ainex",

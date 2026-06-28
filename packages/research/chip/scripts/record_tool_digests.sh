@@ -10,7 +10,7 @@
 # When a tool or asset is not present locally the value is recorded as the
 # literal string "unavailable" and a sibling <tool>_unavailable_reason field
 # is emitted. Closes Workstream E reproducibility blocker (H-4) from
-# packages/chip/research/00_integration_shortlist.md.
+# packages/research/chip/research/00_integration_shortlist.md.
 #
 # Usage:
 #   scripts/record_tool_digests.sh [--out path/to/digests.json]

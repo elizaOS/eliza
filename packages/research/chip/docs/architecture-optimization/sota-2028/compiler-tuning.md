@@ -73,7 +73,7 @@ Three competing proposals at RISC-V International:
 - **AWQ vs GPTQ INT4**: AWQ is default INT4 format for production inference; lower perplexity than GPTQ at 3-4 bit; 4-bit weight-only is on-device LLM standard with TinyChat 3x+ over HF FP16 on mobile GPUs.
 - **FP8 E4M3**: outperforms E5M2 across configurations; covers 92.64% of workloads vs INT8 65.87%; ~40% VRAM reduction with minimal quality loss. Snapdragon 8 Elite Gen 5 markets FP8 + INT2.
 
-## B. Current state in `packages/chip`
+## B. Current state in `packages/research/chip`
 
 Evidence from these files:
 

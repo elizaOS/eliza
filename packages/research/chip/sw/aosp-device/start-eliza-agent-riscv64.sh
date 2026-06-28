@@ -14,7 +14,7 @@
 #
 # This script does not write evidence by itself. agent-smoke-riscv64.sh is
 # responsible for the archived cuttlefish-agent smoke transcript under
-# packages/chip/docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log.
+# packages/research/chip/docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log.
 
 set -euo pipefail
 

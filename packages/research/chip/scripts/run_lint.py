@@ -106,7 +106,7 @@ def main() -> int:
     ok &= run("yaml yamllint", ["yamllint", "."], optional=True)
     ok &= validate_json()
     # `git diff --check` requires a real working tree; the docker-regression
-    # CI mounts only `packages/chip` so the .git tree isn't visible. Skip
+    # CI mounts only `packages/research/chip` so the .git tree isn't visible. Skip
     # cleanly when git can't see a repo here — the host-side `git` hooks
     # and the repo-wide lint job catch the same whitespace defects.
     rev_parse = subprocess.run(

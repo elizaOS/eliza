@@ -386,7 +386,7 @@
       } catch (error) {
         const el = document.getElementById("loadError");
         el.className = "";
-        el.innerHTML = `<section><h2>Viewer data failed to load</h2><p class="subtle">${error.message}. Run <span class="mono">make chip-viewer</span> from <span class="mono">packages/chip</span>, then serve this directory over HTTP.</p></section>`;
+        el.innerHTML = `<section><h2>Viewer data failed to load</h2><p class="subtle">${error.message}. Run <span class="mono">make chip-viewer</span> from <span class="mono">packages/research/chip</span>, then serve this directory over HTTP.</p></section>`;
       }
     }
     load();

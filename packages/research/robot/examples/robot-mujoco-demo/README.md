@@ -26,7 +26,7 @@ server abstracts the backend.
 
 ```bash
 # List every available target on this checkout
-PYTHONPATH=packages/robot uv run --project packages/robot \
+PYTHONPATH=packages/research/robot uv run --project packages/research/robot \
     python -m eliza_robot.bridge.launch --list-targets
 ```
 
@@ -34,7 +34,7 @@ PYTHONPATH=packages/robot uv run --project packages/robot \
 
 ```bash
 # Terminal 1 — start the MuJoCo bridge on port 9100
-bun run --cwd packages/robot robot:bridge:mujoco
+bun run --cwd packages/research/robot robot:bridge:mujoco
 
 # Terminal 2 — launch Eliza with plugin-ainex auto-enabled
 ELIZA_AINEX_BRIDGE_URL=ws://localhost:9100 bun run dev
@@ -54,11 +54,11 @@ the MuJoCo render react.
 roslaunch ainex_bringup robot.launch
 
 # On your dev box (Terminal 1) — bridge talks ROS1 to the robot
-PYTHONPATH=packages/robot uv run --project packages/robot \
+PYTHONPATH=packages/research/robot uv run --project packages/research/robot \
     python -m eliza_robot.bridge.launch --target real --envelope
 
 # (optional) replace the head camera with an Obsbot tethered over USB:
-PYTHONPATH=packages/robot uv run --project packages/robot \
+PYTHONPATH=packages/research/robot uv run --project packages/research/robot \
     python -m eliza_robot.bridge.server \
         --backend ros_real --port 9100 \
         --camera-device 0 --camera-width 1280 --camera-height 720
@@ -75,8 +75,8 @@ point of the unified bridge contract.
 Always run the no-motion smoke harness against the bridge first:
 
 ```bash
-PYTHONPATH=packages/robot uv run --project packages/robot \
-    python packages/robot/scripts/check_real_robot.py \
+PYTHONPATH=packages/research/robot uv run --project packages/research/robot \
+    python packages/research/robot/scripts/check_real_robot.py \
         --url ws://localhost:9100 --save-frame /tmp/smoke.png
 ```
 
@@ -118,7 +118,7 @@ The camera intrinsics live in `eliza_robot.perception.calibration.CameraIntrinsi
 Calibrate the Obsbot once with a checkerboard:
 
 ```bash
-PYTHONPATH=packages/robot python -c '
+PYTHONPATH=packages/research/robot python -c '
 from eliza_robot.perception.calibration import CameraCalibrator, CameraIntrinsics
 from eliza_robot.perception.frame_source import OpenCVSource
 import cv2, time
@@ -163,8 +163,8 @@ at 2 inches (50.8 mm) and place them flat on the floor matching the
 table. Run the integration script:
 
 ```bash
-PYTHONPATH=packages/robot uv run --project packages/robot \
-    python packages/robot/scripts/evidence_aruco_localize.py \
+PYTHONPATH=packages/research/robot uv run --project packages/research/robot \
+    python packages/research/robot/scripts/evidence_aruco_localize.py \
         --out /tmp/aruco_evidence/
 ```
 
@@ -177,8 +177,8 @@ detector is identical.
 The reference run is checked in at `evidence/`. Reproduce it with:
 
 ```bash
-PYTHONPATH=packages/robot uv run --project packages/robot \
-    python packages/robot/scripts/evidence_turn_180.py \
+PYTHONPATH=packages/research/robot uv run --project packages/research/robot \
+    python packages/research/robot/scripts/evidence_turn_180.py \
         --yaw-rate -8.0 --duration 2.5
 ```
 
@@ -196,12 +196,12 @@ target and the Obsbot:
 ```bash
 # 1. Park the robot on a clear surface, head pointing at a feature-rich background
 # 2. Start the bridge with Obsbot camera attached
-PYTHONPATH=packages/robot uv run --project packages/robot \
+PYTHONPATH=packages/research/robot uv run --project packages/research/robot \
     python -m eliza_robot.bridge.server --backend ros_real --port 9100 \
         --camera-device 0 --camera-width 1280 --camera-height 720
 # 3. Run the evidence script — it sends walk commands at -3.5 rad/s for 1s
-PYTHONPATH=packages/robot uv run --project packages/robot \
-    python packages/robot/scripts/evidence_turn_180.py \
+PYTHONPATH=packages/research/robot uv run --project packages/research/robot \
+    python packages/research/robot/scripts/evidence_turn_180.py \
         --yaw-rate -3.5 --duration 1.0 \
         --out /tmp/real_turn_evidence/
 # Compare /tmp/real_turn_evidence/before.png and after.png
@@ -222,7 +222,7 @@ fallback), and ticks the policy at the requested Hz.
 Test the parser without the agent:
 
 ```bash
-PYTHONPATH=packages/robot uv run --project packages/robot \
+PYTHONPATH=packages/research/robot uv run --project packages/research/robot \
     python -c '
 from eliza_robot.rl.meta.command_parser import CommandParser
 p = CommandParser()

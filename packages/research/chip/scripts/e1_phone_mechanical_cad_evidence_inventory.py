@@ -19,7 +19,7 @@ from typing import Any
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CHIP_ROOT = REPO_ROOT / "packages/chip"
+CHIP_ROOT = REPO_ROOT / "packages/research/chip"
 MECH_DIR = CHIP_ROOT / "mechanical/e1-phone"
 OUT_DIR = MECH_DIR / "out"
 REVIEW_DIR = MECH_DIR / "review"
@@ -846,7 +846,7 @@ def build_report() -> dict[str, Any]:
     return {
         "report": "E1 phone mechanical CAD evidence inventory",
         "date": REPORT_DATE,
-        "script": f"packages/chip/scripts/{SCRIPT_NAME}",
+        "script": f"packages/research/chip/scripts/{SCRIPT_NAME}",
         "scope": {
             "mode": "read_only_inventory",
             "cad_output_dir": repo_rel(OUT_DIR),

@@ -5,18 +5,18 @@
   "status": "blocked_external_release_evidence_missing",
   "claim_boundary": "Research and local inventory report only. This does not create supplier, factory, lab, physical first-article, fabrication, enclosure, or end-to-end release evidence.",
   "repo_sources_inspected": [
-    "packages/chip/board/kicad/e1-phone/routed-release-plan.yaml",
-    "packages/chip/board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml",
-    "packages/chip/board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml",
-    "packages/chip/board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml",
-    "packages/chip/board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml",
-    "packages/chip/board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml",
-    "packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
-    "packages/chip/board/kicad/e1-phone/fab-assembler-quote-intake-contract.yaml",
-    "packages/chip/board/kicad/e1-phone/supplier-response-pack-intake-contract.yaml",
-    "packages/chip/board/kicad/e1-phone/off-the-shelf-sourcing-cost-model-2026-05-22.yaml",
-    "packages/chip/mechanical/e1-phone/review/bom-unit-cost.yaml",
-    "packages/chip/board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml"
+    "packages/research/chip/board/kicad/e1-phone/routed-release-plan.yaml",
+    "packages/research/chip/board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml",
+    "packages/research/chip/board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml",
+    "packages/research/chip/board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml",
+    "packages/research/chip/board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml",
+    "packages/research/chip/board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml",
+    "packages/research/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+    "packages/research/chip/board/kicad/e1-phone/fab-assembler-quote-intake-contract.yaml",
+    "packages/research/chip/board/kicad/e1-phone/supplier-response-pack-intake-contract.yaml",
+    "packages/research/chip/board/kicad/e1-phone/off-the-shelf-sourcing-cost-model-2026-05-22.yaml",
+    "packages/research/chip/mechanical/e1-phone/review/bom-unit-cost.yaml",
+    "packages/research/chip/board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml"
   ],
   "local_evidence_summary": {
     "routed_board_acceptance_status": "blocked_fail_closed_routed_board_release_acceptance_not_met",
@@ -224,7 +224,7 @@
     ]
   },
   "cost_estimates": {
-    "source": "packages/chip/board/kicad/e1-phone/off-the-shelf-sourcing-cost-model-2026-05-22.yaml",
+    "source": "packages/research/chip/board/kicad/e1-phone/off-the-shelf-sourcing-cost-model-2026-05-22.yaml",
     "scope": "public-listing estimated material, PCBA, mechanical, factory-test, and consumable rollup; excludes unreleased supplier quotes, taxes, tariffs, freight surprises, warranty, margin, and unapproved release evidence",
     "single_unit_reference_usd": 544.62,
     "volume_rollup": [
@@ -260,7 +260,7 @@
       }
     ],
     "cross_check": {
-      "source": "packages/chip/mechanical/e1-phone/review/bom-unit-cost.yaml",
+      "source": "packages/research/chip/mechanical/e1-phone/review/bom-unit-cost.yaml",
       "ex_factory_unit_cost_10k_usd": 123.9,
       "ex_factory_unit_cost_100k_usd": 93.03,
       "component_only_10k_usd": 105.65,

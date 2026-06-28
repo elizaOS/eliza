@@ -261,7 +261,7 @@ def next_command_plan(result_status: str) -> list[dict[str, Any]]:
         {
             "id": "capture_e1_npu_android_proof_bundle",
             "area": "npu",
-            "source": "packages/chip/build/reports/e1_npu_android_proof_manifest_check.json",
+            "source": "packages/research/chip/build/reports/e1_npu_android_proof_manifest_check.json",
             "claim_boundary": "operator_commands_only_not_android_npu_or_release_evidence",
             "commands": PROOF_BUNDLE_COMMANDS,
             "expected_output_files": [

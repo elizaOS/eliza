@@ -3,10 +3,10 @@
 This directory has artifacts produced by running:
 
 ```bash
-PYTHONPATH=packages/robot python packages/robot/scripts/evidence_turn_180.py
-PYTHONPATH=packages/robot python packages/robot/scripts/evidence_aruco_localize.py
-PYTHONPATH=packages/robot python packages/robot/scripts/evidence_actions_sweep.py
-PYTHONPATH=packages/robot python packages/robot/scripts/evidence_live_camera_aruco.py
+PYTHONPATH=packages/research/robot python packages/research/robot/scripts/evidence_turn_180.py
+PYTHONPATH=packages/research/robot python packages/research/robot/scripts/evidence_aruco_localize.py
+PYTHONPATH=packages/research/robot python packages/research/robot/scripts/evidence_actions_sweep.py
+PYTHONPATH=packages/research/robot python packages/research/robot/scripts/evidence_live_camera_aruco.py
 ```
 
 The unified bridge protocol is exercised end-to-end against:
@@ -141,7 +141,7 @@ Re-plug `/dev/video4` and re-run for a side-view recording.
 ### Reproduce
 
 ```bash
-PYTHONPATH=packages/robot python packages/robot/scripts/evidence_real_robot_sweep.py \
+PYTHONPATH=packages/research/robot python packages/research/robot/scripts/evidence_real_robot_sweep.py \
   --host 192.168.1.218 --port 9090 --include-locomotion --obsbot-device 4
 ```
 
@@ -154,7 +154,7 @@ To verify against a different AiNex / topology:
 
 1. Power the AiNex Pi, launch `roslaunch ainex_bringup robot.launch`.
 2. From the dev box: `python -m eliza_robot.bridge.launch --target real --envelope`.
-3. Re-run the smoke check: `python packages/robot/scripts/check_real_robot.py
+3. Re-run the smoke check: `python packages/research/robot/scripts/check_real_robot.py
    --url ws://<robot-ip>:9100 --save-frame /tmp/robot_first_frame.png`.
 4. Re-run the action sweep against the same URL (use `--out` to a fresh dir).
 5. Re-run the live-camera evidence pointed at `--device 4` for the Obsbot.
@@ -167,7 +167,7 @@ the real-motor follow-up section in the runbook.
 ## How to reproduce
 
 ```bash
-cd packages/robot
+cd packages/research/robot
 PYTHONPATH=. JAX_PLATFORMS=cpu .venv/bin/python scripts/evidence_turn_180.py
 PYTHONPATH=. JAX_PLATFORMS=cpu .venv/bin/python scripts/evidence_aruco_localize.py
 PYTHONPATH=. JAX_PLATFORMS=cpu .venv/bin/python scripts/evidence_actions_sweep.py

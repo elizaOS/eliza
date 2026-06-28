@@ -88,12 +88,8 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket-app/src/plugin.ts",
   "plugins/plugin-shopify-ui/src/plugin.ts",
-  "plugins/plugin-simple-views/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
-  "plugins/plugin-vincent/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
-  "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
-  "plugins/plugin-waifu-swap-app/src/plugin.ts",
   "plugins/plugin-vector-browser/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
@@ -167,7 +163,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-polymarket-app":
     "plugins/plugin-polymarket-app/src/plugin.ts",
   "@elizaos/plugin-shopify-ui": "plugins/plugin-shopify-ui/src/plugin.ts",
-  "@elizaos/plugin-simple-views": "plugins/plugin-simple-views/src/plugin.ts",
   "@elizaos/plugin-steward-app": "plugins/plugin-steward-app/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",
@@ -178,11 +173,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
     "plugins/plugin-trajectory-logger/src/plugin.ts",
   "@elizaos/plugin-vector-browser":
     "plugins/plugin-vector-browser/src/plugin.ts",
-  "@elizaos/plugin-vincent": "plugins/plugin-vincent/src/plugin.ts",
-  "@elizaos/plugin-waifu-imagegen-app":
-    "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
-  "@elizaos/plugin-waifu-swap-app":
-    "plugins/plugin-waifu-swap-app/src/plugin.ts",
   "@elizaos/plugin-wallet-ui": "plugins/plugin-wallet-ui/src/plugin.ts",
   "@elizaos/plugin-wifi": null,
   "@elizaos/app-model-tester": "plugins/app-model-tester/src/plugin.ts",
@@ -238,46 +228,16 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/shopify",
   },
   {
-    manifestPath: "plugins/plugin-simple-views/src/plugin.ts",
-    id: "notes",
-    viewType: "xr",
-    path: "/notes",
-  },
-  {
-    manifestPath: "plugins/plugin-simple-views/src/plugin.ts",
-    id: "simple-calendar",
-    viewType: "xr",
-    path: "/simple-calendar",
-  },
-  {
     manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
     id: "steward",
     viewType: "xr",
     path: "/steward",
   },
   {
-    manifestPath: "plugins/plugin-vincent/src/plugin.ts",
-    id: "vincent",
-    viewType: "xr",
-    path: "/vincent",
-  },
-  {
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
     id: "wallet",
     viewType: "xr",
     path: "/wallet",
-  },
-  {
-    manifestPath: "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
-    id: "waifu-imagegen",
-    viewType: "xr",
-    path: "/waifu-imagegen",
-  },
-  {
-    manifestPath: "plugins/plugin-waifu-swap-app/src/plugin.ts",
-    id: "waifu-swap",
-    viewType: "xr",
-    path: "/waifu-swap",
   },
   {
     manifestPath: "plugins/plugin-feed/src/index.ts",

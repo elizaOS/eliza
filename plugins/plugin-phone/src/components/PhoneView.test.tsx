@@ -156,6 +156,25 @@ describe("PhoneView — unified GUI/XR dialer", () => {
     await screen.findByText("CALL_PHONE denied");
     expect(phoneBridge.placeCall).toHaveBeenCalledWith({ number: "1" });
   });
+
+  it("keeps the dialer usable after a native place-call failure", async () => {
+    phoneBridge.placeCall.mockRejectedValue(new Error("CALL_PHONE denied"));
+    render(React.createElement(PhoneView));
+    await screen.findByText("Ada Lovelace");
+    fireEvent.click(button("key-5"));
+    fireEvent.click(button("call"));
+    await screen.findByText("CALL_PHONE denied");
+    expect(phoneBridge.placeCall).toHaveBeenCalledWith({ number: "5" });
+    // The dialer stays interactive: backspace still clears the stuck digit.
+    fireEvent.click(button("backspace"));
+    await waitFor(() =>
+      expect(
+        Array.from(
+          document.querySelectorAll('[data-spatial-kind="text"]'),
+        ).some((n) => n.textContent === "5"),
+      ).toBe(false),
+    );
+  });
 });
 
 describe("PhoneView — recent calls", () => {
@@ -184,6 +203,23 @@ describe("PhoneView — recent calls", () => {
     );
     render(React.createElement(PhoneView));
     await screen.findByText("READ_CALL_LOG denied");
+  });
+
+  it("polls the recent call log on a quiet 20s interval", async () => {
+    vi.useFakeTimers();
+    try {
+      render(React.createElement(PhoneView));
+      // Initial load on mount (no manual Refresh control).
+      await vi.waitFor(() =>
+        expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(1),
+      );
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

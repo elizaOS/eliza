@@ -1,6 +1,6 @@
 schema: eliza.benchmark_report.v1
 format: generated JSON report validated by benchmarks/run_benchmarks.py
-strict_validation_command: cd packages/chip && python3 benchmarks/run_benchmarks.py validate-report <report.json>
+strict_validation_command: cd packages/research/chip && python3 benchmarks/run_benchmarks.py validate-report <report.json>
 scope_note: This schema covers benchmark run reports such as benchmarks/results/cpu-phone/report.json. The L5/L6 rollup at build/reports/cpu_phone_l5_l6_benchmark_report.json uses schema eliza.cpu_phone_l5_l6_benchmark_report.v1 and is validated by scripts/check_cpu_phone_benchmark_claim_gate.py, not by benchmarks/run_benchmarks.py validate-report.
 required_fields:
   schema: string
@@ -153,7 +153,7 @@ required_fields:
       artifacts:
         raw_output: string
         raw_output_sha256: sha256_hex
-        l5_l6_raw_output_note: for passed L5/L6 measured results, raw_output must be an archived path under packages/chip and raw_output_sha256 must match the file contents
+        l5_l6_raw_output_note: for passed L5/L6 measured results, raw_output must be an archived path under packages/research/chip and raw_output_sha256 must match the file contents
       metrics: object
       target_execution:
         runner:
@@ -183,7 +183,7 @@ required_fields:
     traces: list
 cpu_phone_l5_l6_benchmark_report:
   schema: eliza.cpu_phone_l5_l6_benchmark_report.v1
-  validation_command: cd packages/chip && python3 scripts/check_cpu_phone_benchmark_claim_gate.py --no-write --strict
+  validation_command: cd packages/research/chip && python3 scripts/check_cpu_phone_benchmark_claim_gate.py --no-write --strict
   required_fields:
     status:
       enum:
@@ -320,7 +320,7 @@ optional_result_fields:
           format: iso8601_utc_timestamp
         evidence: string
 validation_rules:
-  - Generated reports must validate from `packages/chip` with `python3 benchmarks/run_benchmarks.py validate-report <report.json>`.
+  - Generated reports must validate from `packages/research/chip` with `python3 benchmarks/run_benchmarks.py validate-report <report.json>`.
   - Reports must contain at least one benchmark result; an empty report is never benchmark evidence.
   - Top-level report `status` must match contained result statuses: any `failed`, `timeout`, or `error` result makes the report `failed`; any `blocked`, `missing_dependencies`, or `planned_missing_deps` result makes it `blocked`; otherwise it is `passed`.
   - Dry-run reports may have `status: passed` for fully planned runs, but all top-level claim flags must remain false because dry-run output is not benchmark evidence.
@@ -332,7 +332,7 @@ validation_rules:
   - Passed real results must include non-empty parser-derived `metrics` and `run_metadata`.
   - Passed real results must include `calibration.status: calibrated` and calibrated entries for every result `required_calibration_assets` item.
   - Passed real results must include `calibration.last_calibrated_utc` as an ISO-8601 UTC timestamp (`Z` or `+00:00`, not local time).
-  - Passed real L5/L6 results must include a 64-character lowercase SHA-256 hex digest for every required calibration asset `sha256` field, and every required calibration asset `evidence` path must be archived under `packages/chip` with file contents matching that digest.
+  - Passed real L5/L6 results must include a 64-character lowercase SHA-256 hex digest for every required calibration asset `sha256` field, and every required calibration asset `evidence` path must be archived under `packages/research/chip` with file contents matching that digest.
   - Imported L5/L6 target metadata must include `process.process_effects_contract.path: docs/spec-db/process-14a-effects.yaml`; when validated with an artifact root, `process.process_effects_contract.sha256` must match the archived contract file.
   - Blocked calibration templates may validate for blocked/missing reports, but any parsed result that would otherwise pass must fail validation until calibration is replaced with real evidence.
   - Parser failures make the result `failed`; raw logs alone are not host-verifiable performance evidence.
@@ -421,7 +421,7 @@ calibration_asset_contract:
     format: lowercase_sha256_hex
   evidence:
     type: string
-    meaning: archived artifact path under packages/chip whose SHA-256 matches sha256
+    meaning: archived artifact path under packages/research/chip whose SHA-256 matches sha256
 required_calibration_assets_by_suite:
   CoreMark:
     - clock_source

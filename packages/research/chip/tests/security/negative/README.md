@@ -63,7 +63,7 @@ Little-endian, 32 bytes (`opnphn.HaltRecord`):
 ## Reproduce
 
 ```bash
-cd packages/chip && source tools/env.sh
+cd packages/research/chip && source tools/env.sh
 tests/security/negative/run.sh          # everything below, fail-closed
 
 # or individually:

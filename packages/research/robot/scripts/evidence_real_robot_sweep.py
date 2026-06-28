@@ -16,7 +16,7 @@ Safety:
     an explicit walk.command:stop and `stand` action group.
 
 Outputs end up in
-`packages/robot/examples/robot-mujoco-demo/evidence/real/` by default.
+`packages/research/robot/examples/robot-mujoco-demo/evidence/real/` by default.
 """
 
 from __future__ import annotations

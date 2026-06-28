@@ -11,7 +11,7 @@ Steps:
   4. Save a contact sheet showing one keyframe per action.
   5. Write a JSON report: per-action duration, response ok, payload sent.
 
-Outputs land in `packages/robot/examples/robot-mujoco-demo/evidence/sweep/`.
+Outputs land in `packages/research/robot/examples/robot-mujoco-demo/evidence/sweep/`.
 """
 
 from __future__ import annotations

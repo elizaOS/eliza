@@ -1,13 +1,5 @@
-export * from "./CustomersPanel";
-export * from "./InventoryLevelsPanel";
-export * from "./OrdersPanel";
-export * from "./ProductsPanel";
 export { shopifyPlugin } from "./plugin";
 export * from "./register";
 export * from "./routes";
-export * from "./ShopifyAppView";
-export * from "./ShopifyAppView.helpers";
 export { ShopifyView } from "./ShopifyView";
-export * from "./StoreOverviewCard";
-export { SHOPIFY_APP_NAME, shopifyApp } from "./shopify-app";
 export * from "./useShopifyDashboard";

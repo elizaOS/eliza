@@ -50,7 +50,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_detects_host_path_reference_scope_and_missing_timestamp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/demo.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -69,7 +69,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
         assert_false_claim_flags(self, data)
         categories = data["summary"]["categories"]
         self.assertGreaterEqual(categories["host_local_path"], 1)
@@ -83,13 +83,13 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
         self.assertIn("normalize_report_provenance.py", timestamp_rows[0]["next_command"])
         self.assertEqual(
             data["scan_root_summary"][0]["root"],
-            "packages/chip/build/reports",
+            "packages/research/chip/build/reports",
         )
 
     def test_passes_clean_timestamped_structured_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/demo.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -108,7 +108,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
         self.assertEqual(data["summary"]["findings"], 0)
         self.assertEqual(data["status"], "pass")
         assert_false_claim_flags(self, data)
@@ -116,7 +116,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_android_peripheral_blocker_routes_to_capture_helper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/android/peripherals/rear_camera_sim.log"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -129,7 +129,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         assert_actionable_findings(self, data)
@@ -139,7 +139,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_generated_at_utc_counts_as_timestamp_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/cpu_ap/branch-prediction-params.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -158,7 +158,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 0)
         self.assertEqual(data["status"], "pass")
@@ -166,7 +166,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_generated_at_counts_as_timestamp_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/cpu_ap/core-selection.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -185,7 +185,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 0)
         self.assertEqual(data["status"], "pass")
@@ -193,7 +193,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_as_of_counts_as_timestamp_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/e1x_dft_cocotb.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -212,7 +212,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
         self.assertEqual(data["status"], "pass")
@@ -220,7 +220,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_sanitized_host_tmp_placeholder_is_not_host_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             sanitized = root / "docs/evidence/qemu-sanitized.log"
             raw = root / "docs/evidence/qemu-raw.log"
             sanitized.parent.mkdir(parents=True)
@@ -241,18 +241,18 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         host_findings = [
             finding for finding in data["findings"] if finding["category"] == "host_local_path"
         ]
         self.assertEqual(len(host_findings), 1)
-        self.assertEqual(host_findings[0]["path"], "packages/chip/docs/evidence/qemu-raw.log")
+        self.assertEqual(host_findings[0]["path"], "packages/research/chip/docs/evidence/qemu-raw.log")
 
     def test_keyword_inventory_excerpts_do_not_expand_marker_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/chip-os-gap-keyword-inventory.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -277,7 +277,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "nonpassing_status")
@@ -285,7 +285,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_aggregate_reports_do_not_expand_marker_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/chip-os-bring-up-status.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -310,7 +310,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "nonpassing_status")
@@ -318,7 +318,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_statusless_current_aggregate_reports_do_not_expand_marker_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/chip-tapeout-readiness-current.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -338,14 +338,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_mvp_simulator_pass_report_does_not_expand_nonpromoted_stage_blockers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/mvp_simulator.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -375,14 +375,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_stub_audit_inventory_keeps_scope_but_not_allowlist_line_markers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/stub_audit.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -405,7 +405,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "weak_reference_scope")
@@ -413,7 +413,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_template_logs_keep_scope_without_marker_line_expansion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/linux/minimum_linux_kernel_smoke.template.log"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -428,14 +428,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_real_logs_still_expand_marker_lines(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/linux/eliza_e1_serial_boot.log"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -448,7 +448,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         categories = data["summary"]["categories"]
         self.assertEqual(categories["blocked_marker"], 1)
@@ -457,7 +457,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_run_logs_skip_duplicate_markers_but_keep_host_path_findings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/phone-release-readiness-current.run.log"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -470,7 +470,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         categories = data["summary"]["categories"]
         self.assertNotIn("blocked_marker", categories)
@@ -479,7 +479,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_cpu_ap_manifest_uses_structured_completion_claim_not_line_markers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/cpu-ap-evidence-manifest.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -505,7 +505,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "nonpassing_status")
@@ -517,7 +517,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_structured_active_blocker_inventory_does_not_expand_nested_status_lines(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/cpu_ap_blocker_inventory.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -547,7 +547,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["code"], "structured_active_blockers_present")
@@ -558,7 +558,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/minimum_linux_npu_target.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -590,14 +590,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_npu_provenance_remediation_uses_measured_nnapi_capture_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/npu_scope.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -618,7 +618,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         assert_actionable_findings(self, data)
         commands = "\n".join(
@@ -632,7 +632,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_benchmark_provenance_remediation_routes_to_benchmark_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/benchmark_efficiency_scope.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -653,7 +653,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         assert_actionable_findings(self, data)
         commands = "\n".join(
@@ -670,7 +670,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/android/runtime/live_runtime_capture_contracts.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -698,7 +698,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "weak_reference_scope")
@@ -706,7 +706,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_current_claim_disallowed_is_structured_not_line_expanded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/cpu-ap-rva23-profile-plan.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -730,7 +730,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["code"], "structured_current_claim_disallowed")
@@ -738,7 +738,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_mvp_npu_scale_scope_does_not_expand_unsupported_precision_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/mvp_npu_scale_sim.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -773,7 +773,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "weak_reference_scope")
@@ -781,7 +781,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_mvp_generated_ap_positive_claim_is_not_reference_only_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/mvp_simulator.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -810,7 +810,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
         self.assertEqual(data["status"], "pass")
@@ -818,7 +818,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_mlperf_harness_keeps_scope_without_calibration_line_expansion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/benchmarks/mlperf-inference-harness-evidence.yaml"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -834,7 +834,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "weak_reference_scope")
@@ -842,7 +842,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_technical_blocked_and_fail_words_do_not_expand_marker_lines(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/e1x_yield_repair_margin.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -866,14 +866,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_real_blocked_marker_still_reports_after_technical_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/runtime.log"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -886,7 +886,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "blocked_marker")
@@ -894,7 +894,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_zero_blocked_fail_counters_do_not_expand_marker_lines(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/rva23_compliance.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -920,14 +920,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_structured_scope_blocked_until_lines_do_not_expand_marker_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/cpu_ap/bpu_sweep_results.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -955,14 +955,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_runtime_status_blocked_still_reports_after_scope_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/android/eliza_runtime.log"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -975,7 +975,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "blocked_marker")
@@ -983,7 +983,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_nonpassing_structured_reports_do_not_expand_marker_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/runtime_contract.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1008,7 +1008,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "nonpassing_status")
@@ -1016,7 +1016,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_typed_blocked_structured_reports_do_not_expand_marker_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/software_bsp_scope.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1041,7 +1041,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "nonpassing_status")
@@ -1053,7 +1053,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_passing_structured_reports_still_scan_marker_lines(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/runtime_contract.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1073,7 +1073,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "placeholder_marker")
@@ -1081,7 +1081,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_passing_structured_inventory_collapses_nested_nonpassing_statuses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/software_bsp.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1111,7 +1111,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "nonpassing_status")
@@ -1123,7 +1123,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_kernel_build_output_stub_and_dummy_paths_are_not_placeholders(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/linux/eliza_e1_kernel_build.log"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1138,14 +1138,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_linux_runtime_terms_are_not_placeholder_or_blocked_markers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/linux/qemu_virt_boot.transcript.log"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1166,14 +1166,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_fail_closed_posture_is_not_a_fail_marker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/display_scanout.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1196,14 +1196,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_status_blocked_fail_closed_line_still_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/android/blocked-runtime.log"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1214,7 +1214,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["categories"]["blocked_marker"], 1)
 
@@ -1223,7 +1223,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/manufacturing-resolved-artifacts.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1247,14 +1247,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_technical_stub_and_sentinel_terms_are_not_placeholder_markers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/technical_terms.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1287,14 +1287,14 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
 
     def test_generic_stub_and_placeholder_terms_remain_findings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/generic_placeholder.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1313,7 +1313,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["category"], "placeholder_marker")
@@ -1321,7 +1321,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_structured_claim_boundary_is_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/demo.yaml"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1339,7 +1339,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["findings"], 0)
         self.assertEqual(data["status"], "pass")
@@ -1347,7 +1347,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_draft_structured_status_suppresses_nested_marker_expansion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/power/droop-sensor-evidence.yaml"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1368,7 +1368,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 1)
         self.assertEqual(data["findings"][0]["code"], "nonpassing_status_planning_draft")
@@ -1376,7 +1376,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_result_recorded_at_counts_as_timestamp_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/cpu_ap/cva6-coremark-verilator.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1395,7 +1395,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 0)
         self.assertEqual(data["status"], "pass")
@@ -1403,7 +1403,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_software_bsp_manifest_forbidden_strings_are_not_line_markers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "docs/evidence/software-bsp-evidence-manifest.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1432,15 +1432,15 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/docs/evidence"])
+                data = provenance.build_report(["packages/research/chip/docs/evidence"])
 
         self.assertEqual(data["summary"]["findings"], 0)
         self.assertEqual(data["status"], "pass")
 
     def test_default_roots_cover_os_android_release_and_app_payload_manifests(self) -> None:
         expected = {
-            "packages/chip/build/reports",
-            "packages/chip/docs/evidence",
+            "packages/research/chip/build/reports",
+            "packages/research/chip/docs/evidence",
             "packages/os/linux/elizaos/evidence",
             "packages/os/android/installer/manifests",
             "packages/os/android/vendor/eliza/manifests",
@@ -1453,7 +1453,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
     def test_status_test_reports_are_not_live_evidence_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip"
+            root = repo / "packages/research/chip"
             report = root / "build/reports/mvp_simulator.status-test.json"
             report.parent.mkdir(parents=True)
             report.write_text(
@@ -1472,7 +1472,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                 mock.patch.object(provenance, "REPO", repo),
                 mock.patch.object(provenance, "ROOT", root),
             ):
-                data = provenance.build_report(["packages/chip/build/reports"])
+                data = provenance.build_report(["packages/research/chip/build/reports"])
 
         self.assertEqual(data["summary"]["files_scanned"], 0)
         self.assertEqual(data["summary"]["findings"], 0)

@@ -81,7 +81,7 @@ def resolve_chip_path(path_text: str) -> Path:
     path = Path(path_text)
     if path.is_absolute():
         return path
-    if path_text.startswith("packages/chip/"):
+    if path_text.startswith("packages/research/chip/"):
         return (CHIP_ROOT.parents[1] if len(CHIP_ROOT.parents) > 1 else CHIP_ROOT) / path
     return CHIP_ROOT / path
 

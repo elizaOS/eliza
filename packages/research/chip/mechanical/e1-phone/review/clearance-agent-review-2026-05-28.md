@@ -20,18 +20,18 @@ Release remains blocked. `routed-board-clearance.json` has `production_step_file
 
 ## Commands Run
 
-- `python3 packages/chip/scripts/check_e1_phone_boolean_interference.py`
+- `python3 packages/research/chip/scripts/check_e1_phone_boolean_interference.py`
   - PASS: wrote `full-cad-boolean-interference.json`, `full-cad-boolean-interference.md`, `full-cad-boolean-interference-results-template.csv`, `full-cad-min-gap-matrix.csv`; refreshed `assembly-clearance.json`.
-- `python3 packages/chip/scripts/check_e1_phone_assemblability.py`
+- `python3 packages/research/chip/scripts/check_e1_phone_assemblability.py`
   - PASS: `assemblable=True steps=20 trapped=0 fastener_pass=True fpc_pass=True`.
-- `python3 packages/chip/scripts/check_e1_phone_enclosure_mechanical_content.py`
+- `python3 packages/research/chip/scripts/check_e1_phone_enclosure_mechanical_content.py`
   - BLOCKED as expected: `missing_release_evidence=5`, `supplier_families_blocked=6`, `physical_interfaces_blocked=8`, `routed_step_files=0`, `clearance_results_complete=0/12`, `failed_clearance_cases=12`.
-- `python3 packages/chip/scripts/check_e1_phone_board_package.py`
+- `python3 packages/research/chip/scripts/check_e1_phone_board_package.py`
   - BLOCKED but structurally consistent: fabrication release remains blocked.
 
 ## Screen Cover
 
-Source: `packages/chip/mechanical/e1-phone/review/full-cad-boolean-interference.json`, `screen_cover_glass_collision_check`.
+Source: `packages/research/chip/mechanical/e1-phone/review/full-cad-boolean-interference.json`, `screen_cover_glass_collision_check`.
 
 Status: `pass`, 9 screen-adjacent pairs checked, all with `interference_volume_mm3=0.0`.
 

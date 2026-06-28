@@ -130,7 +130,7 @@ After running the extraction step (see below):
 
 ```bash
 # 1. Pull artifacts (image + both host packages):
-packages/chip/sw/aosp-device/fetch-cuttlefish-prebuilt-riscv64.sh --with-x86_64-host
+packages/research/chip/sw/aosp-device/fetch-cuttlefish-prebuilt-riscv64.sh --with-x86_64-host
 
 # 2. Verify (the fetch script already checks md5; this re-checks):
 cd ~/.local/cuttlefish/images/riscv64/15357239
@@ -159,7 +159,7 @@ boot-completed wait loop. Point it at the prebuilt tree:
 ```bash
 PREBUILT_ROOT="$HOME/.local/cuttlefish/images/riscv64/15357239/cf-root"
 
-packages/chip/sw/aosp-device/launch-cuttlefish-riscv64.sh \
+packages/research/chip/sw/aosp-device/launch-cuttlefish-riscv64.sh \
   --host-path="${PREBUILT_ROOT}" \
   --product-path="${PREBUILT_ROOT}" \
   --cpus=4 \
@@ -205,11 +205,11 @@ reached a partial Android boot (kernel + init + Android core services up,
 adb reachable from host, screencap returns a real PNG).
 
 The structured per-attempt transcript is at
-`packages/chip/docs/evidence/android/cuttlefish_riscv64_prebuilt_smoke.log`,
+`packages/research/chip/docs/evidence/android/cuttlefish_riscv64_prebuilt_smoke.log`,
 with the live kernel-log snapshot mirrored at
-`packages/chip/docs/evidence/android/cuttlefish_riscv64_kernel.log.20260520T110103Z.txt`
+`packages/research/chip/docs/evidence/android/cuttlefish_riscv64_kernel.log.20260520T110103Z.txt`
 and a curated boot summary at
-`packages/chip/docs/evidence/android/cuttlefish_riscv64_boot_summary.20260520T110103Z.txt`.
+`packages/research/chip/docs/evidence/android/cuttlefish_riscv64_boot_summary.20260520T110103Z.txt`.
 
 1. **Guest RAM preallocation failure** at the `qemu-system-riscv64` layer:
    ```
@@ -426,7 +426,7 @@ Once all three blockers are resolved (host RAM, host disk, host QEMU
 virtio-gpu), the same `launch_cvd ... --daemon` invocation should reach
 `sys.boot_completed=1` and `adb shell getprop ro.product.cpu.abi` will return
 `riscv64`. The structured smoke evidence for all three attempts is archived at
-`packages/chip/docs/evidence/android/cuttlefish_riscv64_prebuilt_smoke.log`,
+`packages/research/chip/docs/evidence/android/cuttlefish_riscv64_prebuilt_smoke.log`,
 and the most recent `cuttlefish_runtime/launcher.log` (with the
 `virtio-gpu-pci is not a valid device model name` failure line surfaced by
 grepping `process_monitor.cc:81`) lives under

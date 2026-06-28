@@ -128,7 +128,7 @@
           ],
           "status": "missing"
         },
-        "expected_command": "test -n \"$AOSP_WORKSPACE\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
+        "expected_command": "test -n \"$AOSP_WORKSPACE\" && python3 packages/research/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/research/chip/scripts/boot_android_simulator.sh --build-only",
         "expected_evidence_logs": [
           {
             "exists": true,
@@ -277,15 +277,15 @@
           "path": "build/reports/android_sim_boot.json",
           "size_bytes": 4677
         },
-        "full_runtime_command_after_build_only": "test -n \"$AOSP_WORKSPACE\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+        "full_runtime_command_after_build_only": "test -n \"$AOSP_WORKSPACE\" && packages/research/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
         "purpose": "fail_closed_context_for_concurrent_android_build_only_attempt",
         "stdout_stderr_access": "run_with_timeout stdout/stderr are inherited pipes; use the evidence logs and android_sim_boot report below as durable artifacts",
         "validation_commands": [
-          "python3 packages/chip/scripts/check_android_sim_boot.py",
-          "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py",
-          "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
-          "python3 packages/chip/scripts/check_android_system_bridge_contract.py",
-          "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+          "python3 packages/research/chip/scripts/check_android_sim_boot.py",
+          "python3 packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py",
+          "python3 packages/research/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
+          "python3 packages/research/chip/scripts/check_android_system_bridge_contract.py",
+          "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"
         ]
       },
       "cuttlefish_runtime": "latest_instance=",
@@ -306,10 +306,10 @@
       "system_privapp_apk_present"
     ],
     "next_operator_commands": [
-      "test -n \"$AOSP_WORKSPACE\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
-      "test -n \"$AOSP_WORKSPACE\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
-      "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py",
-      "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+      "test -n \"$AOSP_WORKSPACE\" && python3 packages/research/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/research/chip/scripts/boot_android_simulator.sh --build-only",
+      "test -n \"$AOSP_WORKSPACE\" && packages/research/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+      "python3 packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py",
+      "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"
     ],
     "required": {
       "adb_forward_ready": false,

@@ -15,7 +15,7 @@ from typing import Any
 
 import yaml
 
-REPO_REL_E1_DIR = Path("packages/chip/board/kicad/e1-phone")
+REPO_REL_E1_DIR = Path("packages/research/chip/board/kicad/e1-phone")
 DEFAULT_BOARD = REPO_REL_E1_DIR / "pcb/e1-phone-mainboard-concept.kicad_pcb"
 DEFAULT_BURNDOWN = REPO_REL_E1_DIR / "routed-layout-si-drc-burndown-2026-05-22.yaml"
 DEFAULT_REPORT = REPO_REL_E1_DIR / "kicad-route-readiness-inventory-2026-05-22.yaml"
@@ -228,7 +228,7 @@ def resolve_repo_path(root: Path, e1_dir: Path, rel_path: str) -> Path:
     if rel_path.startswith("packages/"):
         return root / path
     if rel_path.startswith("board/kicad/e1-phone/"):
-        return root / "packages/chip" / path
+        return root / "packages/research/chip" / path
     return e1_dir / path
 
 
@@ -246,7 +246,7 @@ def development_route_snapshot(root: Path, intake_path: Path) -> dict[str, Any]:
             "release_credit": False,
             "status": "invalid_development_route_snapshot",
         }
-    board_file = root / "packages/chip" / str(intake["development_board"])
+    board_file = root / "packages/research/chip" / str(intake["development_board"])
     board = board_inventory(read_text(board_file)) if board_file.is_file() else {}
     return {
         "present": board_file.is_file(),
@@ -289,7 +289,7 @@ def real_footprint_development_snapshot(root: Path, binding_path: Path) -> dict[
             "release_credit": False,
             "status": "invalid_real_footprint_development_binding",
         }
-    board_file = root / "packages/chip" / str(binding["output_board"])
+    board_file = root / "packages/research/chip" / str(binding["output_board"])
     board = board_inventory(read_text(board_file)) if board_file.is_file() else {}
     return {
         "present": board_file.is_file(),

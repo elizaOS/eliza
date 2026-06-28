@@ -10,7 +10,7 @@
  * cache-eviction assertions run against a working (not no-op) cache.
  *
  * Run:
- *   bun test packages/cloud-shared/src/db/repositories/__tests__/apps.test.ts
+ *   bun test packages/cloud/shared/src/db/repositories/__tests__/apps.test.ts
  *
  * Self-skips LOUDLY if PGlite / drizzle-kit `pushSchema` cannot apply the schema
  * here (the repo cannot be driven against a real DB) — it never silently passes.

@@ -47,7 +47,7 @@ def test_run_checker_sanitizes_host_local_output() -> None:
         returncode=1,
         stdout=(
             "TEE policy valid: "
-            "/path/to/eliza/packages/chip/docs/spec-db/tee-core-target.yaml\n"
+            "/path/to/eliza/packages/research/chip/docs/spec-db/tee-core-target.yaml\n"
         ),
         stderr="",
     )
@@ -57,7 +57,7 @@ def test_run_checker_sanitizes_host_local_output() -> None:
     encoded = str(row)
     if "/home/shaw" in encoded:
         raise AssertionError(encoded)
-    if "packages/chip/docs/spec-db/tee-core-target.yaml" not in encoded:
+    if "packages/research/chip/docs/spec-db/tee-core-target.yaml" not in encoded:
         raise AssertionError(encoded)
     print("PASS TEE aggregate sanitizes checker output")
 

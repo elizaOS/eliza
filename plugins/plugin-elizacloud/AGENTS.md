@@ -160,7 +160,7 @@ plugins/plugin-elizacloud/
       events.ts                     emitModelUsageEvent, ModelUsageEventMeta
       helpers.ts                    Misc internal helpers
       responses-output.ts           extractResponsesOutputText (Responses API output parser)
-      cloud-sdk/                    Internal SDK surface wrappers
+      cloud/sdk/                    Internal SDK surface wrappers
     types/
       cloud.ts                      CloudContainer, DevicePlatform, DEFAULT_CLOUD_CONFIG, and all Cloud API types
       index.ts                      Type barrel

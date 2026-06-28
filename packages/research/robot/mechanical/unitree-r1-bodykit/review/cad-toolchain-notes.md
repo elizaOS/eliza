@@ -6,7 +6,7 @@ Date: 2026-05-23
 
 - `cadquery==2.7.0`
 - `cadquery-ocp==7.8.1.1.post1`
-- Portable Blender 4.5.10 LTS under `packages/robot/.tools/blender`
+- Portable Blender 4.5.10 LTS under `packages/research/robot/.tools/blender`
 
 ## STEP Export
 
@@ -25,7 +25,7 @@ Until that upstream dependency conflict is solved, CadQuery should be installed
 for mechanical CAD work with:
 
 ```bash
-cd packages/robot
+cd packages/research/robot
 uv pip install cadquery
 ```
 

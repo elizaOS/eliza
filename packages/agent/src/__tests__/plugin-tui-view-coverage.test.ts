@@ -39,7 +39,6 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-polymarket-app/src/plugin.ts",
   "plugins/plugin-shopify-ui/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
-  "plugins/plugin-vincent/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
@@ -114,12 +113,6 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-steward-history",
     "terminal-steward-approve",
     "terminal-steward-deny",
-  ],
-  "plugins/plugin-vincent/src/vincent-view-bundle.ts": [
-    "terminal-vincent-state",
-    "terminal-vincent-start-login",
-    "terminal-vincent-disconnect",
-    "terminal-vincent-update-strategy",
   ],
   "plugins/plugin-wallet-ui/src/InventoryView.tsx": [
     "terminal-wallet-state",

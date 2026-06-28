@@ -7,16 +7,16 @@
 # Build:
 #   docker buildx build \
 #     --check \
-#     -f packages/chip/sw/aosp-device/Dockerfile \
+#     -f packages/research/chip/sw/aosp-device/Dockerfile \
 #     -t eliza/aosp-riscv64-builder:dev \
-#     packages/chip/sw/aosp-device
+#     packages/research/chip/sw/aosp-device
 #
 # Run (interactive):
 #   docker run --rm -it \
 #     -v $PWD:/eliza:ro \
 #     -v $HOME/aosp-cf-riscv64:/work/aosp \
 #     eliza/aosp-riscv64-builder:dev \
-#     /eliza/packages/chip/sw/aosp-device/build-aosp-riscv64.sh \
+#     /eliza/packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh \
 #       --workspace /work/aosp
 #
 # The base image is pinned by digest; refresh via:

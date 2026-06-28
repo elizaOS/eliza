@@ -13,7 +13,7 @@ the signed producer is now fw/dice/cove_quote.c, proven byte-exact against the
 TS verifier.
 
 Requires the native toolchain (gcc, make) and `bun` on PATH. Run
-`source packages/chip/tools/env.sh` first. Fails closed (non-zero) when a
+`source packages/research/chip/tools/env.sh` first. Fails closed (non-zero) when a
 required tool is missing, the build fails, or the round-trip does not verify.
 """
 
@@ -39,7 +39,7 @@ def main() -> int:
     for tool in ("make", "gcc", "bun"):
         if shutil.which(tool) is None:
             return fail(
-                f"required tool '{tool}' not on PATH (source packages/chip/tools/env.sh first)"
+                f"required tool '{tool}' not on PATH (source packages/research/chip/tools/env.sh first)"
             )
     if not ROUNDTRIP.is_file():
         return fail(f"round-trip harness missing: {ROUNDTRIP}")

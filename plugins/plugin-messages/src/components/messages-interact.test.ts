@@ -1,21 +1,9 @@
-// @vitest-environment jsdom
+// Covers the `interact` view-bundle capability handler (terminal list/send/role)
+// — the surviving terminal surface after the tri-modal collapse. Render coverage
+// for the unified spatial surface lives in MessagesView.test.tsx and
+// MessagesSpatialView.test.tsx.
 
-// Covers the two surviving Messages surfaces after the tri-modal collapse:
-//   - the `interact` view-bundle capability handler (terminal list/send/role),
-//   - the MessagesAppView Android overlay app (still loaded by the overlay-app
-//     registry via messages-app.ts).
-// The retired MessagesTuiView/MessagesPluginView render coverage now lives in
-// MessagesView.test.tsx, which drives the unified spatial surface.
-
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
 import fc from "fast-check";
-import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const bridge = vi.hoisted(() => ({
@@ -41,11 +29,7 @@ vi.mock("@elizaos/capacitor-system", () => ({
   },
 }));
 
-import { MessagesAppView } from "./MessagesAppView";
-import { interact } from "./MessagesAppView.interact";
-
-const t = (key: string, opts?: { defaultValue?: string }) =>
-  opts?.defaultValue ?? key;
+import { interact } from "./messages-interact";
 
 const sampleMessages = [
   {
@@ -102,16 +86,7 @@ function mockBridge() {
   });
 }
 
-function overlayContext(exitToApps = vi.fn()) {
-  return {
-    exitToApps,
-    uiTheme: "light" as const,
-    t,
-  };
-}
-
 afterEach(() => {
-  cleanup();
   vi.clearAllMocks();
 });
 
@@ -208,70 +183,5 @@ describe("interact — terminal capabilities", () => {
     ).rejects.toThrow("address is required");
 
     expect(bridge.sendSms).not.toHaveBeenCalled();
-  });
-});
-
-describe("MessagesAppView — Android overlay app", () => {
-  it("keeps overlay back navigation inside the composer before exiting apps", async () => {
-    mockBridge();
-    const exitToApps = vi.fn();
-
-    render(React.createElement(MessagesAppView, overlayContext(exitToApps)));
-
-    fireEvent.click(await screen.findByTestId("messages-thread-thread-a"));
-    expect(
-      (screen.getByTestId("messages-compose-address") as HTMLInputElement)
-        .value,
-    ).toBe("+15550100");
-
-    fireEvent.click(screen.getByRole("button", { name: "Back to threads" }));
-
-    expect(exitToApps).not.toHaveBeenCalled();
-    expect(screen.getByTestId("messages-thread-list").className).toContain(
-      "flex",
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-
-    expect(exitToApps).toHaveBeenCalledTimes(1);
-  });
-
-  it("blocks blank composed SMS bodies and trims outbound addresses and text", async () => {
-    mockBridge();
-
-    render(React.createElement(MessagesAppView, overlayContext()));
-
-    await screen.findByText("+15550200");
-    fireEvent.click(screen.getByTestId("messages-new"));
-
-    fireEvent.change(screen.getByTestId("messages-compose-address"), {
-      target: { value: " +15550400 " },
-    });
-    fireEvent.change(screen.getByTestId("messages-compose-body"), {
-      target: { value: " \n\t " },
-    });
-
-    const sendButton = screen.getByTestId("messages-send");
-    expect((sendButton as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(sendButton);
-    expect(bridge.sendSms).not.toHaveBeenCalled();
-
-    fireEvent.change(screen.getByTestId("messages-compose-body"), {
-      target: { value: "  hello from overlay  " },
-    });
-    expect((sendButton as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(sendButton);
-
-    await waitFor(() =>
-      expect(bridge.sendSms).toHaveBeenCalledWith({
-        address: "+15550400",
-        body: "hello from overlay",
-      }),
-    );
-    expect(await screen.findByText("Message sent.")).toBeTruthy();
-    expect(
-      (screen.getByTestId("messages-compose-body") as HTMLTextAreaElement)
-        .value,
-    ).toBe("");
   });
 });

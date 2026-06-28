@@ -13,12 +13,12 @@ commands are issued — safe to run on a powered, untethered robot.
 
 Usage:
     # Sim bridge (good for testing this script itself):
-    PYTHONPATH=packages/robot python -m eliza_robot.bridge.server --backend mock --port 9100 &
-    PYTHONPATH=packages/robot python packages/robot/scripts/check_real_robot.py
+    PYTHONPATH=packages/research/robot python -m eliza_robot.bridge.server --backend mock --port 9100 &
+    PYTHONPATH=packages/research/robot python packages/research/robot/scripts/check_real_robot.py
 
     # Real robot (after powering the AiNex and starting its ROS bridge):
-    PYTHONPATH=packages/robot python -m eliza_robot.bridge.launch --target real --envelope &
-    PYTHONPATH=packages/robot python packages/robot/scripts/check_real_robot.py \\
+    PYTHONPATH=packages/research/robot python -m eliza_robot.bridge.launch --target real --envelope &
+    PYTHONPATH=packages/research/robot python packages/research/robot/scripts/check_real_robot.py \\
         --url ws://localhost:9100 --camera-device 0
 """
 

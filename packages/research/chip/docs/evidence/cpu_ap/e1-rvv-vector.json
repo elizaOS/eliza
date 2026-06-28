@@ -565,8 +565,8 @@
   "schema": "eliza.cpu_vector_eval.v1",
   "substrate": "qemu-user",
   "substrate_detail": {
-    "plugin": "packages/chip/external/qemu-src/build/contrib/plugins/libexeclog.so",
-    "qemu_binary": "packages/chip/external/qemu-build/bin/qemu-riscv64",
+    "plugin": "packages/research/chip/external/qemu-src/build/contrib/plugins/libexeclog.so",
+    "qemu_binary": "packages/research/chip/external/qemu-build/bin/qemu-riscv64",
     "qemu_cpu": "rva23u64,v=true,vlen=256",
     "vlen_bits": 256
   },

@@ -1,4 +1,3 @@
-import "./hyperliquid-app";
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 
 // In a terminal host (the Node agent, no DOM), register the Hyperliquid view so

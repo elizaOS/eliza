@@ -67,7 +67,6 @@ const VALIDATED: Readonly<
 const CONTRACT_TESTED: Readonly<Record<string, string>> = {
   shopify: "plugins/plugin-shopify-ui/src/routes.contract.test.ts",
   steward: "plugins/plugin-steward-app/src/steward-bridge.contract.test.ts",
-  vincent: "plugins/plugin-vincent/src/vincent-oauth-parser.contract.test.ts",
 };
 
 /**

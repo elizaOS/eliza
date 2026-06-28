@@ -7,56 +7,56 @@
   "release_credit": false,
   "artifacts_reviewed": [
     {
-      "path": "packages/chip/mechanical/e1-phone/review/full-cad-boolean-interference.json",
+      "path": "packages/research/chip/mechanical/e1-phone/review/full-cad-boolean-interference.json",
       "sha256": "addc8a6ae32c80a868e5a8f7ed7432942f15b51add8f938697ba43f621705aed"
     },
     {
-      "path": "packages/chip/mechanical/e1-phone/review/assembly-verification.json",
+      "path": "packages/research/chip/mechanical/e1-phone/review/assembly-verification.json",
       "sha256": "3c6e6f95ec1402627d979bcf5dc9578654cd24c7c3765d65b55ce56e0fd71792"
     },
     {
-      "path": "packages/chip/mechanical/e1-phone/review/routed-board-clearance.json",
+      "path": "packages/research/chip/mechanical/e1-phone/review/routed-board-clearance.json",
       "sha256": "50e99f927073f1cbfc9c195525c71e910caba409f9c0b249575a58d1bffbee1e"
     },
     {
-      "path": "packages/chip/mechanical/e1-phone/review/camera-back-and-missing-details.json",
+      "path": "packages/research/chip/mechanical/e1-phone/review/camera-back-and-missing-details.json",
       "sha256": "d8eca1e758afce611582ba4d2fc4835d4bed2b4b97e2aa73fbff24ab1495c4ec"
     },
     {
-      "path": "packages/chip/mechanical/e1-phone/review/display-results-review.json",
+      "path": "packages/research/chip/mechanical/e1-phone/review/display-results-review.json",
       "sha256": "2d19f0a6256b08fc4c7ee1df167f66c85fb4728eeae14f73ec597fe224297497"
     },
     {
-      "path": "packages/chip/mechanical/e1-phone/review/full_front_iso.png",
+      "path": "packages/research/chip/mechanical/e1-phone/review/full_front_iso.png",
       "sha256": "550979f235c8a538d355ffc034e42264b680dcc6415b7e6593d43899cf3e5f04"
     },
     {
-      "path": "packages/chip/mechanical/e1-phone/review/full_back_iso.png",
+      "path": "packages/research/chip/mechanical/e1-phone/review/full_back_iso.png",
       "sha256": "04c6cd3ff9f826a87459b74c728dbbb5d3ed45554c87980a155a76c377646519"
     },
     {
-      "path": "packages/chip/mechanical/e1-phone/review/rear_feature_detail.png",
+      "path": "packages/research/chip/mechanical/e1-phone/review/rear_feature_detail.png",
       "sha256": "016c682e52eefe46d85185caadf3d9906a8c422ac299322e9f10aa66271bdc05"
     }
   ],
   "commands_run": [
     {
-      "command": "python3 packages/chip/scripts/check_e1_phone_boolean_interference.py",
+      "command": "python3 packages/research/chip/scripts/check_e1_phone_boolean_interference.py",
       "exit_code": 0,
       "result": "PASS: 258 parts loaded, 33153 total pairs, 989 BRep-evaluated pairs, 0 unintentional clashes, 11/11 scopes passing"
     },
     {
-      "command": "python3 packages/chip/scripts/check_e1_phone_assemblability.py",
+      "command": "python3 packages/research/chip/scripts/check_e1_phone_assemblability.py",
       "exit_code": 0,
       "result": "assemblable=True, steps=20, trapped=0, fastener_pass=True, fpc_pass=True"
     },
     {
-      "command": "python3 packages/chip/scripts/check_e1_phone_enclosure_mechanical_content.py",
+      "command": "python3 packages/research/chip/scripts/check_e1_phone_enclosure_mechanical_content.py",
       "exit_code": 2,
       "result": "BLOCKED: missing_release_evidence=5, supplier_families_blocked=6, physical_interfaces_blocked=8, routed_step_files=0, clearance_results_complete=0/12, failed_clearance_cases=12"
     },
     {
-      "command": "python3 packages/chip/scripts/check_e1_phone_board_package.py",
+      "command": "python3 packages/research/chip/scripts/check_e1_phone_board_package.py",
       "exit_code": 2,
       "result": "BLOCKED structurally consistent: fabrication release remains blocked"
     }

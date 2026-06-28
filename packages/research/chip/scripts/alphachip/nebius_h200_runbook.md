@@ -17,7 +17,7 @@ depend on how many CPU collect jobs feed Reverb.
 
 ```sh
 git clone <this-repo> e1-chip
-cd e1-chip/packages/chip
+cd e1-chip/packages/research/chip
 git clone https://github.com/google-research/circuit_training.git external/circuit_training
 git -C external/circuit_training checkout r0.0.4
 scripts/alphachip/build_container.sh

@@ -7,7 +7,7 @@
  * startup and the same Hono route graph, but not Wrangler's dev proxy/runtime.
  */
 
-import { createApp } from "../../../../cloud-api/src/bootstrap-app";
+import { createApp } from "../../../../cloud/api/src/bootstrap-app";
 
 type StoredObject = {
   bytes: Uint8Array;

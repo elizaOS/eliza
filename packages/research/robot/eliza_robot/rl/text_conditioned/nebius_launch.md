@@ -9,7 +9,7 @@ PPO/Brax jobs remain comparison baselines, not the default path.
 Run this before spending GPU time:
 
 ```bash
-cd packages/robot
+cd packages/research/robot
 python3 scripts/prepare_end_to_end_full_training.py \
   --out-dir evidence/full_training_preflight
 
@@ -60,7 +60,7 @@ ssh <nebius-h200-host>
 sudo apt update
 sudo apt install -y git build-essential python3.12 python3.12-venv ffmpeg
 git clone <repo-url> eliza
-cd eliza/packages/robot
+cd eliza/packages/research/robot
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -U pip wheel
@@ -179,8 +179,8 @@ Checkpoint contract:
 ## Phase 4: Pull Artifacts
 
 ```bash
-rsync -a <nebius-h200-host>:eliza/packages/robot/checkpoints/asimov_1_alberta_h200/ \
-  ./packages/robot/checkpoints/asimov_1_alberta_h200/
+rsync -a <nebius-h200-host>:eliza/packages/research/robot/checkpoints/asimov_1_alberta_h200/ \
+  ./packages/research/robot/checkpoints/asimov_1_alberta_h200/
 ```
 
 Do not commit checkpoint binaries. Store long-run artifacts in object storage
@@ -189,7 +189,7 @@ or the agreed checkpoint bucket.
 ## Phase 5: Post-Train Validation
 
 ```bash
-cd packages/robot
+cd packages/research/robot
 uv run eliza-robot-validate-alberta-checkpoint \
   checkpoints/asimov_1_alberta_h200 \
   --profile asimov-1 \

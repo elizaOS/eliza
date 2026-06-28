@@ -33,7 +33,7 @@ def run_command(cmd: list[str]) -> tuple[bool, str]:
 
 
 def sanitize_text(text: str) -> str:
-    return text.replace(str(ROOT), "packages/chip")
+    return text.replace(str(ROOT), "packages/research/chip")
 
 
 def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]:

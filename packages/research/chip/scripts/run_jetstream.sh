@@ -100,13 +100,13 @@ write_passed_from_transcript() {
   "phone_claim_allowed": false,
   "release_claim_allowed": false,
   "claim_level": "L5_PROTOTYPE_SILICON",
-  "reason": "E1_JETSTREAM_RAW_OUTPUT must be an archived artifact under packages/chip before a JetStream L5/L6 transcript can be promoted",
+  "reason": "E1_JETSTREAM_RAW_OUTPUT must be an archived artifact under packages/research/chip before a JetStream L5/L6 transcript can be promoted",
   "next_command": "E1_JETSTREAM_RAW_OUTPUT=<target-transcript> E1_JETSTREAM_TARGET_METADATA=<metadata.json> E1_JETSTREAM_TARGET_RUNNER=<prototype|silicon|phone> make jetstream",
   "artifacts": {
     "raw_output": ${raw_output_json}
   },
   "blocked_requirements": [
-    {"name": "artifacts.raw_output", "reason": "raw target output must be archived under packages/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}
+    {"name": "artifacts.raw_output", "reason": "raw target output must be archived under packages/research/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}
   ],
   "result_recorded_at": "$(now)",
   "manifest": "benchmarks/cpu/jetstream/manifest.json",
@@ -185,14 +185,14 @@ EOF
   "phone_claim_allowed": false,
   "release_claim_allowed": false,
   "claim_level": "L5_PROTOTYPE_SILICON",
-  "reason": "E1_JETSTREAM_TARGET_METADATA must be an archived artifact under packages/chip before a JetStream L5/L6 transcript can be promoted",
+  "reason": "E1_JETSTREAM_TARGET_METADATA must be an archived artifact under packages/research/chip before a JetStream L5/L6 transcript can be promoted",
   "next_command": "E1_JETSTREAM_RAW_OUTPUT=<target-transcript> E1_JETSTREAM_TARGET_METADATA=<metadata.json> E1_JETSTREAM_TARGET_RUNNER=<prototype|silicon|phone> make jetstream",
   "artifacts": {
     "raw_output": ${raw_output_json},
     "target_metadata": ${metadata_json}
   },
   "blocked_requirements": [
-    {"name": "artifacts.target_metadata", "reason": "target metadata must be archived under packages/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}
+    {"name": "artifacts.target_metadata", "reason": "target metadata must be archived under packages/research/chip", "resolution": "Provide the required evidence and rerun the benchmark harness."}
   ],
   "result_recorded_at": "$(now)",
   "manifest": "benchmarks/cpu/jetstream/manifest.json",

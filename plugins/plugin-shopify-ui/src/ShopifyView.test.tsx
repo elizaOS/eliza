@@ -19,7 +19,7 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { interact } from "./ShopifyAppView.interact";
+import { interact } from "./shopify-interact";
 import { ShopifyView } from "./ShopifyView";
 
 configure({ asyncUtilTimeout: 5000 });

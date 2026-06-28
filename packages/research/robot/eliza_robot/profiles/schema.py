@@ -7,7 +7,7 @@ simulation assets (MJCF/MJX/URDF), the action library (predefined gesture
 keyframes), safety envelope, and the set of bridge commands the robot
 supports.
 
-Every code path in `packages/robot/` that touches a real or simulated robot
+Every code path in `packages/research/robot/` that touches a real or simulated robot
 MUST resolve its configuration via `load_profile(profile_id)` and read from
 the returned `RobotProfile` — no hardcoded `if robot == "ainex"` branches.
 
@@ -259,7 +259,7 @@ class ControlSpec(BaseModel):
 
 class AssetPaths(BaseModel):
     """Paths to simulation/visualisation assets. Resolved by `load_profile` to
-    absolute paths under `packages/robot/assets/profiles/<id>/`.
+    absolute paths under `packages/research/robot/assets/profiles/<id>/`.
 
     All three of MJCF, MJX, and URDF are listed because they each serve a
     different consumer:
@@ -391,7 +391,7 @@ class RobotProfile(BaseModel):
 # ---------------------------------------------------------------------------
 
 # Repo layout:
-#   packages/robot/
+#   packages/research/robot/
 #     eliza_robot/profiles/schema.py     ← this file
 #     profiles/<id>/profile.yaml         ← profile manifests
 #     assets/profiles/<id>/              ← binary assets (MJCF/URDF/STL)
@@ -402,7 +402,7 @@ ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets" / "profiles"
 def profiles_root() -> Path:
     """Return the active profile-manifest root.
 
-    Editable/source checkouts use ``packages/robot/profiles``. Installed
+    Editable/source checkouts use ``packages/research/robot/profiles``. Installed
     deployments can set ``ELIZA_ROBOT_PROFILES_ROOT`` to a mounted profile tree
     without repackaging the Python wheel.
     """

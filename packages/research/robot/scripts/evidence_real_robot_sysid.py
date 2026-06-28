@@ -6,7 +6,7 @@ MuJoCo twin. Recovers the real robot's per-joint motor-strength α
 and offset β.
 
 The recovered parameters are stored at
-`packages/robot/calibration/ainex_<host>.json` and consumed by the
+`packages/research/robot/calibration/ainex_<host>.json` and consumed by the
 `CalibratedDualTargetBackend` so the sim leg of sim+real co-execution
 matches the real robot's observed state.
 

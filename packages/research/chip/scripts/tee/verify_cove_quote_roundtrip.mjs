@@ -15,7 +15,7 @@
  * normalized TeeEvidence shape via coveQuoteToTeeEvidence.
  *
  * Must be run with `bun` so the TS verifier imports directly (no build step).
- * Run `source packages/chip/tools/env.sh` first for the native toolchain.
+ * Run `source packages/research/chip/tools/env.sh` first for the native toolchain.
  */
 
 import { execFileSync } from "node:child_process";

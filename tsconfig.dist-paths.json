@@ -287,7 +287,6 @@
       "@elizaos/plugin-elevenlabs": [
         "./plugins/plugin-elevenlabs/dist/index.d.ts"
       ],
-      "@elizaos/plugin-vincent": ["./plugins/plugin-vincent/dist/index.d.ts"],
       "@elizaos/plugin-groq": ["./plugins/plugin-groq/dist/index.d.ts"],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/dist/index.d.ts"],
       "@elizaos/plugin-commands": ["./plugins/plugin-commands/dist/index.d.ts"],

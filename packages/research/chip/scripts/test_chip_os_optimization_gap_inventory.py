@@ -22,7 +22,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_build_report_denies_runtime_performance_and_release_claims(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact = repo / "packages/research/chip/build/reports/demo.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -38,7 +38,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "demo",
                 "benchmarks",
-                "packages/chip/build/reports/demo.json",
+                "packages/research/chip/build/reports/demo.json",
                 "demo benchmark scope",
                 "runtime optimization claim",
             )
@@ -51,7 +51,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_flags_nonpass_weak_scope_and_false_claim_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact = repo / "packages/research/chip/build/reports/demo.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -70,7 +70,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "demo",
                 "benchmarks",
-                "packages/chip/build/reports/demo.json",
+                "packages/research/chip/build/reports/demo.json",
                 "demo benchmark scope",
                 "runtime optimization claim",
             )
@@ -85,7 +85,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_clean_runtime_artifact_has_no_findings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact = repo / "packages/research/chip/build/reports/demo.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -102,7 +102,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "demo",
                 "benchmarks",
-                "packages/chip/build/reports/demo.json",
+                "packages/research/chip/build/reports/demo.json",
                 "demo benchmark scope",
                 "runtime optimization claim",
             )
@@ -113,7 +113,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_artifact_specific_pass_status_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/local-host-coremark-probe.json"
+            artifact = repo / "packages/research/chip/build/reports/local-host-coremark-probe.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -129,7 +129,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "local_coremark_probe",
                 "cpu",
-                "packages/chip/build/reports/local-host-coremark-probe.json",
+                "packages/research/chip/build/reports/local-host-coremark-probe.json",
                 "local host CoreMark probe",
                 "CPU baseline parser plumbing",
                 pass_values=("local_host_evidence_not_release",),
@@ -145,7 +145,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_embedded_companion_reports_do_not_create_required_boolean_findings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact = repo / "packages/research/chip/build/reports/demo.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -170,7 +170,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "demo",
                 "benchmarks",
-                "packages/chip/build/reports/demo.json",
+                "packages/research/chip/build/reports/demo.json",
                 "demo benchmark scope",
                 "runtime optimization claim",
             )
@@ -185,7 +185,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_embedded_companion_reports_do_not_create_blocked_text_findings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact = repo / "packages/research/chip/build/reports/demo.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -204,7 +204,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "demo",
                 "benchmarks",
-                "packages/chip/build/reports/demo.json",
+                "packages/research/chip/build/reports/demo.json",
                 "demo benchmark scope",
                 "runtime optimization claim",
             )
@@ -219,7 +219,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_artifact_can_skip_blocked_text_but_keep_weak_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact = repo / "packages/research/chip/build/reports/demo.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -235,7 +235,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "demo",
                 "npu",
-                "packages/chip/build/reports/demo.json",
+                "packages/research/chip/build/reports/demo.json",
                 "demo NPU target",
                 "Linux NPU smoke",
                 scan_blocked_text=False,
@@ -255,7 +255,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_artifact_skipping_blocked_text_keeps_nonpass_status_blocker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact = repo / "packages/research/chip/build/reports/demo.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -271,7 +271,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "demo",
                 "benchmarks",
-                "packages/chip/build/reports/demo.json",
+                "packages/research/chip/build/reports/demo.json",
                 "demo benchmark scope",
                 "runtime optimization claim",
                 scan_blocked_text=False,
@@ -287,7 +287,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_intentionally_false_claim_denials_are_not_runtime_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact = repo / "packages/research/chip/build/reports/demo.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -306,7 +306,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "demo",
                 "benchmarks",
-                "packages/chip/build/reports/demo.json",
+                "packages/research/chip/build/reports/demo.json",
                 "demo benchmark scope",
                 "runtime optimization claim",
             )
@@ -336,7 +336,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_command_plan_harvests_underlying_capture_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact = repo / "packages/research/chip/build/reports/demo.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -361,7 +361,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "demo",
                 "benchmarks",
-                "packages/chip/build/reports/demo.json",
+                "packages/research/chip/build/reports/demo.json",
                 "demo benchmark scope",
                 "runtime optimization claim",
             )
@@ -388,7 +388,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_command_plan_harvests_nested_runtime_logging_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/android_release_readiness_contract.json"
+            artifact = repo / "packages/research/chip/build/reports/android_release_readiness_contract.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -431,7 +431,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "android_release_readiness",
                 "runtime",
-                "packages/chip/build/reports/android_release_readiness_contract.json",
+                "packages/research/chip/build/reports/android_release_readiness_contract.json",
                 "Android release readiness contract",
                 "release and post-flash runtime logs",
             )
@@ -454,7 +454,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_finding_prefers_npu_capture_command_over_adb_probe(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/npu_scope.json"
+            artifact = repo / "packages/research/chip/build/reports/npu_scope.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -482,7 +482,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "npu_scope",
                 "npu",
-                "packages/chip/build/reports/npu_scope.json",
+                "packages/research/chip/build/reports/npu_scope.json",
                 "NPU runtime scope",
                 "NNAPI delegated runtime evidence",
             )
@@ -499,7 +499,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_command_plan_sanitizes_host_local_aosp_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/android_release_readiness_contract.json"
+            artifact = repo / "packages/research/chip/build/reports/android_release_readiness_contract.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -513,12 +513,12 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
                                         "export AOSP_ROOT=/home/shaw/aosp",
                                         (
                                             "AOSP_DIR=/home/shaw/aosp "
-                                            "packages/chip/scripts/boot_android_simulator.sh "
+                                            "packages/research/chip/scripts/boot_android_simulator.sh "
                                             "--run-cuttlefish"
                                         ),
                                     ],
                                     "validation_commands": [
-                                        "python3 packages/chip/scripts/check_android_release_readiness_contract.py"
+                                        "python3 packages/research/chip/scripts/check_android_release_readiness_contract.py"
                                     ],
                                 }
                             ],
@@ -531,7 +531,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "android_release_readiness",
                 "runtime",
-                "packages/chip/build/reports/android_release_readiness_contract.json",
+                "packages/research/chip/build/reports/android_release_readiness_contract.json",
                 "Android release readiness contract",
                 "release and post-flash runtime logs",
             )
@@ -543,18 +543,18 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
         commands = report["next_command_plan"][0]["commands"]
         self.assertIn("export AOSP_ROOT=$AOSP_WORKSPACE", commands)
         self.assertIn(
-            "AOSP_DIR=$AOSP_WORKSPACE packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish",
+            "AOSP_DIR=$AOSP_WORKSPACE packages/research/chip/scripts/boot_android_simulator.sh --run-cuttlefish",
             commands,
         )
         self.assertEqual(
             report["findings"][0]["next_command"],
-            "AOSP_DIR=$AOSP_WORKSPACE packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish",
+            "AOSP_DIR=$AOSP_WORKSPACE packages/research/chip/scripts/boot_android_simulator.sh --run-cuttlefish",
         )
 
     def test_command_plan_joins_argv_array_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/minimum_linux_npu_target.json"
+            artifact = repo / "packages/research/chip/build/reports/minimum_linux_npu_target.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -584,7 +584,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "minimum_linux_npu_target",
                 "npu",
-                "packages/chip/build/reports/minimum_linux_npu_target.json",
+                "packages/research/chip/build/reports/minimum_linux_npu_target.json",
                 "minimum Linux plus NPU target",
                 "integrated Linux NPU workload evidence",
             )
@@ -618,7 +618,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_known_artifact_without_embedded_commands_gets_fallback_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/chip/build/reports/cpu_ap_scope.json"
+            artifact = repo / "packages/research/chip/build/reports/cpu_ap_scope.json"
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -633,7 +633,7 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
             spec = opt.ArtifactSpec(
                 "cpu_ap_scope",
                 "cpu",
-                "packages/chip/build/reports/cpu_ap_scope.json",
+                "packages/research/chip/build/reports/cpu_ap_scope.json",
                 "CPU/AP Linux and benchmark evidence scope",
                 "sustained AP benchmark evidence",
             )

@@ -2,7 +2,7 @@
 # App worker node for Eliza Cloud Apps (Product 2) — runs UNTRUSTED user
 # containers. The node daemon (provisioning-worker) SSHes in as `deploy` and runs
 # each app on its OWN `--internal` docker network with --cap-drop=ALL, behind a
-# default-deny egress proxy (see cloud-shared/lib/services/app-network-utils.ts).
+# default-deny egress proxy (see cloud/shared/lib/services/app-network-utils.ts).
 #
 # This bootstrap installs docker + a squid egress proxy + an ingress reverse
 # proxy (Caddy) that maps <shortid>.<base-domain> -> the app container's host

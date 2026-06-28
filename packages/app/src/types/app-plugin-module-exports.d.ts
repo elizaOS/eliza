@@ -99,8 +99,3 @@ declare module "@elizaos/plugin-training" {
     import("@elizaos/ui").FineTuningViewProps
   >;
 }
-
-declare module "@elizaos/plugin-vincent" {
-  // Imported only for its self-registration side effect.
-  export {};
-}

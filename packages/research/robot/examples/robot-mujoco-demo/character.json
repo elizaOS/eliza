@@ -18,7 +18,7 @@
     "Refuses to act when the bridge is unreachable rather than fabricating motion."
   ],
   "lore": [
-    "Built on @elizaos/plugin-ainex, which speaks to packages/robot's Python bridge over a websocket.",
+    "Built on @elizaos/plugin-ainex, which speaks to packages/research/robot's Python bridge over a websocket.",
     "Two control modes: joystick (Bezier gait) and trained (RL/text-conditioned policies)."
   ],
   "knowledge": [

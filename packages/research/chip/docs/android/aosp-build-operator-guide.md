@@ -3,11 +3,11 @@
 Operator-facing recipe for building AOSP (Cuttlefish riscv64) with the
 `eliza_ai_soc` device overlay projected into the source tree. Pairs with:
 
-- `packages/chip/sw/aosp-device/build-aosp-riscv64.sh` - the pipeline script.
-- `packages/chip/sw/aosp-device/Dockerfile` - reproducible builder image.
-- `packages/chip/sw/aosp-device/local_manifests/eliza.xml` - repo local-manifest
+- `packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh` - the pipeline script.
+- `packages/research/chip/sw/aosp-device/Dockerfile` - reproducible builder image.
+- `packages/research/chip/sw/aosp-device/local_manifests/eliza.xml` - repo local-manifest
   fragment for the eliza_ai_soc overlay.
-- `packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/` - the actual device
+- `packages/research/chip/sw/aosp-device/device/eliza/eliza_ai_soc/` - the actual device
   tree (BoardConfig.mk, manifest.xml, sepolicy, kernel fragment, DTS, HAL stubs).
 
 This guide owns the **build** half of the Cuttlefish bring-up. Downstream:
@@ -78,7 +78,7 @@ export AOSP_WORK=$HOME/aosp-cf-riscv64
 mkdir -p "$AOSP_WORK"
 
 # 2. Run the pipeline. First run takes 90-150 min on a 32-core x86 box.
-packages/chip/sw/aosp-device/build-aosp-riscv64.sh \
+packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh \
     --workspace "$AOSP_WORK" \
     --branch android-latest-release \
     --lunch-target aosp_cf_riscv64_phone-trunk_staging-userdebug \
@@ -88,9 +88,9 @@ packages/chip/sw/aosp-device/build-aosp-riscv64.sh \
 jq . "$AOSP_WORK/eliza-build-report.json"
 
 # 4. Hand off to Task 30 (evidence capture).
-packages/chip/sw/aosp-device/capture-aosp-evidence.sh "$AOSP_WORK" lunch
-packages/chip/sw/aosp-device/capture-aosp-evidence.sh "$AOSP_WORK" vendorimage
-packages/chip/sw/aosp-device/capture-aosp-evidence.sh "$AOSP_WORK" checkvintf
+packages/research/chip/sw/aosp-device/capture-aosp-evidence.sh "$AOSP_WORK" lunch
+packages/research/chip/sw/aosp-device/capture-aosp-evidence.sh "$AOSP_WORK" vendorimage
+packages/research/chip/sw/aosp-device/capture-aosp-evidence.sh "$AOSP_WORK" checkvintf
 ```
 
 To run the eliza_ai_soc product instead of `aosp_cf_riscv64_phone`, switch the
@@ -98,7 +98,7 @@ overlay mode so the project is sync'd through a proper repo entry rather than
 plain symlinks:
 
 ```sh
-packages/chip/sw/aosp-device/build-aosp-riscv64.sh \
+packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh \
     --workspace "$AOSP_WORK" \
     --device-overlay-mode local-manifest \
     --lunch-target eliza_ai_soc-trunk_staging-userdebug
@@ -107,7 +107,7 @@ packages/chip/sw/aosp-device/build-aosp-riscv64.sh \
 To pass through to `launch_cvd` after a successful build:
 
 ```sh
-packages/chip/sw/aosp-device/build-aosp-riscv64.sh \
+packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh \
     --workspace "$AOSP_WORK" \
     --launch-cvd
 ```
@@ -121,13 +121,13 @@ Convenience only - **Task 29** owns the real launch + boot validation harness.
 ```sh
 # 1. Build the image.
 docker buildx build --check \
-    -f packages/chip/sw/aosp-device/Dockerfile \
+    -f packages/research/chip/sw/aosp-device/Dockerfile \
     -t eliza/aosp-riscv64-builder:dev \
-    packages/chip/sw/aosp-device
+    packages/research/chip/sw/aosp-device
 docker buildx build \
-    -f packages/chip/sw/aosp-device/Dockerfile \
+    -f packages/research/chip/sw/aosp-device/Dockerfile \
     -t eliza/aosp-riscv64-builder:dev \
-    packages/chip/sw/aosp-device
+    packages/research/chip/sw/aosp-device
 
 # 2. Run the pipeline inside the container. Mount the elizaOS checkout read-only
 #    and a fresh workspace volume read-write.
@@ -135,7 +135,7 @@ docker run --rm -it \
     -v "$PWD:/eliza:ro" \
     -v "$HOME/aosp-cf-riscv64:/work/aosp" \
     eliza/aosp-riscv64-builder:dev \
-    "/eliza/packages/chip/sw/aosp-device/build-aosp-riscv64.sh \
+    "/eliza/packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh \
         --workspace /work/aosp \
         --branch android-latest-release \
         --lunch-target aosp_cf_riscv64_phone-trunk_staging-userdebug"

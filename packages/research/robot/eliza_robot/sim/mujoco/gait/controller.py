@@ -11,7 +11,7 @@ This will not win any locomotion contests. The aim is to produce
 joint targets that, when fed into ``ainex_primitives.xml``, keep the
 robot upright for a few seconds — and at low speeds gently nudge it
 forward. The MuJoCo Playground gait phase reward (see
-``packages/robot/eliza_robot/sim/mujoco/joystick.py``) is built around
+``packages/research/robot/eliza_robot/sim/mujoco/joystick.py``) is built around
 the same :func:`get_rz` trajectory, so this controller doubles as a
 sanity-check baseline for that reward.
 

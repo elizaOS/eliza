@@ -1,243 +1,34 @@
 /**
- * ViewManagerView — the single GUI/XR catalog source for the "views" surface
- * (the "views view"): the deduped manager that fetches GET /api/views and
- * renders a card grid of all registered views, collapsed one row per logical id
- * with modality chips and per-view open/available state.
+ * ViewManagerView — the single GUI/XR data wrapper for the "views" surface (the
+ * "views view"): the deduped manager that fetches GET /api/views and lists every
+ * registered view (collapsed one row per logical id with modality chips and
+ * per-view open/available state).
  *
- * One declaration in `index.ts` (modalities gui/xr/tui, componentExport
- * ViewManagerView) draws GUI and XR from this component; the TUI surface renders
- * the registered {@link ViewManagerSpatialView} through the spatial terminal
- * registry (see `register-terminal-view.tsx`).
+ * It owns the live view list (fetch + loading/error state and the open→navigate
+ * handoff) and renders the one presentational {@link ViewManagerSpatialView}
+ * inside a {@link SpatialSurface}. Omitting the `modality` prop lets
+ * `SpatialSurface` auto-detect GUI vs XR via `window.__elizaXRContext`, so the
+ * SAME component serves both surfaces. The TUI surface renders the same
+ * `ViewManagerSpatialView` through the terminal registry (see
+ * `register-terminal-view.tsx`).
  *
  * Built as a standalone ES-module view bundle; loaded dynamically by the
  * frontend shell via `import("/api/views/views-manager/bundle.js")`. External
- * dependencies (react, lucide-react, @elizaos/ui) are provided by the shell host
- * environment and externalized from this bundle.
+ * dependencies (react, @elizaos/ui) are provided by the shell host environment
+ * and externalized from this bundle.
  */
 
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { SpatialSurface } from "@elizaos/ui/spatial";
+import { useCallback, useEffect, useState } from "react";
 import {
-	CheckCircle2,
-	LayoutGrid,
-	PackageOpen,
-	RefreshCw,
-	XCircle,
-} from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+	type ViewManagerSnapshot,
+	ViewManagerSpatialView,
+} from "../components/ViewManagerSpatialView.tsx";
 import {
-	collapseViewEntries,
 	fetchViewEntries,
 	requestViewNavigation,
 	type ViewEntry,
 } from "./viewManagerData";
-
-/** The surfaces this logical view renders on, ordered gui · xr · tui. */
-function viewModalities(view: ViewEntry): string[] {
-	return view.modalities ?? [view.viewType ?? "gui"];
-}
-
-// Shell theme tokens — inherit the host shell chrome instead of hardcoding a
-// dark cyan palette. Fallbacks avoid the forbidden literal colors.
-const viewManagerTheme = {
-	background: "var(--background)",
-	surfaceMuted: "var(--muted)",
-	foreground: "var(--foreground)",
-	muted: "var(--muted-foreground)",
-	accent: "var(--accent)",
-	success: "var(--success, #34d399)",
-	danger: "var(--destructive)",
-};
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-/**
- * Small muted modality badges — one chip per surface (gui · xr · tui) so a
- * collapsed view shows every surface it renders on in a single row instead of a
- * duplicate row per surface.
- */
-function ModalityChips({ view }: { view: ViewEntry }) {
-	return (
-		<div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-			{viewModalities(view).map((modality) => (
-				<span
-					key={modality}
-					style={{
-						fontSize: 10,
-						lineHeight: 1.4,
-						padding: "0 3px",
-						color: viewManagerTheme.muted,
-					}}
-				>
-					{modality}
-				</span>
-			))}
-		</div>
-	);
-}
-
-function ViewCard({
-	view,
-	onOpen,
-}: {
-	view: ViewEntry;
-	onOpen: (view: ViewEntry) => void;
-}) {
-	const heroSrc =
-		view.heroImageUrl ?? `/api/views/${encodeURIComponent(view.id)}/hero`;
-	const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-		id: `open-card-${view.id}`,
-		role: "card",
-		label: `Open ${view.label}`,
-		group: "view-manager-grid",
-		status: view.available ? "active" : "inactive",
-		description: `Navigate to the ${view.label} view (${
-			view.available ? "bundle ready" : "not built"
-		})`,
-		onActivate: () => onOpen(view),
-	});
-
-	return (
-		<button
-			ref={ref}
-			type="button"
-			onClick={() => onOpen(view)}
-			aria-label={`Open ${view.label}`}
-			{...agentProps}
-			style={{
-				textAlign: "left",
-				font: "inherit",
-				overflow: "hidden",
-				display: "flex",
-				alignItems: "center",
-				gap: 12,
-				cursor: "pointer",
-				padding: "10px 2px",
-			}}
-		>
-			<img
-				src={heroSrc}
-				alt=""
-				style={{
-					width: 56,
-					height: 56,
-					objectFit: "cover",
-					display: "block",
-					flexShrink: 0,
-				}}
-				onError={(e) => {
-					// Hide broken image; the fallback SVG served by the agent
-					// renders via the src anyway; this guard handles network errors.
-					(e.target as HTMLImageElement).style.display = "none";
-				}}
-			/>
-			<div style={{ minWidth: 0, flex: 1 }}>
-				<div
-					style={{
-						fontWeight: 600,
-						fontSize: 14,
-						color: viewManagerTheme.foreground,
-						whiteSpace: "nowrap",
-						overflow: "hidden",
-						textOverflow: "ellipsis",
-					}}
-				>
-					{view.label}
-				</div>
-				<div
-					style={{
-						fontSize: 11,
-						color: viewManagerTheme.muted,
-						whiteSpace: "nowrap",
-						overflow: "hidden",
-						textOverflow: "ellipsis",
-					}}
-				>
-					{view.path}
-				</div>
-				<ModalityChips view={view} />
-			</div>
-			{view.available ? (
-				<CheckCircle2
-					size={18}
-					aria-label="Available"
-					style={{ color: viewManagerTheme.success, flexShrink: 0 }}
-				/>
-			) : (
-				<XCircle
-					size={18}
-					aria-label="Unavailable"
-					style={{ color: viewManagerTheme.muted, flexShrink: 0 }}
-				/>
-			)}
-		</button>
-	);
-}
-
-function EmptyState() {
-	return (
-		<div
-			style={{
-				display: "flex",
-				flexDirection: "column",
-				alignItems: "center",
-				justifyContent: "center",
-				gap: 12,
-				padding: "64px 24px",
-				color: viewManagerTheme.muted,
-				textAlign: "center",
-			}}
-		>
-			<PackageOpen size={48} strokeWidth={1.2} />
-			<div style={{ fontSize: 15, fontWeight: 500 }}>None</div>
-		</div>
-	);
-}
-
-function RefreshButton({
-	loading,
-	onClick,
-}: {
-	loading: boolean;
-	onClick: () => void;
-}) {
-	const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-		id: "action-refresh",
-		role: "button",
-		label: "Refresh views",
-		group: "view-manager-toolbar",
-		status: loading ? "active" : "inactive",
-		description: "Reload the list of registered plugin views",
-	});
-	return (
-		<button
-			ref={ref}
-			type="button"
-			onClick={onClick}
-			disabled={loading}
-			aria-label="Refresh views"
-			{...agentProps}
-			style={{
-				background: "transparent",
-				color: viewManagerTheme.muted,
-				cursor: loading ? "not-allowed" : "pointer",
-				display: "flex",
-				alignItems: "center",
-				gap: 6,
-				fontSize: 13,
-				padding: "6px 8px",
-			}}
-		>
-			<RefreshCw
-				size={14}
-				style={{
-					animation: loading ? "spin 1s linear infinite" : "none",
-				}}
-			/>
-		</button>
-	);
-}
-
-// ─── Main component ──────────────────────────────────────────────────────────
 
 export function ViewManagerView() {
 	const [views, setViews] = useState<ViewEntry[]>([]);
@@ -260,99 +51,16 @@ export function ViewManagerView() {
 		void fetchViews();
 	}, [fetchViews]);
 
-	// One row per logical view id, carrying the union of its surfaces — collapses
-	// duplicate gui/xr/tui declarations of the same view into a single card.
-	const displayViews = useMemo(() => collapseViewEntries(views), [views]);
-
 	const openView = useCallback((view: ViewEntry) => {
 		void requestViewNavigation(view);
 	}, []);
 
+	const snapshot: ViewManagerSnapshot = { views, loading, error };
+
 	return (
-		<div
-			style={{
-				minHeight: "100vh",
-				background: viewManagerTheme.background,
-				color: viewManagerTheme.foreground,
-				fontFamily: "system-ui, -apple-system, sans-serif",
-			}}
-		>
-			{/* Header */}
-			<div
-				style={{
-					padding: "12px 16px",
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "space-between",
-				}}
-			>
-				<div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-					<LayoutGrid size={20} style={{ color: viewManagerTheme.accent }} />
-					{!loading && (
-						<span
-							style={{
-								fontSize: 12,
-								color: viewManagerTheme.muted,
-								marginLeft: 4,
-							}}
-						>
-							{displayViews.length}
-						</span>
-					)}
-				</div>
-				<RefreshButton loading={loading} onClick={() => void fetchViews()} />
-			</div>
-
-			{/* Body */}
-			<div style={{ padding: "16px" }}>
-				{loading && (
-					<div
-						style={{
-							textAlign: "center",
-							padding: "48px 0",
-							color: viewManagerTheme.muted,
-							fontSize: 14,
-						}}
-					>
-						Loading
-					</div>
-				)}
-
-				{!loading && error && (
-					<div
-						style={{
-							textAlign: "center",
-							padding: "48px 0",
-							color: viewManagerTheme.danger,
-							fontSize: 14,
-						}}
-					>
-						{error}
-					</div>
-				)}
-
-				{!loading && !error && views.length === 0 && <EmptyState />}
-
-				{!loading && !error && views.length > 0 && (
-					<div
-						style={{
-							display: "grid",
-							gridTemplateColumns: "1fr",
-							gap: 10,
-							maxWidth: 720,
-							margin: "0 auto",
-						}}
-					>
-						{displayViews.map((view) => (
-							<ViewCard key={view.id} view={view} onOpen={openView} />
-						))}
-					</div>
-				)}
-			</div>
-
-			{/* Spin keyframe — injected once */}
-			<style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-		</div>
+		<SpatialSurface>
+			<ViewManagerSpatialView snapshot={snapshot} onOpenView={openView} />
+		</SpatialSurface>
 	);
 }
 

@@ -6,6 +6,7 @@ import { externalsFromPackageJson } from "../../../plugins/plugin-build-external
 const rmRecursiveScript = join(
   import.meta.dirname,
   "..",
+  "..",
   "scripts",
   "rm-path-recursive.mjs",
 );

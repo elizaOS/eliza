@@ -151,7 +151,7 @@ COMMAND_ENV_HINTS = {
     "AOSP_QEMU_SMOKE_COMMAND": CommandEnvHint(
         mode="qemu-smoke",
         placeholder="/exact/qemu-system-riscv64 smoke command for this checkout",
-        evidence_log="packages/chip/docs/evidence/android/qemu_riscv64_smoke.log",
+        evidence_log="packages/research/chip/docs/evidence/android/qemu_riscv64_smoke.log",
         purpose=(
             "capture-aosp-evidence.sh qemu-smoke evals this command inside the AOSP "
             "checkout and records the bounded virtual-device transcript"
@@ -160,7 +160,7 @@ COMMAND_ENV_HINTS = {
     "AOSP_RENODE_SMOKE_COMMAND": CommandEnvHint(
         mode="renode-smoke",
         placeholder="/exact/renode smoke command for this checkout",
-        evidence_log="packages/chip/docs/evidence/android/renode_e1_soc_smoke.log",
+        evidence_log="packages/research/chip/docs/evidence/android/renode_e1_soc_smoke.log",
         purpose=(
             "capture-aosp-evidence.sh renode-smoke evals this command inside the AOSP "
             "checkout and records the bounded virtual-device transcript"
@@ -205,7 +205,7 @@ TOOL_DEFAULT_PATHS = {
 PATHS = (
     PathSpec(
         "chipyard_checkout",
-        "packages/chip/external/chipyard",
+        "packages/research/chip/external/chipyard",
         "external Chipyard checkout",
         ("generated_ap_linux_boot",),
     ),
@@ -225,25 +225,25 @@ PATHS = (
     ),
     PathSpec(
         "chipyard_smoke_report",
-        "packages/chip/build/reports/chipyard_verilator_linux_smoke.json",
+        "packages/research/chip/build/reports/chipyard_verilator_linux_smoke.json",
         "generated AP Linux smoke report",
         ("generated_ap_linux_boot",),
     ),
     PathSpec(
         "qemu_virt_smoke_report",
-        "packages/chip/build/reports/qemu_virt_smoke.json",
+        "packages/research/chip/build/reports/qemu_virt_smoke.json",
         "OS qemu-virt smoke report",
         ("os_rv64_qemu_tooling",),
     ),
     PathSpec(
         "android_launcher_runtime_evidence",
-        "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+        "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
         "booted Android launcher/agent runtime evidence",
         ("android_launcher_runtime",),
     ),
     PathSpec(
         "aosp_evidence_manifest",
-        "packages/chip/sw/aosp-device/evidence_manifest.json",
+        "packages/research/chip/sw/aosp-device/evidence_manifest.json",
         "AOSP chip evidence manifest",
         ("aosp_evidence_capture",),
     ),
@@ -294,7 +294,7 @@ def generated_utc() -> str:
 def provenance_safe_text(value: str) -> str:
     sanitized = value
     replacements = (
-        (str(ROOT), "packages/chip"),
+        (str(ROOT), "packages/research/chip"),
         (str(REPO), "."),
         ("/home/shaw/aosp", "$AOSP_DIR"),
     )

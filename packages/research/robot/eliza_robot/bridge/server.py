@@ -1257,7 +1257,7 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default="hiwonder-ainex",
         help="robot profile id (resolves URDF, calibration, safety from "
-             "packages/robot/profiles/<id>/)",
+             "packages/research/robot/profiles/<id>/)",
     )
     parser.add_argument(
         "--asimov-livekit-url",

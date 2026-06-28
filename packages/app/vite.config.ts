@@ -692,7 +692,6 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
     text.includes("../app-core/src/browser.ts") ||
     text.includes("native-stub:node:fs/promises") ||
     text.includes("../ui/src/components/pages/") ||
-    text.includes("../../plugins/plugin-vincent/src/VincentView.tsx") ||
     text.includes(
       "../../plugins/plugin-facewear/src/protocol/smartglasses.ts",
     ) ||
@@ -2485,14 +2484,6 @@ export const INVALID_TRACER_PROVIDER = {};
         [
           "@elizaos/plugin-polymarket-app",
           "plugins/plugin-polymarket-app/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-waifu-imagegen-app",
-          "plugins/plugin-waifu-imagegen-app/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-waifu-swap-app",
-          "plugins/plugin-waifu-swap-app/src/register.ts",
         ],
         [
           "@elizaos/plugin-wallet-ui",

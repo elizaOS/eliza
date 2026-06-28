@@ -128,15 +128,15 @@
       "@elizaos/vault/*": ["../../packages/vault/src/*"],
       "@elizaos/security": ["../security/src/index.ts"],
       "@elizaos/security/*": ["../security/src/*"],
-      "@elizaos/cloud-sdk": ["../cloud-sdk/src/index.ts"],
-      "@elizaos/cloud-sdk/*": ["../cloud-sdk/src/*"],
-      "@elizaos/cloud-shared": ["../cloud-shared/src/index.ts"],
-      "@elizaos/cloud-shared/*": ["../cloud-shared/src/*"],
+      "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
+      "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "@elizaos/cloud-sdk/cloud-setup-session": [
-        "../cloud-sdk/src/cloud-setup-session/index.ts"
+        "../cloud/sdk/src/cloud-setup-session/index.ts"
       ],
       "@elizaos/cloud-sdk/cloud-setup-session/*": [
-        "../cloud-sdk/src/cloud-setup-session/*"
+        "../cloud/sdk/src/cloud-setup-session/*"
       ],
       "@elizaos/ui": ["./src/index.ts"],
       "@elizaos/ui/navigation": ["./src/navigation/index.ts"],

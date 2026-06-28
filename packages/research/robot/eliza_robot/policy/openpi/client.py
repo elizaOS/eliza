@@ -78,7 +78,7 @@ class OpenPIPolicyClient(PolicyBackend):
                 "Install it with `pip install openpi-client` (or build from "
                 "https://github.com/Physical-Intelligence/openpi when no "
                 "PyPI wheel is published). See "
-                "packages/robot/docs/openpi.md for setup details."
+                "packages/research/robot/docs/openpi.md for setup details."
             ) from exc
 
         host, port = self._parse_endpoint(self._endpoint)
@@ -202,7 +202,7 @@ class OpenPIPolicyClient(PolicyBackend):
                 "eliza_robot.bridge.openpi_adapter is required to pack "
                 "observations for the openpi server. The bridge port "
                 "(W3.1) must land before OpenPIPolicyClient can run. "
-                "See packages/robot/docs/openpi.md."
+                "See packages/research/robot/docs/openpi.md."
             ) from exc
         return openpi_adapter
 

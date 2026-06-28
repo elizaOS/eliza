@@ -34,17 +34,17 @@ const groups = [
     label:
       "known-owner priority, friend-contact routing, and contact recording",
     files: [
-      "cloud-shared/src/lib/services/phone-gateway-devices.test.ts",
-      "cloud-shared/src/lib/services/agent-gateway-router.test.ts",
-      "cloud-shared/src/lib/services/message-router/index.test.ts",
+      "cloud/shared/src/lib/services/phone-gateway-devices.test.ts",
+      "cloud/shared/src/lib/services/agent-gateway-router.test.ts",
+      "cloud/shared/src/lib/services/message-router/index.test.ts",
     ],
   },
   {
     key: "provisioning-handoff",
     label: "$5 starter credit and onboarding transcript handoff",
     files: [
-      "cloud-shared/src/lib/services/eliza-app/onboarding-chat.test.ts",
-      "cloud-shared/src/lib/services/eliza-app/provisioning.test.ts",
+      "cloud/shared/src/lib/services/eliza-app/onboarding-chat.test.ts",
+      "cloud/shared/src/lib/services/eliza-app/provisioning.test.ts",
     ],
   },
   {
@@ -55,7 +55,7 @@ const groups = [
   {
     key: "bluebubbles-webhook",
     label: "BlueBubbles webhook registers/routes the shared gateway device",
-    files: ["cloud-api/webhooks/bluebubbles/route.test.ts"],
+    files: ["cloud/api/webhooks/bluebubbles/route.test.ts"],
   },
   {
     key: "operator-scripts",

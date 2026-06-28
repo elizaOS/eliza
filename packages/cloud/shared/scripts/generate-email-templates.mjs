@@ -7,7 +7,7 @@
  * Bundling them as strings makes rendering work in both Node and workerd.
  *
  * Edit the source files under src/lib/email/templates/, then re-run:
- *   node packages/cloud-shared/scripts/generate-email-templates.mjs
+ *   node packages/cloud/shared/scripts/generate-email-templates.mjs
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

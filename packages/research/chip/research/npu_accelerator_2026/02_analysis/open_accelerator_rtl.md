@@ -26,7 +26,7 @@ The open RTL choices below are evaluated against that plan.
 - **Why:** RoCC + Rocket / BOOM integration, fabricated test SoCs in
   TSMC 16 nm and Intel 22FFL, documented dataflows (weight-stationary and
   output-stationary), an existing Chipyard build flow already in
-  `packages/chip/scripts/bootstrap_chipyard.sh`.
+  `packages/research/chip/scripts/bootstrap_chipyard.sh`.
 - **Limitations:** at the default 16x16 INT8 array, peak per-tile
   throughput is 256 INT8 MACs/cycle (well above E1's L2 gate of 256
   MAC units / 128 MACs/cycle, but well below the L3 / L5 targets that

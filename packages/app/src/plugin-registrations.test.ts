@@ -27,11 +27,8 @@ const EXPECTED_SIDE_EFFECT_PACKAGES = [
   "@elizaos/plugin-phone",
   "@elizaos/plugin-polymarket-app",
   "@elizaos/plugin-shopify-ui",
-  "@elizaos/plugin-simple-views",
   "@elizaos/plugin-trajectory-logger",
   "@elizaos/plugin-vector-browser",
-  "@elizaos/plugin-waifu-imagegen-app",
-  "@elizaos/plugin-waifu-swap-app",
   "@elizaos/plugin-wallet-ui",
   "@elizaos/plugin-wifi",
 ] as const;

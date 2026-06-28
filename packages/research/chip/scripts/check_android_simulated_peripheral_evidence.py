@@ -41,9 +41,9 @@ FALSE_CLAIM_FLAGS = {
     "gms_claim_allowed": False,
     "production_readiness_claim_allowed": False,
 }
-CAPTURE_SCRIPT = "packages/chip/scripts/android/capture_simulated_peripheral_evidence.py"
+CAPTURE_SCRIPT = "packages/research/chip/scripts/android/capture_simulated_peripheral_evidence.py"
 RECHECK_COMMAND = (
-    "python3 packages/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only"
+    "python3 packages/research/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only"
 )
 ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
 ADB_HOSTPORT_SENTINEL = "$CHIP_ANDROID_ADB_HOSTPORT"
@@ -502,7 +502,7 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                 "scope": "repo_aosp",
                 "claim_boundary": "repo_product_wiring_commands_only_not_runtime_evidence",
                 "commands": [
-                    "python3 packages/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only",
+                    "python3 packages/research/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only",
                 ],
                 "requires": [
                     "product README/launch script updates that match captured phone HAL evidence",

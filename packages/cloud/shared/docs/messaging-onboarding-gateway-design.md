@@ -21,35 +21,35 @@ separation already present in the repo.
 
 ## Existing Surfaces
 
-- `packages/cloud-services/gateway-webhook/src/index.ts` exposes shared webhook
+- `packages/cloud/services/gateway-webhook/src/index.ts` exposes shared webhook
   routes for `telegram`, `blooio`, `twilio`, and `whatsapp`, plus per-agent
   routes under `/webhook/:project/:platform/:agentId`.
-- `packages/cloud-services/gateway-webhook/src/webhook-handler.ts` already
+- `packages/cloud/services/gateway-webhook/src/webhook-handler.ts` already
   implements the required high-level branch: verify webhook, extract event,
   dedupe, resolve identity, route linked users to agent-server, and route
   unlinked users to `/api/eliza-app/onboarding/chat`.
-- `packages/cloud-services/gateway-webhook/src/adapters/types.ts` defines the
+- `packages/cloud/services/gateway-webhook/src/adapters/types.ts` defines the
   current `PlatformAdapter`, `ChatEvent`, and `WebhookConfig` shape.
-- `packages/cloud-services/gateway-webhook/src/adapters/telegram.ts` and
-  `packages/cloud-services/gateway-webhook/src/adapters/whatsapp.ts` are the
+- `packages/cloud/services/gateway-webhook/src/adapters/telegram.ts` and
+  `packages/cloud/services/gateway-webhook/src/adapters/whatsapp.ts` are the
   webhook adapter patterns for signed inbound DMs and outbound replies.
-- `packages/cloud-services/gateway-webhook/src/adapters/blooio.ts` is the
+- `packages/cloud/services/gateway-webhook/src/adapters/blooio.ts` is the
   existing cloud iMessage-style adapter. It should be treated as the current
   hosted provider path, not as the Mac-hosted BlueBubbles path.
-- `packages/cloud-services/gateway-discord/src/gateway-manager.ts` manages
+- `packages/cloud/services/gateway-discord/src/gateway-manager.ts` manages
   Discord WebSocket connections, leader election, failover, and message
   forwarding. Discord should remain a gateway service, not be forced through
   webhook-only code.
-- `packages/cloud-shared/src/lib/services/agent-gateway-router.ts` contains
+- `packages/cloud/shared/src/lib/services/agent-gateway-router.ts` contains
   post-link routing logic for Discord, Telegram, WhatsApp, Twilio, and Blooio,
   including room IDs, sender metadata, and sandbox/local-session dispatch.
-- `packages/cloud-api/internal/identity/resolve/route.ts` is the internal
+- `packages/cloud/api/internal/identity/resolve/route.ts` is the internal
   identity lookup used by the webhook gateway.
-- `packages/cloud-shared/src/lib/services/eliza-app/onboarding-chat.ts` is the
+- `packages/cloud/shared/src/lib/services/eliza-app/onboarding-chat.ts` is the
   current onboarding worker. It stores session state in cache, uses Cerebras
   `gpt-oss-120b` when configured, triggers provisioning, and copies the
   transcript to `/api/memory/remember` after the managed agent is running.
-- `packages/cloud-shared/src/lib/services/eliza-app/provisioning.ts` is the
+- `packages/cloud/shared/src/lib/services/eliza-app/provisioning.ts` is the
   existing one-agent provisioning entry point for Eliza App onboarding.
 - `plugins/plugin-bluebubbles/src/setup-routes.ts` and
   `plugins/plugin-bluebubbles/src/data-routes.ts` document the local
@@ -57,8 +57,8 @@ separation already present in the repo.
   runtime.
 - `plugins/plugin-bluebubbles/src/service.ts` maps BlueBubbles chats, handles
   incoming messages, and sends iMessage/SMS/RCS through the BlueBubbles bridge.
-- `packages/cloud-services/headscale/README.md` and
-  `packages/cloud-services/tunnel-proxy/README.md` define the current Headscale
+- `packages/cloud/services/headscale/README.md` and
+  `packages/cloud/services/tunnel-proxy/README.md` define the current Headscale
   and tunnel-proxy tag model.
 - Gateway smoke scenarios already cover linked-user routing in
   `packages/test/scenarios/gateway/telegram-gateway.bot-routes-to-user-agent.scenario.ts`,
@@ -140,7 +140,7 @@ records on every call.
 ### Telegram
 
 Use the existing webhook adapter pattern in
-`packages/cloud-services/gateway-webhook/src/adapters/telegram.ts`.
+`packages/cloud/services/gateway-webhook/src/adapters/telegram.ts`.
 
 - Verify `x-telegram-bot-api-secret-token`.
 - Accept private chats only.
@@ -155,7 +155,7 @@ Use the existing webhook adapter pattern in
 ### WhatsApp
 
 Use the existing webhook adapter pattern in
-`packages/cloud-services/gateway-webhook/src/adapters/whatsapp.ts`.
+`packages/cloud/services/gateway-webhook/src/adapters/whatsapp.ts`.
 
 - Verify `x-hub-signature-256` with the configured app secret.
 - Accept text messages from WhatsApp Cloud API webhooks.
@@ -168,7 +168,7 @@ Use the existing webhook adapter pattern in
 
 ### Discord
 
-Keep Discord in `packages/cloud-services/gateway-discord/`.
+Keep Discord in `packages/cloud/services/gateway-discord/`.
 
 - Discord uses persistent WebSocket bot connections, connection assignment,
   heartbeats, and failover; it should not be collapsed into webhook-only
@@ -194,8 +194,8 @@ Reference implementation surfaces:
 - Local BlueBubbles send/receive semantics:
   `plugins/plugin-bluebubbles/src/service.ts`.
 - Headscale tunnel primitives:
-  `packages/cloud-services/headscale/README.md`
-  and `packages/cloud-services/tunnel-proxy/README.md`.
+  `packages/cloud/services/headscale/README.md`
+  and `packages/cloud/services/tunnel-proxy/README.md`.
 
 Proposed topology:
 
@@ -250,7 +250,7 @@ Durable linking rules:
 ## Stateless Onboarding Worker
 
 The current worker is
-`packages/cloud-shared/src/lib/services/eliza-app/onboarding-chat.ts`.
+`packages/cloud/shared/src/lib/services/eliza-app/onboarding-chat.ts`.
 
 Design constraints:
 
@@ -327,7 +327,7 @@ After a successful link:
 ## One-Agent Provisioning
 
 Use `ensureElizaAppProvisioning` in
-`packages/cloud-shared/src/lib/services/eliza-app/provisioning.ts` as the
+`packages/cloud/shared/src/lib/services/eliza-app/provisioning.ts` as the
 canonical path.
 
 Rules:
@@ -378,10 +378,10 @@ Post-handoff routing is purely structural.
    status.
 5. If identity resolves and an agent exists, route to the active runtime:
    - webhook platforms use `resolveAgentServer` and `forwardToServer` in
-     `packages/cloud-services/gateway-webhook/src/server-router.ts`;
+     `packages/cloud/services/gateway-webhook/src/server-router.ts`;
    - Discord keeps its gateway-manager flow;
    - cloud shared router paths use
-     `packages/cloud-shared/src/lib/services/agent-gateway-router.ts` for
+     `packages/cloud/shared/src/lib/services/agent-gateway-router.ts` for
      sandbox/local-session routing.
 6. Gateway sends the agent response through the same platform adapter that
    accepted the message.
@@ -399,8 +399,8 @@ continue onboarding.
 - Discord: gateway service authenticates to cloud with JWT acquired from
   `GATEWAY_BOOTSTRAP_SECRET`.
 - Webhook gateway: service-to-service calls use internal auth as in
-  `packages/cloud-services/gateway-webhook/src/auth.ts` and
-  `packages/cloud-api/internal/_auth`.
+  `packages/cloud/services/gateway-webhook/src/auth.ts` and
+  `packages/cloud/api/internal/_auth`.
 - Agent-server forwarding uses `AGENT_SERVER_SHARED_SECRET` through
   `X-Server-Token`.
 - BlueBubbles relay: require both tailnet node authorization and request

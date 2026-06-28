@@ -23,7 +23,6 @@ const optionalPackages = [
   "@elizaos/plugin-steward-app",
   "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-training",
-  "@elizaos/plugin-vincent",
 ];
 
 const forcedStubPackages = ["@elizaos/plugin-whatsapp"];
@@ -46,7 +45,6 @@ export const plugin = optionalStub;
 export const shopifyPlugin = optionalStub;
 export const stewardPlugin = optionalStub;
 export const trainingPlugin = optionalStub;
-export const vincentPlugin = optionalStub;
 
 export const documentsRoutes = Object.freeze([]);
 export const trainingRoutes = Object.freeze([]);

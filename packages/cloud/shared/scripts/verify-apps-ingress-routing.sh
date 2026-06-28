@@ -5,9 +5,9 @@
 # REAL `apps-ingress-routes` builders — and that deleting the route by @id stops
 # routing, while an unknown host is never routed. Plain HTTP (no domain/TLS;
 # on-demand TLS is validated on real infra). No mocks.
-#   bash packages/cloud-shared/scripts/verify-apps-ingress-routing.sh
+#   bash packages/cloud/shared/scripts/verify-apps-ingress-routing.sh
 set -uo pipefail
-cd "$(dirname "$0")/.." || exit 1 # -> packages/cloud-shared
+cd "$(dirname "$0")/.." || exit 1 # -> packages/cloud/shared
 NET=apps-ing-net
 APP=apps-ing-app
 CADDY=apps-ing-caddy

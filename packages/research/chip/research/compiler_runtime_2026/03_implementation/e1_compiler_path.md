@@ -3,10 +3,10 @@
 This document maps the research in this packet to concrete next steps for
 the E1 compiler stack. Each step ties to a specific docs/spec-db file and a
 gap visible in today's
-`packages/chip/compiler/runtime/e1_npu_lowering.py`. Confidence is High,
+`packages/research/chip/compiler/runtime/e1_npu_lowering.py`. Confidence is High,
 Medium, or Low based on whether the design choice is well-established in
 the public landscape and whether the supporting RTL primitive already
-exists in `packages/chip/rtl/npu/e1_npu.sv`.
+exists in `packages/research/chip/rtl/npu/e1_npu.sv`.
 
 This is a planning document, not a status claim. None of these steps are
 implemented; nothing here certifies E1 compiler capability.

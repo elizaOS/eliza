@@ -604,7 +604,7 @@ export type ContainerArchitecture = "arm64" | "x86_64";
  * Public, redacted container shape returned by `/api/v1/containers`.
  *
  * Must stay in EXACT field agreement with the API's `toContainerDto`
- * (`packages/cloud-api/v1/containers/route.ts`). The API deliberately omits
+ * (`packages/cloud/api/v1/containers/route.ts`). The API deliberately omits
  * org-internal and secret columns — `organization_id`, `user_id`,
  * `environment_vars`, `deployment_log`, `metadata`, `api_key_id`, `node_id`,
  * `volume_path` — so they are NOT present here. Timestamps are ISO strings.

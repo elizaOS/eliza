@@ -43,7 +43,7 @@ vi.mock("@elizaos/app-core", () => ({ client: hyperliquidClient }));
 vi.mock("@elizaos/ui", () => ({ ApiError }));
 vi.mock("./client", () => ({}));
 
-import { interact } from "./HyperliquidAppView.interact";
+import { interact } from "./hyperliquid-interact";
 import { HyperliquidView } from "./HyperliquidView";
 
 const sampleStatus = {

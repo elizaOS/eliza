@@ -83,7 +83,7 @@ hold a hobby biped to.
 ## Reproduce
 
 ```bash
-PYTHONPATH=packages/robot python packages/robot/scripts/evidence_final_e2e.py \
+PYTHONPATH=packages/research/robot python packages/research/robot/scripts/evidence_final_e2e.py \
     --episode-s 3.0 --mirror-period 0.05 --sim-only
 ```
 

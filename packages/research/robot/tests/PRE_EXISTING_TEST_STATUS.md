@@ -29,7 +29,7 @@ that is intended skip behavior, not a collection error.
 Just run the suite normally:
 
 ```bash
-uv run pytest tests/        # or: bun run --cwd packages/robot test:py
+uv run pytest tests/        # or: bun run --cwd packages/research/robot test:py
 ```
 
 ## Tests this work added (all green)

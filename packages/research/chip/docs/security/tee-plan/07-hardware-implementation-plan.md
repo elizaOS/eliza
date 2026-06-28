@@ -6,7 +6,7 @@ the scattered lane detail** in `01`–`05` with a single sequenced, actionable
 hardware plan. It does not weaken the fail-closed discipline: every product-grade
 claim is tied to a named gate/transcript or marked **BLOCKED** on FPGA / silicon /
 LPDDR PHY / side-channel lab. BLOCKED means "awaiting a dependency", not "bug".
-That gating is by design (`AGENTS.md`, `packages/chip/CLAUDE.md`).
+That gating is by design (`AGENTS.md`, `packages/research/chip/CLAUDE.md`).
 
 Read the lanes for full rationale; this is the build order and the contract.
 Cross-refs: [`00-overview.md`](00-overview.md), [`01`](01-tee-core-architecture.md),

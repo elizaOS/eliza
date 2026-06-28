@@ -1,6 +1,6 @@
 # Chip simulator -> Android boot pathfinder
 
-This audit documents what `packages/chip` has today for booting Android (or
+This audit documents what `packages/research/chip` has today for booting Android (or
 Linux) on a simulator, which simulator is closest to a usable Android launcher
 screenshot, and the gap between the chip's RTL/SoC simulator and a full Android
 boot.

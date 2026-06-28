@@ -20,7 +20,7 @@
         "verified_at": "2026-05-20",
         "verification_method": "gh api repos/esonghori/DREAMPlace-CT returned 404",
         "successor_search_result": "No active successor fork found. esonghori/DREAMPlace is stale (2023-02). zhuhanqing/DREAMPlace branch support_circuit_training is stale (2022-10). GitHub code search for 'DREAMPlace-CT' returns 0 hits.",
-        "consumer_audit": "No code path in packages/chip imports or executes against external/DREAMPlace-CT/. Repo-wide grep found two references only: a clone URL in scripts/alphachip/build_dreamplace_from_source.sh (rerouted to limbo018), and a passing comment in scripts/alphachip/pb_to_bookshelf.py (updated)."
+        "consumer_audit": "No code path in packages/research/chip imports or executes against external/DREAMPlace-CT/. Repo-wide grep found two references only: a clone URL in scripts/alphachip/build_dreamplace_from_source.sh (rerouted to limbo018), and a passing comment in scripts/alphachip/pb_to_bookshelf.py (updated)."
       },
       "active_replacement": {
         "name": "DREAMPlace",

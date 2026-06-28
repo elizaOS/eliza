@@ -44,7 +44,7 @@ Sub-report of [2028-sota-integrated-report.md](../2028-sota-integrated-report.md
 | A19 Pro | ~6 W iPhone 17 Pro; Tom's Guide 15.5 h battery | ~10 W peak | 95-100 °C |
 | Exynos 2600 | Provisional; early reviews show poor sustained vs peak | ~12 W peak (S26 tests) | 95-110 °C |
 
-## B. Current state in `packages/chip`
+## B. Current state in `packages/research/chip`
 
 | Aspect | State | Evidence |
 | --- | --- | --- |

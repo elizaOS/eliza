@@ -3,7 +3,7 @@
 # on a throwaway, fully-migrated PGlite store (the team's local Postgres). Proves
 # the container/job inserts + the per-tenant-DSN invariant for real, not mocked.
 #
-# Requires: bun. Run from packages/cloud-shared/.
+# Requires: bun. Run from packages/cloud/shared/.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

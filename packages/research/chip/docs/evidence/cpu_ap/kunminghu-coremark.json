@@ -48,7 +48,7 @@
   "status": "passed",
   "tools": {
     "coremark_toolchain": "riscv64-linux-gnu-gcc 13.3.0 (matches bundled coremark-2-iteration.bin GCC13.2.0)",
-    "difftest_ref_so": "packages/chip/external/xiangshan/riscv64-nemu-interpreter-so",
+    "difftest_ref_so": "packages/research/chip/external/xiangshan/riscv64-nemu-interpreter-so",
     "gem5_binary": "external/xiangshan/GEM5/build/RISCV/gem5.opt",
     "modeled_cpu_clock": "3GHz (kmhv3.py default; CoreMark/MHz is frequency-independent)",
     "xs_gem5_commit": "7930d36334abc282161110c0391e465a6dc6e024"

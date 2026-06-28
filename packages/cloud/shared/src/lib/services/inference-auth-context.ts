@@ -9,7 +9,7 @@
  * Scope: ONLY `X-API-Key` / `Bearer eliza_*` credentials are eligible. Wallet
  * (signature/timestamp-bound, fail-closed), Bearer-JWT, and cookie sessions are
  * NOT cacheable (no invalidation path / replay risk) and always take the
- * authoritative slow path. See `packages/cloud-api/docs/inference-hot-path.md`.
+ * authoritative slow path. See `packages/cloud/api/docs/inference-hot-path.md`.
  *
  * Safety invariants:
  *   - A positive IAC entry is written ONLY for a fully-authorized credential.
@@ -46,10 +46,10 @@ export type InferenceAuthResolution =
   | { kind: "suspended"; userId: string }
   | { kind: "slow_path"; reason: "non_api_key" | "cache_unavailable" };
 
+type StringEnv = Record<string, string | undefined>;
+
 /** Whether the inference hot-path cache is enabled (default OFF). */
-export function isInferenceHotPathCacheEnabled(
-  env: { INFERENCE_HOT_PATH_CACHE?: string } = getCloudAwareEnv(),
-): boolean {
+export function isInferenceHotPathCacheEnabled(env: StringEnv = getCloudAwareEnv()): boolean {
   return (env.INFERENCE_HOT_PATH_CACHE ?? "").trim() === "true";
 }
 

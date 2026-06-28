@@ -21,8 +21,8 @@ def test_sanitize_host_local_paths_preserves_repo_relative_context() -> None:
 
     assert "/home/" not in sanitized
     assert "/tmp/" not in sanitized
-    assert "packages/chip/verify/cocotb/integration/Makefile.opensbi-cva6-boot" in sanitized
-    assert "packages/chip/external/cva6/cva6/core/raw_checker.sv:50:41:" in sanitized
+    assert "packages/research/chip/verify/cocotb/integration/Makefile.opensbi-cva6-boot" in sanitized
+    assert "packages/research/chip/external/cva6/cva6/core/raw_checker.sv:50:41:" in sanitized
     assert "<host-tmp>/sim.log" in sanitized
 
 
@@ -34,7 +34,7 @@ def test_sanitize_log_file_rewrites_in_place(tmp_path: Path) -> None:
 
     assert sanitized == log.read_text()
     assert "/home/" not in sanitized
-    assert "packages/chip/.venv/lib/python3.12/site-packages/cocotb" in sanitized
+    assert "packages/research/chip/.venv/lib/python3.12/site-packages/cocotb" in sanitized
 
 
 def test_sanitize_log_file_replaces_read_only_file_when_directory_is_writable(
@@ -50,7 +50,7 @@ def test_sanitize_log_file_replaces_read_only_file_when_directory_is_writable(
 
     assert sanitized == log.read_text()
     assert "/home/" not in sanitized
-    assert "packages/chip/build/out" in sanitized
+    assert "packages/research/chip/build/out" in sanitized
 
 
 if __name__ == "__main__":

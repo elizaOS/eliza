@@ -1382,8 +1382,8 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         repo_root = str(gate.REPO_ROOT)
         payload = {
             "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/vendor.img",
-            "repo": f"{repo_root}/packages/chip/docs/evidence/android/log.txt",
-            "command": f"AOSP_DIR=/home/shaw/aosp python3 {repo_root}/packages/chip/scripts/check.py",
+            "repo": f"{repo_root}/packages/research/chip/docs/evidence/android/log.txt",
+            "command": f"AOSP_DIR=/home/shaw/aosp python3 {repo_root}/packages/research/chip/scripts/check.py",
             "nested": ["/tmp/aosp/out/target/product/eliza_ai_soc/system.img"],
         }
 
@@ -1397,7 +1397,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         )
         self.assertEqual(
             sanitized["repo"],
-            "packages/chip/docs/evidence/android/log.txt",
+            "packages/research/chip/docs/evidence/android/log.txt",
         )
 
     def test_release_artifact_inventory_sidecar_is_provenance_safe(self) -> None:

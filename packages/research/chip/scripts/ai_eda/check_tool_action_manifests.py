@@ -100,8 +100,8 @@ def validate_manifest(path: Path, manifest: dict[str, Any]) -> list[str]:
     else:
         argv = command.get("argv", [])
         cwd = command.get("cwd")
-        if not isinstance(cwd, str) or cwd not in {"packages/chip", "."}:
-            errors.append(f"{record_id}: command.cwd must be packages/chip or .")
+        if not isinstance(cwd, str) or cwd not in {"packages/research/chip", "."}:
+            errors.append(f"{record_id}: command.cwd must be packages/research/chip or .")
         if not isinstance(argv, list) or not argv:
             errors.append(f"{record_id}: command.argv must be a non-empty list")
             argv = []

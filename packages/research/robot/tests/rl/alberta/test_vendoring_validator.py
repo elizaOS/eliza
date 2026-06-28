@@ -23,7 +23,7 @@ def test_alberta_vendoring_validator_cli() -> None:
     proc = subprocess.run(
         [
             sys.executable,
-            "packages/robot/scripts/validate_alberta_vendoring.py",
+            "packages/research/robot/scripts/validate_alberta_vendoring.py",
             "--expected-upstream-head",
             EXPECTED_HEAD,
         ],

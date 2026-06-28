@@ -2,7 +2,7 @@
 --
 -- Adds `expires_at` to secret_audit_log with a 7-year default for
 -- SOC2 security-relevant audit. The purge job at
--- packages/cloud-api/src/jobs/audit-log-purge.ts removes rows where
+-- packages/cloud/api/src/jobs/audit-log-purge.ts removes rows where
 -- expires_at < now().
 
 ALTER TABLE secret_audit_log

@@ -20,8 +20,8 @@ const phoneBridge = vi.hoisted(() => ({
 
 vi.mock("@elizaos/capacitor-phone", () => ({ Phone: phoneBridge }));
 
-import { loadPhoneState } from "./PhoneAppView.helpers";
-import { interact } from "./PhoneAppView.interact";
+import { loadPhoneState } from "./phone-view-helpers";
+import { interact } from "./phone-interact";
 
 // Mirrors definitions.ts CallLogEntry exactly (all native fields populated).
 const REAL_CALL_LOG_ENTRY = {

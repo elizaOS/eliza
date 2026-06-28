@@ -76,12 +76,12 @@ ANDROID_ARCHIVE_REQUIRED_MEMBERS = (
 AOSP_PARTIAL_TREE_DIRS = ("vendor", "system", "product", "system_ext")
 AOSP_IMAGE_BUILD_TARGETS = ("vendorimage", "systemimage", "productimage", "systemextimage")
 AOSP_BUILD_ONLY_COMMAND = (
-    "AOSP_DIR=/home/shaw/aosp python3 packages/chip/scripts/run_with_timeout.py "
+    "AOSP_DIR=/home/shaw/aosp python3 packages/research/chip/scripts/run_with_timeout.py "
     "--timeout-seconds 2400 --label aosp-build-only-evidence -- "
-    "packages/chip/scripts/boot_android_simulator.sh --build-only"
+    "packages/research/chip/scripts/boot_android_simulator.sh --build-only"
 )
 AOSP_DIRECT_BUILD_COMMAND = (
-    "packages/chip/sw/aosp-device/build-aosp-riscv64.sh "
+    "packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh "
     "--workspace /home/shaw/aosp --skip-sync --skip-preflight "
     "--lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug "
     "--report /home/shaw/aosp/eliza-build-report.json"
@@ -1206,7 +1206,7 @@ def live_launcher_agent_missing_evidence(umbrella: dict[str, Any]) -> dict[str, 
             f"{docs_evidence_dir}/{target_label}-launcher-agent-live.transcript.log",
         ]
         validation_command = (
-            "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py "
+            "python3 packages/research/chip/scripts/check_android_launcher_runtime_evidence.py "
             f"--expected-artifact-id {artifact_id} "
             f"--expected-target-label {target_label} "
             f"--expected-cpu-abi {target_plan['expectedCpuAbi']} "
@@ -1385,7 +1385,7 @@ def android_release_artifact_inventory(
                 f'cd "$AOSP_ROOT/out/target/product/caiman" && zip -qry "$OLDPWD/{repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}/elizaos-beta-2026.05.16-android-pixel-arm64.zip" android-info.txt boot.img vendor_boot.img super.img system.img system_ext.img vendor.img product.img',
             ],
             "buildChipRiscv64Archive": [
-                'packages/chip/sw/aosp-device/build-aosp-riscv64.sh --workspace "$AOSP_WORKSPACE" --lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug --report "$AOSP_WORKSPACE/eliza-build-report.json"',
+                'packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh --workspace "$AOSP_WORKSPACE" --lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug --report "$AOSP_WORKSPACE/eliza-build-report.json"',
                 f"mkdir -p {repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}",
                 f'cd "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc" && zip -qry "$OLDPWD/{repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}/elizaos-beta-2026.05.16-android-eliza_ai_soc-riscv64.zip" android-info.txt boot.img vendor_boot.img super.img system.img system_ext.img vendor.img product.img',
             ],
@@ -1405,7 +1405,7 @@ def android_release_artifact_inventory(
             ],
             "validate": [
                 f"node packages/os/android/installer/scripts/validate-release-manifest.mjs {repo_rel(ANDROID_MANIFEST)} --artifact-dir {repo_rel(RELEASE_ANDROID_PARTITIONS_DIR)} --write-evidence {repo_rel(RELEASE_DIR / 'evidence/android/android-partition-artifacts-integrity.json')}",
-                "python packages/chip/scripts/check_android_release_readiness_contract.py",
+                "python packages/research/chip/scripts/check_android_release_readiness_contract.py",
             ],
         },
     }
@@ -1545,9 +1545,9 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
             "export AOSP_ROOT=$AOSP_WORKSPACE",
             "make -C packages/os/android bootanimation",
             'node packages/scripts/distro-android/build-aosp.mjs --brand-config packages/scripts/distro-android/brand.eliza.json --aosp-root "$AOSP_ROOT" --skip-libllama',
-            'AOSP_DIR="$AOSP_ROOT" packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish',
+            'AOSP_DIR="$AOSP_ROOT" packages/research/chip/scripts/boot_android_simulator.sh --run-cuttlefish',
             (
-                "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py "
+                "python3 packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py "
                 "--artifact-id android-cuttlefish-x86_64-zip "
                 "--target-label cuttlefish-x86_64 "
                 "--expected-cpu-abi x86_64 "
@@ -1556,7 +1556,7 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
                 f"--transcript {docs_dir}/cuttlefish-x86_64-launcher-agent-live.transcript.log"
             ),
             (
-                "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py "
+                "python3 packages/research/chip/scripts/check_android_launcher_runtime_evidence.py "
                 "--expected-artifact-id android-cuttlefish-x86_64-zip "
                 "--expected-target-label cuttlefish-x86_64 "
                 "--expected-cpu-abi x86_64 "
@@ -1576,7 +1576,7 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
                 "--launcher-activity ai.elizaos.app/.MainActivity --execute"
             ),
             (
-                "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py "
+                "python3 packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py "
                 '--adb-serial "$ADB_SERIAL" '
                 "--artifact-id android-pixel-arm64-zip "
                 "--target-label pixel-arm64 "
@@ -1586,7 +1586,7 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
                 f"--transcript {docs_dir}/pixel-arm64-launcher-agent-live.transcript.log"
             ),
             (
-                "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py "
+                "python3 packages/research/chip/scripts/check_android_launcher_runtime_evidence.py "
                 "--expected-artifact-id android-pixel-arm64-zip "
                 "--expected-target-label pixel-arm64 "
                 "--expected-cpu-abi arm64-v8a "
@@ -1598,10 +1598,10 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
             "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
             (
                 'AOSP_DIR="$AOSP_DIR" AOSP_PRODUCT=eliza_openagent_ai_soc_phone-trunk_staging-userdebug '
-                "packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish"
+                "packages/research/chip/scripts/boot_android_simulator.sh --run-cuttlefish"
             ),
             (
-                "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py "
+                "python3 packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py "
                 '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" '
                 "--artifact-id android-chip-riscv64-zip "
                 "--target-label chip-riscv64 "
@@ -1611,7 +1611,7 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
                 f"--transcript {docs_dir}/chip-riscv64-launcher-agent-live.transcript.log"
             ),
             (
-                "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py "
+                "python3 packages/research/chip/scripts/check_android_launcher_runtime_evidence.py "
                 "--expected-artifact-id android-chip-riscv64-zip "
                 "--expected-target-label chip-riscv64 "
                 "--expected-cpu-abi riscv64 "
@@ -1681,13 +1681,13 @@ def prioritized_live_evidence_capture_plan(
                 "capture_commands": commands.get(target_key, []),
                 "validation_commands": [
                     (
-                        "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py "
+                        "python3 packages/research/chip/scripts/check_android_launcher_runtime_evidence.py "
                         f"--expected-artifact-id {artifact_id} "
                         f"--expected-target-label {target_label} "
                         f"--expected-cpu-abi {target_plan['expectedCpuAbi']} "
                         f"--evidence {repo_rel(RELEASE_DIR / expected_release_path)}"
                     ),
-                    "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+                    "python3 packages/research/chip/scripts/check_android_release_readiness_contract.py",
                 ],
             }
         )
@@ -1712,29 +1712,29 @@ def prioritized_live_evidence_capture_plan(
             "capture_commands": [
                 "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
                 (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
+                    "python3 packages/research/chip/scripts/android/capture_simulated_peripheral_evidence.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" rear_camera'
                 ),
                 (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
+                    "python3 packages/research/chip/scripts/android/capture_simulated_peripheral_evidence.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" front_camera'
                 ),
                 (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
+                    "python3 packages/research/chip/scripts/android/capture_simulated_peripheral_evidence.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" wifi'
                 ),
                 (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
+                    "python3 packages/research/chip/scripts/android/capture_simulated_peripheral_evidence.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" bluetooth'
                 ),
                 (
-                    "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
+                    "python3 packages/research/chip/scripts/android/capture_simulated_peripheral_evidence.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" cellular_5g_lte'
                 ),
             ],
             "validation_commands": [
-                "python3 packages/chip/scripts/check_android_simulated_peripheral_evidence.py",
-                "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+                "python3 packages/research/chip/scripts/check_android_simulated_peripheral_evidence.py",
+                "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
             ],
         },
         {
@@ -1791,8 +1791,8 @@ def prioritized_live_evidence_capture_plan(
                 ),
             ],
             "validation_commands": [
-                "python3 packages/chip/scripts/check_security_lifecycle_scope.py",
-                "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+                "python3 packages/research/chip/scripts/check_security_lifecycle_scope.py",
+                "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
             ],
         },
         {
@@ -1825,14 +1825,14 @@ def prioritized_live_evidence_capture_plan(
                     f'--output {docs_evidence_dir}/power/sustained_npu_power_thermal_trace.json"'
                 ),
                 (
-                    "python3 packages/chip/scripts/android/capture_e1_npu_hal_liveness.py "
+                    "python3 packages/research/chip/scripts/android/capture_e1_npu_hal_liveness.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" '
                     f"--output $(pwd)/{docs_evidence_dir}/eliza_ai_soc_e1_npu_hal_liveness.log"
                 ),
             ],
             "validation_commands": [
-                "python3 packages/chip/scripts/check_power_thermal_scope.py",
-                "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+                "python3 packages/research/chip/scripts/check_power_thermal_scope.py",
+                "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
             ],
         },
     ]
@@ -2102,7 +2102,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         artifact_commands.get("populateIntegrity", ()),
         artifact_commands.get("generateArchiveIntegrityEvidence", ()),
         artifact_commands.get("validate", ()),
-        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+        "python3 packages/research/chip/scripts/check_android_release_readiness_contract.py",
     )
     artifact_stage_commands = command_strings(
         artifact_commands.get("buildChipRiscv64Archive", ()),
@@ -2112,7 +2112,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         artifact_commands.get("generateArchiveIntegrityEvidence", ()),
         artifact_commands.get("populateIntegrity", ()),
         artifact_commands.get("validate", ()),
-        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+        "python3 packages/research/chip/scripts/check_android_release_readiness_contract.py",
     )
     live_capture_plan = prioritized_live_evidence_capture_plan(umbrella_manifest)
     live_capture_commands = command_strings(
@@ -2122,7 +2122,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
             for command in list(row.get("capture_commands", []))
             + list(row.get("validation_commands", []))
         ),
-        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+        "python3 packages/research/chip/scripts/check_android_release_readiness_contract.py",
     )
 
     add_if(
@@ -2408,14 +2408,14 @@ def report_next_command_plan(evidence: dict[str, object]) -> list[dict[str, Any]
         artifact_commands.get("populateIntegrity", ()),
         artifact_commands.get("generateArchiveIntegrityEvidence", ()),
         artifact_commands.get("validate", ()),
-        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+        "python3 packages/research/chip/scripts/check_android_release_readiness_contract.py",
     )
     if integrity_commands:
         plan.append(
             {
                 "id": "capture_android_release_artifact_integrity",
                 "area": "aosp",
-                "source": "packages/chip/build/reports/android_release_readiness_contract.json",
+                "source": "packages/research/chip/build/reports/android_release_readiness_contract.json",
                 "claim_boundary": "operator_commands_only_not_android_release_or_runtime_evidence",
                 "commands": list(integrity_commands),
                 "requires": [
@@ -2433,14 +2433,14 @@ def report_next_command_plan(evidence: dict[str, object]) -> list[dict[str, Any]
         artifact_commands.get("generateArchiveIntegrityEvidence", ()),
         artifact_commands.get("populateIntegrity", ()),
         artifact_commands.get("validate", ()),
-        "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+        "python3 packages/research/chip/scripts/check_android_release_readiness_contract.py",
     )
     if stage_commands:
         plan.append(
             {
                 "id": "capture_android_release_artifact_staging",
                 "area": "aosp",
-                "source": "packages/chip/build/reports/android_release_readiness_contract.json",
+                "source": "packages/research/chip/build/reports/android_release_readiness_contract.json",
                 "claim_boundary": "operator_commands_only_not_android_release_or_runtime_evidence",
                 "commands": list(stage_commands),
                 "requires": [
@@ -2458,7 +2458,7 @@ def report_next_command_plan(evidence: dict[str, object]) -> list[dict[str, Any]
             commands = command_strings(
                 row.get("capture_commands", ()),
                 row.get("validation_commands", ()),
-                "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
+                "python3 packages/research/chip/scripts/check_android_release_readiness_contract.py",
             )
             if not commands:
                 continue
@@ -2469,7 +2469,7 @@ def report_next_command_plan(evidence: dict[str, object]) -> list[dict[str, Any]
                     "area": "runtime",
                     "capture_area": capture_area,
                     "artifact_id": row.get("artifact_id"),
-                    "source": "packages/chip/build/reports/android_release_readiness_contract.json",
+                    "source": "packages/research/chip/build/reports/android_release_readiness_contract.json",
                     "claim_boundary": "operator_commands_only_not_android_release_or_runtime_evidence",
                     "commands": list(commands),
                     "expected_output_files": row.get("expected_output_files", []),

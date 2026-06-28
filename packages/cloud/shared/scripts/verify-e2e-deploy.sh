@@ -8,7 +8,7 @@
 #     -> it CANNOT reach another tenant's DB (REVOKE CONNECT)
 #     -> it has NO internet egress (--internal)
 #
-# Requires: sudo docker (passwordless), bun. Run from packages/cloud-shared/.
+# Requires: sudo docker (passwordless), bun. Run from packages/cloud/shared/.
 set -uo pipefail
 
 PG=apps-tenant-pg

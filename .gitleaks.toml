@@ -30,7 +30,7 @@ paths = [
 [[allowlists]]
 description = "Headscale DEPLOY.md CLI examples (`headscale apikeys create` — not a credential)"
 paths = [
-  '''(^|/)packages/cloud-services/headscale/DEPLOY\.md$''',
+  '''(^|/)packages/cloud/services/headscale/DEPLOY\.md$''',
 ]
 
 [[allowlists]]
@@ -55,7 +55,7 @@ regexes = [
 [[allowlists]]
 description = "PEM envelope template wrappers (no key material checked in)"
 paths = [
-  '''(^|/)packages/cloud-shared/src/lib/auth/agent-token\.ts$''',
+  '''(^|/)packages/cloud/shared/src/lib/auth/agent-token\.ts$''',
 ]
 regexTarget = "match"
 regexes = [
@@ -86,7 +86,7 @@ paths = [
   '''(^|/)patches/[^/]+\.patch$''',
 ]
 
-# Hardware part-selection YAMLs under packages/chip/board/kicad/. The
+# Hardware part-selection YAMLs under packages/research/chip/board/kicad/. The
 # generic-api-key rule flags keys like `side_key_*`, `selected_side_key_*` whose
 # values are component family names (e.g. Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7,
 # Littelfuse_CK_KMR2). These are mechanical-button part identifiers in
@@ -94,7 +94,7 @@ paths = [
 [[allowlists]]
 description = "Hardware side-button part-name configs (not API keys)"
 paths = [
-  '''(^|/)packages/chip/board/kicad/.*\.yaml$''',
+  '''(^|/)packages/research/chip/board/kicad/.*\.yaml$''',
 ]
 regexTarget = "match"
 regexes = [
@@ -120,7 +120,7 @@ regexes = [
 [[allowlists]]
 description = "FIPS-197 published AES test vector"
 paths = [
-  '''(^|/)packages/chip/verify/cocotb/security/test_e1_mcie\.py$''',
+  '''(^|/)packages/research/chip/verify/cocotb/security/test_e1_mcie\.py$''',
 ]
 regexTarget = "match"
 regexes = [
@@ -133,7 +133,7 @@ regexes = [
 [[allowlists]]
 description = "Ed25519 reference backend function-name tuple unpacking"
 paths = [
-  '''(^|/)packages/chip/tests/security/negative/(ed25519_ref|opnphn)\.py$''',
+  '''(^|/)packages/research/chip/tests/security/negative/(ed25519_ref|opnphn)\.py$''',
 ]
 regexTarget = "match"
 regexes = [
@@ -156,7 +156,7 @@ regexes = [
 [[allowlists]]
 description = "Robot material identifiers (not credentials; match target)"
 paths = [
-  '''(^|/)packages/robot/eliza_robot/erobot/(mjcf|spec)\.py$''',
+  '''(^|/)packages/research/robot/eliza_robot/erobot/(mjcf|spec)\.py$''',
 ]
 regexTarget = "match"
 regexes = [
@@ -166,7 +166,7 @@ regexes = [
 [[allowlists]]
 description = "Robot material identifiers (not credentials; secret target)"
 paths = [
-  '''(^|/)packages/robot/eliza_robot/erobot/(mjcf|spec)\.py$''',
+  '''(^|/)packages/research/robot/eliza_robot/erobot/(mjcf|spec)\.py$''',
 ]
 regexTarget = "secret"
 regexes = [
@@ -181,7 +181,7 @@ regexes = [
 [[allowlists]]
 description = "KiCad placement-CSV connector/part designators (not API keys)"
 paths = [
-  '''(^|/)packages/chip/board/kicad/.*/positions\.csv$''',
+  '''(^|/)packages/research/chip/board/kicad/.*/positions\.csv$''',
 ]
 regexTarget = "match"
 regexes = [
@@ -199,7 +199,7 @@ regexes = [
 [[allowlists]]
 description = "Captured Android kernel/logcat/HAL evidence dumps (log tokens, not credentials)"
 paths = [
-  '''(^|/)packages/chip/docs/evidence/android/''',
+  '''(^|/)packages/research/chip/docs/evidence/android/''',
 ]
 
 # cloud-frontend ships generated `llms.txt` / `llms-full.txt` under its static

@@ -85,7 +85,7 @@ See `cloud/terraform/hetzner/ARCHITECTURE.md` for the two-tier (control plane / 
 YAML structure smoke tests — validate Helm values files and K8s manifests without a running cluster or cloud credentials.
 
 ```bash
-bun run --cwd packages/cloud-infra test
+bun run --cwd packages/cloud/infra test
 ```
 
 ## Notes

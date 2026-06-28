@@ -20,17 +20,17 @@ Result: passed, 1 file, 9 tests.
 
 ```bash
 bun --conditions=eliza-source test \
-  packages/cloud-shared/src/lib/services/__tests__/app-deploy-job-service.test.ts \
-  packages/cloud-shared/src/lib/services/__tests__/app-deployments-helpers.test.ts \
-  packages/cloud-shared/src/lib/services/__tests__/app-credits-ledger.test.ts \
-  packages/cloud-shared/src/lib/services/app-credit-math.test.ts \
-  packages/cloud-shared/src/db/repositories/jobs.test.ts
+  packages/cloud/shared/src/lib/services/__tests__/app-deploy-job-service.test.ts \
+  packages/cloud/shared/src/lib/services/__tests__/app-deployments-helpers.test.ts \
+  packages/cloud/shared/src/lib/services/__tests__/app-credits-ledger.test.ts \
+  packages/cloud/shared/src/lib/services/app-credit-math.test.ts \
+  packages/cloud/shared/src/db/repositories/jobs.test.ts
 ```
 
 Result: passed, 39 tests, 104 expects.
 
 ```bash
-bun run --cwd packages/cloud-shared test jobs.test.ts
+bun run --cwd packages/cloud/shared test jobs.test.ts
 ```
 
 Result: passed, 1 test, 5 expects.
@@ -52,8 +52,8 @@ Result: passed, 1 Playwright test.
   packages/test/cloud-e2e/src/helpers/test-fixtures.ts \
   packages/test/cloud-mocks/src/control-plane/server.ts \
   packages/test/cloud-e2e/tests/remote-app-deploy.spec.ts \
-  packages/cloud-shared/src/db/repositories/jobs.ts \
-  packages/cloud-shared/src/db/repositories/jobs.test.ts
+  packages/cloud/shared/src/db/repositories/jobs.ts \
+  packages/cloud/shared/src/db/repositories/jobs.test.ts
 ```
 
 Result: passed after formatting two files.

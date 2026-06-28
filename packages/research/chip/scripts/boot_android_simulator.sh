@@ -186,7 +186,7 @@ print(json.dumps([
     {
         "id": "android_sim_full_virtual_device_evidence",
         "area": "aosp",
-        "source": "packages/chip/build/reports/android_sim_boot.json",
+        "source": "packages/research/chip/build/reports/android_sim_boot.json",
         "claim_boundary": "operator_commands_only_not_android_boot_or_release_evidence",
         "commands": commands,
         "requires": [

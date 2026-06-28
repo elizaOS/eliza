@@ -354,7 +354,6 @@
         "@capacitor/push-notifications",
         "@elizaos/plugin-personal-assistant",
         "@elizaos/plugin-shopify-ui",
-        "@elizaos/plugin-vincent",
         "@elizaos/plugin-browser",
         "@elizaos/plugin-discord",
         "@elizaos/plugin-local-inference",

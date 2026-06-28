@@ -30,7 +30,7 @@ docker build \
   --build-arg INSTALL_CLAUDE_CODE=false \
   --build-arg INSTALL_OPENCODE=false \
   -t ghcr.io/elizaos/coding-remote-runner:local \
-  packages/cloud-services/coding-remote-runner
+  packages/cloud/services/coding-remote-runner
 ```
 
 Configure Eliza Cloud to use the published image with:

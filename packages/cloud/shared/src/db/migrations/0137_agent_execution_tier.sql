@@ -7,7 +7,7 @@
 --
 -- Idempotent: ADD COLUMN IF NOT EXISTS, and the backfill only touches rows still
 -- at the 'shared' default, so a re-run is a no-op. See
--- packages/cloud-shared/src/lib/services/shared-runtime/agent-tier.ts.
+-- packages/cloud/shared/src/lib/services/shared-runtime/agent-tier.ts.
 
 ALTER TABLE "agent_sandboxes"
 	ADD COLUMN IF NOT EXISTS "execution_tier" text DEFAULT 'shared' NOT NULL;

@@ -110,9 +110,9 @@ FALSE_CLAIM_FLAGS = {
     "cts_vts_claim_allowed": False,
     "gms_claim_allowed": False,
 }
-RUNTIME_CAPTURE_SCRIPT = "packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
-DEFAULT_RUNTIME_OUTPUT = "packages/chip/docs/evidence/android/system_bridge_runtime_evidence.json"
-DEFAULT_RUNTIME_LOGCAT = "packages/chip/docs/evidence/android/system_bridge_runtime_logcat.log"
+RUNTIME_CAPTURE_SCRIPT = "packages/research/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
+DEFAULT_RUNTIME_OUTPUT = "packages/research/chip/docs/evidence/android/system_bridge_runtime_evidence.json"
+DEFAULT_RUNTIME_LOGCAT = "packages/research/chip/docs/evidence/android/system_bridge_runtime_logcat.log"
 RUNTIME_CAPTURE_BASE_COMMAND = (
     f"python3 {RUNTIME_CAPTURE_SCRIPT} "
     f"--launcher-package {APP_PACKAGE} "
@@ -120,7 +120,7 @@ RUNTIME_CAPTURE_BASE_COMMAND = (
     f"--logcat {DEFAULT_RUNTIME_LOGCAT}"
 )
 RECHECK_COMMAND = (
-    "python3 packages/chip/scripts/check_android_system_bridge_contract.py --json-only"
+    "python3 packages/research/chip/scripts/check_android_system_bridge_contract.py --json-only"
 )
 ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
 ADB_HOSTPORT_SENTINEL = "$CHIP_ANDROID_ADB_HOSTPORT"

@@ -37,7 +37,7 @@ read the same `hetzner/apps-shared/shared.tfstate`.
 ## Apply
 
 ```bash
-cd packages/cloud-infra/cloud/terraform/hetzner/apps-shared
+cd packages/cloud/infra/cloud/terraform/hetzner/apps-shared
 cp tfvars/shared.tfvars.example shared.tfvars   # fill in real values
 export HCLOUD_TOKEN=...      # the HCLOUD_APPS_TOKEN value
 export AWS_ACCESS_KEY_ID=... # R2 token for the tf state backend

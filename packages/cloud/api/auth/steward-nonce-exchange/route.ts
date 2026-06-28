@@ -228,7 +228,7 @@ async function callStewardExchange(
   // pin the tenant), so it must sign here too — otherwise the exchange 401s
   // with "X-Steward-Signature header required". Sign over the EXACT bytes we
   // send. Without a configured secret we send unsigned (same as the proxy) and
-  // let Steward decide. See packages/cloud-api/src/steward/{embedded,sign}.ts.
+  // let Steward decide. See packages/cloud/api/src/steward/{embedded,sign}.ts.
   // (The signer mints a fresh Idempotency-Key per attempt — fine here because
   // the OAuth code is single-use; Steward 401s a replayed code anyway.)
   const bodyText = JSON.stringify(body);

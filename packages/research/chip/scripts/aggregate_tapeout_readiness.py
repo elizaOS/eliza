@@ -859,7 +859,7 @@ def provenance_safe(value: object) -> object:
     if isinstance(value, list):
         return [provenance_safe(item) for item in value]
     if isinstance(value, str):
-        return value.replace(str(ROOT), "packages/chip")
+        return value.replace(str(ROOT), "packages/research/chip")
     return value
 
 
@@ -1766,7 +1766,7 @@ def blocker_action(result: GateResult) -> dict[str, object]:
     if result.args:
         validation = " ".join((validation, *result.args))
     if result.name == "phone-runtime-readiness-contract-check":
-        validation = "packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+        validation = "packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"
     action: dict[str, object] = {
         "name": result.name,
         "dependency": result.blocker_dependency,

@@ -52,7 +52,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_scans_source_markers_and_excludes_generated_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            source = repo / "packages/chip/sw/boot.sh"
+            source = repo / "packages/research/chip/sw/boot.sh"
             source.parent.mkdir(parents=True)
             source.write_text(
                 f"# {inv.OPEN_TASK_MARKER} wire real boot\n"
@@ -67,7 +67,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/sw", "packages/app/android"])
+                report = inv.build_report(["packages/research/chip/sw", "packages/app/android"])
 
         self.assertEqual(report["status"], "blocked")
         assert_false_claim_flags(self, report)
@@ -82,7 +82,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             report["scan_root_summary"],
             [
                 {
-                    "root": "packages/chip/sw",
+                    "root": "packages/research/chip/sw",
                     "findings": 3,
                     "paths_with_findings": 1,
                     "categories": {
@@ -94,18 +94,18 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             ],
         )
         paths = {finding["path"] for finding in report["findings"]}
-        self.assertEqual(paths, {"packages/chip/sw/boot.sh"})
+        self.assertEqual(paths, {"packages/research/chip/sw/boot.sh"})
         self.assertTrue(all("+1 " in finding["next_command"] for finding in report["findings"][:1]))
 
     def test_empty_scan_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            source = repo / "packages/chip/sw/boot.sh"
+            source = repo / "packages/research/chip/sw/boot.sh"
             source.parent.mkdir(parents=True)
             source.write_text("echo ready\n", encoding="utf-8")
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/sw"])
+                report = inv.build_report(["packages/research/chip/sw"])
 
         self.assertEqual(report["status"], "pass")
         assert_false_claim_flags(self, report)
@@ -115,41 +115,41 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_npu_and_benchmark_markers_route_to_specific_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            npu_doc = repo / "packages/chip/docs/npu/runtime.md"
+            npu_doc = repo / "packages/research/chip/docs/npu/runtime.md"
             npu_doc.parent.mkdir(parents=True)
             npu_doc.write_text(
                 f"NPU {inv.OPEN_TASK_MARKER} capture accelerator evidence.\n",
                 encoding="utf-8",
             )
-            bench = repo / "packages/chip/sw/benchmarks/runner.sh"
+            bench = repo / "packages/research/chip/sw/benchmarks/runner.sh"
             bench.parent.mkdir(parents=True)
             bench.write_text("echo placeholder benchmark path\n", encoding="utf-8")
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs", "packages/chip/sw"])
+                report = inv.build_report(["packages/research/chip/docs", "packages/research/chip/sw"])
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 2)
         assert_actionable_findings(self, report)
         by_path = {finding["path"]: finding for finding in report["findings"]}
         self.assertIn(
-            "python3 packages/chip/scripts/check_npu_scope.py",
-            by_path["packages/chip/docs/npu/runtime.md"]["next_commands"],
+            "python3 packages/research/chip/scripts/check_npu_scope.py",
+            by_path["packages/research/chip/docs/npu/runtime.md"]["next_commands"],
         )
         self.assertIn(
-            "python3 packages/chip/scripts/check_benchmark_efficiency_scope.py",
-            by_path["packages/chip/sw/benchmarks/runner.sh"]["next_commands"],
+            "python3 packages/research/chip/scripts/check_benchmark_efficiency_scope.py",
+            by_path["packages/research/chip/sw/benchmarks/runner.sh"]["next_commands"],
         )
 
     def test_binary_payloads_are_not_scanned_as_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            binary = repo / "packages/chip/sw/firemarshal/eliza-e1-linux-smoke/e1-npu-ml-smoke"
+            binary = repo / "packages/research/chip/sw/firemarshal/eliza-e1-linux-smoke/e1-npu-ml-smoke"
             binary.parent.mkdir(parents=True)
             binary.write_bytes(b"\x7fELF\x00unsupported workload: %s (expected %s)\x00")
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/sw"])
+                report = inv.build_report(["packages/research/chip/sw"])
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -163,7 +163,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 'vi.mock("@capacitor/app", () => ({}));\nconst placeholder = true;\n',
                 encoding="utf-8",
             )
-            cpp_test = repo / "packages/chip/verify/verilator/test_npu_gemm.cpp"
+            cpp_test = repo / "packages/research/chip/verify/verilator/test_npu_gemm.cpp"
             cpp_test.parent.mkdir(parents=True)
             cpp_test.write_text(
                 'printf("unsupported op in negative-path fixture\\n");\n',
@@ -184,7 +184,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                     [
                         "packages/app/src",
                         "packages/app/android/app/src/main",
-                        "packages/chip/verify",
+                        "packages/research/chip/verify",
                     ]
                 )
 
@@ -194,7 +194,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_checker_diagnostics_are_classified_but_regular_markers_still_block(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            checker = repo / "packages/chip/scripts/check_runtime_gate.py"
+            checker = repo / "packages/research/chip/scripts/check_runtime_gate.py"
             checker.parent.mkdir(parents=True)
             checker.write_text(
                 'raise SystemExit("runtime must remain blocked until evidence exists")\n'
@@ -206,7 +206,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/scripts"])
+                report = inv.build_report(["packages/research/chip/scripts"])
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
@@ -215,7 +215,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_nested_capture_diagnostics_are_classified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            capture = repo / "packages/chip/scripts/ai_eda/capture_runtime_readiness.py"
+            capture = repo / "packages/research/chip/scripts/ai_eda/capture_runtime_readiness.py"
             capture.parent.mkdir(parents=True)
             capture.write_text(
                 'blockers.append("runtime claims remain blocked until replay evidence exists")\n'
@@ -224,7 +224,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/scripts"])
+                report = inv.build_report(["packages/research/chip/scripts"])
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -232,7 +232,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_classified_blocker_inventory_docs_are_not_source_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            blocker_doc = repo / "packages/chip/docs/project/critical-gap-review.md"
+            blocker_doc = repo / "packages/research/chip/docs/project/critical-gap-review.md"
             blocker_doc.parent.mkdir(parents=True)
             blocker_doc.write_text(
                 "# Critical gap review\n\n"
@@ -240,57 +240,57 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 "- placeholder evidence remains prohibited\n",
                 encoding="utf-8",
             )
-            source_doc = repo / "packages/chip/docs/arch/boot.md"
+            source_doc = repo / "packages/research/chip/docs/arch/boot.md"
             source_doc.parent.mkdir(parents=True)
             source_doc.write_text(
                 "Boot placeholder text that must be resolved.\n", encoding="utf-8"
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs"])
+                report = inv.build_report(["packages/research/chip/docs"])
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
-        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/boot.md")
+        self.assertEqual(report["findings"][0]["path"], "packages/research/chip/docs/arch/boot.md")
 
     def test_project_planning_and_open_task_audits_are_not_source_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            roadmap = repo / "packages/chip/docs/project/road-to-mediatek.md"
+            roadmap = repo / "packages/research/chip/docs/project/road-to-mediatek.md"
             roadmap.parent.mkdir(parents=True)
             roadmap.write_text(
                 "# Roadmap\n\n"
                 "Current scaffold remains blocked until AP and benchmark evidence lands.\n",
                 encoding="utf-8",
             )
-            task_audit = repo / "packages/chip/docs/project/android-on-simulated-chip-task-audit.md"
+            task_audit = repo / "packages/research/chip/docs/project/android-on-simulated-chip-task-audit.md"
             task_audit.write_text(
                 f"# {inv.OPEN_TASK_MARKER} audit\n\n"
                 f"| {inv.OPEN_TASK_MARKER} | placeholder evidence remains blocked |\n",
                 encoding="utf-8",
             )
-            source_doc = repo / "packages/chip/docs/arch/npu.md"
+            source_doc = repo / "packages/research/chip/docs/arch/npu.md"
             source_doc.parent.mkdir(parents=True, exist_ok=True)
             source_doc.write_text(
                 "NPU placeholder text that still needs resolution.\n", encoding="utf-8"
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs"])
+                report = inv.build_report(["packages/research/chip/docs"])
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
-        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/npu.md")
+        self.assertEqual(report["findings"][0]["path"], "packages/research/chip/docs/arch/npu.md")
 
     def test_generated_traceability_outputs_are_not_scanned_as_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            graph = repo / "packages/chip/docs/spec-db/traceability/graph.json"
+            graph = repo / "packages/research/chip/docs/spec-db/traceability/graph.json"
             graph.parent.mkdir(parents=True)
             graph.write_text('{"dst": "gate:stub-audit"}\n', encoding="utf-8")
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs"])
+                report = inv.build_report(["packages/research/chip/docs"])
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -298,7 +298,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_evidence_manifests_and_pb_placeholder_fields_are_classified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            manifest = repo / "packages/chip/docs/android/bsp-log-evidence-manifest.json"
+            manifest = repo / "packages/research/chip/docs/android/bsp-log-evidence-manifest.json"
             manifest.parent.mkdir(parents=True)
             manifest.write_text(
                 json.dumps(
@@ -310,7 +310,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            converter = repo / "packages/chip/scripts/alphachip/convert_lefdef_to_pb.sh"
+            converter = repo / "packages/research/chip/scripts/alphachip/convert_lefdef_to_pb.sh"
             converter.parent.mkdir(parents=True)
             converter.write_text(
                 'sed -e \'s/placeholder: "macro"/placeholder: "MACRO"/g\'\n',
@@ -318,7 +318,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs", "packages/chip/scripts"])
+                report = inv.build_report(["packages/research/chip/docs", "packages/research/chip/scripts"])
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -326,7 +326,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_os_and_bsp_checker_diagnostics_are_classified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            bsp_checker = repo / "packages/chip/sw/check_bsp_scaffolds.py"
+            bsp_checker = repo / "packages/research/chip/sw/check_bsp_scaffolds.py"
             bsp_checker.parent.mkdir(parents=True)
             bsp_checker.write_text(
                 'errors.append("external evidence remains BLOCKED")\n'
@@ -346,7 +346,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/sw", "packages/os/linux/elizaos/scripts"])
+                report = inv.build_report(["packages/research/chip/sw", "packages/os/linux/elizaos/scripts"])
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -354,7 +354,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_shell_runner_negative_path_diagnostics_are_classified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            runner = repo / "packages/chip/scripts/run_chipyard_eliza_linux_smoke.sh"
+            runner = repo / "packages/research/chip/scripts/run_chipyard_eliza_linux_smoke.sh"
             runner.parent.mkdir(parents=True)
             runner.write_text(
                 "#!/usr/bin/env sh\n"
@@ -366,7 +366,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/scripts"])
+                report = inv.build_report(["packages/research/chip/scripts"])
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -374,7 +374,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_generator_template_vocabulary_is_classified_but_markers_still_block(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            generator = repo / "packages/chip/scripts/generate_e1_phone_demo.py"
+            generator = repo / "packages/research/chip/scripts/generate_e1_phone_demo.py"
             generator.parent.mkdir(parents=True)
             generator.write_text(
                 '"""Generate non-release placeholder artifacts."""\n'
@@ -388,7 +388,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/scripts"])
+                report = inv.build_report(["packages/research/chip/scripts"])
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
@@ -397,29 +397,29 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_dossier_audit_docs_are_not_source_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            dossier = repo / "packages/chip/docs/E1_SOTA_TAPEOUT_DOSSIER.md"
+            dossier = repo / "packages/research/chip/docs/E1_SOTA_TAPEOUT_DOSSIER.md"
             dossier.parent.mkdir(parents=True)
             dossier.write_text(
                 "The repository is a scaffold and some evidence remains blocked.\n",
                 encoding="utf-8",
             )
-            source_doc = repo / "packages/chip/docs/arch/boot.md"
+            source_doc = repo / "packages/research/chip/docs/arch/boot.md"
             source_doc.parent.mkdir(parents=True)
             source_doc.write_text(
                 "Boot placeholder text that must be resolved.\n", encoding="utf-8"
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs"])
+                report = inv.build_report(["packages/research/chip/docs"])
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
-        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/boot.md")
+        self.assertEqual(report["findings"][0]["path"], "packages/research/chip/docs/arch/boot.md")
 
     def test_plan_and_survey_docs_are_not_source_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            tee_plan = repo / "packages/chip/docs/security/tee-plan/05-cpu-memory-performance.md"
+            tee_plan = repo / "packages/research/chip/docs/security/tee-plan/05-cpu-memory-performance.md"
             tee_plan.parent.mkdir(parents=True)
             tee_plan.write_text(
                 "This experiment plan says vector arithmetic remains BLOCKED.\n"
@@ -427,33 +427,33 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             sota_report = (
-                repo / "packages/chip/docs/architecture-optimization/sota-2028/cache-report.md"
+                repo / "packages/research/chip/docs/architecture-optimization/sota-2028/cache-report.md"
             )
             sota_report.parent.mkdir(parents=True)
             sota_report.write_text(
                 "The survey notes a placeholder configuration remains blocked.\n",
                 encoding="utf-8",
             )
-            competitor = repo / "packages/chip/docs/spec-db/competitor-2028-target.yaml"
+            competitor = repo / "packages/research/chip/docs/spec-db/competitor-2028-target.yaml"
             competitor.parent.mkdir(parents=True)
             competitor.write_text("status: blocked until vendor data exists\n")
-            source_doc = repo / "packages/chip/docs/arch/boot.md"
+            source_doc = repo / "packages/research/chip/docs/arch/boot.md"
             source_doc.parent.mkdir(parents=True)
             source_doc.write_text(
                 "Boot placeholder text that must be resolved.\n", encoding="utf-8"
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs"])
+                report = inv.build_report(["packages/research/chip/docs"])
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
-        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/boot.md")
+        self.assertEqual(report["findings"][0]["path"], "packages/research/chip/docs/arch/boot.md")
 
     def test_operator_docs_classify_fail_closed_scaffold_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            operator_doc = repo / "packages/chip/docs/android/riscv-bringup.md"
+            operator_doc = repo / "packages/research/chip/docs/android/riscv-bringup.md"
             operator_doc.parent.mkdir(parents=True)
             operator_doc.write_text(
                 "Current status is fail-closed scaffold only.\n"
@@ -461,23 +461,23 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 "Runtime shims return unsupported when the device node is absent.\n",
                 encoding="utf-8",
             )
-            arch_doc = repo / "packages/chip/docs/arch/npu.md"
+            arch_doc = repo / "packages/research/chip/docs/arch/npu.md"
             arch_doc.parent.mkdir(parents=True)
             arch_doc.write_text(
                 "NPU placeholder text that still needs resolution.\n", encoding="utf-8"
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs"])
+                report = inv.build_report(["packages/research/chip/docs"])
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
-        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/npu.md")
+        self.assertEqual(report["findings"][0]["path"], "packages/research/chip/docs/arch/npu.md")
 
     def test_arch_contract_docs_classify_claim_boundary_disclosures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            contract = repo / "packages/chip/docs/arch/interconnect.md"
+            contract = repo / "packages/research/chip/docs/arch/interconnect.md"
             contract.parent.mkdir(parents=True)
             contract.write_text(
                 "This is not release evidence for memory-bandwidth claims.\n"
@@ -485,35 +485,35 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 "No release claim may rely on this scaffold.\n",
                 encoding="utf-8",
             )
-            memory_map = repo / "packages/chip/docs/arch/memory-map.md"
+            memory_map = repo / "packages/research/chip/docs/arch/memory-map.md"
             memory_map.write_text(
                 "The Linux-capable scaffold map is not yet a complete Linux device memory map.\n"
                 "NPU control scaffold accesses fail closed.\n",
                 encoding="utf-8",
             )
-            iommu = repo / "packages/chip/docs/arch/iommu.md"
+            iommu = repo / "packages/research/chip/docs/arch/iommu.md"
             iommu.write_text(
                 "Sv48 first-stage is not yet locally covered.\n"
                 "PASID behavior remains blocked by the evidence gate.\n"
                 "The driver must not poll for unsupported bits.\n",
                 encoding="utf-8",
             )
-            source_doc = repo / "packages/chip/docs/arch/npu.md"
+            source_doc = repo / "packages/research/chip/docs/arch/npu.md"
             source_doc.write_text(
                 "NPU placeholder text that still needs resolution.\n", encoding="utf-8"
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs/arch"])
+                report = inv.build_report(["packages/research/chip/docs/arch"])
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 1)
-        self.assertEqual(report["findings"][0]["path"], "packages/chip/docs/arch/npu.md")
+        self.assertEqual(report["findings"][0]["path"], "packages/research/chip/docs/arch/npu.md")
 
     def test_operator_doc_command_examples_are_not_source_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            contract = repo / "packages/chip/docs/arch/linux-capable-cpu-contract.md"
+            contract = repo / "packages/research/chip/docs/arch/linux-capable-cpu-contract.md"
             contract.parent.mkdir(parents=True)
             contract.write_text(
                 "Run the local non-claiming scaffold checks:\n"
@@ -523,14 +523,14 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/chip/docs/arch"])
+                report = inv.build_report(["packages/research/chip/docs/arch"])
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
 
     def test_default_roots_cover_os_forks_and_launcher_agent_sources(self) -> None:
         expected = {
-            "packages/chip/sw",
+            "packages/research/chip/sw",
             "packages/os/linux/elizaos/scripts",
             "packages/os/linux/agent",
             "packages/os/linux/crates/elizad",
@@ -549,7 +549,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_json_only_prints_report_without_status_line(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            root = repo / "packages/chip/sw"
+            root = repo / "packages/research/chip/sw"
             root.mkdir(parents=True)
             (root / "ready.sh").write_text("echo ready\n", encoding="utf-8")
             output = repo / "report.json"
@@ -559,7 +559,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 contextlib.redirect_stdout(stdout),
             ):
                 rc = inv.main(
-                    ["--root", "packages/chip/sw", "--report", str(output), "--json-only"]
+                    ["--root", "packages/research/chip/sw", "--report", str(output), "--json-only"]
                 )
             written = json.loads(output.read_text(encoding="utf-8"))
 

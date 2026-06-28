@@ -116,7 +116,7 @@ Save the returned key as Railway secret `TUNNEL_PROXY_TS_AUTHKEY` on the tunnel-
 ## 3. Tunnel-proxy Railway service
 
 ```
-cd packages/cloud-services/tunnel-proxy
+cd packages/cloud/services/tunnel-proxy
 railway up
 ```
 

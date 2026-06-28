@@ -92,10 +92,10 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["findings"][0]["next_command"],
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
         )
         self.assertIn(
-            "python3 packages/chip/scripts/aggregate_tapeout_readiness.py --scope phone --strict",
+            "python3 packages/research/chip/scripts/aggregate_tapeout_readiness.py --scope phone --strict",
             payload["findings"][0]["next_commands"],
         )
         inventory = payload["runtime_evidence_collection_inventory"]
@@ -103,7 +103,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(inventory[0]["scope"], "media")
         self.assertFalse(inventory[0]["release_credit"])
         self.assertIn(
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
             inventory[0]["next_commands"],
         )
 
@@ -185,7 +185,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         )
         self.assertEqual(
             inventory[0]["blocked_evidence_files"][0]["validation_command"],
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
         )
         self.assertIn(
             {"path": "status", "op": "eq", "expected": "PASS"},
@@ -199,7 +199,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         )
         self.assertTrue(payload["findings"][0]["next_command"])
         self.assertIn(
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
             payload["findings"][0]["next_commands"],
         )
 
@@ -247,7 +247,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(group["blocked_evidence_class_counts"]["live_capture_unavailable"], 1)
         self.assertEqual(group["blocked_evidence_category_counts"]["live_device_validation"], 1)
         self.assertIn(
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
             group["next_commands"],
         )
 
@@ -368,7 +368,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(blocked_file["blocker_category"], "planned_incomplete_evidence")
         self.assertEqual(
             blocked_file["expected_output_files"],
-            ["packages/chip/docs/evidence/android/security/tampered_boot_rejection.log"],
+            ["packages/research/chip/docs/evidence/android/security/tampered_boot_rejection.log"],
         )
         self.assertTrue(blocked_file["capture_commands"])
         self.assertFalse(
@@ -405,7 +405,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         ][0]
         self.assertEqual(
             blocked_file["expected_output_files"],
-            ["packages/chip/docs/evidence/android/peripherals/rear_camera_sim.log"],
+            ["packages/research/chip/docs/evidence/android/peripherals/rear_camera_sim.log"],
         )
         self.assertEqual(
             blocked_file["package_relative_expected_path"],
@@ -413,7 +413,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         )
         self.assertEqual(
             blocked_file["repo_relative_expected_path"],
-            "packages/chip/docs/evidence/android/peripherals/rear_camera_sim.log",
+            "packages/research/chip/docs/evidence/android/peripherals/rear_camera_sim.log",
         )
         self.assertFalse(blocked_file["release_credit"])
         self.assertIn(gate.ADB_TARGET_SELECTOR_COMMAND, blocked_file["capture_commands"])
@@ -431,7 +431,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         )
         self.assertIn("prerequisites", blocked_file)
         self.assertIn(
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
             payload["prioritized_runtime_capture_plan"][0]["validation_commands"],
         )
         self.assertIn("expected_file_schema", blocked_file)
@@ -617,7 +617,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             )
             self.assertTrue(
                 any(
-                    command.startswith("python3 packages/chip/scripts/android/")
+                    command.startswith("python3 packages/research/chip/scripts/android/")
                     for command in row["capture_commands"]
                 ),
                 path,
@@ -740,14 +740,14 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         blocked_file = inventory["blocked_evidence_files"][0]
         self.assertEqual(
             blocked_file["validation_command"],
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
         )
         self.assertEqual(
             blocked_file["validation_commands"],
-            ["python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"],
+            ["python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"],
         )
         self.assertIn(
-            "python3 packages/chip/scripts/aggregate_tapeout_readiness.py --scope phone --strict",
+            "python3 packages/research/chip/scripts/aggregate_tapeout_readiness.py --scope phone --strict",
             inventory["next_commands"],
         )
         self.assertEqual(
@@ -755,7 +755,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             "media",
         )
         self.assertIn(
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
             payload["next_runtime_capture_action"]["validation_commands"],
         )
         self.assertEqual(
@@ -774,7 +774,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         batch = inventory["next_command_batches"][0]
         self.assertEqual(
             batch["artifact"],
-            "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+            "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
         )
         self.assertEqual(
             batch["package_relative_artifact"],
@@ -788,7 +788,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertTrue(batch["capture_commands"])
         self.assertEqual(
             batch["validation_commands"],
-            ["python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"],
+            ["python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"],
         )
         self.assertEqual(
             payload["next_runtime_capture_action"]["next_command_batches"],
@@ -803,7 +803,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(command_batch["capture_area"], "media")
         self.assertEqual(
             command_batch["source"],
-            "packages/chip/build/reports/phone_runtime_readiness_contract.json",
+            "packages/research/chip/build/reports/phone_runtime_readiness_contract.json",
         )
         self.assertEqual(
             command_batch["claim_boundary"],
@@ -875,7 +875,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertTrue(all(row["release_credit"] is False for row in plan))
         security = plan[0]
         self.assertIn(
-            "packages/chip/docs/evidence/android/security/rollback_rejection.log",
+            "packages/research/chip/docs/evidence/android/security/rollback_rejection.log",
             security["expected_output_files"],
         )
         self.assertTrue(
@@ -896,7 +896,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertFalse(any("<lab command" in command for command in security["capture_commands"]))
         power = plan[1]
         self.assertIn(
-            "packages/chip/docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
+            "packages/research/chip/docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
             power["expected_output_files"],
         )
         self.assertTrue(

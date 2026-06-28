@@ -1,6 +1,6 @@
 // Multi-agent lifecycle fuzz: create / talk / delete in a stress sequence,
 // asserting invariants at every step. Mints its own dev key via SIWE (ethers).
-// Run: node test/_lifecycle-fuzz.mjs  (from packages/cloud-api)
+// Run: node test/_lifecycle-fuzz.mjs  (from packages/cloud/api)
 import { Wallet } from "ethers";
 
 const API = process.env.CLOUD_API || "https://api.elizacloud.ai";

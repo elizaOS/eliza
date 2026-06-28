@@ -51,7 +51,7 @@ test/                      e2e harness (test/e2e/), coverage/inventory audit scr
 
 Routes are file-based, mirroring Next.js App Router, but each leaf is a Hono sub-app. A `route.ts` at `v1/models/route.ts` mounts at `/api/v1/models`. The codegen only mounts leaves whose source imports from `"hono"` (or the `createMcpsTransportApp` factory) — a non-Hono leaf is skipped and falls through to the global 404. `index.ts` lazy-loads the whole stack, so route modules are only evaluated on the first real request.
 
-Path-alias note: `@/lib/*`, `@/db/*`, `@/types/*`, `@/billing/*` resolve into `../cloud-shared/src/...` (see `tsconfig.json`). `@/api/*` is this package root and `@/api-app/*` is `./src/*`. So an import of `@/lib/auth/workers-hono-auth` is cloud-shared code, not local.
+Path-alias note: `@/lib/*`, `@/db/*`, `@/types/*`, `@/billing/*` resolve into `../shared/src/...` (see `tsconfig.json`). `@/api/*` is this package root and `@/api-app/*` is `./src/*`. So an import of `@/lib/auth/workers-hono-auth` is cloud-shared code, not local.
 
 ## Key surface
 
@@ -64,18 +64,18 @@ Path-alias note: `@/lib/*`, `@/db/*`, `@/types/*`, `@/billing/*` resolve into `.
 ## Commands
 
 ```bash
-bun run --cwd packages/cloud-api dev            # wrangler dev (local Worker)
-bun run --cwd packages/cloud-api dev:full       # dev + local control plane
-bun run --cwd packages/cloud-api codegen        # regen src/_router.generated.ts
-bun run --cwd packages/cloud-api build          # tsc --noEmit (type-only)
-bun run --cwd packages/cloud-api typecheck      # tsgo --noEmit
-bun run --cwd packages/cloud-api lint           # biome check .
-bun run --cwd packages/cloud-api lint:fix       # biome check --write .
-bun run --cwd packages/cloud-api test           # bun test __tests__
-bun run --cwd packages/cloud-api test:audit     # route coverage audit
-bun run --cwd packages/cloud-api test:e2e       # batched e2e (test/e2e/)
-bun run --cwd packages/cloud-api deploy         # wrangler deploy --env production
-bun run --cwd packages/cloud-api agent:build    # build the cloud agent container image
+bun run --cwd packages/cloud/api dev            # wrangler dev (local Worker)
+bun run --cwd packages/cloud/api dev:full       # dev + local control plane
+bun run --cwd packages/cloud/api codegen        # regen src/_router.generated.ts
+bun run --cwd packages/cloud/api build          # tsc --noEmit (type-only)
+bun run --cwd packages/cloud/api typecheck      # tsgo --noEmit
+bun run --cwd packages/cloud/api lint           # biome check .
+bun run --cwd packages/cloud/api lint:fix       # biome check --write .
+bun run --cwd packages/cloud/api test           # bun test __tests__
+bun run --cwd packages/cloud/api test:audit     # route coverage audit
+bun run --cwd packages/cloud/api test:e2e       # batched e2e (test/e2e/)
+bun run --cwd packages/cloud/api deploy         # wrangler deploy --env production
+bun run --cwd packages/cloud/api agent:build    # build the cloud agent container image
 ```
 
 `dev`/`agent:build` shell out to `packages/scripts/cloud/admin/dev/*.mjs` (outside this package).
@@ -92,7 +92,7 @@ Add an endpoint:
 1. Create `<resource>/<path>/route.ts` (use `[id]` dirs for params, `(group)` for non-path grouping). Start the file with `import { Hono } from "hono"; const app = new Hono<AppEnv>();`, attach handlers (`app.get("/", ...)`), and `export default app`.
 2. Import context types from `@/types/cloud-worker-env`; use `@/lib/...` helpers from cloud-shared for db/auth/providers — do not reimplement them here.
 3. If the endpoint must be reachable without a session, add its prefix to `publicPathPrefixes` in `src/middleware/auth.ts` (otherwise the global auth gate 401s it).
-4. Run `bun run --cwd packages/cloud-api codegen`. If a file is left Next-shaped (no `from "hono"`), codegen exits non-zero and lists it. Re-running is idempotent; never hand-edit `_router.generated.ts`.
+4. Run `bun run --cwd packages/cloud/api codegen`. If a file is left Next-shaped (no `from "hono"`), codegen exits non-zero and lists it. Re-running is idempotent; never hand-edit `_router.generated.ts`.
 
 ## Conventions / gotchas
 

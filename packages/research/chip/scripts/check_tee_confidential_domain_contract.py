@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_CONTRACT = REPO_ROOT / "packages/chip/docs/spec-db/tee-confidential-domain-contract.json"
+DEFAULT_CONTRACT = REPO_ROOT / "packages/research/chip/docs/spec-db/tee-confidential-domain-contract.json"
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the vendored Alberta framework wiring used by packages/robot."""
+"""Validate the vendored Alberta framework wiring used by packages/research/robot."""
 
 from __future__ import annotations
 

@@ -78,7 +78,7 @@ def resolve_path(path_text: str | None) -> Path | None:
     path = Path(path_text)
     if path.is_absolute():
         return path
-    if path_text.startswith("packages/chip/"):
+    if path_text.startswith("packages/research/chip/"):
         return REPO_ROOT / path
     return ROOT / path
 

@@ -26,10 +26,10 @@ import trimesh
 
 os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 
-ROOT = Path("/path/to/eliza/packages/chip/mechanical/e1-phone")
+ROOT = Path("/path/to/eliza/packages/research/chip/mechanical/e1-phone")
 OUT = ROOT / "out"
 REVIEW = ROOT / "review"
-SCRIPTS = Path("/path/to/eliza/packages/chip/scripts")
+SCRIPTS = Path("/path/to/eliza/packages/research/chip/scripts")
 ASM_GLB = OUT / "e1-phone-assembly.glb"
 MANIFEST = OUT / "assembly-manifest.json"
 EXPL_GLB = OUT / "e1-phone-exploded.glb"
@@ -646,7 +646,7 @@ def main() -> int:
 ## Re-run
 
 ```bash
-python3 packages/chip/scripts/generate_e1_phone_exploded_animation.py
+python3 packages/research/chip/scripts/generate_e1_phone_exploded_animation.py
 ```
 
 ## Notes

@@ -356,7 +356,7 @@ def write_tool_action_manifest(
                 "--config",
                 "pd/openlane/config.sky130.json",
             ],
-            "cwd": "packages/chip",
+            "cwd": "packages/research/chip",
         },
         "read_scope": [
             rel(candidate_path),

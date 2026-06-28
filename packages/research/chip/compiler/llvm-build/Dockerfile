@@ -1,6 +1,6 @@
 # LLVM build environment for the e1 RISC-V toolchain.
 #
-# This image derives from the canonical chip container (packages/chip/Dockerfile)
+# This image derives from the canonical chip container (packages/research/chip/Dockerfile)
 # and adds the extras needed for a two-stage LLVM trunk build:
 #
 #   - lld (used as the host linker for the bootstrap and the stage-2 build)
@@ -13,10 +13,10 @@
 #
 #   docker build \
 #       --build-arg BASE_IMAGE=eliza-chip:linux-x86_64 \
-#       -f packages/chip/compiler/llvm-build/Dockerfile \
+#       -f packages/research/chip/compiler/llvm-build/Dockerfile \
 #       -t eliza-chip:llvm-build .
 #
-# The base image tag MUST be a digest-pinned build of packages/chip/Dockerfile.
+# The base image tag MUST be a digest-pinned build of packages/research/chip/Dockerfile.
 # scripts/build_llvm_riscv.sh refuses to run unless /etc/eliza-chip-container
 # is present (see require_linux_container in scripts/lib/container_guard.sh).
 

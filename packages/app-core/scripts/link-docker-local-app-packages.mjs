@@ -50,7 +50,6 @@ const localPackages = [
   "eliza/plugins/plugin-task-coordinator",
   "eliza/plugins/plugin-training",
   "eliza/plugins/plugin-shopify-ui",
-  "eliza/plugins/plugin-vincent",
   "eliza/packages/app-core",
   "eliza/packages/cloud/sdk",
   "eliza/packages/shared",

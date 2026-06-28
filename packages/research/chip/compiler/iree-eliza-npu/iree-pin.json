@@ -61,7 +61,7 @@
   ],
   "submodules_policy": "init+update recursive; the IREE repository pulls in StableHLO, mlir-hlo, vulkan-headers, and tracy",
   "external_dialect_mount": "compiler/plugins/target/elizanpu",
-  "external_dialect_source": "packages/chip/compiler/iree-eliza-npu",
+  "external_dialect_source": "packages/research/chip/compiler/iree-eliza-npu",
   "cmake_args": [
     "-DCMAKE_BUILD_TYPE=Release",
     "-DIREE_ENABLE_LLD=ON",

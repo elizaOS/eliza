@@ -40,12 +40,12 @@ PERMISSION_FILE_PATHS = (
     "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
 )
 AOSP_BUILD_ONLY_COMMAND = (
-    'test -n "$AOSP_DIR" && python3 packages/chip/scripts/run_with_timeout.py '
+    'test -n "$AOSP_DIR" && python3 packages/research/chip/scripts/run_with_timeout.py '
     "--timeout-seconds 2400 --label aosp-build-only-evidence -- "
-    "packages/chip/scripts/boot_android_simulator.sh --build-only"
+    "packages/research/chip/scripts/boot_android_simulator.sh --build-only"
 )
 AOSP_FULL_RUNTIME_COMMAND = (
-    'test -n "$AOSP_DIR" && packages/chip/scripts/boot_android_simulator.sh '
+    'test -n "$AOSP_DIR" && packages/research/chip/scripts/boot_android_simulator.sh '
     "--run-cuttlefish --run-cts --run-vts --run-qemu --run-renode"
 )
 AOSP_EXPECTED_EVIDENCE = (
@@ -97,7 +97,7 @@ def rel(path: Path) -> str:
 def provenance_safe_text(value: str) -> str:
     sanitized = value
     replacements = (
-        (ROOT.as_posix(), "packages/chip"),
+        (ROOT.as_posix(), "packages/research/chip"),
         (ROOT.parents[1].as_posix(), ""),
     )
     for source, replacement in replacements:
@@ -232,11 +232,11 @@ def aosp_build_only_diagnostics(timeout_seconds: int) -> dict[str, object]:
         "expected_command": AOSP_BUILD_ONLY_COMMAND,
         "full_runtime_command_after_build_only": AOSP_FULL_RUNTIME_COMMAND,
         "validation_commands": [
-            "python3 packages/chip/scripts/check_android_sim_boot.py",
-            "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py",
-            "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
-            "python3 packages/chip/scripts/check_android_system_bridge_contract.py",
-            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            "python3 packages/research/chip/scripts/check_android_sim_boot.py",
+            "python3 packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py",
+            "python3 packages/research/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
+            "python3 packages/research/chip/scripts/check_android_system_bridge_contract.py",
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
         ],
         "expected_report": file_snapshot(ANDROID_SIM_BOOT_REPORT),
         "expected_evidence_logs": [
@@ -666,8 +666,8 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
             "next_operator_commands": [
                 AOSP_BUILD_ONLY_COMMAND,
                 AOSP_FULL_RUNTIME_COMMAND,
-                "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py",
-                "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+                "python3 packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py",
+                "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py",
             ],
         },
     }

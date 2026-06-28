@@ -175,7 +175,7 @@ class SystemBridgeRuntimeCaptureTests(unittest.TestCase):
         payload = {
             "product_out": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
             "tool": "/home/shaw/Android/Sdk/platform-tools/adb",
-            "repo": f"{capture.ROOT.parents[1].as_posix()}/packages/chip/docs/evidence/android/log.txt",
+            "repo": f"{capture.ROOT.parents[1].as_posix()}/packages/research/chip/docs/evidence/android/log.txt",
             "tmp": "/var/tmp/cvd/1000/1/home/cuttlefish/instances/cvd-1/logs/logcat",
         }
 
@@ -187,7 +187,7 @@ class SystemBridgeRuntimeCaptureTests(unittest.TestCase):
         self.assertEqual(
             sanitized["product_out"], "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc"
         )
-        self.assertEqual(sanitized["repo"], "packages/chip/docs/evidence/android/log.txt")
+        self.assertEqual(sanitized["repo"], "packages/research/chip/docs/evidence/android/log.txt")
 
 
 if __name__ == "__main__":

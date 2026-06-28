@@ -56,7 +56,7 @@ A dynamic predictor reduces cycles ~10%, adds ~7% core power on average. For a 1
 
 AsmDB (ISCA '19) shows datacenter and large mobile workloads spend a substantial fraction of cycles in front-end stalls dominated by I-cache and BTB misses, not data misses. The repo's SOTA-2-core model encodes per-workload MPKI of 1.116 (CoreMark-like), 3.472 (Linux kernel mix), 4.464 (Android UI), 1.922 (TFLite CPU fallback). These are reasonable planning numbers for a 2028 flagship.
 
-## B. Current state in `packages/chip`
+## B. Current state in `packages/research/chip`
 
 1. **Synthesizable BPU slice** at `rtl/cpu/bpu/`: decoupled FTQ front end,
    uFTB + FTB target prediction, TAGE-SC direction prediction, ITTAGE indirect
@@ -136,7 +136,7 @@ Primary: track **XiangShan Kunminghu v2 → v3** upstream and patch into the e1 
 
 ### D.1 Branch tracing harness
 
-Three layers under `packages/chip/benchmarks/`:
+Three layers under `packages/research/chip/benchmarks/`:
 
 1. **Functional / golden traces.** ChampSim-style or CBP2025 trace format ([ramisheikh/cbp2025](https://github.com/ramisheikh/cbp2025)). QEMU `-d in_asm,nochain` or Spike branch-trace plugin to dump (PC, target, taken, kind).
 2. **gem5-XiangShan** ([OpenXiangShan/GEM5](https://github.com/OpenXiangShan/GEM5)) for cycle-level. XiangShan ships a calibrated Kunminghu model.

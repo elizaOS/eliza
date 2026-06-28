@@ -339,7 +339,7 @@ def test_aosp_linux_preflight_sanitizes_host_local_paths() -> None:
             raise AssertionError("AOSP Linux preflight must include generated_utc")
         if "/home/shaw" in encoded:
             raise AssertionError(encoded)
-        if "packages/chip/tools/bin/renode" not in encoded and "<host-path>/renode" not in encoded:
+        if "packages/research/chip/tools/bin/renode" not in encoded and "<host-path>/renode" not in encoded:
             raise AssertionError(encoded)
     finally:
         if saved is None:

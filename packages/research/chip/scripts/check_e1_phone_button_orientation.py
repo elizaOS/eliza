@@ -25,7 +25,7 @@ from OCP.BRepGProp import BRepGProp
 from OCP.GProp import GProp_GProps
 from OCP.STEPControl import STEPControl_Reader
 
-ROOT = Path("/path/to/eliza/packages/chip")
+ROOT = Path("/path/to/eliza/packages/research/chip")
 OUT_DIR = ROOT / "mechanical/e1-phone/out"
 REVIEW_DIR = ROOT / "mechanical/e1-phone/review"
 DATE = "2026-05-20"

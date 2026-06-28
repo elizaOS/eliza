@@ -8,7 +8,7 @@ from pathlib import Path
 
 from eliza_robot.asimov_1.constants import ASIMOV1_SUBMODULE_ROOT
 
-EXPECTED_ASIMOV1_SUBMODULE_PATH = "packages/robot/vendor/asimov-1"
+EXPECTED_ASIMOV1_SUBMODULE_PATH = "packages/research/robot/vendor/asimov-1"
 EXPECTED_ASIMOV1_REMOTE = "https://github.com/asimovinc/asimov-1.git"
 
 

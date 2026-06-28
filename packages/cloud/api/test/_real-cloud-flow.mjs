@@ -1,4 +1,4 @@
-// Real-cloud end-to-end flow validator (run from packages/cloud-api with node).
+// Real-cloud end-to-end flow validator (run from packages/cloud/api with node).
 // Mints a SIWE key against api.elizacloud.ai, then exercises:
 //   create agent -> provision -> poll job -> shared chat -> wait dedicated ready
 //   -> conversation import -> deprovision (delete container).

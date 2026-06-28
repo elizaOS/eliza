@@ -10,7 +10,7 @@ command:
     - scripts/ai_eda/parse_openlane_metrics_to_flow_run.py
     - --run-id
     - validation
-  cwd: packages/chip
+  cwd: packages/research/chip
 read_scope:
   - docs/spec-db/ai-eda/openlane-metrics-fixtures/e1_final_metrics.clean.json
   - build/ai_eda/e1_openlane_conversion/validation/records/flow-run.json

@@ -6,13 +6,15 @@
  *   - TUI      - rendered to real terminal lines by the agent terminal, via
  *                `registerSpatialTerminalView` (see `register-terminal-view.tsx`).
  *
- * It is purely presentational (a snapshot + an action callback in, primitives
- * out) and imports only the cross-modality primitives plus a type-only view of
- * the `ViewEntry` shape, so it is safe to render in the Node agent process where
- * the terminal lives (no shell-host UI import).
+ * It is purely presentational (a snapshot + an open callback in, primitives out)
+ * and imports only the cross-modality primitives plus the pure `ViewEntry`
+ * helpers, so it is safe to render in the Node agent process where the terminal
+ * lives (no shell-host UI import). The collapse-by-id + modality-chip logic is
+ * pure over the snapshot — the single source for GUI, XR, and TUI.
  */
 
 import {
+	Button,
 	Card,
 	Divider,
 	HStack,
@@ -22,7 +24,11 @@ import {
 	Text,
 	VStack,
 } from "@elizaos/ui/spatial";
-import type { ViewEntry } from "../views/viewManagerData.ts";
+import {
+	collapseViewEntries,
+	type ViewEntry,
+	type ViewModality,
+} from "../views/viewManagerData.ts";
 
 export interface ViewManagerSnapshot {
 	views: ViewEntry[];
@@ -30,8 +36,13 @@ export interface ViewManagerSnapshot {
 	error?: string | null;
 }
 
-function viewTypeTone(viewType: ViewEntry["viewType"]): SpatialTone {
-	switch (viewType) {
+/** The surfaces this logical view renders on, ordered gui · xr · tui. */
+function viewModalities(view: ViewEntry): ViewModality[] {
+	return view.modalities ?? [view.viewType ?? "gui"];
+}
+
+function modalityTone(modality: ViewModality): SpatialTone {
+	switch (modality) {
 		case "tui":
 			return "warning";
 		case "xr":
@@ -43,19 +54,26 @@ function viewTypeTone(viewType: ViewEntry["viewType"]): SpatialTone {
 
 export interface ViewManagerSpatialViewProps {
 	snapshot: ViewManagerSnapshot;
+	/** Open a listed view (GUI press / terminal dispatch by `open:<id>`). */
+	onOpenView?: (view: ViewEntry) => void;
 }
 
 export function ViewManagerSpatialView({
 	snapshot,
+	onOpenView,
 }: ViewManagerSpatialViewProps) {
-	const available = snapshot.views.filter((view) => view.available).length;
+	// One row per logical view id, carrying the union of its surfaces — collapses
+	// duplicate gui/xr/tui declarations of the same view into a single row with
+	// modality chips, instead of one duplicate row per surface.
+	const views = collapseViewEntries(snapshot.views);
+	const available = views.filter((view) => view.available).length;
 	return (
 		<Card gap={1} padding={1}>
 			<HStack gap={1} align="center">
 				<Text style="caption" tone="success" grow={1}>
 					{snapshot.loading
 						? "loading"
-						: `${available}/${snapshot.views.length} ready`}
+						: `${available}/${views.length} ready`}
 				</Text>
 				<Text style="caption" tone="muted">
 					views
@@ -69,26 +87,22 @@ export function ViewManagerSpatialView({
 			) : null}
 
 			<Divider label="views" />
-			{snapshot.views.length === 0 ? (
+			{views.length === 0 ? (
 				<Text tone="muted" align="center" style="caption">
 					None
 				</Text>
 			) : (
 				<List gap={1}>
-					{snapshot.views.slice(0, 12).map((view) => (
+					{views.slice(0, 12).map((view) => (
 						<HStack
-							key={`${view.viewType ?? "gui"}:${view.id}`}
+							key={view.id}
 							gap={1}
 							align="center"
 							agent={`open-${view.id}`}
 						>
 							{view.heroImageUrl ? (
 								<Image src={view.heroImageUrl} alt="" width={4} height={4} />
-							) : (
-								<Text tone={viewTypeTone(view.viewType)}>
-									[{view.viewType ?? "gui"}]
-								</Text>
-							)}
+							) : null}
 							<VStack gap={0} grow={1}>
 								<Text bold wrap={false}>
 									{view.label}
@@ -96,13 +110,35 @@ export function ViewManagerSpatialView({
 								<Text style="caption" tone="muted" wrap={false}>
 									{view.path ?? view.pluginName}
 								</Text>
+								{/* Surface chips (gui/xr/tui) + per-view open/available
+								    state, kept on one wrapped line so it never competes
+								    horizontally with the open control on narrow terminals. */}
+								<HStack gap={1} wrap align="center">
+									{viewModalities(view).map((modality) => (
+										<Text
+											key={modality}
+											style="caption"
+											tone={modalityTone(modality)}
+										>
+											{modality}
+										</Text>
+									))}
+									<Text
+										style="caption"
+										tone={view.available ? "success" : "danger"}
+									>
+										{view.available ? "ready" : "missing"}
+									</Text>
+								</HStack>
 							</VStack>
-							<Text
-								style="caption"
-								tone={view.available ? "success" : "danger"}
+							<Button
+								variant="ghost"
+								tone="default"
+								agent={`open:${view.id}`}
+								onPress={() => onOpenView?.(view)}
 							>
-								{view.available ? "ready" : "missing"}
-							</Text>
+								Open
+							</Button>
 						</HStack>
 					))}
 				</List>

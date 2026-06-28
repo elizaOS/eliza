@@ -102,7 +102,7 @@ divergence is caught at PR review time.
 
 - LLVM SHA: `compiler/llvm-build/llvm-pin.json`.
 - IREE SHA: `compiler/iree-eliza-npu/iree-pin.json` (last audited 2026-05-20).
-- Container base: `packages/chip/Dockerfile` `UBUNTU_DIGEST`.
+- Container base: `packages/research/chip/Dockerfile` `UBUNTU_DIGEST`.
 - Python parity: in repo CI, runs without MLIR built.
 
 ### Upstream patches

@@ -23,7 +23,7 @@
 #       [--kernel <Image>] [--rootfs <rootfs.cpio>] \
 #       [--memory <MB>] [--cpus <N>] [--timeout <sec>] [--evidence <path>]
 #
-# Defaults (relative to packages/chip):
+# Defaults (relative to packages/research/chip):
 #   --kernel    external/buildroot-rv64/output/images/Image
 #   --rootfs    external/buildroot-rv64/output/images/rootfs.cpio
 #   --memory    1024 (MB)

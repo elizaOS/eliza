@@ -183,7 +183,6 @@
         "./plugins/plugin-trajectory-logger/src/index.ts"
       ],
       "@elizaos/plugin-video": ["./plugins/plugin-video/src/index.ts"],
-      "@elizaos/plugin-vincent": ["./plugins/plugin-vincent/src/index.ts"],
       "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wallet-ui": ["./plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wechat": ["./plugins/plugin-wechat/src/index.ts"],

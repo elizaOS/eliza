@@ -59,7 +59,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
-ROOT = Path("/path/to/eliza/packages/chip")
+ROOT = Path("/path/to/eliza/packages/research/chip")
 PARAMS = ROOT / "mechanical/e1-phone/cad/e1_phone_params.yaml"
 MASS_BUDGET = ROOT / "mechanical/e1-phone/review/mass-budget.json"
 REVIEW = ROOT / "mechanical/e1-phone/review"

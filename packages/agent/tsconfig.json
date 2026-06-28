@@ -119,9 +119,6 @@
       "@elizaos/plugin-shopify-ui": [
         "../../plugins/plugin-shopify-ui/src/index.ts"
       ],
-      "@elizaos/plugin-vincent": [
-        "../../plugins/plugin-vincent/src/index.ts"
-      ],
       "@elizaos/ui": [
         "../ui/src/index.ts"
       ],
@@ -156,7 +153,7 @@
         "./src/*"
       ],
       "@elizaos/cloud-sdk": [
-        "../cloud-sdk/src/index.ts"
+        "../cloud/sdk/src/index.ts"
       ],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"

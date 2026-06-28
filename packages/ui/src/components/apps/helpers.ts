@@ -73,13 +73,11 @@ const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
   "@elizaos/plugin-polymarket-app",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-vincent",
 ]);
 
 const WALLET_SCOPED_APP_NAMES = new Set<string>([
   "@elizaos/plugin-hyperliquid-app",
   "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-vincent",
 ]);
 
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
@@ -349,7 +347,6 @@ export function getAppCatalogSectionKey(
   switch (canonicalName) {
     case "@elizaos/plugin-companion":
       return "games";
-    case "@elizaos/plugin-vincent":
     case "@elizaos/plugin-shopify-ui":
     case "@elizaos/plugin-hyperliquid-app":
     case "@elizaos/plugin-polymarket-app":

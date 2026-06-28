@@ -28,12 +28,12 @@
     ]
   },
   "candidate_files": {
-    "project": "packages/chip/board/kicad/e1-phone/e1-phone.kicad_pro",
-    "schematic": "packages/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch",
-    "routed_candidate_board": "packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
-    "real_footprint_development_board": "packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb",
-    "existing_candidate_drc_json": "packages/chip/board/kicad/e1-phone/production/reports/drc.json",
-    "existing_candidate_erc_json": "packages/chip/board/kicad/e1-phone/production/reports/erc.json"
+    "project": "packages/research/chip/board/kicad/e1-phone/e1-phone.kicad_pro",
+    "schematic": "packages/research/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch",
+    "routed_candidate_board": "packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+    "real_footprint_development_board": "packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb",
+    "existing_candidate_drc_json": "packages/research/chip/board/kicad/e1-phone/production/reports/drc.json",
+    "existing_candidate_erc_json": "packages/research/chip/board/kicad/e1-phone/production/reports/erc.json"
   },
   "file_hashes": {
     "routed_candidate_board_sha256": "158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b",
@@ -75,37 +75,37 @@
       "exit_code": 255
     },
     {
-      "command": "find packages/chip/board/kicad/e1-phone -maxdepth 3 -type f \\( -name '*.kicad_pro' -o -name '*.kicad_pcb' -o -name '*.kicad_sch' -o -name '*.ses' -o -name '*.dsn' -o -name '*.rpt' -o -name '*.step' -o -name '*.wrl' \\) -print | sort",
+      "command": "find packages/research/chip/board/kicad/e1-phone -maxdepth 3 -type f \\( -name '*.kicad_pro' -o -name '*.kicad_pcb' -o -name '*.kicad_sch' -o -name '*.ses' -o -name '*.dsn' -o -name '*.rpt' -o -name '*.step' -o -name '*.wrl' \\) -print | sort",
       "summary": "Found one KiCad project, five PCB files including e1-phone-mainboard-routed.kicad_pcb, root and hierarchical schematics, and local STEP candidate artifacts. No DSN/SES autorouter exchange files were found.",
       "exit_code": 0
     },
     {
-      "command": "sha256sum packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb packages/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch",
+      "command": "sha256sum packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb packages/research/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch",
       "summary": "The routed candidate board and real-footprint development board have identical SHA-256 158e862d290ccdac7086130861ca414ea50cfbc00f07c5c46b648d2330a2f59b; the schematic SHA-256 is e00ee14ca4e49ff754b788ebf534bf141a525b9ae2ed72df2716b7d10c345df5.",
       "exit_code": 0
     },
     {
-      "command": "python3 - <<'PY'\nfrom pathlib import Path\np=Path('packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb')\ns=p.read_text(errors='ignore')\nfor token in ['(net ', '(footprint ', '(segment ', '(via ', '(zone ', '(gr_line ', '(dimension ')]:\n    print(token.strip(), s.count(token))\nPY",
+      "command": "python3 - <<'PY'\nfrom pathlib import Path\np=Path('packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb')\ns=p.read_text(errors='ignore')\nfor token in ['(net ', '(footprint ', '(segment ', '(via ', '(zone ', '(gr_line ', '(dimension ')]:\n    print(token.strip(), s.count(token))\nPY",
       "summary": "Raw routed candidate counts: 1371 net records, 89 footprints, 306 segments, 24 vias, 13 zones, 0 gr_lines, 0 dimensions.",
       "exit_code": 0
     },
     {
-      "command": "python3 - <<'PY'\nimport json\nfrom pathlib import Path\nfor f in ['packages/chip/board/kicad/e1-phone/production/reports/drc.json','packages/chip/board/kicad/e1-phone/production/reports/erc.json']:\n    p=Path(f)\n    d=json.loads(p.read_text())\n    print(f)\n    for k in ['artifact_id','status','claim_boundary','release_credit','drc_status','erc_status','tool','generated_by']:\n        if k in d: print(' ',k,':',d[k])\n    print(' top_keys:', sorted(d.keys())[:30])\n    print(' bytes:', p.stat().st_size)\nPY",
+      "command": "python3 - <<'PY'\nimport json\nfrom pathlib import Path\nfor f in ['packages/research/chip/board/kicad/e1-phone/production/reports/drc.json','packages/research/chip/board/kicad/e1-phone/production/reports/erc.json']:\n    p=Path(f)\n    d=json.loads(p.read_text())\n    print(f)\n    for k in ['artifact_id','status','claim_boundary','release_credit','drc_status','erc_status','tool','generated_by']:\n        if k in d: print(' ',k,':',d[k])\n    print(' top_keys:', sorted(d.keys())[:30])\n    print(' bytes:', p.stat().st_size)\nPY",
       "summary": "Both existing report files identify as candidate artifacts and share local non-release metadata. No KiCad CLI generator/tool field or raw KiCad violation schema was found.",
       "exit_code": 0
     }
   ],
   "commands_not_run": [
     {
-      "command": "kicad-cli pcb drc packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output packages/chip/board/kicad/e1-phone/production/reports/drc.json",
+      "command": "kicad-cli pcb drc packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output packages/research/chip/board/kicad/e1-phone/production/reports/drc.json",
       "reason": "repo wrapper resolves kicad-cli 7.0.11, but this CLI lacks the required pcb drc command."
     },
     {
-      "command": "kicad-cli sch erc packages/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output packages/chip/board/kicad/e1-phone/production/reports/erc.json",
+      "command": "kicad-cli sch erc packages/research/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output packages/research/chip/board/kicad/e1-phone/production/reports/erc.json",
       "reason": "repo wrapper resolves kicad-cli 7.0.11, but this CLI lacks the required sch erc command."
     },
     {
-      "command": "kicad-cli pcb export step packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --output packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step",
+      "command": "kicad-cli pcb export step packages/research/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --output packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step",
       "reason": "repo wrapper resolves kicad-cli 7.0.11, but a temp export attempt failed because the routed board requires a newer KiCad file format; existing STEP is a local candidate artifact and must not be overwritten without a real release export run."
     }
   ],

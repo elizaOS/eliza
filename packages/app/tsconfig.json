@@ -31,7 +31,6 @@
       "@elizaos/plugin-training": [
         "../../plugins/plugin-training/src/index.ts"
       ],
-      "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
       "@elizaos/plugin-wallet-ui": [
         "../../plugins/plugin-wallet-ui/src/index.ts"
       ],

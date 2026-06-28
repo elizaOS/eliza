@@ -41,9 +41,9 @@ def run(command: list[str]) -> subprocess.CompletedProcess[str]:
 class FpgaReleaseDiagnosticsTest(unittest.TestCase):
     def test_report_provenance_sanitizer_strips_host_local_paths(self) -> None:
         payload = {
-            "path": "/path/to/eliza/packages/chip/external/oss-cad-suite/bin/yosys",
+            "path": "/path/to/eliza/packages/research/chip/external/oss-cad-suite/bin/yosys",
             "command": (
-                "PATH=/path/to/eliza/packages/chip/external/oss-cad-suite/bin:$PATH "
+                "PATH=/path/to/eliza/packages/research/chip/external/oss-cad-suite/bin:$PATH "
                 "TOP=e1_chip_top make -C board/fpga synth"
             ),
             "tmp": "/tmp/fpga-release/run.log",
@@ -54,7 +54,7 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
 
         self.assertNotIn("/home/shaw", encoded)
         self.assertNotIn("/tmp/fpga-release", encoded)
-        self.assertIn("packages/chip/external/oss-cad-suite/bin/yosys", encoded)
+        self.assertIn("packages/research/chip/external/oss-cad-suite/bin/yosys", encoded)
 
     def test_release_report_groups_blockers_and_quarantines_diagnostics(self) -> None:
         result = run([sys.executable, "scripts/check_fpga_release.py", "--release"])

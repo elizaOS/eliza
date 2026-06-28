@@ -2,7 +2,7 @@
 
 Research summary of the on-device runtime surface E1 will eventually plug
 into. Nothing here certifies E1 implementation status; the existing E1
-runtime is a Python harness at `packages/chip/compiler/runtime/`.
+runtime is a Python harness at `packages/research/chip/compiler/runtime/`.
 
 ## 1. TFLite → LiteRT under Google AI Edge
 

@@ -499,8 +499,8 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--base",
         type=Path,
-        default=repo_root / "packages/robot",
-        help="Base dir for evidence/checkpoint paths (default: packages/robot).",
+        default=repo_root / "packages/research/robot",
+        help="Base dir for evidence/checkpoint paths (default: packages/research/robot).",
     )
     parser.add_argument(
         "--out",

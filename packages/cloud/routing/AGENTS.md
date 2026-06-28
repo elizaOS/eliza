@@ -6,12 +6,12 @@ Shared routing resolver that decides whether a service call should use a locally
 
 This package is a pure utility library with no runtime dependencies. It provides the routing logic that plugins use to choose between three sources for any external API: a local key set directly in the agent's settings, a cloud proxy (via `ELIZAOS_CLOUD_API_KEY`), or disabled. It also defines and resolves per-feature routing policies (`local` / `cloud` / `auto`).
 
-Consumers: `plugins/plugin-wallet`, `plugins/plugin-streaming`, `plugins/plugin-tailscale`, and `packages/cloud-api` / `packages/cloud-shared` reference it via tsconfig path aliases.
+Consumers: `plugins/plugin-wallet`, `plugins/plugin-streaming`, `plugins/plugin-tailscale`, and `packages/cloud/api` / `packages/cloud/shared` reference it via tsconfig path aliases.
 
 ## Layout
 
 ```
-packages/cloud-routing/
+packages/cloud/routing/
   src/
     index.ts        — re-exports everything; this is the public surface
     features.ts     — FEATURES registry (llm, rpc, tool_use, embeddings, media, tts, stt)
@@ -57,10 +57,10 @@ All exports are re-exported from `src/index.ts`:
 ## Commands
 
 ```bash
-bun run --cwd packages/cloud-routing build       # tsc --noCheck + prepare-package-dist
-bun run --cwd packages/cloud-routing test        # vitest run src
-bun run --cwd packages/cloud-routing typecheck   # tsgo --noEmit
-bun run --cwd packages/cloud-routing lint        # biome check src
+bun run --cwd packages/cloud/routing build       # tsc --noCheck + prepare-package-dist
+bun run --cwd packages/cloud/routing test        # vitest run src
+bun run --cwd packages/cloud/routing typecheck   # tsgo --noEmit
+bun run --cwd packages/cloud/routing lint        # biome check src
 ```
 
 ## Config / env vars

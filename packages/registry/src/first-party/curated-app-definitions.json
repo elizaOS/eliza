@@ -25,11 +25,6 @@
     "aliases": []
   },
   {
-    "slug": "vincent",
-    "canonicalName": "@elizaos/plugin-vincent",
-    "aliases": []
-  },
-  {
     "slug": "hyperliquid",
     "canonicalName": "@elizaos/plugin-hyperliquid-app",
     "aliases": []

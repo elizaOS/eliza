@@ -32,7 +32,6 @@ const PLUGINS =
         "plugin-task-coordinator",
         "plugin-personal-assistant",
         "plugin-shopify-ui",
-        "plugin-vincent",
         "plugin-app-control",
         "plugin-trajectory-logger",
         "app-model-tester",

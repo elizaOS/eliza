@@ -11,8 +11,8 @@
  * from the view catalog on device.
  *
  * This module only covers plugins the app resolves to their `index.ts` barrel
- * (vincent / companion / steward). Plugins the app aliases to their `register.ts`
- * (polymarket, hyperliquid, shopify, trajectory-logger, waifu-*) register their
+ * (companion / steward). Plugins the app aliases to their `register.ts`
+ * (polymarket, hyperliquid, shopify, trajectory-logger) register their
  * own app-shell page inside that `register.ts` instead, so the lazy loader can
  * import the view component directly and stay code-split.
  *
@@ -26,19 +26,6 @@ import { getFrontendPlatform } from "@elizaos/ui/platform";
 const platform = getFrontendPlatform();
 
 if (platform === "android" || platform === "ios") {
-  registerAppShellPage({
-    id: "vincent",
-    viewKind: "release",
-    pluginId: "@elizaos/plugin-vincent",
-    label: "Vincent",
-    icon: "Zap",
-    path: "/vincent",
-    loader: () =>
-      import("@elizaos/plugin-vincent").then((m) => ({
-        default: m.VincentView,
-      })),
-  });
-
   registerAppShellPage({
     id: "companion",
     viewKind: "release",

@@ -25,7 +25,6 @@ import {
   VStack,
 } from "@elizaos/ui/spatial";
 
-const INBOUND_SMS_TYPE = 1;
 const SENT_SMS_TYPE = 2;
 
 /** A grouped SMS conversation, sorted with its newest message last. */
@@ -63,6 +62,25 @@ function directionTone(type: number): SpatialTone {
   return messageDirection(type) === "out" ? "primary" : "default";
 }
 
+/** Short, display-only timestamp: clock time today, else "Mon D". */
+function formatMessageTime(epochMs: number): string {
+  const date = new Date(epochMs);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  return sameDay
+    ? date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Sum of unread inbound messages across every thread. */
+function totalUnread(threads: MessagesThreadSummary[]): number {
+  return threads.reduce((sum, thread) => sum + thread.unreadCount, 0);
+}
+
 function roleLabel(snapshot: MessagesSnapshot): string {
   if (snapshot.ownsSmsRole) return "sms-default";
   if (snapshot.smsRoleHolder) return `bridge:${snapshot.smsRoleHolder}`;
@@ -90,6 +108,7 @@ export function MessagesSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
   const selectedThread =
     snapshot.threads.find((t) => t.id === snapshot.selectedThreadId) ?? null;
+  const unread = totalUnread(snapshot.threads);
   const canSend =
     snapshot.composeAddress.trim().length > 0 &&
     snapshot.composeBody.trim().length > 0;
@@ -100,6 +119,11 @@ export function MessagesSpatialView({
         <Text style="caption" tone={roleTone(snapshot)} grow={1}>
           {roleLabel(snapshot)}
         </Text>
+        {unread > 0 ? (
+          <Text style="caption" tone="primary">
+            {`${unread} unread`}
+          </Text>
+        ) : null}
         <Text style="caption" tone="muted">
           {snapshot.loading ? "loading" : `${snapshot.threads.length} threads`}
         </Text>
@@ -144,6 +168,9 @@ export function MessagesSpatialView({
                     {thread.lastMessage.body}
                   </Text>
                 </VStack>
+                <Text style="caption" tone="muted" wrap={false}>
+                  {formatMessageTime(thread.lastMessage.date)}
+                </Text>
                 {thread.unreadCount > 0 ? (
                   <Text style="caption" tone="primary">
                     {String(thread.unreadCount)}
@@ -172,6 +199,9 @@ export function MessagesSpatialView({
                 {messageDirection(message.type)}
               </Text>
               <Text grow={1}>{message.body}</Text>
+              <Text style="caption" tone="muted" wrap={false}>
+                {formatMessageTime(message.date)}
+              </Text>
             </HStack>
           ))}
         </List>
@@ -212,32 +242,4 @@ export function MessagesSpatialView({
       </HStack>
     </Card>
   );
-}
-
-/** Group a flat SMS list into threads, newest-last per thread, newest first. */
-export function buildMessagesThreads(
-  messages: SmsMessageSummary[],
-): MessagesThreadSummary[] {
-  const byThread = new Map<string, SmsMessageSummary[]>();
-  for (const message of messages) {
-    const key = message.threadId || message.address || message.id;
-    const list = byThread.get(key) ?? [];
-    list.push(message);
-    byThread.set(key, list);
-  }
-  return Array.from(byThread.entries())
-    .map(([id, threadMessages]) => {
-      const sorted = [...threadMessages].sort((a, b) => a.date - b.date);
-      const lastMessage = sorted[sorted.length - 1];
-      return {
-        id,
-        address: lastMessage.address,
-        messages: sorted,
-        lastMessage,
-        unreadCount: sorted.filter(
-          (m) => !m.read && m.type === INBOUND_SMS_TYPE,
-        ).length,
-      };
-    })
-    .sort((a, b) => b.lastMessage.date - a.lastMessage.date);
 }

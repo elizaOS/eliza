@@ -133,7 +133,7 @@ collection just hasn't been done in this session.
 ## Reproduce everything
 
 ```bash
-cd packages/robot
+cd packages/research/robot
 uv run eliza-robot-train --profile hiwonder-ainex --tasks stand_up walk_forward --steps 30000
 uv run eliza-robot-validate-alberta-checkpoint checkpoints/alberta_text_conditioned \
   --profile hiwonder-ainex --tasks stand_up walk_forward --min-steps 30000 --require-inference

@@ -13,11 +13,11 @@ from pathlib import Path
 _PKG_DIR = Path(__file__).resolve().parent
 
 # Primary profile MJCF directory (W2.2 sibling agent owns this tree).
-# packages/robot/eliza_robot/sim/mujoco/__init__.py
-#   -> packages/robot/eliza_robot/sim/mujoco
-#   -> packages/robot/eliza_robot/sim
-#   -> packages/robot/eliza_robot
-#   -> packages/robot
+# packages/research/robot/eliza_robot/sim/mujoco/__init__.py
+#   -> packages/research/robot/eliza_robot/sim/mujoco
+#   -> packages/research/robot/eliza_robot/sim
+#   -> packages/research/robot/eliza_robot
+#   -> packages/research/robot
 _PACKAGE_ROOT = _PKG_DIR.parent.parent.parent
 _PROFILE_MJCF_DIR = (
     _PACKAGE_ROOT / "assets" / "profiles" / "hiwonder-ainex" / "mjcf"
@@ -28,9 +28,9 @@ def _resolve_mjcf(filename: str) -> Path:
     """Resolve an MJCF/XML asset by name.
 
     Search order:
-      1. ``packages/robot/assets/profiles/hiwonder-ainex/mjcf/<filename>``
+      1. ``packages/research/robot/assets/profiles/hiwonder-ainex/mjcf/<filename>``
          (canonical W2.2 location)
-      2. ``packages/robot/eliza_robot/sim/mujoco/<filename>`` (fallback for
+      2. ``packages/research/robot/eliza_robot/sim/mujoco/<filename>`` (fallback for
          files that haven't been migrated into the profile asset dir yet)
 
     Raises:

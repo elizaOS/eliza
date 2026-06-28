@@ -3,15 +3,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
-// Load cloud-shared/.env into process.env (without overriding an explicit shell
+// Load cloud/shared/.env into process.env (without overriding an explicit shell
 // value) so provider keys placed there — e.g. CEREBRAS_API_KEY for the real-LLM
 // marquee lane — are visible to BOTH this runner's test gates and the booted
 // worker (the cloud-api dev wrapper already syncs the same file into .dev.vars).
 // Mirrors how sync-api-dev-vars sources keys, so "put it in .env and go" works.
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 for (const envFile of [
-  path.resolve(configDir, "../../cloud-shared/.env"),
-  path.resolve(configDir, "../../cloud-shared/.env.local"),
+  path.resolve(configDir, "../../cloud/shared/.env"),
+  path.resolve(configDir, "../../cloud/shared/.env.local"),
 ]) {
   if (!fs.existsSync(envFile)) continue;
   for (const line of fs.readFileSync(envFile, "utf8").split("\n")) {

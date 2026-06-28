@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CHIP_ROOT = REPO_ROOT / "packages/chip"
+CHIP_ROOT = REPO_ROOT / "packages/research/chip"
 BOARD_ROOT = CHIP_ROOT / "board/kicad/e1-phone"
 REPORT_REL = "board/kicad/e1-phone/e1-phone-readiness-unblock-register-2026-05-22.yaml"
 REPORT_PATH = CHIP_ROOT / REPORT_REL

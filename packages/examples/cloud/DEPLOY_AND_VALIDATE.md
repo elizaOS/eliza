@@ -202,7 +202,7 @@ Smoke each deploy: `GET /health` → `ok`, `GET /api/config` → expected app id
   credits and records the creator's inference markup (`recordCreatorEarnings`).
 - **PayPerPixel:** each settled x402 payment credits the creator's earnings via
   `recordAppScopedPaymentEarnings` (verified by
-  `cloud-shared/.../__tests__/x402-app-earnings.test.ts`).
+  `cloud/shared/.../__tests__/x402-app-earnings.test.ts`).
 - Confirm `Dashboard → Apps → <app> → Earnings` (and `Dashboard → Earnings`)
   shows lifetime / withdrawable / by-source totals climbing after step 3.
 

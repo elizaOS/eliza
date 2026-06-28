@@ -34,7 +34,7 @@ const SUPPORTS_VITEST_MOCK_API =
   typeof (vi as unknown as { importActual?: unknown }).importActual === "function";
 const d = SUPPORTS_VITEST_MOCK_API ? describe : describe.skip;
 
-// --- Required env BEFORE any imports of cloud-shared/db ---------------------
+// --- Required env BEFORE any imports of cloud/shared/db ---------------------
 // PGlite in-process; receive addresses for all three networks so config is
 // `enabled`. RPC URLs go through the mocked viem transport, so values don't
 // matter beyond being non-empty.

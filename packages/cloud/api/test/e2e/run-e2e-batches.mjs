@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(testDir, "..", "..");
-const repoRoot = join(appRoot, "..", "..");
-const cloudSharedRoot = join(repoRoot, "packages", "cloud-shared");
+const repoRoot = join(appRoot, "..", "..", "..");
+const cloudSharedRoot = join(repoRoot, "packages", "cloud", "shared");
 const rmRecursiveScript = join(
   repoRoot,
   "packages",

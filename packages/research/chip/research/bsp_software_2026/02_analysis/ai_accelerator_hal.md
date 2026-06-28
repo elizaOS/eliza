@@ -38,7 +38,7 @@ gate-listed NPU evidence in
   ARM Ethos-U, Vulkan, and a `custom` path for arbitrary accelerators.
 - ExecuTorch is the natural target for Eliza models exported from PyTorch
   via `torch.export`. The Eliza compiler in
-  `packages/chip/compiler/` and the runtime in
+  `packages/research/chip/compiler/` and the runtime in
   `compiler/runtime/e1_npu_runtime.py` are the right place to host an
   ExecuTorch backend that emits NPU programs.
 

@@ -1,9 +1,9 @@
 # Critical Assessment: SSD AiNex Codebase Port to elizaOS/Eliza
 
-**Scope**: `/media/shaw/Extreme SSD/hyperscape-robot-workspace/` and sibling directories.  
-**Target**: Porting to `/path/to/eliza/packages/robot/` (Python) and `/path/to/eliza/plugins/plugin-ainex/` (TypeScript).  
-**Assessment Date**: 2025-05-18  
-**Total SSD Codebase Size**: 14G  
+**Scope**: `/media/shaw/Extreme SSD/hyperscape-robot-workspace/` and sibling directories.
+**Target**: Porting to `/path/to/eliza/packages/research/robot/` (Python) and `/path/to/eliza/plugins/plugin-ainex/` (TypeScript).
+**Assessment Date**: 2025-05-18
+**Total SSD Codebase Size**: 14G
 
 ---
 
@@ -26,7 +26,7 @@
 | `GAIT_SOURCE_CODE.py` | Root file: Hiwonder gait primitives (Bezier, cubic spline) | **DIRECT** | Self-contained numpy; ~360 LOC; critical for gait baseline |
 | `report.md` | Architecture narrative + prior art analysis | **REFERENCE-ONLY** | Excellent framing; 200+ lines of design rationale |
 
-**Summary**: 
+**Summary**:
 - **Direct port**: `ainex-robot-code/` (bridge, training/mujoco, training/rl, perception, eliza Python plugin)
 - **Refactor**: Consolidate parallel `training/` if separate; check for overlap
 - **Skip**: Game assets, multi-robot orchestration, CAD, parallel Eliza fork
@@ -232,7 +232,7 @@ All use `JAX_PLATFORMS=cpu pytest` (no GPU required for unit tests).
 ## 5. Checkpoints Inventory
 
 ### Location & Size
-Path: `/media/shaw/Extreme SSD/hyperscape-robot-workspace/ainex-robot-code/checkpoints/`  
+Path: `/media/shaw/Extreme SSD/hyperscape-robot-workspace/ainex-robot-code/checkpoints/`
 Total: **2.2G** across 20 directories
 
 ### Checkpoint Directory Listing
@@ -262,7 +262,7 @@ Total files per checkpoint: config.json (~1.7K), metrics.json (~1.3K)
 ## 6. Hiwonder Gait: GAIT_SOURCE_CODE.py
 
 ### File Location & Size
-`/media/shaw/Extreme SSD/hyperscape-robot-workspace/GAIT_SOURCE_CODE.py`  
+`/media/shaw/Extreme SSD/hyperscape-robot-workspace/GAIT_SOURCE_CODE.py`
 ~360 lines, pure NumPy, self-contained
 
 ### Key Functions
@@ -284,13 +284,13 @@ Total files per checkpoint: config.json (~1.7K), metrics.json (~1.3K)
 ### Integration Path
 
 1. **Currently**: Bezier gait is embedded in joystick.py (via mujoco_playground reference)
-2. **To port**: Extract `get_rz()` + `initialize_gait_phase()` to `packages/robot/gait.py`
+2. **To port**: Extract `get_rz()` + `initialize_gait_phase()` to `packages/research/robot/gait.py`
 3. **Missing**: Wire-up to actual MuJoCo foot site positions (requires env modifications)
 
 ### Completeness Check
 
-**Self-contained**: Yes (only `numpy`)  
-**Missing**: 
+**Self-contained**: Yes (only `numpy`)
+**Missing**:
 - No controller logic (i.e., no PD loop that uses desired_z)
 - No phase update step (caller must track φ and increment by phase_dt)
 - No multi-foot synchronization (caller must offset phases: left=0, right=π)
@@ -319,7 +319,7 @@ Total files per checkpoint: config.json (~1.7K), metrics.json (~1.3K)
 
 ### Actions (From `actions.py`)
 
-**walk_command_handler**: 
+**walk_command_handler**:
 - Validates `action ∈ {start, stop, enable, disable, enable_control, disable_control}`
 - Calls `client.walk_command(action)`
 - Returns ActionResult with success/message
@@ -350,7 +350,7 @@ Total files per checkpoint: config.json (~1.7K), metrics.json (~1.3K)
 
 ### Port Strategy for TypeScript
 
-**Current**: Python ElizaOS plugin (elizaos Python interop)  
+**Current**: Python ElizaOS plugin (elizaos Python interop)
 **Target**: Rewrite as TypeScript plugin in `/path/to/eliza/plugins/plugin-ainex/`
 
 **Feature parity needed**:
@@ -403,7 +403,7 @@ Manages:
 - Camera device: `--camera-device 0` (default)
 - Hz: `--hz 10.0` (default)
 
-**Risk**: 
+**Risk**:
 - OpenPI server contract not fully documented in codebase
 - Assumes synchronous HTTP `/infer` endpoint
 - No fallback if policy server is unavailable
@@ -541,28 +541,28 @@ type GroundedIntent = {
 ## 12. Recommended Port Order
 
 ### Phase 1: Foundation (Weeks 1–2)
-1. **Port bridge protocol** → `packages/robot/bridge_protocol.py`
+1. **Port bridge protocol** → `packages/research/robot/bridge_protocol.py`
    - CommandEnvelope, ResponseEnvelope, EventEnvelope
    - Command/event validators
    - Dependency: None
-   
-2. **Port WebSocket bridge client** → `packages/robot/bridge_client.py`
+
+2. **Port WebSocket bridge client** → `packages/research/robot/bridge_client.py`
    - Async command/event dispatch
    - Reconnection logic
    - Dependency: bridge_protocol
 
-3. **Port GAIT_SOURCE_CODE** → `packages/robot/gait.py`
+3. **Port GAIT_SOURCE_CODE** → `packages/research/robot/gait.py`
    - `get_rz()`, `initialize_gait_phase()`
    - No dependencies
    - Tested independently
 
 ### Phase 2: Simulation (Weeks 2–3)
-4. **Port MuJoCo environments** → `packages/robot/mujoco_env.py`
+4. **Port MuJoCo environments** → `packages/research/robot/mujoco_env.py`
    - AiNexEnv, Joystick, TargetReaching, GetUp
    - Include assets (XMLs)
    - Dependency: JAX, mujoco, mujoco-mjx, brax
 
-5. **Port RL skills** → `packages/robot/rl_skills/`
+5. **Port RL skills** → `packages/research/robot/rl_skills/`
    - brax_walk_skill, brax_target_skill, composite_skill
    - Checkpoint loading + inference
    - Dependency: MuJoCo envs, Brax
@@ -574,23 +574,23 @@ type GroundedIntent = {
    - Bridge client wrapper
    - Dependency: bridge_protocol, bridge_client
 
-7. **Execution service** → `packages/robot/execution_service.ts`
+7. **Execution service** → `packages/research/robot/execution_service.ts`
    - Policy monitoring, action dispatch
    - Telemetry aggregation
    - Dependency: bridge_client, RL skills
 
 ### Phase 4: Perception (Weeks 4–5)
-8. **Port perception pipeline** → `packages/robot/perception/`
+8. **Port perception pipeline** → `packages/research/robot/perception/`
    - Entity slot encoder, YOLO detector, ArUco fusion
    - Camera frame source
    - Dependency: opencv-python, transformers (YOLO), ArUco
 
-9. **OpenPI adapter** → `packages/robot/openpi_adapter.py`
+9. **OpenPI adapter** → `packages/research/robot/openpi_adapter.py`
    - Observation builder, action decoder
    - Dependency: perception, canonical schema
 
 ### Phase 5: Integration (Weeks 5–6)
-10. **Canonical schema** → `packages/robot/canonical_schema.py`
+10. **Canonical schema** → `packages/research/robot/canonical_schema.py`
     - EmbodiedContext, GroundedIntent, normalization helpers
     - Dependency: None (foundation)
 
@@ -656,7 +656,7 @@ plugin-ainex/ ← (execution_service.ts, bridge_client.py)
 | Tests (robot-critical) | 259 tests (20 core) | **DIRECT** | 2 days | Adapt to new package structure |
 | Assets (XMLs, URDFs) | 6 files (~200KB) | **DIRECT** | 0.5 day | Copy verbatim; check paths |
 
-**Total estimated porting effort**: **14–16 engineer-days** for foundational MVP  
+**Total estimated porting effort**: **14–16 engineer-days** for foundational MVP
 **Critical path**: Bridge → Env → Skills → Plugin → Demo (6–8 days)
 
 ---

@@ -4,7 +4,7 @@
 # gates. Exits non-zero if any expected-reject case is accepted, the positive
 # control is rejected, or either gate fails.
 #
-#   cd packages/chip && source tools/env.sh && tests/security/negative/run.sh
+#   cd packages/research/chip && source tools/env.sh && tests/security/negative/run.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

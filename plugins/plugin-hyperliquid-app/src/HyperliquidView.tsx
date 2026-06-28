@@ -60,6 +60,7 @@ export function HyperliquidView() {
     },
     markets: markets?.markets ?? [],
     positions: positions?.positions ?? [],
+    summary: positions?.summary ?? null,
     orders: orders?.orders ?? [],
     positionsBlockedReason: positions?.readBlockedReason ?? null,
     ordersBlockedReason: orders?.readBlockedReason ?? null,

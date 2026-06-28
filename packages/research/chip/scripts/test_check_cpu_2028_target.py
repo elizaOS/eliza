@@ -10,7 +10,7 @@ with a non-zero status and a FAIL message that matches the assertion.
 
 Run:
 
-    cd packages/chip && python3 -m unittest scripts.test_check_cpu_2028_target
+    cd packages/research/chip && python3 -m unittest scripts.test_check_cpu_2028_target
 
 or via the opt-in Make target:
 

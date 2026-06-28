@@ -15,7 +15,7 @@
 #     (AGENT_STATUS_FINAL_PLUGINS_READY) from the deeper status endpoint.
 #
 # All assertions are emitted as `KEY=value` markers on stdout and archived
-# under packages/chip/docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log
+# under packages/research/chip/docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log
 # by capture-aosp-evidence.sh's `cuttlefish-agent-smoke` mode, which this
 # script delegates to.
 #
@@ -26,7 +26,7 @@
 #   - --golden-audio / AOSP_AGENT_GOLDEN_AUDIO: 10s reference WAV
 #   - --golden-transcript / AOSP_AGENT_GOLDEN_TRANSCRIPT: reference text
 # Wakeword GGUF + stimulus and VAD fixture fall back to repo-shipped fixtures
-# under packages/chip/sw/aosp-device/fixtures/ when not provided explicitly.
+# under packages/research/chip/sw/aosp-device/fixtures/ when not provided explicitly.
 
 set -euo pipefail
 
@@ -44,7 +44,7 @@ usage: agent-smoke-riscv64.sh [options]
 
 Run install -> start -> end-to-end agent smoke against a live CVD and
 archive evidence under
-packages/chip/docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log.
+packages/research/chip/docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log.
 
 options:
   --aosp=PATH               AOSP checkout (required by capture-aosp-evidence.sh)

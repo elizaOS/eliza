@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_CONTRACT = REPO_ROOT / "packages/chip/docs/spec-db/tee-confidential-domain-contract.json"
-DEFAULT_POLICY = REPO_ROOT / "packages/chip/docs/spec-db/tee-iopmp-source-id-map.json"
+DEFAULT_CONTRACT = REPO_ROOT / "packages/research/chip/docs/spec-db/tee-confidential-domain-contract.json"
+DEFAULT_POLICY = REPO_ROOT / "packages/research/chip/docs/spec-db/tee-iopmp-source-id-map.json"
 
 
 def validate(contract: dict[str, object], policy: dict[str, object]) -> list[str]:

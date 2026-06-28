@@ -169,9 +169,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-shopify-ui": existing(
     "plugins/plugin-shopify-ui/src/routes.contract.test.ts",
   ),
-  "plugin-simple-views": coveredByHono(
-    "plugins/plugin-simple-views/src/routes-e2e.test.ts",
-  ),
   "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
   "plugin-social-alpha": existing(
     "plugins/plugin-social-alpha/src/routes.test.ts",
@@ -234,11 +231,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
     status: "exempt",
     reason:
       "steward-app routes proxy the hosted Steward cloud backend; they require live Steward credentials and have no keyless mock yet (tracked for the e2e-mock-infra issue).",
-  },
-  "plugin-vincent": {
-    status: "exempt",
-    reason:
-      "vincent routes broker the Lit/Vincent agent-wallet backend over live credentials; no deterministic fixture exists for the keyless lane yet.",
   },
   "plugin-vision": {
     status: "exempt",

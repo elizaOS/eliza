@@ -10,7 +10,7 @@ Bowling, Pilarski 2022): continual learning with meta-learned step-sizes.
 
 ## Why vendored
 
-`eliza-robot` (`packages/robot`) uses the Alberta continual-RL control subset to
+`eliza-robot` (`packages/research/robot`) uses the Alberta continual-RL control subset to
 train robot policies that learn a sequence of tasks **without catastrophic
 forgetting**, and benchmarks it head-to-head against standard RL (PPO). The
 framework is imported in-process from the robot's Python 3.12 environment.

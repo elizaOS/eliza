@@ -35,7 +35,7 @@ A 32-core AOSP host with:
 
 ## End-to-end operator command sequence
 
-Set `AOSP=/path/to/aosp` and `REPO=/path/to/packages/chip` for clarity.
+Set `AOSP=/path/to/aosp` and `REPO=/path/to/packages/research/chip` for clarity.
 
 ```sh
 # 1. Build the AOSP host artifacts and boot Cuttlefish (Task 28 + Task 29).
@@ -55,7 +55,7 @@ $REPO/sw/aosp-device/agent-smoke-riscv64.sh \
   --golden-transcript="$(cat $REPO/sw/aosp-device/fixtures/golden-stt-transcript.txt)" \
   --wakeword-model=/abs/path/to/wakeword.gguf
 # Wakeword stimulus and VAD speech+silence fixtures default to repo-shipped
-# files under packages/chip/sw/aosp-device/fixtures/.
+# files under packages/research/chip/sw/aosp-device/fixtures/.
 
 # Each phase can also be invoked directly for debugging:
 #   $REPO/sw/aosp-device/install-eliza-apk-riscv64.sh --apk=...

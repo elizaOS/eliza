@@ -2,7 +2,7 @@
 
     python -m eliza_robot.sim.mujoco.gait.demo --vx 0.2 --duration 5
 
-Optionally renders a 2 s GIF to ``packages/robot/out/gait_demo.gif``.
+Optionally renders a 2 s GIF to ``packages/research/robot/out/gait_demo.gif``.
 The ``out/`` directory is gitignored.
 """
 
@@ -23,7 +23,7 @@ logger = logging.getLogger("eliza_robot.gait.demo")
 
 def _out_dir() -> Path:
     """Return the package-local ``out/`` directory, creating it if absent."""
-    # gait/ -> mujoco/ -> sim/ -> eliza_robot/ -> packages/robot/
+    # gait/ -> mujoco/ -> sim/ -> eliza_robot/ -> packages/research/robot/
     pkg_root = Path(__file__).resolve().parents[4]
     out = pkg_root / "out"
     out.mkdir(parents=True, exist_ok=True)
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--render",
         action="store_true",
-        help="Render a 2 s GIF to packages/robot/out/gait_demo.gif",
+        help="Render a 2 s GIF to packages/research/robot/out/gait_demo.gif",
     )
     parser.add_argument("--swing-height", type=float, default=0.08)
     parser.add_argument("--cycle-hz", type=float, default=4.1)

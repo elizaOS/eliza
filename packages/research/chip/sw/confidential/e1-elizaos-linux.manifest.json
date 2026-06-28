@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedBy": "packages/chip/scripts/check_tee_image_manifest.py (06 WI-3 fixture)",
+  "generatedBy": "packages/research/chip/scripts/check_tee_image_manifest.py (06 WI-3 fixture)",
   "summary": "E1 riscv64 elizaOS-Linux confidential guest image manifest (fixture). Validates against the SHARED OS schema packages/os/release/schema/confidential-image-manifest.schema.json (no copy). substrate=cove, builder=buildroot-elizaos, architecture=riscv64. The image build is BLOCKED on a riscv64 CoVE build host; component digests are golden placeholders pending the reproducible build, so reproducibility.confirmed is false and the checker proves schema-conformance + digest shape + any present-component digest recompute only.",
   "image": {
     "profile": "confidential",
@@ -69,6 +69,6 @@
   "gate": {
     "name": "confidential-image-manifest-check",
     "blockedOn": "riscv64 CoVE build host + meta-confidential/buildroot-elizaos reproducible build",
-    "provingCommand": "python3 packages/chip/scripts/check_tee_image_manifest.py"
+    "provingCommand": "python3 packages/research/chip/scripts/check_tee_image_manifest.py"
   }
 }

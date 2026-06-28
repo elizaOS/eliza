@@ -2,8 +2,8 @@
 
 Profiles are how multi-robot support is plumbed through `eliza_robot`. The
 first shipping profile is `hiwonder-ainex`; add a new robot by dropping a
-`profile.yaml` into `packages/robot/profiles/<id>/` and the matching assets
-into `packages/robot/assets/profiles/<id>/`.
+`profile.yaml` into `packages/research/robot/profiles/<id>/` and the matching assets
+into `packages/research/robot/assets/profiles/<id>/`.
 """
 
 from eliza_robot.profiles.schema import (

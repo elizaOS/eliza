@@ -41,7 +41,7 @@ Every 2025-flagship Android-class AP runs a 64-bit total physical bus = 4 channe
 | Coherent fabric | Arm CMN-S3 / CMN-700 (AMBA 5 CHI), TileLink-C, AXI4 + ACE | CMN-S3 is Arm's current Neoverse / mobile-server mesh; native AMBA-5 CHI |
 | Display compression | AFBC (Arm), AFRC (random-access), ASTC | AFBC lossless, 50% BW reduction between GPU/VPU/DPU |
 
-## B. Current state in `packages/chip`
+## B. Current state in `packages/research/chip`
 
 Repo-grounded:
 

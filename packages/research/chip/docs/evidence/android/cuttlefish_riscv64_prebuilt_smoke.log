@@ -53,10 +53,10 @@ eliza-evidence: attempt_5_failure_layer=none_reached_userspace
 eliza-evidence: attempt_5_root_cause=rebuilt qemu 10.1.5 with -Dvnc=enabled -Dpixman=enabled after staging pixman from external/oss-cad-suite/lib/libpixman-1.so.0 + external/magic-deps/usr/include/pixman-1 into external/qemu-deps/sysroot; both virtio-gpu-pci and -vnc now accepted; OpenSBI handed off, kernel booted, Android init started services through bootanim/zygote/surfaceflinger/adbd; adb on 0.0.0.0:6520 was queryable
 eliza-evidence: attempt_5_guest_uptime_when_snapshot_taken_s=1409
 eliza-evidence: attempt_5_kernel_log_path=<home>/.local/cuttlefish/images/riscv64/cf/cuttlefish/instances/cvd-1/logs/kernel.log
-eliza-evidence: attempt_5_kernel_log_snapshot_path=packages/chip/docs/evidence/android/cuttlefish_riscv64_kernel.log.20260520T110103Z.txt
+eliza-evidence: attempt_5_kernel_log_snapshot_path=packages/research/chip/docs/evidence/android/cuttlefish_riscv64_kernel.log.20260520T110103Z.txt
 eliza-evidence: attempt_5_kernel_log_snapshot_sha256=a30de667a0cb0d5a1abcc2bc3d8545fb91e48806fc8d2634e3e6dceca0c2ebc8
 eliza-evidence: attempt_5_kernel_log_snapshot_lines=4210
-eliza-evidence: attempt_5_boot_summary_path=packages/chip/docs/evidence/android/cuttlefish_riscv64_boot_summary.20260520T110103Z.txt
+eliza-evidence: attempt_5_boot_summary_path=packages/research/chip/docs/evidence/android/cuttlefish_riscv64_boot_summary.20260520T110103Z.txt
 eliza-evidence: attempt_5_boot_summary_sha256=3e8f9c593650f33bd494dcbea70688843c1622b6f06061d36b7a284fcfa196c2
 eliza-evidence: attempt_5_launcher_log_sha256=c7757de8df55faad958de864866be4d974bbd34a7654aaf553a2eb5d6338dcd5
 eliza-evidence: attempt_5_kernel_log_live_sha256_at_snapshot=73f7b088eb0a69cd6ba96456a782e7181d584bec3a7cdb5d0d409879ece49cf7
@@ -83,7 +83,7 @@ eliza-evidence: failing_step=none_until_operator_terminated; sys_boot_completed_
 eliza-evidence: artifact_set_integrity=ok
 eliza-evidence: blockers_resolved=host_qemu_virtio_gpu_disabled,host_qemu_vnc_disabled
 eliza-evidence: blockers_remaining=tcg_riscv64_framework_boot_wall_time_under_host_load
-eliza-evidence: remediation_doc=packages/chip/sw/aosp-device/CUTTLEFISH_PREBUILT.md#smoke-launch-outcome-on-this-host-2026-05-19
+eliza-evidence: remediation_doc=packages/research/chip/sw/aosp-device/CUTTLEFISH_PREBUILT.md#smoke-launch-outcome-on-this-host-2026-05-19
 eliza-evidence: next_step_command=re-run launch_cvd on an idle host with --memory_mb=8192 --cpus=8 and wait for sys.boot_completed=1 (expect ~30-60 min on TCG-riscv64 even when host is idle)
 eliza-evidence: status=RESOLVED_QEMU_VIRTIO_GPU_AND_VNC_GAP_FULL_BOOT_REQUIRES_IDLE_HOST
 RESULT=0

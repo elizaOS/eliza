@@ -9,7 +9,7 @@ Provides `ElizaCloudClient` — a typed fetch wrapper for every endpoint exposed
 ## Layout
 
 ```
-packages/cloud-sdk/
+packages/cloud/sdk/
   src/
     index.ts                  Main barrel — re-exports everything below
     client.ts                 ElizaCloudClient (the primary class; all high-level methods)
@@ -97,19 +97,19 @@ import { MockCloudSetupSessionService, DEFAULT_SETUP_POLICY, isActionAllowed }
 ## Commands
 
 ```bash
-bun run --cwd packages/cloud-sdk build          # Compile to dist/ via build.ts
-bun run --cwd packages/cloud-sdk typecheck      # tsgo --noEmit
-bun run --cwd packages/cloud-sdk test           # Unit tests in src/
-bun run --cwd packages/cloud-sdk test:e2e       # Live e2e (requires env flags below)
-bun run --cwd packages/cloud-sdk lint           # biome check
-bun run --cwd packages/cloud-sdk lint:fix       # biome check --write
+bun run --cwd packages/cloud/sdk build          # Compile to dist/ via build.ts
+bun run --cwd packages/cloud/sdk typecheck      # tsgo --noEmit
+bun run --cwd packages/cloud/sdk test           # Unit tests in src/
+bun run --cwd packages/cloud/sdk test:e2e       # Live e2e (requires env flags below)
+bun run --cwd packages/cloud/sdk lint           # biome check
+bun run --cwd packages/cloud/sdk lint:fix       # biome check --write
 ```
 
 Route generation (run from repo root via scripts/):
 
 ```bash
-node packages/cloud-sdk/scripts/generate-public-routes.mjs  # Regenerate src/public-routes.ts
-node packages/cloud-sdk/scripts/audit-api-routes.mjs        # Verify generated wrappers vs route tree
+node packages/cloud/sdk/scripts/generate-public-routes.mjs  # Regenerate src/public-routes.ts
+node packages/cloud/sdk/scripts/audit-api-routes.mjs        # Verify generated wrappers vs route tree
 ```
 
 ## Config / env vars
@@ -148,8 +148,8 @@ The SDK reads no env vars at runtime — callers must supply credentials via `El
 **Regenerate public routes after changing the Cloud API route tree:**
 
 ```bash
-node packages/cloud-sdk/scripts/generate-public-routes.mjs
-node packages/cloud-sdk/scripts/audit-api-routes.mjs
+node packages/cloud/sdk/scripts/generate-public-routes.mjs
+node packages/cloud/sdk/scripts/audit-api-routes.mjs
 ```
 
 `src/public-routes.ts` is fully generated — never edit it by hand.

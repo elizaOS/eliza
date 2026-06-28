@@ -1,18 +1,14 @@
 // @vitest-environment jsdom
 //
-// Render tests for the GUI (and XR-reused) ViewManagerView React component.
-// Drives the real component against a stubbed `fetch` and asserts that
-// populated card data renders and that every control's behavior fires the
-// correct loopback request. The XR view reuses this exact export (see
-// src/index.ts views[]), so the same component covers both viewTypes.
+// Behavior tests for the consolidated ViewManagerView wrapper. It owns the live
+// GET /api/views fetch and the open→navigate handoff, and renders the single
+// presentational ViewManagerSpatialView inside a <SpatialSurface> (the SAME
+// export drives gui and xr — see src/index.ts views[]). These drive the real
+// wrapper against a stubbed `fetch` and assert the populated list renders and
+// that each control fires the correct loopback request.
 
-import {
-	cleanup,
-	fireEvent,
-	render,
-	screen,
-	waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ViewManagerView } from "./ViewManagerView";
 
@@ -70,8 +66,8 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe("ViewManagerView (gui/xr) render", () => {
-	it("renders the populated card grid with labels, paths, count, and status icons", async () => {
+describe("ViewManagerView (gui/xr) wrapper", () => {
+	it("fetches GET /api/views (no viewType qs) and renders the populated list", async () => {
 		const { calls } = stubFetch(({ url }) => {
 			if (url === "/api/views") return jsonResponse(guiViews);
 			throw new Error(`Unexpected request: ${url}`);
@@ -79,33 +75,25 @@ describe("ViewManagerView (gui/xr) render", () => {
 
 		render(<ViewManagerView />);
 
-		// Wait for the populated grid (both labels) to render.
+		// Both labels render once the snapshot lands.
 		await screen.findByText("Wallet");
 		expect(screen.getByText("Feed")).toBeTruthy();
 
-		// Paths render as the subtitle for each card.
+		// Paths render as the muted subtitle for each row.
 		expect(screen.getByText("/wallet")).toBeTruthy();
 		expect(screen.getByText("/feed")).toBeTruthy();
 
-		// Header count reflects views.length once loading completes.
-		expect(screen.getByText("2")).toBeTruthy();
+		// Per-view open/available state: available -> "ready", unavailable -> "missing".
+		expect(screen.getByText("ready")).toBeTruthy();
+		expect(screen.getByText("missing")).toBeTruthy();
 
-		// Available -> CheckCircle2 (aria-label Available); unavailable -> XCircle.
-		expect(screen.getByLabelText("Available")).toBeTruthy();
-		expect(screen.getByLabelText("Unavailable")).toBeTruthy();
-
-		// Hero image src falls back to /api/views/<id>/hero when none provided.
-		const heroImgs = document.querySelectorAll("img");
-		const heroSrcs = Array.from(heroImgs).map((img) => img.getAttribute("src"));
-		expect(heroSrcs).toContain("/api/views/wallet/hero");
-		expect(heroSrcs).toContain("/api/views/feed/hero");
-
-		// The GUI list fetch hits GET /api/views with NO query string.
+		// The list fetch hits GET /api/views with NO query string (gui distinction).
 		expect(calls[0].url).toBe("/api/views");
 		expect(calls[0].init?.method ?? "GET").toBe("GET");
+		expect(calls[0].url).not.toContain("?viewType");
 	});
 
-	it("opens a card via POST navigate with NO ?viewType query string (gui distinction)", async () => {
+	it("opens a view via POST navigate with NO ?viewType query string (gui distinction)", async () => {
 		const { calls } = stubFetch(({ url }) => {
 			if (url === "/api/views") return jsonResponse(guiViews);
 			if (url === "/api/views/wallet/navigate")
@@ -113,13 +101,18 @@ describe("ViewManagerView (gui/xr) render", () => {
 			throw new Error(`Unexpected request: ${url}`);
 		});
 
-		render(<ViewManagerView />);
-		const card = await screen.findByLabelText("Open Wallet");
-		fireEvent.click(card);
+		const { container } = render(<ViewManagerView />);
+		await screen.findByText("Wallet");
+
+		// Each row carries an `open:<id>` Button that drives navigation.
+		const openWallet = container.querySelector<HTMLButtonElement>(
+			'[data-agent-id="open:wallet"]',
+		);
+		expect(openWallet).toBeTruthy();
+		fireEvent.click(openWallet as HTMLButtonElement);
 
 		await waitFor(() => {
-			const navCall = calls.find((c) => c.url.includes("/navigate"));
-			expect(navCall).toBeTruthy();
+			expect(calls.find((c) => c.url.includes("/navigate"))).toBeTruthy();
 		});
 
 		const navCall = calls.find((c) => c.url.includes("/navigate"));
@@ -132,24 +125,7 @@ describe("ViewManagerView (gui/xr) render", () => {
 		);
 	});
 
-	it("refresh button re-issues GET /api/views", async () => {
-		const { calls } = stubFetch(({ url }) => {
-			if (url === "/api/views") return jsonResponse(guiViews);
-			throw new Error(`Unexpected request: ${url}`);
-		});
-
-		render(<ViewManagerView />);
-		await screen.findByText("Wallet");
-		expect(calls.filter((c) => c.url === "/api/views")).toHaveLength(1);
-
-		fireEvent.click(screen.getByLabelText("Refresh views"));
-
-		await waitFor(() => {
-			expect(calls.filter((c) => c.url === "/api/views")).toHaveLength(2);
-		});
-	});
-
-	it("renders the EmptyState for an empty payload", async () => {
+	it("renders the empty state for an empty payload", async () => {
 		stubFetch(({ url }) => {
 			if (url === "/api/views") return jsonResponse({ views: [] });
 			throw new Error(`Unexpected request: ${url}`);
@@ -157,11 +133,11 @@ describe("ViewManagerView (gui/xr) render", () => {
 
 		render(<ViewManagerView />);
 		await screen.findByText("None");
-		// No card buttons should be present.
-		expect(screen.queryByLabelText(/^Open /)).toBeNull();
+		// No open controls should be present.
+		expect(document.querySelector('[data-agent-id^="open:"]')).toBeNull();
 	});
 
-	it("renders the error branch when the fetch resolves non-ok (HTTP 500)", async () => {
+	it("surfaces the error branch when the fetch resolves non-ok (HTTP 500)", async () => {
 		stubFetch(({ url }) => {
 			if (url === "/api/views")
 				return jsonResponse({ error: "boom" }, { status: 500 });
@@ -170,10 +146,9 @@ describe("ViewManagerView (gui/xr) render", () => {
 
 		render(<ViewManagerView />);
 		await screen.findByText("HTTP 500");
-		expect(screen.queryByText("None")).toBeNull();
 	});
 
-	it("shows 'Loading' before the fetch resolves", async () => {
+	it("shows 'loading' before the fetch resolves", async () => {
 		let resolveFetch: ((r: Response) => void) | undefined;
 		const pending = new Promise<Response>((r) => {
 			resolveFetch = r;
@@ -182,18 +157,16 @@ describe("ViewManagerView (gui/xr) render", () => {
 		vi.stubGlobal("fetch", mock);
 
 		render(<ViewManagerView />);
-		// Loading text is rendered synchronously before the promise resolves.
-		expect(screen.getByText("Loading")).toBeTruthy();
-		// The count span is hidden while loading.
-		expect(screen.queryByText("2")).toBeNull();
+		// The header reports loading synchronously before the promise resolves.
+		expect(screen.getByText("loading")).toBeTruthy();
 
 		resolveFetch?.(jsonResponse(guiViews));
 		await screen.findByText("Wallet");
 	});
 
-	it("collapses duplicate gui/xr/tui declarations of one id into a single card with modality badges", async () => {
-		// /api/views can return the same logical view once per surface. The card
-		// grid must show it ONCE, with one chip per surface (no "Phone / Phone XR /
+	it("collapses duplicate gui/xr/tui declarations of one id into a single row with modality chips", async () => {
+		// /api/views can return the same logical view once per surface. The list
+		// must show it ONCE, with one chip per surface (no "Phone / Phone XR /
 		// Phone TUI" duplicates).
 		const dupViews = {
 			views: [
@@ -228,18 +201,15 @@ describe("ViewManagerView (gui/xr) render", () => {
 			throw new Error(`Unexpected request: ${url}`);
 		});
 
-		render(<ViewManagerView />);
+		const { container } = render(<ViewManagerView />);
+		await screen.findByText("Phone");
 
-		// Exactly one open-card button for the collapsed id, labelled from the gui
-		// base ("Phone" — no surface suffix).
-		const cards = await screen.findAllByLabelText(/^Open Phone/);
-		expect(cards).toHaveLength(1);
-		expect(screen.getByLabelText("Open Phone")).toBeTruthy();
+		// Exactly one open control for the collapsed id, labelled from the gui base.
+		const openButtons = container.querySelectorAll('[data-agent-id^="open:"]');
+		expect(openButtons).toHaveLength(1);
+		expect(container.querySelector('[data-agent-id="open:phone"]')).toBeTruthy();
 		expect(screen.queryByText("Phone XR")).toBeNull();
 		expect(screen.queryByText("Phone TUI")).toBeNull();
-
-		// Header count reflects the single collapsed view.
-		expect(screen.getByText("1")).toBeTruthy();
 
 		// One modality chip per surface, ordered gui · xr · tui.
 		expect(screen.getByText("gui")).toBeTruthy();
@@ -247,10 +217,10 @@ describe("ViewManagerView (gui/xr) render", () => {
 		expect(screen.getByText("tui")).toBeTruthy();
 	});
 
-	it("XR reuses the same component and fetches the gui list (no viewType qs)", async () => {
-		// The xr entry in src/index.ts uses componentExport "ViewManagerView" —
-		// the exact export rendered here — and fetchViewEntries() is called with
-		// no viewType, so the xr mount hits GET /api/views with no query string.
+	it("XR reuses the same export and fetches the gui list (no viewType qs)", async () => {
+		// The xr entry in src/index.ts uses componentExport "ViewManagerView" — the
+		// exact export rendered here — and fetchViewEntries() is called with no
+		// viewType, so the xr mount hits GET /api/views with no query string.
 		const { calls } = stubFetch(({ url }) => {
 			if (url === "/api/views") return jsonResponse(guiViews);
 			throw new Error(`Unexpected request: ${url}`);

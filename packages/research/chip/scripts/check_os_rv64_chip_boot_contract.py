@@ -57,10 +57,10 @@ GENERATED_AP_CAPTURE_WRAPPER = (
     "packages/os/linux/elizaos/scripts/capture-generated-ap-chip-evidence.sh"
 )
 CPU_AP_CAPTURE_COMMAND_DERIVER = (
-    "python3 packages/chip/scripts/wire_cpu_ap_capture_commands.py --format json"
+    "python3 packages/research/chip/scripts/wire_cpu_ap_capture_commands.py --format json"
 )
 CPU_AP_CAPTURE_SHELL_DERIVER = (
-    "python3 packages/chip/scripts/wire_cpu_ap_capture_commands.py --format shell"
+    "python3 packages/research/chip/scripts/wire_cpu_ap_capture_commands.py --format shell"
 )
 GENERATED_AP_BOOT_CAPTURE_COMMAND = (
     f'eval "$({CPU_AP_CAPTURE_SHELL_DERIVER})" && '
@@ -75,7 +75,7 @@ STAGE_RISCV64_AGENT_RUNTIME_COMMAND = (
 )
 CAPTURE_TRANSCRIPT_PLACEHOLDER = "/path/to/generated-ap-serial.log"
 AGENT_TRANSCRIPT_PLACEHOLDER = "/path/to/agent-health.log"
-RECHECK_COMMAND = "python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
+RECHECK_COMMAND = "python3 packages/research/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
 
 CHIP_BOOT_EVIDENCE_IDS = {
     "generated-eliza-ap-boot",

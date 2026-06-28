@@ -4,7 +4,7 @@ Probes every joint with small deltas around its current measured pose
 (legs ±0.03 rad, arms ±0.05, head ±0.10), re-standing between groups.
 Writes the resulting calibration to:
 
-    packages/robot/calibration/ainex_<host>_full.json
+    packages/research/robot/calibration/ainex_<host>_full.json
 
 This is the complete calibration set for sim2real compensation —
 includes the 12 leg joints the original (safe-subset) sys-ID

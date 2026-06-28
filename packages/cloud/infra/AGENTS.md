@@ -14,7 +14,7 @@ Nothing in this package is imported by TypeScript code. The YAML/Terraform/shell
 ## Layout
 
 ```
-packages/cloud-infra/
+packages/cloud/infra/
   cloud/
     .env.example                   # Local-dev secrets template; copy to .env
     docker-compose.yml             # Self-hosted Supabase Storage (Postgres + storage-api)
@@ -89,7 +89,7 @@ packages/cloud-infra/
 
 ### Local dev cluster (`cloud/local/`)
 
-`setup.sh` brings up a `kind` cluster with namespaces `eliza-agents` and `eliza-infra`, applies the manifests (redis alias, redis-rest REST adapter, external-service aliases), then Helm-installs KEDA, metrics-server, the CloudNativePG operator + a CNPG Postgres cluster, and Bitnami Redis using the values files in this directory. It also builds the Pepr Server operator (from `cloud-services/operator`) and the `agent-server` image, then applies the `shared-*.yaml` Server CRs.
+`setup.sh` brings up a `kind` cluster with namespaces `eliza-agents` and `eliza-infra`, applies the manifests (redis alias, redis-rest REST adapter, external-service aliases), then Helm-installs KEDA, metrics-server, the CloudNativePG operator + a CNPG Postgres cluster, and Bitnami Redis using the values files in this directory. It also builds the Pepr Server operator (from `cloud/services/operator`) and the `agent-server` image, then applies the `shared-*.yaml` Server CRs.
 
 The `shared-eliza.yaml` manifest is a `eliza.ai/v1alpha1` Server custom resource — it requires the Pepr operator (which `setup.sh` deploys) to be reconciled.
 
@@ -108,7 +108,7 @@ Three Terraform roots:
 - **`apps-data-plane/`** — manages Hetzner data-plane app server resources.
 - **`apps-shared/`** — manages shared Hetzner infrastructure.
 
-The **data plane** is not in Terraform: dedicated robot nodes (`eliza-core-{env}-N`) are registered in the `docker_nodes` table (authoritative; `CONTAINERS_DOCKER_NODES` env only seeds when empty) and extra burst capacity (`eliza-core-<hex>`) is minted at runtime by `packages/cloud-shared/src/lib/services/containers/node-autoscaler.ts` via the Hetzner Cloud API.
+The **data plane** is not in Terraform: dedicated robot nodes (`eliza-core-{env}-N`) are registered in the `docker_nodes` table (authoritative; `CONTAINERS_DOCKER_NODES` env only seeds when empty) and extra burst capacity (`eliza-core-<hex>`) is minted at runtime by `packages/cloud/shared/src/lib/services/containers/node-autoscaler.ts` via the Hetzner Cloud API.
 
 Each control-plane VM runs:
 - `eliza-provisioning-worker` — job queue consumer (systemd unit, deployed by CI)
@@ -125,15 +125,15 @@ Numbered [Chainsaw](https://kyverno.github.io/chainsaw/) suites (`cloud/tests/0*
 ## Commands
 
 ```bash
-bun run --cwd packages/cloud-infra test       # Run YAML/manifest smoke tests (Bun test)
+bun run --cwd packages/cloud/infra test       # Run YAML/manifest smoke tests (Bun test)
 ```
 
 Local cluster scripts (run directly, not via bun):
 ```bash
-bash packages/cloud-infra/cloud/local/setup.sh       # Bootstrap kind cluster
-bash packages/cloud-infra/cloud/local/teardown.sh    # Destroy kind cluster
-bash packages/cloud-infra/cloud/local/smoke-test.sh  # Liveness checks
-docker compose --project-directory packages/cloud-infra/cloud up -d storage  # Start local S3
+bash packages/cloud/infra/cloud/local/setup.sh       # Bootstrap kind cluster
+bash packages/cloud/infra/cloud/local/teardown.sh    # Destroy kind cluster
+bash packages/cloud/infra/cloud/local/smoke-test.sh  # Liveness checks
+docker compose --project-directory packages/cloud/infra/cloud up -d storage  # Start local S3
 ```
 
 ## Config / env vars

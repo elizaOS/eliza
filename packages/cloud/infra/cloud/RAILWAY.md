@@ -8,14 +8,14 @@ is heading.
 | Surface | Runtime | Repo path | Config |
 |---|---|---|---|
 | `cloud-frontend` (dashboard SPA) | Cloudflare Pages | `packages/cloud-frontend/` | Wrangler / Pages project |
-| `cloud-api` (REST + auth + billing) | Cloudflare Worker | `packages/cloud-api/` | `apps/api/wrangler.toml` (env vars, secrets via `wrangler secret`) |
-| `headscale` (Tailscale coordination server for agents + customer tunnels) | Hetzner control-plane VM | `packages/cloud-services/headscale/` | armed via `arm-headscale-control-plane.yml` (ACL `acl.hujson`) |
-| `tunnel-proxy` (public HTTPS -> tailnet bridge, customer-tunnel path) | Railway | `packages/cloud-services/tunnel-proxy/` | `railway.toml`, `Dockerfile` |
-| `gateway-discord` | Cloudflare Worker | `packages/cloud-services/gateway-discord/` | own `wrangler.toml` |
-| `gateway-webhook` | Cloudflare Worker | `packages/cloud-services/gateway-webhook/` | own `wrangler.toml` |
-| `agent-server` (per-customer agent runtime) | Hetzner containers | `packages/cloud-services/agent-server/` | provisioned via `container-control-plane` |
-| `container-control-plane` (provisioning API) | Hetzner / VPS | `packages/cloud-services/container-control-plane/` | env-driven |
-| Database migrations | GitHub Actions -> Neon (Postgres) | `packages/cloud-api/db/` | `.github/workflows/cloud-deploy-backend.yml` |
+| `cloud-api` (REST + auth + billing) | Cloudflare Worker | `packages/cloud/api/` | `apps/api/wrangler.toml` (env vars, secrets via `wrangler secret`) |
+| `headscale` (Tailscale coordination server for agents + customer tunnels) | Hetzner control-plane VM | `packages/cloud/services/headscale/` | armed via `arm-headscale-control-plane.yml` (ACL `acl.hujson`) |
+| `tunnel-proxy` (public HTTPS -> tailnet bridge, customer-tunnel path) | Railway | `packages/cloud/services/tunnel-proxy/` | `railway.toml`, `Dockerfile` |
+| `gateway-discord` | Cloudflare Worker | `packages/cloud/services/gateway-discord/` | own `wrangler.toml` |
+| `gateway-webhook` | Cloudflare Worker | `packages/cloud/services/gateway-webhook/` | own `wrangler.toml` |
+| `agent-server` (per-customer agent runtime) | Hetzner containers | `packages/cloud/services/agent-server/` | provisioned via `container-control-plane` |
+| `container-control-plane` (provisioning API) | Hetzner / VPS | `packages/cloud/services/container-control-plane/` | env-driven |
+| Database migrations | GitHub Actions -> Neon (Postgres) | `packages/cloud/api/db/` | `.github/workflows/cloud-deploy-backend.yml` |
 
 The deprecated agent VPS deploy still exists behind the
 `deploy_legacy_vps` `workflow_dispatch` input on
@@ -34,19 +34,19 @@ The previous Railway-hosted headscale runtime was decommissioned on 2026-06-17.
   front of local headscale).
 - Public domain: `headscale.elizacloud.ai` → CP VM (DNS points at the
   control plane).
-- ACL source of truth: [`packages/cloud-services/headscale/acl.hujson`](../../cloud-services/headscale/acl.hujson),
+- ACL source of truth: [`packages/cloud/services/headscale/acl.hujson`](../../services/headscale/acl.hujson),
   deployed by `arm-headscale-control-plane.yml`.
-- Provisioning runbook: [`packages/cloud-services/headscale/DEPLOY.md`](../../cloud-services/headscale/DEPLOY.md).
+- Provisioning runbook: [`packages/cloud/services/headscale/DEPLOY.md`](../../services/headscale/DEPLOY.md).
 
 ## Railway services in detail
 
 ### `tunnel-proxy`
 
 - Builder: Dockerfile (Go binary).
-- Healthcheck: `GET /health` (served by [`main.go`](../../cloud-services/tunnel-proxy/main.go) line 117).
+- Healthcheck: `GET /health` (served by [`main.go`](../../services/tunnel-proxy/main.go) line 117).
 - Volume: `/var/lib/tunnel-proxy` (tsnet node identity).
 - Public domain: `tunnel.elizacloud.ai` + wildcard `*.tunnel.elizacloud.ai`.
-- Provisioning runbook: [`packages/cloud-services/headscale/DEPLOY.md`](../../cloud-services/headscale/DEPLOY.md) (covers both services).
+- Provisioning runbook: [`packages/cloud/services/headscale/DEPLOY.md`](../../services/headscale/DEPLOY.md) (covers both services).
 
 ### `bitrouter` — REMOVED
 
@@ -54,7 +54,7 @@ The Railway BitRouter model-router service was retired. The Cloudflare Worker
 (`cloud-api`) is now the model gateway: it calls native providers directly
 (Cerebras/OpenAI/Anthropic/Groq/Vast) and uses OpenRouter (BYOK,
 `OPENROUTER_API_KEY`) as the backup for models with no native key. See
-[`packages/cloud-infra/cloud/bitrouter/CLOUDFLARE_MIGRATION_PLAN.md`](./bitrouter/CLOUDFLARE_MIGRATION_PLAN.md).
+[`packages/cloud/infra/cloud/bitrouter/CLOUDFLARE_MIGRATION_PLAN.md`](./bitrouter/CLOUDFLARE_MIGRATION_PLAN.md).
 **Operator:** stop/delete the Railway `bitrouter` service.
 
 ## Where Railway is heading
@@ -83,13 +83,13 @@ Full classification, plan, owners, and outstanding items live in
 | `@aws-sdk/client-s3` (cloud-shared) | **Keep** | Cloudflare R2 / Supabase / generic S3 endpoint — SDK is provider-agnostic |
 | `@aws-sdk/client-kms` (cloud-shared encryption) | **Keep (optional)** | `LocalKMSProvider` (AES-256-GCM with `SECRETS_MASTER_KEY`) is the default. AWS KMS provider only fires when `AWS_KMS_KEY_ID` is set |
 | `legacy-gateway-discord-aws/` terraform | **Deleted** | n/a — was a stale duplicate |
-| `cloud-services/gateway-discord/terraform/` (EKS) | **Retire** | Gateway-discord is a Docker/Bun service; redeploy on Railway / Hetzner. Terraform + CI workflow kept until Railway path lands. |
+| `packages/cloud/services/gateway-discord/terraform/` (EKS) | **Retire** | Gateway-discord is a Docker/Bun service; redeploy on Railway / Hetzner. Terraform + CI workflow kept until Railway path lands. |
 | `packages/examples/aws/` Lambda example | **Keep** | Documentation example for users who want to deploy elizaOS on Lambda. Not part of Eliza Cloud infra. |
 | AWS ECR/ECS code | **Already removed** | Replaced by `container-control-plane` + Hetzner. README references are stale and have been pruned. |
 
 ## Removed: legacy fullstack `railway.toml`
 
-`packages/cloud-infra/cloud/railway.toml` used to deploy the old Next.js
+`packages/cloud/infra/cloud/railway.toml` used to deploy the old Next.js
 fullstack `cloud` app to Railway. Its healthcheck pointed at `/login`, a
 Next.js page route. That deployment is gone: `cloud-frontend` is a Vite SPA on
 Cloudflare Pages and `cloud-api` is a Cloudflare Worker. The file has been

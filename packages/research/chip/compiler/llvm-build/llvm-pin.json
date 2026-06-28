@@ -24,7 +24,7 @@
     "ThinLTO, BasicBlockSections + Propeller infrastructure, and Machine Function Splitter all evolve in trunk"
   ],
   "build_environment": {
-    "canonical": "Linux x86_64 container built from packages/chip/Dockerfile",
+    "canonical": "Linux x86_64 container built from packages/research/chip/Dockerfile",
     "container_image": "eliza-chip:linux-x86_64",
     "container_base_digest_source": "Dockerfile UBUNTU_DIGEST",
     "host_disallowed": "macOS arm64 host cannot build glibc-targeted RISC-V userspace; clang/llvm host-build is feasible but glibc cross-link tests require the Linux container",

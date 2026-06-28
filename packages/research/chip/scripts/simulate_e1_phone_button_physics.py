@@ -48,7 +48,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-ROOT = Path("/path/to/eliza/packages/chip")
+ROOT = Path("/path/to/eliza/packages/research/chip")
 PARAMS = ROOT / "mechanical/e1-phone/cad/e1_phone_params.yaml"
 REVIEW = ROOT / "mechanical/e1-phone/review"
 DATASHEET = (

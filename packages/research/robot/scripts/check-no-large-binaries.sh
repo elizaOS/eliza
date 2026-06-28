@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Fail CI if any tracked file under packages/robot/ exceeds 5 MB, except for
+# Fail CI if any tracked file under packages/research/robot/ exceeds 5 MB, except for
 # the known-source URDF / STL / MJCF XML directories (`assets/`).
 #
 # Gitignore cannot enforce file size. This gate is the enforcement point
-# referenced from packages/robot/AGENTS.md §4 and README.md.
+# referenced from packages/research/robot/AGENTS.md §4 and README.md.
 
 set -euo pipefail
 
 MAX_BYTES=$((5 * 1024 * 1024))
-PACKAGE_PREFIX="packages/robot/"
+PACKAGE_PREFIX="packages/research/robot/"
 # Source-asset prefixes that are allowed to exceed the threshold. These
 # host human-curated URDF / STL / MJCF XML for physical robots and are the
 # only place large binaries belong in-tree.
 ALLOW_PREFIXES=(
-  "packages/robot/assets/"
+  "packages/research/robot/assets/"
 )
 
 repo_root="$(git rev-parse --show-toplevel)"
