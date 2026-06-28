@@ -1,7 +1,12 @@
+import { resolveElizaCloudTopology } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import type { ElizaConfig } from "../config/config.ts";
-import { applyCloudConfigToEnv } from "./eliza.ts";
+import {
+  applyCloudConfigToEnv,
+  ensureProvisionedCloudContainerConfig,
+  shouldStartElizaCloudThinClient,
+} from "./eliza.ts";
+import { collectPluginNames } from "./plugin-collector.ts";
 
 // applyCloudConfigToEnv is the #8769 source change: a cloud-provisioned container
 // MUST use cloud (1536-dim) embeddings, never plugin-local-inference's 384-dim
@@ -16,6 +21,10 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_USE_RPC",
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_AGENT_ID",
+  "ELIZAOS_CLOUD_SMALL_MODEL",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -55,5 +64,97 @@ describe("applyCloudConfigToEnv cloud-container embeddings (#8769)", () => {
     expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBeUndefined();
     expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
+  });
+});
+
+describe("provisioned cloud container topology (#9887)", () => {
+  it("repairs a cloud-provisioned config that lost canonical routing fields", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZAOS_CLOUD_SMALL_MODEL = "small-test";
+
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        baseUrl: "https://cloud.example/api",
+        agentId: "agent-test",
+      },
+    } as ElizaConfig;
+
+    const changed = ensureProvisionedCloudContainerConfig(config);
+    const topology = resolveElizaCloudTopology(
+      config as Record<string, unknown>,
+    );
+
+    expect(changed).toBe(true);
+    expect(config.deploymentTarget).toEqual({
+      runtime: "cloud",
+      provider: "elizacloud",
+    });
+    expect(topology.runtime).toBe("cloud");
+    expect(topology.services.inference).toBe(true);
+    expect(config.serviceRouting?.llmText).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+      smallModel: "small-test",
+    });
+  });
+
+  it("forces cloud inference env from repaired managed-container topology", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(
+      resolveElizaCloudTopology(config as Record<string, unknown>).services
+        .inference,
+    ).toBe(true);
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
+    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBe("true");
+  });
+
+  it("keeps repaired managed containers off local-inference fallback", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+  });
+
+  it("keeps managed cloud containers on the full runtime, not the thin client", () => {
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+    } as ElizaConfig;
+
+    expect(shouldStartElizaCloudThinClient(config)).toBe(true);
+
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    expect(shouldStartElizaCloudThinClient(config)).toBe(false);
   });
 });

@@ -112,6 +112,7 @@ import {
   resolveServiceRoutingInConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import type { Vault } from "@elizaos/vault";
 
 type AccountPoolCredentialsOptions = {
@@ -1143,6 +1144,125 @@ function readEffectiveEnvValue(
   return trimEnvString(env[key]) ?? readConfigEnvValue(config, key);
 }
 
+function isProvisionedCloudContainer(env: NodeJS.ProcessEnv = process.env) {
+  return env.ELIZA_CLOUD_PROVISIONED === "1";
+}
+
+/** @internal Exported for regression coverage. */
+export function ensureProvisionedCloudContainerConfig(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (!isProvisionedCloudContainer(env)) {
+    return false;
+  }
+
+  const apiKey =
+    trimEnvString(config.cloud?.apiKey) ??
+    trimEnvString(env.ELIZAOS_CLOUD_API_KEY);
+  if (!apiKey) {
+    return false;
+  }
+
+  let changed = false;
+  const cloud = config.cloud ?? {};
+  const baseUrl =
+    trimEnvString(config.cloud?.baseUrl) ??
+    trimEnvString(env.ELIZAOS_CLOUD_BASE_URL);
+  const agentId =
+    trimEnvString(config.cloud?.agentId) ??
+    trimEnvString(env.ELIZA_CLOUD_AGENT_ID) ??
+    trimEnvString(env.WAIFU_ELIZA_CLOUD_AGENT_ID);
+
+  if (
+    config.cloud?.enabled !== true ||
+    config.cloud?.apiKey !== apiKey ||
+    (baseUrl && config.cloud?.baseUrl !== baseUrl) ||
+    (agentId && config.cloud?.agentId !== agentId)
+  ) {
+    config.cloud = {
+      ...cloud,
+      enabled: true,
+      apiKey,
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(agentId ? { agentId } : {}),
+    };
+    changed = true;
+  }
+
+  const deploymentTarget = resolveDeploymentTargetInConfig(
+    config as Record<string, unknown>,
+  );
+  if (
+    deploymentTarget.runtime !== "cloud" ||
+    deploymentTarget.provider !== "elizacloud"
+  ) {
+    config.deploymentTarget = {
+      runtime: "cloud",
+      provider: "elizacloud",
+    };
+    changed = true;
+  }
+
+  const topology = resolveElizaCloudTopology(config as Record<string, unknown>);
+  if (!topology.services.inference) {
+    const existingRouting = resolveServiceRoutingInConfig(
+      config as Record<string, unknown>,
+    );
+    const cloudRouting = buildDefaultElizaCloudServiceRouting({
+      includeInference: true,
+      nanoModel: trimEnvString(env.ELIZAOS_CLOUD_NANO_MODEL),
+      smallModel: trimEnvString(env.ELIZAOS_CLOUD_SMALL_MODEL),
+      mediumModel: trimEnvString(env.ELIZAOS_CLOUD_MEDIUM_MODEL),
+      largeModel: trimEnvString(env.ELIZAOS_CLOUD_LARGE_MODEL),
+      megaModel: trimEnvString(env.ELIZAOS_CLOUD_MEGA_MODEL),
+      responseHandlerModel: trimEnvString(
+        env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL,
+      ),
+      shouldRespondModel: trimEnvString(env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL),
+      actionPlannerModel: trimEnvString(env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL),
+      plannerModel: trimEnvString(env.ELIZAOS_CLOUD_PLANNER_MODEL),
+      responseModel: trimEnvString(env.ELIZAOS_CLOUD_RESPONSE_MODEL),
+      mediaDescriptionModel: trimEnvString(
+        env.ELIZAOS_CLOUD_MEDIA_DESCRIPTION_MODEL,
+      ),
+    });
+    config.serviceRouting = {
+      ...(existingRouting ?? {}),
+      ...cloudRouting,
+    };
+    changed = true;
+  }
+
+  if (changed) {
+    logger.warn(
+      "[eliza] Provisioned cloud container missing managed runtime topology; forcing Eliza Cloud routing in memory",
+    );
+  }
+
+  return changed;
+}
+
+/** @internal Exported for regression coverage. */
+export function shouldStartElizaCloudThinClient(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (isProvisionedCloudContainer(env)) {
+    return false;
+  }
+
+  const deploymentTarget = resolveDeploymentTargetInConfig(
+    config as Record<string, unknown>,
+  );
+  return Boolean(
+    deploymentTarget.runtime === "cloud" &&
+      deploymentTarget.provider === "elizacloud" &&
+      config.cloud?.apiKey &&
+      config.cloud?.agentId?.trim(),
+  );
+}
+
 function setConfigEnvValue(
   config: ElizaConfig,
   key: string,
@@ -1892,9 +2012,10 @@ export async function autoFetchCloudGithubToken(
  */
 export function applyCloudConfigToEnv(config: ElizaConfig): void {
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+  ensureProvisionedCloudContainerConfig(config);
   const cloud = config.cloud;
 
-  const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const isCloudContainer = isProvisionedCloudContainer();
   if (!cloud && !isCloudContainer) return;
   const topology = resolveElizaCloudTopology(config as Record<string, unknown>);
 
@@ -3372,6 +3493,7 @@ export async function startEliza(
     );
     applySandboxConnectorOwnership(process.env, config);
   }
+  ensureProvisionedCloudContainerConfig(config);
   // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
   // network, up to a 3s timeout each) without blocking. They only write
   // DISCORD_APPLICATION_ID and GITHUB_TOKEN respectively — env vars that no
@@ -3714,13 +3836,11 @@ export async function startEliza(
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
 
-  if (
-    deploymentTarget.runtime === "cloud" &&
-    deploymentTarget.provider === "elizacloud" &&
-    config.cloud?.apiKey &&
-    config.cloud?.agentId?.trim()
-  ) {
-    return startInCloudMode(config, config.cloud.agentId, opts);
+  const thinClientCloudAgentId = shouldStartElizaCloudThinClient(config)
+    ? config.cloud?.agentId?.trim()
+    : undefined;
+  if (thinClientCloudAgentId) {
+    return startInCloudMode(config, thinClientCloudAgentId, opts);
   }
 
   // 3. Build elizaOS Character from Eliza config
