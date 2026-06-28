@@ -285,7 +285,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/screenshare-gui-interactions.spec.ts",
       proves:
         "Exercises host start/open/copy/stop, remote connect, capability refresh, and request payloads.",
-      signals: ["host lifecycle", "Refresh capabilities", "screen-token-1"],
+      signals: ["host lifecycle", "capability refresh", "screen-token-1"],
     },
   ],
   "social-alpha": [
