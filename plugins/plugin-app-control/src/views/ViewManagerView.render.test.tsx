@@ -7,8 +7,13 @@
 // wrapper against a stubbed `fetch` and assert the populated list renders and
 // that each control fires the correct loopback request.
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { fireEvent } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ViewManagerView } from "./ViewManagerView";
 
@@ -207,7 +212,9 @@ describe("ViewManagerView (gui/xr) wrapper", () => {
 		// Exactly one open control for the collapsed id, labelled from the gui base.
 		const openButtons = container.querySelectorAll('[data-agent-id^="open:"]');
 		expect(openButtons).toHaveLength(1);
-		expect(container.querySelector('[data-agent-id="open:phone"]')).toBeTruthy();
+		expect(
+			container.querySelector('[data-agent-id="open:phone"]'),
+		).toBeTruthy();
 		expect(screen.queryByText("Phone XR")).toBeNull();
 		expect(screen.queryByText("Phone TUI")).toBeNull();
 
