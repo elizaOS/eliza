@@ -182,10 +182,10 @@ export { displayFacewearTextAction as displaySmartglassesTextAction } from "./ac
 export { facewearControlAction as smartglassesControlAction } from "./actions/facewear-control.ts";
 export { facewearStatusAction as smartglassesStatusAction } from "./actions/facewear-status.ts";
 export { facewearMicrophoneAction as smartglassesMicrophoneAction } from "./actions/microphone.ts";
-// Tri-modal view wrappers — the gui/xr/tui surfaces for the two own views. The
-// manifest declares these as the `componentExport` (bundle) + navTab targets.
-export { FacewearView } from "./components/FacewearView.tsx";
-export { SmartglassesPanelView } from "./components/SmartglassesPanelView.tsx";
+// NOTE: the React view wrappers (FacewearView / SmartglassesPanelView) are NOT
+// re-exported here — that drags React/@elizaos/ui into the Node agent bundle and
+// fails plugin load. The app loads them via the browser entry (src/register.ts)
+// + the Vite view bundle (componentExport from dist/views/bundle.js).
 export type {
   FacewearDeviceProfile,
   FacewearDeviceType,
