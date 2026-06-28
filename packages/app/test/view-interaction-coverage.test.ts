@@ -198,14 +198,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["Shopify create product", "Shopify inventory increase"],
     },
   ],
-  steward: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Exercises approval refresh, approve/reject flows, rejection reason, history filters, and table state.",
-      signals: ["steward interactions", "Confirm Reject", "2 transactions"],
-    },
-  ],
   wallet: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
@@ -397,7 +389,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(60);
+    expect(visualCases.length).toBe(58);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

@@ -53,8 +53,6 @@ export const VIEW_CASES: ViewCase[] = (
     ["polymarket", "tui", "/polymarket"],
     ["shopify", "gui", "/shopify"],
     ["shopify", "tui", "/shopify"],
-    ["steward", "gui", "/steward"],
-    ["steward", "tui", "/steward"],
     ["wallet", "gui", "/wallet"],
     ["wallet", "tui", "/wallet"],
     ["vector-browser", "gui", "/vector-browser"],
