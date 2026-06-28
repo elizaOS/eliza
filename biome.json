@@ -228,7 +228,6 @@
         "!packages/scenario-runner/**",
         "!packages/scripts/**",
         "!packages/security/**",
-        "!packages/soc2-verify/**",
         "!packages/test/**",
         "!packages/tui/**",
         "!packages/ui/**"

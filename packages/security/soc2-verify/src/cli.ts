@@ -50,7 +50,7 @@ function printHelp(): void {
     `@elizaos/soc2-verify — SOC2 control-verification harness
 
 Usage:
-  bun run packages/soc2-verify/src/cli.ts [options]
+  bun run packages/security/soc2-verify/src/cli.ts [options]
 
 Options:
   --out <dir>           Output directory (default: ./.soc2-evidence/<timestamp>)
@@ -78,11 +78,11 @@ function locateRoots(): { elizaRoot: string; outerRoot: string } {
     ? resolve(process.env.SOC2_OUTER_ROOT)
     : undefined;
   let cur = dirname(new URL(import.meta.url).pathname);
-  // soc2-verify/src -> soc2-verify -> packages -> eliza
+  // soc2-verify/src -> soc2-verify -> security -> packages -> eliza
   for (let i = 0; i < 6; i++) {
     if (
       existsSync(join(cur, "packages/security")) &&
-      existsSync(join(cur, "packages/soc2-verify"))
+      existsSync(join(cur, "packages/core"))
     ) {
       const outer = outerRootOverride ?? resolve(cur, "..");
       return { elizaRoot: cur, outerRoot: outer };

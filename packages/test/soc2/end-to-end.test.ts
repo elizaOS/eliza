@@ -13,7 +13,7 @@ import {
   hasCriticalFailures,
   runVerification,
   writeReport,
-} from "../../soc2-verify/src/index.js";
+} from "../../security/soc2-verify/src/index.js";
 
 const elizaRoot = resolve(__dirname, "../../..");
 const outerRoot = resolve(elizaRoot, "..");

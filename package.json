@@ -32,7 +32,7 @@
     "trajectory:inspect:test": "bun test packages/scripts/__tests__/trajectory-validate.test.ts",
     "audit:e2e-coverage": "bun packages/scripts/e2e-coverage/check-e2e-coverage.ts",
     "audit:e2e-coverage:test": "bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts",
-    "soc2:verify": "bun run packages/soc2-verify/src/cli.ts",
+    "soc2:verify": "bun run packages/security/soc2-verify/src/cli.ts",
     "audit:duplicate-components": "node packages/scripts/audit-duplicate-components.mjs",
     "audit:duplicate-components:self-check": "node packages/scripts/audit-duplicate-components.mjs --self-check",
     "audit:action-availability": "node packages/scripts/audit-action-availability.mjs",
@@ -231,6 +231,7 @@
   "workspaces": [
     "packages/*",
     "!packages/feed",
+    "packages/security/soc2-verify",
     "packages/benchmarks/lib",
     "packages/benchmarks/interrupt-bench",
     "packages/benchmarks/eliza-1",
