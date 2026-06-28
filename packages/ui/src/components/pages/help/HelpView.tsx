@@ -198,7 +198,7 @@ function HelpViewBody(): React.ReactElement {
         {results.length === 0 ? (
           <ChatEmptyStateWithRecommendations
             icon={LifeBuoy}
-            title="Nothing matched that. Ask Eliza directly, or try one of these:"
+            title="No matches."
             recommendations={[
               "How do I change the AI model?",
               "How do I connect Discord or Telegram?",

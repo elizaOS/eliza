@@ -535,7 +535,7 @@ export function TrajectoryDetailView({
         <PagePanel variant="section" className="p-5">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+              <div className="text-xs-tight text-muted/70">
                 {t("trajectorydetailview.DecisionType")}
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">
@@ -543,7 +543,7 @@ export function TrajectoryDetailView({
               </div>
             </PagePanel.SummaryCard>
             <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+              <div className="text-xs-tight text-muted/70">
                 {t("trajectorydetailview.Task")}
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">
@@ -551,7 +551,7 @@ export function TrajectoryDetailView({
               </div>
             </PagePanel.SummaryCard>
             <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+              <div className="text-xs-tight text-muted/70">
                 {t("trajectorydetailview.Session1")}
               </div>
               <div className="mt-2 break-all font-mono text-xs-tight text-txt">
@@ -655,7 +655,7 @@ export function TrajectoryDetailView({
             {providerAccesses.map((access, index) => (
               <PagePanel variant="inset" key={access.id} className="p-4">
                 <div className="flex flex-col gap-1">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                  <div className="text-[11px] font-semibold text-muted">
                     {t("trajectorydetailview.ProviderAccess", {
                       defaultValue: "Provider Access",
                     })}{" "}
@@ -670,7 +670,7 @@ export function TrajectoryDetailView({
                 </div>
                 {access.query ? (
                   <div className="mt-4">
-                    <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                    <div className="text-xs-tight font-semibold text-muted/70">
                       {t("trajectorydetailview.Query", {
                         defaultValue: "Query",
                       })}
@@ -681,7 +681,7 @@ export function TrajectoryDetailView({
                   </div>
                 ) : null}
                 <div className="mt-4">
-                  <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                  <div className="text-xs-tight font-semibold text-muted/70">
                     {t("trajectorydetailview.Data", {
                       defaultValue: "Data",
                     })}

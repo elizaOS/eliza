@@ -239,7 +239,7 @@ function TaskList({
       <Divider label="tasks" />
       {threads.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          {loading ? "Loading" : "None"}
+          {loading ? "Loading" : "Dispatch a coding agent from chat."}
         </Text>
       ) : (
         <List gap={1}>

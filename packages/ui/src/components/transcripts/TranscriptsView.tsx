@@ -137,7 +137,7 @@ export function TranscriptsView({
           <div data-testid="transcripts-empty" className="flex flex-1">
             <ChatEmptyStateWithRecommendations
               icon={AudioLines}
-              title="No transcripts yet. Ask Eliza to record and transcribe a conversation, then it shows up here word-synced to the audio."
+              title="No transcripts yet."
               recommendations={[
                 "Record and transcribe my next meeting",
                 "Start a voice transcription now",

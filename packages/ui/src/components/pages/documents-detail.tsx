@@ -67,8 +67,7 @@ export function DocumentViewer({
 
   useEffect(() => {
     const id = documentId ?? "";
-    const refreshToken = reloadToken;
-    void refreshToken;
+    void reloadToken; // re-run on manual refresh (kept in deps below)
     if (!id) {
       setDoc(null);
       setFragments([]);

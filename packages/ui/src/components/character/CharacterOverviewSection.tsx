@@ -69,7 +69,6 @@ export function CharacterOverviewSection({
   onOpenSection,
   widgets,
 }: {
-  characterName?: string | null;
   onOpenSection: (section: OverviewSection) => void;
   widgets: CharacterOverviewWidget[];
 }) {

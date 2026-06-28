@@ -267,7 +267,7 @@ function OrchestratorList({
       <Divider label="tasks" />
       {threads.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          None
+          Describe a task in chat to start one.
         </Text>
       ) : (
         <List gap={1}>

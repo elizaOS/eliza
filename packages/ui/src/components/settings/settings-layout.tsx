@@ -56,9 +56,7 @@ export function SettingsGroup({
         <div className="flex min-h-[1.5rem] flex-wrap items-end justify-between gap-x-3 gap-y-2">
           <div className="min-w-0">
             {title ? (
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted/70">
-                {title}
-              </h3>
+              <h3 className="text-xs font-medium text-muted/70">{title}</h3>
             ) : null}
             {description ? (
               <p className="mt-1 text-xs leading-relaxed text-muted/80">

@@ -28,6 +28,7 @@ import { getBrandIcon } from "../conversations/brand-icons";
 import { DocumentsView } from "../pages/DocumentsView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
 import { Button } from "../ui/button";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   CharacterExamplesPanel,
   CharacterIdentityPanel,
@@ -667,7 +668,6 @@ export function CharacterHubView({
     if (activeSection === "overview") {
       return (
         <CharacterOverviewSection
-          characterName={d.name}
           widgets={overviewWidgets}
           onOpenSection={handleOverviewOpenSection}
         />
@@ -738,14 +738,16 @@ export function CharacterHubView({
 
     if (activeSection === "documents") {
       return (
-        <DocumentsView
-          embedded
-          fileInputId="character-hub-documents-upload"
-          onDocumentsChange={handleDocumentsChange}
-          onSelectedDocumentIdChange={setSelectedDocumentId}
-          selectedDocumentId={selectedDocumentId}
-          showSelectorRail={false}
-        />
+        <ShellViewAgentSurface viewId="documents">
+          <DocumentsView
+            embedded
+            fileInputId="character-hub-documents-upload"
+            onDocumentsChange={handleDocumentsChange}
+            onSelectedDocumentIdChange={setSelectedDocumentId}
+            selectedDocumentId={selectedDocumentId}
+            showSelectorRail={false}
+          />
+        </ShellViewAgentSurface>
       );
     }
 

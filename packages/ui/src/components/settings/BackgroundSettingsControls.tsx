@@ -178,7 +178,7 @@ export function BackgroundSettingsControls({
     <div
       data-testid="background-settings-controls"
       className={cn(
-        "flex w-full max-w-sm flex-col items-center gap-5 rounded-lg border border-border/40 bg-bg/95 p-6",
+        "flex w-full max-w-sm flex-col items-center gap-5 p-2",
         className,
       )}
     >
@@ -214,8 +214,6 @@ export function BackgroundSettingsControls({
           tabIndex={-1}
         />
       </div>
-
-      <div className="h-px w-full bg-border/40" />
 
       <div className="flex items-center justify-center gap-3">
         <button

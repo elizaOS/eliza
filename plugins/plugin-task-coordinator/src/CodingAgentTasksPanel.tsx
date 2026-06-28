@@ -151,9 +151,7 @@ function DetailList({
 }) {
   return (
     <div className="space-y-1.5">
-      <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
-        {title}
-      </div>
+      <div className="text-2xs font-semibold text-muted/70">{title}</div>
       {children}
     </div>
   );
@@ -250,7 +248,7 @@ function ThreadDetailContent({
 
       {detail.acceptanceCriteria && detail.acceptanceCriteria.length > 0 ? (
         <div>
-          <div className="mb-1 text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          <div className="mb-1 text-2xs font-semibold text-muted">
             {t("codingagenttaskspanel.acceptance", {
               defaultValue: "Acceptance",
             })}
@@ -440,7 +438,7 @@ function ThreadDetailContent({
                   key={entry.id}
                   className="rounded border border-border/40 bg-bg-hover/40 p-2"
                 >
-                  <div className="mb-1 text-2xs uppercase tracking-[0.08em] text-muted">
+                  <div className="mb-1 text-2xs text-muted">
                     {entry.direction === "stdin"
                       ? t("codingagenttaskspanel.prompt", {
                           defaultValue: "prompt",
@@ -591,7 +589,7 @@ function ThreadDetailPane({
   );
 }
 
-export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
+export function CodingAgentTasksPanel() {
   const { t: appT, uiLanguage: appUiLanguage } = useAppSelectorShallow((s) => ({
     t: s.t,
     uiLanguage: s.uiLanguage,
@@ -958,12 +956,10 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
           title={
             backendAbsent
               ? t("codingagenttaskspanel.empty.setupTitle", {
-                  defaultValue:
-                    "Coding agents aren't set up here yet — describe a task in the chat below to get started.",
+                  defaultValue: "Coding agents aren't set up here yet.",
                 })
               : t("codingagenttaskspanel.empty.title", {
-                  defaultValue:
-                    "Dispatch a coding agent from the chat below and its sessions, decisions, and console output show up here.",
+                  defaultValue: "No coding tasks yet.",
                 })
           }
           recommendations={[
