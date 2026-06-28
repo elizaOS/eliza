@@ -955,6 +955,7 @@ export function CodingAgentTasksPanel() {
       ) : (
         <ChatEmptyStateWithRecommendations
           icon={Bot}
+          testId="task-empty-state"
           title={
             backendAbsent
               ? t("codingagenttaskspanel.empty.setupTitle", {

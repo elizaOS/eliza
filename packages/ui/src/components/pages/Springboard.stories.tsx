@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { assert } from "../../storybook/home-widget-decorator";
+import { assert, waitForTestId } from "../../storybook/home-widget-decorator";
 import { Springboard } from "./Springboard";
 
 /**
@@ -13,9 +13,38 @@ async function longPressTile(root: HTMLElement, testId: string): Promise<void> {
   if (!(target instanceof HTMLButtonElement)) {
     throw new Error(`${testId} tile button not found`);
   }
-  target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  const rect = target.getBoundingClientRect();
+  const clientX = rect.left + rect.width / 2;
+  const clientY = rect.top + rect.height / 2;
+  target.dispatchEvent(
+    new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+      button: 0,
+      buttons: 1,
+      clientX,
+      clientY,
+    }),
+  );
   await new Promise((resolve) => setTimeout(resolve, 520));
-  target.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+  target.dispatchEvent(
+    new PointerEvent("pointerup", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+      button: 0,
+      buttons: 0,
+      clientX,
+      clientY,
+    }),
+  );
 }
 
 function entry(id: string, label: string, icon: string): ViewEntry {
@@ -113,6 +142,20 @@ function tilePulsing(root: HTMLElement, testId: string): boolean {
   return Boolean(button?.classList.contains("animate-pulse"));
 }
 
+async function waitForMissingTestId(
+  root: HTMLElement,
+  testId: string,
+  tries = 30,
+): Promise<void> {
+  for (let i = 0; i < tries; i += 1) {
+    if (!root.querySelector(`[data-testid="${testId}"]`)) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(
+    `[story] timed out waiting for [data-testid="${testId}"] to disappear`,
+  );
+}
+
 /**
  * Edit mode is a long-press toggle (there is no Edit button): one long-press on
  * a tile enters jiggle mode (tiles pulse); a second long-press exits it.
@@ -121,12 +164,13 @@ export const EditModeToggle: Story = {
   args: { entries: VIEWS },
   play: async ({ canvasElement }) => {
     await longPressTile(canvasElement, "springboard-tile-wallet");
+    await waitForTestId(canvasElement, "springboard-fav-wallet");
     assert(
       tilePulsing(canvasElement, "springboard-tile-wallet"),
       "first long-press enters edit mode (tile pulses)",
     );
     await longPressTile(canvasElement, "springboard-tile-wallet");
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await waitForMissingTestId(canvasElement, "springboard-fav-wallet");
     assert(
       !tilePulsing(canvasElement, "springboard-tile-wallet"),
       "a second long-press exits edit mode (pulse gone)",
@@ -145,6 +189,7 @@ export const LongPressToEdit: Story = {
   args: { entries: VIEWS },
   play: async ({ canvasElement }) => {
     await longPressTile(canvasElement, "springboard-tile-wallet");
+    await waitForTestId(canvasElement, "springboard-fav-wallet");
     assert(
       tilePulsing(canvasElement, "springboard-tile-wallet"),
       "a 520ms long-press entered edit mode (tile pulses)",

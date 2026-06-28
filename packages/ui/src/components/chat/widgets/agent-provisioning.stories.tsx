@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhase,
@@ -25,8 +25,8 @@ const SHARED_AGENT_ID = "agent-story-1";
 
 /**
  * Seed a shared-cloud active server (so the widget considers provisioning
- * relevant) and emit a handoff phase BEFORE the widget mounts, mirroring the
- * runtime seam (`useCloudHandoffPhase` subscribes to CLOUD_HANDOFF_PHASE_EVENT).
+ * relevant), then emit the handoff phase after mount so
+ * `useCloudHandoffPhase()` is subscribed before the story drives it.
  */
 function SeededProvisioning({
   phase,
@@ -44,15 +44,19 @@ function SeededProvisioning({
         accessToken: "story-token",
       }),
     );
-    if (phase) {
+    return null;
+  });
+  useEffect(() => {
+    if (!phase) return;
+    const id = window.setTimeout(() => {
       window.dispatchEvent(
         new CustomEvent(CLOUD_HANDOFF_PHASE_EVENT, {
           detail: { agentId: SHARED_AGENT_ID, phase },
         }),
       );
-    }
-    return null;
-  });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [phase]);
   return <>{children}</>;
 }
 
@@ -81,29 +85,35 @@ function frame(phase: CloudHandoffPhase | null) {
   };
 }
 
+async function waitForCardText(
+  root: HTMLElement,
+  text: string,
+): Promise<HTMLElement> {
+  for (let i = 0; i < 80; i += 1) {
+    let card: HTMLElement | null = null;
+    try {
+      card = await waitForTestId(root, "chat-widget-agent-provisioning", 1);
+    } catch {
+      card = null;
+    }
+    if (card?.textContent?.includes(text)) return card;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`[story] timed out waiting for provisioning copy: ${text}`);
+}
+
 export const Provisioning: Story = {
   decorators: [frame("migrating")],
   play: async ({ canvasElement }) => {
-    const card = await waitForTestId(
-      canvasElement,
-      "chat-widget-agent-provisioning",
-    );
+    const card = await waitForCardText(canvasElement, "Setting up");
     assert(card instanceof HTMLButtonElement, "the whole card is a button");
-    assert(
-      card.textContent?.includes("Setting up"),
-      "shows the provisioning copy",
-    );
   },
 };
 
 export const ErrorWithRetry: Story = {
   decorators: [frame("failed")],
   play: async ({ canvasElement }) => {
-    const card = await waitForTestId(
-      canvasElement,
-      "chat-widget-agent-provisioning",
-    );
-    assert(card.textContent?.includes("Setup paused"), "shows the paused copy");
+    const card = await waitForCardText(canvasElement, "Setup paused");
     assert(card.textContent?.includes("Retry"), "offers a retry control");
   },
 };

@@ -29,6 +29,7 @@ export interface ChatEmptyStateWithRecommendationsProps {
   /** Setup CTA (e.g. "Connect", "Upload", "Add keys") for views needing setup. */
   primaryAction?: EmptyStatePrimaryAction;
   className?: string;
+  testId?: string;
 }
 
 function normalize(rec: string | ChatRecommendation): ChatRecommendation {
@@ -46,6 +47,7 @@ export function ChatEmptyStateWithRecommendations({
   recommendations = [],
   primaryAction,
   className,
+  testId,
 }: ChatEmptyStateWithRecommendationsProps) {
   const { prefill } = useChatPrefill();
   const recs = recommendations.map(normalize);
@@ -57,15 +59,16 @@ export function ChatEmptyStateWithRecommendations({
         "flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 text-center",
         className,
       )}
+      data-testid={testId}
     >
       {Icon ? <Icon className="h-7 w-7 text-muted/70" aria-hidden /> : null}
-      {title ? <p className="max-w-sm text-sm text-muted">{title}</p> : null}
+      {title ? <p className="max-w-sm text-sm text-txt">{title}</p> : null}
       {primaryAction ? (
         <Button
           variant="default"
           size="sm"
           onClick={primaryAction.onClick}
-          className="gap-1.5"
+          className="gap-1.5 text-black hover:text-black"
         >
           {ActionIcon ? <ActionIcon className="h-4 w-4" aria-hidden /> : null}
           {primaryAction.label}
@@ -78,7 +81,7 @@ export function ChatEmptyStateWithRecommendations({
               key={rec.label}
               type="button"
               onClick={() => prefill(rec.prompt ?? rec.label)}
-              className="max-w-full truncate rounded-full bg-surface/70 px-3 py-1.5 text-xs text-muted transition-colors hover:bg-surface hover:text-txt"
+              className="max-w-full truncate rounded-full bg-surface/70 px-3 py-1.5 text-xs text-txt transition-colors hover:bg-surface hover:text-txt-strong"
             >
               {rec.label}
             </button>
