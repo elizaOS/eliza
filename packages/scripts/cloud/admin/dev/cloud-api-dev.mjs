@@ -7,6 +7,7 @@ import path from "node:path";
 import process from "node:process";
 
 const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+const cloudApiDir = path.join(repoRoot, "packages", "cloud", "api");
 const require = createRequire(import.meta.url);
 const rawArgs = process.argv.slice(2);
 const withControlPlane = rawArgs.includes("--with-control-plane");
@@ -82,7 +83,7 @@ function wranglerScript() {
   // ERR_PACKAGE_PATH_NOT_EXPORTED on wrangler >=4. Resolve the package via its
   // (exported) package.json and read the declared bin path instead.
   const pkgJsonPath = require.resolve("wrangler/package.json", {
-    paths: [path.join(repoRoot, "packages", "cloud-api")],
+    paths: [cloudApiDir],
   });
   const pkg = require(pkgJsonPath);
   const binRel =
@@ -272,7 +273,7 @@ async function main() {
     ? [wranglerScript(), ...wranglerArgs]
     : ["run", "wrangler", ...wranglerArgs];
   const wrangler = spawn(wranglerCmd, wranglerSpawnArgs, {
-    cwd: path.join(repoRoot, "packages", "cloud-api"),
+    cwd: cloudApiDir,
     env,
     stdio: "inherit",
   });
