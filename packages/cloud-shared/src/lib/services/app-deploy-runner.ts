@@ -45,6 +45,7 @@
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
 import { containersRepository } from "../../db/repositories/containers";
 import type { NewContainer } from "../../db/schemas/containers";
+import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { resolveAppDatabaseMode } from "./app-database-mode";
 import {
@@ -56,6 +57,7 @@ import {
 } from "./app-deploy-orchestrator";
 import { deriveAppPublicUrl } from "./app-url";
 import { appsService } from "./apps";
+import { isCodingContainerImageAllowed } from "./coding-containers";
 import { ContainerJobEnqueuer, type ContainerJobsWriter } from "./container-job-service";
 import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 import type { UserDatabaseService } from "./user-database";
@@ -133,6 +135,22 @@ export async function resolveImageRef(
   if (!image) {
     throw new Error(
       `No image to deploy for app ${app.id}: pass resolveImage, set app.metadata.imageTag, or APP_DEFAULT_IMAGE`,
+    );
+  }
+  // SECURITY: an app deploy runs an image on our shared docker nodes. Gate the
+  // resolved image on the same allowlist the coding-container routes use, so a
+  // caller-supplied `metadata.imageTag` (or a mis-set APP_DEFAULT_IMAGE) cannot
+  // run an arbitrary off-namespace image. Fail-closed: empty allowlist denies.
+  // The default allowlist covers the first-party GHCR namespaces, so the default
+  // agent image and APP_DEFAULT_IMAGE under those namespaces pass unchanged.
+  const allowlist = containersEnv.codingContainerImageAllowlist();
+  if (!isCodingContainerImageAllowed(image, allowlist)) {
+    const permitted = allowlist.length > 0 ? allowlist.join(", ") : "(none configured)";
+    throw new Error(
+      `Image '${image}' is not permitted for app ${app.id}: it is outside the ` +
+        `allowed image namespaces (${permitted}). Set app.metadata.imageTag (or ` +
+        `APP_DEFAULT_IMAGE) to an allowlisted image, or widen ` +
+        `CODING_CONTAINER_IMAGE_ALLOWLIST.`,
     );
   }
   return image;
