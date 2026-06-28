@@ -10,8 +10,8 @@ import {
 } from "./local-dev-helpers";
 
 const repoRoot = path.resolve(import.meta.dir, "..", "..", "..", "..");
-const cloudRoot = path.join(repoRoot, "packages", "cloud-shared");
-const apiDir = path.join(repoRoot, "packages", "cloud-api");
+const cloudRoot = path.join(repoRoot, "packages", "cloud", "shared");
+const apiDir = path.join(repoRoot, "packages", "cloud", "api");
 const outputPath = path.join(apiDir, ".dev.vars");
 const envExamplePath = path.join(cloudRoot, ".env.example");
 const localAppUrl =
