@@ -740,6 +740,12 @@ export async function handleChatCompletionsPOST(
   try {
     // 1. Authenticate
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(req);
+    // Pre-forward TTFT measurement (#9899): measured TTFT through this route is
+    // ~6.5s while cerebras-direct is ~0.24s — 100% of the overhead is here, not
+    // the model. These marks are emitted as an X-Eliza-Preforward-Ms response
+    // header so the exact slow step is readable from a plain curl (no CF log
+    // access needed), pinpointing the fix instead of guessing.
+    const tAuth = Date.now();
 
     // 1b. Per-org tier rate limit
     if (user.organization_id && !options.skipOrgRateLimit) {
@@ -896,6 +902,7 @@ export async function handleChatCompletionsPOST(
       effectiveMaxTokens ?? request.max_tokens ?? 500;
     const affiliateCode = req.headers.get("X-Affiliate-Code");
 
+    const tBeforeReserve = Date.now();
     let reservation: CreditReservation;
     let appCreditsInfo:
       | { appId: string; estimatedBaseCost: number; app: typeof monetizedApp }
@@ -981,6 +988,7 @@ export async function handleChatCompletionsPOST(
     }
 
     settleReservation = createCreditReservationSettler(reservation);
+    const tAfterReserve = Date.now();
 
     // 7. Convert messages for AI SDK
     const systemMessage = request.messages.find((m) => m.role === "system");
@@ -1001,52 +1009,62 @@ export async function handleChatCompletionsPOST(
     });
 
     // 8. Handle streaming vs non-streaming
-    if (request.stream) {
-      return await handleStreamingRequest(
-        model,
-        systemPrompt,
-        modelMessages,
-        request,
-        user,
-        apiKey ? { id: apiKey.id } : null,
-        appCreditsInfo,
-        affiliateCode,
-        idempotencyKey,
-        requestId,
-        appId,
-        startTime,
-        req.signal,
-        routeTimeoutMs,
-        settleReservation,
-        cotOptions,
-        effectiveMaxTokens,
-        webSearchOptions,
-        billingSource,
+    const preforwardResponse = request.stream
+      ? await handleStreamingRequest(
+          model,
+          systemPrompt,
+          modelMessages,
+          request,
+          user,
+          apiKey ? { id: apiKey.id } : null,
+          appCreditsInfo,
+          affiliateCode,
+          idempotencyKey,
+          requestId,
+          appId,
+          startTime,
+          req.signal,
+          routeTimeoutMs,
+          settleReservation,
+          cotOptions,
+          effectiveMaxTokens,
+          webSearchOptions,
+          billingSource,
+        )
+      : await handleNonStreamingRequest(
+          model,
+          systemPrompt,
+          modelMessages,
+          request,
+          user,
+          apiKey ? { id: apiKey.id } : null,
+          appCreditsInfo,
+          affiliateCode,
+          idempotencyKey,
+          requestId,
+          appId,
+          startTime,
+          req.signal,
+          routeTimeoutMs,
+          settleReservation,
+          cotOptions,
+          effectiveMaxTokens,
+          webSearchOptions,
+          billingSource,
+          options.executionCtx,
+        );
+    // Emit per-step pre-forward timing as a readable header (#9899). Debug-only
+    // numbers, no behavior change. totalMs = everything before the model
+    // forward; compare vs cerebras-direct ~0.24s to see how much of TTFT is us.
+    try {
+      preforwardResponse.headers.set(
+        "X-Eliza-Preforward-Ms",
+        `total=${Date.now() - startTime};auth=${tAuth - startTime};mid=${tBeforeReserve - tAuth};reserve=${tAfterReserve - tBeforeReserve}`,
       );
-    } else {
-      return await handleNonStreamingRequest(
-        model,
-        systemPrompt,
-        modelMessages,
-        request,
-        user,
-        apiKey ? { id: apiKey.id } : null,
-        appCreditsInfo,
-        affiliateCode,
-        idempotencyKey,
-        requestId,
-        appId,
-        startTime,
-        req.signal,
-        routeTimeoutMs,
-        settleReservation,
-        cotOptions,
-        effectiveMaxTokens,
-        webSearchOptions,
-        billingSource,
-        options.executionCtx,
-      );
+    } catch {
+      // Some Response shapes have immutable headers — never fail a request for a debug header.
     }
+    return preforwardResponse;
   } catch (error) {
     await settleReservation?.(0);
     const rawMessage = error instanceof Error ? error.message : String(error);
