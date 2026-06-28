@@ -12,8 +12,9 @@ Stages (skippable individually; see flags):
   6. Quantized benchmark                          → benchmarks/<run>/<q>/
   6b. Eliza-1-typed GGUF bundle (--eliza1-bundle,  → checkpoints/<run>/eliza1-optimized/
       auto-on if the elizaOS/llama.cpp fork is       (Q4_POLAR GGUF + qjl_config.json +
-      found): optimize_for_eliza1.py +                turboquant.json + eliza1_manifest.json),
-      optional MTP drafter (--mtp-drafter)     checkpoints/<run>/mtp/drafter-<tier>.gguf
+      found): optimize_for_eliza1.py +                turboquant.json + eliza1_manifest.json).
+      (The MTP drafter is staged out of band — --mtp-drafter is removed and
+      hard-errors; see gemma4-mtp-drafter-conversion.md for the convert + A/B path.)
   6c. Throughput bench (llama-bench on the GGUFs)  → checkpoints/<run>/evals/throughput.json
       — prefill + gen tokens/sec, CUDA build if       (best -fa 1 -b 2048 -ngl 99 on GPU)
       available; --skip-throughput-bench to skip
