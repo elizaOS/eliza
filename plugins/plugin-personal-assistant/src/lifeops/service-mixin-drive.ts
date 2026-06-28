@@ -7,37 +7,20 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsGoogleConnectorStatus,
 } from "../contracts/index.js";
-import {
-  accountIdForGrant,
-  requireGoogleServiceMethod,
-} from "./google-plugin-delegates.js";
+import { DriveDomain } from "./domains/drive-service.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
-import { fail } from "./service-normalize.js";
-import {
-  normalizeOptionalConnectorMode,
-  normalizeOptionalConnectorSide,
-} from "./service-normalize-connector.js";
 
+export {
+  DRIVE_CONNECTOR_CAPABILITIES,
+  GOOGLE_DRIVE_FILE_SCOPE,
+  GOOGLE_DRIVE_READ_SCOPE,
+  GOOGLE_DRIVE_WRITE_SCOPE,
+} from "./domains/drive-service.js";
 export type { GoogleDriveFile };
-
-export const GOOGLE_DRIVE_READ_SCOPE =
-  "https://www.googleapis.com/auth/drive.readonly";
-export const GOOGLE_DRIVE_WRITE_SCOPE = "https://www.googleapis.com/auth/drive";
-export const GOOGLE_DRIVE_FILE_SCOPE =
-  "https://www.googleapis.com/auth/drive.file";
-
-export const DRIVE_CONNECTOR_CAPABILITIES = {
-  inbound: false,
-  outbound: true,
-  search: true,
-  identity: true,
-  attachments: true,
-  deliveryStatus: false,
-} as const;
 
 export interface LifeOpsDriveService {
   requireGoogleDriveReadGrant(
@@ -136,7 +119,12 @@ export interface LifeOpsDriveService {
   ): Promise<{ updatedRange: string; updatedCells: number }>;
 }
 
-type DriveMixinDependencies = LifeOpsServiceBase & {
+/**
+ * `getGoogleConnectorStatus` is contributed by the Google mixin (`withGoogle`);
+ * the localized cast wires it into the Drive sub-service from the composed
+ * instance.
+ */
+type GoogleConnectorStatusProvider = {
   getGoogleConnectorStatus(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
@@ -145,112 +133,73 @@ type DriveMixinDependencies = LifeOpsServiceBase & {
   ): Promise<LifeOpsGoogleConnectorStatus>;
 };
 
-function hasDriveRead(grant: LifeOpsConnectorGrant): boolean {
-  const scopes = new Set(grant.grantedScopes);
-  return (
-    scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) ||
-    scopes.has(GOOGLE_DRIVE_READ_SCOPE) ||
-    scopes.has(GOOGLE_DRIVE_FILE_SCOPE) ||
-    grant.capabilities.includes("google.drive.read") ||
-    grant.capabilities.includes("google.drive.write")
-  );
-}
-
-function hasDriveWrite(grant: LifeOpsConnectorGrant): boolean {
-  const scopes = new Set(grant.grantedScopes);
-  return (
-    scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) ||
-    scopes.has(GOOGLE_DRIVE_FILE_SCOPE) ||
-    grant.capabilities.includes("google.drive.write")
-  );
-}
-
 /** @internal */
 export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsDriveService> {
-  const DriveBase = Base as unknown as Constructor<DriveMixinDependencies>;
-
-  class LifeOpsDriveServiceMixin extends DriveBase {
-    public async requireGoogleDriveReadGrant(
-      requestUrl: URL,
-      requestedMode?: LifeOpsConnectorMode,
-      requestedSide?: LifeOpsConnectorSide,
-      grantId?: string,
-    ) {
-      const status = await this.getGoogleConnectorStatus(
+  class LifeOpsDriveServiceMixin extends Base {
+    // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
+    // Public (not private) to avoid TS4094 on the re-exported mixin class.
+    readonly driveDomain = new DriveDomain(this, {
+      getGoogleConnectorStatus: (
         requestUrl,
-        normalizeOptionalConnectorMode(requestedMode, "mode"),
-        normalizeOptionalConnectorSide(requestedSide, "side"),
+        requestedMode,
+        requestedSide,
         grantId,
-      );
-      const grant = status.grant;
-      if (!status.connected || !grant) {
-        fail(409, "Google Drive is not connected.");
-      }
-      if (!hasDriveRead(grant)) {
-        fail(
-          403,
-          "Google Drive read access has not been granted. Reconnect Google through @elizaos/plugin-google with Drive scope.",
-        );
-      }
-      return grant;
-    }
+      ) =>
+        (
+          this as unknown as GoogleConnectorStatusProvider
+        ).getGoogleConnectorStatus(
+          requestUrl,
+          requestedMode,
+          requestedSide,
+          grantId,
+        ),
+    });
 
-    public async requireGoogleDriveWriteGrant(
+    requireGoogleDriveReadGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
       grantId?: string,
-    ) {
-      const grant = await this.requireGoogleDriveReadGrant(
+    ): Promise<LifeOpsConnectorGrant> {
+      return this.driveDomain.requireGoogleDriveReadGrant(
         requestUrl,
         requestedMode,
         requestedSide,
         grantId,
       );
-      if (!hasDriveWrite(grant)) {
-        fail(
-          403,
-          "Google Drive write access has not been granted. Reconnect Google through @elizaos/plugin-google with Drive write scope.",
-        );
-      }
-      return grant;
     }
 
-    async listDriveFiles(
+    requireGoogleDriveWriteGrant(
       requestUrl: URL,
-      request: {
+      requestedMode?: LifeOpsConnectorMode,
+      requestedSide?: LifeOpsConnectorSide,
+      grantId?: string,
+    ): Promise<LifeOpsConnectorGrant> {
+      return this.driveDomain.requireGoogleDriveWriteGrant(
+        requestUrl,
+        requestedMode,
+        requestedSide,
+        grantId,
+      );
+    }
+
+    listDriveFiles(
+      requestUrl: URL,
+      request?: {
         mode?: LifeOpsConnectorMode;
         side?: LifeOpsConnectorSide;
         grantId?: string;
         folderId?: string;
         maxResults?: number;
         pageToken?: string;
-      } = {},
+      },
     ): Promise<{ files: GoogleDriveFile[]; nextPageToken: string | null }> {
-      const grant = await this.requireGoogleDriveReadGrant(
-        requestUrl,
-        request.mode,
-        request.side,
-        request.grantId,
-      );
-      const searchFiles = requireGoogleServiceMethod(
-        this.runtime,
-        "searchFiles",
-      );
-      const query = request.folderId
-        ? `'${request.folderId}' in parents and trashed = false`
-        : "'root' in parents and trashed = false";
-      const files = await searchFiles({
-        accountId: accountIdForGrant(grant),
-        query,
-        limit: request.maxResults,
-      });
-      return { files, nextPageToken: null };
+      return this.driveDomain.listDriveFiles(requestUrl, request);
     }
 
-    async getDriveFile(
+    getDriveFile(
       requestUrl: URL,
       request: {
         mode?: LifeOpsConnectorMode;
@@ -259,20 +208,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         fileId: string;
       },
     ): Promise<GoogleDriveFile> {
-      const grant = await this.requireGoogleDriveReadGrant(
-        requestUrl,
-        request.mode,
-        request.side,
-        request.grantId,
-      );
-      const getFile = requireGoogleServiceMethod(this.runtime, "getFile");
-      return getFile({
-        accountId: accountIdForGrant(grant),
-        fileId: request.fileId,
-      });
+      return this.driveDomain.getDriveFile(requestUrl, request);
     }
 
-    async searchDriveFiles(
+    searchDriveFiles(
       requestUrl: URL,
       request: {
         mode?: LifeOpsConnectorMode;
@@ -282,25 +221,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         maxResults?: number;
       },
     ): Promise<{ files: GoogleDriveFile[]; nextPageToken: string | null }> {
-      const grant = await this.requireGoogleDriveReadGrant(
-        requestUrl,
-        request.mode,
-        request.side,
-        request.grantId,
-      );
-      const searchFiles = requireGoogleServiceMethod(
-        this.runtime,
-        "searchFiles",
-      );
-      const files = await searchFiles({
-        accountId: accountIdForGrant(grant),
-        query: request.query,
-        limit: request.maxResults,
-      });
-      return { files, nextPageToken: null };
+      return this.driveDomain.searchDriveFiles(requestUrl, request);
     }
 
-    async getDocContent(
+    getDocContent(
       requestUrl: URL,
       request: {
         mode?: LifeOpsConnectorMode;
@@ -309,23 +233,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         documentId: string;
       },
     ): Promise<{ title: string; plainText: string }> {
-      const grant = await this.requireGoogleDriveReadGrant(
-        requestUrl,
-        request.mode,
-        request.side,
-        request.grantId,
-      );
-      const getDocContent = requireGoogleServiceMethod(
-        this.runtime,
-        "getDocContent",
-      );
-      return getDocContent({
-        accountId: accountIdForGrant(grant),
-        documentId: request.documentId,
-      });
+      return this.driveDomain.getDocContent(requestUrl, request);
     }
 
-    async getSheetContent(
+    getSheetContent(
       requestUrl: URL,
       request: {
         mode?: LifeOpsConnectorMode;
@@ -335,24 +246,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         range?: string;
       },
     ): Promise<{ title: string; rows: string[][] }> {
-      const grant = await this.requireGoogleDriveReadGrant(
-        requestUrl,
-        request.mode,
-        request.side,
-        request.grantId,
-      );
-      const getSheetContent = requireGoogleServiceMethod(
-        this.runtime,
-        "getSheetContent",
-      );
-      return getSheetContent({
-        accountId: accountIdForGrant(grant),
-        spreadsheetId: request.spreadsheetId,
-        range: request.range,
-      });
+      return this.driveDomain.getSheetContent(requestUrl, request);
     }
 
-    async createDriveFile(
+    createDriveFile(
       requestUrl: URL,
       request: {
         mode?: LifeOpsConnectorMode;
@@ -364,26 +261,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         parentFolderId?: string;
       },
     ): Promise<GoogleDriveFile> {
-      const grant = await this.requireGoogleDriveWriteGrant(
-        requestUrl,
-        request.mode,
-        request.side,
-        request.grantId,
-      );
-      const createDriveFile = requireGoogleServiceMethod(
-        this.runtime,
-        "createDriveFile",
-      );
-      return createDriveFile({
-        accountId: accountIdForGrant(grant),
-        name: request.name,
-        mimeType: request.mimeType,
-        content: request.content,
-        parentFolderId: request.parentFolderId,
-      });
+      return this.driveDomain.createDriveFile(requestUrl, request);
     }
 
-    async appendToDoc(
+    appendToDoc(
       requestUrl: URL,
       request: {
         mode?: LifeOpsConnectorMode;
@@ -393,24 +274,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         text: string;
       },
     ): Promise<void> {
-      const grant = await this.requireGoogleDriveWriteGrant(
-        requestUrl,
-        request.mode,
-        request.side,
-        request.grantId,
-      );
-      const appendToDoc = requireGoogleServiceMethod(
-        this.runtime,
-        "appendToDoc",
-      );
-      await appendToDoc({
-        accountId: accountIdForGrant(grant),
-        documentId: request.documentId,
-        text: request.text,
-      });
+      return this.driveDomain.appendToDoc(requestUrl, request);
     }
 
-    async updateSheetCells(
+    updateSheetCells(
       requestUrl: URL,
       request: {
         mode?: LifeOpsConnectorMode;
@@ -421,22 +288,7 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         values: ReadonlyArray<ReadonlyArray<string | number>>;
       },
     ): Promise<{ updatedRange: string; updatedCells: number }> {
-      const grant = await this.requireGoogleDriveWriteGrant(
-        requestUrl,
-        request.mode,
-        request.side,
-        request.grantId,
-      );
-      const updateSheetCells = requireGoogleServiceMethod(
-        this.runtime,
-        "updateSheetCells",
-      );
-      return updateSheetCells({
-        accountId: accountIdForGrant(grant),
-        spreadsheetId: request.spreadsheetId,
-        range: request.range,
-        values: request.values,
-      });
+      return this.driveDomain.updateSheetCells(requestUrl, request);
     }
   }
 
