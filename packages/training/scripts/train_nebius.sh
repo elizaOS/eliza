@@ -523,34 +523,6 @@ teardown() {
   fi
 }
 
-sync_distill_dataset() {
-  # The distiller needs (a) the corpus file (MTP_DATASET / TRAIN_FILE) and
-  # (b) the SFT'd target HF checkpoint directory (MTP_TARGET_CHECKPOINT).
-  # Optionally (c) the final shipped target GGUF (MTP_TARGET_GGUF) so the
-  # drafter can stamp the exact checkpoint hash.
-  local target; target="$(ssh_target)"
-  local ds="${MTP_DATASET:-$TRAIN_FILE}"
-  local d; d="$(dirname "$ds")"
-  ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
-  echo "[train_nebius][sync] sending distillation corpus $ds"
-  rsync -avhz --partial --info=progress2 "$ROOT/$ds" "$target:$REMOTE_TRAIN_DIR/$ds"
-
-  local target_ckpt="${MTP_TARGET_CHECKPOINT:-}"
-  if [ -n "$target_ckpt" ]; then
-    local ckpt_dir; ckpt_dir="$(dirname "$target_ckpt")"
-    ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$ckpt_dir"
-    echo "[train_nebius][sync] sending target HF checkpoint $target_ckpt (this is the SFT'd text model — multi-GB)"
-    rsync -avhz --partial --info=progress2 "$ROOT/$target_ckpt/" "$target:$REMOTE_TRAIN_DIR/$target_ckpt/"
-  fi
-  local target_gguf="${MTP_TARGET_GGUF:-}"
-  if [ -n "$target_gguf" ]; then
-    local gguf_dir; gguf_dir="$(dirname "$target_gguf")"
-    ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$gguf_dir"
-    echo "[train_nebius][sync] sending target GGUF $target_gguf"
-    rsync -avhz --partial --info=progress2 "$ROOT/$target_gguf" "$target:$REMOTE_TRAIN_DIR/$target_gguf"
-  fi
-}
-
 case "$cmd" in
   smoke) smoke ;;
   provision) provision ;;
@@ -575,16 +547,12 @@ case "$cmd" in
     fetch
     ;;
   distill-full)
-    # Provision → sync training tree → sync the one corpus → distill → fetch
-    # the drafter → teardown. Frugal: a single H200 for ~1-3 GPU-h on a small
-    # KD job. Set MTP_MAX_SAMPLES for a short budget-bounded pass.
-    # Same fetch-then-teardown pattern as `full` — see v4 incident note above.
-    trap 'echo "[train_nebius] distill-full: ensuring fetch + teardown on exit"; fetch_distill || true; teardown || true' EXIT
-    provision
-    sync_tree
-    sync_distill_dataset
+    # The remote MTP-drafter distillation path was removed (the in-repo
+    # distiller scripts are gone; release-grade distillation is H100/H200-gated
+    # and done out of band — produce the drafter via the no-train convert + A/B
+    # runbook instead). run_distill_remote hard-errors, so fail fast HERE before
+    # provisioning a VM / rsyncing the tree (avoids a wasteful spin-up + teardown).
     run_distill_remote
-    fetch_distill
     ;;
   help|*) sed -n '1,80p' "$0" ;;
 esac
