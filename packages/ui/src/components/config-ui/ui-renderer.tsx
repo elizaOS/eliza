@@ -1401,10 +1401,10 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
           type="button"
           aria-label="Close drawer"
           onClick={close}
-          className="group mx-auto mb-3 flex h-8 w-32 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-surface/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          className="group mx-auto mb-3 flex h-8 w-32 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-surface/70"
         >
           <span
-            className="h-1 w-10 rounded-full bg-border transition-all group-hover:w-14 group-hover:bg-accent/70 group-focus-visible:w-14 group-focus-visible:bg-accent"
+            className="h-1 w-10 rounded-full bg-border transition-all group-hover:w-14 group-hover:bg-accent/70"
             aria-hidden
           />
         </button>

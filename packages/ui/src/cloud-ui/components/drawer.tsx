@@ -73,10 +73,10 @@ function DrawerContent({
           <button
             type="button"
             aria-label="Close drawer"
-            className="group mx-auto mb-2 mt-2 hidden h-8 w-32 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45 group-data-[vaul-drawer-direction=bottom]/drawer-content:flex"
+            className="group mx-auto mb-2 mt-2 hidden h-8 w-32 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/10 group-data-[vaul-drawer-direction=bottom]/drawer-content:flex"
           >
             <span
-              className="h-1.5 w-[100px] rounded-full bg-white/15 transition-all group-hover:w-[112px] group-hover:bg-white/35 group-focus-visible:w-[112px] group-focus-visible:bg-white/45"
+              className="h-1.5 w-[100px] rounded-full bg-white/15 transition-all group-hover:w-[112px] group-hover:bg-white/35"
               aria-hidden
             />
           </button>
