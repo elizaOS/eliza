@@ -19,6 +19,7 @@ import {
   Webhook,
 } from "lucide-react";
 import type { ComponentType } from "react";
+import { registerCloudConnectorsSettingsSection } from "../../cloud/connectors";
 import { ReleaseCenterView } from "../pages/ReleaseCenterView";
 import { AdvancedSection } from "./AdvancedSection";
 import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
@@ -266,6 +267,8 @@ registerSettingsSection({
   order: 1.5,
   Component: CloudAgentsSection,
 });
+
+registerCloudConnectorsSettingsSection();
 
 /** Every section the Settings view should render — built-ins plus any added by
  *  a host app / plugin through {@link registerSettingsSection}. */
