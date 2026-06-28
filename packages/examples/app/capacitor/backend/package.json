@@ -13,7 +13,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-google-genai": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-localdb": "workspace:*",

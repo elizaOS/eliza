@@ -23,6 +23,7 @@ function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [isBooted, setIsBooted] = useState(false);
   const [runtimeInitialized, setRuntimeInitialized] = useState(false);
+  const [providerName, setProviderName] = useState<string | null>(null);
   const [bootStatus, setBootStatus] = useState("Initializing...");
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -52,6 +53,7 @@ function App() {
 
       if (!mounted) return;
 
+      setProviderName(runtimeModule.getProviderName());
       setBootStatus("Runtime initialized");
       setIsBooted(true);
       setRuntimeInitialized(true);
@@ -155,11 +157,15 @@ function App() {
               ═══════════════════════════════════════
             </div>
             <div className="boot-line">elizaOS Agent Runtime Loaded</div>
-            <div className="boot-line">Pattern matching engine: ACTIVE</div>
+            <div className="boot-line">
+              Inference provider: {providerName ?? "connecting…"}
+            </div>
             <div className="boot-line">
               Database: PGlite (in-browser WASM Postgres)
             </div>
-            <div className="boot-line">Mode: Classic ELIZA (No LLM)</div>
+            <div className="boot-line">
+              Mode: {providerName ? `LLM • ${providerName}` : "connecting…"}
+            </div>
             <div className="boot-line">
               ═══════════════════════════════════════
             </div>
@@ -214,8 +220,8 @@ function App() {
 
           {/* Footer */}
           <div className="terminal-footer">
-            Powered by elizaOS • Classic ELIZA pattern matching • No server
-            required
+            Powered by elizaOS • {providerName ?? "LLM"} inference • PGlite
+            in-browser storage
           </div>
         </div>
       </div>

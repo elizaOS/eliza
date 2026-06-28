@@ -166,9 +166,7 @@
         "./packages/plugin-remote-manifest/src/index.ts"
       ],
       "@elizaos/plugin-shell": ["./plugins/plugin-shell/index.ts"],
-      "@elizaos/plugin-shopify": [
-        "./plugins/plugin-shopify/src/index.ts"
-      ],
+      "@elizaos/plugin-shopify": ["./plugins/plugin-shopify/src/index.ts"],
       "@elizaos/plugin-signal": ["./plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-sql": ["./plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-streaming": ["./plugins/plugin-streaming/src/index.ts"],

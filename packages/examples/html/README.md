@@ -4,9 +4,25 @@ A browser-based demo of the **full elizaOS AgentRuntime** using:
 
 - **@elizaos/core** - AgentRuntime, ModelType
 - **@elizaos/plugin-localdb** - localStorage persistence (no SQL needed)
-- **@elizaos/plugin-eliza-classic** - Classic ELIZA pattern matching (no API keys needed)
+- a **real inference provider**, chosen by which API key is configured —
+  OpenAI → OpenRouter → Anthropic → Eliza Cloud (in priority order)
 
 This demo mirrors the structure of `packages/examples/chat/chat.ts` exactly, but runs in the browser.
+
+## Configure an inference provider
+
+The demo needs exactly one inference provider. Set a key before the page loads
+(for example from the browser console or a small boot script) and the runtime
+picks the first one that is present, in priority order:
+
+```js
+globalThis.ELIZA_ENV = { OPENAI_API_KEY: "sk-..." };
+// or OPENROUTER_API_KEY, or ANTHROPIC_API_KEY, or ELIZA_API_KEY
+```
+
+If none of `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, or
+`ELIZA_API_KEY` is set, the demo throws a clear error instead of falling back to
+an offline mode.
 
 ## Architecture
 
@@ -17,8 +33,8 @@ This demo mirrors the structure of `packages/examples/chat/chat.ts` exactly, but
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │                   AgentRuntime                       │    │
 │  │  ┌──────────────────┐  ┌──────────────────────┐     │    │
-│  │  │ plugin-eliza-    │  │  plugin-localdb      │     │    │
-│  │  │ classic          │  │  (localStorage)      │     │    │
+│  │  │ inference        │  │  plugin-localdb      │     │    │
+│  │  │ provider plugin  │  │  (localStorage)      │     │    │
 │  │  │ (TEXT_LARGE)     │  │                      │     │    │
 │  │  └──────────────────┘  └──────────────────────┘     │    │
 │  └─────────────────────────────────────────────────────┘    │
@@ -53,7 +69,10 @@ The demo uses native ES module import maps to resolve the elizaOS packages to th
   {
     "imports": {
       "@elizaos/core": "../../packages/core/dist/browser/index.browser.js",
-      "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/dist/browser/index.browser.js",
+      "@elizaos/plugin-anthropic": "../../plugins/plugin-anthropic/dist/browser/index.browser.js",
+      "@elizaos/plugin-elizacloud": "../../plugins/plugin-elizacloud/dist/browser/index.browser.js",
+      "@elizaos/plugin-openai": "../../plugins/plugin-openai/dist/browser/index.browser.js",
+      "@elizaos/plugin-openrouter": "../../plugins/plugin-openrouter/dist/browser/index.browser.js",
       "@elizaos/plugin-localdb": "../../plugins/plugin-localdb/dist/browser/index.browser.js",
       "uuid": "https://esm.sh/uuid@11"
     }
@@ -70,14 +89,16 @@ import {
   stringToUuid,
   ModelType,
 } from "@elizaos/core";
-import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
 import { plugin as localdbPlugin } from "@elizaos/plugin-localdb";
 import { v4 as uuidv4 } from "uuid";
+
+// Load the provider chosen by which API key is configured (openai by priority).
+const providerPlugin = (await import("@elizaos/plugin-openai")).openaiPlugin;
 
 // Create runtime with plugins (browser version)
 const runtime = new AgentRuntime({
   character,
-  plugins: [localdbPlugin, elizaClassicPlugin],
+  plugins: [localdbPlugin, providerPlugin],
 });
 await runtime.initialize();
 
@@ -109,13 +130,13 @@ await runtime.messageService.handleMessage(runtime, message, callback);
 
 ## Comparison: Browser vs Node.js
 
-| Feature  | chat.ts (Node.js)   | index.html (Browser)          |
-| -------- | ------------------- | ----------------------------- |
-| Runtime  | AgentRuntime        | AgentRuntime                  |
-| Database | plugin-sql (PGLite) | plugin-localdb (localStorage) |
-| Model    | plugin-openai       | plugin-eliza-classic          |
-| UI       | readline (CLI)      | HTML/CSS Terminal             |
-| API Keys | Required (OpenAI)   | Not required                  |
+| Feature  | chat.ts (Node.js)   | index.html (Browser)             |
+| -------- | ------------------- | -------------------------------- |
+| Runtime  | AgentRuntime        | AgentRuntime                     |
+| Database | plugin-sql (PGLite) | plugin-localdb (localStorage)    |
+| Model    | plugin-openai       | key-selected provider plugin     |
+| UI       | readline (CLI)      | HTML/CSS Terminal                |
+| API Keys | Required (OpenAI)   | Required (one provider key)      |
 
 ## Project Structure
 

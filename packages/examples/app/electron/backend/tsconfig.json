@@ -16,6 +16,9 @@
       "@elizaos/plugin-localdb": [
         "./../../../../../plugins/plugin-localdb/dist/index.d.ts"
       ],
+      "@elizaos/plugin-elizacloud": [
+        "./../../../../../plugins/plugin-elizacloud/dist/node/index.d.ts"
+      ],
       "@elizaos/plugin-groq": ["./src/provider-plugin.d.ts"],
       "@elizaos/plugin-ollama": ["./src/provider-plugin.d.ts"],
       "@elizaos/plugin-openrouter": ["./src/provider-plugin.d.ts"]

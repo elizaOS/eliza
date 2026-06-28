@@ -2,10 +2,12 @@
 
 A simple REST API server for chatting with an elizaOS agent using Express.js.
 
-**No API keys or external services required for local mode.** Uses:
+Uses:
 
-- `plugin-sql` with PGLite by default for local storage
-- `plugin-eliza-classic` for pattern-matching responses (no LLM needed)
+- `plugin-sql` with PGLite by default for local storage (no external DB needed)
+- An LLM provider chosen by which API key env var is set, in priority order:
+  `OPENAI_API_KEY` → `OPENROUTER_API_KEY` → `ANTHROPIC_API_KEY` → `ELIZA_API_KEY`.
+  Set at least one before starting the server.
 
 ## Quick Start
 
@@ -13,8 +15,8 @@ A simple REST API server for chatting with an elizaOS agent using Express.js.
 # Install dependencies
 bun install
 
-# Start the server
-bun run start
+# Start the server (set one inference provider key first)
+OPENAI_API_KEY=sk-... bun run start
 ```
 
 The server will start at http://localhost:3000
@@ -51,9 +53,10 @@ Response:
 
 ```json
 {
-  "response": "How do you do. Please state your problem.",
+  "response": "Hello! How can I help you today?",
   "character": "Eliza",
-  "userId": "generated-uuid"
+  "userId": "generated-uuid",
+  "mode": "openai"
 }
 ```
 

@@ -2,14 +2,15 @@
  * Shared types for the Browser Extension
  */
 
-// Provider modes - matches VRM demo pattern
+// Provider modes - one per inference backend the extension can run.
 export type ProviderMode =
-  | "elizaClassic"
   | "openai"
+  | "openrouter"
   | "anthropic"
   | "xai"
   | "gemini"
-  | "groq";
+  | "groq"
+  | "elizacloud";
 
 // Provider settings for API keys
 export type ProviderSettings = {
@@ -18,6 +19,12 @@ export type ProviderSettings = {
   openaiBaseUrl: string;
   openaiSmallModel: string;
   openaiLargeModel: string;
+
+  // OpenRouter
+  openrouterApiKey: string;
+  openrouterBaseUrl: string;
+  openrouterSmallModel: string;
+  openrouterLargeModel: string;
 
   // Anthropic
   anthropicApiKey: string;
@@ -40,6 +47,9 @@ export type ProviderSettings = {
   groqBaseUrl: string;
   groqSmallModel: string;
   groqLargeModel: string;
+
+  // Eliza Cloud
+  elizaCloudApiKey: string;
 };
 
 // Extension configuration
@@ -50,13 +60,19 @@ export type ExtensionConfig = {
 
 // Default configuration
 export const DEFAULT_CONFIG: ExtensionConfig = {
-  mode: "elizaClassic",
+  mode: "openai",
   provider: {
     // OpenAI
     openaiApiKey: "",
     openaiBaseUrl: "https://api.openai.com/v1",
     openaiSmallModel: "gpt-5-mini",
     openaiLargeModel: "gpt-5",
+
+    // OpenRouter
+    openrouterApiKey: "",
+    openrouterBaseUrl: "https://openrouter.ai/api/v1",
+    openrouterSmallModel: "openai/gpt-4o-mini",
+    openrouterLargeModel: "openai/gpt-4o",
 
     // Anthropic
     anthropicApiKey: "",
@@ -79,6 +95,9 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
     groqBaseUrl: "https://api.groq.com/openai/v1",
     groqSmallModel: "openai/gpt-oss-120b",
     groqLargeModel: "openai/gpt-oss-120b",
+
+    // Eliza Cloud
+    elizaCloudApiKey: "",
   },
 };
 
@@ -121,50 +140,59 @@ export type ExtensionMessage =
   | { type: "SET_CONFIG"; config: ExtensionConfig }
   | { type: "CONFIG_RESPONSE"; config: ExtensionConfig };
 
-// Provider mode labels for UI
-export function getModeLabel(mode: ProviderMode): string {
+// Whether the given provider has its API key configured.
+function providerKeyPresent(
+  mode: ProviderMode,
+  provider: ProviderSettings,
+): boolean {
   switch (mode) {
-    case "elizaClassic":
-      return "ELIZA (offline)";
     case "openai":
-      return "OpenAI";
+      return (provider.openaiApiKey ?? "").trim().length > 0;
+    case "openrouter":
+      return (provider.openrouterApiKey ?? "").trim().length > 0;
     case "anthropic":
-      return "Claude";
+      return (provider.anthropicApiKey ?? "").trim().length > 0;
+    case "elizacloud":
+      return (provider.elizaCloudApiKey ?? "").trim().length > 0;
     case "xai":
-      return "Grok";
+      return (provider.xaiApiKey ?? "").trim().length > 0;
     case "gemini":
-      return "Gemini";
+      return (provider.googleGenaiApiKey ?? "").trim().length > 0;
     case "groq":
-      return "Groq";
-    default:
-      return "ELIZA (offline)";
+      return (provider.groqApiKey ?? "").trim().length > 0;
   }
 }
 
-// Check if a mode has a valid API key configured
+// Whether the explicitly selected provider has a valid API key configured.
 export function hasValidApiKey(config: ExtensionConfig): boolean {
-  switch (config.mode) {
-    case "elizaClassic":
-      return true; // No API key needed
-    case "openai":
-      return (config.provider.openaiApiKey ?? "").trim().length > 0;
-    case "anthropic":
-      return (config.provider.anthropicApiKey ?? "").trim().length > 0;
-    case "xai":
-      return (config.provider.xaiApiKey ?? "").trim().length > 0;
-    case "gemini":
-      return (config.provider.googleGenaiApiKey ?? "").trim().length > 0;
-    case "groq":
-      return (config.provider.groqApiKey ?? "").trim().length > 0;
-    default:
-      return false;
-  }
+  return providerKeyPresent(config.mode, config.provider);
 }
 
-// Get effective mode (falls back to elizaClassic if no API key)
-export function getEffectiveMode(config: ExtensionConfig): ProviderMode {
-  if (config.mode === "elizaClassic") return "elizaClassic";
-  return hasValidApiKey(config) ? config.mode : "elizaClassic";
+// Auto-selection order when the chosen provider has no key. Mirrors the
+// inference-provider contract: OpenAI > OpenRouter > Anthropic > Eliza Cloud,
+// then the remaining OpenAI-compatible providers this extension supports.
+export const PROVIDER_PRIORITY: ProviderMode[] = [
+  "openai",
+  "openrouter",
+  "anthropic",
+  "elizacloud",
+  "xai",
+  "gemini",
+  "groq",
+];
+
+/**
+ * Pick the provider to run with:
+ *  - honor the explicitly selected mode when its key is set,
+ *  - otherwise fall back to the first configured provider by priority,
+ *  - return null when no provider has a key (caller must surface a clear error).
+ */
+export function selectProvider(config: ExtensionConfig): ProviderMode | null {
+  if (providerKeyPresent(config.mode, config.provider)) return config.mode;
+  for (const mode of PROVIDER_PRIORITY) {
+    if (providerKeyPresent(mode, config.provider)) return mode;
+  }
+  return null;
 }
 
 // Deep merge utility for config objects

@@ -16,9 +16,6 @@ import { v4 as uuidv4 } from "uuid";
 import type { AppConfig, ChatMessage, ProviderMode } from "./types";
 import { getEffectiveMode } from "./types";
 
-const { elizaClassicPlugin, getElizaGreeting } = await import(
-  "@elizaos/plugin-eliza-classic"
-);
 const { default: localdbPlugin } = await import("@elizaos/plugin-localdb");
 
 type RuntimeBundle = {
@@ -58,7 +55,11 @@ function applySettings(
   runtime.setSetting("LOCALDB_DATA_DIR", getDataDir());
 
   if (mode === "openai") {
-    runtime.setSetting("OPENAI_API_KEY", config.provider.openaiApiKey, true);
+    runtime.setSetting(
+      "OPENAI_API_KEY",
+      config.provider.openaiApiKey || process.env.OPENAI_API_KEY || "",
+      true,
+    );
     runtime.setSetting("OPENAI_BASE_URL", config.provider.openaiBaseUrl);
     runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.openaiSmallModel);
     runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.openaiLargeModel);
@@ -67,7 +68,7 @@ function applySettings(
   if (mode === "anthropic") {
     runtime.setSetting(
       "ANTHROPIC_API_KEY",
-      config.provider.anthropicApiKey,
+      config.provider.anthropicApiKey || process.env.ANTHROPIC_API_KEY || "",
       true,
     );
     runtime.setSetting(
@@ -77,6 +78,27 @@ function applySettings(
     runtime.setSetting(
       "ANTHROPIC_LARGE_MODEL",
       config.provider.anthropicLargeModel,
+    );
+  }
+
+  if (mode === "elizacloud") {
+    // The Eliza Cloud plugin reads ELIZAOS_CLOUD_API_KEY at init.
+    runtime.setSetting(
+      "ELIZAOS_CLOUD_API_KEY",
+      config.provider.elizacloudApiKey || process.env.ELIZA_API_KEY || "",
+      true,
+    );
+    runtime.setSetting(
+      "ELIZAOS_CLOUD_BASE_URL",
+      config.provider.elizacloudBaseUrl,
+    );
+    runtime.setSetting(
+      "ELIZAOS_CLOUD_SMALL_MODEL",
+      config.provider.elizacloudSmallModel,
+    );
+    runtime.setSetting(
+      "ELIZAOS_CLOUD_LARGE_MODEL",
+      config.provider.elizacloudLargeModel,
     );
   }
 
@@ -107,7 +129,7 @@ function applySettings(
   if (mode === "openrouter") {
     runtime.setSetting(
       "OPENROUTER_API_KEY",
-      config.provider.openrouterApiKey,
+      config.provider.openrouterApiKey || process.env.OPENROUTER_API_KEY || "",
       true,
     );
     runtime.setSetting(
@@ -138,24 +160,24 @@ async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
   const base: Plugin[] = [localdbPlugin];
 
   switch (mode) {
-    case "elizaClassic":
-      return [...base, elizaClassicPlugin];
     case "openai":
       return [...base, (await import("@elizaos/plugin-openai")).default];
+    case "openrouter":
+      return [...base, (await import("@elizaos/plugin-openrouter")).default];
     case "anthropic":
       return [...base, (await import("@elizaos/plugin-anthropic")).default];
+    case "elizacloud":
+      return [...base, (await import("@elizaos/plugin-elizacloud")).default];
     case "xai":
       return [...base, (await import("@elizaos/plugin-openai")).default];
     case "gemini":
       return [...base, (await import("@elizaos/plugin-google-genai")).default];
     case "groq":
       return [...base, (await import("@elizaos/plugin-groq")).default];
-    case "openrouter":
-      return [...base, (await import("@elizaos/plugin-openrouter")).default];
     case "ollama":
       return [...base, (await import("@elizaos/plugin-ollama")).default];
     default:
-      return [...base, elizaClassicPlugin];
+      throw new Error(`Unsupported provider mode: ${mode}`);
   }
 }
 
@@ -209,11 +231,8 @@ async function getOrCreateRuntime(config: AppConfig): Promise<RuntimeBundle> {
   }
 }
 
-export function getGreetingText(config: AppConfig): string {
-  const effectiveMode = getEffectiveMode(config);
-  return effectiveMode === "elizaClassic"
-    ? getElizaGreeting()
-    : "Hello! What would you like to chat about?";
+export function getGreetingText(): string {
+  return "Hello! How can I help you today?";
 }
 
 function memoryToChatMessage(

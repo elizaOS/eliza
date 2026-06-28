@@ -122,57 +122,6 @@
         should start in dry-run or test projects.
       </div>
 
-      <h2>Roblox</h2>
-      <p>
-        The Roblox example is in <code>packages/examples/roblox</code>. It runs
-        an HTTP bridge for Roblox Studio scripts and uses Roblox Open Cloud for
-        outbound MessagingService publishes.
-      </p>
-      <ol>
-        <li>
-          Install
-          <a href="https://create.roblox.com/docs/studio/setup">
-            Roblox Studio
-          </a>
-          and open or create an experience.
-        </li>
-        <li>
-          Create a Roblox Open Cloud API key:
-          <a href="https://create.roblox.com/docs/cloud/auth/api-keys">
-            API keys
-          </a>.
-          Enable the experience/universe permissions needed for
-          MessagingService and any DataStore testing.
-        </li>
-        <li>
-          Enable game HTTP calls in Studio:
-          <a href="https://create.roblox.com/docs/reference/engine/classes/HttpService">
-            HttpService
-          </a>.
-        </li>
-        <li>
-          Add the server script from
-          <code>packages/examples/roblox/roblox-studio</code> to
-          ServerScriptService. It forwards player messages to the bridge and
-          subscribes to the configured MessagingService topic.
-        </li>
-      </ol>
-      <pre><code>cd packages/examples/roblox
-export ROBLOX_API_KEY="..."
-export ROBLOX_UNIVERSE_ID="..."
-export ROBLOX_MESSAGING_TOPIC="eliza-agent"
-export ELIZA_ROBLOX_SHARED_SECRET="dev-secret"
-export ROBLOX_DRY_RUN=true
-bun run start</code></pre>
-      <p>
-        For local Studio testing, expose the bridge with a tunnel such as
-        <a href="https://ngrok.com/docs/getting-started/">ngrok</a> or
-        <a href="https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/create-local-tunnel/">
-          Cloudflare Tunnel
-        </a>
-        and put the public URL plus shared secret into the Studio script.
-      </p>
-
       <h2>Minecraft</h2>
       <p>
         Minecraft automation currently lives in

@@ -76,6 +76,21 @@ export default defineConfig({
   },
   define: {
     "process.env": {},
+    // Surface the inference-provider API keys to the browser bundle so the
+    // runtime's env-based provider selection works. Most-specific keys win
+    // over the empty `process.env` catch-all above.
+    "process.env.OPENAI_API_KEY": JSON.stringify(
+      process.env.OPENAI_API_KEY ?? "",
+    ),
+    "process.env.OPENROUTER_API_KEY": JSON.stringify(
+      process.env.OPENROUTER_API_KEY ?? "",
+    ),
+    "process.env.ANTHROPIC_API_KEY": JSON.stringify(
+      process.env.ANTHROPIC_API_KEY ?? "",
+    ),
+    "process.env.ELIZA_API_KEY": JSON.stringify(
+      process.env.ELIZA_API_KEY ?? "",
+    ),
     global: "globalThis",
   },
   resolve: {

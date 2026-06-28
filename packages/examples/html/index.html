@@ -9,7 +9,10 @@
       {
         "imports": {
           "@elizaos/core": "../../../packages/core/dist/browser/index.browser.js",
-          "@elizaos/plugin-eliza-classic": "../../../plugins/plugin-eliza-classic/dist/index.browser.js",
+          "@elizaos/plugin-anthropic": "../../../plugins/plugin-anthropic/dist/browser/index.browser.js",
+          "@elizaos/plugin-elizacloud": "../../../plugins/plugin-elizacloud/dist/browser/index.browser.js",
+          "@elizaos/plugin-openai": "../../../plugins/plugin-openai/dist/browser/index.browser.js",
+          "@elizaos/plugin-openrouter": "../../../plugins/plugin-openrouter/dist/browser/index.browser.js",
           "@elizaos/plugin-localdb": "../../../plugins/plugin-localdb/dist/index.browser.js",
           "@elizaos/plugin-inmemorydb": "../../../plugins/plugin-inmemorydb/dist/browser/index.browser.js",
           "uuid": "https://esm.sh/uuid@11"
@@ -440,7 +443,11 @@
        * Uses:
        * - @elizaos/core (AgentRuntime)
        * - @elizaos/plugin-localdb (localStorage persistence)
-       * - @elizaos/plugin-eliza-classic (pattern matching, no API keys)
+       * - a real inference provider chosen by which API key is configured
+       *   (OpenAI → OpenRouter → Anthropic → Eliza Cloud, in priority order)
+       *
+       * Set a key before loading, e.g. in the page console / boot script:
+       *   globalThis.ELIZA_ENV = { OPENAI_API_KEY: "sk-..." };
        */
 
       import {
@@ -449,9 +456,72 @@
         createMessageMemory,
         stringToUuid,
       } from "@elizaos/core";
-      import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
       import { plugin as localdbPlugin } from "@elizaos/plugin-localdb";
       import { v4 as uuidv4 } from "uuid";
+
+      // ============================================================================
+      // Inference provider selection (priority: openai → openrouter → anthropic → eliza cloud)
+      // ============================================================================
+
+      const PROVIDER_PRIORITY = [
+        { id: "openai", envKey: "OPENAI_API_KEY", secretName: "OPENAI_API_KEY" },
+        {
+          id: "openrouter",
+          envKey: "OPENROUTER_API_KEY",
+          secretName: "OPENROUTER_API_KEY",
+        },
+        {
+          id: "anthropic",
+          envKey: "ANTHROPIC_API_KEY",
+          secretName: "ANTHROPIC_API_KEY",
+        },
+        {
+          id: "elizacloud",
+          envKey: "ELIZA_API_KEY",
+          secretName: "ELIZAOS_CLOUD_API_KEY",
+        },
+      ];
+
+      function readEnv() {
+        const fromProcess =
+          typeof process !== "undefined" && process.env ? process.env : {};
+        const fromWindow = globalThis.ELIZA_ENV ?? {};
+        return { ...fromProcess, ...fromWindow };
+      }
+
+      function selectProvider() {
+        const env = readEnv();
+        for (const provider of PROVIDER_PRIORITY) {
+          const apiKey = env[provider.envKey];
+          if (apiKey) {
+            return {
+              id: provider.id,
+              secretName: provider.secretName,
+              apiKey,
+            };
+          }
+        }
+        throw new Error(
+          "No inference provider configured. Set one of OPENAI_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or ELIZA_API_KEY.",
+        );
+      }
+
+      // Static specifiers so the import map can resolve each provider's browser build.
+      async function loadProviderPlugin(id) {
+        switch (id) {
+          case "openai":
+            return (await import("@elizaos/plugin-openai")).openaiPlugin;
+          case "openrouter":
+            return (await import("@elizaos/plugin-openrouter")).openrouterPlugin;
+          case "anthropic":
+            return (await import("@elizaos/plugin-anthropic")).anthropicPlugin;
+          case "elizacloud":
+            return (await import("@elizaos/plugin-elizacloud"))
+              .elizaOSCloudPlugin;
+          default:
+            throw new Error(`Unknown inference provider: ${id}`);
+        }
+      }
 
       // ============================================================================
       // Character (same as chat.ts)
@@ -543,14 +613,32 @@
 
       async function initializeRuntime() {
         console.log("🚀 Starting Eliza (Browser)...\n");
-        updateStatus("Initializing runtime...", true);
+        updateStatus("Selecting inference provider...", true);
+
+        // Pick the provider from whichever API key is configured, then load its
+        // browser build lazily and pass the key through as a character secret.
+        const provider = selectProvider();
+        const providerPlugin = await loadProviderPlugin(provider.id);
+        const runtimeCharacter = {
+          ...character,
+          settings: {
+            ...character.settings,
+            secrets: {
+              ...character.settings?.secrets,
+              [provider.secretName]: provider.apiKey,
+            },
+          },
+        };
+
+        console.log(`🧠 Inference provider: ${provider.id}\n`);
+        updateStatus(`Initializing runtime (${provider.id})...`, true);
 
         // Create runtime with plugins (browser version)
         // - localdbPlugin instead of sqlPlugin (localStorage for browser)
-        // - elizaClassicPlugin instead of openaiPlugin (no API keys needed)
+        // - the selected inference provider plugin (openai / openrouter / anthropic / elizacloud)
         runtime = new AgentRuntime({
-          character,
-          plugins: [localdbPlugin, elizaClassicPlugin],
+          character: runtimeCharacter,
+          plugins: [localdbPlugin, providerPlugin],
         });
 
         updateStatus("Initializing AgentRuntime...", true);
@@ -570,7 +658,7 @@
           type: ChannelType.DM,
         });
 
-        updateStatus("System Ready");
+        updateStatus(`Ready · ${provider.id}`);
 
         // Remove init message
         const { initMessage } = getElements();
@@ -586,9 +674,7 @@
         showTyping();
         await new Promise((resolve) => setTimeout(resolve, 800));
         hideTyping();
-        addMessage(
-          "Hello. I am ELIZA, running on elizaOS. How are you feeling today?",
-        );
+        addMessage("Hello! How can I help you today?");
       }
 
       // ============================================================================
@@ -681,8 +767,15 @@
           }
         });
 
-        // Start initialization
-        initializeRuntime();
+        // Start initialization; surface configuration errors (e.g. no API key) in the UI.
+        initializeRuntime().catch((error) => {
+          updateStatus("Configuration error");
+          const { initMessage } = getElements();
+          if (initMessage) {
+            initMessage.querySelector(".text").textContent = error.message;
+          }
+          throw error;
+        });
       });
 
       // Export runtime for debugging

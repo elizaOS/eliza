@@ -4,7 +4,7 @@ This example is a **simple chat UI** (frontend) talking to a **local AgentRuntim
 
 - **Frontend**: Vite + React (runs in Capacitor WebView)
 - **Backend agent**: TypeScript `AgentRuntime` (Bun/Node) using `@elizaos/plugin-localdb` for persistence
-- **LLM selection**: ELIZA classic fallback when no API key is configured
+- **LLM selection**: pick a provider in the UI, or leave credentials blank and the backend selects one from the first matching API-key env var (`OPENAI_API_KEY` → `OPENROUTER_API_KEY` → `ANTHROPIC_API_KEY` → `ELIZA_API_KEY`); it errors clearly when none is set
 
 ## Structure
 
