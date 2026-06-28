@@ -31,7 +31,7 @@ export function ContentLayout({
 }: ContentLayoutProps) {
   return (
     <WorkspaceLayout
-      className={cn("eliza-content-layout", className)}
+      className={cn(!inModal && "eliza-content-layout", className)}
       contentClassName={contentClassName}
       contentHeader={contentHeader}
       contentPadding={!inModal}
