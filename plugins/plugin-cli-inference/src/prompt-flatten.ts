@@ -22,14 +22,51 @@ export interface FlattenedPrompt {
   body: string;
 }
 
+/** Pull readable text out of a tool-result part's `output` (shape varies by
+ * provider: `{type:"text",value}`, a bare string, or an array of such parts). */
+function toolOutputToText(output: unknown): string {
+  if (output == null) return "";
+  if (typeof output === "string") return output;
+  if (Array.isArray(output)) return output.map(toolOutputToText).filter(Boolean).join("\n");
+  if (typeof output === "object") {
+    const o = output as { value?: unknown; text?: unknown; content?: unknown };
+    if (typeof o.value === "string") return o.value;
+    if (typeof o.text === "string") return o.text;
+    if (o.content != null) return toolOutputToText(o.content);
+    return JSON.stringify(output);
+  }
+  return String(output);
+}
+
 function contentToText(content: ChatMessage["content"]): string {
   if (content == null) return "";
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
-    .map((part: ChatMessageContentPart) =>
-      part.type === "text" && typeof part.text === "string" ? part.text : ""
-    )
+    .map((part: ChatMessageContentPart) => {
+      // Plain text part.
+      if (part.type === "text" && typeof part.text === "string") return part.text;
+      // Tool call / result carried INSIDE the content array (not on
+      // `message.toolCalls`). Eliza threads WEB_FETCH/etc. call+result this way;
+      // dropping them (the old behavior) blinded the SDK synthesis to every tool
+      // output, so the model fell back to its prior and hallucinated. Surface
+      // both so the flattened transcript carries the actual fetched data.
+      const p = part as {
+        type?: string;
+        toolName?: string;
+        input?: unknown;
+        output?: unknown;
+      };
+      if (p.type === "tool-call" || p.type === "tool_call") {
+        const args = typeof p.input === "string" ? p.input : JSON.stringify(p.input ?? {});
+        return `[tool_call ${p.toolName ?? "tool"} ${args}]`;
+      }
+      if (p.type === "tool-result" || p.type === "tool_result") {
+        const out = toolOutputToText(p.output);
+        return out ? `[tool_result ${p.toolName ?? "tool"}: ${out}]` : "";
+      }
+      return "";
+    })
     .filter(Boolean)
     .join("\n");
 }
