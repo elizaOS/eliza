@@ -972,7 +972,16 @@ async function generateTextWithModel(
 
   const operationName = `${modelType} request using ${modelName}`;
 
-  if (params.stream) {
+  // Tool-using Anthropic requests need generateText: the AI SDK streaming
+  // companion promises can reject for tool-only responses with no text chunks,
+  // while generateText preserves toolCalls and finishReason.
+  const toolSet = paramsWithAttachments.tools;
+  const hasToolSurface =
+    (toolSet ? Object.keys(toolSet).length > 0 : false) ||
+    Boolean(paramsWithAttachments.toolChoice);
+  const streamDisabled = process.env.ELIZA_ANTHROPIC_DISABLE_STREAM === "1" || hasToolSurface;
+
+  if (params.stream && !streamDisabled && !paramsWithAttachments.responseSchema) {
     try {
       const streamResult = streamText(generateParams);
       const providerMetadataPromise: Promise<unknown> = Promise.resolve(

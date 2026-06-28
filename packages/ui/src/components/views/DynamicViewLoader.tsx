@@ -55,6 +55,10 @@ import {
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
+import {
+  useAppSelector,
+  useAppSelectorShallow,
+} from "../../state/app-store.ts";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
@@ -303,6 +307,8 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   registerOverlayApp,
   registerOperatorSurface,
   useApp,
+  useAppSelector,
+  useAppSelectorShallow,
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
@@ -315,19 +321,16 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   toneForViewerAttachment,
 };
 
-const UI_COMPONENTS_COMPAT: Record<string, unknown> = {
-  Button,
-  Input,
-  Spinner,
-  PagePanel,
-};
-
 async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
   return APP_CORE_VIEW_COMPAT;
 }
 
 async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
-  return UI_COMPONENTS_COMPAT;
+  return import("../index.ts");
+}
+
+async function importUiRootCompat(): Promise<Record<string, unknown>> {
+  return import("../../index.ts");
 }
 
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
@@ -345,7 +348,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/capacitor-system": () =>
     importHostExternal("@elizaos/capacitor-system"),
   "@elizaos/shared": () => importHostExternal("@elizaos/shared"),
-  "@elizaos/ui": importAppCoreViewCompat,
+  "@elizaos/ui": importUiRootCompat,
   "@elizaos/plugin-browser": () =>
     importHostExternal("@elizaos/plugin-browser"),
   "@elizaos/plugin-health/screen-time/mobile-signal-setup": () =>
@@ -366,6 +369,8 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/platform": () => import("../../platform/index.ts"),
   "@elizaos/ui/platform/ios-runtime": () =>
     import("../../platform/ios-runtime.ts"),
+  "@elizaos/ui/spatial": () => import("../../spatial/index.ts"),
+  "@elizaos/ui/spatial/tui": () => import("../../spatial/tui/index.ts"),
   "@elizaos/ui/state": () => import("../../state/index.ts"),
   "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
   "@elizaos/ui/utils": () => import("../../utils/index.ts"),
