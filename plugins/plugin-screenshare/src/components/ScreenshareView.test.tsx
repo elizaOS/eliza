@@ -169,11 +169,13 @@ describe("ScreenshareView — capabilities + host lifecycle", () => {
     render(React.createElement(ScreenshareView));
     await screen.findByText("headfulGui");
 
-    expect(agentEl("start").textContent).toBe("Start");
+    expect(agentEl("start").textContent).toBe("Start host session");
 
     fireEvent.click(agentEl("start"));
 
-    await waitFor(() => expect(agentEl("start").textContent).toBe("Rotate"));
+    await waitFor(() =>
+      expect(agentEl("start").textContent).toBe("Rotate host session"),
+    );
 
     const startCall = fetchCalls.find(
       (c) =>
@@ -185,8 +187,8 @@ describe("ScreenshareView — capabilities + host lifecycle", () => {
     });
 
     // Telemetry now reflects the fixture counts.
-    expect(screen.getByText("frames 7")).toBeTruthy();
-    expect(screen.getByText("inputs 3")).toBeTruthy();
+    expect(screen.getByText("Frames: 7")).toBeTruthy();
+    expect(screen.getByText("Inputs: 3")).toBeTruthy();
   });
 
   it("stops the active session via POST /stop with token body + header", async () => {
@@ -195,7 +197,9 @@ describe("ScreenshareView — capabilities + host lifecycle", () => {
     await screen.findByText("headfulGui");
 
     fireEvent.click(agentEl("start"));
-    await waitFor(() => expect(agentEl("start").textContent).toBe("Rotate"));
+    await waitFor(() =>
+      expect(agentEl("start").textContent).toBe("Rotate host session"),
+    );
 
     fireEvent.click(agentEl("stop"));
 
@@ -224,7 +228,9 @@ describe("ScreenshareView — capabilities + host lifecycle", () => {
     expect(agentEl("open-viewer").hasAttribute("disabled")).toBe(true);
 
     fireEvent.click(agentEl("start"));
-    await waitFor(() => expect(agentEl("start").textContent).toBe("Rotate"));
+    await waitFor(() =>
+      expect(agentEl("start").textContent).toBe("Rotate host session"),
+    );
 
     expect(agentEl("open-viewer").hasAttribute("disabled")).toBe(false);
     fireEvent.click(agentEl("open-viewer"));
@@ -241,7 +247,9 @@ describe("ScreenshareView — capabilities + host lifecycle", () => {
     await screen.findByText("headfulGui");
 
     fireEvent.click(agentEl("start"));
-    await waitFor(() => expect(agentEl("start").textContent).toBe("Rotate"));
+    await waitFor(() =>
+      expect(agentEl("start").textContent).toBe("Rotate host session"),
+    );
 
     fireEvent.click(agentEl("copy"));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
@@ -317,7 +325,7 @@ describe("ScreenshareView — launched session + errors", () => {
     });
 
     await screen.findByText("This machine");
-    expect(screen.getByText("frames 7")).toBeTruthy();
+    expect(screen.getByText("Frames: 7")).toBeTruthy();
   });
 
   it("renders the error text when the capability fetch rejects", async () => {

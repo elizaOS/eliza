@@ -113,7 +113,7 @@ export function ScreenshareSpatialView({
           tone={isActive ? "success" : statusTone(session?.status ?? "idle")}
           grow={1}
         >
-          {snapshot.loading ? "loading" : (session?.status ?? "idle")}
+          {`Session: ${snapshot.loading ? "loading" : (session?.status ?? "idle")}`}
         </Text>
         <Text style="caption" tone="muted">
           {snapshot.platform || "desktop"}
@@ -142,10 +142,10 @@ export function ScreenshareSpatialView({
           </HStack>
           <HStack gap={1}>
             <Text style="caption" tone="muted" grow={1}>
-              frames {session.frameCount}
+              Frames: {session.frameCount}
             </Text>
             <Text style="caption" tone="muted" grow={1}>
-              inputs {session.inputCount}
+              Inputs: {session.inputCount}
             </Text>
           </HStack>
           <HStack gap={1}>
@@ -170,7 +170,7 @@ export function ScreenshareSpatialView({
           disabled={snapshot.busy === "start"}
           onPress={dispatch(isActive ? "rotate" : "start")}
         >
-          {isActive ? "Rotate" : "Start"}
+          {isActive ? "Rotate host session" : "Start host session"}
         </Button>
         <Button
           variant="outline"
@@ -180,7 +180,7 @@ export function ScreenshareSpatialView({
           disabled={!snapshot.host}
           onPress={dispatch("open-viewer")}
         >
-          Open
+          Open host viewer
         </Button>
         <Button
           variant="outline"
@@ -189,7 +189,7 @@ export function ScreenshareSpatialView({
           disabled={!snapshot.host}
           onPress={dispatch("copy")}
         >
-          Copy
+          Copy host details
         </Button>
         <Button
           variant="ghost"
@@ -198,11 +198,11 @@ export function ScreenshareSpatialView({
           disabled={!isActive}
           onPress={dispatch("stop")}
         >
-          Stop
+          Stop host session
         </Button>
       </HStack>
 
-      <Divider label="capabilities" />
+      <Divider label="Capabilities" />
       <Text style="caption" tone="muted">
         {liveCaps} live / {snapshot.capabilities.length}
       </Text>
@@ -265,7 +265,7 @@ export function ScreenshareSpatialView({
           disabled={!remoteReady}
           onPress={dispatch("connect")}
         >
-          Connect
+          Connect to remote
         </Button>
         <Button
           variant="outline"
@@ -274,7 +274,7 @@ export function ScreenshareSpatialView({
           disabled={snapshot.loading}
           onPress={dispatch("refresh")}
         >
-          Refresh
+          Refresh capabilities
         </Button>
       </HStack>
     </Card>
