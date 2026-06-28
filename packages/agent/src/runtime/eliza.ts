@@ -172,16 +172,9 @@ import {
 } from "./model-resolution.ts";
 
 const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
-const STEWARD_EVM_BRIDGE_MODULE: string =
-  "@elizaos/app-steward/services/steward-evm-bridge";
 
 type ElizaMakerModule = {
   initializeOGCode?: () => void;
-};
-
-type StewardEvmBridgeModule = {
-  stewardEvmPreBoot?: (runtime: AgentRuntime) => Promise<void> | void;
-  stewardEvmPostBoot?: (runtime: AgentRuntime) => Promise<void> | void;
 };
 
 type E2BCapabilityRouterModule =
@@ -191,12 +184,6 @@ async function loadElizaMakerModule(): Promise<ElizaMakerModule> {
   return (await import(
     /* @vite-ignore */ ELIZAMAKER_MODULE
   )) as ElizaMakerModule;
-}
-
-async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
-  return (await import(
-    /* @vite-ignore */ STEWARD_EVM_BRIDGE_MODULE
-  )) as StewardEvmBridgeModule;
 }
 
 async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModule> {
@@ -4425,15 +4412,6 @@ export async function startEliza(
     }
   };
 
-  const runStewardEvmPreBoot = async (): Promise<void> => {
-    try {
-      const { stewardEvmPreBoot } = await loadStewardEvmBridgeModule();
-      await stewardEvmPreBoot?.(runtime);
-    } catch (err) {
-      logger.debug(`[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`);
-    }
-  };
-
   const registerConnectorSetupService = async (): Promise<void> => {
     try {
       const { ConnectorSetupService } = await import(
@@ -4636,17 +4614,6 @@ export async function startEliza(
     } catch (err) {
       logger.warn(
         `[eliza] Failed to seed bundled documents: ${formatError(err)}`,
-      );
-    }
-  };
-
-  const runStewardEvmPostBoot = async (): Promise<void> => {
-    try {
-      const { stewardEvmPostBoot } = await loadStewardEvmBridgeModule();
-      await stewardEvmPostBoot?.(runtime);
-    } catch (err) {
-      logger.debug(
-        `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
       );
     }
   };
@@ -4897,8 +4864,6 @@ export async function startEliza(
   // plugins continue after the ready gate unless legacy blocking mode is
   // requested). The runtime is reported ready as soon as this resolves.
   const initializeRuntimeServices = async (): Promise<void> => {
-    await runStewardEvmPreBoot();
-    bootTimer.lap("svc:steward-evm");
     await registerConnectorSetupService();
     bootTimer.lap("svc:connector-setup");
     await registerRemoteCodingRunner();
@@ -5099,7 +5064,6 @@ export async function startEliza(
       );
     }
     await seedBundledDocumentsIfEnabled();
-    await runStewardEvmPostBoot();
     await installServerSideWebSearchIfAvailable();
     await registerWebFetchActionIfEnabled();
     await registerWebSearchActionIfEnabled();
@@ -5492,13 +5456,6 @@ export async function startEliza(
               // non-fatal
             }
           }
-          try {
-            const { stewardEvmPreBoot: preBootHR } =
-              await loadStewardEvmBridgeModule();
-            await preBootHR?.(newRuntime);
-          } catch {
-            // non-fatal
-          }
           assertPersistentDatabaseRequired(newRuntime);
           await newRuntime.initialize();
           await prepareRuntimeForTrajectoryCapture(
@@ -5516,14 +5473,6 @@ export async function startEliza(
             logger.debug(
               `[eliza] Hot-reload plugin provider role gating skipped: ${formatError(err)}`,
             );
-          }
-
-          try {
-            const { stewardEvmPostBoot: postBootHR } =
-              await loadStewardEvmBridgeModule();
-            await postBootHR?.(newRuntime);
-          } catch {
-            // non-fatal
           }
 
           // Ensure AutonomyService survives hot-reload; the loop remains opt-in.

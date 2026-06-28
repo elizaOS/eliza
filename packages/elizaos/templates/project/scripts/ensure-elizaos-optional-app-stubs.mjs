@@ -20,7 +20,6 @@ const optionalPackages = [
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-polymarket",
   "@elizaos/plugin-shopify",
-  "@elizaos/plugin-steward-app",
   "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-training",
 ];
@@ -105,8 +104,6 @@ export function setActiveTrainingService() {}
 export function sanitizeWhatsAppAccountId(value) {
   return typeof value === "string" ? value.trim() : "";
 }
-export async function stewardEvmPostBoot() {}
-export async function stewardEvmPreBoot() {}
 export class WhatsAppPairingSession {}
 export async function whatsappAuthExists() {
   return false;

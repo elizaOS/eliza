@@ -329,9 +329,6 @@
       "@elizaos/plugin-google-chat": [
         "./plugins/plugin-google-chat/dist/index.d.ts"
       ],
-      "@elizaos/plugin-steward-app": [
-        "./plugins/plugin-steward-app/dist/index.d.ts"
-      ],
       "@elizaos/plugin-contacts": ["./plugins/plugin-contacts/dist/index.d.ts"],
       "@elizaos/plugin-form": ["./plugins/plugin-form/dist/index.d.ts"],
       "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/dist/index.d.ts"],

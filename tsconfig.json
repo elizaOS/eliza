@@ -171,9 +171,6 @@
       ],
       "@elizaos/plugin-signal": ["./plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-sql": ["./plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-steward-app": [
-        "./plugins/plugin-steward-app/src/index.ts"
-      ],
       "@elizaos/plugin-streaming": ["./plugins/plugin-streaming/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "./plugins/plugin-task-coordinator/src/index.ts"

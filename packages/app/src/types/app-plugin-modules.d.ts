@@ -8,9 +8,6 @@ import type {
   CompanionSceneStatus,
   CompanionShellComponentProps,
   ResolveCompanionInferenceNoticeArgs,
-  StewardApprovalQueueProps,
-  StewardLogoProps,
-  StewardTransactionHistoryProps,
 } from "@elizaos/ui/config";
 import type { ComponentType } from "react";
 
@@ -166,13 +163,6 @@ declare module "@elizaos/app-phone" {
 
 declare module "@elizaos/plugin-phone" {
   export * from "@elizaos/app-phone";
-}
-
-declare module "@elizaos/app-steward" {
-  export const StewardLogo: ComponentType<StewardLogoProps>;
-  export const ApprovalQueue: ComponentType<StewardApprovalQueueProps>;
-  export const TransactionHistory: ComponentType<StewardTransactionHistoryProps>;
-  export const StewardView: ComponentType<Record<string, unknown>>;
 }
 
 declare module "@elizaos/app-task-coordinator" {

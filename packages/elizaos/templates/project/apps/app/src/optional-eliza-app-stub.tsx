@@ -102,7 +102,5 @@ export function sanitizeAuthResult(result: unknown) {
 }
 export async function saveTrainingConfig() {}
 export function setActiveTrainingService() {}
-export async function stewardEvmPostBoot() {}
-export async function stewardEvmPreBoot() {}
 
 export default optionalPlugin;

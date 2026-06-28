@@ -38,5 +38,4 @@ if (platform === "android" || platform === "ios") {
         default: m.CompanionView,
       })),
   });
-
 }

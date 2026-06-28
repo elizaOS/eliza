@@ -32,7 +32,6 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 | `plugin-shopify` | 5 | PLUGIN |
 | `core/basic-capabilities` | 4 | CORE |
 | `plugin-signal` | 4 | PLUGIN |
-| `app-app-steward` | 3 | APP |
 | `core/plugin-manager` | 3 | CORE |
 | `core/secrets` | 3 | CORE |
 | `core/advanced-planning` | 2 | CORE |
@@ -941,19 +940,16 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 ## Gap Findings
 
 ### Actions Without Tests/Examples
-- **Count:** 11
+- **Count:** 8
 
 Notable actions without examples (first 10):
 
   - `ANALYZE_INPUT` (core/advanced-planning)
   - `BROWSER_ACTION` (plugin-computeruse)
-  - `CHECK_BALANCE` (app-app-steward)
-  - `EXECUTE_TRADE` (app-app-steward)
   - `FILE_ACTION` (plugin-computeruse)
   - `MANAGE_WINDOW` (plugin-computeruse)
   - `PLAY_EMOTE` (app-app-companion)
   - `TERMINAL_ACTION` (plugin-computeruse)
-  - `TRANSFER_TOKEN` (app-app-steward)
   - `UPDATE_OWNER_PROFILE` (app-app-lifeops)
 
 ### Actions Without Validate Function
