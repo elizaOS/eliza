@@ -138,8 +138,22 @@ export class MemoryCacheAdapter implements CacheRedisClient {
   ): Promise<[string | number, string[]]> {
     this.deleteExpired();
     const pattern = this.patternToRegExp(options.match);
-    const keys = [...this.values.keys(), ...this.lists.keys()].filter((key) => pattern.test(key));
-    return [0, keys.slice(0, options.count)];
+    const keys = [...new Set([...this.values.keys(), ...this.lists.keys()])]
+      .filter((key) => pattern.test(key))
+      .sort();
+    // Real pagination (the old impl returned only the first `count` keys and
+    // claimed completion — silently dropping the rest). Key-based opaque cursor
+    // ("mem:<lastKey>"): return the next `count` keys that sort strictly AFTER the
+    // cursor key. This is stable under deletion of already-returned keys (the
+    // delPattern case) — an offset cursor would skip keys as the set shrinks. The
+    // token is deliberately NON-numeric so callers can't parseInt it (mirrors
+    // Redis/KV opaque cursors and catches a parse-the-cursor regression).
+    const after = cursor === "0" || cursor === 0 ? "" : String(cursor).slice("mem:".length);
+    const startIdx = after === "" ? 0 : keys.findIndex((key) => key > after);
+    const begin = startIdx < 0 ? keys.length : startIdx;
+    const page = keys.slice(begin, begin + options.count);
+    const next = page.length === options.count ? `mem:${page[page.length - 1]}` : "0";
+    return [next, page];
   }
 
   async mget(...keys: string[]): Promise<Array<string | null>> {

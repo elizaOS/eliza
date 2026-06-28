@@ -777,7 +777,11 @@ export class CacheClient {
     if (!redis) return;
 
     const start = Date.now();
-    let cursor: string | number = 0;
+    // Thread the cursor as an opaque string. Cloudflare KV returns a base64-ish
+    // continuation token (and "0" when complete); parsing it as a number (the old
+    // behavior) corrupted it, so KV pagination stopped after the first page and
+    // pattern deletes silently left every key beyond the first batch behind.
+    let cursor: string | number = "0";
     let totalDeleted = 0;
     let iterations = 0;
 
@@ -795,7 +799,7 @@ export class CacheClient {
         count: batchSize,
       });
 
-      cursor = typeof result[0] === "string" ? Number.parseInt(result[0], 10) : result[0];
+      cursor = String(result[0]);
       const keys = result[1];
 
       if (keys.length > 0) {
@@ -806,10 +810,10 @@ export class CacheClient {
         );
       }
 
-      if (cursor !== 0) {
+      if (cursor !== "0") {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
-    } while (cursor !== 0 && iterations < maxIterations);
+    } while (cursor !== "0" && iterations < maxIterations);
 
     const duration = Date.now() - start;
 
@@ -845,7 +849,10 @@ export class CacheClient {
     const envPrefix = `${env.ENVIRONMENT || "local"}:`;
     const match = this.pk(`${prefix}*`);
     const out: string[] = [];
-    let cursor: string | number = 0;
+    // Opaque string cursor — see delPattern. parseInt-ing KV's continuation token
+    // broke pagination, so the sweep only ever saw the first ~100 pending keys and
+    // stragglers leaked (TTL-expired uncharged).
+    let cursor: string | number = "0";
     let iterations = 0;
 
     try {
@@ -854,13 +861,13 @@ export class CacheClient {
           match,
           count: 100,
         });
-        cursor = typeof next === "string" ? Number.parseInt(next, 10) : next;
+        cursor = String(next);
         for (const key of keys) {
           out.push(key.startsWith(envPrefix) ? key.slice(envPrefix.length) : key);
           if (out.length >= maxKeys) return out;
         }
         if (++iterations >= 1000) break;
-      } while (cursor !== 0);
+      } while (cursor !== "0");
       this.resetFailures();
       return out;
     } catch (error) {
