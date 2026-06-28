@@ -2,6 +2,11 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  CLOUD_HANDOFF_PHASE_EVENT,
+  type CloudHandoffPhaseDetail,
+  dispatchCloudHandoffRetry,
+} from "../events";
 
 type ActiveServerArgs = {
   kind: "cloud";
@@ -17,10 +22,26 @@ type ActiveServerRecord = {
   accessToken?: string;
 };
 
+type CloudCompatAgentCreateResult = {
+  success: boolean;
+  data: {
+    agentId: string;
+    agentName: string;
+    jobId: string;
+    status: string;
+    nodeId: string | null;
+    message: string;
+  };
+};
+
+type CreateCloudCompatAgent = (opts?: {
+  [key: string]: unknown;
+}) => Promise<CloudCompatAgentCreateResult>;
+
 const mocks = vi.hoisted(() => ({
   cloudAuthenticated: false,
-  // Phase-1 shared-tier flag (boot-config). Default off → byte-identical to
-  // pre-Phase-1; the create-both test flips it on to exercise the handoff arm.
+  // Phase-1 shared-tier flag (boot-config). Most tests hold it off to exercise
+  // the kill-switch; shared-handoff tests flip it on explicitly.
   preferSharedCloudTier: false,
   addAgentProfile: vi.fn(() => ({
     id: "profile-shared-1",
@@ -98,7 +119,7 @@ const mocks = vi.hoisted(() => ({
   // Phase-1 create-both: when the shared-tier flag is on, the controller
   // provisions a SEPARATE dedicated agent (a plain create, no preferSharedTier)
   // as the handoff target.
-  createCloudCompatAgent: vi.fn(async () => ({
+  createCloudCompatAgent: vi.fn<CreateCloudCompatAgent>(async () => ({
     success: true as const,
     data: {
       agentId: "dedicated-1",
@@ -267,12 +288,27 @@ vi.mock("./voice-readiness", () => ({
 
 import { useFirstRunController } from "./use-first-run-controller";
 
+async function flushHandoffPromises(): Promise<void> {
+  for (let i = 0; i < 6; i++) await Promise.resolve();
+}
+
 describe("useFirstRunController cloud first-run", () => {
   beforeEach(() => {
     localStorage.clear();
     mocks.cloudAuthenticated = false;
     mocks.preferSharedCloudTier = false;
-    mocks.createCloudCompatAgent.mockClear();
+    mocks.createCloudCompatAgent.mockReset();
+    mocks.createCloudCompatAgent.mockImplementation(async () => ({
+      success: true as const,
+      data: {
+        agentId: "dedicated-1",
+        agentName: "Demo Agent",
+        jobId: "",
+        status: "provisioning",
+        nodeId: null,
+        message: "Agent created",
+      },
+    }));
     mocks.addAgentProfile.mockClear();
     mocks.completeFirstRun.mockClear();
     // mockReset (not mockClear): individual tests install custom
@@ -321,7 +357,16 @@ describe("useFirstRunController cloud first-run", () => {
       bridgeUrl: null,
       created: true,
     }));
-    mocks.startCloudAgentHandoff.mockClear();
+    mocks.startCloudAgentHandoff.mockReset();
+    mocks.startCloudAgentHandoff.mockImplementation(
+      async (_args: {
+        onSwitch: (containerBase: string) => void;
+        [key: string]: unknown;
+      }) => ({
+        status: "switched-empty" as const,
+        imported: 0,
+      }),
+    );
     mocks.removeAgentProfile.mockClear();
     mocks.deleteSharedBridgeAgent.mockClear();
     mocks.silentlyRepointToDedicated.mockClear();
@@ -347,6 +392,7 @@ describe("useFirstRunController cloud first-run", () => {
 
     await act(async () => {
       await result.current.finishRuntime();
+      await flushHandoffPromises();
     });
 
     expect(mocks.handleCloudLogin).toHaveBeenCalledTimes(1);
@@ -419,12 +465,65 @@ describe("useFirstRunController cloud first-run", () => {
     expect(handoffArgs?.dedicatedAgentId).not.toBe(handoffArgs?.agentId);
   });
 
+  it("surfaces dedicated create failure as a retryable handoff failure", async () => {
+    mocks.preferSharedCloudTier = true;
+    mocks.createCloudCompatAgent.mockResolvedValueOnce({
+      success: false,
+      data: {
+        agentId: "",
+        agentName: "Demo Agent",
+        jobId: "",
+        status: "error",
+        nodeId: null,
+        message: "out of credits",
+      },
+    });
+    const phases: CloudHandoffPhaseDetail[] = [];
+    const onPhase = (event: Event) => {
+      phases.push((event as CustomEvent<CloudHandoffPhaseDetail>).detail);
+    };
+    window.addEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
+    const { result } = renderHook(() => useFirstRunController());
+
+    try {
+      await act(async () => {
+        await result.current.finishRuntime();
+        await flushHandoffPromises();
+      });
+
+      expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
+        launchCompanionOverlay: true,
+      });
+      expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
+      expect(phases).toContainEqual({
+        agentId: "agent-1",
+        phase: "migrating",
+      });
+      expect(phases).toContainEqual({
+        agentId: "agent-1",
+        phase: "failed",
+        error: "out of credits",
+      });
+
+      await act(async () => {
+        dispatchCloudHandoffRetry({ agentId: "agent-1" });
+        await flushHandoffPromises();
+      });
+
+      expect(mocks.createCloudCompatAgent).toHaveBeenCalledTimes(2);
+      expect(mocks.startCloudAgentHandoff).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
+    }
+  });
+
   it("PR3: the handoff onSwitch re-points SILENTLY (no switchAgentProfile, no draft wipe, no shell flash)", async () => {
     mocks.preferSharedCloudTier = true;
     const { result } = renderHook(() => useFirstRunController());
 
     await act(async () => {
       await result.current.finishRuntime();
+      await flushHandoffPromises();
     });
 
     // Grab the onSwitch the controller armed the supervisor with, and fire it
@@ -460,9 +559,7 @@ describe("useFirstRunController cloud first-run", () => {
 
     await act(async () => {
       await result.current.finishRuntime();
-      // Let runCloudAgentHandoff's start().then(onSwitchSucceeded) settle.
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushHandoffPromises();
     });
 
     expect(mocks.removeAgentProfile).toHaveBeenCalledTimes(1);
@@ -535,9 +632,9 @@ describe("useFirstRunController cloud first-run", () => {
   });
 
   it("flag OFF: a created shared agent neither provisions a dedicated agent nor arms the handoff", async () => {
-    // Phase-1 is gated on the boot-config flag. With it OFF (the default), even
+    // Phase-1 is gated on the boot-config flag. With it OFF (kill-switch), even
     // a shared-base create stays byte-identical to pre-Phase-1: no second
-    // (dedicated) create, no handoff. The demo turns the flag on.
+    // (dedicated) create, no handoff.
     mocks.preferSharedCloudTier = false;
     mocks.selectOrProvisionCloudAgent.mockResolvedValue({
       agentId: "agent-1",

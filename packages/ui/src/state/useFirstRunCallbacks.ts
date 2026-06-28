@@ -674,11 +674,10 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             name: firstRunName,
             bio: style?.bio ?? ["An autonomous AI agent."],
             ...(preferAgentId ? { preferAgentId } : {}),
-            // Phase-0 MVP: boot-config flag → request a SHARED (instant,
-            // container-free) agent on create. Default off → dedicated, unchanged.
-            ...(getBootConfig().preferSharedCloudTier
-              ? { preferSharedTier: true }
-              : {}),
+            // This legacy callback path does not own the shared→dedicated
+            // handoff supervisor; keep it dedicated-direct even when
+            // preferSharedCloudTier is default-on. The controller path owns the
+            // shared bridge and background handoff.
             onProgress: () => {},
           });
 

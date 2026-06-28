@@ -75,7 +75,9 @@ function normalizeCharacters(
   });
 }
 
-async function fetchRuntimeCharacters(signal?: AbortSignal): Promise<Character[]> {
+async function fetchRuntimeCharacters(
+  signal?: AbortSignal,
+): Promise<Character[]> {
   const data = await api<{ agents?: Array<{ id?: unknown; name?: unknown }> }>(
     "/api/agents",
     { signal, skipAuth: true },

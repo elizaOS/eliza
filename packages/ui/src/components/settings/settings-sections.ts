@@ -20,6 +20,10 @@ import {
   Webhook,
 } from "lucide-react";
 import type { ComponentType } from "react";
+import {
+  CLOUD_SETTINGS_GROUP_ID,
+  registerSettingsGroup,
+} from "../../cloud/settings/cloud-settings-group";
 import { ReleaseCenterView } from "../pages/ReleaseCenterView";
 import { AdvancedSection } from "./AdvancedSection";
 import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
@@ -36,10 +40,6 @@ import { RemotePluginHostSection } from "./RemotePluginHostSection";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SecretsManagerSection } from "./SecretsManagerSection";
 import { SecuritySettingsSection } from "./SecuritySettingsSection";
-import {
-  CLOUD_SETTINGS_GROUP_ID,
-  registerSettingsGroup,
-} from "../../cloud/settings/cloud-settings-group";
 import {
   SETTINGS_GROUP_LABEL,
   SETTINGS_GROUP_ORDER,

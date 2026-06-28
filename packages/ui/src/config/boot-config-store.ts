@@ -298,13 +298,9 @@ export interface AppBootConfig {
     naturalLanguage?: boolean;
   };
   /**
-   * Phase-0 cloud tier flip (MVP). When true, the first-run cloud-create path
-   * requests a SHARED (container-free, in-Worker) agent so the user chats
-   * instantly with no provisioning wait, instead of the default DEDICATED
-   * always-on container. Off by default: the seamless shared→dedicated handoff
-   * is not built yet, so making everyone shared would strand them there — this
-   * flag is for the instant-shared demo only. When false the create request is
-   * byte-identical to the dedicated path (sends `alwaysOn: true`).
+   * Prefer the instant shared cloud tier during first-run, then hand off to a
+   * dedicated agent in the background. Default on; set false as a kill-switch to
+   * return first-run cloud creation to the dedicated-direct path.
    */
   preferSharedCloudTier?: boolean;
   /** Character catalog data — replaces cross-package import of catalog.json. */
@@ -325,6 +321,7 @@ export interface AppBootConfig {
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
   cloudApiBase: "https://elizacloud.ai",
+  preferSharedCloudTier: true,
 };
 
 // ---------------------------------------------------------------------------
