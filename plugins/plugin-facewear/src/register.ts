@@ -1,4 +1,6 @@
-import { registerSettingsSection } from "@elizaos/ui";
+// Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
+// browser barrel, which doesn't reliably re-export this registry helper.
+import { registerSettingsSection } from "@elizaos/ui/components/settings/settings-section-registry";
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { Glasses } from "lucide-react";
 import { type ComponentType, createElement, useEffect, useState } from "react";
