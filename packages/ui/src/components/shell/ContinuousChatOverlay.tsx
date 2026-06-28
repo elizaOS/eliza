@@ -2780,6 +2780,11 @@ export function ContinuousChatOverlay({
         return;
       }
       if (sheetOpen) {
+        if (composerFocusedAtPressRef.current) {
+          composerFocusedAtPressRef.current = false;
+          dismissKeyboardToPriorState();
+          return;
+        }
         collapse();
         return;
       }

@@ -285,7 +285,7 @@ describe("Home ↔ Springboard composed surface", () => {
     expect(surface.getAttribute("data-page")).toBe("home");
   });
 
-  it("springboard tiles render DISTINCT app-icon glyphs without hero probes (#5)", () => {
+  it("springboard tiles render DISTINCT generated app-icon imagery (#5)", () => {
     renderComposed();
     openSpringboard();
 
@@ -297,8 +297,8 @@ describe("Home ↔ Springboard composed surface", () => {
     );
     expect(settingsVisual).toBeTruthy();
     expect(filesVisual).toBeTruthy();
-    expect(settingsVisual?.querySelector("img")).toBeNull();
-    expect(filesVisual?.querySelector("img")).toBeNull();
+    expect(screen.getByTestId("springboard-image-settings")).toBeTruthy();
+    expect(screen.getByTestId("springboard-image-files")).toBeTruthy();
     expect(settingsVisual?.getAttribute("style")).toContain("linear-gradient");
     expect(filesVisual?.getAttribute("style")).toContain("linear-gradient");
 
