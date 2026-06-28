@@ -123,6 +123,53 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     expect(result).toBeNull(); // already has messages
   });
 
+  it("skips a saved greeting-only draft when a real conversation exists", async () => {
+    window.localStorage.setItem("eliza:chat:activeConversationId", "empty");
+    const realConversation = {
+      ...CONVERSATION,
+      id: "real",
+      title: "Real chat",
+      roomId: "real-room",
+      updatedAt: "2026-06-25T00:00:00.000Z",
+    };
+    const emptyConversation = {
+      ...CONVERSATION,
+      id: "empty",
+      title: "New Chat",
+      roomId: "empty-room",
+      updatedAt: "2026-06-26T00:00:00.000Z",
+    };
+    const client = makeFakeClient({
+      listConversations: vi.fn(async () => ({
+        conversations: [emptyConversation, realConversation],
+      })),
+      getConversationMessages: vi.fn(async (id: string) => ({
+        messages:
+          id === "empty"
+            ? [
+                {
+                  id: "greeting",
+                  role: "assistant",
+                  source: "agent_greeting",
+                  text: "hey",
+                  timestamp: 1,
+                },
+              ]
+            : [{ id: "m1", role: "user", text: "hello", timestamp: 2 }],
+      })),
+    });
+    const { deps, setActiveConversationId, setConversationMessages } =
+      makeDeps(client);
+
+    const result = await hydrateInitialConversation(deps);
+
+    expect(setActiveConversationId).toHaveBeenCalledWith("real");
+    expect(setConversationMessages.mock.calls.at(-1)?.[0]).toEqual([
+      { id: "m1", role: "user", text: "hello", timestamp: 2 },
+    ]);
+    expect(result).toBeNull();
+  });
+
   it("returns the new conversation id to backfill when created WITHOUT an inline greeting", async () => {
     const client = makeFakeClient({
       createConversation: vi.fn(async () => ({

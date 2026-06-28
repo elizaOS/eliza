@@ -92,6 +92,18 @@ function isPersistedGreetingMessage(message: ConversationMessage): boolean {
   );
 }
 
+function hasUserConversationMessage(messages: ConversationMessage[]): boolean {
+  return messages.some((message) => message.role === "user");
+}
+
+function isDraftOnlyConversationMessages(
+  messages: ConversationMessage[],
+): boolean {
+  if (hasUserConversationMessage(messages)) return false;
+  if (messages.length === 0) return true;
+  return messages.every(isPersistedGreetingMessage);
+}
+
 /** The subset of the API client the initial-conversation hydration needs.
  *  Injected (not the module singleton) so the policy below is unit-testable. */
 export type HydrateConversationClient = Pick<
@@ -112,6 +124,51 @@ export interface HydrateInitialConversationDeps {
   setActiveConversationId: (id: string | null) => void;
   setConversationMessages: (messages: ConversationMessage[]) => void;
   uiLanguage: string;
+}
+
+async function resolveRestoredConversationWithMessages(
+  api: HydrateConversationClient,
+  conversations: Conversation[],
+): Promise<{
+  conversation: Conversation;
+  messages: ConversationMessage[];
+}> {
+  const savedConversationId = loadActiveConversationId();
+  const restoredConversation =
+    conversations.find((conversation) => conversation.id === savedConversationId) ??
+    conversations[0];
+  let restoredMessages: ConversationMessage[] = [];
+  try {
+    restoredMessages = filterRenderableConversationMessages(
+      (await api.getConversationMessages(restoredConversation.id)).messages,
+    );
+  } catch {
+    return { conversation: restoredConversation, messages: [] };
+  }
+
+  if (
+    conversations.length <= 1 ||
+    !isDraftOnlyConversationMessages(restoredMessages)
+  ) {
+    return { conversation: restoredConversation, messages: restoredMessages };
+  }
+
+  for (const candidate of conversations) {
+    if (candidate.id === restoredConversation.id) continue;
+    let candidateMessages: ConversationMessage[];
+    try {
+      candidateMessages = filterRenderableConversationMessages(
+        (await api.getConversationMessages(candidate.id)).messages,
+      );
+    } catch {
+      continue;
+    }
+    if (hasUserConversationMessage(candidateMessages)) {
+      return { conversation: candidate, messages: candidateMessages };
+    }
+  }
+
+  return { conversation: restoredConversation, messages: restoredMessages };
 }
 
 /**
@@ -157,11 +214,8 @@ export async function hydrateInitialConversation(
     }
     setConversations(conversations);
     if (conversations.length > 0) {
-      const savedConversationId = loadActiveConversationId();
-      const restoredConversation =
-        conversations.find(
-          (conversation) => conversation.id === savedConversationId,
-        ) ?? conversations[0];
+      const { conversation: restoredConversation, messages: nextMessages } =
+        await resolveRestoredConversationWithMessages(api, conversations);
       if (!isCurrentHydration()) {
         return null;
       }
@@ -172,13 +226,6 @@ export async function hydrateInitialConversation(
         conversationId: restoredConversation.id,
       });
       try {
-        const { messages } = await api.getConversationMessages(
-          restoredConversation.id,
-        );
-        if (!isCurrentHydration()) {
-          return null;
-        }
-        const nextMessages = filterRenderableConversationMessages(messages);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
