@@ -52,9 +52,6 @@ import type {
   CompanionShellComponentProps,
   FineTuningViewProps,
   ResolveCompanionInferenceNoticeArgs,
-  StewardApprovalQueueProps,
-  StewardLogoProps,
-  StewardTransactionHistoryProps,
 } from "@elizaos/ui/config";
 import {
   type AppBootConfig,
@@ -311,15 +308,6 @@ const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
     async () => (await importPersonalAssistant()).WebsiteBlockerSettingsCard,
   );
-const StewardLogo = lazyNamedComponent<StewardLogoProps>(
-  async () => (await importAppSteward()).StewardLogo,
-);
-const ApprovalQueue = lazyNamedComponent<StewardApprovalQueueProps>(
-  async () => (await importAppSteward()).ApprovalQueue,
-);
-const TransactionHistory = lazyNamedComponent<StewardTransactionHistoryProps>(
-  async () => (await importAppSteward()).TransactionHistory,
-);
 const CodingAgentControlChip = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppTaskCoordinator()).CodingAgentControlChip,
 );
@@ -639,9 +627,6 @@ function buildAppBootConfig({
     codingAgentSettingsSection: CodingAgentSettingsSection,
     codingAgentControlChip: CodingAgentControlChip,
     fineTuningView: FineTuningView,
-    stewardLogo: StewardLogo,
-    stewardApprovalQueue: ApprovalQueue,
-    stewardTransactionHistory: TransactionHistory,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
     appBlockerSettingsCard: AppBlockerSettingsCard,
