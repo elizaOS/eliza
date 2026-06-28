@@ -2,6 +2,7 @@ import {
   Archive,
   Bot,
   Brain,
+  Cloud,
   KeyRound,
   LayoutGrid,
   Lock,
@@ -26,6 +27,7 @@ import { AppPermissionsSection } from "./AppPermissionsSection";
 import { AppsManagementSection } from "./AppsManagementSection";
 import { CapabilitiesSection } from "./CapabilitiesSection";
 import { CloudAgentsSection } from "./CloudAgentsSection";
+import { CloudOverviewSection } from "./CloudOverviewSection";
 import { ConnectorsSection } from "./ConnectorsSection";
 import { IdentitySettingsSection } from "./IdentitySettingsSection";
 import { PermissionsSection } from "./PermissionsSection";
@@ -34,6 +36,10 @@ import { RemotePluginHostSection } from "./RemotePluginHostSection";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SecretsManagerSection } from "./SecretsManagerSection";
 import { SecuritySettingsSection } from "./SecuritySettingsSection";
+import {
+  CLOUD_SETTINGS_GROUP_ID,
+  registerSettingsGroup,
+} from "../../cloud/settings/cloud-settings-group";
 import {
   SETTINGS_GROUP_LABEL,
   SETTINGS_GROUP_ORDER,
@@ -249,10 +255,32 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] =
 
 for (const section of SETTINGS_SECTIONS) registerSettingsSection(section);
 
+registerSettingsGroup({
+  id: CLOUD_SETTINGS_GROUP_ID,
+  label: "Cloud",
+  order: 1.5,
+});
+
+registerSettingsSection({
+  id: "cloud-overview",
+  label: "settings.sections.cloudOverview.label",
+  defaultLabel: "Overview",
+  icon: Cloud,
+  tone: "accent",
+  hue: "accent",
+  group: CLOUD_SETTINGS_GROUP_ID,
+  titleKey: "settings.sections.cloudOverview.title",
+  defaultTitle: "Eliza Cloud",
+  order: 1.45,
+  Component: CloudOverviewSection,
+});
+
 // Eliza Cloud agent manager — contributed through the pluggable registry rather
 // than the canonical META list, so it surfaces in Settings (list / switch /
 // create+name / delete agents) without changing the built-in section count that
-// the dev-route-catalog test pins. Ordered right after the AI Model section.
+// the dev-route-catalog test pins. It lives under the local Cloud group with the
+// upsell overview, while full Cloud-only account/billing/API surfaces remain
+// opt-in through registerCloudSettingsSections().
 registerSettingsSection({
   id: "cloud-agents",
   label: "settings.sections.cloudAgents.label",
@@ -260,10 +288,10 @@ registerSettingsSection({
   icon: Bot,
   tone: "accent",
   hue: "accent",
-  group: "agent",
+  group: CLOUD_SETTINGS_GROUP_ID,
   titleKey: "settings.sections.cloudAgents.title",
   defaultTitle: "Eliza Cloud Agents",
-  order: 1.5,
+  order: 1.55,
   Component: CloudAgentsSection,
 });
 

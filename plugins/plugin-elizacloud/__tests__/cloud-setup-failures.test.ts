@@ -868,86 +868,82 @@ describe("C2b — auth revoked during provisioning", () => {
 // ─── C7 — Token revoked on subsequent /models call ────────────────────────
 //
 // The "saved key, validate in background" behaviour lives in
-// `CloudAuthService.initialize()`. When `CloudApiClient.get("/models")`
-// rejects (revoked key, cloud unreachable, …) the service:
+// `CloudAuthService.initialize()`, which arms the `decideRevalidation` loop.
+// When the background `/models` probe rejects, the service:
 //   1. stores the key optimistically (so model calls keep working),
-//   2. emits a warning via `logger.warn` (not error),
-//   3. never throws out of `start()`.
+//   2. does NOT throw out of `start()` / `initialize()`,
+//   3. does NOT immediately flip to a confirmed-revoked error — a single
+//      rejection is debounced (it takes `invalidThreshold` consecutive
+//      reachable-but-rejected probes), so no error is logged on the first pass.
 //
-// We test those three observable outcomes here.
+// We test those observable outcomes here. (The fine-grained classification —
+// 401/403 → invalid vs 5xx/timeout → unreachable — is covered directly in
+// cloud-auth-revalidation.test.ts.)
 
 describe("C7 — saved-key validation against /models", () => {
-  it("logs a warning and keeps the cached key when /models rejects", async () => {
+  it("keeps the cached key and stays quiet on the first background rejection", async () => {
     const { CloudAuthService } = await import("../src/services/cloud-auth.js");
+    const { CloudApiError } = await import("../src/utils/cloud-api.js");
 
-    // Spy on logger.warn so we can assert the soft-fail message lands.
-    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    // A confirmed-revoked key logs via logger.error (only after the debounce);
+    // assert no error escapes on the first probe.
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
 
-    // The validation client is constructed via `new CloudApiClient(...)`
-    // inside `validateApiKey`. We monkey-patch the prototype `get`
-    // method on the imported class so any new instance fails the call.
+    // The validation client is constructed via `new CloudApiClient(...)` inside
+    // `probeApiKey`. Monkey-patch the prototype `get` so any new instance fails
+    // with a genuine revoked-key response (401 → CloudApiError).
     const { CloudApiClient } = await import("../src/utils/cloud-api.js");
     const getSpy = vi.spyOn(CloudApiClient.prototype, "get").mockImplementation(async () => {
-      throw new Error("HTTP 401: api key revoked");
+      throw new CloudApiError(401, { success: false, error: "api key revoked" });
     });
-    const setApiKeySpy = vi
-      .spyOn(CloudApiClient.prototype, "setApiKey")
-      .mockImplementation(function (this: unknown, _key: unknown) {
-        // Avoid touching internal SDK state.
-      });
-    const setBaseUrlSpy = vi
-      .spyOn(CloudApiClient.prototype, "setBaseUrl")
-      .mockImplementation(function (this: unknown, _url: unknown) {
-        // Avoid touching internal SDK state.
-      });
+
+    const service = new (
+      CloudAuthService as unknown as {
+        new (
+          runtime: IAgentRuntime
+        ): {
+          isAuthenticated(): boolean;
+          getApiKey(): string | undefined;
+          isApiKeyInvalid(): boolean;
+          stop(): Promise<void>;
+          initialize(): Promise<void>;
+        };
+      }
+    )({
+      getSetting: (key: string): string | undefined => {
+        if (key === "ELIZAOS_CLOUD_BASE_URL") return "https://www.elizacloud.ai";
+        if (key === "ELIZAOS_CLOUD_API_KEY") return "eliza_saved_key_c7";
+        if (key === "ELIZAOS_CLOUD_USER_ID") return "user-1";
+        if (key === "ELIZAOS_CLOUD_ORG_ID") return "org-1";
+        return undefined;
+      },
+    } as unknown as IAgentRuntime);
 
     try {
-      // CloudAuthService only ever reads `getSetting` off the runtime in
-      // `initialize()` (verified in src/services/cloud-auth.ts). The
-      // remaining IAgentRuntime surface is irrelevant here; we keep the
-      // unknown escape localized to this single construction site.
-      const runtime = {
-        getSetting: (key: string): string | undefined => {
-          if (key === "ELIZAOS_CLOUD_BASE_URL") return "https://www.elizacloud.ai";
-          if (key === "ELIZAOS_CLOUD_API_KEY") return "eliza_saved_key_c7";
-          if (key === "ELIZAOS_CLOUD_USER_ID") return "user-1";
-          if (key === "ELIZAOS_CLOUD_ORG_ID") return "org-1";
-          return undefined;
-        },
-      } as unknown as IAgentRuntime;
-
-      const service = new CloudAuthService(runtime);
-      // `initialize` is private on the class — the cast here documents
-      // that this test deliberately bypasses the public `start()` entry
+      // `initialize` is private on the class — bypass the public `start()` entry
       // point to assert on the saved-key validation path in isolation.
-      const serviceWithInitialize = service as unknown as {
-        initialize(): Promise<void>;
-      };
-      await serviceWithInitialize.initialize();
+      await service.initialize();
 
       // Optimistic: the key is cached on credentials immediately.
       expect(service.isAuthenticated()).toBe(true);
       expect(service.getApiKey()).toBe("eliza_saved_key_c7");
 
-      // The background /models call rejects. Wait for the unhandled-
-      // looking microtask chain to resolve.
+      // The background /models probe (scheduled at delay 0) rejects. Let the
+      // microtask + timer chain run.
       await new Promise((r) => setTimeout(r, 0));
       await new Promise((r) => setTimeout(r, 0));
 
-      // Warning landed — message text is "key could not be validated" OR
-      // "Could not reach cloud API" (validateApiKey hits the catch first).
-      const warnMessages = warnSpy.mock.calls.map((c) => String(c[0]));
-      expect(
-        warnMessages.some((m) => /\[CloudAuth\].*(could not (be validated|reach)|revoked)/i.test(m))
-      ).toBe(true);
+      // A single rejection is debounced — the key is NOT yet confirmed revoked
+      // and no loud error is logged.
+      expect(service.isApiKeyInvalid()).toBe(false);
+      expect(errorSpy).not.toHaveBeenCalled();
 
       // The cached key survives — model calls would continue using it.
       expect(service.getApiKey()).toBe("eliza_saved_key_c7");
     } finally {
-      warnSpy.mockRestore();
+      await service.stop();
+      errorSpy.mockRestore();
       getSpy.mockRestore();
-      setApiKeySpy.mockRestore();
-      setBaseUrlSpy.mockRestore();
     }
   });
 });

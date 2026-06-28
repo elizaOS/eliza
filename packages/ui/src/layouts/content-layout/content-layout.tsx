@@ -6,6 +6,7 @@
  */
 
 import type { ReactNode } from "react";
+import { cn } from "../../lib/utils";
 import { WorkspaceLayout } from "../workspace-layout";
 
 export interface ContentLayoutProps {
@@ -30,7 +31,7 @@ export function ContentLayout({
 }: ContentLayoutProps) {
   return (
     <WorkspaceLayout
-      className={className}
+      className={cn(!inModal && "eliza-content-layout", className)}
       contentClassName={contentClassName}
       contentHeader={contentHeader}
       contentPadding={!inModal}

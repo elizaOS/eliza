@@ -1397,7 +1397,17 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
       aria-modal="true"
     >
       <div className="w-full max-h-[80vh] bg-card p-5 overflow-y-auto animate-[slide-up_200ms_ease]">
-        <div className="w-10 h-1 bg-border mx-auto mb-3 rounded-full" />
+        <button
+          type="button"
+          aria-label="Close drawer"
+          onClick={close}
+          className="group mx-auto mb-3 flex h-8 w-32 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-surface/70"
+        >
+          <span
+            className="h-1 w-10 rounded-full bg-border transition-all group-hover:w-14 group-hover:bg-accent/70"
+            aria-hidden
+          />
+        </button>
         {props.title ? (
           <div className="font-bold text-sm">{String(props.title)}</div>
         ) : null}
