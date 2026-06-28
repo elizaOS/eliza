@@ -94,26 +94,6 @@ const LEVELS = [
     file: "plugins/plugin-shopify/src/ShopifyView.tsx",
   },
   {
-    name: "plugin view notes",
-    file: "plugins/plugin-simple-views/src/ui.tsx",
-  },
-  {
-    name: "plugin view simple-calendar",
-    file: "plugins/plugin-simple-views/src/ui.tsx",
-  },
-  {
-    name: "plugin view vincent",
-    file: "plugins/plugin-vincent/src/VincentView.tsx",
-  },
-  {
-    name: "plugin view waifu-imagegen",
-    file: "plugins/plugin-waifu-imagegen-app/src/ImageGenAppView.tsx",
-  },
-  {
-    name: "plugin view waifu-swap",
-    file: "plugins/plugin-waifu-swap-app/src/SwapAppView.tsx",
-  },
-  {
     name: "plugin view wallet",
     file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
   },
