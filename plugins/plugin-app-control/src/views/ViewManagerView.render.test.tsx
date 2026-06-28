@@ -207,7 +207,9 @@ describe("ViewManagerView (gui/xr) wrapper", () => {
 		// Exactly one open control for the collapsed id, labelled from the gui base.
 		const openButtons = container.querySelectorAll('[data-agent-id^="open:"]');
 		expect(openButtons).toHaveLength(1);
-		expect(container.querySelector('[data-agent-id="open:phone"]')).toBeTruthy();
+		expect(
+			container.querySelector('[data-agent-id="open:phone"]'),
+		).toBeTruthy();
 		expect(screen.queryByText("Phone XR")).toBeNull();
 		expect(screen.queryByText("Phone TUI")).toBeNull();
 

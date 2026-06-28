@@ -71,9 +71,7 @@ export function ViewManagerSpatialView({
 		<Card gap={1} padding={1}>
 			<HStack gap={1} align="center">
 				<Text style="caption" tone="success" grow={1}>
-					{snapshot.loading
-						? "loading"
-						: `${available}/${views.length} ready`}
+					{snapshot.loading ? "loading" : `${available}/${views.length} ready`}
 				</Text>
 				<Text style="caption" tone="muted">
 					views
