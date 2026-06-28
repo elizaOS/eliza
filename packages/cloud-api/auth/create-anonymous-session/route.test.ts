@@ -15,7 +15,10 @@ mock.module("@/lib/services/anonymous-session-creator", () => ({
 const store = new Map<string, { count: number; expireAt: number }>();
 const fakeRedis = {
   async incr(key: string) {
-    const entry = store.get(key) ?? { count: 0, expireAt: Date.now() + 300_000 };
+    const entry = store.get(key) ?? {
+      count: 0,
+      expireAt: Date.now() + 300_000,
+    };
     entry.count += 1;
     store.set(key, entry);
     return entry.count;

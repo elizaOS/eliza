@@ -271,7 +271,12 @@ app.post("/", async (c) => {
 
     // SECURITY (opt-in): when the digest-pin gate is armed, reject mutable
     // refs so an allowed repo cannot swap bytes behind a tag after this check.
-    if (imageRequiresDigestPin(body.image, containersEnv.requireDigestPinnedImages())) {
+    if (
+      imageRequiresDigestPin(
+        body.image,
+        containersEnv.requireDigestPinnedImages(),
+      )
+    ) {
       logger.warn("[Containers API] image rejected: digest pin required", {
         organizationId: user.organization_id,
         image: body.image,

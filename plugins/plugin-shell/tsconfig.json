@@ -7,7 +7,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "../..",
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
@@ -16,13 +16,14 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/dist/*"]
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"]
     }
   },
   "include": ["./**/*"],

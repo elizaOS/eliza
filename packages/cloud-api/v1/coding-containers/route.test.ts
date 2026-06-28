@@ -154,7 +154,9 @@ describe("coding containers route", () => {
 
     // ghcr.io/dexploarer/* is in the default allowlist, so this passes the
     // allowlist gate but fails the digest-pin gate (mutable :latest).
-    const response = await postCodingContainer("ghcr.io/dexploarer/bnancy:latest");
+    const response = await postCodingContainer(
+      "ghcr.io/dexploarer/bnancy:latest",
+    );
 
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual(

@@ -179,7 +179,12 @@ async function createCodingContainer(
   // When armed, an allowed image must also be pinned to a full sha256 digest
   // so the registry cannot swap the bytes behind a mutable tag after the
   // allowlist check passes. Default OFF (opt-in via env).
-  if (imageRequiresDigestPin(payload.image, containersEnv.requireDigestPinnedImages())) {
+  if (
+    imageRequiresDigestPin(
+      payload.image,
+      containersEnv.requireDigestPinnedImages(),
+    )
+  ) {
     logger.warn("[CodingContainers API] image rejected: digest pin required", {
       orgId: user.organization_id,
       image: payload.image,

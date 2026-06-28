@@ -121,7 +121,7 @@ if (process.env.ELIZA_WEB_ABSOLUTE_BASE === "1") {
       "\nThe web SPA base regressed to relative. Depth-2+ routes (/auth/cli-login,\n" +
         "/app-auth/authorize, /payment/:id) would resolve assets to /<route>/assets/…,\n" +
         "which the SPA fallback serves as text/html → the bundle never boots → blank\n" +
-        'page. Keep `base` absolute for the web build (vite.config.ts:\n' +
+        "page. Keep `base` absolute for the web build (vite.config.ts:\n" +
         '`process.env.ELIZA_WEB_ABSOLUTE_BASE === "1" ? "/" : "./"`). Do NOT deploy.',
     );
     process.exit(1);
