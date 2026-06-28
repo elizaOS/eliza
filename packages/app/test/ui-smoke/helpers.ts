@@ -1909,6 +1909,33 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // Home shell widgets poll these on startup. A fresh zero-key smoke agent has
+  // no relationship suggestions or feed activity, so serve the empty states
+  // instead of letting the fallback server emit diagnostics-breaking 501s.
+  await page.route("**/api/relationships/candidates**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ candidates: [] }),
+    });
+  });
+
+  await page.route("**/api/apps/feed/agent/activity**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], nextCursor: null }),
+    });
+  });
+
   // Approval/needs-attention poller — shell-level GET on the home surface. The
   // zero-key smoke stack has no approval queue, so return the canonical empty
   // pending-actions shape instead of letting the fallback server emit a 501.
