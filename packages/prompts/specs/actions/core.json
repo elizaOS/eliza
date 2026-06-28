@@ -1101,6 +1101,199 @@
       "descriptionCompressed": "Generate image, video, or audio from prompt."
     },
     {
+      "name": "PAYMENT",
+      "description": "Payment operations. Use action=create_request to create a payment request, deliver_link to send a payment link, verify_payload to verify a provider proof, settle to finalize a payment, await_callback to wait for settlement, and cancel_request to void a pending request.",
+      "similes": [
+        "NEW_PAYMENT_REQUEST",
+        "OPEN_PAYMENT_REQUEST",
+        "SEND_PAYMENT_LINK",
+        "DISPATCH_PAYMENT_LINK",
+        "VERIFY_PAYMENT_PROOF",
+        "CHECK_PAYMENT_PROOF",
+        "FINALIZE_PAYMENT",
+        "CONFIRM_PAYMENT",
+        "WAIT_FOR_PAYMENT",
+        "AWAIT_PAYMENT_SETTLEMENT",
+        "VOID_PAYMENT_REQUEST",
+        "ABORT_PAYMENT_REQUEST"
+      ],
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Payment operation: create_request, deliver_link, verify_payload, settle, await_callback, or cancel_request.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "create_request",
+              "deliver_link",
+              "verify_payload",
+              "settle",
+              "await_callback",
+              "cancel_request"
+            ]
+          },
+          "examples": ["create_request", "deliver_link", "settle"],
+          "descriptionCompressed": "Payment operation."
+        },
+        {
+          "name": "provider",
+          "description": "For action=create_request, provider key: stripe, oxapay, x402, or wallet_native.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["stripe", "oxapay", "x402", "wallet_native"]
+          },
+          "examples": ["stripe", "wallet_native"],
+          "descriptionCompressed": "Payment provider."
+        },
+        {
+          "name": "amountCents",
+          "description": "For action=create_request, amount in minor currency units.",
+          "required": false,
+          "schema": { "type": "number" },
+          "examples": [500, 1000],
+          "descriptionCompressed": "Amount in cents/minor units."
+        },
+        {
+          "name": "currency",
+          "description": "For action=create_request, ISO 4217 currency.",
+          "required": false,
+          "schema": { "type": "string" },
+          "examples": ["USD"],
+          "descriptionCompressed": "ISO currency."
+        },
+        {
+          "name": "paymentContext",
+          "description": "For action=create_request, payer constraint. kind can be any_payer, verified_payer, or specific_payer; scope can be one_time, session, or recurring.",
+          "required": false,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["any_payer", "verified_payer", "specific_payer"]
+              },
+              "scope": {
+                "type": "string",
+                "enum": ["one_time", "session", "recurring"]
+              },
+              "payerIdentityId": { "type": "string" }
+            }
+          },
+          "examples": ["any_payer", "specific_payer:identity_123"],
+          "descriptionCompressed": "Payer constraint."
+        },
+        {
+          "name": "reason",
+          "description": "For action=create_request or cancel_request, payment or cancellation reason.",
+          "required": false,
+          "schema": { "type": "string" },
+          "examples": ["Invoice #123"],
+          "descriptionCompressed": "Reason."
+        },
+        {
+          "name": "expiresInMs",
+          "description": "For action=create_request, optional time-to-live override in milliseconds.",
+          "required": false,
+          "schema": { "type": "number" },
+          "examples": [600000],
+          "descriptionCompressed": "TTL milliseconds."
+        },
+        {
+          "name": "paymentRequestId",
+          "description": "For deliver_link, verify_payload, settle, await_callback, and cancel_request: payment request ID.",
+          "required": false,
+          "schema": { "type": "string" },
+          "examples": ["pay_123"],
+          "descriptionCompressed": "Payment request id."
+        },
+        {
+          "name": "target",
+          "description": "For action=deliver_link, delivery channel.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "dm",
+              "owner_app_inline",
+              "cloud_authenticated_link",
+              "tunnel_authenticated_link",
+              "public_link",
+              "instruct_dm_only"
+            ]
+          },
+          "examples": ["dm", "public_link"],
+          "descriptionCompressed": "Delivery target."
+        },
+        {
+          "name": "targetChannelId",
+          "description": "For action=deliver_link, optional delivery channel override.",
+          "required": false,
+          "schema": { "type": "string" },
+          "examples": ["room_123"],
+          "descriptionCompressed": "Target channel id."
+        },
+        {
+          "name": "proof",
+          "description": "For action=verify_payload or settle, provider proof payload.",
+          "required": false,
+          "schema": { "type": "object" },
+          "examples": ["stripe:evt_123"],
+          "descriptionCompressed": "Provider proof payload."
+        },
+        {
+          "name": "strategy",
+          "description": "For action=settle, optional settler strategy hint.",
+          "required": false,
+          "schema": { "type": "string" },
+          "examples": ["webhook"],
+          "descriptionCompressed": "Settlement strategy."
+        },
+        {
+          "name": "timeoutMs",
+          "description": "For action=await_callback, wait timeout in milliseconds. Default is 600000.",
+          "required": false,
+          "schema": { "type": "number" },
+          "examples": [600000],
+          "descriptionCompressed": "Wait timeout ms."
+        }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Create a $10 payment request for the workshop."
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I'll create that payment request.",
+              "actions": ["PAYMENT"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Send the payment link to the payer."
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I'll deliver the payment link.",
+              "actions": ["PAYMENT"]
+            }
+          }
+        ]
+      ],
+      "descriptionCompressed": "Payment create_request|deliver_link|verify_payload|settle|await_callback|cancel_request."
+    },
+    {
       "name": "TRUST",
       "description": "Trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
       "similes": [
