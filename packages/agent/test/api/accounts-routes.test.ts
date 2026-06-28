@@ -21,6 +21,10 @@ vi.mock("@elizaos/app-core", () => ({
   getDefaultAccountPool: () => poolMock,
 }));
 
+vi.mock("@elizaos/app-core/account-pool", () => ({
+  getDefaultAccountPool: () => poolMock,
+}));
+
 vi.mock("../../src/auth/account-storage.js", () => ({
   deleteAccount: vi.fn(),
   listAccounts: vi.fn(() => []),
