@@ -24,8 +24,20 @@ import { build } from "esbuild";
 import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));
+// The binary .webm video is generated-locally only (gitignored). Durable PNG
+// keyframes — one per trajectory state — land in the tracked screenshots dir so
+// the walkthrough is reviewable in-repo without the binary.
 const outDir = join(here, "output-voice-recording");
+const shotDir = join(here, "output-voice");
 await mkdir(outDir, { recursive: true });
+await mkdir(shotDir, { recursive: true });
+let shot = 0;
+async function snap(name) {
+  shot += 1;
+  await page.screenshot({
+    path: join(shotDir, `${String(shot).padStart(2, "0")}-${name}.png`),
+  });
+}
 
 // --- Bundle the fixture (same stubs as run-chat-sheet-e2e.mjs) ------------
 const stubPromptSuggestions = {
@@ -114,15 +126,16 @@ const context = await browser.newContext({
 });
 const page = await context.newPage();
 
-async function load(query, label) {
+async function load(query, label, shotName) {
   await page.goto(`${url}${query}`);
   await page.waitForSelector('[data-testid="chat-sheet"]', { timeout: 15000 });
   console.log(`▶ ${label}`);
   await sleep(1200);
+  if (shotName) await snap(shotName);
 }
 
 // 1) Idle composer — mic at rest.
-await load("", "idle composer (mic at rest)");
+await load("", "idle composer (mic at rest)", "idle");
 
 // 2) Always-on mic trajectory: tap the mic → listening with interim transcript.
 const mic = page.getByLabel(/mic|microphone|voice/i).first();
@@ -133,17 +146,17 @@ if (await mic.count()) {
 }
 
 // 3) Listening state with a live interim transcript (deterministic load).
-await load("?recording&transcript=hey%20eliza%2C%20what%27s%20on%20my%20calendar", "listening + interim transcript");
+await load("?recording&transcript=hey%20eliza%2C%20what%27s%20on%20my%20calendar", "listening + interim transcript", "listening");
 
 // 4) Agent responding (thinking / streaming dots).
-await load("?streaming", "agent responding (thinking)");
+await load("?streaming", "agent responding (thinking)", "responding");
 
 // 5) Agent speaking aloud + mute toggle.
-await load("?speaking", "agent speaking (TTS) + mute toggle");
+await load("?speaking", "agent speaking (TTS) + mute toggle", "speaking");
 await sleep(1400);
 
 // 6) Open thread — pull the sheet to full and let the transcript settle.
-await load("?phase=summoned", "open transcript thread");
+await load("?phase=summoned", "open transcript thread", "open-thread");
 const grabber = page.getByTestId("chat-sheet-grabber");
 if (await grabber.count()) {
   const box = await grabber.boundingBox();
