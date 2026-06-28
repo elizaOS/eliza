@@ -8,6 +8,7 @@ import {
 } from "../providers/anthropic-thinking";
 import { getLanguageModel } from "../providers/language-model";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { safeFetch } from "../security/safe-fetch";
 import { parseAiJson } from "../utils/ai-json-parse";
 import { extractErrorMessage } from "../utils/error-handling";
 import { logger } from "../utils/logger";
@@ -97,7 +98,7 @@ class AppPromotionAssetsService {
       });
 
       const response = await Promise.race([
-        fetch(safeUrl, {
+        safeFetch(safeUrl.toString(), {
           headers: {
             "User-Agent": "Mozilla/5.0 (compatible; ElizaCloudBot/1.0; +https://www.elizacloud.ai)",
             Accept: "text/html",
