@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-swabble",
-  "version": "2.0.3-beta.6",
+  "version": "2.0.3-beta.7",
   "description": "Detects wake words and transcribes live speech with microphone state events.",
   "keywords": [
     "voice",
