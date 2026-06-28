@@ -918,6 +918,26 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
 	const text = getNonEmptyString(raw.text);
 
+	// Some provider/proxy combinations return planner/evaluator control JSON in
+	// the native text channel (e.g. `{"decision":"CONTINUE","thought":...}`)
+	// while tool calls are delivered out-of-band. That JSON is control data, not
+	// a user-facing message, and must never leak into the channel verbatim. We
+	// only treat the text this way when it actually looks like a planner/
+	// evaluator envelope — a legitimate non-envelope JSON object reply (e.g. a
+	// user asking for `{"foo":"bar"}`) carries no recognized planner field and
+	// must fall through to round-trip as `messageToUser`.
+	const controlText =
+		text && looksLikePlannerControlJson(text)
+			? parseJsonPlannerOutput(text)
+			: undefined;
+	// No native tool calls + the text channel is itself a control envelope:
+	// consume it fully through the JSON planner parser so any embedded
+	// REPLY/tool-call envelope still works and the raw JSON never reaches the
+	// user.
+	if (controlText && nativeToolCalls.length === 0) {
+		return controlText;
+	}
+
 	let textRecoveredCalls: PlannerToolCall[] = [];
 	const embeddedToolCalls = parseEmbeddedToolCalls(raw.text);
 	const embeddedObjectCount =
@@ -932,18 +952,47 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 
 	return {
 		toolCalls,
-		// When `raw.text` was itself tool-call JSON it is not a user-facing
-		// message — take the reply from a REPLY call rather than leaking the
-		// raw JSON blob into the channel.
+		// When `raw.text` was itself tool-call/control JSON it is not a
+		// user-facing message — take the reply from a REPLY call, or the
+		// control envelope's own `messageToUser`, rather than leaking the raw
+		// JSON blob into the channel.
 		messageToUser:
 			textRecoveredCalls.length > 0
 				? terminalMessageFromToolCalls(toolCalls)
-				: text,
+				: controlText
+					? controlText.messageToUser
+					: text,
+		thought: controlText?.thought,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
+			...(controlText ? { parsedText: controlText.raw } : {}),
 		} as Record<string, unknown>,
 	};
+}
+
+/**
+ * True when `text` is a planner/evaluator CONTROL envelope that must be
+ * consumed as data rather than surfaced to the user. This is narrow on
+ * purpose: a bare user-requested JSON object (e.g. `{"foo":"bar"}`) carries no
+ * recognized planner field, returns `false`, and is preserved as a visible
+ * reply. Recognized either by the strict evaluator-envelope shape or by a
+ * top-level planner field (`action` / `toolCalls` / `messageToUser` / `text` /
+ * `decision`).
+ */
+function looksLikePlannerControlJson(text: string): boolean {
+	if (looksLikeEvaluatorEnvelopeJson(text)) return true;
+	const parsed = parseJsonObject<RawPlannerOutput & { decision?: unknown }>(
+		text.trim(),
+	);
+	if (!parsed) return false;
+	return (
+		parsed.action !== undefined ||
+		parsed.toolCalls !== undefined ||
+		parsed.messageToUser !== undefined ||
+		parsed.text !== undefined ||
+		parsed.decision !== undefined
+	);
 }
 
 function parseJsonPlannerOutput(raw: string): {
@@ -2829,11 +2878,50 @@ export function looksLikeSpawnEnvelopeJson(text: string): boolean {
 	);
 }
 
+/**
+ * Detects a planner/evaluator CONTROL envelope returned in a user-visible
+ * channel — `{"decision":"CONTINUE"|"FINISH"|"NEXT_RECOMMENDED", …}` (or
+ * `route`) carrying at least one evaluator discriminator
+ * (`success`/`thought`/`nextTool`/`recommendedToolCallId`). Narrow by design:
+ * a bare `{"decision":"approve"}` from a real reply does not match.
+ */
+export function looksLikeEvaluatorEnvelopeJson(text: string): boolean {
+	let body = text.trim();
+	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (fence?.[1]) body = fence[1].trim();
+	if (!body.startsWith("{") || !body.endsWith("}")) return false;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		return false;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return false;
+	}
+	const record = parsed as Record<string, unknown>;
+	const decision = String(record.decision ?? record.route ?? "").toUpperCase();
+	if (!["FINISH", "CONTINUE", "NEXT_RECOMMENDED"].includes(decision)) {
+		return false;
+	}
+	return (
+		typeof record.success === "boolean" ||
+		typeof record.thought === "string" ||
+		typeof record.nextTool === "object" ||
+		typeof record.recommendedToolCallId === "string"
+	);
+}
+
 function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
-	if (looksLikeSpawnEnvelopeJson(text)) return true;
+	if (
+		looksLikeSpawnEnvelopeJson(text) ||
+		looksLikeEvaluatorEnvelopeJson(text)
+	) {
+		return true;
+	}
 	return [
 		/\bto=functions\.[A-Z0-9_]+\b/i,
 		/\bfunctions\.[A-Z0-9_]+\b/i,

@@ -21,10 +21,10 @@ import {
   getDocumentsService,
 } from "./documents-service-loader.ts";
 
-const HASH_MEMORY_SOURCE = "hash_memory";
+export const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MEMORY_SEARCH_SCAN_LIMIT = 500;
+const MEMORY_SEARCH_SCAN_LIMIT = 2_000;
 const MEMORY_SEARCH_DEFAULT_LIMIT = 10;
 const MEMORY_SEARCH_MAX_LIMIT = 50;
 const QUICK_CONTEXT_DEFAULT_LIMIT = 8;
@@ -101,7 +101,7 @@ async function ensureMemoryConnection(
   return { roomId, entityId };
 }
 
-function scoreMemoryText(text: string, query: string): number {
+export function scoreMemoryText(text: string, query: string): number {
   const normalizedText = text.toLowerCase();
   const normalizedQuery = query.toLowerCase();
   if (!normalizedText || !normalizedQuery) return 0;

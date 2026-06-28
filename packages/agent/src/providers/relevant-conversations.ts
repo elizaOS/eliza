@@ -5,13 +5,15 @@ import type {
   ProviderResult,
   Room,
   State,
+  UUID,
 } from "@elizaos/core";
-import { embedRecallQuery, logger } from "@elizaos/core";
+import { embedRecallQuery, logger, stringToUuid } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
 } from "../api/conversation-metadata.ts";
+import { HASH_MEMORY_SOURCE, scoreMemoryText } from "../api/memory-routes.ts";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
@@ -19,7 +21,51 @@ import {
 } from "../shared/conversation-format.ts";
 
 const MAX_RELEVANT_RESULTS = 10;
+const MAX_HASH_MEMORY_RESULTS = 4;
+const HASH_MEMORY_SCAN_LIMIT = 2_000;
 const MATCH_THRESHOLD = 0.7;
+// scoreMemoryText returns `containsWhole(0|1) + matchedTerms/totalTerms`. Require
+// at least half the query terms (or a whole-query substring) to match so common
+// stop words like "you"/"are" don't drag in unrelated hash memories.
+const MIN_HASH_MEMORY_SCORE = 0.5;
+const HASH_MEMORY_SNIPPET_LENGTH = 700;
+const RELEVANT_SNIPPET_LENGTH = 200;
+
+// /api/memory/remember writes lexical "hash memories" into the messages table at
+// a fixed room with content.source === "hash_memory" and NO embedding. When no
+// TEXT_EMBEDDING model is registered (cloud agents booting without embed), the
+// semantic searchMemories path never surfaces them, so mirror the writer here
+// with a lexical scan + score.
+async function loadHashMemories(
+  runtime: IAgentRuntime,
+  query: string,
+): Promise<Memory[]> {
+  const agentName = runtime.character.name?.trim() || "Eliza";
+  const roomId = stringToUuid(`${agentName}-hash-memory-room`) as UUID;
+  const memories = await runtime.getMemories({
+    roomId,
+    tableName: "messages",
+    limit: HASH_MEMORY_SCAN_LIMIT,
+    includeEmbedding: false,
+  });
+
+  return memories
+    .map((memory) => ({
+      memory,
+      score: scoreMemoryText(memory.content.text ?? "", query),
+    }))
+    .filter(({ memory, score }) => {
+      const source = (memory.content as { source?: string } | undefined)
+        ?.source;
+      return source === HASH_MEMORY_SOURCE && score >= MIN_HASH_MEMORY_SCORE;
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return (right.memory.createdAt ?? 0) - (left.memory.createdAt ?? 0);
+    })
+    .slice(0, MAX_HASH_MEMORY_RESULTS)
+    .map(({ memory }) => memory);
+}
 
 export const relevantConversationsProvider: Provider = {
   name: "relevant-conversations",
@@ -39,6 +85,7 @@ export const relevantConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
+  alwaysInResponseState: true,
   roleGate: { minRole: "USER" },
 
   async get(
@@ -61,31 +108,36 @@ export const relevantConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
+      // Lexical hash-memory recall mirrors the /api/memory/remember writer and
+      // works even when no TEXT_EMBEDDING model is registered.
+      const hashMemories = await loadHashMemories(runtime, text);
+
       // Embed the current message for semantic search. Routes through the one
       // shared per-turn recall-query embed so this provider, document recall, and
       // experience recall reuse a single embed round-trip per turn. `null` means
-      // the embed timed out/failed — fail open with no relevant-conversation
-      // context (recall richness lost, reply latency unaffected).
+      // the embed timed out/failed (or no embedding model) — fail open and rely
+      // on lexical hash memories alone.
       const embedding = await embedRecallQuery(runtime, text);
-      if (!embedding || embedding.length === 0) {
-        return { text: "", values: {}, data: {} };
-      }
+      const results: Memory[] =
+        embedding && embedding.length > 0
+          ? await runtime.searchMemories({
+              embedding,
+              tableName: "messages",
+              match_threshold: MATCH_THRESHOLD,
+              limit: MAX_RELEVANT_RESULTS + 5, // fetch extra to filter current room
+            })
+          : [];
 
-      const results = await runtime.searchMemories({
-        embedding,
-        tableName: "messages",
-        match_threshold: MATCH_THRESHOLD,
-        limit: MAX_RELEVANT_RESULTS + 5, // fetch extra to filter current room
-      });
-
-      if (!results || results.length === 0) {
-        return { text: "", values: {}, data: {} };
-      }
-
-      // Filter out messages from the current conversation to avoid echo
+      // Filter out messages from the current conversation to avoid echo, dedupe
+      // by id (hash memories prepended so they win on overlap), then cap.
       const currentRoomId = message.roomId;
-      const filtered = results
+      const filtered = [...hashMemories, ...results]
         .filter((m) => m.content.text && m.roomId !== currentRoomId)
+        .filter(
+          (memory, index, all) =>
+            !memory.id ||
+            all.findIndex((candidate) => candidate.id === memory.id) === index,
+        )
         .slice(0, MAX_RELEVANT_RESULTS);
 
       if (filtered.length === 0) {
@@ -111,7 +163,12 @@ export const relevantConversationsProvider: Provider = {
         const tag = roomSourceTag(room);
         const ts = formatRelativeTimestamp(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
-        const msgText = (mem.content.text ?? "").slice(0, 200);
+        const source = (mem.content as { source?: string } | undefined)?.source;
+        const snippetLength =
+          source === HASH_MEMORY_SOURCE
+            ? HASH_MEMORY_SNIPPET_LENGTH
+            : RELEVANT_SNIPPET_LENGTH;
+        const msgText = (mem.content.text ?? "").slice(0, snippetLength);
         lines.push(`${tag} (${ts}) ${speaker}: ${msgText}`);
       }
 

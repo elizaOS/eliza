@@ -974,11 +974,23 @@ async function generateTextWithModel(
 
   const operationName = `${modelType} request using ${modelName}`;
 
+  // Route tool-using requests (and any request when ELIZA_ANTHROPIC_DISABLE_STREAM=1)
+  // to the non-streaming generateText path. The AI SDK streaming companion
+  // promises raise AI_NoOutputGeneratedError when a response contains only
+  // tool_use blocks and no text; generateText preserves response.toolCalls and
+  // text reliably. `readToolSet` has already normalized tools to a ToolSet
+  // record (or undefined), so a non-empty tool set means there are tool keys.
+  const toolSet = paramsWithAttachments.tools;
+  const hasToolSurface =
+    (toolSet ? Object.keys(toolSet).length > 0 : false) ||
+    Boolean(paramsWithAttachments.toolChoice);
+  const streamDisabled = process.env.ELIZA_ANTHROPIC_DISABLE_STREAM === "1" || hasToolSurface;
+
   // Structured-output calls must not stream: the parsed native object is only
   // available on the non-stream `generateText` result (returned via
   // `buildNativeTextResult` below). A streamed structured call would emit raw
   // text chunks and discard the parsed object, so fall through to generateText.
-  if (params.stream && !paramsWithAttachments.responseSchema) {
+  if (params.stream && !streamDisabled && !paramsWithAttachments.responseSchema) {
     try {
       const streamResult = streamText(generateParams);
       const providerMetadataPromise: Promise<unknown> = Promise.resolve(
