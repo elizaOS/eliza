@@ -31,7 +31,6 @@
       "@elizaos/plugin-vector-browser": [
         "./src/types/host-external-modules.ts"
       ],
-      "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
       "@elizaos/plugin-personal-assistant-browser": [
         "../../plugins/plugin-personal-assistant-browser/src/index.ts"
       ],
