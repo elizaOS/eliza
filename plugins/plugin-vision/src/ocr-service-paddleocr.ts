@@ -5,9 +5,10 @@
  * adapters. PaddleOCR is a standalone, cross-platform OCR engine (pip install
  * paddleocr) with strong multilingual detection. We drive it through a small
  * self-contained Python wrapper so the JS side parses a stable JSON shape we
- * control — not PaddleOCR's version-sensitive raw `ocr.ocr()` return — and so
- * the wrapper absorbs the numpy/tuple conversion and the 2.x detection layout
- * (`[page][det] = [box4pts, (text, conf)]`).
+ * control — not PaddleOCR's version-sensitive raw return — and so the wrapper
+ * absorbs the numpy/tuple conversion and BOTH detection layouts: the 2.x
+ * `ocr()` shape (`[page][det] = [box4pts, (text, conf)]`) and the 3.x
+ * `predict()` shape (parallel `rec_texts` / `rec_scores` / `rec_polys`).
  *
  * The wrapper emits one object per recognized text line:
  *   `[{ "box": [[x,y],[x,y],[x,y],[x,y]], "text": "...", "conf": 0.0..1.0 }, …]`
@@ -25,8 +26,10 @@
  * blocks; it never throws, so the boot chain falls through cleanly.
  *
  * NOTE (#9581): the JSON parser below is unit-tested without the engine (CI
- * needs no PaddleOCR install). End-to-end behaviour against a real PaddleOCR
- * install still needs on-target verification before this becomes a default.
+ * needs no PaddleOCR install). End-to-end behaviour was verified against a real
+ * `pip install paddleocr` (3.7.0 / paddlepaddle 3.3.1 CPU) on Linux x86_64:
+ * a known-text image round-trips through this wrapper + `mapPaddleOcrJsonToResult`
+ * with correct per-line text, confidence, and display-absolute boxes.
  */
 
 import { execFile, execFileSync } from "node:child_process";
@@ -58,28 +61,51 @@ interface PaddleOcrDetection {
  */
 const PADDLE_PY = `
 import sys, json
+
+def emit_empty(reason):
+    # Surface WHY on stderr so a broken install is observable in logs, then
+    # honour the service contract (stdout = [], exit 0). The old bare
+    # "except: print('[]')" silently swallowed a version mismatch (#9581).
+    sys.stderr.write("[paddleocr] " + reason + "\\n")
+    print("[]")
+    sys.exit(0)
+
 try:
     from paddleocr import PaddleOCR
-except Exception:
-    print("[]"); sys.exit(0)
+except Exception as e:
+    emit_empty("import failed: " + repr(e))
+
+# PaddleOCR 3.x API (what \`pip install paddleocr\` resolves to today). The old
+# wrapper used the 2.x \`PaddleOCR(use_angle_cls, show_log=...)\` + \`ocr(..., cls=)\`
+# call; 3.x removed \`show_log\` (passing it raised ValueError -> the silent []
+# this fixes), renamed angle-cls to \`use_textline_orientation\`, and replaced
+# \`ocr()\` with \`predict()\` returning parallel rec_texts/rec_scores/rec_polys.
+# \`enable_mkldnn=False\` avoids the 3.x oneDNN PIR-executor crash on some CPUs.
 try:
-    ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
-    res = ocr.ocr(sys.argv[1], cls=True)
-except Exception:
-    print("[]"); sys.exit(0)
+    ocr = PaddleOCR(lang="en", use_textline_orientation=True, enable_mkldnn=False)
+    res = ocr.predict(sys.argv[1])
+except Exception as e:
+    emit_empty("inference failed: " + repr(e))
+
 out = []
-for page in (res or []):
-    for det in (page or []):
-        try:
-            box, rec = det
-            text, conf = rec
-            out.append({
-                "box": [[float(p[0]), float(p[1])] for p in box],
-                "text": str(text),
-                "conf": float(conf),
-            })
-        except Exception:
-            continue
+try:
+    for r in (res or []):
+        d = r if isinstance(r, dict) else dict(r)
+        for text, conf, poly in zip(
+            d.get("rec_texts", []), d.get("rec_scores", []), d.get("rec_polys", [])
+        ):
+            try:
+                out.append({
+                    "box": [[float(p[0]), float(p[1])] for p in poly],
+                    "text": str(text),
+                    "conf": float(conf),
+                })
+            except Exception:
+                continue
+except Exception as e:
+    # Honor the "never a non-zero exit" contract even if a result object is
+    # not the expected dict-like shape (the dict(r) coercion could raise).
+    emit_empty("result mapping failed: " + repr(e))
 print(json.dumps(out))
 `;
 
@@ -107,8 +133,9 @@ function bboxFromQuad(
 /**
  * Parse the wrapper's stable JSON into typed detections. Pure — exported for
  * tests so the contract with `PADDLE_PY` has a single source of truth and CI
- * never needs a real PaddleOCR install. Drops entries without a 4-point box,
- * blank text, or a non-finite score.
+ * never needs a real PaddleOCR install. Drops entries without at least a
+ * 3-point box (real detections are 4-point quads), blank text, or a non-finite
+ * score.
  */
 export function parsePaddleOcrJson(raw: string): PaddleOcrDetection[] {
   let parsed: unknown;
