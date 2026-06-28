@@ -364,7 +364,11 @@ function LogsViewBody() {
                 message: logLoadError,
               })}
             </span>
-            <Button size="sm" onClick={() => void loadLogs()}>
+            <Button
+              size="sm"
+              className="text-black hover:text-black"
+              onClick={() => void loadLogs()}
+            >
               {t("common.retry", { defaultValue: "Retry" })}
             </Button>
           </div>
