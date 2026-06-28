@@ -3,7 +3,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, type Route, test } from "@playwright/test";
 import { getFreePort } from "../utils/get-free-port.mjs";
 import {
   assertReadyChecks,
@@ -24,6 +24,19 @@ type RemoteCapabilityServer = {
   close: () => Promise<void>;
 };
 
+type DynamicViewImportWindow = Window & {
+  __ELIZA_DYNAMIC_VIEW_IMPORT__?: (
+    specifier: string,
+  ) => Promise<Record<string, unknown>>;
+  __ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__?: (
+    bundleUrl: string,
+  ) => Promise<Record<string, unknown>>;
+};
+
+const ADVANCED_SETTINGS_STORAGE_KEY = "eliza:settings-advanced";
+const REMOTE_CAPABILITY_BUNDLE_PATH =
+  "/api/views/remote-capability-live/bundle.js";
+
 test("app shell loads a remote capability view bundle from a running endpoint", async ({
   page,
 }) => {
@@ -32,8 +45,14 @@ test("app shell loads a remote capability view bundle from a running endpoint", 
 
   const remote = await startRemoteCapabilityServer();
   try {
+    await installRemoteCapabilityViewRoutes(page, remote);
+
     await page.route("**/api/views**", async (route) => {
       const requestUrl = new URL(route.request().url());
+      if (requestUrl.pathname === REMOTE_CAPABILITY_BUNDLE_PATH) {
+        await fulfillRemoteCapabilityBundle(route, remote);
+        return;
+      }
       if (requestUrl.pathname !== "/api/views") {
         await route.fallback();
         return;
@@ -75,7 +94,7 @@ test("app shell loads a remote capability view bundle from a running endpoint", 
 test("settings connects a remote capability endpoint and opens its view", async ({
   page,
 }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { [ADVANCED_SETTINGS_STORAGE_KEY]: "1" });
   await installDefaultAppRoutes(page);
 
   const remote = await startRemoteCapabilityServer();
@@ -83,6 +102,8 @@ test("settings connects a remote capability endpoint and opens its view", async 
   let connectPayload: unknown = null;
 
   try {
+    await installRemoteCapabilityViewRoutes(page, remote);
+
     await page.route("**/api/capability-router/connect", async (route) => {
       if (route.request().method() !== "POST") {
         await route.fallback();
@@ -130,6 +151,10 @@ test("settings connects a remote capability endpoint and opens its view", async 
 
     await page.route("**/api/views**", async (route) => {
       const requestUrl = new URL(route.request().url());
+      if (requestUrl.pathname === REMOTE_CAPABILITY_BUNDLE_PATH) {
+        await fulfillRemoteCapabilityBundle(route, remote);
+        return;
+      }
       if (requestUrl.pathname !== "/api/views") {
         await route.fallback();
         return;
@@ -194,7 +219,7 @@ test("settings connects a remote capability endpoint and opens its view", async 
 });
 
 test("settings provisions a cloud capability sandbox", async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { [ADVANCED_SETTINGS_STORAGE_KEY]: "1" });
   await installDefaultAppRoutes(page);
 
   let connectPayload: unknown = null;
@@ -276,6 +301,98 @@ test("settings provisions a cloud capability sandbox", async ({ page }) => {
     unloadMissing: false,
   });
 });
+
+async function installRemoteCapabilityViewRoutes(
+  page: Page,
+  remote: RemoteCapabilityServer,
+): Promise<void> {
+  await page.addInitScript(
+    ({ bundlePath, remoteBaseUrl }) => {
+      const dynamicWindow = window as DynamicViewImportWindow;
+      dynamicWindow.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = async (
+        bundleUrl,
+      ) => {
+        const url = new URL(bundleUrl, window.location.href);
+        if (
+          url.origin !== window.location.origin ||
+          url.pathname !== bundlePath
+        ) {
+          throw new Error(`Unexpected dynamic view bundle URL: ${bundleUrl}`);
+        }
+
+        const response = await fetch(
+          `${remoteBaseUrl}/assets/remote-capability-live.js`,
+          { cache: "no-store" },
+        );
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch dynamic view bundle: ${response.status}`,
+          );
+        }
+
+        const React = (await dynamicWindow.__ELIZA_DYNAMIC_VIEW_IMPORT__?.(
+          "react",
+        )) as { createElement?: (...args: unknown[]) => unknown } | undefined;
+        const createElement = React?.createElement;
+        if (!createElement) {
+          throw new Error("Dynamic view React host external unavailable");
+        }
+
+        return {
+          default(props: {
+            t?: (key: string, options?: { defaultValue?: string }) => string;
+          }) {
+            return createElement(
+              "section",
+              { "data-testid": "remote-capability-live-view" },
+              createElement("h1", null, "Remote capability live view"),
+              createElement(
+                "p",
+                null,
+                `Exit label: ${
+                  props.t?.("remote.exit", {
+                    defaultValue: "Leave remote view",
+                  }) ?? "Leave remote view"
+                }`,
+              ),
+            );
+          },
+        };
+      };
+    },
+    {
+      bundlePath: REMOTE_CAPABILITY_BUNDLE_PATH,
+      remoteBaseUrl: remote.baseUrl,
+    },
+  );
+
+  await page.route(
+    "**/api/views/remote-capability-live/bundle.js**",
+    async (route) => {
+      await fulfillRemoteCapabilityBundle(route, remote);
+    },
+  );
+}
+
+async function fulfillRemoteCapabilityBundle(
+  route: Route,
+  remote: RemoteCapabilityServer,
+): Promise<void> {
+  if (route.request().method() !== "GET") {
+    await route.fallback();
+    return;
+  }
+
+  const response = await fetch(
+    `${remote.baseUrl}/assets/remote-capability-live.js`,
+  );
+  await route.fulfill({
+    status: response.status,
+    contentType:
+      response.headers.get("content-type") ?? "text/javascript; charset=utf-8",
+    body: await response.text(),
+  });
+}
 
 async function startRemoteCapabilityServer(): Promise<RemoteCapabilityServer> {
   const port = await getFreePort();
@@ -428,7 +545,7 @@ async function remoteViewsFromManifest(baseUrl: string): Promise<
         viewType: view.viewType ?? "gui",
         pluginName: module.name,
         path: "/apps/remote-capability-live",
-        bundleUrl: view.bundleUrl,
+        bundleUrl: REMOTE_CAPABILITY_BUNDLE_PATH,
         available: true,
         visibleInManager: true,
       })),

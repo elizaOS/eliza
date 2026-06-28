@@ -66,9 +66,7 @@ async function fulfillJson(
 }
 
 function chatComposer(page: Page): Locator {
-  return page
-    .locator('[data-testid="chat-composer-textarea"]')
-    .or(page.getByLabel("message"));
+  return page.getByTestId("chat-composer-textarea");
 }
 
 function chatSendButton(page: Page): Locator {
@@ -95,21 +93,6 @@ function userMessage(page: Page, text: string): Locator {
     )
     .or(conversationLog(page).getByText(text).last())
     .first();
-}
-
-function assistantMessage(page: Page, hasText?: string | RegExp): Locator {
-  const direct = page.locator(
-    '[data-testid="chat-message"][data-role="assistant"]',
-  );
-  const logged = conversationLog(page).locator('[data-role="assistant"]');
-  if (hasText !== undefined) {
-    return direct
-      .filter({ hasText })
-      .last()
-      .or(logged.filter({ hasText }).last())
-      .first();
-  }
-  return direct.last().or(logged.last()).first();
 }
 
 function assistantMessages(page: Page, hasText: string | RegExp): Locator {
