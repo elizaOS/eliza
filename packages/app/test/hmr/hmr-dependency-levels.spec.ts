@@ -94,6 +94,26 @@ const LEVELS = [
     file: "plugins/plugin-shopify/src/ShopifyView.tsx",
   },
   {
+    name: "plugin view notes",
+    file: "plugins/plugin-simple-views/src/ui.tsx",
+  },
+  {
+    name: "plugin view simple-calendar",
+    file: "plugins/plugin-simple-views/src/ui.tsx",
+  },
+  {
+    name: "plugin view vincent",
+    file: "plugins/plugin-vincent/src/VincentView.tsx",
+  },
+  {
+    name: "plugin view waifu-imagegen",
+    file: "plugins/plugin-waifu-imagegen-app/src/ImageGenAppView.tsx",
+  },
+  {
+    name: "plugin view waifu-swap",
+    file: "plugins/plugin-waifu-swap-app/src/SwapAppView.tsx",
+  },
+  {
     name: "plugin view wallet",
     file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
   },
@@ -169,15 +189,36 @@ async function waitForViteClient(page: Page): Promise<void> {
   await page.waitForTimeout(2000);
 }
 
-// Plugin GUI views are registry-loaded on demand. They stay in LEVELS so the
-// static coverage test keeps the source-probe list in lockstep with the visual
-// matrix, but editing those files from "/" cannot emit a Vite event because
-// Vite has not transformed them into the root module graph. They are exercised
-// by the view-rendering browser suites; a future dev-only graph warmup can move
-// them back into this root-graph HMR assertion without eager-loading every view
-// at boot.
+// Most plugin GUI views are NOT reachable in the dev client's module graph from
+// the "/" route: they are served as standalone agent-built bundles loaded by
+// DynamicViewLoader (a separate module graph the app's Vite dev server never
+// transforms), or lazy()-split out of an eagerly-loaded register.ts. Vite never
+// transforms their source from "/", so an edit emits no HMR event — the same
+// limitation the @elizaos/shared note above describes. Eager-loading every view
+// at dev boot to fold them in would regress startup (the app-load-perf work
+// deliberately defers them); they are HMR-validated when the view is actually
+// rendered, and a follow-up may add a dev-only graph warmup.
+//
+// The exception is the handful of plugin views statically re-exported from a
+// barrel/ui entry that the app shell imports at boot, so Vite *does* pull their
+// source into the root graph and editing them must emit an HMR event. Those stay
+// in the assertion via this allowlist; every other "plugin view *" is skipped.
+const PLUGIN_VIEWS_IN_ROOT_GRAPH = new Set<string>([
+  // appRegister:"ui" → src/ui.ts statically re-exports ModelTesterAppView, and
+  // the generated side-effect loader imports ui.ts eagerly at boot.
+  "plugin view model tester",
+  // main.tsx eagerly imports the @elizaos/plugin-phone barrel, which statically
+  // re-exports PhoneView.
+  "plugin view phone",
+  // main.tsx eagerly imports the @elizaos/plugin-training barrel, which
+  // statically re-exports FineTuningView.
+  "plugin view training",
+]);
+
 function isNotInRootGraph(name: string): boolean {
-  return name.startsWith("plugin view ");
+  return (
+    name.startsWith("plugin view ") && !PLUGIN_VIEWS_IN_ROOT_GRAPH.has(name)
+  );
 }
 
 test.describe("HMR propagation across package dependency levels", () => {
