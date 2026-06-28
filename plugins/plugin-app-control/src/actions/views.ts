@@ -113,18 +113,65 @@ const DESKTOP_ONLY_VIEW_MODES = new Set<ViewsMode>([
 	"tile",
 ]);
 
+// The synthetic source stamped on a sub-agent completion relay
+// (SUB_AGENT_SOURCE / ACPX_ROUTER_SOURCE in plugin-agent-orchestrator). The
+// relay also sets metadata.subAgent and preserves the true origin connector on
+// metadata.originSource — this mirrors that plugin's own relay-detection.
+const SUB_AGENT_RELAY_SOURCE = "sub_agent";
+
+function lowerSource(source: unknown): string {
+	return typeof source === "string" ? source.toLowerCase() : "";
+}
+
+function readContentMetadata(message: Memory): Record<string, unknown> {
+	const metadata = (message.content as { metadata?: unknown } | undefined)
+		?.metadata;
+	return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+		? (metadata as Record<string, unknown>)
+		: {};
+}
+
 /**
- * True when the incoming message arrived over an external text connector that
- * has no Eliza view surface for the user who sent it. Used to keep desktop-only
- * VIEWS modes off the planner surface so a text-connector turn never resolves to
- * a silent view navigation with no chat reply (#8613).
+ * True when this message is a synthetic sub-agent completion relay rather than a
+ * live inbound from a real chat surface. A relay only delivers a sub-agent's
+ * result back to the connector the request came in on; it is not itself a chat
+ * surface, so its `content.source` ("sub_agent") is not where the reply lands.
+ */
+function isSubAgentRelay(message: Memory): boolean {
+	return (
+		lowerSource(message.content?.source) === SUB_AGENT_RELAY_SOURCE ||
+		readContentMetadata(message).subAgent === true
+	);
+}
+
+/**
+ * The connector this turn ultimately surfaces to. For a normal inbound that is
+ * `content.source`. For a sub-agent relay, `content.source` is the synthetic
+ * "sub_agent" marker, so we read the preserved origin connector from
+ * `metadata.originSource` — the surface the result is actually delivered to
+ * (e.g. Discord for a Discord-triggered build, or the in-app dashboard for an
+ * app-triggered one). Empty string when it can't be determined.
+ */
+function effectiveDeliverySource(message: Memory): string {
+	return isSubAgentRelay(message)
+		? lowerSource(readContentMetadata(message).originSource)
+		: lowerSource(message.content?.source);
+}
+
+/**
+ * True when the turn surfaces to an external text connector with no Eliza view
+ * surface for the recipient. Keeps desktop-only VIEWS modes off the planner so
+ * such a turn never resolves to a silent view navigation with no chat reply
+ * (#8613). It resolves the EFFECTIVE delivery surface, so a sub-agent build
+ * relay is judged by where it actually lands: a Discord-triggered relay is
+ * viewless (desktop modes excluded), while an app-triggered one keeps them.
+ * A relay whose origin connector wasn't captured has no confirmed view surface,
+ * so it is treated as viewless too — a relay must not navigate UI into the void.
  */
 export function messageHasNoViewSurface(message: Memory): boolean {
-	const source =
-		typeof message.content?.source === "string"
-			? message.content.source.toLowerCase()
-			: "";
-	return VIEWLESS_TEXT_CONNECTOR_SOURCES.has(source);
+	const source = effectiveDeliverySource(message);
+	if (VIEWLESS_TEXT_CONNECTOR_SOURCES.has(source)) return true;
+	return source === "" && isSubAgentRelay(message);
 }
 
 const MODES: readonly ViewsMode[] = [
