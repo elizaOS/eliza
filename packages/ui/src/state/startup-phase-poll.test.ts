@@ -245,11 +245,15 @@ describe("runPollingBackend", () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
-  it("routes a web same-origin proxy outage to offline first-run instead of waiting for timeout", async () => {
+  it("routes a DEV-UI-shell (port 2138) same-origin proxy outage to offline first-run instead of waiting for timeout", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
     (globalThis as { window?: unknown }).window = {
-      location: { origin: "http://localhost:2138", protocol: "http:" },
+      location: {
+        origin: "http://localhost:2138",
+        protocol: "http:",
+        port: "2138",
+      },
     };
     clientMock.getBaseUrl.mockReturnValue("");
     clientMock.getAuthStatus.mockRejectedValue(
@@ -303,6 +307,68 @@ describe("runPollingBackend", () => {
       type: "BACKEND_UNAVAILABLE_FIRST_RUN",
     });
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("does NOT eject an established hosted-web user to first-run on a transient same-origin 5xx", async () => {
+    // Regression guard for the prod-eject blocker: on hosted web (port != 2138)
+    // a transient gateway 502/503/504 must retry to the deadline, never reset
+    // the established session into onboarding.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: {
+        origin: "https://app.elizacloud.ai",
+        protocol: "https:",
+        port: "",
+      },
+    };
+    clientMock.getBaseUrl.mockReturnValue("");
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Service Unavailable"), {
+        kind: "http",
+        status: 503,
+        path: "/api/auth/status",
+      }),
+    );
+
+    const hostedServer = {
+      id: "cloud:hosted",
+      kind: "remote" as const,
+      label: "Eliza Cloud",
+      apiBase: "https://app.elizacloud.ai",
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: false,
+        backendTimeoutMs: 50,
+        agentReadyTimeoutMs: 50,
+        probeForExistingInstall: false,
+        defaultTarget: null,
+      },
+      {
+        persistedActiveServer: hostedServer,
+        restoredActiveServer: hostedServer,
+        shouldPreserveCompletedFirstRun: false,
+        hadPriorFirstRun: true,
+      },
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    // The destructive reset must NOT happen for an established hosted session.
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalledWith(null);
+    expect(deps.setFirstRunComplete).not.toHaveBeenCalledWith(false);
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_UNAVAILABLE_FIRST_RUN",
+    });
+    // Instead it retries to the deadline and surfaces a recoverable timeout.
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
   it("recovers to local when a fresh first-run dead-ends on a remote with auth required + pairing disabled", async () => {
@@ -818,6 +884,66 @@ describe("runPollingBackend", () => {
     );
     expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
     expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+  });
+
+  it("force-completes first-run on a limited cloud base via firstRunCompletionCommittedRef (not just shouldPreserveCompletedFirstRun)", async () => {
+    const deps = createDeps();
+    // The OTHER operand of the force-complete gate: an in-session committed
+    // first-run completion, with shouldPreserveCompletedFirstRun:false.
+    deps.firstRunCompletionCommittedRef.current = true;
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: {
+        origin: "http://localhost:2138",
+        protocol: "http:",
+        port: "2138",
+      },
+    };
+    const activeServer = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+      accessToken: "cloud-token",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: activeServer,
+      restoredActiveServer: activeServer,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: false,
+      authenticated: true,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getFirstRunStatus).not.toHaveBeenCalled();
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
     expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
       firstRunComplete: true,

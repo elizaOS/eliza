@@ -755,6 +755,7 @@ export async function runPollingBackend(
         return;
       }
       if (
+        isDevUiPort() &&
         !policy.supportsLocalRuntime &&
         isSameOriginProxyBase() &&
         (ae?.status === undefined ||
@@ -762,6 +763,10 @@ export async function runPollingBackend(
           ae.status === 503 ||
           ae.status === 504)
       ) {
+        // Scope this destructive reset to the dev UI shell (port 2138) only.
+        // On hosted web (app.elizacloud.ai) a transient gateway 5xx must NOT
+        // eject an established user to onboarding — it falls through to the
+        // normal retry/backoff loop below instead.
         routeToOfflineFirstRun(
           ae?.status === undefined
             ? "same-origin API proxy failed without an HTTP response"

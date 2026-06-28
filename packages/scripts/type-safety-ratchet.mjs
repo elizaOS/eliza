@@ -268,7 +268,16 @@ function baselinePayload(files, counts) {
     updatedAt: new Date().toISOString(),
     scope: {
       trackedOnly: true,
-      globs: ["git ls-files", "src/**/*.ts", "src/**/*.tsx"],
+      // Enumerate every tracked file via `git ls-files`, then keep production
+      // source under a `src/` segment (see isProductionSourceFile). `globs`
+      // documents the kept set; it is not the enumeration mechanism.
+      enumeration: "git ls-files",
+      globs: [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "**/src/**/*.ts",
+        "**/src/**/*.tsx",
+      ],
       excludes: [
         "*.d.ts",
         "*.test.ts",

@@ -2,16 +2,21 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { UseRuntimeModeResult } from "../../hooks/useRuntimeMode";
 
 const runtimeModeMock = vi.hoisted(() => ({
+  // Typed as the full union so setRuntimeMode() can swap between the loading /
+  // ready variants without the initial literal narrowing `value`'s type. The
+  // initial value is the loading variant (a valid union member needing no
+  // snapshot); beforeEach() resets it to "local" before every test.
   value: {
-    state: { phase: "ready" as const },
-    mode: "local" as const,
-    isLocalOnly: true,
+    state: { phase: "loading" as const },
+    mode: null,
+    isLocalOnly: false,
     isCloudMode: false,
     isRemoteMode: false,
     refetch: vi.fn(),
-  },
+  } as UseRuntimeModeResult,
 }));
 
 const clientMock = vi.hoisted(() => ({
