@@ -88,19 +88,24 @@ except Exception as e:
     emit_empty("inference failed: " + repr(e))
 
 out = []
-for r in (res or []):
-    d = r if isinstance(r, dict) else dict(r)
-    for text, conf, poly in zip(
-        d.get("rec_texts", []), d.get("rec_scores", []), d.get("rec_polys", [])
-    ):
-        try:
-            out.append({
-                "box": [[float(p[0]), float(p[1])] for p in poly],
-                "text": str(text),
-                "conf": float(conf),
-            })
-        except Exception:
-            continue
+try:
+    for r in (res or []):
+        d = r if isinstance(r, dict) else dict(r)
+        for text, conf, poly in zip(
+            d.get("rec_texts", []), d.get("rec_scores", []), d.get("rec_polys", [])
+        ):
+            try:
+                out.append({
+                    "box": [[float(p[0]), float(p[1])] for p in poly],
+                    "text": str(text),
+                    "conf": float(conf),
+                })
+            except Exception:
+                continue
+except Exception as e:
+    # Honor the "never a non-zero exit" contract even if a result object is
+    # not the expected dict-like shape (the dict(r) coercion could raise).
+    emit_empty("result mapping failed: " + repr(e))
 print(json.dumps(out))
 `;
 
@@ -128,8 +133,9 @@ function bboxFromQuad(
 /**
  * Parse the wrapper's stable JSON into typed detections. Pure — exported for
  * tests so the contract with `PADDLE_PY` has a single source of truth and CI
- * never needs a real PaddleOCR install. Drops entries without a 4-point box,
- * blank text, or a non-finite score.
+ * never needs a real PaddleOCR install. Drops entries without at least a
+ * 3-point box (real detections are 4-point quads), blank text, or a non-finite
+ * score.
  */
 export function parsePaddleOcrJson(raw: string): PaddleOcrDetection[] {
   let parsed: unknown;
