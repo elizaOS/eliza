@@ -41,7 +41,10 @@ import {
 import { retrieveActions } from "../runtime/action-retrieval";
 import { resolveActionRolePolicyRole } from "../runtime/action-role-policy";
 import { tierActionResults } from "../runtime/action-tiering";
-import { applyAddressedTo } from "../runtime/addressed-to";
+import {
+	addresseeIsNonOwnerBot,
+	applyAddressedTo,
+} from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
 import {
 	filterByContextGate,
@@ -5922,7 +5925,30 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.contexts,
 			availableContexts,
 		);
-		const route = routeMessageHandlerOutput(messageHandler);
+		// #9874 item 1: suppress the simple→requiresTool promotion when this turn
+		// is bot-to-bot crosstalk addressed to a non-owner bot — the agent is
+		// overhearing, not being asked to act, so forcing a tool fabricates a
+		// phantom task. Cheap-gated: only resolve addressees when a promotion could
+		// actually fire (requiresTool / candidateActions) and the message carries
+		// explicit addressees.
+		const mayPromoteToTool =
+			messageHandler.plan.requiresTool === true ||
+			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
+		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom /
+		// getAgent): a transient failure must NOT convert a normal turn into the
+		// generic failure reply — it just means "don't suppress", matching the
+		// conservative contract and the fire-and-forget addressee handling above.
+		const suppressToolPromotion =
+			mayPromoteToTool && addressedTo.length > 0
+				? await addresseeIsNonOwnerBot({
+						runtime: args.runtime,
+						message: args.message,
+						addressedTo,
+					}).catch(() => false)
+				: false;
+		const route = routeMessageHandlerOutput(messageHandler, {
+			suppressToolPromotion,
+		});
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
 				kind: "terminal",

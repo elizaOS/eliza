@@ -499,6 +499,7 @@ export const formatMessages = ({
 		}
 
 		const messageText = (message.content as Content).text;
+		const reactedMessageText = (message.content as Content).reactedMessageText;
 		const messageActions = (message.content as Content).actions;
 		const messageThought = (message.content as Content).thought;
 		const foundEntity = entityById.get(message.entityId);
@@ -562,6 +563,13 @@ export const formatMessages = ({
 		const textString = messageText
 			? `${timestampString} ${formattedName}: ${messageText}`
 			: null;
+		// A reaction message's `text` is a short stub that truncates the reacted-to
+		// content; surface the full original so the planner reads the complete
+		// statement and does not back-rationalize a truncated fragment (#9874).
+		const reactedContextString =
+			typeof reactedMessageText === "string" && reactedMessageText.trim()
+				? `(reacted-to message in full: "${reactedMessageText.trim()}")`
+				: null;
 		const actionString =
 			messageActions && messageActions.length > 0
 				? `${
@@ -571,6 +579,7 @@ export const formatMessages = ({
 
 		const messageString = [
 			textString,
+			reactedContextString,
 			thoughtString,
 			actionString,
 			attachmentString,
