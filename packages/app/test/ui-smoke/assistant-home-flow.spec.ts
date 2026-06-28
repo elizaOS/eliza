@@ -393,8 +393,9 @@ async function screenshot(page: Page, name: string): Promise<void> {
 
 function assistantComposer(page: Page) {
   return page
-    .locator('[data-testid="chat-composer-textarea"]')
-    .or(page.getByLabel("message"));
+    .getByTestId("chat-composer-textarea")
+    .or(page.getByLabel(/^message$/i))
+    .first();
 }
 
 function assistantMicButton(page: Page) {
