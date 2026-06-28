@@ -389,12 +389,115 @@ export async function exchangeCodeForSession(args: ExchangeCodeArgs): Promise<Cl
 
 // ─── Service ───────────────────────────────────────────────────────────────
 
+/** Result of probing the saved API key against the cloud. */
+export type ApiKeyProbe = "valid" | "unreachable" | "invalid";
+
+export interface RevalidationState {
+  /** `unknown` until a probe resolves; `invalid` once a revoked key is confirmed. */
+  keyState: "unknown" | "valid" | "invalid";
+  /** Consecutive reachable-but-rejected probes; debounces a transient 5xx. */
+  consecutiveInvalid: number;
+}
+
+export interface RevalidationConfig {
+  /** Re-probe delay while the key state is unresolved (unreachable / unconfirmed-invalid). */
+  retryMs: number;
+  /** Re-probe delay once the key state is resolved — catches a LATER revocation. */
+  steadyMs: number;
+  /** Reachable-but-rejected probes required before declaring the key revoked. */
+  invalidThreshold: number;
+}
+
+export interface RevalidationDecision {
+  state: RevalidationState;
+  delayMs: number;
+  log: { level: "info" | "error"; message: string } | null;
+}
+
+export const DEFAULT_REVALIDATION_CONFIG: RevalidationConfig = {
+  retryMs: 60_000,
+  steadyMs: 30 * 60_000,
+  invalidThreshold: 2,
+};
+
+/**
+ * Pure state machine for background API-key re-validation. Given the current
+ * state and a fresh probe result, decide the next state, when to re-probe, and
+ * whether to emit a one-shot state-change log. No I/O — fully unit-testable.
+ *
+ * Why this exists: at boot the key is trusted optimistically and validated once
+ * in the background. If the cloud was unreachable at boot (or the key is revoked
+ * AFTER boot), the one-shot check left the agent 401-blind on every turn with no
+ * surfaced state. This loop retries transient unreachability, confirms a revoked
+ * key with a loud actionable error (debounced so a single 5xx doesn't false-
+ * alarm), and steady-re-checks so a post-boot revocation is still caught and a
+ * later re-authorization self-heals.
+ */
+export function decideRevalidation(
+  prev: RevalidationState,
+  probe: ApiKeyProbe,
+  cfg: RevalidationConfig = DEFAULT_REVALIDATION_CONFIG
+): RevalidationDecision {
+  if (probe === "valid") {
+    const log =
+      prev.keyState !== "valid"
+        ? { level: "info" as const, message: "[CloudAuth] API key validated" }
+        : null;
+    return {
+      state: { keyState: "valid", consecutiveInvalid: 0 },
+      delayMs: cfg.steadyMs,
+      log,
+    };
+  }
+
+  if (probe === "invalid") {
+    const consecutiveInvalid = prev.consecutiveInvalid + 1;
+    const confirmed = consecutiveInvalid >= cfg.invalidThreshold;
+    if (confirmed) {
+      const log =
+        prev.keyState !== "invalid"
+          ? {
+              level: "error" as const,
+              message:
+                "[CloudAuth] Eliza Cloud API key is REVOKED/INVALID (cloud reachable, key rejected). " +
+                "Model calls will fail with 401 until the agent is re-provisioned or a valid ELIZAOS_CLOUD_API_KEY is set.",
+            }
+          : null;
+      return {
+        state: { keyState: "invalid", consecutiveInvalid },
+        delayMs: cfg.steadyMs,
+        log,
+      };
+    }
+    // Not yet confirmed — re-probe soon (don't change the surfaced state yet).
+    return {
+      state: { keyState: prev.keyState, consecutiveInvalid },
+      delayMs: cfg.retryMs,
+      log: null,
+    };
+  }
+
+  // unreachable — transient network state, not an auth signal: keep the prior
+  // state and back off. (consecutiveInvalid is preserved, not reset, so a blip
+  // between two real rejections doesn't restart the confirmation count.)
+  return {
+    state: { ...prev },
+    delayMs: cfg.retryMs,
+    log: null,
+  };
+}
+
 export class CloudAuthService extends Service {
   static serviceType = "CLOUD_AUTH";
   capabilityDescription = "Eliza Cloud device authentication and SSO session helpers";
 
   private client: CloudApiClient;
   private credentials: CloudCredentials | null = null;
+  private revalidationTimer: ReturnType<typeof setTimeout> | null = null;
+  private revalidationState: RevalidationState = {
+    keyState: "unknown",
+    consecutiveInvalid: 0,
+  };
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -408,6 +511,11 @@ export class CloudAuthService extends Service {
   }
 
   async stop(): Promise<void> {
+    if (this.revalidationTimer) {
+      clearTimeout(this.revalidationTimer);
+      this.revalidationTimer = null;
+    }
+    this.revalidationState = { keyState: "unknown", consecutiveInvalid: 0 };
     this.credentials = null;
   }
 
@@ -441,19 +549,13 @@ export class CloudAuthService extends Service {
       };
       logger.info("[CloudAuth] Authenticated with saved API key");
 
-      // Non-blocking validation — if the key is invalid the next model
-      // call will surface the error; we just log a warning here.
-      this.validateApiKey(key)
-        .then((valid) => {
-          if (!valid) {
-            logger.warn(
-              "[CloudAuth] Saved API key could not be validated (cloud may be unreachable or key revoked) — model calls will use the key anyway"
-            );
-          }
-        })
-        .catch(() => {
-          // Swallow — already logged inside validateApiKey
-        });
+      // Non-blocking, self-healing key re-validation. Boot stays instant; a
+      // background loop confirms the key — retrying transient cloud-unreachable
+      // so a boot-time outage doesn't leave it unvalidated forever, surfacing a
+      // loud actionable error the moment the key is confirmed revoked, and
+      // steady-re-checking so a revocation that happens AFTER boot is caught
+      // instead of the agent silently 401ing every turn (see #8434 key-flag).
+      this.scheduleRevalidation(0);
       return;
     }
 
@@ -474,22 +576,67 @@ export class CloudAuthService extends Service {
     }
   }
 
-  private async validateApiKey(key: string): Promise<boolean> {
+  /**
+   * Probe the saved key: `unreachable` when the cloud can't be reached (a
+   * transient network state, not an auth signal), `valid` when an authenticated
+   * `/models` call succeeds, `invalid` when the cloud is reachable but rejects
+   * the key (revoked/expired). The `invalid` case is debounced upstream so a
+   * one-off 5xx doesn't false-alarm.
+   */
+  private async probeApiKey(key: string): Promise<ApiKeyProbe> {
     if (!(await isCloudReachable())) {
-      logger.warn(
-        "[CloudAuth] Cloud unreachable at boot — skipping API key validation; key will be used as-is"
-      );
-      return false;
+      return "unreachable";
     }
     try {
       const validationClient = new CloudApiClient(this.client.getBaseUrl(), key);
       await validationClient.get("/models", { timeoutMs: 2_500 });
-      return true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.warn(`[CloudAuth] Could not reach cloud API to validate key: ${msg}`);
-      return false;
+      return "valid";
+    } catch {
+      return "invalid";
     }
+  }
+
+  private scheduleRevalidation(delayMs: number): void {
+    if (this.revalidationTimer) {
+      clearTimeout(this.revalidationTimer);
+    }
+    // The timer is always cleared in stop(), so it can't outlive the service.
+    this.revalidationTimer = setTimeout(() => {
+      void this.runRevalidation();
+    }, delayMs);
+  }
+
+  private async runRevalidation(): Promise<void> {
+    const key = this.credentials?.apiKey;
+    if (!key) {
+      return; // logged out / stopped — let the loop die
+    }
+    const probe = await this.probeApiKey(key).catch(
+      () => "unreachable" as ApiKeyProbe
+    );
+    // The active key may have changed during the await (re-auth) — drop stale.
+    if (this.credentials?.apiKey !== key) {
+      return;
+    }
+    const decision = decideRevalidation(this.revalidationState, probe);
+    this.revalidationState = decision.state;
+    if (decision.log) {
+      if (decision.log.level === "error") {
+        logger.error(decision.log.message);
+      } else {
+        logger.info(decision.log.message);
+      }
+    }
+    this.scheduleRevalidation(decision.delayMs);
+  }
+
+  /**
+   * True once a background probe has CONFIRMED the saved API key is
+   * revoked/invalid (cloud reachable, key rejected). Status/health surfaces can
+   * read this to report a degraded agent instead of letting it 401 blindly.
+   */
+  isApiKeyInvalid(): boolean {
+    return this.revalidationState.keyState === "invalid";
   }
 
   /**
