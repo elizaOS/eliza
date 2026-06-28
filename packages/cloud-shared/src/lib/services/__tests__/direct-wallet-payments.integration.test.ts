@@ -809,6 +809,83 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       expect(row?.status).toBe("broadcast");
     });
 
+    test("BSC promo can only be redeemed once per organization", async () => {
+      await resetTable();
+      // First redemption applies the $5 bonus and records promo_code='bsc'.
+      const first = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+        promoCode: "bsc",
+      });
+      const firstMeta = first.payment.metadata as Record<string, unknown>;
+      expect(firstMeta.promo_code).toBe("bsc");
+      expect(firstMeta.bonus_credits).toBe(5);
+      expect(first.payment.credits_to_add).toBe("15.00");
+
+      // Second redemption for the same org is rejected by the guard — the prior
+      // pending promo payment already exists.
+      await expect(
+        service.createPayment(env, {
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          accountWalletAddress: null,
+          payerAddress: PAYER_EVM,
+          amountUsd: 10,
+          network: "bsc",
+          tokenSymbol: "USDT",
+          promoCode: "bsc",
+        }),
+      ).rejects.toThrow(/already been redeemed/);
+
+      // No second promo row was written.
+      const rows = await dbWrite.query.cryptoPayments.findMany();
+      expect(rows).toHaveLength(1);
+    });
+
+    test("BSC promo guard is org-scoped and ignores non-promo purchases", async () => {
+      await resetTable();
+      // A plain (non-promo) buy by ORG_ID must not consume the one-time bonus.
+      await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+      });
+      const promo = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+        promoCode: "bsc",
+      });
+      expect((promo.payment.metadata as Record<string, unknown>).promo_code).toBe("bsc");
+
+      // A different org's prior redemption does not block this org.
+      const OTHER_ORG = "00000000-0000-4000-8000-0000000000c0";
+      const other = await service.createPayment(env, {
+        organizationId: OTHER_ORG,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+        promoCode: "bsc",
+      });
+      expect((other.payment.metadata as Record<string, unknown>).promo_code).toBe("bsc");
+    });
+
     test("getPaymentStatusForUser refuses to disclose to a different user", async () => {
       await resetTable();
       const { payment } = await service.createPayment(env, {
