@@ -228,7 +228,7 @@ describe("v5 planner loop skeleton", () => {
 		// SAME ban in plannerTemplate — the planner's messageToUser /
 		// REPLY text path that runs after every tool iteration.
 		expect(plannerTemplate).toContain(
-			"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+			"messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening",
 		);
 		expect(plannerTemplate).toContain('"I\'m fetching X, please hold"');
 		expect(plannerTemplate).toContain(
@@ -236,7 +236,15 @@ describe("v5 planner loop skeleton", () => {
 		);
 		expect(plannerTemplate).toContain("set messageToUser saying so plainly");
 		expect(plannerTemplate).toContain(
-			'"please hold" / "give me a sec" / "be right back" style stalling phrases',
+			'"please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases',
+		);
+		// The ban now also covers task-execution claims (working on / fixing /
+		// wrapping up), not just investigative ones. Live regression 2026-06-28:
+		// in a multi-bot arena the bot claimed it was "wrapping the runtime-identity
+		// fix" with zero TASKS_SPAWN_AGENT this turn — pure narration.
+		expect(plannerTemplate).toContain('"I\'m working on it"');
+		expect(plannerTemplate).toContain(
+			"A claim that you are working on / starting / fixing / building / wrapping up a task is only legitimate when a task-executing tool call",
 		);
 	});
 
@@ -278,10 +286,10 @@ describe("v5 planner loop skeleton", () => {
 			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
 		);
 		expect(systemContent).toContain(
-			"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+			"messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening",
 		);
 		expect(systemContent).toContain(
-			'"please hold" / "give me a sec" / "be right back" style stalling phrases',
+			'"please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases',
 		);
 	});
 
