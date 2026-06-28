@@ -31,7 +31,6 @@ const MUST_BE_DEFERRED = [
   "importAppTaskCoordinator",
   "importAppTaskCoordinatorRegister",
   "importAppPhone",
-  "importAppSteward",
   "importAppTraining",
 ];
 
