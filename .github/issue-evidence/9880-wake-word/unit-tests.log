@@ -1,6 +1,9 @@
 
- Test Files  4 passed (4)
-      Tests  29 passed (29)
-   Start at  00:55:14
-   Duration  851ms (transform 117ms, setup 80ms, import 180ms, tests 117ms, environment 622ms)
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/packages/ui
+
+
+ Test Files  8 passed (8)
+      Tests  83 passed (83)
+   Start at  01:20:10
+   Duration  4.07s (transform 2.78s, setup 146ms, import 3.80s, tests 326ms, environment 1.66s)
 

@@ -991,6 +991,7 @@ export function useShellController(): ShellController {
     enabled: true,
     alwaysOn: wakeAlreadyAlwaysOn,
     agentBusy: responding,
+    characterName: wakeCharacterName,
     onOpen: React.useCallback(() => {
       setIsOpen(true);
       setHandsFree(true);

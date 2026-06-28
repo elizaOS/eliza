@@ -1,19 +1,20 @@
 /**
  * React adapter for the wake-word listening window.
  *
- * Subscribes to the native Swabble `wakeWord` event, drives the pure
+ * Sources confirmed wake detections from the unified {@link useWakeController}
+ * (which owns path selection + the single native subscription), drives the pure
  * {@link wakeWindowReducer} with a low-frequency tick, and mirrors
  * `micShouldBeOpen` onto the host's hands-free mic via `onOpen` / `onClose`.
  *
- * It is intentionally a thin shell: all the rules (open on wake, close on
- * response, idle-timeout, safety cap, re-arm) live in the pure module and are
- * unit-tested there. This hook only owns the side effects (event subscription,
- * timer, callbacks) and the "don't fight always-on" guard.
+ * It is intentionally a thin shell: all the detection rules (which backend, name
+ * confirmation) live in the controller and all the window rules (open on wake,
+ * close on response, idle-timeout, safety cap, re-arm) live in the pure window
+ * reducer — both unit-tested there. This hook only owns the mic side effects
+ * (timer, callbacks) and the "don't fight always-on" guard.
  */
 
-import type { PluginListenerHandle } from "@capacitor/core";
 import * as React from "react";
-import { getSwabblePlugin } from "../bridge/native-plugins";
+import { useWakeController } from "./useWakeController";
 import {
   DEFAULT_WAKE_WINDOW_CONFIG,
   initialWakeWindowState,
@@ -23,6 +24,7 @@ import {
   type WakeWindowState,
   wakeWindowReducer,
 } from "./wake-listen-window";
+import type { WakeNameMatchOptions } from "./wake-name-match";
 
 export interface UseWakeListenWindowOptions {
   /**
@@ -47,6 +49,13 @@ export interface UseWakeListenWindowOptions {
   onOpen: () => void;
   /** Close the hands-free mic (called when the window closes). */
   onClose: () => void;
+  /**
+   * Character name the wake phrase follows (issue #9880). Forwarded to the wake
+   * controller for name-aware confirmation. Default "eliza".
+   */
+  characterName?: string;
+  /** Name-match tuning forwarded to the wake controller. */
+  nameMatch?: WakeNameMatchOptions;
   config?: WakeWindowConfig;
   /** Tick interval ms (injectable for tests). Default 500. */
   tickMs?: number;
@@ -63,6 +72,8 @@ export function useWakeListenWindow(
     agentBusy,
     onOpen,
     onClose,
+    characterName = "eliza",
+    nameMatch,
     config = DEFAULT_WAKE_WINDOW_CONFIG,
     tickMs = 500,
     now = Date.now,
@@ -103,27 +114,19 @@ export function useWakeListenWindow(
     }
   }, [enabled, alwaysOn, state.phase, dispatch]);
 
-  // Subscribe to native wake detections.
-  React.useEffect(() => {
-    if (!enabled || alwaysOn) return;
-    let handle: PluginListenerHandle | null = null;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const h = await getSwabblePlugin().addListener("wakeWord", () => {
-          dispatch({ type: "wake", now: nowRef.current() });
-        });
-        if (cancelled) void h.remove();
-        else handle = h;
-      } catch {
-        // Plugin unavailable on this platform — wake never fires, no-op.
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (handle) void handle.remove();
-    };
-  }, [enabled, alwaysOn, dispatch]);
+  // Source confirmed wake detections from the unified controller (it owns path
+  // selection + the native subscription); each confirmed wake arms the window.
+  const onWake = React.useCallback(() => {
+    dispatch({ type: "wake", now: nowRef.current() });
+  }, [dispatch]);
+  useWakeController({
+    enabled,
+    alwaysOn,
+    characterName,
+    nameMatch,
+    onWake,
+    now,
+  });
 
   // Derive the user/agent edges from the agentBusy level: rising = the turn was
   // submitted (user spoke), falling = the agent finished responding.

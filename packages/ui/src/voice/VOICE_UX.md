@@ -117,3 +117,64 @@ observable signals. Keeping it in `wake-listen-window.ts` as a reducer makes
 every transition unit-testable with a frozen clock, with the React hook reduced
 to a thin adapter — the same shape the rest of the voice layer already uses
 (`end-of-turn.ts`, `transcript-session.ts`, `should-respond.ts`).
+
+## 6. Name-aware detection — the unified `WakeController`
+
+The wake phrase follows the **character name** ("hey eliza" → rename to *Ada* →
+"hey ada", zero config). But the battery-efficient openWakeWord detector is a
+*per-phrase trained head*, not zero-shot, so an arbitrary renamed name cannot be
+detected by the head alone. `wake-controller.ts` resolves this with a **two-stage
+name-aware wake** and picks the cheapest correct path for the platform:
+
+| Path | When it is selected | Cost / latency | Name support |
+|---|---|---|---|
+| **head fast-path** | a trained openWakeWord head exists for the current name (shipped `hey-eliza`, or an auto-trained head) | lowest — pure fused detector, no ASR | exact phrase only |
+| **two-stage ASR** | a generic always-on detector (openWakeWord generic / native VAD) is available + a short-window ASR can confirm | idle cost stays at Stage-A levels; ASR runs only on a candidate | zero-shot, follows renames |
+| **Swabble fallback** | the fused FFI is unavailable (e.g. some browsers) | continuous OS ASR — not battery-friendly, fallback only | zero-shot (Swabble already name-aware) |
+
+**Stage A (always-on, cheap):** the only thing burning power at idle — the fused
+openWakeWord generic detector (or native VAD) at **~0.23 ms / 80 ms frame on
+native CPU**, accelerated via `libelizainference` (Metal/Vulkan/CUDA/CPU).
+
+**Stage B (confirmation, on candidate):** when Stage A raises a candidate, a short
+ASR window opens and the transcript is fuzzy-matched against the live character
+name (`wake-name-match.ts`: Levenshtein-tolerant for ASR slop + homophones). This
+buys zero-shot, rename-following name support while keeping idle power at Stage-A
+levels. The window self-cancels after `confirmWindowMs` (default 2500 ms) so a
+candidate can never get stuck.
+
+**Head fast-path:** if a trained head exists for the current name, Stage B is
+skipped entirely — pure openWakeWord, lowest latency. The shipped `hey-eliza`
+head holds **~98.8 % true-accept / ~3.6 % false-accept** on a 250+250 held-out
+set; auto-training a head for a renamed character (via the TTS corpus pipeline in
+`packages/training/scripts/wakeword/`) is a documented follow-up.
+
+`selectWakePath()` encodes this priority; `wakeControllerReducer()` runs the
+confirmation handshake. Both are pure + clock-injected (unit + fuzz tested in
+`wake-controller.test.ts` / `wake-controller.fuzz.test.ts`). `useWakeController`
+is the thin React adapter that owns the single native subscription, and
+`useWakeListenWindow` consumes its confirmed detections to arm the mic window —
+so every surface (mic window, Swabble triggers, transcript inline-reply) agrees
+on what counts as "the wake word".
+
+## 7. Cross-platform capability & battery matrix
+
+What runs the always-on Stage-A detector on each target, and therefore which path
+the controller selects:
+
+| Platform | Stage-A detector | Stage-B ASR confirm | Selected path | Always-on battery |
+|---|---|---|---|---|
+| **macOS** (desktop) | fused openWakeWord (CPU/Metal) | fused transcription / Whisper.cpp | head fast-path → two-stage | ✅ ~0.23 ms/frame |
+| **iOS** | fused openWakeWord (CPU/ANE target) | `SFSpeechRecognizer` | head fast-path → two-stage | ✅ ANE/CPU, frame-cheap |
+| **Android** | fused openWakeWord (CPU/NNAPI) | Android `SpeechRecognizer` | head fast-path → two-stage | ✅ frame-cheap |
+| **Linux** (desktop) | fused openWakeWord (CPU/Vulkan/CUDA) | Whisper.cpp bridge | head fast-path → two-stage | ✅ frame-cheap |
+| **Windows** (desktop) | fused openWakeWord (CPU/CUDA) | Whisper.cpp bridge | head fast-path → two-stage | ✅ frame-cheap |
+| **Web / browser** | — (no fused FFI) | — | Swabble fallback (Web Speech) | ⚠️ continuous ASR — fallback only |
+
+Today the only wake signal **bridged to the UI** is the Swabble `wakeWord` event,
+so the live UI path is `swabble-fallback`; `useWakeController` exposes the
+*selected* path and routes Swabble through the unified controller. When a host
+bridges the fused Stage-A / head-fire events it declares them via
+`capabilities`, and the same controller drives the battery-efficient path with no
+change to the UI. The controller never invents a subscription for a detector that
+is not actually present.
