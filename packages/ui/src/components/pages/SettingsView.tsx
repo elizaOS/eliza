@@ -3,10 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
-// Importing the cloud settings barrel registers the Cloud group + the cloud
-// settings sections (side effect), then exposes the extra-group list the
-// grouping below reads — so the cloud sections render whenever Settings mounts.
-import { listExtraSettingsGroups } from "../../cloud/settings";
+import { listExtraSettingsGroups } from "../../cloud/settings/cloud-settings-group";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
