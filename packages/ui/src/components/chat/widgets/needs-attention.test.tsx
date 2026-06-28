@@ -117,6 +117,27 @@ describe("NeedsAttentionWidget (#9449)", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("does not update state when the approvals request resolves after unmount", async () => {
+    let resolvePending!: (value: { pending: PendingUserAction[] }) => void;
+    const request = new Promise<{ pending: PendingUserAction[] }>((resolve) => {
+      resolvePending = resolve;
+    });
+    listPendingActionsMock.mockReturnValueOnce(request);
+
+    const { unmount } = render(<NeedsAttentionWidget {...fetchProps} />);
+    await waitFor(() => {
+      expect(listPendingActionsMock).toHaveBeenCalled();
+    });
+
+    unmount();
+    resolvePending({
+      pending: [pending({ id: "a-1", title: "Late decision" })],
+    });
+    await request;
+
+    expect(screen.queryByTestId("chat-widget-needs-attention")).toBeNull();
+  });
+
   it("publishes the approval weight while a fresh decision is pending", async () => {
     mockPending([pending({ id: "a-1", ageMs: 1_000 })]);
 
