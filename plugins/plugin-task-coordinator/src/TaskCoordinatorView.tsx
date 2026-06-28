@@ -177,8 +177,20 @@ export function TaskCoordinatorView() {
   };
 
   return (
-    <SpatialSurface>
-      <TaskCoordinatorSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
+    <div
+      data-testid="task-coordinator-panel"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+        minWidth: 0,
+      }}
+    >
+      <SpatialSurface>
+        <TaskCoordinatorSpatialView snapshot={snapshot} onAction={onAction} />
+      </SpatialSurface>
+    </div>
   );
 }
