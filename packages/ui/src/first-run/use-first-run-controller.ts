@@ -807,15 +807,12 @@ export function useFirstRunController(): FirstRunController {
       });
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setBusyText("Saving first-run profile");
-      // A shared-runtime cloud agent has no agent server, so POST /api/first-run
-      // (submitFirstRun) 404s — there is no per-agent first-run config store to
-      // write to, and the agent is already provisioned + named cloud-side. Don't
-      // let that 404 throw and strand onboarding before completeFirstRun() runs;
-      // tolerate it for a shared-agent base and finish the transition to chat.
-      try {
+      // Direct Cloud agent bases (shared REST adapters and dedicated
+      // <agent>.elizacloud.ai hosts) are chat runtimes, not full app-shell
+      // setup servers. They do not own /api/first-run, and browser localhost
+      // cannot safely POST to dedicated agent subdomains because of CORS.
+      if (supportsFullAppShellRoutes(cloudAgentApiBase)) {
         await client.submitFirstRun(plan.payload);
-      } catch (err) {
-        if (!isDirectCloudSharedAgentBase(client.getBaseUrl())) throw err;
       }
       clearPersistedFirstRunState();
       setBusyText(null);
