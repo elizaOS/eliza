@@ -55,7 +55,15 @@ if (envFlagEnabled("AGENT_SKIP_CLOUD_LIVE_SMOKE")) {
 
 if (
   !fs.existsSync(
-    path.join(repoRoot, "packages", "cloud-api", "test", "e2e", "preload.ts"),
+    path.join(
+      repoRoot,
+      "packages",
+      "cloud",
+      "api",
+      "test",
+      "e2e",
+      "preload.ts",
+    ),
   )
 ) {
   skip("the cloud e2e harness is not available in this checkout");

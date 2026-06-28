@@ -136,7 +136,8 @@ const checks = [
         "test",
         path.join(
           packagesRoot,
-          "cloud-shared",
+          "cloud",
+          "shared",
           "src",
           "lib",
           "services",
@@ -144,7 +145,8 @@ const checks = [
         ),
         path.join(
           packagesRoot,
-          "cloud-shared",
+          "cloud",
+          "shared",
           "src",
           "lib",
           "services",
@@ -152,7 +154,8 @@ const checks = [
         ),
         path.join(
           packagesRoot,
-          "cloud-shared",
+          "cloud",
+          "shared",
           "src",
           "lib",
           "services",
@@ -190,7 +193,8 @@ const checks = [
         "test",
         path.join(
           packagesRoot,
-          "cloud-shared",
+          "cloud",
+          "shared",
           "src",
           "lib",
           "services",
@@ -199,7 +203,8 @@ const checks = [
         ),
         path.join(
           packagesRoot,
-          "cloud-shared",
+          "cloud",
+          "shared",
           "src",
           "lib",
           "services",

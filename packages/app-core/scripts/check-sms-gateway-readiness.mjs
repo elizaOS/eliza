@@ -31,7 +31,8 @@ const cloudOnboardingScript = path.join(
 const routingContractTests = [
   path.join(
     packagesRoot,
-    "cloud-shared",
+    "cloud",
+    "shared",
     "src",
     "lib",
     "services",
@@ -39,7 +40,8 @@ const routingContractTests = [
   ),
   path.join(
     packagesRoot,
-    "cloud-shared",
+    "cloud",
+    "shared",
     "src",
     "lib",
     "services",
@@ -47,7 +49,8 @@ const routingContractTests = [
   ),
   path.join(
     packagesRoot,
-    "cloud-shared",
+    "cloud",
+    "shared",
     "src",
     "lib",
     "services",
