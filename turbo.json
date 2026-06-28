@@ -4,7 +4,9 @@
     "package.json",
     "bun.lock",
     "bunfig.toml",
-    "turbo.json"
+    "turbo.json",
+    "tsconfig.json",
+    "tsconfig.base.json"
   ],
   "tasks": {
     "build": {
