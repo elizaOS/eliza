@@ -402,6 +402,33 @@ function assistantMicButton(page: Page) {
   return page.getByRole("button", { name: /^(talk|voice input)$/i });
 }
 
+function springboardTile(page: Page, viewId: string) {
+  return page.getByTestId(`springboard-tile-${viewId}`).first();
+}
+
+async function revealSpringboardTile(
+  page: Page,
+  viewId: string,
+): Promise<void> {
+  const tile = springboardTile(page, viewId);
+  await expect(tile).toBeAttached();
+  const pageTestId = await tile.evaluate((node) =>
+    node
+      .closest('[data-testid^="springboard-page-"]')
+      ?.getAttribute("data-testid"),
+  );
+  const pageIndex = pageTestId?.match(/^springboard-page-(\d+)$/)?.[1];
+  if (pageIndex == null) return;
+
+  const pageLocator = page.getByTestId(`springboard-page-${pageIndex}`);
+  if ((await pageLocator.getAttribute("aria-hidden")) === "true") {
+    await page
+      .getByRole("button", { name: `Page ${Number(pageIndex) + 1}` })
+      .click();
+    await expect(pageLocator).toHaveAttribute("aria-hidden", "false");
+  }
+}
+
 function conversationLog(page: Page) {
   return page.getByRole("log", { name: /conversation history/i });
 }
@@ -737,6 +764,7 @@ test.describe("assistant home app flow", () => {
     await screenshot(page, "04-chat-pill-suppressed");
 
     await openAppPath(page, "/views");
+    await revealSpringboardTile(page, "terminal");
     await expect(page.getByRole("button", { name: /Terminal/i })).toBeVisible();
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "05-views-with-pill");
