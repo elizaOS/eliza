@@ -373,7 +373,7 @@ const desktopCefWorkaroundEnv = (() => {
     return explicit;
   }
 
-  return "1";
+  return null;
 })();
 const desktopUnsafeDevtoolsEnv = (() => {
   if (process.platform !== "darwin") {
@@ -673,12 +673,22 @@ const CHILD_COLORS = {
   default: chalk.white,
 };
 
+function shouldSuppressExpectedDevLine(line) {
+  return (
+    line.includes("Notification authorization error:") &&
+    line.includes("falling back to legacy API")
+  );
+}
+
 function prefixStream(name, stream) {
   const plainTag = `[${name.padEnd(PREFIX_PAD)}]`;
   const colorFn = CHILD_COLORS[name] ?? CHILD_COLORS.default;
   stream.on("data", (chunk) => {
     for (const line of chunk.toString().split("\n")) {
       if (line.trim()) {
+        if (shouldSuppressExpectedDevLine(line)) {
+          continue;
+        }
         // Use the child color for both streams. Many tools (including Electrobun)
         // write normal startup logs to stderr; red prefixes read as errors.
         const coloredTag = colorFn(plainTag);
@@ -695,12 +705,16 @@ function prefixStream(name, stream) {
   });
 }
 
+function childColorEnv() {
+  return process.env.NO_COLOR === undefined ? { FORCE_COLOR: "1" } : {};
+}
+
 function pushChild(name, cmd, args, cwd, extraEnv = {}) {
   const resolvedCmd = cmd === "bun" ? BUN_EXECUTABLE : cmd;
   const child = spawn(resolvedCmd, args, {
     cwd,
     env: extendNodePathEnv(
-      { ...process.env, ...extraEnv, FORCE_COLOR: "1" },
+      { ...process.env, ...extraEnv, ...childColorEnv() },
       bundleRoot,
     ),
     stdio: ["ignore", "pipe", "pipe"],
@@ -901,7 +915,7 @@ async function launch() {
             ...apiEnv,
             [API_PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
             [PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
-            FORCE_COLOR: "1",
+            ...childColorEnv(),
           },
           bundleRoot,
         ),

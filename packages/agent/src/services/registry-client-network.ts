@@ -18,6 +18,11 @@ export function isExpectedRegistryNetworkFallback(
 ): error is RegistryNetworkFallbackError {
   return (
     error instanceof RegistryNetworkFallbackError ||
+    (error instanceof Error &&
+      (error.name === "AbortError" ||
+        error.name === "TimeoutError" ||
+        error.message.toLowerCase().includes("timeout") ||
+        error.message.toLowerCase().includes("timed out"))) ||
     (typeof error === "object" &&
       error !== null &&
       "expectedLocalFallback" in error &&
@@ -67,6 +72,7 @@ async function fetchGeneratedRegistry(
   const generatedSpan = createIntegrationTelemetrySpan({
     boundary: "marketplace",
     operation: "fetch_generated_registry",
+    timeoutMs: REGISTRY_FETCH_TIMEOUT_MS,
   });
   try {
     const resp = await fetch(generatedRegistryUrl, createRegistryFetchInit());
@@ -239,6 +245,7 @@ async function fetchIndexRegistry(
   const indexSpan = createIntegrationTelemetrySpan({
     boundary: "marketplace",
     operation: "fetch_index_registry",
+    timeoutMs: REGISTRY_FETCH_TIMEOUT_MS,
   });
   let resp: Response;
   try {

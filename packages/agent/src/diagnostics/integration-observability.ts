@@ -97,10 +97,11 @@ function isExpectedTransientFailure(
 ): boolean {
   return (
     event.outcome === "failure" &&
-    event.boundary === "lifeops" &&
-    (event.errorKind === "runtime_unavailable" ||
-      event.errorKind === "lifeops_storage_unavailable" ||
-      event.errorKind === "lifeops_auth_invalid")
+    ((event.boundary === "lifeops" &&
+      (event.errorKind === "runtime_unavailable" ||
+        event.errorKind === "lifeops_storage_unavailable" ||
+        event.errorKind === "lifeops_auth_invalid")) ||
+      (event.boundary === "marketplace" && event.errorKind === "timeout"))
   );
 }
 
