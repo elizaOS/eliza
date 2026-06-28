@@ -849,7 +849,7 @@ test.describe("orchestrator GUI workbench", () => {
         priority: "high",
       });
 
-    await page.getByTestId("orchestrator-add-agent").click({ force: true });
+    await page.getByTestId("orchestrator-add-agent").click();
     await page
       .getByTestId("orchestrator-add-agent-label")
       .fill("Cerebras Builder");
@@ -929,7 +929,9 @@ test.describe("orchestrator GUI workbench", () => {
     // (covered by the plugin's unit suite).
     const rail = page.getByTestId("orchestrator-rail");
     await expect(rail).toBeVisible();
-    await expect(rail.getByTestId("task-empty-state")).toContainText("None");
+    await expect(rail.getByTestId("task-empty-state")).toContainText(
+      "No tasks yet",
+    );
     await expect(rail.getByTestId("task-empty-state")).toContainText(
       "Ask me to start a coding task",
     );
