@@ -70,6 +70,10 @@ export interface AppBootConfig {
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
   cloudApiBase: "https://elizacloud.ai",
+  // Seamless shared→dedicated handoff is the default create path. Kept as a
+  // kill-switch: a deployment can set this false to fall back to the
+  // dedicated-direct create (no handoff). Mirrors the ui-package store.
+  preferSharedCloudTier: true,
 };
 
 const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");

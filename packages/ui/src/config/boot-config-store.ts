@@ -298,13 +298,16 @@ export interface AppBootConfig {
     naturalLanguage?: boolean;
   };
   /**
-   * Phase-0 cloud tier flip (MVP). When true, the first-run cloud-create path
-   * requests a SHARED (container-free, in-Worker) agent so the user chats
-   * instantly with no provisioning wait, instead of the default DEDICATED
-   * always-on container. Off by default: the seamless shared→dedicated handoff
-   * is not built yet, so making everyone shared would strand them there — this
-   * flag is for the instant-shared demo only. When false the create request is
-   * byte-identical to the dedicated path (sends `alwaysOn: true`).
+   * Seamless shared→dedicated handoff — the default create path. When true (the
+   * default), first-run cloud-create requests a SHARED (container-free, in-Worker)
+   * agent so the user chats instantly with no provisioning wait, then provisions a
+   * DEDICATED always-on container in the background and silently re-points to it
+   * once it's running. This is the normal "create an agent" behavior under the
+   * locked model: every agent is dedicated, the shared runtime is just the invisible
+   * instant bridge. Kept as a kill-switch — a deployment can set this `false` to fall
+   * back to the byte-identical dedicated-direct create (sends `alwaysOn: true`, no
+   * handoff). Only a freshly-created shared base arms the handoff, so picked/existing
+   * agents are unaffected either way.
    */
   preferSharedCloudTier?: boolean;
   /** Character catalog data — replaces cross-package import of catalog.json. */
@@ -325,6 +328,10 @@ export interface AppBootConfig {
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
   cloudApiBase: "https://elizacloud.ai",
+  // Seamless shared→dedicated handoff is the default create path. Kept as a
+  // kill-switch: a deployment can set this false to fall back to the
+  // dedicated-direct create (no handoff).
+  preferSharedCloudTier: true,
 };
 
 // ---------------------------------------------------------------------------
