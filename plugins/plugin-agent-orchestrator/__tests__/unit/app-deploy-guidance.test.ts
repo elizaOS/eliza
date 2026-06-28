@@ -3,6 +3,7 @@ import {
   augmentTaskWithDeployGuidance,
   buildAppDeployGuidance,
   isAppBuildTask,
+  isMonetizedAppTask,
 } from "../../src/services/app-deploy-guidance.js";
 
 describe("app-deploy-guidance", () => {
@@ -24,6 +25,45 @@ describe("app-deploy-guidance", () => {
       expect(isAppBuildTask("")).toBe(false);
       expect(isAppBuildTask(undefined)).toBe(false);
       expect(isAppBuildTask(null)).toBe(false);
+    });
+  });
+
+  describe("isMonetizedAppTask", () => {
+    it("matches money-earning app builds", () => {
+      expect(isMonetizedAppTask("build a monetized web app")).toBe(true);
+      expect(
+        isMonetizedAppTask("an app that charges $2 per use with a markup"),
+      ).toBe(true);
+      expect(isMonetizedAppTask("a paid app with premium tiers")).toBe(true);
+    });
+    it("does NOT match a plain static/fun app", () => {
+      expect(isMonetizedAppTask("build me a magic 8-ball web app")).toBe(false);
+      expect(isMonetizedAppTask("a quick countdown timer page")).toBe(false);
+      expect(isMonetizedAppTask("")).toBe(false);
+    });
+  });
+
+  describe("agent-home monetized vs static", () => {
+    const cfg = {
+      target: "agent-home" as const,
+      agentHomeAppsDir: "/data/apps",
+      agentHomeBaseUrl: "https://example.test",
+    };
+    it("a MONETIZED agent-home app registers with Cloud + starts from the edad template (no 'no Cloud')", () => {
+      const out = augmentTaskWithDeployGuidance(
+        "build a monetized web app that charges $3 per use",
+        cfg,
+      );
+      expect(out).toContain("App Deployment (agent-home)");
+      expect(out).toContain("register it with Eliza Cloud");
+      expect(out).toContain("packages/examples/cloud/edad");
+      expect(out).toContain("cloud.json");
+      expect(out).not.toContain("Do NOT use Eliza Cloud for this one");
+    });
+    it("a NON-monetized agent-home app stays static-only (keeps 'no Cloud')", () => {
+      const out = augmentTaskWithDeployGuidance("build a magic 8-ball app", cfg);
+      expect(out).toContain("Do NOT use Eliza Cloud for this one");
+      expect(out).not.toContain("register it with Eliza Cloud");
     });
   });
 
@@ -70,6 +110,25 @@ describe("app-deploy-guidance", () => {
   });
 
   describe("buildAppDeployGuidance", () => {
+    it("a MONETIZED Eliza-Cloud build starts from the edad template (no from-scratch)", () => {
+      const out = buildAppDeployGuidance(
+        { target: "eliza-cloud" },
+        "build a monetized app that charges $2 per use",
+      );
+      expect(out).toContain("packages/examples/cloud/edad");
+      expect(out).toContain("START FROM THE TEMPLATE");
+      // forwards to the org-balance endpoint, not the stranded per-app pool
+      expect(out).toContain("/api/v1/messages");
+      expect(out).not.toContain("/api/v1/apps/<appId>/chat");
+    });
+    it("a NON-monetized build keeps the generic Cloud contract (no edad)", () => {
+      const out = buildAppDeployGuidance(
+        { target: "eliza-cloud" },
+        "build a website about cats",
+      );
+      expect(out).toContain("App Deployment (Eliza Cloud)");
+      expect(out).not.toContain("packages/examples/cloud/edad");
+    });
     it("defaults to Eliza Cloud for an unspecified/empty config", () => {
       expect(buildAppDeployGuidance({ target: "eliza-cloud" })).toContain(
         "Eliza Cloud",
