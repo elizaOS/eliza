@@ -573,7 +573,14 @@ export class MessageManager {
 		let messageServerId: string | undefined;
 
 		if (message.guild) {
-			const guild = await message.guild.fetch();
+			// Use the gateway-cached guild directly. The old `await message.guild.fetch()`
+			// issued a REST GET /guilds/{id} on EVERY message; in a large, busy guild
+			// (thousands of members) that per-message fetch storm saturates discord.js's
+			// REST queue and starves message handling — the bot goes silent in big
+			// servers while staying fine in small ones (rate-limits are queued, not
+			// thrown, so nothing shows in the logs). `guild.id` (all that's used below)
+			// is already on the cached object.
+			const guild = message.guild;
 			type = await this.getChannelType(message.channel as Channel);
 			if (type === null) {
 				// usually a forum type post
