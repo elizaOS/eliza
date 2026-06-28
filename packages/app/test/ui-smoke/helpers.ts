@@ -1909,21 +1909,9 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
-  // Home shell widgets poll these on startup. A fresh zero-key smoke agent has
-  // no relationship suggestions or feed activity, so serve the empty states
-  // instead of letting the fallback server emit diagnostics-breaking 501s.
-  await page.route("**/api/relationships/candidates**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ candidates: [] }),
-    });
-  });
-
+  // Activity-feed widget poller — a shell-level GET on the home/chat surface that
+  // sits behind every view. The zero-key smoke stack returns 501; a fresh agent
+  // has no activity, so the canonical empty feed keeps the diagnostics guard clean.
   await page.route("**/api/apps/feed/agent/activity**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1932,7 +1920,22 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ items: [], nextCursor: null }),
+      body: JSON.stringify({ items: [], total: 0 }),
+    });
+  });
+
+  // Relationship merge-candidates poller — another shell-level GET. The zero-key
+  // smoke stack returns 501; a fresh agent has no candidate merges, so the empty
+  // `{ data: [] }` shape matches real zero-state and keeps diagnostics clean.
+  await page.route("**/api/relationships/candidates**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [] }),
     });
   });
 
