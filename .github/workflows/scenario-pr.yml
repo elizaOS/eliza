@@ -579,6 +579,12 @@ jobs:
       - name: Test-runner pool + shard unit tests
         run: bun test packages/scripts/__tests__/test-task-pool.test.ts
 
+      # Contract-tests the cloud agent image workflow's Turbo build step.
+      # packages/scripts/__tests__ is outside workspace test discovery, so keep
+      # this explicit or the workflow contract can silently stop running in CI.
+      - name: Agent image workflow contract
+        run: bun test packages/scripts/__tests__/build-agent-image-workflow.test.ts
+
       # E2E coverage gate (issue #8802). Now REQUIRED: the baseline is green —
       # commands 38/38, #8791 shortcuts 1/1 (wired into SHORTCUT_COVERAGE),
       # plugin routes covered/exempt, view ship-gates intact, zero blocking gaps.
