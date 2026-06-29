@@ -91,6 +91,10 @@ import {
 } from "./lib/stage-android-agent.mjs";
 import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
 import {
+  ANDROID_APP_ACTION_CAPABILITIES,
+  ANDROID_APP_ACTION_FORBIDDEN_MARKERS,
+  ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS,
+  ANDROID_APP_ACTION_SHORTCUT_IDS,
   appendMissingAndroidManifestBlock,
   appendMissingApplicationBlock,
   applyAndroidCleartextPolicy,
