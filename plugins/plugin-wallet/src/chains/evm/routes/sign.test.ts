@@ -91,7 +91,7 @@ describe("EVM browser signing routes", () => {
     }
   });
 
-  it("rejects bad bearer/header tokens and sets CORS headers from origin", async () => {
+  it("rejects bad bearer/header tokens and does not reflect unlisted origins", async () => {
     const response = res();
     await route("wallet-evm-address").handler(
       req({
@@ -104,9 +104,10 @@ describe("EVM browser signing routes", () => {
 
     expect(response.statusCode).toBe(401);
     expect(response.body).toEqual({ error: "invalid sign token" });
-    expect(response.headers["Access-Control-Allow-Origin"]).toBe(
-      "https://dapp.example",
-    );
+    // No allowlist configured -> origin must not be reflected and credentialed
+    // CORS must never be enabled on a token-gated signing endpoint.
+    expect(response.headers["Access-Control-Allow-Origin"]).toBeUndefined();
+    expect(response.headers["Access-Control-Allow-Credentials"]).toBeUndefined();
     expect(response.headers.Vary).toBe("Origin");
   });
 

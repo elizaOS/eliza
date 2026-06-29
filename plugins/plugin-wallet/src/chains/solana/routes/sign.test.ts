@@ -102,7 +102,7 @@ describe("Solana browser signing routes", () => {
     }
   });
 
-  it("handles OPTIONS and mirrors the caller origin in CORS headers", async () => {
+  it("handles OPTIONS and does not reflect unlisted origins in CORS headers", async () => {
     const response = res();
     await route("wallet-solana-sign-message").handler(
       req({ method: "OPTIONS", origin: "https://dapp.example" }),
@@ -112,7 +112,10 @@ describe("Solana browser signing routes", () => {
 
     expect(response.statusCode).toBe(204);
     expect(response.body).toEqual({});
-    expect(response.headers["Access-Control-Allow-Origin"]).toBe("https://dapp.example");
+    // No allowlist configured -> origin must not be reflected and credentialed
+    // CORS must never be enabled on a token-gated signing endpoint.
+    expect(response.headers["Access-Control-Allow-Origin"]).toBeUndefined();
+    expect(response.headers["Access-Control-Allow-Credentials"]).toBeUndefined();
     expect(response.headers["Access-Control-Allow-Headers"]).toContain("X-Wallet-Sign-Token");
   });
 

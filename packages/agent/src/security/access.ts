@@ -1,11 +1,16 @@
-import type { IAgentRuntime, Memory } from "@elizaos/core";
-import {
-  checkSenderPrivateAccess,
-  hasRoleAccess as coreHasRoleAccess,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, RoleName } from "@elizaos/core";
+import { checkSenderPrivateAccess, hasRoleAccess } from "@elizaos/core";
 
-/** Role names matching the elizaOS role hierarchy. */
-export type RequiredRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
+/**
+ * The canonical elizaOS role gate (OWNER > ADMIN > USER > GUEST), re-exported
+ * from @elizaos/core so agent code shares one implementation. When there is no
+ * world context (e.g. local API calls) it allows through, matching plugin role
+ * gating. Do not duplicate the rank logic here.
+ */
+export { hasRoleAccess };
+
+/** Alias of the canonical {@link RoleName} from @elizaos/core. */
+export type RequiredRole = RoleName;
 
 type AccessContext = {
   runtime: IAgentRuntime & { agentId: string };
@@ -47,21 +52,21 @@ export async function hasOwnerAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
 ): Promise<boolean> {
-  return coreHasRoleAccess(runtime, message, "OWNER");
+  return hasRoleAccess(runtime, message, "OWNER");
 }
 
 export async function hasAdminAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
 ): Promise<boolean> {
-  return coreHasRoleAccess(runtime, message, "ADMIN");
+  return hasRoleAccess(runtime, message, "ADMIN");
 }
 
 export async function hasPrivateAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
 ): Promise<boolean> {
-  if (await coreHasRoleAccess(runtime, message, "OWNER")) {
+  if (await hasRoleAccess(runtime, message, "OWNER")) {
     return true;
   }
 
@@ -81,20 +86,4 @@ export async function hasPrivateAccess(
   } catch {
     return false;
   }
-}
-
-/**
- * Check whether the sender has at least the given role in the elizaOS
- * role hierarchy (OWNER > ADMIN > USER > GUEST).
- *
- * Follows the same lenient pattern as plugin-role-gating: when there is
- * no world context (e.g. local API calls), the check falls through and
- * allows the action so local-only usage isn't blocked.
- */
-export async function hasRoleAccess(
-  runtime: IAgentRuntime | undefined,
-  message: Memory | undefined,
-  requiredRole: RequiredRole,
-): Promise<boolean> {
-  return coreHasRoleAccess(runtime, message, requiredRole);
 }

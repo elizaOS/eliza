@@ -523,6 +523,25 @@ export function normalizeRole(raw: string | undefined | null): RoleName {
 	return "GUEST";
 }
 
+/**
+ * Convert the 5-tier {@link Role} vocabulary (OWNER|ADMIN|MEMBER|GUEST|NONE)
+ * into the canonical 4-tier {@link RoleName} (OWNER|ADMIN|USER|GUEST): MEMBER
+ * maps to USER and NONE maps to GUEST. One canonical conversion so callers do
+ * not re-implement the mapping inline.
+ */
+export function normalizeToRoleName(role: Role): RoleName {
+	switch (role) {
+		case "OWNER":
+			return "OWNER";
+		case "ADMIN":
+			return "ADMIN";
+		case "MEMBER":
+			return "USER";
+		default:
+			return "GUEST";
+	}
+}
+
 export function getEntityRole(
 	metadata: RolesWorldMetadata | undefined,
 	entityId: string,

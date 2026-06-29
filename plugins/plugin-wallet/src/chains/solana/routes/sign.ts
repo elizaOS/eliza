@@ -8,9 +8,10 @@
  *
  * The companion JS shim in `../../../browser-shim/` bakes the token into a
  * registered Wallet-Standard provider and proxies `signTransaction` /
- * `signMessage` / `signAndSendTransaction` to these routes. CORS is permissive
- * (any origin, with the token as the actual auth) because the shim runs inside
- * arbitrary dApp pages whose origin is not knowable in advance.
+ * `signMessage` / `signAndSendTransaction` to these routes. The token is the
+ * actual auth (sent in a header, not cookies), so credentialed CORS is never
+ * enabled; cross-origin access is denied unless the calling origin is listed in
+ * `WALLET_BROWSER_SIGN_ORIGINS`.
  */
 
 import type {
@@ -32,16 +33,44 @@ function routeErrorStatus(error: unknown): number {
   return error instanceof SolanaSignInputError ? 400 : 500;
 }
 
-function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
-  const origin = (req.headers?.origin as string | undefined) ?? "*";
-  res.setHeader?.("Access-Control-Allow-Origin", origin);
+/**
+ * Comma-separated allowlist of dApp origins permitted to make cross-origin
+ * signing requests. Read from runtime settings first, then the environment.
+ * When unset, no cross-origin access is granted (same-origin only).
+ */
+function readAllowedSignOrigins(runtime: IAgentRuntime): string[] {
+  const fromRuntime = runtime.getSetting("WALLET_BROWSER_SIGN_ORIGINS");
+  const raw =
+    typeof fromRuntime === "string" && fromRuntime.trim().length > 0
+      ? fromRuntime
+      : (process.env.WALLET_BROWSER_SIGN_ORIGINS ?? "");
+  return raw
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
+/**
+ * CORS for these signing endpoints is deliberately strict. Auth is a static
+ * bearer token sent in a request header (not cookies), so credentialed CORS is
+ * never enabled — emitting `Access-Control-Allow-Credentials` alongside a
+ * reflected origin would be a credential-exfiltration vector. Cross-origin
+ * access is denied by default; only origins explicitly listed in
+ * `WALLET_BROWSER_SIGN_ORIGINS` have their `Origin` reflected back. Unlisted
+ * (or absent) origins receive no `Access-Control-Allow-Origin` header.
+ */
+function setCorsHeaders(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime): void {
   res.setHeader?.("Vary", "Origin");
+  const origin = req.headers?.origin as string | undefined;
+  const allowed = readAllowedSignOrigins(runtime);
+  if (origin && allowed.includes(origin)) {
+    res.setHeader?.("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader?.("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader?.(
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, X-Wallet-Sign-Token"
   );
-  res.setHeader?.("Access-Control-Allow-Credentials", "true");
   res.setHeader?.("Access-Control-Max-Age", "600");
 }
 
@@ -68,7 +97,7 @@ function readBearer(req: RouteRequest): string | null {
 }
 
 function authorize(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime): boolean {
-  setCorsHeaders(req, res);
+  setCorsHeaders(req, res, runtime);
   if (req.method === "OPTIONS") {
     res.status(204).json({});
     return false;
@@ -253,6 +282,10 @@ const signAndSendHandler: LegacyRouteHandler = async (req, res, runtime) => {
   }
 };
 
+// `public: true` is intentional: the in-browser shim must reach these routes
+// without the dashboard session cookie. The protection is the static bearer
+// token (`WALLET_BROWSER_SIGN_TOKEN`, required — routes 503 until set) plus the
+// strict CORS origin allowlist above, not HTTP session auth.
 export const solanaSignRoutes: Route[] = [
   {
     type: "GET",
