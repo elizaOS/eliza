@@ -378,6 +378,8 @@ export * from "./utils/plugin-loader";
 export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat
 export * from "./utils/read-env";
+// Canonical runtime-setting → env resolver (per-agent setting first, then env)
+export * from "./utils/resolve-setting";
 export * from "./utils/server-health";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";

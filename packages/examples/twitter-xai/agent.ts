@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { AgentRuntime } from "@elizaos/core";
+import { AgentRuntime, getBasicCapabilitiesSettings } from "@elizaos/core";
 import { config as loadDotEnv } from "dotenv";
 
 import { character } from "./character";
@@ -18,7 +18,10 @@ export function validateEnvironment(): void {
   requireEnv("XAI_API_KEY");
 
   // X (Twitter) is provided by @elizaos/plugin-x. Pick one of the three modes.
-  const authMode = (process.env.TWITTER_AUTH_MODE ?? "broker").toLowerCase();
+  // Default to `env`: it is the only mode @elizaos/plugin-x implements purely
+  // standalone (it accepts `env | oauth`). `broker` is a managed Eliza Cloud
+  // path and is left as an explicit opt-in.
+  const authMode = (process.env.TWITTER_AUTH_MODE ?? "env").toLowerCase();
   switch (authMode) {
     case "broker":
       if (
@@ -68,9 +71,15 @@ async function main(): Promise<void> {
   const { XAIPlugin } = await import("@elizaos/plugin-xai");
   const xPlugin = (await import("@elizaos/plugin-x")).default;
 
+  // Bridge the dotenv-loaded environment into the runtime's settings. Core
+  // `getSetting()` is per-agent and does NOT read `process.env`, so a headless
+  // host must merge env in explicitly — otherwise plugin-sql's
+  // `getSetting("POSTGRES_URL")` misses the `.env` value and silently falls back
+  // to PGlite. getBasicCapabilitiesSettings layers env under character config.
   const runtime = new AgentRuntime({
     character,
     plugins: [sqlPlugin, XAIPlugin, xPlugin],
+    settings: getBasicCapabilitiesSettings(character),
   });
 
   console.log("⏳ Initializing runtime...");
