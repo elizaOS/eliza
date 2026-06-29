@@ -21,6 +21,23 @@ function isFeedOAuthProvider(value: string): value is FeedStewardOAuthProvider {
 }
 
 /**
+ * Snapshot of the OAuth params, captured at client module-eval time.
+ *
+ * Steward returns the one-time code in the URL *fragment* (`#code=…`). Next.js's
+ * App Router normalizes the URL during hydration and drops the fragment before
+ * our mount effect runs, so reading `window.location.hash` inside the effect
+ * intermittently sees an empty hash and bounces the user back to `/` with
+ * `auth_error=missing_code`. Module scope runs as the route chunk first
+ * executes — earlier than the router's normalization — so the fragment is still
+ * present here. The effect prefers this snapshot and only falls back to the live
+ * location (for the legacy `?token=` query flow, which the router keeps).
+ */
+const INITIAL_OAUTH_LOCATION =
+  typeof window !== "undefined"
+    ? { hash: window.location.hash, search: window.location.search }
+    : { hash: "", search: "" };
+
+/**
  * OAuth callback page for Steward OAuth providers (Google, Discord, Twitter/X).
  *
  * PKCE code flow (current):
@@ -48,10 +65,14 @@ export default function OAuthCallbackPage() {
 
     // Steward's PKCE flow returns the one-time code in the URL *fragment*
     // (`#code=…&state=…`) — deliberately, so it stays out of server logs /
-    // Referer / browser history. Read the fragment first, then fall back to the
-    // query string for the legacy token-in-URL flow (`?token=…`).
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const queryParams = new URLSearchParams(window.location.search);
+    // Referer / browser history. Read from the module-eval snapshot (see
+    // INITIAL_OAUTH_LOCATION) because the App Router strips the fragment before
+    // this effect runs; fall back to the live location for the legacy
+    // token-in-URL flow (`?token=…`).
+    const hash = INITIAL_OAUTH_LOCATION.hash || window.location.hash;
+    const search = INITIAL_OAUTH_LOCATION.search || window.location.search;
+    const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+    const queryParams = new URLSearchParams(search);
     const pick = (key: string): string | null =>
       hashParams.get(key) ?? queryParams.get(key);
     const error = pick("error");
