@@ -971,10 +971,23 @@ export function useChatSend(deps: UseChatSendDeps) {
         flushStreamingText();
 
         if (!data.text.trim()) {
-          applyStreamingTextModification(setConversationMessages, {
-            messageId: assistantMsgId,
-            mode: "drop",
-          });
+          if (data.failureKind) {
+            // Empty reply but the server flagged a failure class — surface the
+            // gate UI (e.g. "Connect a provider") instead of silently dropping
+            // the turn. Without this, an empty-text + failureKind response
+            // vanishes with no error, since the failure branch below is an
+            // `else if` unreachable once the text is empty.
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "fail",
+              failureKind: data.failureKind,
+            });
+          } else {
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "drop",
+            });
+          }
         } else if (
           shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
           data.reasoning
