@@ -202,10 +202,17 @@ function processTestDir(testResultDir, packageName) {
 
   const videoFiles = fs
     .readdirSync(testResultDir)
-    .filter((f) => f.endsWith(".webm"));
+    .filter((f) => /\.(webm|mp4|mov)$/i.test(f));
   const videoFile = videoFiles[0] ?? null;
 
-  if (zipNames.length === 0 && !videoFile) return null;
+  const screenshotFiles = fs
+    .readdirSync(testResultDir)
+    .filter((f) => /\.(png|jpe?g)$/i.test(f))
+    .sort();
+
+  if (zipNames.length === 0 && !videoFile && screenshotFiles.length === 0) {
+    return null;
+  }
 
   fs.mkdirSync(framesDir, { recursive: true });
 
@@ -247,6 +254,22 @@ function processTestDir(testResultDir, packageName) {
     try {
       rmRecursive(tmpDir);
     } catch {}
+  }
+
+  for (const screenshotName of screenshotFiles) {
+    const screenshotPath = path.join(testResultDir, screenshotName);
+    try {
+      if (fs.statSync(screenshotPath).size < MIN_FRAME_BYTES) continue;
+      const ext = path.extname(screenshotName) || ".png";
+      const destName = `${String(frameIdx).padStart(4, "0")}${ext}`;
+      const destPath = path.join(framesDir, destName);
+      fs.copyFileSync(screenshotPath, destPath);
+      const relOutDir = path.relative(RECORDINGS_DIR, outDir);
+      copiedRelPaths.push(path.join(relOutDir, "frames", destName));
+      frameIdx++;
+    } catch (err) {
+      console.warn(`  [warn] could not copy screenshot: ${err.message}`);
+    }
   }
 
   const relVideo = videoFile

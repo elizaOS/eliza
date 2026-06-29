@@ -287,13 +287,21 @@ export async function ensureEmulatorBooted({
   // Verified on a KVM host: `-cpu host` boots the agent; `qemu64,+avx2` SIGILLs.
   // Requires KVM (`-accel on` below); a TCG-only host must override this with a
   // synthetic model via ELIZA_EMULATOR_QEMU_CPU (and accept the bun fragility).
-  // Must come last — everything after `-qemu` is forwarded to qemu.
-  const qemuCpu = process.env.ELIZA_EMULATOR_QEMU_CPU ?? "host";
+  // Must come last -- everything after `-qemu` is forwarded to qemu. macOS
+  // arm64 emulator builds do not know the Linux/KVM-only `host` CPU model, so
+  // keep that default to Linux and let other hosts use the emulator default
+  // unless explicitly overridden.
+  const qemuCpu =
+    process.env.ELIZA_EMULATOR_QEMU_CPU ??
+    (process.platform === "linux" ? "host" : "");
+  const qemuArgs = qemuCpu ? ["-qemu", "-cpu", qemuCpu] : [];
   const child = spawn(
     emulator,
     [
       "-avd",
       chosen,
+      "-no-window",
+      "-no-snapshot-load",
       "-no-snapshot-save",
       "-no-boot-anim",
       "-no-audio",
@@ -309,9 +317,7 @@ export async function ensureEmulatorBooted({
       "full",
       "-accel",
       "on",
-      "-qemu",
-      "-cpu",
-      qemuCpu,
+      ...qemuArgs,
     ],
     { detached: true, stdio: ["ignore", out, out] },
   );

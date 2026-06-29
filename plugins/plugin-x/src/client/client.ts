@@ -17,6 +17,19 @@ import type {
   TwitterAuthProvider,
   TwitterOAuth1Provider,
 } from "./auth-providers/types";
+
+type TwitterV2Client = Awaited<ReturnType<TwitterAuth["getV2Client"]>>["v2"];
+type DirectMessageEventOptions = NonNullable<
+  Parameters<TwitterV2Client["listDmEvents"]>[0]
+>;
+type DirectMessageTimeline = Awaited<
+  ReturnType<TwitterV2Client["listDmEvents"]>
+>;
+type DirectMessageEvent = DirectMessageTimeline["events"][number];
+type DirectMessagePostResult = Awaited<
+  ReturnType<TwitterV2Client["sendDmInConversation"]>
+>;
+
 // Removed messages imports - using Twitter API v2 instead
 import {
   getEntityIdByScreenName,
@@ -939,9 +952,12 @@ export class Client {
    * @param cursor Pagination cursor
    * @returns Array of DM conversations
    */
-  public async getDirectMessageConversations(userId: string, cursor?: string) {
+  public async getDirectMessageConversations(
+    userId: string,
+    cursor?: string,
+  ): Promise<{ conversations: DirectMessageEvent[] }> {
     const client = await this.requireAuth().getV2Client();
-    const options: NonNullable<Parameters<typeof client.v2.listDmEvents>[0]> = {
+    const options: DirectMessageEventOptions = {
       "dm_event.fields": [
         "id",
         "text",
@@ -969,7 +985,10 @@ export class Client {
    * @param text The text of the message
    * @returns The response from the Twitter API
    */
-  public async sendDirectMessage(conversationId: string, text: string) {
+  public async sendDirectMessage(
+    conversationId: string,
+    text: string,
+  ): Promise<{ id: string; data: DirectMessagePostResult }> {
     const client = await this.requireAuth().getV2Client();
     const data = await client.v2.sendDmInConversation(conversationId, { text });
 

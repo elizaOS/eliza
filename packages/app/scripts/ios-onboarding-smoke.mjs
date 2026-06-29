@@ -2,11 +2,15 @@
 // iOS Simulator first-run smoke. WKWebView is not CDP-drivable like Android,
 // so the harness writes a Capacitor Preferences request, launches the installed
 // app, and lets the WebView click/fill the real onboarding DOM internally.
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  captureIosSimulatorScreenshot,
+  startIosSimulatorVideo,
+} from "./lib/ios-simulator-capture.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -284,31 +288,31 @@ function clearFirstRunState(udid, appId) {
 }
 
 function takeScreenshot(udid, label) {
-  fs.mkdirSync(resultDir, { recursive: true });
-  const outPath = path.join(resultDir, `${label}.png`);
-  const ok = tryRun("xcrun", ["simctl", "io", udid, "screenshot", outPath]);
-  return ok === null ? null : outPath;
+  try {
+    return captureIosSimulatorScreenshot({
+      target: udid,
+      artifactDir: resultDir,
+      filename: `${label}.png`,
+      log,
+    });
+  } catch {
+    return null;
+  }
 }
 
 function startVideo(udid) {
   if (has("--no-video")) return null;
-  fs.mkdirSync(resultDir, { recursive: true });
-  const outPath = path.join(resultDir, "onboarding-to-home.mp4");
-  const child = spawn("xcrun", ["simctl", "io", udid, "recordVideo", outPath], {
-    cwd: repoRoot,
-    stdio: ["ignore", "ignore", "ignore"],
+  return startIosSimulatorVideo({
+    target: udid,
+    artifactDir: resultDir,
+    filename: "onboarding-to-home.mp4",
+    log,
   });
-  child.on("error", () => {});
-  return { child, outPath };
 }
 
 async function stopVideo(recording) {
   if (!recording) return null;
-  if (recording.child.exitCode === null) {
-    recording.child.kill("SIGINT");
-  }
-  await sleep(1500);
-  return fs.existsSync(recording.outPath) ? recording.outPath : null;
+  return recording.stop();
 }
 
 async function pollResult(udid, appId) {

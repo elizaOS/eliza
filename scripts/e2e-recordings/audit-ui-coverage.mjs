@@ -48,9 +48,27 @@ function fail(message) {
 
 for (const suite of UI_E2E_SUITES) {
   try {
-    const packageJson = readPackageJson(suite.configDir);
-    if (!packageJson.scripts?.[suite.script]) {
-      fail(`${suite.name}: ${suite.configDir} has no "${suite.script}" script`);
+    if (suite.command) {
+      const commandScript = suite.command[1];
+      if (
+        !commandScript ||
+        !fs.existsSync(path.join(REPO_ROOT, commandScript))
+      ) {
+        fail(`${suite.name}: command script is missing (${commandScript})`);
+      }
+      if (suite.checkCommand) {
+        const checkScript = suite.checkCommand[1];
+        if (!checkScript || !fs.existsSync(path.join(REPO_ROOT, checkScript))) {
+          fail(`${suite.name}: check script is missing (${checkScript})`);
+        }
+      }
+    } else {
+      const packageJson = readPackageJson(suite.configDir);
+      if (!packageJson.scripts?.[suite.script]) {
+        fail(
+          `${suite.name}: ${suite.configDir} has no "${suite.script}" script`,
+        );
+      }
     }
     if (!suite.coverage || suite.coverage.length < 40) {
       fail(`${suite.name}: coverage description is missing or too terse`);

@@ -10,7 +10,7 @@ import type {
   TTweetv2PollField,
   TTweetv2TweetField,
   TTweetv2UserField,
-  TweetRetweetedOrLikedByV2Params,
+  TweetRetweetedOrLikedByV2ParamsWithoutPaginator,
   TweetV2,
   UserV2,
 } from "twitter-api-v2";
@@ -1222,10 +1222,7 @@ export async function fetchRetweetersPage(
   topCursor?: string;
 }> {
   const client = await auth.getV2Client();
-  const options: Omit<
-    Partial<TweetRetweetedOrLikedByV2Params>,
-    "asPaginator"
-  > = {
+  const options: Partial<TweetRetweetedOrLikedByV2ParamsWithoutPaginator> = {
     max_results: count,
     "user.fields": ["description", "id", "name", "username"],
     ...(cursor ? { pagination_token: cursor } : {}),

@@ -20,6 +20,7 @@
 
 import type {
   Action,
+  ActionResult,
   IAgentRuntime,
   Memory,
   Plugin,
@@ -69,6 +70,47 @@ const RemoteFunctionRefSchema = z
     id: z.string(),
   })
   .passthrough();
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function decodeActionResult(value: JsonValue): ActionResult | undefined {
+  if (value === null) return undefined;
+  if (!isJsonObject(value)) {
+    throw new Error("Remote action returned a non-object result");
+  }
+
+  if (typeof value.success !== "boolean") {
+    throw new Error("Remote action result is missing a boolean success field");
+  }
+
+  const result: ActionResult = { success: value.success };
+  if (typeof value.text === "string") result.text = value.text;
+  if (typeof value.userFacingText === "string") {
+    result.userFacingText = value.userFacingText;
+  }
+  if (typeof value.verifiedUserFacing === "boolean") {
+    result.verifiedUserFacing = value.verifiedUserFacing;
+  }
+  if (typeof value.error === "string") result.error = value.error;
+  if (
+    value.values &&
+    typeof value.values === "object" &&
+    !Array.isArray(value.values)
+  ) {
+    result.values = value.values as ActionResult["values"];
+  }
+  if (
+    value.data &&
+    typeof value.data === "object" &&
+    !Array.isArray(value.data)
+  ) {
+    result.data = value.data as ActionResult["data"];
+  }
+
+  return result;
+}
 
 const ActionDescriptorSchema = z
   .object({
@@ -559,7 +601,7 @@ export class RemotePluginBridge {
             ...(callbackId ? { callbackId } : {}),
           },
         );
-        return result as unknown as ReturnType<Action["handler"]>;
+        return decodeActionResult(result);
       } finally {
         if (callbackId) {
           this.state.actionCallbacks.delete(callbackId);

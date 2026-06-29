@@ -94,8 +94,8 @@
   "scripts": {
     "dev": "bun run build.ts --watch",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
-    "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsgo --noEmit",
+    "lint": "bunx @biomejs/biome lint . --diagnostic-level=error",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",

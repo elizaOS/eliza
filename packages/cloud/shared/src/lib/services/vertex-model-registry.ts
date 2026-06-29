@@ -39,6 +39,13 @@ type NormalizedScopeOwner = {
   userId?: string;
 };
 
+function requireVisibilityCondition<T>(condition: T | undefined, label: string): T {
+  if (condition === undefined) {
+    throw new Error(`[VertexModelRegistry] ${label} visibility condition is empty`);
+  }
+  return condition;
+}
+
 export interface RecordSubmittedVertexTuningJobInput extends AssignmentScopeOwner {
   vertexJobName: string;
   projectId: string;
@@ -121,7 +128,9 @@ function buildVisibilityCondition(viewer: ViewerScope) {
     );
   }
 
-  return clauses.length === 1 ? clauses[0] : or(...clauses)!;
+  return clauses.length === 1
+    ? clauses[0]
+    : requireVisibilityCondition(or(...clauses), "tuning job");
 }
 
 function buildModelVisibilityCondition(viewer: ViewerScope) {
@@ -145,7 +154,9 @@ function buildModelVisibilityCondition(viewer: ViewerScope) {
     );
   }
 
-  return clauses.length === 1 ? clauses[0] : or(...clauses)!;
+  return clauses.length === 1
+    ? clauses[0]
+    : requireVisibilityCondition(or(...clauses), "tuned model");
 }
 
 function buildAssignmentVisibilityCondition(viewer: ViewerScope) {
