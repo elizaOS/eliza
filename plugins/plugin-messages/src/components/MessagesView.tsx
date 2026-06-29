@@ -13,6 +13,8 @@
 import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
+import { Button } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { consumePendingMessageRecipient } from "@elizaos/ui/app-navigate-view";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -166,5 +168,74 @@ export function MessagesView() {
     error,
   };
 
-  return <MessagesSpatialView snapshot={snapshot} onAction={onAction} />;
+  // Expose the inbox refresh and the compose-send to the agent surface. Both
+  // reuse the handlers this wrapper already owns (the same ones the spatial
+  // Refresh / Send buttons dispatch through `onAction`), so the agent can drive
+  // them directly on the GUI/XR surface; Send stays disabled until the composer
+  // has a recipient and a body, matching the `send()` guard.
+  const canSend =
+    composeAddress.trim().length > 0 &&
+    composeBody.trim().length > 0 &&
+    !sending;
+  const refreshControl = useAgentElement<HTMLButtonElement>({
+    id: "messages-refresh",
+    role: "button",
+    label: "Refresh messages",
+    group: "messages",
+    description: "Reload the SMS inbox from the device bridge",
+    status: loading ? "active" : "inactive",
+  });
+  const sendControl = useAgentElement<HTMLButtonElement>({
+    id: "messages-send",
+    role: "button",
+    label: "Send SMS",
+    group: "messages",
+    description: "Send the composed SMS to the current recipient",
+    status: canSend ? undefined : "disabled",
+  });
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          padding: "0.5rem",
+          flexShrink: 0,
+        }}
+      >
+        <Button
+          ref={refreshControl.ref}
+          {...refreshControl.agentProps}
+          variant="outline"
+          size="sm"
+          onClick={() => void refresh()}
+          disabled={loading}
+        >
+          Refresh
+        </Button>
+        <Button
+          ref={sendControl.ref}
+          {...sendControl.agentProps}
+          variant="outline"
+          size="sm"
+          onClick={() => void send()}
+          disabled={!canSend}
+        >
+          Send
+        </Button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <MessagesSpatialView snapshot={snapshot} onAction={onAction} />
+      </div>
+    </div>
+  );
 }

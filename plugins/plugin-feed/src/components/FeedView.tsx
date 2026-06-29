@@ -24,6 +24,8 @@ import {
   selectLatestRunForApp,
 } from "@elizaos/app-core/ui-compat";
 
+import { Button } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -265,5 +267,74 @@ export function FeedView() {
     sending,
   };
 
-  return <FeedSpatialView snapshot={snapshot} onAction={onAction} />;
+  // Surface the two primary operator actions to the agent surface. Both reuse
+  // the live data-layer handlers this wrapper already owns (the same handlers
+  // the spatial Refresh / Pause-Resume buttons dispatch through `onAction`), so
+  // the agent can address them directly on the GUI/XR surface.
+  const refreshControl = useAgentElement<HTMLButtonElement>({
+    id: "feed-refresh",
+    role: "button",
+    label: "Refresh feed",
+    group: "feed",
+    description: "Reload the Feed operator dashboard",
+    status: loading ? "active" : "inactive",
+  });
+  const autonomyControl = useAgentElement<HTMLButtonElement>({
+    id: "feed-toggle-autonomy",
+    role: "button",
+    label: controlAction === "pause" ? "Pause autonomy" : "Resume autonomy",
+    group: "feed",
+    description:
+      "Pause or resume the Feed agent's autonomous prediction-market trading",
+    status: run
+      ? controlAction === "pause"
+        ? "active"
+        : "inactive"
+      : "disabled",
+  });
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          padding: "0.5rem",
+          flexShrink: 0,
+        }}
+      >
+        <Button
+          ref={refreshControl.ref}
+          {...refreshControl.agentProps}
+          variant="outline"
+          size="sm"
+          onClick={() => void loadDashboard()}
+          disabled={loading}
+        >
+          Refresh
+        </Button>
+        <Button
+          ref={autonomyControl.ref}
+          {...autonomyControl.agentProps}
+          variant="outline"
+          size="sm"
+          onClick={() => void toggleAutonomy()}
+          disabled={!run}
+        >
+          {controlAction === "pause" ? "Pause" : "Resume"}
+        </Button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <FeedSpatialView snapshot={snapshot} onAction={onAction} />
+      </div>
+    </div>
+  );
 }
