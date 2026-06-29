@@ -21,8 +21,6 @@
 
 Reviewed output markers:
 
-- Vite production build completed: `✓ built in 3m 52s`.
-- Renderer stale-web guard passed: `wrote eliza-renderer-build.json buildId=45235f2c5f5d (195 assets)` and chunk safety reported `OK`.
 - Renderer reuse guard accepted the current web bundle: `[mobile-build] Auto-skipping web build: existing dist is up-to-date (buildId=45235f2c5f5d)`.
 - Earlier full build output also regenerated the renderer manifest with `buildId=4ee2c1ec5623` and passed chunk safety with `bn.js/crypto graph is confined to lazy vendor chunks (164 chunks scanned)`.
 - Capacitor copied web assets to `ios/App/App/public`, generated `capacitor.config.json`, and the stale-web guard overlaid the fresh `packages/app/dist` into the iOS public directory.
