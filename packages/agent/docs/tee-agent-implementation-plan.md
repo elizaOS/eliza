@@ -8,8 +8,9 @@ replay binding, the signed revocation manifest, and the confidential-inference
 unseal *plumbing* (against the local mock KMS) are built and unit-tested — see
 the Phase A table in §7 and the DONE markers in §1.2. **All real hardware quote
 verification (real TDX/CoVE quote signature, RTMR, and `report_data` validation;
-the dstack guest agent; RA-TLS KMS; H100 GPU attestation) is Phase B/C and stays
-BLOCKED on hardware** — called out as such throughout. Phase A verifies a signed
+the dstack guest agent; RA-TLS KMS) is Phase B/C and stays BLOCKED on hardware**
+— called out as such throughout. **The agent runs on a CPU-based Intel TDX CVM;
+confidential-GPU (NVIDIA H100) is out of scope.** Phase A verifies a signed
 evidence *document* and fails closed; it does not claim hardware-verified trust.
 
 Scope discipline (repo `AGENTS.md`): this document is the plan only. It does
@@ -86,8 +87,9 @@ they are good:
 > since been closed in software (Phase A — no hardware required) and are marked
 > **DONE** inline with the implementing file. What remains genuinely blocked is
 > **real hardware quote verification** (TDX signature / RTMR / `report_data`
-> validation, the dstack guest agent, RA-TLS KMS, H100 GPU attestation) — Phase
-> B/C, **BLOCKED on hardware**. The software items below do **not** make the
+> validation, the dstack guest agent, RA-TLS KMS) — Phase B/C, **BLOCKED on CPU
+> TDX hardware**. Confidential-GPU (H100) is **out of scope** (CPU TDX CVM only).
+> The software items below do **not** make the
 > system hardware-trusted; they verify a signed evidence *document* and fail
 > closed when it is absent, simulated, replayed, or tampered.
 
@@ -242,22 +244,25 @@ This is the property called out in chip §3.4 and it is the design we adopt.
   on a non-measured FS) and must not log prompts/weights anywhere reachable by
   the host (§4.4).
 
-### 2.5 Local-in-TEE vs cloud-routed inference
+### 2.5 Confidential inference is CPU-only (device CVM or cloud dStack CVM)
 
-| Aspect | Local-in-TEE (default) | Cloud-routed (opt-in) |
+Confidential inference runs **on-CPU inside a CVM** — never on a confidential
+GPU. **NVIDIA H100 / confidential-GPU is out of scope.** Two confidential
+placements, both CPU TDX/TVM:
+
+| Aspect | Device-local CVM/TVM (default) | Cloud dStack CVM (opt-in) |
 | --- | --- | --- |
-| Where weights decrypt | In-device CVM/TVM | dstack CVM on TDX + H100 confidential GPU |
-| Verifier/KMS | On-device verifier (`eliza-local-verifier`) | Cloud KMS (added to `allowedProviders`) |
-| What the agent sends | nothing leaves the device | only user-marked-exportable prompt data |
-| Extra claim required | `npuProtected` + `npuFirmware` | `gpuProtected` + `gpuFirmware` |
-| Policy difference | `required:true`, local golden digests | adds Cloud KMS provider + GPU claim/measurement |
+| Where weights decrypt | On-device CVM/TVM (on-CPU) | dStack **CPU-based Intel TDX** CVM (on-CPU) |
+| Verifier/KMS | On-device verifier (`eliza-local-verifier`) | Cloud dStack KMS (added to `allowedProviders`) |
+| What the agent sends | nothing leaves the device | nothing leaves the cloud CVM (inference is on-CPU in-domain) |
+| Extra claim required | `npuProtected` + `npuFirmware` (on-device secure I/O) | none beyond the CPU TDX quote/measurement |
+| Policy difference | `required:true`, local golden digests | adds the Cloud dStack KMS provider |
 
-The agent must run the **same** `evaluateTeeEvidencePolicy` for both; only the
-policy object differs (allowed providers, GPU vs NPU claim/measurement). When
-cloud-routed, the agent must attest the *remote* endpoint's evidence
-(`connectRemoteCapabilityEndpointProvider`, already fail-closed) before sending
-any prompt, and must include the H100 GPU confidential-compute claim
-(`gpuProtected`) + `gpuFirmware` measurement in the remote policy.
+The agent runs the **same** `evaluateTeeEvidencePolicy` for both; only the policy
+object differs (allowed providers / measurements). Inference sent to a
+**non-attested external endpoint** (a third-party model API) is **not
+confidential** — cleartext to that operator — and is the opt-in, non-confidential
+path for user-marked-exportable data only, not a confidential-GPU path.
 
 ---
 
@@ -480,8 +485,9 @@ are *usage of* the already-present fields:
 - **Use `npuProtected` + `measurements.npuFirmware`** as a hard gate for local
   private inference (present in types and fixtures; not yet required by any
   production profile).
-- **Use `gpuProtected` + `measurements.gpuFirmware`** for cloud-routed inference
-  on the H100 confidential GPU (present in types; no consumer yet).
+- `gpuProtected` + `measurements.gpuFirmware` exist in the type for
+  completeness but are **out of scope / no consumer** — confidential-GPU (H100)
+  is not pursued; confidential inference runs on-CPU inside the CVM.
 - Consider a `monitor` measurement name (TSM/security-manager digest) for the
   CoVE path — chip §2.1/§3.1 emits `monitor`; `TeeMeasurementName` is an open
   string so it already type-checks, but add `"monitor"` to the named union for
@@ -522,16 +528,26 @@ that stays Phase B/C, BLOCKED.
 Critical path for Phase A: A3 → A4 → A8 (the headline unseal plumbing depends on
 the production profile and boot wiring). A1/A2/A5/A6/A7/A9 parallelized.
 
-### Phase B — cloud-TDX-gated (real dstack KMS on TDX + H100)
+### Phase B — cloud-TDX-gated (real dstack KMS on CPU-based Intel TDX)
+
+The agent runs inside a **CPU-based Intel TDX CVM** (Phala dStack). The whole
+agent — runtime, DB, vault/secrets, and any on-CPU inference — is the
+confidential workload. **Confidential-GPU (NVIDIA H100) is out of scope** (was
+B4); the trust boundary is the CPU CVM, not a GPU.
 
 | ID | Work item | Effort | Gate |
 | --- | --- | --- | --- |
-| B1 | Real dstack guest-agent integration: read evidence from `/var/run/dstack.sock` / `DSTACK_TAPPD_URL`, request real TDX quote, populate `TeeEvidence`. | 3 | dstack CVM on TDX |
-| B2 | Real TDX quote verification (Intel PCS/QvL): verify quote signature, RTMRs, and `report_data == H(nonce\|\|epk)`. **The current provider does none of this.** | 4 | TDX hardware |
+| B1 | Real dstack guest-agent integration: read evidence from `/var/run/dstack.sock` / `DSTACK_TAPPD_URL`, request real TDX quote, populate `TeeEvidence`. | 3 | dstack CVM on CPU TDX |
+| B2 | Real TDX quote verification (Intel PCS/QvL): verify quote signature, RTMRs, and `report_data == H(nonce\|\|epk)`. **The current provider does none of this.** | 4 | CPU TDX hardware |
 | B3 | Real RA-TLS KMS client with KMS-identity pinning; deterministic app-key release for `model-key`/`agent-session`/`remote-signing`. | 3 | dstack KMS |
-| B4 | H100 confidential-GPU attestation for cloud-routed inference: require `gpuProtected` + `gpuFirmware`; attest the remote endpoint before sending any prompt. | 3 | TDX + H100 |
 
-Phase B is **BLOCKED on TDX/H100 hardware availability**. Until B2 lands, the
+**Confidential inference policy (no H100):** inference that must stay
+confidential runs **on-CPU inside the CVM** (cleartext weights/prompts/KV-cache
+never leave the CPU TDX domain). Cloud-routed inference to an external endpoint
+is **outside** the confidential boundary by definition — a documented limitation,
+not an H100/`gpuProtected` work item.
+
+Phase B is **BLOCKED on CPU TDX hardware availability**. Until B2 lands, the
 system must not claim hardware-verified trust; it verifies a signed evidence
 document only. State this in any release notes.
 
@@ -549,8 +565,9 @@ lane WI-6/WI-7/WI-9). It stays fail-closed with the named dependency.
 ### Fail-closed gate summary
 
 - Phase A gates close immediately (software, mock KMS, real crypto).
-- Phase B gates stay BLOCKED on TDX/H100; the agent must refuse to assert
-  hardware trust until B2 verifies real quotes.
+- Phase B gates stay BLOCKED on CPU TDX hardware; the agent must refuse to
+  assert hardware trust until B2 verifies real quotes. (Confidential-GPU / H100
+  is out of scope — CPU TDX CVM only.)
 - Phase C gates stay BLOCKED on E1 silicon; same rule.
 - At every phase, `ELIZA_TEE_REQUIRED=true` + production profile means: no
   trusted evidence → no model-key, no signing, no remote-plugin sync, no private

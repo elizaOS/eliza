@@ -35,14 +35,17 @@ exposure. It is **scheduling isolation, not cryptographic isolation**:
 `ccx23` is therefore the right choice for "don't let other tenants steal my CPU,"
 and the wrong choice for "the cloud operator must be unable to read my model
 weights, prompts, KV-cache, or signing keys." Confidential compute requires
-**hardware memory encryption plus remote attestation** — AMD **SEV-SNP** or Intel
-**TDX** at the CPU level (and, for confidential GPU inference, NVIDIA H100
-confidential computing). Hetzner provides none of these.
+**hardware memory encryption plus remote attestation** — Intel **TDX** (or AMD
+**SEV-SNP**) **at the CPU level**. The target is a **CPU-based Intel TDX CVM**
+running the agent; we do **not** pursue a confidential-GPU (NVIDIA H100) path.
+Hetzner provides neither CPU confidential compute nor attestation.
 
-## Where confidential workloads route: Phala dStack CVM (Intel TDX)
+## Where confidential workloads route: Phala dStack CVM (Intel TDX, CPU-based)
 
-Confidential workloads route to **Phala dStack Confidential VMs on Intel TDX**,
-**not** to Hetzner:
+The **agent runs inside a CPU-based Intel TDX Confidential VM** on **Phala
+dStack**, **not** on Hetzner. The confidential workload is the whole agent —
+runtime, database, vault/secrets, and any local (on-CPU) inference — sealed
+inside one CPU CVM:
 
 - **Deploy as-is.** dStack runs an existing `docker-compose.yml` inside a TDX
   CVM with no app rewrite — the same compose this stack already produces.
@@ -53,9 +56,11 @@ Confidential workloads route to **Phala dStack Confidential VMs on Intel TDX**,
   TDX quote before releasing** deterministic, per-app keys. Keys are released
   *only* against a quote that matches the expected measurements — fail-closed by
   data unavailability, not by a software check that could be patched out.
-- **Optional confidential GPU.** For GPU inference, dStack supports an NVIDIA
-  confidential-GPU (H100 CC) path so weights/activations stay encrypted on the
-  GPU as well.
+- **CPU-only — no confidential GPU.** The trust boundary is the **CPU TDX CVM**.
+  We do **not** pursue an NVIDIA confidential-GPU (H100 CC) path. Inference that
+  must stay confidential runs **on-CPU inside the CVM**; cloud-routed inference
+  is outside the confidential boundary by definition (a known limitation, not a
+  planned H100 feature).
 
 These are the exact hardware properties Hetzner lacks: **SEV-SNP / TDX hardware
 attestation** (measured launch + signed quote + memory encryption) is the
@@ -68,7 +73,7 @@ under dStack satisfies it here.
 | --- | --- | --- |
 | Control plane (orchestrator, routing, monitoring) | Hetzner `cpx`/`ccx` VMs | No — non-confidential by design |
 | Data plane (agent sandboxes, app workers) | Hetzner `cpx`/`ccx` VMs | No — dedicated vCPU isolation only |
-| Confidential workloads (sealed weights, attested key release, private inference) | **Phala dStack CVM (Intel TDX)** | **Yes — hardware attestation + memory encryption** |
+| Confidential workloads (the agent: runtime + DB + vault, attested key release, on-CPU private inference) | **Phala dStack CVM (CPU-based Intel TDX)** | **Yes — hardware attestation + memory encryption** |
 
 Hetzner stays the **non-confidential control/data plane**. Anything that needs
 the operator to be unable to read in-domain secrets routes to dStack TDX.
@@ -85,10 +90,14 @@ provider-neutral evidence + trust-decision contract is enforced in code:
 - `packages/agent/src/services/tee-boot-gate.ts` — boots fail-closed: no trusted
   evidence ⇒ no model-key release, no signing, no remote-plugin sync.
 
-**Not yet hardware-verified (BLOCKED on hardware):** real TDX quote-signature /
-RTMR / `report_data` verification, the dStack guest agent, RA-TLS KMS, and H100
-GPU attestation are not implemented here and stay BLOCKED. Until they land the
-agent verifies a *signed evidence document*, not a hardware quote, and must not
-claim hardware-verified trust. See
+**Not yet hardware-verified (BLOCKED on CPU TDX hardware):** real TDX
+quote-signature / RTMR / `report_data` verification, the dStack guest agent, and
+RA-TLS KMS are not implemented here and stay BLOCKED — all on **CPU-based Intel
+TDX**. Until they land the agent verifies a *signed evidence document*, not a
+hardware quote, and must not claim hardware-verified trust.
+
+**Out of scope:** confidential-GPU (NVIDIA H100) attestation. The agent runs on a
+**CPU TDX CVM**, not a confidential GPU, so there is no H100 dependency in the
+path to confidential execution. See
 [`packages/agent/docs/tee-agent-implementation-plan.md`](../../../agent/docs/tee-agent-implementation-plan.md)
-Phase B/C for the blocked items and their hardware dependencies.
+Phase B for the blocked CPU-TDX items and their hardware dependencies.
