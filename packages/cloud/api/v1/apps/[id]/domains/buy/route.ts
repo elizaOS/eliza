@@ -29,10 +29,7 @@ import {
   cloudflareRegistrarService,
   type RegisteredDomain,
 } from "@/lib/services/cloudflare-registrar";
-import {
-  creditsService,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+import { creditsService } from "@/lib/services/credits";
 import { computeDomainPrice } from "@/lib/services/domain-pricing";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
@@ -297,24 +294,35 @@ async function executeDomainPurchase(
     wholesaleUsdCents: price.wholesaleUsdCents,
     marginUsdCents: price.marginUsdCents,
   };
-  try {
-    await creditsService.deductCredits({
-      organizationId,
-      amount: price.totalUsdCents / 100,
-      description: debitDescription,
-      metadata: debitMetadata,
-    });
-  } catch (err) {
-    if (err instanceof InsufficientCreditsError) {
-      return {
-        status: 402,
-        body: {
-          success: false,
-          error: "Insufficient credit balance for this domain",
-        },
-      };
-    }
-    throw err;
+  // `deductCredits` RETURNS `{ success: false, reason }` on a declined debit — it
+  // does NOT throw `InsufficientCreditsError` (only `creditsService.reserve()`
+  // does). Bind and check the result, and fail closed with 402 BEFORE we register
+  // anything: registering on a non-debit would hand the org a domain on Eliza's
+  // own Cloudflare account for free.
+  const debit = await creditsService.deductCredits({
+    organizationId,
+    amount: price.totalUsdCents / 100,
+    description: debitDescription,
+    metadata: debitMetadata,
+  });
+  if (!debit.success) {
+    logger.warn(
+      "[Domains Buy] credit debit declined — not registering domain",
+      { appId, domain, reason: debit.reason ?? "insufficient_balance" },
+    );
+    return {
+      status: 402,
+      body: {
+        success: false,
+        error:
+          debit.reason === "below_minimum"
+            ? "Amount is below the minimum charge for this domain"
+            : debit.reason === "org_not_found"
+              ? "Organization not found"
+              : "Insufficient credit balance for this domain",
+        code: debit.reason ?? "insufficient_balance",
+      },
+    };
   }
 
   // 3. register via cloudflare
