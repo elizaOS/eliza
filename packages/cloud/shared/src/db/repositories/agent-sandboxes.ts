@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import {
   applyBackupDelta,
   type BackupChainNode,
@@ -244,6 +244,80 @@ export class AgentSandboxesRepository {
         ),
       )
       .limit(limit);
+  }
+
+  /**
+   * Shared-tier bridge rows old enough to be reap candidates: live (not
+   * soft-deleted), `execution_tier = 'shared'`, created before `cutoff`. The
+   * shared→dedicated handoff deletes the bridge on success; a timed-out/failed
+   * handoff (or a closed browser) leaks the row. Oldest first so a backlog
+   * drains deterministically under the per-tick cap. The orphan decision is NOT
+   * made here — the caller pairs these against live dedicated twins (#9939).
+   */
+  async listSharedBridgeReapCandidates(
+    cutoff: Date,
+    limit: number,
+  ): Promise<
+    Array<{
+      id: string;
+      organization_id: string;
+      user_id: string;
+      agent_name: string | null;
+      created_at: Date;
+    }>
+  > {
+    return dbRead
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        agent_name: agentSandboxes.agent_name,
+        created_at: agentSandboxes.created_at,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.execution_tier, "shared"),
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+          lt(agentSandboxes.created_at, cutoff),
+        ),
+      )
+      .orderBy(asc(agentSandboxes.created_at))
+      .limit(limit);
+  }
+
+  /**
+   * Live (running, non-deleted) dedicated sandboxes in the given orgs — the
+   * "twin took over" side of the orphan-shared decision. A shared bridge is an
+   * orphan only when one of these shares its (org, user, agent_name) and was
+   * created at/after it (the handoff mints the bridge first, then the dedicated
+   * twin). Scoped to the candidate orgs to keep the scan bounded (#9939).
+   */
+  async listLiveDedicatedTwins(organizationIds: string[]): Promise<
+    Array<{
+      organization_id: string;
+      user_id: string;
+      agent_name: string | null;
+      created_at: Date;
+    }>
+  > {
+    if (organizationIds.length === 0) return [];
+    return dbRead
+      .select({
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        agent_name: agentSandboxes.agent_name,
+        created_at: agentSandboxes.created_at,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          inArray(agentSandboxes.organization_id, organizationIds),
+          eq(agentSandboxes.status, "running"),
+          ne(agentSandboxes.execution_tier, "shared"),
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+        ),
+      );
   }
 
   /**
