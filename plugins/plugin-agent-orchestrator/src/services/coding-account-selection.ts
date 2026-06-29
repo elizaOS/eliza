@@ -234,6 +234,66 @@ export function assessCodingAccountReadiness(
   };
 }
 
+export type CodingAccountFailureKind = "rate-limited" | "needs-reauth";
+
+/** Default cool-off applied to a rate-limited account (15 min). */
+export const RATE_LIMIT_COOLOFF_MS = 15 * 60_000;
+
+// Conservative classifiers: require an UNAMBIGUOUS provider auth/quota signal,
+// never a bare "api key" / "login" token (those appear in ordinary build
+// output). A false positive evicts a HEALTHY account from the pool, so the bar
+// is intentionally high.
+const RATE_LIMIT_RE =
+  /\b429\b|rate[\s-]?limit(?:ed|ing)?|too many requests|quota (?:exceeded|exhausted)|usage limit reached/i;
+const NEEDS_REAUTH_RE =
+  /\b401\b|\b403\b|unauthorized|invalid_grant|authentication failed|token (?:has )?expired|expired token|invalid token|please (?:re-?authenticate|log ?in again)/i;
+
+/**
+ * Pure: classify a sub-agent error message as a pooled-account failure, or null
+ * when it is an ordinary task error. Rate-limit is checked first (a 429 is a
+ * cool-off, not a credential problem).
+ */
+export function classifyAccountFailure(
+  text: string | undefined | null,
+): CodingAccountFailureKind | null {
+  if (!text) return null;
+  if (RATE_LIMIT_RE.test(text)) return "rate-limited";
+  if (NEEDS_REAUTH_RE.test(text)) return "needs-reauth";
+  return null;
+}
+
+/**
+ * Best-effort: tell the pool a spawned account hit a rate-limit / needs reauth
+ * so the selector stops handing it out (and the readiness gate + account-health
+ * panel reflect it) instead of the failure being swallowed and the same dud
+ * account re-selected. No-op when no bridge or no account; never throws.
+ */
+export async function reportCodingAccountFailure(
+  meta: CodingAccountMeta | null,
+  kind: CodingAccountFailureKind,
+  nowMs: number,
+  detail?: string,
+): Promise<void> {
+  if (!meta) return;
+  const bridge = getCodingAccountBridge();
+  if (!bridge) return;
+  try {
+    if (kind === "rate-limited") {
+      await bridge.markRateLimited(
+        meta.providerId,
+        meta.accountId,
+        nowMs + RATE_LIMIT_COOLOFF_MS,
+        detail,
+      );
+    } else {
+      await bridge.markNeedsReauth(meta.providerId, meta.accountId, detail);
+    }
+  } catch {
+    // Pool feedback is best-effort — a failure to record must not break the
+    // error path that is already surfacing the underlying problem.
+  }
+}
+
 /** Read the account descriptor previously stamped onto a session's metadata. */
 export function accountMetaFromSessionMetadata(
   metadata: Record<string, unknown> | undefined,

@@ -11,6 +11,11 @@ import type {
 import { Service, ServiceType } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import {
+  accountMetaFromSessionMetadata,
+  classifyAccountFailure,
+  reportCodingAccountFailure,
+} from "./coding-account-selection.js";
+import {
   dispatchParentAgentDirective,
   extractParentAgentDirective,
   parentAgentMarkerIndex,
@@ -601,6 +606,34 @@ export class SubAgentRouter extends Service {
     // and suppress the dead session's narration entirely. Bounded per stable
     // origin lineage; once the cap is exhausted, post ONE honest terminal
     // failure instead of hanging silently.
+    // Propagate a spawned account's auth / rate-limit failure to the pool so the
+    // selector stops handing out the dud account (and the readiness gate +
+    // account-health panel reflect it), instead of swallowing it and re-picking
+    // the same account next spawn. Best-effort and conservative — see
+    // classifyAccountFailure (a false positive would evict a healthy account).
+    if (event === "error") {
+      const failureKind = classifyAccountFailure(
+        pickPayloadString(data, "message"),
+      );
+      const accountMeta = accountMetaFromSessionMetadata(
+        session.metadata as Record<string, unknown> | undefined,
+      );
+      if (failureKind && accountMeta) {
+        this.log("warn", "coding account failure reported to pool", {
+          sessionId,
+          providerId: accountMeta.providerId,
+          accountId: accountMeta.accountId,
+          failureKind,
+        });
+        void reportCodingAccountFailure(
+          accountMeta,
+          failureKind,
+          Date.now(),
+          `sub-agent session ${sessionId} (${session.agentType})`,
+        );
+      }
+    }
+
     let stateLostExhausted = false;
     let stateLostRespawnCount = 0;
     if (
