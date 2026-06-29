@@ -9,8 +9,8 @@
  * on. The emitted `dist/` is byte-identical to the previous hand-rolled build.
  */
 import { existsSync } from "node:fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import {
   type ExternalsFromPackageJsonOptions,
   externalsFromPackageJson,
@@ -80,6 +80,15 @@ export interface BuildPluginConfig {
   dtsTolerant?: boolean;
   /** Declaration-alias shim files to write after tsc. */
   dtsShims?: readonly DtsShim[];
+  /**
+   * After the JS targets build (and before declaration emit), recursively move
+   * everything under `dist/<from>` up into `dist/<to ?? ".">`, then remove the
+   * now-empty `dist/<from>`. Reproduces the hand-rolled "flatten `dist/src` into
+   * `dist`" step used by plugins whose glob target (`naming: "[dir]/[name]"`
+   * over `src/**`) emits under a `src/` prefix. Off by default; existing
+   * single-/multi-target adopters that don't set it are unaffected.
+   */
+  flatten?: ReadonlyArray<{ from: string; to?: string }>;
 }
 
 const RM_RECURSIVE = resolve(
@@ -97,6 +106,29 @@ const REWRITE_DIST_IMPORTS = resolve(
   "scripts",
   "rewrite-dist-relative-imports-node-esm.mjs",
 );
+
+/**
+ * Recursively move every file under `fromDir` into `toDir`, preserving the
+ * sub-tree below `fromDir` and creating parent dirs as needed. A plain rename
+ * preserves file bytes (and any inner `//# sourceMappingURL` / map `file`
+ * references) exactly. The caller removes the now-empty `fromDir`.
+ */
+async function moveTreeContents(
+  fromDir: string,
+  toDir: string,
+): Promise<void> {
+  const entries = await readdir(fromDir, {
+    recursive: true,
+    withFileTypes: true,
+  });
+  for (const e of entries) {
+    if (!e.isFile()) continue;
+    const abs = join(e.parentPath, e.name);
+    const dest = join(toDir, relative(fromDir, abs));
+    await mkdir(dirname(dest), { recursive: true });
+    await rename(abs, dest);
+  }
+}
 
 export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
   const totalStart = Date.now();
@@ -146,6 +178,15 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     console.log(
       `✅ ${t.label} complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,
     );
+  }
+
+  for (const f of config.flatten ?? []) {
+    const fromDir = join(distDir, f.from);
+    if (!existsSync(fromDir)) continue;
+    const toDir = join(distDir, f.to ?? ".");
+    console.log(`📂 Flattening dist/${f.from} → dist/${f.to ?? "."}…`);
+    await moveTreeContents(fromDir, toDir);
+    await Bun.$`node ${RM_RECURSIVE} ${fromDir}`;
   }
 
   if (config.dtsProject) {
