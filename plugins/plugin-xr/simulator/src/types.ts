@@ -35,6 +35,16 @@ export interface ElementTelemetry {
   rect: { x: number; y: number; width: number; height: number };
   /** Screen-space center in CSS px. */
   center: { x: number; y: number };
+  /** World-space position (metres) when a 3D scene is mounted; absent in flat mode. */
+  world?: Vec3;
+  /** Owning panel id when a 3D scene is mounted. */
+  panelId?: string;
+}
+
+/** A device's world-space aiming ray (origin + unit forward direction). */
+export interface DeviceRay {
+  origin: Vec3;
+  direction: Vec3;
 }
 
 /** A controller/headset aiming ray in emulated world space. */
@@ -53,6 +63,10 @@ export interface HitResult {
   /** `data-agent-id` / `id` of the hit element, or null when the ray hits nothing. */
   elementId: string | null;
   point: { x: number; y: number };
+  /** World-space intersection point when a 3D scene resolved the hit. */
+  world?: Vec3;
+  /** The panel the ray hit (3D scene mode only). */
+  panelId?: string | null;
 }
 
 /** A full deterministic snapshot of the emulated scene for assertions + capture. */
@@ -60,6 +74,8 @@ export interface TelemetrySnapshot {
   /** ms since the emulator installed (monotonic, for the per-frame log). */
   t: number;
   sessionActive: boolean;
+  /** "scene" when a 3D XRSpatialScene resolved the hits; "flat" for 2D DOM. */
+  mode: "flat" | "scene";
   headset: XRPose;
   controllers: Partial<Record<Handedness, XRPose>>;
   hands: Partial<Record<Handedness, string>>;
@@ -91,10 +107,29 @@ export interface XREmulatorAPI {
   /** Set a hand's named pose (e.g. "default", "pinch"); connects it if needed. */
   setHandPose(handedness: Handedness, poseId: string): void;
   /**
-   * Orient a controller so its forward ray's reticle lands on the screen center
-   * of the first element matching `selector`. Returns false if not found.
+   * Orient a controller so its forward ray hits the first element matching
+   * `selector`. In 3D-scene mode this aims at the element's world position; in
+   * flat mode it aims at the element's screen center. Returns false if not found.
    */
   aimControllerAt(handedness: Handedness, selector: string): boolean;
+
+  // ── Pose read-back (consumed by the 3D scene + assertions) ────────────────
+  /** The current emulated headset world pose. */
+  getHeadPose(): XRPose;
+  /** A connected controller's world pose, or null when it isn't connected. */
+  getControllerPose(handedness: Handedness): XRPose | null;
+  /** A controller's world-space aiming ray, or null when it isn't connected. */
+  getControllerRay(handedness: Handedness): DeviceRay | null;
+  /** True when an XRSpatialScene is mounted and driving 3D hit-tests. */
+  hasScene(): boolean;
+
+  // ── Manipulation ─────────────────────────────────────────────────────────
+  /**
+   * Drag the panel a controller is aimed at by a world delta (metres), as a
+   * grab-move. Returns the panel's new world position, or null when the
+   * controller isn't aimed at a panel / no scene is mounted.
+   */
+  dragController(handedness: Handedness, delta: Vec3): Vec3 | null;
 
   // ── Input events ─────────────────────────────────────────────────────────
   /** Fire selectstart/select/selectend on the controller (trigger button). */
@@ -122,9 +157,35 @@ export interface InputEventRecord {
   t: number;
 }
 
+/**
+ * The imperative surface a mounted `XRSpatialScene` (`@elizaos/ui/spatial`)
+ * publishes. The emulator reads poses out and pushes rays in to drive real 3D
+ * hit-tests. Structurally typed here so the simulator stays decoupled from the UI
+ * package (the scene owns the canonical definition).
+ */
+export interface XRSceneBridge {
+  readonly version: number;
+  hitTest(ray: DeviceRay): {
+    panelId: string;
+    elementId: string | null;
+    world: Vec3;
+    u: number;
+    v: number;
+    screen: { x: number; y: number };
+  } | null;
+  getPanels(): Array<{ id: string; position: Vec3; depth: number; visible: boolean }>;
+  worldPositionOf(elementId: string): Vec3 | null;
+  aimFor(from: Vec3, elementId: string): Quat | null;
+  dragPanel(panelId: string, delta: Vec3): Vec3 | null;
+  pressRay(ray: DeviceRay): { panelId: string; elementId: string | null } | null;
+  sync(): void;
+}
+
 declare global {
   interface Window {
     __XREmulator: XREmulatorAPI;
+    /** Present iff an XRSpatialScene is mounted (3D-scene mode). */
+    __elizaXRScene?: XRSceneBridge;
     /** Set by app-xr/src/main.ts in VITE_TEST mode */
     __xrTestHooks: {
       sendAudioChunk(
