@@ -15,7 +15,7 @@
  * the emitted character afterward.
  */
 
-import type { Character } from "@elizaos/core";
+import type { MigratedCharacter as Character } from "./types.js";
 import {
   isPlaybookMemory,
   isSelfMemory,
