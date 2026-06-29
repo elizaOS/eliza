@@ -317,6 +317,48 @@ export async function desktopOpenPath(path: string): Promise<void> {
   });
 }
 
+/**
+ * Open a view as its own desktop window (#9953 Phase 3). Backs "show a view"
+ * from the chromeless bottom-bar shell, where there is no full-app tab system to
+ * host the view inline. Returns the managed-window id, or null when the bridge
+ * is unavailable (non-desktop).
+ */
+export async function openDesktopAppWindow(options: {
+  slug?: string;
+  title: string;
+  path: string;
+  alwaysOnTop?: boolean;
+}): Promise<{ id: string } | null> {
+  return invokeDesktopBridgeRequest<{ id: string }>({
+    rpcMethod: "desktopOpenAppWindow",
+    ipcChannel: "desktop:openAppWindow",
+    params: {
+      slug: options.slug,
+      title: options.title,
+      path: options.path,
+      alwaysOnTop: options.alwaysOnTop === true,
+    },
+  });
+}
+
+/** Route path for the on-demand launcher/dashboard window. */
+export const DESKTOP_LAUNCHER_WINDOW_PATH = "/views";
+
+/**
+ * Summon the launcher (the views/app springboard) as its own desktop window
+ * (#9953 Phase 3). The bottom bar is the resting surface; the launcher is an
+ * on-demand window, not the resting surface.
+ */
+export async function openDesktopLauncherWindow(): Promise<{
+  id: string;
+} | null> {
+  return openDesktopAppWindow({
+    slug: "launcher",
+    title: "Launcher",
+    path: DESKTOP_LAUNCHER_WINDOW_PATH,
+  });
+}
+
 export async function desktopShowItemInFolder(path: string): Promise<void> {
   await invokeDesktopBridgeRequest<undefined>({
     rpcMethod: "desktopShowItemInFolder",

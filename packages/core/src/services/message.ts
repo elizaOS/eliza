@@ -2409,6 +2409,19 @@ function mergeAgentContexts(
 	return merged;
 }
 
+/**
+ * The agent contexts a focused coding sub-agent (the eliza-code ACP server,
+ * which sets ELIZA_PLANNER_FULL_ACTION_SURFACE) is considered to be operating in.
+ * Used to admit the coding tools (FILE/SHELL/WORKTREE gate on these) while the
+ * messaging/social chat actions stay gated off.
+ */
+const CODING_SUB_AGENT_CONTEXTS: readonly AgentContext[] = [
+	"code",
+	"files",
+	"terminal",
+	"automation",
+];
+
 function actionPassesPlannerExecutionGates(args: {
 	action: Action;
 	activeContexts?: readonly AgentContext[];
@@ -2545,7 +2558,25 @@ function buildV5PlannerActionSurface(params: {
 		params.messageHandler,
 	);
 
-	if (params.actions.length === 0) {
+	// Expose EVERY action as a native tool (no tiering) when the action set is
+	// empty, OR when explicitly forced. Tiering is built for large chat catalogs
+	// (30+ actions → expose the relevant few); a focused coding sub-agent has a
+	// small, all-relevant tool set (FILE/SHELL/READ/EDIT/…) and MUST get them all
+	// exposed natively — otherwise the model sees a tool in the prompt but cannot
+	// call it (it lands in tier-B, described-only), narrates instead of acting, and
+	// trips the terminal-only-continuations guard. `ELIZA_PLANNER_FULL_ACTION_SURFACE=1`
+	// opts a runtime into full mode (the eliza-code ACP coding agent sets it).
+	const fullSurfaceFlag =
+		typeof process !== "undefined"
+			? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
+			: undefined;
+	const forceFullSurface =
+		fullSurfaceFlag === "1" ||
+		fullSurfaceFlag === "true" ||
+		fullSurfaceFlag === "yes" ||
+		fullSurfaceFlag === "on" ||
+		params.actions.length === 0;
+	if (forceFullSurface) {
 		return buildFullV5PlannerActionSurface({
 			actions: params.actions,
 			candidateActions,
@@ -2598,6 +2629,26 @@ function buildV5PlannerActionSurface(params: {
 		}
 		if (addedFallbackAction) {
 			fallback = "top-ranked-parent-fallback";
+		}
+	}
+
+	// Every candidate action the message-handler proposed is described to the
+	// planner (and reinforced by action examples), so each MUST also be callable.
+	// Tiering can otherwise leave a proposed action in the described-only tier:
+	// the model then emits a tool_call the surface rejects as "unavailable",
+	// burning unavailable-tool retries and — for delegation (TASKS_SPAWN_AGENT) —
+	// silently breaking the hand-off (observed live: the planner called
+	// TASKS_SPAWN_AGENT, it was unavailable, and the build never delegated). The
+	// candidate set is already narrowed to the relevant actions, so exposing the
+	// registered ones keeps the callable surface tight.
+	for (const name of candidateActions) {
+		const normalized = normalizeActionIdentifier(name);
+		if (
+			params.actions.some(
+				(action) => normalizeActionIdentifier(action.name) === normalized,
+			)
+		) {
+			exposedActionNames.add(normalized);
 		}
 	}
 
@@ -5808,6 +5859,31 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
+		if (messageHandler.processMessage === "RESPOND") {
+			const injectionGate = await runShouldRespondInjectionGate({
+				runtime: args.runtime,
+				message: args.message,
+				resolveSenderRole: () => senderRole,
+			});
+			if (injectionGate.blocked) {
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						agentId: args.runtime.agentId,
+						reason: injectionGate.reason,
+						score: injectionGate.score,
+					},
+					"[ShouldRespondRiskGate] suppressing Stage 1 response before side effects or planner tools",
+				);
+				return {
+					kind: "terminal",
+					action: "IGNORE",
+					messageHandler,
+					state: args.state,
+				};
+			}
+		}
+
 		// Kick off the FACTS_AND_RELATIONSHIPS stage in parallel with whichever
 		// Stage 2 path runs (simple reply or planner). This stage is purely a
 		// side-effect: it dedups + persists user-stated facts/relationships
@@ -6057,14 +6133,46 @@ export async function runV5MessageRuntimeStage1(args: {
 				...directPlannerCandidateActions,
 			]);
 		}
-		const plannerCandidateActions = await collectV5PlannerCandidateActions({
-			runtime: args.runtime,
-			message: args.message,
-			state: plannerState,
-			selectedContexts,
-			candidateActions: getMessageHandlerCandidateActions(messageHandler),
-			userRoles: [senderRole],
-		});
+		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
+		// narrowing entirely and hand the planner EVERY action whose execution gates
+		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
+		// few); a coding agent's whole small tool set is relevant, and narrowing was
+		// returning zero candidates → planner got no native tools → model narrated.
+		const fullSurfaceEnv =
+			typeof process !== "undefined"
+				? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
+				: undefined;
+		const useFullSurface =
+			fullSurfaceEnv === "1" ||
+			fullSurfaceEnv === "true" ||
+			fullSurfaceEnv === "yes" ||
+			fullSurfaceEnv === "on";
+		const plannerCandidateActions = useFullSurface
+			? (args.runtime.actions ?? []).filter((action) =>
+					// Full-surface = the eliza-code coding sub-agent (its ACP server
+					// sets ELIZA_PLANNER_FULL_ACTION_SURFACE). It must NOT receive the
+					// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
+					// the model and it never calls FILE. Instead treat the coding
+					// contexts (code/files/terminal/automation) as active and run the
+					// normal execution gates: that admits the coding tools
+					// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
+					// context-free control actions (REPLY/STOP/…) and drops the
+					// messaging/social chat actions. Role still applies (FILE=ADMIN,
+					// SHELL=OWNER; the coding sub-agent runs as OWNER).
+					actionPassesPlannerExecutionGates({
+						action,
+						activeContexts: CODING_SUB_AGENT_CONTEXTS,
+						userRoles: [senderRole],
+					}),
+				)
+			: await collectV5PlannerCandidateActions({
+					runtime: args.runtime,
+					message: args.message,
+					state: plannerState,
+					selectedContexts,
+					candidateActions: getMessageHandlerCandidateActions(messageHandler),
+					userRoles: [senderRole],
+				});
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
 			args.runtime,
 		);

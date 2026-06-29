@@ -138,6 +138,23 @@ type RuntimeLike = IAgentRuntime & {
   getSetting?: (key: string) => string | undefined | null;
 };
 
+/**
+ * The deployment's configured default coding agent type, if any
+ * (`ELIZA_ACP_DEFAULT_AGENT` or its alias `ELIZA_DEFAULT_AGENT_TYPE` — e.g.
+ * "elizaos" for the eliza-code coding sub-agent). Returns a trimmed non-empty
+ * string or undefined; `getSetting` may return non-string values, so coerce
+ * defensively.
+ */
+function configuredDefaultAgentType(runtime: {
+  getSetting?: (key: string) => unknown;
+}): string | undefined {
+  for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
+    const raw = runtime.getSetting?.(key);
+    if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  }
+  return undefined;
+}
+
 export interface SpawnAgentForTaskOptions {
   framework?: string;
   providerSource?: string;
@@ -2244,10 +2261,20 @@ export class OrchestratorTaskService extends Service {
     }
 
     const result = await acp.spawnSession({
-      // Default the orchestrator's coding agent to the vendored opencode
-      // backend (auto-detects the user's Cerebras key) rather than the
-      // unsupported "elizaos" native default, which has no ACP command.
-      agentType: opts.framework ?? policy.preferredFramework ?? "opencode",
+      // Coding-agent selection: explicit request → routing policy → the
+      // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
+      // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
+      // sub-agent) → opencode as the safe fallback. Honoring the configured
+      // default here keeps this spawn path consistent with acp-service's
+      // `defaultAgent`; previously this hardcoded "opencode" because elizaos had
+      // no ACP command, but elizaos is now a supported ACP agent via
+      // ELIZA_ELIZAOS_ACP_COMMAND, so a host that selects it (local or cloud
+      // image) gets eliza-code, while unconfigured hosts still get opencode.
+      agentType:
+        opts.framework ??
+        policy.preferredFramework ??
+        configuredDefaultAgentType(this.runtime) ??
+        "opencode",
       workdir,
       initialTask: goalPrompt,
       model: opts.model ?? policy.model,

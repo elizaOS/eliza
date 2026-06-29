@@ -288,6 +288,31 @@ export function sharedRestConversationCreate(
 }
 
 /**
+ * PATCH .../api/conversations/:id — shared-runtime agents expose one canonical
+ * conversation and have no agent-server-side conversation index to mutate.
+ * Accept title updates as a compatibility no-op so the app's background title
+ * generation does not fail CORS on shared cloud agents.
+ */
+export function sharedRestConversationUpdate(
+  agentId: string,
+  agentName: string,
+  createdAt: string,
+  patch?: { title?: unknown } | null,
+): { conversation: SharedRestConversation } {
+  const title =
+    typeof patch?.title === "string" && patch.title.trim() ? patch.title.trim() : agentName;
+  return { conversation: makeConversation(agentId, title, createdAt) };
+}
+
+/**
+ * DELETE .../api/conversations/:id — deleting the canonical shared-runtime
+ * conversation is a no-op because it is derived from the agent identity.
+ */
+export function sharedRestConversationDelete(): { ok: true } {
+  return { ok: true };
+}
+
+/**
  * GET .../api/conversations/:id/messages — read the bridge's persisted turn
  * history for this room and present it in the REST message shape. Ids are
  * positional+stable (the history is an ordered append-only list).

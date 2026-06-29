@@ -1,0 +1,235 @@
+/**
+ * Money-leak reproduction tests for POST /api/v1/chat/completions streaming.
+ *
+ * A credit reservation is a ~1.5x upfront hold that MUST be settled — either to
+ * actual usage (success) or released to 0 (failure). When the AI SDK hits a
+ * provider error at connect time (e.g. the cerebras 429 / 5xx the fail-fast path
+ * surfaces) it fires NEITHER onFinish NOR onAbort — only onError. Before the fix
+ * the hold was therefore never reconciled and the org was permanently
+ * over-debited. These tests drive the REAL credit-reservation settler
+ * (`createCreditReservationSettler`, not a mock) against a ledger-backed
+ * reservation and assert:
+ *
+ *   1. On a provider 429, the streaming path releases the reservation to 0 — the
+ *      org balance returns to its pre-request value.
+ *   2. Same for a provider 5xx.
+ *   3. The error path emits a terminal OpenAI-compatible error chunk + [DONE]
+ *      (finding #11) so OpenAI-compatible clients can back off instead of seeing
+ *      a silently-truncated 200 stream.
+ *   4. The success path settles to actual usage exactly once, and a later
+ *      stray onError cannot double-refund (idempotent settler).
+ *
+ * `streamText` and `getLanguageModel` are mocked at the module boundary; the
+ * settler and reservation math are real.
+ */
+
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { APICallError } from "ai";
+
+// Spread the real module so other test files importing from "ai" are not
+// stranded by the process-wide registry replacement; restore in afterAll.
+const aiActual = require("ai") as Record<string, unknown>;
+
+import * as languageModelActual from "@/lib/providers/language-model";
+
+// The REAL settler — explicitly NOT mocked. This is the component under test.
+import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
+
+const ORG = "00000000-0000-4000-8000-0000000000aa";
+const USER = "00000000-0000-4000-8000-0000000000bb";
+
+// --- mock the AI SDK streamText (the only external boundary we drive) --------
+let streamTextImpl: ((config: Record<string, unknown>) => unknown) | null =
+  null;
+const streamText = mock((config: Record<string, unknown>) => {
+  if (!streamTextImpl) throw new Error("streamTextImpl not set");
+  return streamTextImpl(config);
+});
+mock.module("ai", () => ({
+  ...aiActual,
+  streamText,
+}));
+
+mock.module("@/lib/providers/language-model", () => ({
+  ...languageModelActual,
+  getLanguageModel: () => ({}) as never,
+}));
+
+// Import the route AFTER the mocks so it binds to the stubs.
+const { __streamingCreditTestHooks } = await import(
+  "../v1/chat/completions/route"
+);
+const { handleStreamingRequest } = __streamingCreditTestHooks;
+
+afterAll(() => {
+  mock.module("ai", () => aiActual);
+  mock.module("@/lib/providers/language-model", () => languageModelActual);
+});
+
+/**
+ * A faithful in-memory credit ledger. reserve() debits the ~1.5x hold up front;
+ * reconcile(actualCost) refunds (hold - actualCost) back. reconcile(0) therefore
+ * returns the full hold → balance restored to the pre-request value.
+ */
+function makeLedgerReservation(startBalance: number, hold: number) {
+  let balance = startBalance - hold; // upfront hold debited
+  let reconcileCalls = 0;
+  return {
+    startBalance,
+    hold,
+    get balance() {
+      return balance;
+    },
+    get reconcileCalls() {
+      return reconcileCalls;
+    },
+    reservation: {
+      reservedAmount: hold,
+      reconcile: async (actualCost: number) => {
+        reconcileCalls++;
+        balance += hold - actualCost;
+        return undefined;
+      },
+    },
+  };
+}
+
+function makeApiCallError(statusCode: number) {
+  return new APICallError({
+    message: `provider returned ${statusCode}`,
+    url: "https://provider.example/v1/chat/completions",
+    requestBodyValues: {},
+    statusCode,
+    isRetryable: statusCode === 429 || statusCode >= 500,
+  });
+}
+
+const REQUEST = {
+  model: "openai/gpt-oss-120b",
+  messages: [{ role: "user", content: "hello" }],
+  stream: true,
+} as never;
+
+/** Invoke handleStreamingRequest with the test's settler and a fixed shape. */
+function callStreaming(
+  settleReservation: (actualCost: number) => Promise<unknown> | unknown,
+) {
+  return handleStreamingRequest(
+    "openai/gpt-oss-120b",
+    undefined,
+    [{ role: "user", content: "hello" }] as never,
+    REQUEST,
+    { id: USER, organization_id: ORG },
+    null,
+    undefined,
+    null,
+    "idem-1",
+    "req-1",
+    null,
+    Date.now(),
+    undefined,
+    30_000,
+    settleReservation as never,
+    {} as never,
+    undefined,
+    {} as never,
+    "gateway" as never,
+  );
+}
+
+beforeEach(() => {
+  streamText.mockClear();
+  streamTextImpl = null;
+});
+
+describe("streaming chat — provider error releases the credit reservation", () => {
+  for (const statusCode of [429, 503]) {
+    test(`provider ${statusCode}: reservation released to 0, balance restored, terminal error chunk emitted`, async () => {
+      const ledger = makeLedgerReservation(100, 0.015);
+      const settle = createCreditReservationSettler(ledger.reservation);
+      // Sanity: the upfront hold has already debited the balance.
+      expect(ledger.balance).toBe(100 - 0.015);
+
+      const err = makeApiCallError(statusCode);
+      let onErrorPromise: Promise<unknown> | undefined;
+      streamTextImpl = (config) => {
+        // SDK contract: a connect-time provider error fires onError ONLY.
+        const onError = config.onError as
+          | ((e: { error: unknown }) => Promise<unknown>)
+          | undefined;
+        onErrorPromise = Promise.resolve(onError?.({ error: err }));
+        return {
+          fullStream: (async function* () {
+            yield { type: "error", error: err };
+          })(),
+        };
+      };
+
+      const res = await callStreaming(settle);
+      const body = await res.text();
+      await onErrorPromise; // ensure the settle() inside onError completed
+
+      // onFinish/onAbort never fired — only onError. The hold was released to 0.
+      expect(ledger.reconcileCalls).toBe(1);
+      expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+
+      // Finding #11: a terminal OpenAI-shaped error chunk + [DONE] was emitted.
+      expect(body).toContain('"error"');
+      expect(body).toContain('"type":"rate_limit_error"');
+      expect(body).toContain(`"code":${statusCode}`);
+      expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
+
+      // The error chunk parses as valid JSON with the expected shape.
+      const dataLines = body
+        .split("\n")
+        .filter((l) => l.startsWith("data: ") && !l.includes("[DONE]"))
+        .map((l) => JSON.parse(l.slice("data: ".length)));
+      const errorChunk = dataLines.find((c) => "error" in c);
+      expect(errorChunk).toBeDefined();
+      expect(errorChunk.error.type).toBe("rate_limit_error");
+      expect(errorChunk.error.code).toBe(statusCode);
+    });
+  }
+
+  test("fullStream error releases the reservation even when SDK onError is absent", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    expect(ledger.balance).toBe(100 - 0.015);
+
+    const err = makeApiCallError(503);
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield { type: "error", error: err };
+      })(),
+    });
+
+    const res = await callStreaming(settle);
+    const body = await res.text();
+
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(body).toContain('"error"');
+    expect(body).toContain('"type":"rate_limit_error"');
+    expect(body).toContain('"code":503');
+    expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
+  });
+});
+
+describe("streaming chat — success settles once, no double-refund", () => {
+  test("settler reconciles to actual cost exactly once; a stray onError cannot re-refund", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const ACTUAL = 0.004;
+
+    // Drive the settler the way onFinish does (bill → settle to actual cost),
+    // then simulate a stray late onError firing settle(0): the idempotent
+    // first-call-wins settler must NOT reconcile a second time.
+    const first = await settle(ACTUAL);
+    const second = await settle(0); // would over-refund if not idempotent
+
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ACTUAL, 10);
+    // The cached settle result is returned for the second call.
+    expect(second).toBe(first);
+  });
+});

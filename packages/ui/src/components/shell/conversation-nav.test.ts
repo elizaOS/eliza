@@ -1,6 +1,10 @@
+import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../../api/client-types-chat";
-import { buildConversationNav } from "./useShellController";
+import {
+  buildConversationNav,
+  resolveAdjacentConversationId,
+} from "./conversation-nav";
 
 /**
  * The conversation list is most-recent-first, so index 0 is the newest. "prev"
@@ -90,5 +94,71 @@ describe("buildConversationNav", () => {
       nav.goNext();
     }
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("resolves adjacent ids without invoking a selection callback", () => {
+    expect(resolveAdjacentConversationId(LIST, "b", "prev")).toBe("a");
+    expect(resolveAdjacentConversationId(LIST, "b", "next")).toBe("c");
+    expect(resolveAdjacentConversationId(LIST, "a", "prev")).toBeNull();
+    expect(resolveAdjacentConversationId(LIST, "c", "next")).toBeNull();
+    expect(resolveAdjacentConversationId(LIST, "missing", "next")).toBeNull();
+  });
+
+  it("preserves most-recent-first invariants across generated interleavings", () => {
+    type Step = "prev" | "next" | "new" | "selectNewest" | "selectOldest";
+
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.constantFrom<Step>(
+            "prev",
+            "next",
+            "new",
+            "selectNewest",
+            "selectOldest",
+          ),
+          { minLength: 1, maxLength: 50 },
+        ),
+        (steps) => {
+          let list = [conv("a"), conv("b"), conv("c")];
+          let activeId = "b";
+          let created = 0;
+
+          const assertNavInvariants = () => {
+            const nav = buildConversationNav(list, activeId, (id) => {
+              activeId = id;
+            });
+            const index = list.findIndex((item) => item.id === activeId);
+            expect(index).toBeGreaterThanOrEqual(0);
+            expect(nav.activeId).toBe(activeId);
+            expect(nav.index).toBe(index);
+            expect(nav.hasPrev).toBe(index > 0);
+            expect(nav.hasNext).toBe(index < list.length - 1);
+            return nav;
+          };
+
+          for (const step of steps) {
+            const nav = assertNavInvariants();
+            if (step === "prev") {
+              nav.goPrev();
+            } else if (step === "next") {
+              nav.goNext();
+            } else if (step === "new") {
+              const id = `new-${created}`;
+              created += 1;
+              list = [conv(id), ...list];
+              activeId = id;
+            } else if (step === "selectNewest") {
+              activeId = list[0].id;
+            } else {
+              activeId = list[list.length - 1].id;
+            }
+          }
+
+          assertNavInvariants();
+        },
+      ),
+      { numRuns: 100 },
+    );
   });
 });

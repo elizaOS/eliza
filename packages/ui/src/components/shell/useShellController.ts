@@ -2,7 +2,6 @@ import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
 import type {
   ChatTurnStatus,
-  Conversation,
   ImageAttachment,
 } from "../../api/client-types-chat";
 import {
@@ -41,9 +40,24 @@ import {
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
+import {
+  buildConversationNav,
+  type ConversationNav,
+  type ConversationNavDirection,
+  resolveAdjacentConversationId,
+} from "./conversation-nav";
 import { dispatchHomeLauncherNavigation } from "./home-launcher-events";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
+
+export type {
+  ConversationNav,
+  ConversationNavDirection,
+} from "./conversation-nav";
+export {
+  buildConversationNav,
+  resolveAdjacentConversationId,
+} from "./conversation-nav";
 
 /** Upper bound (ms) the conversation-switch / clear loading spinner may show
  *  before it is force-cleared — see `runWithConversationLoading`. */
@@ -91,6 +105,12 @@ export interface ShellController {
       metadata?: Record<string, unknown>;
     },
   ) => void;
+  /** Show the agent the screen: sends a vision-intent turn so the agent runs its
+   *  plugin-vision screen-capture action. Backs the bottom-bar VISION button. */
+  captureVision: () => void;
+  /** True from a VISION tap until the resulting turn is in flight (pulses the
+   *  VISION button). */
+  visionCapturing: boolean;
   /** Toggle continuous ("open voice") capture. Used by a quick tap on the mic. */
   toggleRecording: () => void;
   /** Begin capture unconditionally. Used by push-to-talk press. `"dictate"`
@@ -168,57 +188,6 @@ export interface ShellController {
   conversationLoading?: boolean;
 }
 
-/** Adjacent-conversation navigation for the overlay's horizontal swipe. */
-export interface ConversationNav {
-  /** A newer conversation exists to swipe toward. */
-  hasPrev: boolean;
-  /** An older conversation exists to swipe toward. */
-  hasNext: boolean;
-  /** Select the newer (previous) conversation. */
-  goPrev: () => void;
-  /** Select the older (next) conversation. */
-  goNext: () => void;
-  /** The active conversation's id, or null when none is selected/known. */
-  activeId: string | null;
-  /** The active conversation's position in the most-recent-first list, or -1
-   *  when it isn't in the list (new/not-found). Surfaced on the chat-sheet DOM so
-   *  flows like the tutorial can observe a switch/new-chat without reaching into
-   *  controller internals. */
-  index: number;
-}
-
-/**
- * Pure adjacent-conversation navigation for the overlay's horizontal swipe
- * (#8929). The list is most-recent-first, so "prev" moves toward the newer
- * (lower index) conversation and "next" toward the older (higher index) one.
- * `hasPrev`/`hasNext` drive the swipe edge hints; `goPrev`/`goNext` select the
- * adjacent conversation by id. When the active conversation isn't in the list
- * (not-found), neither direction is navigable. Extracted as a pure function so
- * the index-walk is unit-testable without rendering the AppContext-bound hook.
- */
-export function buildConversationNav(
-  conversations: readonly Pick<Conversation, "id">[] | null | undefined,
-  activeConversationId: string | null | undefined,
-  onSelect: (id: string) => void,
-): ConversationNav {
-  const list = Array.isArray(conversations) ? conversations : [];
-  const index = list.findIndex((c) => c.id === activeConversationId);
-  const hasPrev = index > 0;
-  const hasNext = index >= 0 && index < list.length - 1;
-  return {
-    hasPrev,
-    hasNext,
-    goPrev: () => {
-      if (hasPrev) onSelect(list[index - 1].id);
-    },
-    goNext: () => {
-      if (hasNext) onSelect(list[index + 1].id);
-    },
-    activeId: activeConversationId ?? null,
-    index,
-  };
-}
-
 /**
  * Bridges the shell foundation (HomePill + AssistantOverlay + ChatSurface) to
  * the real agent message flow exposed by {@link useApp}. Replaces the v1
@@ -291,6 +260,10 @@ export function useShellController(): ShellController {
   // Live server-reported phase of the in-flight turn (from the chat-send SSE),
   // read from its dedicated context so status events re-render only chat surfaces.
   const { serverTurnStatus } = useChatTurnStatus();
+  const conversationsRef = React.useRef(conversations);
+  const activeConversationIdRef = React.useRef(activeConversationId);
+  conversationsRef.current = conversations;
+  activeConversationIdRef.current = activeConversationId;
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
@@ -312,12 +285,20 @@ export function useShellController(): ShellController {
   // renders the spinner when the visible thread is still empty.
   const [conversationLoading, setConversationLoading] = React.useState(false);
   const conversationLoadingSeqRef = React.useRef(0);
+  const conversationTransitionBusyRef = React.useRef(false);
 
   const runWithConversationLoading = React.useCallback(
     (task: () => Promise<unknown>) => {
       const seq = conversationLoadingSeqRef.current + 1;
       conversationLoadingSeqRef.current = seq;
+      conversationTransitionBusyRef.current = true;
       setConversationLoading(true);
+      const clearLoadingForSeq = () => {
+        if (conversationLoadingSeqRef.current === seq) {
+          conversationTransitionBusyRef.current = false;
+          setConversationLoading(false);
+        }
+      };
       // Watchdog: never let the empty-thread spinner outlive a stuck switch or
       // create. A cache-hit switch resolves in the same tick and a network load
       // in a few seconds, but the on-device agent can be model-bound (a warming
@@ -325,17 +306,16 @@ export function useShellController(): ShellController {
       // hangs there reads as a permanently frozen new chat. Force-clear after a
       // bound so the (already-activated) conversation is usable while a slow
       // greeting backfills. Seq-guarded so a newer switch owns the flag.
-      const watchdog = setTimeout(() => {
-        if (conversationLoadingSeqRef.current === seq) {
-          setConversationLoading(false);
-        }
-      }, CONVERSATION_LOADING_MAX_MS);
-      void task().finally(() => {
-        clearTimeout(watchdog);
-        if (conversationLoadingSeqRef.current === seq) {
-          setConversationLoading(false);
-        }
-      });
+      const watchdog = setTimeout(
+        clearLoadingForSeq,
+        CONVERSATION_LOADING_MAX_MS,
+      );
+      void Promise.resolve()
+        .then(task)
+        .finally(() => {
+          clearTimeout(watchdog);
+          clearLoadingForSeq();
+        });
     },
     [],
   );
@@ -361,18 +341,45 @@ export function useShellController(): ShellController {
     [handleSelectConversation, runWithConversationLoading],
   );
 
+  const selectAdjacentConversation = React.useCallback(
+    (direction: ConversationNavDirection) => {
+      if (conversationTransitionBusyRef.current) {
+        return;
+      }
+      const targetId = resolveAdjacentConversationId(
+        conversationsRef.current,
+        activeConversationIdRef.current,
+        direction,
+      );
+      if (targetId) {
+        selectConversation(targetId);
+      }
+    },
+    [selectConversation],
+  );
+
   // Horizontal-swipe navigation between conversations (#8929). Computed by the
   // pure `buildConversationNav` helper (unit-tested) so the index-walk and
   // boundary logic stay verifiable independent of this AppContext-bound hook.
-  const conversationNav = React.useMemo<ConversationNav>(
-    () =>
-      buildConversationNav(
-        conversations,
-        activeConversationId,
-        selectConversation,
-      ),
-    [conversations, activeConversationId, selectConversation],
-  );
+  // The callbacks re-resolve through refs at gesture time so a stale overlay
+  // closure cannot navigate against an old active index after the list rerenders.
+  const conversationNav = React.useMemo<ConversationNav>(() => {
+    const nav = buildConversationNav(
+      conversations,
+      activeConversationId,
+      selectConversation,
+    );
+    return {
+      ...nav,
+      goPrev: () => selectAdjacentConversation("prev"),
+      goNext: () => selectAdjacentConversation("next"),
+    };
+  }, [
+    conversations,
+    activeConversationId,
+    selectConversation,
+    selectAdjacentConversation,
+  ]);
 
   // "Ready" here means the agent's FIRST-TURN CAPABILITY is online (it can
   // answer) — NOT that the startup coordinator finished hydrating. The shell now
@@ -1197,6 +1204,22 @@ export function useShellController(): ShellController {
   // failureKind gate ("Connect a provider") that the transcript renders.
   const canSend = agentStatus?.state !== "stopped";
 
+  // VISION button: a tap sends a screen-vision turn so the agent runs its
+  // plugin-vision screen-capture action (server-side capture + analysis). The
+  // transient `visionCapturing` flag pulses the button until the turn is in
+  // flight (responding rises), then clears.
+  const [visionCapturing, setVisionCapturing] = React.useState(false);
+  const captureVision = React.useCallback(() => {
+    if (!canSend) return;
+    setVisionCapturing(true);
+    send("Take a look at my screen and tell me what you see.", {
+      metadata: { vision: { surface: "screen" } },
+    });
+  }, [canSend, send]);
+  React.useEffect(() => {
+    if (visionCapturing && responding) setVisionCapturing(false);
+  }, [visionCapturing, responding]);
+
   return {
     phase,
     responding,
@@ -1211,6 +1234,8 @@ export function useShellController(): ShellController {
     close,
     isOpen,
     send,
+    captureVision,
+    visionCapturing,
     toggleRecording,
     startRecording: startCapture,
     stopRecording: stopCapture,

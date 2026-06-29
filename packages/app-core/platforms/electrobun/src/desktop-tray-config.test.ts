@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   shouldCreateDesktopTray,
+  shouldEnableTrayPopover,
   shouldStartTrayFirst,
 } from "./desktop-tray-config";
 
@@ -82,6 +83,49 @@ describe("shouldStartTrayFirst", () => {
         "darwin",
         [],
       ),
+    ).toBe(false);
+  });
+});
+
+describe("shouldEnableTrayPopover", () => {
+  it("is opt-in: off by default on macOS", () => {
+    expect(shouldEnableTrayPopover({}, "darwin", [])).toBe(false);
+  });
+
+  it("enables on macOS when ELIZA_DESKTOP_TRAY_POPOVER is truthy", () => {
+    expect(
+      shouldEnableTrayPopover(
+        { ELIZA_DESKTOP_TRAY_POPOVER: "1" },
+        "darwin",
+        [],
+      ),
+    ).toBe(true);
+  });
+
+  it("stays off on Windows/Linux (tracked follow-up) even when requested", () => {
+    expect(
+      shouldEnableTrayPopover({ ELIZA_DESKTOP_TRAY_POPOVER: "1" }, "win32", []),
+    ).toBe(false);
+    expect(
+      shouldEnableTrayPopover({ ELIZA_DESKTOP_TRAY_POPOVER: "1" }, "linux", []),
+    ).toBe(false);
+  });
+
+  it("stays off when the tray itself is disabled", () => {
+    expect(
+      shouldEnableTrayPopover(
+        { ELIZA_DESKTOP_TRAY_POPOVER: "1", ELIZA_DESKTOP_DISABLE_TRAY: "1" },
+        "darwin",
+        [],
+      ),
+    ).toBe(false);
+  });
+
+  it("stays off in kiosk shell mode", () => {
+    expect(
+      shouldEnableTrayPopover({ ELIZA_DESKTOP_TRAY_POPOVER: "1" }, "darwin", [
+        "--shell-mode=kiosk",
+      ]),
     ).toBe(false);
   });
 });

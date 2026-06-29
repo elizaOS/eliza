@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
     sendWsMessage: vi.fn(),
     stopCodingAgent: vi.fn(),
     renameConversation: vi.fn(() => Promise.resolve()),
+    truncateConversationMessages: vi.fn(() => Promise.resolve()),
     getBaseUrl: vi.fn(() => ""),
   },
 }));
@@ -719,6 +720,102 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
       await result.current.sendChatText("hello", { conversationId: "conv-1" });
     });
 
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+    mocks.client.truncateConversationMessages.mockResolvedValue(undefined);
+  });
+
+  function seedFailedTurn(deps: UseChatSendDeps): void {
+    const seeded: ConversationMessage[] = [
+      { id: "u1", role: "user", text: "hello", timestamp: 1 },
+      {
+        id: "a1",
+        role: "assistant",
+        text: "I'm having trouble reaching the model provider.",
+        timestamp: 2,
+        failureKind: "provider_issue",
+      },
+    ];
+    deps.conversationMessagesRef.current = seeded;
+  }
+
+  it("truncates from the user message (inclusive) and resends, leaving exactly one user turn", async () => {
+    // Regression: the old retry only dropped the failed assistant bubble in
+    // memory and resent, producing [Q, fail, Q-dup, new]. The fix mirrors
+    // handleChatEdit — truncate [Q, fail] server-side, then re-run Q in place.
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "recovered reply",
+      completed: true,
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    seedFailedTurn(deps);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatRetry("a1");
+    });
+
+    // The turn was truncated from the user message inclusive, in place.
+    expect(mocks.client.truncateConversationMessages).toHaveBeenCalledTimes(1);
+    expect(mocks.client.truncateConversationMessages).toHaveBeenCalledWith(
+      "conv-1",
+      "u1",
+      { inclusive: true },
+    );
+    // The text was resent once (re-run), not as a brand-new extra turn.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+
+    // No duplicate user message: exactly one "hello" user turn remains, and the
+    // failed assistant bubble (a1) is gone.
+    const remaining = deps.conversationMessagesRef.current;
+    const userHellos = remaining.filter(
+      (m) => m.role === "user" && m.text === "hello",
+    );
+    expect(userHellos).toHaveLength(1);
+    expect(remaining.some((m) => m.id === "a1")).toBe(false);
+  });
+
+  it("falls back to in-memory resend for an optimistic (temp-) user turn", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "recovered reply",
+      completed: true,
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    // An optimistic user turn whose server id hasn't landed yet — not safe to
+    // truncate server-side, so retry drops the failed bubble in memory + resends.
+    deps.conversationMessagesRef.current = [
+      { id: "temp-u1", role: "user", text: "hello", timestamp: 1 },
+      {
+        id: "a1",
+        role: "assistant",
+        text: "I'm having trouble reaching the model provider.",
+        timestamp: 2,
+        failureKind: "provider_issue",
+      },
+    ];
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatRetry("a1");
+    });
+
+    // temp- user id → cannot truncate; resend still fires.
+    expect(mocks.client.truncateConversationMessages).not.toHaveBeenCalled();
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
   });
 });

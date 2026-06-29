@@ -35,6 +35,8 @@ const {
   sharedRestCharacter,
   sharedRestConfig,
   sharedRestConversationCreate,
+  sharedRestConversationDelete,
+  sharedRestConversationUpdate,
   sharedRestConversationsList,
   sharedRestFirstRun,
   sharedRestFirstRunStatus,
@@ -80,6 +82,30 @@ describe("shared-rest-adapter — conversation surface", () => {
 
   test("create falls back to a title when the agent has no name", () => {
     expect(sharedRestConversationCreate(AGENT, "", CREATED).conversation.title).toBe("Chat");
+  });
+
+  test("update accepts title patches for the canonical conversation", () => {
+    const { conversation } = sharedRestConversationUpdate(AGENT, "Eliza", CREATED, {
+      title: "Launch checklist",
+    });
+    expect(conversation).toEqual({
+      id: AGENT,
+      title: "Launch checklist",
+      roomId: AGENT,
+      createdAt: CREATED,
+      updatedAt: CREATED,
+    });
+  });
+
+  test("update falls back to the agent title for generate-only patches", () => {
+    const { conversation } = sharedRestConversationUpdate(AGENT, "Eliza", CREATED, {
+      generate: true,
+    } as { title?: unknown });
+    expect(conversation.title).toBe("Eliza");
+  });
+
+  test("delete is accepted as a canonical-conversation compatibility no-op", () => {
+    expect(sharedRestConversationDelete()).toEqual({ ok: true });
   });
 });
 

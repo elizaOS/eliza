@@ -13,6 +13,11 @@ export interface ChatSurfaceProps {
   greeting?: string;
   recording?: boolean;
   onToggleRecording?: () => void;
+  /** Capture the screen and show it to the agent (plugin-vision). Omit to hide
+   * the VISION button on surfaces without a screen-capture capability. */
+  onVision?: () => void;
+  /** Reflects an in-flight vision capture (pulses the VISION button). */
+  visionActive?: boolean;
 }
 
 export function ChatSurface({
@@ -22,6 +27,8 @@ export function ChatSurface({
   greeting,
   recording = false,
   onToggleRecording,
+  onVision,
+  visionActive = false,
 }: ChatSurfaceProps): React.JSX.Element {
   const { t } = useTranslation();
   const [draft, setDraft] = React.useState("");
@@ -138,6 +145,17 @@ export function ChatSurface({
           disabled={!onToggleRecording}
           onClick={onToggleRecording}
         />
+        {onVision ? (
+          <GlassIconButton
+            icon="vision"
+            label={t("chatsurface.vision", {
+              defaultValue: "Show {{appName}} my screen",
+            })}
+            active={visionActive}
+            disabled={!canSend || visionActive}
+            onClick={onVision}
+          />
+        ) : null}
         <GlassIconButton
           icon="send"
           label={t("chatsurface.send", { defaultValue: "Send message" })}
