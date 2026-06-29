@@ -47,7 +47,11 @@ function readComponentFamily(relPath: string): string {
   const fileDir = dirname(resolve(repoRoot, relPath));
   if (!existsSync(fileDir)) return "";
   const parts: string[] = [];
-  for (const name of readdirSync(fileDir)) {
+  // Recursive: a view's family spans co-located sub-components/hooks, which some
+  // plugins keep in subdirectories (e.g. wallet-ui's InventoryView delegates to
+  // components/InventoryAppView + inventory/* where the React hooks live).
+  for (const entry of readdirSync(fileDir, { recursive: true })) {
+    const name = String(entry);
     if (!name.endsWith(".ts") && !name.endsWith(".tsx")) continue;
     parts.push(readFileSync(resolve(fileDir, name), "utf8"));
   }
@@ -309,7 +313,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("XR feature-by-feature functional parity — all 18 views", () => {
+describe("XR feature-by-feature functional parity — all 16 views", () => {
   // A. Shared bundle architecture ─────────────────────────────────────────────
 
   it("A — every XR view uses the same bundlePath as the GUI view (shared bundle = shared features)", () => {
@@ -479,11 +483,11 @@ describe("XR feature-by-feature functional parity — all 18 views", () => {
 
   // Summary assertion ─────────────────────────────────────────────────────────
 
-  it("summary — all 17 plugins have XR views that are functionally identical to their GUI views", () => {
+  it("summary — all 16 plugins have XR views that are functionally identical to their GUI views", () => {
     // This test is a logical consequence of tests A, B, C, D above all passing.
     // It explicitly states the guarantee: same bundle + same component = same features.
     const xrPluginCount = PLUGIN_REGISTRY.length;
-    expect(xrPluginCount).toBe(17);
+    expect(xrPluginCount).toBe(16);
 
     for (const { pluginDir, manifestPath } of PLUGIN_REGISTRY) {
       const source = readFile(manifestPath);

@@ -1003,7 +1003,11 @@ describeIfPosix("shellAction", () => {
       else process.env.HOME = previousHome;
       await fs.rm(tmpHome, { recursive: true, force: true });
     }
-  });
+    // This test runs the REAL disk-intent shell pipeline, which scans /tmp and
+    // /var/tmp with `du`. On a busy host with a large /tmp those scans can run
+    // well past the 15s package default (the shell's own hard timeout is 120s),
+    // so give this real-I/O case its own generous budget.
+  }, 90_000);
 
   it("does not treat later output section markers as cleanup candidates", () => {
     const stdout = [

@@ -32,6 +32,7 @@ const EXTRAS_PATH = path.resolve(
 	"..",
 	"..",
 	"packages",
+	"research",
 	"chip",
 	"ELIZA_1_BUNDLE_EXTRAS.json",
 );
