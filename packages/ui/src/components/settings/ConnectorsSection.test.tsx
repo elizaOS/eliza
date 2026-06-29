@@ -166,6 +166,32 @@ describe("ConnectorsSection", () => {
     expect(panel.textContent ?? "").toContain("telegram");
   });
 
+  // whatsapp business mode is the third local-config + has-panel case; it must
+  // co-render like /connectors does (the panel is the whatsapp pairing surface).
+  it("co-renders the setup panel for whatsapp business mode", () => {
+    connectorModeMock.byId.whatsapp = {
+      setupPluginId: "whatsapp",
+      selectedMode: "business",
+      modes: [{ id: "business", managementMode: "local-config" }],
+    };
+    appMock.value.plugins = [
+      plugin({
+        id: "whatsapp",
+        name: "WhatsApp",
+        parameters: [tokenParam("WHATSAPP_ACCESS_TOKEN")],
+      }),
+    ];
+
+    render(<ConnectorsSection />);
+
+    expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
+    expect(
+      (screen.getByTestId("connector-setup-panel").textContent ?? "").includes(
+        "whatsapp",
+      ),
+    ).toBe(true);
+  });
+
   it("renders no setup panel for a local-config connector that has none (discord)", () => {
     connectorModeMock.byId.discord = {
       setupPluginId: "discord",
