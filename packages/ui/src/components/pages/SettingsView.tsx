@@ -380,7 +380,18 @@ export function SettingsView({
     loadPlugins: s.loadPlugins,
     walletEnabled: s.walletEnabled,
   }));
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  // Two-pane (rail + detail) layout needs genuine horizontal room: ~240px rail
+  // + gap + a usable content pane. Width alone (min-width: 1024px) put a
+  // landscape phone / short landscape tablet — wide enough for two panes but
+  // under 1024px — into the cramped single-pane mobile hub, and is the same
+  // branch a tall-but-narrow portrait tablet correctly stays in. Combine width
+  // with orientation so a landscape viewport with enough width also gets the
+  // two-pane layout, while narrow portrait stays single-pane.
+  const isWide = useMediaQuery("(min-width: 1024px)");
+  const isWideLandscape = useMediaQuery(
+    "(orientation: landscape) and (min-width: 768px)",
+  );
+  const isTwoPane = isWide || isWideLandscape;
   const enabledKinds = useEnabledViewKinds();
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),
@@ -452,7 +463,7 @@ export function SettingsView({
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout inModal={inModal}>
         <div data-testid="settings-shell">
-          {isDesktop ? (
+          {isTwoPane ? (
             <DesktopLayout
               grouped={grouped}
               t={t}

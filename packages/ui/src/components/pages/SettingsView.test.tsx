@@ -113,6 +113,28 @@ function t(key: string, options?: { defaultValue?: string }) {
   return options?.defaultValue ?? key;
 }
 
+/**
+ * Install a `matchMedia` stub that answers each query via `matchFor`, so a test
+ * can drive the width and orientation media queries independently. Returns a
+ * restore fn for the original implementation.
+ */
+function stubMatchMedia(matchFor: (query: string) => boolean): () => void {
+  const original = window.matchMedia;
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: matchFor(query),
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = original;
+  };
+}
+
 function makeContext(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -222,17 +244,7 @@ describe("SettingsView", () => {
 
   it("on desktop, shows a persistent rail with a section selected in the pane", () => {
     // Force the desktop media query to match so the two-pane layout renders.
-    const original = window.matchMedia;
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: true,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })) as unknown as typeof window.matchMedia;
+    const restore = stubMatchMedia(() => true);
     try {
       render(<SettingsView />);
       // The rail lists every section AND the detail pane shows the first one
@@ -243,7 +255,55 @@ describe("SettingsView", () => {
       expect(screen.getByTestId("stub-identity")).toBeTruthy();
       expect(screen.queryByText("Settings")).not.toBeNull();
     } finally {
-      window.matchMedia = original;
+      restore();
+    }
+  });
+
+  it("uses the two-pane layout on a landscape phone narrower than 1024px", () => {
+    // A landscape phone: too narrow for `min-width: 1024px`, but in landscape
+    // with enough width (>=768px) it has horizontal room for the two-pane rail.
+    // Width alone wrongly dropped it into the cramped single-pane hub.
+    const restore = stubMatchMedia((query) =>
+      query.includes("orientation: landscape"),
+    );
+    try {
+      render(<SettingsView />);
+      // Detail pane is mounted with no tap and no back affordance — proof of the
+      // two-pane layout, not the mobile hub.
+      expect(screen.getByTestId("stub-identity")).toBeTruthy();
+      expect(screen.getByText("Runtime")).toBeTruthy();
+      expect(screen.queryByText("Settings")).not.toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the single-pane hub on a narrow portrait viewport", () => {
+    // Portrait tablet / phone narrower than 1024px: no horizontal room for two
+    // panes, so it stays on the single-pane hub (tiles, no detail pane mounted).
+    const restore = stubMatchMedia(() => false);
+    try {
+      render(<SettingsView />);
+      expect(screen.getByText("Basics")).toBeTruthy();
+      expect(screen.getByText("Runtime")).toBeTruthy();
+      // No section body mounted until a tile is tapped — this is the hub.
+      expect(screen.queryByTestId("stub-identity")).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the single-pane hub for a narrow landscape viewport under 768px", () => {
+    // A small landscape viewport under the 768px landscape floor must NOT get
+    // the two-pane layout — the combined query requires both orientation AND
+    // min-width, so the `and (min-width: 768px)` clause fails here.
+    const restore = stubMatchMedia(() => false);
+    try {
+      render(<SettingsView />);
+      expect(screen.queryByTestId("stub-identity")).toBeNull();
+      expect(screen.getByText("Basics")).toBeTruthy();
+    } finally {
+      restore();
     }
   });
 });
