@@ -6,8 +6,8 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `ci.yaml` | Push/PR to main | Main CI - tests, lint, build, zero-key deterministic E2E |
-| `test.yml` | Push/PR to main/develop, manual, schedule | Broader tests plus required zero-key deterministic E2E; live jobs are separate |
+| `ci.yaml` | Push/PR to main | Main-specific CI - typecheck, tests, lint, build, dev startup |
+| `test.yml` | Push/PR to develop, manual, schedule | Broader develop tests plus required zero-key deterministic E2E; live jobs are separate |
 | `scenario-pr.yml` | PR to main/develop, manual | Secret-free deterministic scenario/browser E2E gate |
 | `scenario-matrix.yml` | Develop/manual opt-in | Real-service scenario matrix; not a PR gate |
 | `pr.yaml` | PR opened/edited | PR title validation |
@@ -144,13 +144,16 @@ Related CI docs:
 
 Runs on PRs and pushes to main:
 
-- TypeScript tests with coverage
+- Typecheck + core/plugin tests
 - Linting and formatting checks
 - Build verification
+- Dev startup + HMR propagation
 - Interop TypeScript tests (`packages/interop`)
-- Zero-key deterministic E2E. This lane clears provider keys, sets `TEST_LANE=pr`,
-  `ELIZA_LIVE_TEST=0`, and `SCENARIO_USE_LLM_PROXY=1`, then runs the deterministic
-  scenario/browser coverage plus the scenario catalog coverage gate.
+
+The broader `test.yml` orchestrator runs automatically on `develop` only to
+avoid duplicating the main-branch CI gate. Secret-free deterministic zero-key
+coverage for PRs to either protected branch is handled by `scenario-pr.yml`;
+`test.yml` keeps the broader develop push/PR, manual, and scheduled coverage.
 
 ### Live E2E
 

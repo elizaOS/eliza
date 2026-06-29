@@ -7,10 +7,10 @@ name: Tests
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [develop]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
-    branches: [main, develop]
+    branches: [develop]
   workflow_dispatch:
   schedule:
     # Nightly live smoke for container-backed remote capability plugins.
@@ -52,6 +52,9 @@ jobs:
 
       - name: Validate CI path gate
         run: node packages/scripts/ci-path-gate.self-test.mjs
+
+      - name: Validate CI workflow dedup contract
+        run: node packages/scripts/ci-workflow-dedup-contract.mjs
 
       - name: Determine affected test lanes
         id: filter
