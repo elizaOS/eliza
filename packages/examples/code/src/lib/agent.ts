@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
-import { resolveModelProvider } from "./model-provider.js";
+import {
+  applyOpencodeProviderEnv,
+  resolveModelProvider,
+} from "./model-provider.js";
 import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
 
 /**
@@ -82,6 +85,7 @@ export async function initializeAgent(
   options: InitializeAgentOptions = {},
 ): Promise<AgentRuntime> {
   const includeOrchestrator = options.includeOrchestrator !== false;
+  applyOpencodeProviderEnv(process.env);
   const provider = resolveModelProvider(process.env);
   if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -126,10 +130,11 @@ export async function initializeAgent(
   // The full agent also loads mcp + goals + (optionally) the orchestrator. A
   // headless coding sub-agent (codingOnly) skips them — it just reads/writes/runs.
   if (!codingOnly) {
-    const [{ default: mcpPlugin }, { default: goalsPlugin }] = await Promise.all([
-      import("@elizaos/plugin-mcp"),
-      import("@elizaos/plugin-goals"),
-    ]);
+    const [{ default: mcpPlugin }, { default: goalsPlugin }] =
+      await Promise.all([
+        import("@elizaos/plugin-mcp"),
+        import("@elizaos/plugin-goals"),
+      ]);
     plugins.push(mcpPlugin, goalsPlugin);
     if (includeOrchestrator) {
       const { agentOrchestratorPlugin } = await import(

@@ -145,7 +145,10 @@ export async function runPlannerLoop(
 	const config = ((): ChainingLoopConfig => {
 		const merged = mergeChainingLoopConfig(params.config);
 		return codingMode
-			? { ...merged, maxToolCalls: Math.max(merged.maxToolCalls, codingMaxToolCalls) }
+			? {
+					...merged,
+					maxToolCalls: Math.max(merged.maxToolCalls, codingMaxToolCalls),
+				}
 			: merged;
 	})();
 	const trajectory: PlannerTrajectory = {

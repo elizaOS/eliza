@@ -26,10 +26,12 @@
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import type { AgentRuntime } from "@elizaos/core";
-import { SessionCwdService } from "@elizaos/plugin-coding-tools";
-import { getAgentClient } from "./lib/agent-client.js";
+import {
+  SandboxService,
+  SessionCwdService,
+} from "@elizaos/plugin-coding-tools";
 import { initializeAgent } from "./lib/agent.js";
-import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
+import { getAgentClient } from "./lib/agent-client.js";
 import {
   ensureSessionIdentity,
   getMainRoomElizaId,
@@ -40,7 +42,9 @@ import type { ChatRoom } from "./types.js";
 /** A `console.error` logger (stdout is the ACP JSON-RPC channel — never log there). */
 function log(message: string, extra?: unknown): void {
   if (extra !== undefined) {
-    process.stderr.write(`[eliza-code-acp] ${message} ${JSON.stringify(extra)}\n`);
+    process.stderr.write(
+      `[eliza-code-acp] ${message} ${JSON.stringify(extra)}\n`,
+    );
   } else {
     process.stderr.write(`[eliza-code-acp] ${message}\n`);
   }
@@ -61,12 +65,6 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= cwd;
       process.env.SHELL_ALLOWED_DIRECTORY ??= cwd;
     }
-    // Drop-in for the opencode coding sub-agent: when the host configured
-    // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no
-    // explicit OPENAI_*, inherit that provider config so eliza-code runs on the
-    // same backend with zero extra setup. The orchestrator forwards the parent
-    // env to this spawned process.
-    applyOpencodeProviderEnv(process.env);
     runtimePromise = (async () => {
       // Resolve the session identity FIRST and mark its user as the runtime OWNER
       // — the coding tools are role-gated (FILE=ADMIN, SHELL=OWNER), so without
@@ -167,7 +165,6 @@ const input = new ReadableStream<Uint8Array>({
 });
 const stream = ndJsonStream(output, input);
 
-// biome-ignore lint/correctness/noUnusedVariables: AgentSideConnection wires itself onto the stream.
 const _connection = new AgentSideConnection(
   (conn) => ({
     async initialize() {
@@ -175,7 +172,11 @@ const _connection = new AgentSideConnection(
         protocolVersion: 1,
         agentCapabilities: {
           loadSession: false,
-          promptCapabilities: { image: false, audio: false, embeddedContext: true },
+          promptCapabilities: {
+            image: false,
+            audio: false,
+            embeddedContext: true,
+          },
         },
         authMethods: [],
       };
@@ -205,10 +206,15 @@ const _connection = new AgentSideConnection(
       // explicitly to the build workspace so FILE/SHELL/LS operate there.
       // conversationId == message.roomId == room.elizaRoomId (see agent-client).
       if (params.cwd) {
+        const conversationId = String(room.elizaRoomId);
         const cwdSvc = runtime.getService<SessionCwdService>(
           SessionCwdService.serviceType,
         );
-        cwdSvc?.setCwd(String(room.elizaRoomId), params.cwd);
+        cwdSvc?.setCwd(conversationId, params.cwd);
+        const sandbox = runtime.getService<SandboxService>(
+          SandboxService.serviceType,
+        );
+        sandbox?.addRoot(conversationId, params.cwd);
       }
       log("session created", { id, cwd: params.cwd });
       return { sessionId: id };
@@ -280,9 +286,14 @@ const _connection = new AgentSideConnection(
               content: { type: "text", text: response },
             },
           })
-          .catch((err) => log("final sessionUpdate failed", { err: String(err) }));
+          .catch((err) =>
+            log("final sessionUpdate failed", { err: String(err) }),
+          );
       }
-      log("prompt done", { streamed: streamed.length, response: response.length });
+      log("prompt done", {
+        streamed: streamed.length,
+        response: response.length,
+      });
       return { stopReason: "end_turn" };
     },
     async cancel() {
