@@ -120,14 +120,20 @@ type TrayPopoverBrowserWindowOptions = NonNullable<
 > & {
   partition?: string | null;
   preload?: string;
-  rpc?: unknown;
 };
+
+/**
+ * The Electrobun RPC handle the BrowserWindow constructor accepts. Derived from
+ * the constructor type so the tray popover passes exactly what the main window
+ * does, with no `unknown` cast that would erase `setTransport`.
+ */
+type TrayPopoverRpc = NonNullable<TrayPopoverBrowserWindowOptions["rpc"]>;
 
 interface TrayPopoverConfig {
   url: string;
   preload: string;
   partition?: string | null;
-  rpc?: unknown;
+  rpc?: TrayPopoverRpc;
   injectApiBase?: (window: BrowserWindow) => void;
   wireRpc?: (window: BrowserWindow) => void;
   onWindowFocused?: (window: BrowserWindow) => void;
