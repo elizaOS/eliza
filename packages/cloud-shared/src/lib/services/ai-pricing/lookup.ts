@@ -210,13 +210,20 @@ export async function calculateTextCostFromCatalog(params: {
   outputTokens: number;
 }): Promise<TokenCostBreakdown> {
   const canonicalModel = canonicalModelId(params.model, params.provider);
+  // Both lookups degrade to null on a catalog miss. A missing INPUT price used
+  // to throw uncaught here (the OUTPUT lookup was already guarded), and the
+  // throw propagated through calculateCost → the chat-completions reserve →
+  // a 500 / masked "bridge unreachable" on any model whose input row isn't in
+  // the catalog (notably embedding models, which are input-only and run every
+  // turn). Mirror the output handling — bill the missing side at $0 rather than
+  // failing the request — but log loudly so the catalog gap gets priced.
   const inputEntry = await resolvePreparedPricingEntry({
     billingSource: params.billingSource,
     provider: params.provider,
     model: canonicalModel,
     productFamily: params.model.includes("embedding") ? "embedding" : "language",
     chargeType: "input",
-  });
+  }).catch(() => null);
   const outputEntry = await resolvePreparedPricingEntry({
     billingSource: params.billingSource,
     provider: params.provider,
@@ -225,7 +232,17 @@ export async function calculateTextCostFromCatalog(params: {
     chargeType: "output",
   }).catch(() => null);
 
-  const baseInputCost = asDecimal(inputEntry.unitPrice).mul(params.inputTokens);
+  if (!inputEntry) {
+    logger.warn("ai-pricing: input pricing unavailable; billing input at $0", {
+      canonicalModel,
+      provider: params.provider,
+      billingSource: params.billingSource,
+    });
+  }
+
+  const baseInputCost = inputEntry
+    ? asDecimal(inputEntry.unitPrice).mul(params.inputTokens)
+    : new Decimal(0);
   const baseOutputCost = outputEntry
     ? asDecimal(outputEntry.unitPrice).mul(params.outputTokens)
     : new Decimal(0);
