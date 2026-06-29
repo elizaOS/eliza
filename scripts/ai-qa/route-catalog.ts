@@ -58,7 +58,6 @@ const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
   "/apps/inventory": [{ selector: '[data-testid="wallet-shell"]' }],
   "/apps/runtime": [{ selector: '[data-testid="runtime-view"]' }],
   "/apps/database": [{ selector: '[data-testid="database-view"]' }],
-  "/apps/elizamaker": [{ selector: '[data-testid="chat-composer-textarea"]' }],
   "/apps/logs": [{ selector: '[data-testid="logs-view"]' }],
   "/apps/tasks": [{ selector: '[data-testid="tasks-view"]' }],
   "/character": [{ selector: '[data-testid="character-editor-view"]' }],
@@ -81,12 +80,6 @@ const extraAppWindowRoutes = [
     tabId: "app-window-inventory",
     path: "/apps/inventory",
     label: "Inventory App Window",
-    platformGate: null,
-  },
-  {
-    tabId: "app-window-elizamaker",
-    path: "/apps/elizamaker",
-    label: "ElizaMaker App Window",
     platformGate: null,
   },
 ] as const;

@@ -58,9 +58,6 @@ export async function detectAvailableBackends() {
   return { available: false, backends: [] };
 }
 export function dispatchQueuedLifeOpsGithubCallbackFromUrl(): void {}
-export function getElizaMakerRegistryService() {
-  return null;
-}
 export function getSelfControlPermissionState() {
   return { granted: false, status: "unavailable" };
 }

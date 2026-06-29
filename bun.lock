@@ -3406,18 +3406,6 @@
         "zod": "^4.4.3",
       },
     },
-    "plugins/plugin-elizamaker": {
-      "name": "@elizaos/plugin-elizamaker",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "ethers": "^6.15.0",
-      },
-      "devDependencies": {
-        "tsup": "^8.5.1",
-      },
-    },
     "plugins/plugin-embeddings": {
       "name": "@elizaos/plugin-embeddings",
       "version": "2.0.3-beta.7",
@@ -6311,8 +6299,6 @@
     "@elizaos/plugin-elevenlabs": ["@elizaos/plugin-elevenlabs@workspace:plugins/plugin-elevenlabs"],
 
     "@elizaos/plugin-elizacloud": ["@elizaos/plugin-elizacloud@workspace:plugins/plugin-elizacloud"],
-
-    "@elizaos/plugin-elizamaker": ["@elizaos/plugin-elizamaker@workspace:plugins/plugin-elizamaker"],
 
     "@elizaos/plugin-embeddings": ["@elizaos/plugin-embeddings@workspace:plugins/plugin-embeddings"],
 

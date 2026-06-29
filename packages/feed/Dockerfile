@@ -30,9 +30,13 @@ RUN bun install --no-frozen-lockfile
 # (contracts/logger/prompts -> core -> shared).
 RUN bunx turbo run build --filter=@elizaos/shared --filter=@elizaos/core
 
-# Build the Next.js app (webpack; standalone disabled). Heavy — needs ~8 GB.
+# Build the Next.js app (webpack; standalone disabled). Heap capped at 6144 MB so
+# the build keeps ~2 GB of headroom on Railway's ~8 GB builder; 7168 left too
+# little and thrash-stalled in "Collecting page data" (source maps are already
+# disabled in next.config). The package.json build script's NODE_OPTIONS is the
+# effective cap and is kept in sync with this value.
 ENV NODE_ENV=production
-RUN NODE_OPTIONS=--max-old-space-size=7168 bun run --cwd packages/feed/apps/web build
+RUN NODE_OPTIONS=--max-old-space-size=6144 bun run --cwd packages/feed/apps/web build
 
 EXPOSE 3000
 # Ensure schema, then start the server (binds $PORT).

@@ -127,18 +127,6 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     windowPath: "/apps/files",
   },
   {
-    name: "@elizaos/plugin-elizamaker",
-    displayName: "ElizaMaker",
-    description:
-      "Run drop, mint, whitelist, and verification workflows through the agent surfaces.",
-    heroImage: "/api/apps/hero/elizamaker",
-    targetTab: "chat",
-    capabilities: ["drops", "minting", "whitelist", "verification"],
-    order: 10,
-    windowPath: "/apps/elizamaker",
-    hasDetailsPage: true,
-  },
-  {
     name: "@elizaos/app-log-viewer",
     displayName: "Log Viewer",
     description: "Search runtime and service logs.",

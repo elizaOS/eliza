@@ -403,7 +403,10 @@ export interface ArrangeArcOptions {
  * both the CSS {@link XRSpatialScene} and the immersive bridge use for panels that
  * have no explicit position. Returns world centre positions, left → right.
  */
-export function arrangeOnArc(count: number, opts: ArrangeArcOptions = {}): Vec3[] {
+export function arrangeOnArc(
+  count: number,
+  opts: ArrangeArcOptions = {},
+): Vec3[] {
   const distance = opts.distance ?? 2.4;
   const center = opts.center ?? { x: 0, y: 1.6, z: 0 };
   const spread = opts.spread ?? (Math.PI / 180) * 50;

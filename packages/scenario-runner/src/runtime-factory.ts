@@ -512,6 +512,26 @@ export async function createScenarioRuntime(
   }
   await runtime.registerPlugin(lifeOpsPlugin);
 
+  // The LifeOps dashboard HTTP routes (/api/lifeops/*) live on a separate
+  // routes-only plugin, not the main lifeops plugin. Register it so api-turn
+  // scenarios can exercise reminder/scheduling/inbox outcomes on the keyless
+  // pr-deterministic lane (the executor's api server is built from
+  // `runtime.routes`). It is routes-only — no services/actions/providers — so
+  // it only adds endpoints; non-api scenarios are unaffected. Its sole
+  // dependency (@elizaos/plugin-google) is already registered above.
+  const routesModule = (await import(
+    "@elizaos/plugin-personal-assistant/public"
+  )) as Record<string, unknown>;
+  const lifeOpsRoutesPlugin = extractPlugin(routesModule, [
+    "personalAssistantRoutesPlugin",
+  ]);
+  if (!lifeOpsRoutesPlugin) {
+    throw new Error(
+      "[scenario-runner] @elizaos/plugin-personal-assistant did not export personalAssistantRoutesPlugin",
+    );
+  }
+  await runtime.registerPlugin(lifeOpsRoutesPlugin);
+
   for (const extra of options?.extraPlugins ?? []) {
     await runtime.registerPlugin(extra);
   }

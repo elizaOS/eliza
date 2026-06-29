@@ -225,7 +225,9 @@ describe("WidgetHost home-slot ranking (#9143)", () => {
     before.unmount();
 
     // After the user dismisses it, WidgetHost retires it from the home grid…
-    dismissHomeWidget(homeWidgetKey({ id: "ftu-welcome", pluginId: "home-plugin" }));
+    dismissHomeWidget(
+      homeWidgetKey({ id: "ftu-welcome", pluginId: "home-plugin" }),
+    );
     render(<WidgetHost slot="home" />);
     const ids = renderedIds();
     expect(ids).not.toContain("ftu-welcome");

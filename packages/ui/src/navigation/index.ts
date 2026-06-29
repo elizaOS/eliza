@@ -385,9 +385,8 @@ const APPS_SUB_TABS: Record<string, Tab> = {
   // Internal-tool window targets that hit non-`/apps/` shell tabs. The window
   // path is `/apps/<slug>` so the route stays consistent with other internal
   // tools, but the renderer mounts the tab the original `targetTab` pointed
-  // at (e.g. wallet for steward, chat for elizamaker).
+  // at (e.g. wallet for steward).
   inventory: "inventory",
-  elizamaker: "chat",
   // Note: "companion" is intentionally NOT here — /apps/companion is an app slug
   // that AppsView auto-launches as an overlay, not a tool tab.
 };

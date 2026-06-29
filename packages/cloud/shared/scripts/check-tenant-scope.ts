@@ -67,10 +67,13 @@ function primaryKeyPredicateTable(where: ts.Expression): string | undefined {
   return TENANT_DATA_PLANE_TABLES.has(lhs.expression.text) ? lhs.expression.text : undefined;
 }
 
-function isConstArrayDeclaration(node: ts.VariableDeclaration): node is ts.VariableDeclaration & {
+type ConstArrayDeclaration = ts.VariableDeclaration & {
   name: ts.Identifier;
   initializer: ts.ArrayLiteralExpression;
-} {
+  parent: ts.VariableDeclarationList;
+};
+
+function isConstArrayDeclaration(node: ts.VariableDeclaration): node is ConstArrayDeclaration {
   return (
     ts.isIdentifier(node.name) &&
     node.initializer !== undefined &&

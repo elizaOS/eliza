@@ -16,6 +16,7 @@ import {
   computePriorScreenTimeRange,
   computeScreenTimeRange,
   enumerateScreenTimeHistoryDays,
+  iosCoarseUsageRowsFromSignals,
   isSocialCategory,
   isSystemInactivityApp,
   mergeScreenTimeAggregateRows,
@@ -425,6 +426,17 @@ export class ScreenTimeDomain {
           mobileSignals.filter(
             (signal) =>
               signal.platform === "android" &&
+              inWindow(signal.observedAt, sinceMs, untilMs),
+          ),
+          sinceMs,
+          untilMs,
+        ),
+      );
+      rows.push(
+        ...iosCoarseUsageRowsFromSignals(
+          mobileSignals.filter(
+            (signal) =>
+              signal.platform === "ios" &&
               inWindow(signal.observedAt, sinceMs, untilMs),
           ),
           sinceMs,

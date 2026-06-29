@@ -118,4 +118,4 @@ critical correctness bugs (workspace collision, reload half-state) fixed + teste
 ### ⏳ 4.1 (I) iOS/Play remote-container + Android/AOSP device + Debian-live + Docker sandbox + remote-runner CI
 ### ⏳ 4.2 (G/I) Cross-platform device video/timeline capture wrappers
 ### ⏳ 4.3 (C/J/F) Non-sqlite Smithers backends + scheduled live-model CI + platform-tagged scenarios
-### ⏳ 4.4 (LOW) cleanups — elizamaker scope, sweagent docs, weeklyPct strategy, cli-inference failover, progress docs, DOM tests
+### ⏳ 4.4 (LOW) cleanups — sweagent docs, weeklyPct strategy, cli-inference failover, progress docs, DOM tests

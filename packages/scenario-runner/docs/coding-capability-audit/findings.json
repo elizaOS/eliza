@@ -1,7 +1,7 @@
 [
   {
     "domain": "Built-in code-writing tools the agent uses directly (file/edit/bash/build-validation), not via sub-agents",
-    "summary": "The direct code-writing surface is real and fairly mature. `@elizaos/plugin-coding-tools` exposes FILE (read/write/edit/grep/glob/ls), SHELL (run via /bin/bash -c with cloud/local-safe/local-yolo/capability-router dispatch + history), and WORKTREE (enter/exit) actions, gated to code/terminal/automation contexts with role gates, backed by a SandboxService path blocklist, FileStateService read-before-write mtime gating, RipgrepService, and SessionCwdService. Build/quality validation is NOT in coding-tools — it lives in `@elizaos/plugin-app-control`'s AppVerificationService (typecheck/lint/test/build/launch/browser-screenshot/structured-proof) which the APP create/edit flow wires into the coding sub-agent via a validator contract. Unit + deterministic-scenario coverage is strong (4000+ test LOC in coding-tools, real-tsc integration test for verification), but the end-to-end create→coding-agent→verify→screenshot loop is never exercised with a live model (scenarios deliberately omit START_CODING_TASK), and there are zero committed evidence artifacts (no trajectories, video, screenshots, or timelines) for this domain. plugin-elizamaker is misclassified for this domain — it is an ERC-8041 NFT drop plugin, not a code-writing tool.",
+    "summary": "The direct code-writing surface is real and fairly mature. `@elizaos/plugin-coding-tools` exposes FILE (read/write/edit/grep/glob/ls), SHELL (run via /bin/bash -c with cloud/local-safe/local-yolo/capability-router dispatch + history), and WORKTREE (enter/exit) actions, gated to code/terminal/automation contexts with role gates, backed by a SandboxService path blocklist, FileStateService read-before-write mtime gating, RipgrepService, and SessionCwdService. Build/quality validation is NOT in coding-tools — it lives in `@elizaos/plugin-app-control`'s AppVerificationService (typecheck/lint/test/build/launch/browser-screenshot/structured-proof) which the APP create/edit flow wires into the coding sub-agent via a validator contract. Unit + deterministic-scenario coverage is strong (4000+ test LOC in coding-tools, real-tsc integration test for verification), but the end-to-end create→coding-agent→verify→screenshot loop is never exercised with a live model (scenarios deliberately omit START_CODING_TASK), and there are zero committed evidence artifacts (no trajectories, video, screenshots, or timelines) for this domain. The stale NFT-drop plugin scope entry has since been removed from this domain.",
     "maturity": "partial",
     "existing": [
       {
@@ -92,12 +92,6 @@
         "component": "plugin-app-manager (AppManager + apps routes)",
         "path": "/Users/shawwalters/eliza/plugins/plugin-app-manager/src/services/app-manager.ts",
         "whatItDoes": "App discovery/launch/run-state library + /api/apps/* routes. Supports the launch step of verification; not a code-writing tool itself.",
-        "maturity": "solid"
-      },
-      {
-        "component": "plugin-elizamaker (MISCLASSIFIED)",
-        "path": "/Users/shawwalters/eliza/plugins/plugin-elizamaker/src/plugin.ts",
-        "whatItDoes": "ERC-8041 NFT drop/mint/whitelist HTTP routes + Twitter-verified Merkle proofs. Not a code-writing or build tool; appears in this domain's scope by mistake.",
         "maturity": "solid"
       }
     ],
@@ -255,12 +249,6 @@
         "severity": "medium",
         "description": "DeviceFilesystemBridge only has Node-backend round-trip tests; the Capacitor iOS/Android path (FILE target=device) is never exercised. native-bun-runtime native engine paths are only tested via web-fallback stubs. Platform coverage (AOSP/iOS/Play) for the file-write tool is effectively unproven.",
         "suggestedWork": "Add a device-backed integration harness (or at minimum a contract test with a mocked Capacitor Filesystem) that exercises read/write/list through the Capacitor backend, and document the manual on-device evidence step (screenshot + log) for AOSP/iOS in PR_EVIDENCE flow."
-      },
-      {
-        "title": "plugin-elizamaker is in-scope by mistake",
-        "severity": "low",
-        "description": "plugin-elizamaker was listed as a built-in code-writing tool but is an ERC-8041 NFT drop/mint/whitelist plugin with no file/edit/bash/build capability. Including it in coding-capability audits/tests would be noise.",
-        "suggestedWork": "Drop plugin-elizamaker from the code-writing domain scope; if NFT functionality needs coverage, route it to a web3/contracts domain instead."
       }
     ],
     "keyFiles": [

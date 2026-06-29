@@ -154,11 +154,11 @@ describe("rayPlaneHit", () => {
       quatLookAt(vec3(0, 1.5, 0), panel.position),
     );
     const hit = rayPlaneHit(ray, panel);
-    expect(hit).not.toBeNull();
-    expect(hit!.inside).toBe(true);
-    expect(hit!.u).toBeCloseTo(0, 5);
-    expect(hit!.v).toBeCloseTo(0, 5);
-    expectVecClose(hit!.world, panel.position);
+    if (!hit) throw new Error("Expected ray to hit panel centre");
+    expect(hit.inside).toBe(true);
+    expect(hit.u).toBeCloseTo(0, 5);
+    expect(hit.v).toBeCloseTo(0, 5);
+    expectVecClose(hit.world, panel.position);
   });
 
   it("aiming at the panel's top-right corner lands near (u=+0.5, v=+0.5)", () => {
@@ -166,9 +166,10 @@ describe("rayPlaneHit", () => {
     const eye = vec3(0, 1.5, 0);
     const ray = deviceRay(eye, quatLookAt(eye, corner));
     const hit = rayPlaneHit(ray, panel);
-    expect(hit?.inside).toBe(true);
-    expect(hit!.u).toBeCloseTo(0.49, 2);
-    expect(hit!.v).toBeCloseTo(0.49, 2);
+    if (!hit) throw new Error("Expected ray to hit panel corner");
+    expect(hit.inside).toBe(true);
+    expect(hit.u).toBeCloseTo(0.49, 2);
+    expect(hit.v).toBeCloseTo(0.49, 2);
   });
 
   it("a ray aimed past the panel edge misses (inside=false)", () => {

@@ -185,8 +185,8 @@ export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
 export {
-  type OrchestratorAccountsViewProps,
   OrchestratorAccountsView,
+  type OrchestratorAccountsViewProps,
 } from "./chat/widgets/agent-orchestrator-accounts-view";
 export * from "./chat/widgets/shared";
 export * from "./chat/widgets/types";

@@ -4301,11 +4301,6 @@ export async function startApiServer(opts?: {
       }
     })();
 
-    // ERC-8004 RegistryService + DropService construction has moved into
-    // elizaMakerPlugin.init() in @elizaos/plugin-elizamaker. The plugin reads
-    // the live services via getElizaMakerRegistryService() /
-    // getElizaMakerDropService() in this package.
-
     // ── Connector health monitoring ──────────────────────────────────────────
     if (state.runtime && state.config.connectors) {
       try {
