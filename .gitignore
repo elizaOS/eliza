@@ -1,6 +1,10 @@
 node_modules
 /out
 
+# triage-tests generated outputs (regenerate via packages/scripts/triage-tests.mjs)
+/coverage-matrix.csv
+/packages/scripts/triage-tests.summary.md
+
 # E2E recording output — videos, traces, contact sheets (generated locally)
 /e2e-recordings/
 # Voice trajectory video capture (binary webm — regenerate via record-voice-trajectories.mjs)
