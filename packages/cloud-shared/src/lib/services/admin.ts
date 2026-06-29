@@ -487,6 +487,11 @@ class AdminService {
       });
     }
 
+    // Inference hot path: a ban makes shouldBlockUser true — drop the user's
+    // cached IAC identity immediately (mirrors develop's banUser wiring).
+    const bannedKeys = await apiKeysRepository.listByUser(userId);
+    await invalidateInferenceAuthContextsByKeyHashes(bannedKeys.map((k) => k.key_hash));
+
     logger.warn("[Admin] User banned", { userId, adminUserId, reason });
   }
 
