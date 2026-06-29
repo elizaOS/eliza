@@ -1006,6 +1006,26 @@ const ThreadLine = React.memo(function ThreadLine({
   );
 });
 
+/**
+ * Render a settled `ThreadLine` exactly as the overlay does (floating, with copy
+ * + settings handlers, reasoning shown). Test-only seam for the component-tree
+ * render-parity contract (render-parity.contract.test.tsx, #9954), which diffs
+ * this surface's structure against ChatView's MessageContent over a shared
+ * corpus. Not part of the public overlay API — keep usage to that contract.
+ */
+export function __renderThreadLineForParity(
+  message: ShellMessage,
+): React.JSX.Element {
+  return (
+    <ThreadLine
+      message={message}
+      floating
+      onCopy={() => {}}
+      onOpenSettings={() => {}}
+    />
+  );
+}
+
 export function ContinuousChatOverlay({
   controller,
   agentName = "Eliza",
