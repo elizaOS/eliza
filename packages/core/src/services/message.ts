@@ -2632,6 +2632,26 @@ function buildV5PlannerActionSurface(params: {
 		}
 	}
 
+	// Every candidate action the message-handler proposed is described to the
+	// planner (and reinforced by action examples), so each MUST also be callable.
+	// Tiering can otherwise leave a proposed action in the described-only tier:
+	// the model then emits a tool_call the surface rejects as "unavailable",
+	// burning unavailable-tool retries and — for delegation (TASKS_SPAWN_AGENT) —
+	// silently breaking the hand-off (observed live: the planner called
+	// TASKS_SPAWN_AGENT, it was unavailable, and the build never delegated). The
+	// candidate set is already narrowed to the relevant actions, so exposing the
+	// registered ones keeps the callable surface tight.
+	for (const name of candidateActions) {
+		const normalized = normalizeActionIdentifier(name);
+		if (
+			params.actions.some(
+				(action) => normalizeActionIdentifier(action.name) === normalized,
+			)
+		) {
+			exposedActionNames.add(normalized);
+		}
+	}
+
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
