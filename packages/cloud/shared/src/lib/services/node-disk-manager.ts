@@ -133,7 +133,8 @@ export function parseDfUsedPercent(output: string): number | null {
     .filter((line) => line.length > 0 && !line.startsWith("[stderr]"));
 
   for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]!;
+    const line = lines[i];
+    if (line === undefined) continue;
     // Skip the df header row.
     if (/^Filesystem\b/i.test(line)) continue;
     const match = line.match(/(\d+)%/);
