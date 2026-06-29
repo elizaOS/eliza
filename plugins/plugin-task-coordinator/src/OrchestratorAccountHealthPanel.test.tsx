@@ -28,20 +28,17 @@ vi.mock("@elizaos/ui", () => ({
 }));
 
 // Stub the reused presentational view so the test targets THIS panel's wiring.
-vi.mock(
-  "@elizaos/ui/components/chat/widgets/agent-orchestrator-accounts-view",
-  () => ({
-    OrchestratorAccountsView: (props: {
-      overview?: { strategy?: string } | null;
-      onConnect?: () => void;
-    }) => (
-      <div
-        data-testid="accounts-view"
-        data-strategy={props.overview?.strategy ?? ""}
-      />
-    ),
-  }),
-);
+vi.mock("@elizaos/ui/components", () => ({
+  OrchestratorAccountsView: (props: {
+    overview?: { strategy?: string } | null;
+    onConnect?: () => void;
+  }) => (
+    <div
+      data-testid="accounts-view"
+      data-strategy={props.overview?.strategy ?? ""}
+    />
+  ),
+}));
 
 import { OrchestratorAccountHealthPanel } from "./OrchestratorAccountHealthPanel";
 

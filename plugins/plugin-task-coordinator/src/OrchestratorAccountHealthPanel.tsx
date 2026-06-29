@@ -15,7 +15,7 @@
  */
 
 import { client } from "@elizaos/ui";
-import { OrchestratorAccountsView } from "@elizaos/ui/components/chat/widgets/agent-orchestrator-accounts-view";
+import { OrchestratorAccountsView } from "@elizaos/ui/components";
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { type ComponentProps, useCallback, useEffect, useState } from "react";
 
