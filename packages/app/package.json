@@ -73,7 +73,9 @@
     "build:web": "ELIZA_WEB_ABSOLUTE_BASE=1 node ../../node_modules/@elizaos/vitest-vite/bin/vite.js build && node scripts/verify-chunk-safety.mjs",
     "verify:chunks": "node scripts/verify-chunk-safety.mjs",
     "predev": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --background-videos",
-    "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --background-videos"
+    "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --background-videos",
+    "capture:linux-desktop": "node scripts/capture-linux-desktop.mjs",
+    "capture:windows-desktop": "node scripts/capture-windows-desktop.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.3.4",
