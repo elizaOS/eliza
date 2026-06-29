@@ -845,6 +845,48 @@ async function waitForIosOnboardingElement<T extends Element>(
   );
 }
 
+async function waitForIosOnboardingSelectorHidden(
+  selector: string,
+  options?: { timeoutMs?: number },
+): Promise<void> {
+  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const element = document.querySelector(selector);
+    if (
+      !element ||
+      !(element instanceof HTMLElement) ||
+      element.offsetParent === null
+    ) {
+      return;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out waiting for iOS onboarding selector ${selector} to hide`,
+  );
+}
+
+async function waitForIosOnboardingButtonEnabled(
+  selector: string,
+  options?: { timeoutMs?: number },
+): Promise<HTMLButtonElement> {
+  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  let button: HTMLButtonElement | null = null;
+  while (Date.now() < deadline) {
+    button = await waitForIosOnboardingElement<HTMLButtonElement>(selector, {
+      timeoutMs: Math.min(1_000, Math.max(250, deadline - Date.now())),
+      visible: true,
+    }).catch(() => null);
+    if (button && !button.disabled) return button;
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out waiting for iOS onboarding button ${selector} to enable`,
+  );
+}
+
 function setIosOnboardingInputValue(input: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(
     HTMLInputElement.prototype,
@@ -899,24 +941,33 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
   });
 
   try {
-    const remoteOption = await waitForIosOnboardingElement<HTMLButtonElement>(
-      '[data-testid="onboarding-option-remote"]',
-      { visible: true },
-    );
-    remoteOption.click();
-
-    const remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
+    let remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
       "#onboarding-remote-address",
-      { visible: true },
-    );
+      { timeoutMs: 2_000, visible: true },
+    ).catch(() => null);
+    if (!remoteAddress) {
+      const remoteOption = await waitForIosOnboardingElement<HTMLButtonElement>(
+        '[data-testid="onboarding-option-remote"]',
+        { visible: true },
+      );
+      remoteOption.click();
+      remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
+        "#onboarding-remote-address",
+        { visible: true },
+      );
+    }
     remoteAddress.focus();
     setIosOnboardingInputValue(remoteAddress, request.apiBase);
+    remoteAddress.blur();
 
-    const remoteConnect = await waitForIosOnboardingElement<HTMLButtonElement>(
+    const remoteConnect = await waitForIosOnboardingButtonEnabled(
       '[data-testid="onboarding-remote-connect"]',
-      { visible: true },
     );
     remoteConnect.click();
+
+    await waitForIosOnboardingSelectorHidden(
+      '[data-testid="onboarding-toast"]',
+    );
 
     const home = await waitForIosOnboardingElement<HTMLElement>(
       '[data-testid="home-launcher-surface"][data-page="home"]',
@@ -934,6 +985,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
       apiBase: request.apiBase,
       homeVisible: Boolean(home),
       composerVisible: Boolean(composer),
+      onboardingHidden: true,
       storage: readIosOnboardingSmokeStorageSnapshot(),
     });
   } catch (error) {

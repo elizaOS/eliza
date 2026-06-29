@@ -1964,12 +1964,20 @@ export function injectNativeLibLegacyPackaging(content) {
  */
 function ensureCopyForkLlamaLibGuards(content) {
   if (!/\[copyForkLlamaLib\]/.test(content)) return content;
-  if (/skipped for cloud build/.test(content)) return content;
+  if (/ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/.test(content)) return content;
   const guards =
+    `        if (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
+    `            println "[copyForkLlamaLib] skipped for cloud/smoke build"\n` +
+    `            return\n` +
+    `        }\n`;
+  const oldCloudOnlyGuard =
     `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
     `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
     `            return\n` +
     `        }\n`;
+  if (content.includes(oldCloudOnlyGuard)) {
+    return content.replace(oldCloudOnlyGuard, guards);
+  }
   return content.replace(
     /(task copyForkLlamaLib\s*\{\s*\n\s*doLast\s*\{\s*\n)/,
     `$1${guards}`,
@@ -2062,8 +2070,8 @@ export function injectCopyForkLlamaLibTask(content) {
     `// There is no second inference library; do NOT delete this task or its siblings.\n` +
     `task copyForkLlamaLib {\n` +
     `    doLast {\n` +
-    `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
-    `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
+    `        if (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
+    `            println "[copyForkLlamaLib] skipped for cloud/smoke build"\n` +
     `            return\n` +
     `        }\n` +
     `        boolean stagedArm64 = false\n` +

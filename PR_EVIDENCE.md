@@ -65,24 +65,6 @@ The point of all six is the same: **prove the real thing happened.** Real model
 calls, real log lines, real pixels, real audio — not a description of what
 should happen, not a unit test asserting a mock.
 
-### Per-platform capture matrix
-
-Capture is default-required for every runnable surface a change touches. Each
-row requires all three: screenshots, a recording, and logs. If a row is not
-applicable, mark it N/A with the reason. If a row is marked TODO below, cite
-`#9944` in the PR and attach the best available interim evidence instead of
-leaving the row blank.
-
-| Surface | Required screenshots | Required recording | Required logs | Command(s) |
-| --- | --- | --- | --- | --- |
-| **web** | Before/after full-page screenshots or contact-sheet frames for the touched app route(s). | Playwright video for the touched flow. | Browser console + network trace; backend logs when the flow hits local API/runtime. | `EVIDENCE_ISSUE=<issue#> bun run test:e2e:record -- --packages=app` (or the relevant web suite from `scripts/e2e-recordings/suites.mjs`); regenerate sheets with `bun run test:e2e:record:sheets`. |
-| **cloud-frontend** | Desktop + mobile route screenshots, rest + hover, with manual-review verdicts. | Cloud e2e recording for the changed provisioning/auth/cloud flow. | Frontend console + network, plus cloud/API logs for the code path. | `bun run --cwd packages/cloud-frontend audit:cloud` and `EVIDENCE_ISSUE=<issue#> bun run test:e2e:record -- --packages=cloud-e2e`. |
-| **desktop/electrobun** | Desktop shell before/after screenshots for the native window state. | Native desktop walkthrough of the Electrobun flow. | Electrobun/main-process logs, renderer console, network/API logs. | **TODO(#9944):** orchestrated Electrobun screenshot+recording+logs command is not built yet. Interim: attach `bun run --cwd packages/app test:desktop:packaged` output plus any `/api/dev/cursor-screenshot` PNG and host screen recording. |
-| **ios-sim** | Fresh/onboarding and final simulator screenshots. | `simctl io booted recordVideo` walkthrough of the simulator flow. | Capture script log + smoke result JSON; backend host-agent log when used. | `EVIDENCE_ISSUE=<issue#> bun run test:e2e:record -- --packages=ios-sim` (skips with reason on non-macOS / no simulator). |
-| **android-emu** | Onboarding final WebView screenshot plus device-level emulator screenshot. | `adb shell screenrecord` walkthrough of the emulator flow. | Capture script log + `adb logcat`; backend host-agent log when used. | `EVIDENCE_ISSUE=<issue#> bun run test:e2e:record -- --packages=android-emu` (skips with reason when `adb` / emulator / AVD is unavailable). |
-| **linux-desktop** | Linux desktop before/after screenshots for the native shell/window state. | Linux desktop walkthrough recording. | Native shell logs, renderer console, network/API logs. | **TODO(#9944):** Linux desktop capture command is not built yet; expected direction is an ffmpeg/x11grab/Wayland-compatible recorder wired into `scripts/e2e-recordings/suites.mjs`. |
-| **windows-desktop** | Windows desktop before/after screenshots for the native shell/window state. | Windows desktop walkthrough recording. | Native shell logs, renderer console, network/API logs. | **TODO(#9944):** Windows desktop capture command is not built yet; expected direction is a gdigrab/Windows-native recorder wired into `scripts/e2e-recordings/suites.mjs`. |
-
 ### The tools that produce this evidence (all already in the repo)
 
 ```bash
@@ -111,8 +93,8 @@ bun run --cwd packages/cloud-frontend audit:cloud
 Screenshot **+** recording **+** logs are the default-required set for any change
 that touches a runnable surface — pick the row(s) for the platform(s) your change
 actually runs on. "N/A" is allowed only with an explicit reason (a platform you
-did not touch), never a blank. Rows marked **TODO** have no orchestrated tooling
-yet; capture manually and say so until the tooling lands.
+did not touch), never a blank. Rows marked **partial** still need the missing
+evidence captured manually and called out in the PR until full tooling lands.
 
 | Platform | One command (screenshot + recording + logs) | Status |
 | --- | --- | --- |

@@ -173,6 +173,8 @@ function installLatestApp(udid, appId) {
       "Could not find a Debug-iphonesimulator App.app. Build the iOS simulator app first or pass --app-path.",
     );
   }
+  tryRun("xcrun", ["simctl", "terminate", udid, appId]);
+  tryRun("xcrun", ["simctl", "uninstall", udid, appId]);
   log(`installing ${appPath}`);
   simctl(["install", udid, appPath]);
   const installed = tryRun("xcrun", [
@@ -199,48 +201,59 @@ function prefsDomainPath(udid, appId) {
   return path.join(container, "Library", "Preferences", appId);
 }
 
+function preferenceNativeKeys(key) {
+  return [`CapacitorStorage.${key}`, key];
+}
+
 function defaultsDelete(udid, appId, key) {
-  const nativeKey = `CapacitorStorage.${key}`;
+  const nativeKeys = preferenceNativeKeys(key);
+  for (const nativeKey of nativeKeys) {
+    tryRun("xcrun", [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "delete",
+      appId,
+      nativeKey,
+    ]);
+  }
+
   const domainPath = prefsDomainPath(udid, appId);
   if (domainPath) {
-    tryRun("defaults", ["delete", domainPath, nativeKey]);
-    return;
+    for (const nativeKey of nativeKeys) {
+      tryRun("defaults", ["delete", domainPath, nativeKey]);
+    }
   }
-  tryRun("xcrun", [
-    "simctl",
-    "spawn",
-    udid,
-    "defaults",
-    "delete",
-    appId,
-    nativeKey,
-  ]);
 }
 
 function defaultsWriteString(udid, appId, key, value) {
-  const nativeKey = `CapacitorStorage.${key}`;
-  const domainPath = prefsDomainPath(udid, appId);
-  if (domainPath) {
-    fs.mkdirSync(path.dirname(domainPath), { recursive: true });
-    run("defaults", ["write", domainPath, nativeKey, "-string", value], {
-      stdio: "ignore",
-    });
-    return;
+  const nativeKeys = preferenceNativeKeys(key);
+  // Write through the simulator defaults domain. Host-path `defaults write`
+  // can be visible to the host polling process while remaining invisible to
+  // the running simulator app's UserDefaults/Capacitor Preferences bridge.
+  for (const [index, nativeKey] of nativeKeys.entries()) {
+    const args = [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "write",
+      appId,
+      nativeKey,
+      "-string",
+      value,
+    ];
+    if (index === 0) {
+      run("xcrun", args, { stdio: "ignore" });
+    } else {
+      tryRun("xcrun", args);
+    }
   }
-  simctl([
-    "spawn",
-    udid,
-    "defaults",
-    "write",
-    appId,
-    nativeKey,
-    "-string",
-    value,
-  ]);
 }
 
 function defaultsReadString(udid, appId, key) {
-  const nativeKey = `CapacitorStorage.${key}`;
+  const nativeKeys = preferenceNativeKeys(key);
   const domainPath = prefsDomainPath(udid, appId);
   if (domainPath) {
     const plist = `${domainPath}.plist`;
@@ -249,23 +262,33 @@ function defaultsReadString(udid, appId, key) {
       if (json) {
         try {
           const parsed = JSON.parse(json);
-          if (typeof parsed[nativeKey] === "string") return parsed[nativeKey];
+          for (const nativeKey of nativeKeys) {
+            if (typeof parsed[nativeKey] === "string") return parsed[nativeKey];
+          }
         } catch {
           // Fall through to defaults read.
         }
       }
     }
-    return tryRun("defaults", ["read", domainPath, nativeKey]);
+    for (const nativeKey of nativeKeys) {
+      const value = tryRun("defaults", ["read", domainPath, nativeKey]);
+      if (value !== null) return value;
+    }
   }
-  return tryRun("xcrun", [
-    "simctl",
-    "spawn",
-    udid,
-    "defaults",
-    "read",
-    appId,
-    nativeKey,
-  ]);
+
+  for (const nativeKey of nativeKeys) {
+    const value = tryRun("xcrun", [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "read",
+      appId,
+      nativeKey,
+    ]);
+    if (value !== null) return value;
+  }
+  return null;
 }
 
 function flushPreferences(udid) {
@@ -281,6 +304,7 @@ function clearFirstRunState(udid, appId) {
     "eliza:setup:step",
     "eliza:onboarding-complete",
     "eliza:mobile-runtime-mode",
+    "eliza.background.config",
     "elizaos:first-run:force-fresh",
   ]) {
     defaultsDelete(udid, appId, key);
@@ -393,6 +417,11 @@ async function main() {
     if (result.homeVisible !== true || result.composerVisible !== true) {
       throw new Error(
         `iOS onboarding smoke result lacked home/composer: ${JSON.stringify(result)}`,
+      );
+    }
+    if (result.onboardingHidden !== true) {
+      throw new Error(
+        `iOS onboarding smoke did not prove onboarding was hidden: ${JSON.stringify(result)}`,
       );
     }
     const activeServer = result.storage?.["elizaos:active-server"];

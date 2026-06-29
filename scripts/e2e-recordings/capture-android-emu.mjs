@@ -8,6 +8,7 @@ import {
 import {
   ensureEmulatorBooted,
   ensureEmulatorPermissive,
+  installApk,
   listAvds,
   listDevices,
   resolveAdb,
@@ -92,7 +93,7 @@ async function ensureDebugApk(logSink) {
   try {
     const apk = resolveApk(process.env.ELIZA_ANDROID_APK);
     logSink.log(`using debug APK ${apk}`);
-    return;
+    return apk;
   } catch (error) {
     if (
       hasArg(args, "--skip-build") ||
@@ -116,6 +117,9 @@ async function ensureDebugApk(logSink) {
       label: "bun run --cwd packages/app build:android",
     },
   );
+  const apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+  logSink.log(`using debug APK ${apk}`);
+  return apk;
 }
 
 async function main() {
@@ -152,7 +156,9 @@ async function main() {
     const serial = await selectOrBootEmulator(adb, logSink.log);
     process.env.ANDROID_SERIAL = serial;
     await ensureEmulatorPermissive(adb, serial, { log: logSink.log });
-    await ensureDebugApk(logSink);
+    const apk = await ensureDebugApk(logSink);
+    logSink.log(`installing debug APK on ${serial}: ${apk}`);
+    installApk(adb, serial, apk);
 
     hostAgent = await startDeviceE2EHostAgent({
       repoRoot: REPO_ROOT,
@@ -213,7 +219,7 @@ async function main() {
     copyArtifact(logSink.logPath, recordingResultDir, "capture.log", {
       required: false,
     });
-    writeCaptureManifest(path.join(recordingResultDir, "manifest.json"), {
+    const manifest = {
       platform: "android-emu",
       serial,
       evidenceDir,
@@ -224,7 +230,9 @@ async function main() {
         logcat,
         captureLog: logSink.logPath,
       },
-    });
+    };
+    writeCaptureManifest(path.join(recordingResultDir, "manifest.json"), manifest);
+    writeCaptureManifest(path.join(evidenceDir, "manifest.json"), manifest);
     logSink.log(`capture artifacts written to ${evidenceDir}`);
   } catch (error) {
     logSink.log(

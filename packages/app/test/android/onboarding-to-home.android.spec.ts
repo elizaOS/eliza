@@ -6,6 +6,7 @@
 // host agent exposed through adb reverse, and asserts the post-onboarding home
 // surface. No desktop Chromium or page.route fixtures are involved.
 import path from "node:path";
+import type { Locator } from "@playwright/test";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import { expect, ORIGIN, test } from "./android-harness";
 
@@ -15,6 +16,15 @@ const ARTIFACT_DIR = path.join(
   "test-results",
   "android-onboarding-to-home",
 );
+
+async function activate(locator: Locator) {
+  try {
+    await locator.tap();
+  } catch (error) {
+    if (!/does not support tap/i.test(String(error))) throw error;
+    await locator.click();
+  }
+}
 
 test.describe
   .serial("android onboarding to home (real Capacitor WebView)", () => {
@@ -52,12 +62,12 @@ test.describe
 
         const remoteOption = page.getByTestId("onboarding-option-remote");
         await expect(remoteOption).toBeVisible({ timeout: 30_000 });
-        await remoteOption.tap();
+        await activate(remoteOption);
 
         const remoteConnect = page.getByTestId("onboarding-remote-connect");
         await expect(remoteConnect).toBeVisible({ timeout: 30_000 });
         await page.locator("#onboarding-remote-address").fill(HOST_AGENT_BASE);
-        await remoteConnect.tap();
+        await activate(remoteConnect);
 
         await expect(onboarding).toBeHidden({ timeout: 90_000 });
 

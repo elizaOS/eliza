@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Linux desktop evidence capture (issue #9944): screenshot + screen recording +
 // an info log of the headed X11 desktop (incl. the Electrobun window), written
-// to `.github/issue-evidence/`. Fills the linux-desktop TODO left by #9983.
+// to `.github/issue-evidence/`.
 // Skips with a reason (exit 0) when ffmpeg or an X display is missing — so a
 // headless CI run is a clean no-op.
 //

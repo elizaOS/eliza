@@ -152,7 +152,7 @@ async function main() {
     copyArtifact(logSink.logPath, recordingResultDir, "capture.log", {
       required: false,
     });
-    writeCaptureManifest(path.join(recordingResultDir, "manifest.json"), {
+    const manifest = {
       platform: "ios-sim",
       udid,
       evidenceDir,
@@ -164,7 +164,9 @@ async function main() {
         resultJson,
         captureLog: logSink.logPath,
       },
-    });
+    };
+    writeCaptureManifest(path.join(recordingResultDir, "manifest.json"), manifest);
+    writeCaptureManifest(path.join(evidenceDir, "manifest.json"), manifest);
     logSink.log(`capture artifacts written to ${evidenceDir}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -230,7 +232,7 @@ async function main() {
     copyArtifact(logSink.logPath, recordingResultDir, "capture.log", {
       required: false,
     });
-    writeCaptureManifest(path.join(recordingResultDir, "manifest.json"), {
+    const manifest = {
       platform: "ios-sim",
       status: "failed",
       error: errorMessage,
@@ -244,7 +246,9 @@ async function main() {
         resultJson,
         captureLog: logSink.logPath,
       },
-    });
+    };
+    writeCaptureManifest(path.join(recordingResultDir, "manifest.json"), manifest);
+    writeCaptureManifest(path.join(evidenceDir, "manifest.json"), manifest);
     throw error;
   } finally {
     if (recording) await recording.stop();

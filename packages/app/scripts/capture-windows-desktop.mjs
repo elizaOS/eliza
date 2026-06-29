@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Windows desktop evidence capture (issue #9944): screenshot + screen recording
 // + an info log of the headed desktop (incl. the Electrobun window) via ffmpeg
-// `gdigrab`, written to `.github/issue-evidence/`. Fills the windows-desktop
-// TODO left by #9983. Skips with a reason (exit 0) when not on Windows or ffmpeg
-// is missing — so a non-Windows CI run is a clean no-op.
+// `gdigrab`, written to `.github/issue-evidence/`.
+// Skips with a reason (exit 0) when not on Windows or ffmpeg is missing — so a
+// non-Windows CI run is a clean no-op.
 //
 // Usage (from packages/app):
 //   bun run capture:windows-desktop -- --issue <n> --slug <s> [--duration <sec>]
