@@ -1,4 +1,6 @@
+import * as crypto from "node:crypto";
 import * as path from "node:path";
+import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { buildElizaAgentArchive } from "./archive-format.js";
 import { assemblePayload } from "./archive-writer.js";
@@ -8,6 +10,33 @@ import { tierMemories } from "./memory-tiering.js";
 import { readOcAgentHome } from "./openclaw-reader.js";
 
 const FIXTURE = path.join(__dirname, "__tests__", "fixtures", "oc-home");
+
+/**
+ * Reverse the self-contained V1 `.eliza-agent` format (inverse of
+ * archive-format.ts) so the test can assert a true crypto round-trip without
+ * importing the agent runtime. Layout: magic(15) iter(4) salt(32) iv(12)
+ * tag(16) ciphertext(rest).
+ */
+function decryptArchive(buf: Buffer, password: string): unknown {
+  let off = 15; // skip "ELIZA_AGENT_V1\n"
+  const iterations = buf.readUInt32BE(off);
+  off += 4;
+  const salt = buf.subarray(off, off + 32);
+  off += 32;
+  const iv = buf.subarray(off, off + 12);
+  off += 12;
+  const tag = buf.subarray(off, off + 16);
+  off += 16;
+  const ciphertext = buf.subarray(off);
+  const key = crypto.pbkdf2Sync(password, salt, iterations, 32, "sha256");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  const compressed = Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]);
+  return JSON.parse(gunzipSync(compressed).toString("utf-8"));
+}
 
 describe("openclaw-reader", () => {
   it("classifies a home into typed source, tolerant of layout", () => {
@@ -167,6 +196,77 @@ describe("archive round-trip", () => {
   });
   it("rejects a too-short password", () => {
     expect(() => buildElizaAgentArchive({ a: 1 }, "")).toThrow();
+  });
+  it("round-trips: decrypt+decompress+parse yields a PayloadSchema-shaped object", () => {
+    const plan = buildMigrationPlan({ from: FIXTURE, agentId: "tess" });
+    const { payload } = assemblePayload({
+      agentId: plan.ids.agentId,
+      sourceSlug: "tess",
+      character: plan.character,
+      entityId: plan.ids.entityId,
+      roomId: plan.ids.roomId,
+      memories: plan.memories,
+    });
+    const archive = buildElizaAgentArchive(payload, "round-trip-password");
+    const decoded = decryptArchive(archive, "round-trip-password") as Record<
+      string,
+      unknown
+    >;
+
+    // All PayloadSchema top-level fields importAgent expects must be present.
+    for (const field of [
+      "version",
+      "exportedAt",
+      "sourceAgentId",
+      "agent",
+      "entities",
+      "memories",
+      "components",
+      "rooms",
+      "participants",
+      "relationships",
+      "worlds",
+      "tasks",
+      "logs",
+    ]) {
+      expect(decoded).toHaveProperty(field);
+    }
+    expect(decoded.version).toBe(1);
+    const agent = decoded.agent as Record<string, unknown>;
+    expect(agent.name).toBe("Tess");
+    const memories = decoded.memories as Array<Record<string, unknown>>;
+    expect(memories.length).toBe(plan.memories.length);
+
+    // Referential integrity: every memory points at the exported room/entity/agent.
+    const room = (decoded.rooms as Array<Record<string, unknown>>)[0];
+    const entity = (decoded.entities as Array<Record<string, unknown>>)[0];
+    const world = (decoded.worlds as Array<Record<string, unknown>>)[0];
+    for (const m of memories) {
+      expect(m.roomId).toBe(room.id);
+      expect(m.entityId).toBe(entity.id);
+      expect(m.agentId).toBe(agent.id);
+      const meta = m.metadata as Record<string, unknown>;
+      expect(meta.source).toBe("openclaw-migration");
+    }
+    expect(world.agentId).toBe(agent.id);
+
+    // Firewall holds inside the archive too (default firewall=true).
+    const blob =
+      JSON.stringify(decoded.characterConfig) + JSON.stringify(agent);
+    expect(blob).not.toContain("firewalled");
+  });
+  it("round-trip fails with a wrong password (auth-tag mismatch)", () => {
+    const plan = buildMigrationPlan({ from: FIXTURE, agentId: "tess" });
+    const { payload } = assemblePayload({
+      agentId: plan.ids.agentId,
+      sourceSlug: "tess",
+      character: plan.character,
+      entityId: plan.ids.entityId,
+      roomId: plan.ids.roomId,
+      memories: plan.memories,
+    });
+    const archive = buildElizaAgentArchive(payload, "correct-password");
+    expect(() => decryptArchive(archive, "wrong-password")).toThrow();
   });
 });
 
