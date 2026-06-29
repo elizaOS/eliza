@@ -38,14 +38,11 @@ mock or a fixture-replay unless explicitly marked.
 | Benchmark | Score | Detail | n | Real? |
 |---|---|---|---|---|
 | `mint` | **0.417** | full (tools+feedback), 5/12 passed; humaneval+mbpp+gsm8k subtasks, max-turns 5 | 12 | ✅ live — **required a grader fix**, see §5 |
-| `context_bench` | **0.833** | NIAH retrieval, quick mode (12 tasks); avg semantic sim + lost-in-middle captured | 12 | ✅ live — **reused server via the §10 fix** |
-| `agentbench` (db) | **1.00** | database env, `test` split; "Eliza benchmark server connected" (reused) — **n=1, not a robust score**, proves the path | 1 | ✅ live — **reused server via the §10 fix** |
 | `tau_bench` (retail) | — gated — | harness reuse **confirmed** (server connected), but env data absent → no score | 0 | ⛔ dataset-gated, see §6 |
 
-The eliza harness server was booted **once** on Cerebras and reused for `mint`,
-`context_bench`, and `tau_bench` via `ELIZA_BENCH_URL` + a shared
-`ELIZA_BENCH_TOKEN` (§4) — no per-benchmark cold boot. `context_bench` only
-reused it because of the §10 fix.
+The eliza harness server was booted **once** on Cerebras and reused for both
+`mint` and `tau_bench` via `ELIZA_BENCH_URL` + a shared `ELIZA_BENCH_TOKEN`
+(§4) — no per-benchmark cold boot.
 
 ### The headline finding for #10193
 
@@ -164,26 +161,16 @@ target is pickled → `Can't pickle local object` → the process never runs →
 result empty → scored as failed. So **every** MINT code task was a false
 failure, independent of model quality.
 
-**Fix (committed):** hoist the per-call `unsafe_execute` **local closure** out to
-a module-level `_unsafe_execute(solution_code, test_code, timeout, result)` and
-pass its inputs as `Process` args. A module-level function is picklable, so the
-child runs correctly under **both** the default **`spawn`** start method
-(macOS/Windows) and **`fork`** (Linux); the `Manager().list()` proxy is itself
-picklable and shared across the process boundary. No start-method override is
-forced, so the fix is portable to Windows (where `fork` is unavailable) and
-avoids the fork-from-a-threaded-parent deadlock caveat:
+**Fix (committed):** use an explicit `fork` context for the Manager + Process,
+falling back to the default context where `fork` is unavailable:
 
 ```python
-def _unsafe_execute(solution_code, test_code, timeout, result):
-    # module-level (not a closure) → picklable under spawn and fork
-    ...
-    result.append("passed")  # or "timed out" / f"failed: {e}"
-
-manager = multiprocessing.Manager()
-result = manager.list()
-p = multiprocessing.Process(
-    target=_unsafe_execute, args=(solution_code, test_code, timeout, result)
-)
+try:
+    ctx = multiprocessing.get_context("fork")
+except ValueError:
+    ctx = multiprocessing.get_context()
+manager = ctx.Manager(); result = manager.list()
+p = ctx.Process(target=unsafe_execute)
 ```
 
 **Verified directly:**
@@ -232,11 +219,10 @@ gap).
 is **registered but missing from `ci_coverage.py`** — a registry↔coverage drift
 worth a sync test). Classification of every id for a Cerebras `gpt-oss-120b` run:
 
-### A. Ran real on Cerebras this session (9)
+### A. Ran real on Cerebras this session (7)
 `mmlu`, `gsm8k`, `humaneval`, `mt_bench`, `bfcl` (direct, real graded) ·
-`action-calling` (direct, smoke-only) · `mint`, `context_bench`, `agentbench`
-(eliza harness, real graded — `mint` after the §5 fix, the latter two via the
-§10 reuse fix). `tau_bench` exercised the eliza harness-reuse path but is
+`action-calling` (direct, smoke-only) · `mint` (eliza harness, real graded
+after the §5 fix). `tau_bench` exercised the eliza harness-reuse path but is
 **dataset-gated** (§6, listed in C).
 
 ### B. Eliza-harness-compatible, runnable on Cerebras, not run this session (needs a server boot/reuse)
@@ -379,23 +365,6 @@ already proves the "exact-correct-system reaches 1.0" property for the suite.
 
 ---
 
-## 10. Fix shipped — server reuse for `agentbench` / `context_bench`
-
-§4.4 documented that `agentbench` and `context_bench` cold-booted their own
-benchmark server unconditionally (no `ELIZA_BENCH_URL` reuse), so a full sweep
-paid the ~13-min boot + tsx-cache purge per benchmark. Both now honor
-`ELIZA_BENCH_URL` (the same guard `mint`/`tau_bench`/`standard` already use):
-when set, attach an `ElizaClient` to the running server; when unset, behavior is
-unchanged.
-
-Proven live: `context_bench --quick` on Cerebras `gpt-oss-120b` (§1, **0.833**)
-attached to the **already-running** shared server — no second boot. Regression-
-safe: **94** context-bench + **81** agentbench tests pass (the pre-existing
-`test_card_game_autofetch` `BINARY_RELPATH` collection error is unrelated and
-also present on `develop`).
-
----
-
 ## What this run does *not* cover (still open in #10193)
 
 - HITL multi-account **codex / `gpt-5.5`** runner (no codex adapter / account
@@ -405,11 +374,7 @@ also present on `develop`).
 - A single `certify-all` entrypoint that drives all four harnesses + the HITL
   pass and rewrites the committed scoreboard.
 - Filling missing hermes/openclaw/smithers `agent_fn` factories.
-- ~~Wiring `ELIZA_BENCH_URL` reuse into `agentbench`/`context_bench`.~~ **Done — §10.**
-- A working end-to-end `mint` perfect oracle (§9d) — the standard-benchmark
-  oracle covers the property; the `mint` mock-oracle protocol fix is a follow-up.
-- Running the hermes/openclaw/smithers harnesses themselves (Docker/Modal-gated)
-  and the dataset/audio/VM-gated benchmarks in §7C.
+- Wiring `ELIZA_BENCH_URL` reuse into `agentbench`/`context_bench`.
 
 These remain the build-out half of the issue; this run establishes the real
 `gpt-oss-120b`/Cerebras baseline they should sit on top of, and removes the
