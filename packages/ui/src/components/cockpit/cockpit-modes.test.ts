@@ -1,0 +1,127 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildCockpitCreateTaskInput,
+  cockpitModeModel,
+  cockpitModeProviderSource,
+  cockpitModeToProviderPolicy,
+} from "./cockpit-modes";
+
+describe("cockpit-modes lowering", () => {
+  describe("cockpitModeProviderSource", () => {
+    it("eliza-cloud + opencode source from eliza-cloud; subscription/experimental from the vendor", () => {
+      expect(
+        cockpitModeProviderSource({
+          mode: "eliza-cloud",
+          agentType: "elizaos",
+          tier: "small",
+        }),
+      ).toBe("eliza-cloud");
+      expect(
+        cockpitModeProviderSource({ mode: "opencode", agentType: "opencode" }),
+      ).toBe("eliza-cloud");
+      expect(
+        cockpitModeProviderSource({
+          mode: "subscription",
+          agentType: "claude",
+        }),
+      ).toBe("user-claude");
+      expect(
+        cockpitModeProviderSource({ mode: "subscription", agentType: "codex" }),
+      ).toBe("user-openai");
+      expect(
+        cockpitModeProviderSource({
+          mode: "experimental",
+          agentType: "codex",
+          proxy: "codex-cli",
+        }),
+      ).toBe("user-openai");
+    });
+  });
+
+  describe("cockpitModeModel", () => {
+    it("eliza-cloud maps tier→model; others pass through (or undefined)", () => {
+      expect(
+        cockpitModeModel({
+          mode: "eliza-cloud",
+          agentType: "elizaos",
+          tier: "small",
+        }),
+      ).toBe("gpt-oss-120b");
+      expect(
+        cockpitModeModel({
+          mode: "eliza-cloud",
+          agentType: "elizaos",
+          tier: "large",
+        }),
+      ).toBe("zai-glm-4.7");
+      expect(
+        cockpitModeModel({ mode: "opencode", agentType: "opencode" }),
+      ).toBeUndefined();
+      expect(
+        cockpitModeModel({
+          mode: "subscription",
+          agentType: "claude",
+          model: "opus",
+        }),
+      ).toBe("opus");
+    });
+  });
+
+  describe("cockpitModeToProviderPolicy", () => {
+    it("produces the {preferredFramework, providerSource, model} the create route accepts", () => {
+      expect(
+        cockpitModeToProviderPolicy({
+          mode: "eliza-cloud",
+          agentType: "elizaos",
+          tier: "large",
+        }),
+      ).toEqual({
+        preferredFramework: "elizaos",
+        providerSource: "eliza-cloud",
+        model: "zai-glm-4.7",
+      });
+      expect(
+        cockpitModeToProviderPolicy({
+          mode: "subscription",
+          agentType: "claude",
+        }),
+      ).toEqual({
+        preferredFramework: "claude",
+        providerSource: "user-claude",
+      });
+    });
+  });
+
+  describe("buildCockpitCreateTaskInput", () => {
+    it("derives the title from the goal's first line and attaches the policy", () => {
+      const input = buildCockpitCreateTaskInput({
+        goal: "Fix the auth bug\nthen open a PR",
+        mode: { mode: "subscription", agentType: "codex" },
+      });
+      expect(input.title).toBe("Fix the auth bug");
+      expect(input.goal).toBe("Fix the auth bug\nthen open a PR");
+      expect(input.providerPolicy).toEqual({
+        preferredFramework: "codex",
+        providerSource: "user-openai",
+      });
+    });
+
+    it("honors an explicit title and truncates a long derived title", () => {
+      expect(
+        buildCockpitCreateTaskInput({
+          goal: "do a thing",
+          title: "Custom Title",
+          mode: { mode: "opencode", agentType: "opencode" },
+        }).title,
+      ).toBe("Custom Title");
+      const long = "x".repeat(120);
+      const t = buildCockpitCreateTaskInput({
+        goal: long,
+        mode: { mode: "opencode", agentType: "opencode" },
+      }).title;
+      expect(t.length).toBeLessThanOrEqual(80);
+      expect(t.endsWith("…")).toBe(true);
+    });
+  });
+});
