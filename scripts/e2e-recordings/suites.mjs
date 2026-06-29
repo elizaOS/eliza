@@ -79,6 +79,42 @@ export const UI_E2E_SUITES = [
   },
 ];
 
+// Per-platform native capture suites (issue #9944). Unlike the package-based
+// UI suites above, each runs a standalone ESM helper that emits a screenshot +
+// recording + log tail into .github/issue-evidence/<issue>-<slug>/<platform>/
+// and SKIPS WITH A REASON when its platform/tooling/device is unavailable.
+// run-all.mjs executes these only with the `--capture` / `--capture-only` flag
+// (or E2E_CAPTURE=1), so a deviceless CI run of `test:e2e:record` is unaffected.
+export const CAPTURE_SUITES = [
+  {
+    name: "android-emu",
+    displayName: "Android device/emulator capture",
+    platform: "android",
+    module: "scripts/e2e-recordings/capture/android-capture.mjs",
+    exportName: "captureAndroid",
+    coverage:
+      "Screenshot (screencap) + screen recording (screenrecord) + logcat tail from a connected Android device or emulator; skips when adb or a device is absent.",
+  },
+  {
+    name: "ios-sim",
+    displayName: "iOS Simulator capture",
+    platform: "ios",
+    module: "scripts/e2e-recordings/capture/ios-capture.mjs",
+    exportName: "captureIos",
+    coverage:
+      "Screenshot + recordVideo + simctl log tail from a booted iOS Simulator; skips on non-macOS hosts or when no simulator is booted.",
+  },
+  {
+    name: "desktop",
+    displayName: "Desktop (Linux/Windows) capture",
+    platform: "desktop",
+    module: "scripts/e2e-recordings/capture/desktop-capture.mjs",
+    exportName: "captureDesktop",
+    coverage:
+      "ffmpeg x11grab (Linux) / gdigrab (Windows) screenshot + recording + info log of the desktop; skips when ffmpeg or a reachable display is absent.",
+  },
+];
+
 export const UI_E2E_COVERED_BY_APP = [
   {
     name: "app-core",

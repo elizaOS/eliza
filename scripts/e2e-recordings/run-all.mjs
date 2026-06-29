@@ -14,13 +14,23 @@
  *   --skip-tests              Skip running tests; only regenerate sheets + viewer
  *   --skip-sheets             Skip generating contact sheets
  *   --skip-viewer             Skip generating the viewer index
+ *   --capture                 Also run the per-platform native capture suites
+ *                             (android-emu / ios-sim / desktop) — issue #9944.
+ *                             Each self-skips when its platform/tooling/device
+ *                             is unavailable. Also enabled by E2E_CAPTURE=1.
+ *   --capture-only            Run ONLY the capture suites (no UI suites/sheets).
  */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { RECORDINGS_DIR, REPO_ROOT, UI_E2E_SUITES } from "./suites.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  CAPTURE_SUITES,
+  RECORDINGS_DIR,
+  REPO_ROOT,
+  UI_E2E_SUITES,
+} from "./suites.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +51,15 @@ const onlyPackages = flagMap.has("packages")
       .split(",")
       .map((s) => s.trim())
   : null;
+
+const captureOnly =
+  flagMap.get("capture-only") === true ||
+  flagMap.get("capture-only") === "true";
+const runCapture =
+  captureOnly ||
+  flagMap.get("capture") === true ||
+  flagMap.get("capture") === "true" ||
+  process.env.E2E_CAPTURE === "1";
 
 const skipTests =
   flagMap.get("skip-tests") === true || flagMap.get("skip-tests") === "true";
@@ -136,6 +155,45 @@ function runPackageTests(pkg) {
   return { name: pkg.name, passed, skipped: false, exitCode };
 }
 
+/**
+ * Run a single per-platform capture suite (issue #9944) by importing its helper
+ * and calling its exported capture function. The helper self-skips with a reason
+ * (no throw) when its platform/tooling/device is unavailable.
+ * Returns { name, passed, skipped, exitCode }.
+ */
+async function runCaptureSuite(suite, options = {}) {
+  const moduleUrl = pathToFileURL(path.join(REPO_ROOT, suite.module)).href;
+  let result;
+  try {
+    const mod = await import(moduleUrl);
+    const fn = mod[suite.exportName];
+    if (typeof fn !== "function") {
+      console.warn(
+        `  [skip] ${suite.name}: ${suite.exportName} not exported from ${suite.module}`,
+      );
+      return { name: suite.name, passed: false, skipped: true, exitCode: -1 };
+    }
+    result = await fn(options);
+  } catch (err) {
+    console.warn(`  ✗ ${suite.name} failed: ${err.message}`);
+    return { name: suite.name, passed: false, skipped: false, exitCode: 1 };
+  }
+
+  if (result.skipped) {
+    console.warn(`  [skip] ${suite.name}: ${result.reason}`);
+    return { name: suite.name, passed: false, skipped: true, exitCode: -1 };
+  }
+  if (result.error) {
+    console.warn(`  ✗ ${suite.name} failed: ${result.error}`);
+    return { name: suite.name, passed: false, skipped: false, exitCode: 1 };
+  }
+  for (const [kind, file] of Object.entries(result.artifacts ?? {})) {
+    if (file) console.log(`  • ${kind}: ${file}`);
+  }
+  console.log(`  ✓ ${suite.name} captured`);
+  return { name: suite.name, passed: true, skipped: false, exitCode: 0 };
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -159,7 +217,9 @@ async function main() {
   // ─── Step 1: Run tests ─────────────────────────────────────
   const results = [];
 
-  if (skipTests) {
+  if (captureOnly) {
+    console.log("Capture-only run: skipping UI E2E suites.");
+  } else if (skipTests) {
     console.log("Skipping test runs (--skip-tests).");
     for (const pkg of packagesToRun) {
       results.push({
@@ -178,8 +238,23 @@ async function main() {
     }
   }
 
+  // ─── Step 1b: Per-platform native capture suites (opt-in) ──
+  if (runCapture) {
+    banner("Running per-platform capture suites (#9944)");
+    // Forward shared capture flags so `capture:all --serial X --seconds 3` etc. work.
+    const captureOptions = {};
+    for (const key of ["issue", "slug", "seconds", "serial", "out"]) {
+      const value = flagMap.get(key);
+      if (value !== undefined && value !== true) captureOptions[key] = value;
+    }
+    for (const suite of CAPTURE_SUITES) {
+      console.log(`\n▶ ${suite.name}`);
+      results.push(await runCaptureSuite(suite, captureOptions));
+    }
+  }
+
   // ─── Step 2: Generate contact sheets ──────────────────────
-  if (!skipSheets) {
+  if (!skipSheets && !captureOnly) {
     banner("Generating contact sheets");
     const sheetsScript = path.join(SCRIPTS_DIR, "generate-contact-sheets.mjs");
     if (fs.existsSync(sheetsScript)) {
@@ -197,7 +272,7 @@ async function main() {
   }
 
   // ─── Step 3: Generate viewer ───────────────────────────────
-  if (!skipViewer) {
+  if (!skipViewer && !captureOnly) {
     banner("Generating viewer index");
     const viewerScript = path.join(SCRIPTS_DIR, "generate-viewer.mjs");
     if (fs.existsSync(viewerScript)) {
