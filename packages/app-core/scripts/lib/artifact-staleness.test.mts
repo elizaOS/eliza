@@ -9,9 +9,9 @@ import {
   fileMtime,
   maxMtimeUnder,
 } from "./artifact-staleness.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./repo-root.mjs";
 
-const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",

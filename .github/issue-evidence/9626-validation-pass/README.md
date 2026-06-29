@@ -56,6 +56,11 @@ Focused validation for the current guarded-cleanup/build-process slices in:
 - `ANDROID_SERIAL=emulator-5554 bun run --cwd packages/app test:e2e:android:local`
   - APK install succeeded on the emulator.
   - The local-chat path failed during smoke-model staging because the emulator reported `No space left on device`; `android-emulator-df-after-local-chat-failure.log` shows `/data` at 99% with 161 MB available.
+- `ANDROID_SERIAL=emulator-5554 bun run --cwd packages/app test:e2e:android:local`
+  - Rerun artifact: `app-android-e2e-local-emulator-rerun.log`.
+  - Cleared stale emulator staging artifacts from `/data/local/tmp` (`eliza-1-2b-128k.gguf` plus `elz`), increasing `/data` free space to about 10 GB (`android-emulator-df-after-clearing-local-tmp.log`).
+  - Model staging then succeeded, but the Android local-agent API still did not become healthy within 240 token polls.
+  - Follow-up artifacts: `android-e2e-logcat-emulator-5554-local-rerun.txt` and `android-emulator-df-after-local-rerun-timeout.log`.
 - `ANDROID_SERIAL=emulator-5554 bun run --cwd packages/app test:e2e:android:routes`
   - APK launched on the emulator.
   - The on-device agent health endpoint did not become healthy within 180 seconds; logcat is saved as `android-e2e-logcat-emulator-5554.txt`.

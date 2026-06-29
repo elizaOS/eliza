@@ -23,6 +23,12 @@
   - Returns a provider failure before remote fetch when image input is missing or blank.
 - `packages/agent/src/providers/media-provider.test.ts`
   - Covers missing OpenAI image input, blank Google image input, and xAI URL trimming before request serialization.
+- `packages/core/src/services/message.ts`
+  - Removes the planner-provider `return ""` / post-filter path for unknown provider names; unknown planner providers are logged and omitted directly.
+  - Removes the optional-chain empty-string fallback when extracting recent conversation text after the type guard has already proved message text exists.
+  - Makes missing planner retrieval message text observable with a structured `service:message` warning before retrieval receives an empty query string.
+- `packages/core/src/__tests__/message-runtime-stage1.test.ts`
+  - Adds a regression guard for the specific message-pipeline empty-string fallback patterns called out in the issue.
 
 ## Validation
 
@@ -41,9 +47,12 @@
   - Result: 1 file passed, 10 tests passed.
 - `bun run --cwd packages/agent typecheck`
 - `git diff --check -- packages/agent/src/providers/media-provider.ts packages/agent/src/providers/media-provider.test.ts`
+- `bunx vitest run --config packages/core/vitest.config.ts packages/core/src/__tests__/message-runtime-stage1.test.ts --coverage.enabled=false`
+  - Result: 1 file passed, 67 tests passed.
 - Targeted search:
   - No matches for the removed empty provider fallback.
   - No matches for the previous handled-message casts in `remote-plugin-bridge.ts`.
   - No route proxy `as unknown as NonNullable<Plugin["routes"]>[number]` cast.
   - No evaluator processor `.result as never` or response-handler `.patch as never` casts remain in `remote-plugin-adapter.ts`.
   - No `imageUrl ?? ""` fallbacks remain in `media-provider.ts`.
+  - No matches for the three guarded message-pipeline fallback patterns in `message-runtime-stage1.test.ts`.

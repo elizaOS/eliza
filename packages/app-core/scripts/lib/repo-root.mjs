@@ -75,25 +75,3 @@ export function resolveRepoRootFromImportMeta(
     throw error;
   }
 }
-
-function hasElizaWorkspaceShape(dir) {
-  return (
-    existsSync(path.join(dir, "package.json")) &&
-    existsSync(path.join(dir, "packages", "app-core", "package.json")) &&
-    existsSync(path.join(dir, "packages", "agent", "package.json")) &&
-    existsSync(path.join(dir, "packages", "scripts"))
-  );
-}
-export function resolveElizaWorkspaceRoot(startDir = process.cwd()) {
-  let current = path.resolve(startDir);
-  while (true) {
-    if (hasElizaWorkspaceShape(current)) return current;
-    const parent = path.dirname(current);
-    if (parent === current) throw new Error(`Could not resolve eliza workspace root starting from ${startDir}`);
-    current = parent;
-  }
-}
-export function resolveElizaWorkspaceRootFromImportMeta(importMetaUrl, { fallbackToCwd = false, cwd = process.cwd() } = {}) {
-  try { return resolveElizaWorkspaceRoot(path.dirname(fileURLToPath(importMetaUrl))); }
-  catch (error) { if (fallbackToCwd) return resolveElizaWorkspaceRoot(cwd); throw error; }
-}

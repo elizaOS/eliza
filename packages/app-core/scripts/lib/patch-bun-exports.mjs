@@ -17,7 +17,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./repo-root.mjs";
 
 const ELIZA_CORE_RUNTIME_FILES = [
   "dist/index.js",
@@ -25,7 +25,7 @@ const ELIZA_CORE_RUNTIME_FILES = [
   "dist/node/index.node.js",
 ];
 
-const REPO_ROOT = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
+const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const CLEANUP_HELPER_SCRIPT = resolve(
   REPO_ROOT,
   "packages",
