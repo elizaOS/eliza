@@ -815,6 +815,21 @@ class X402FacilitatorService {
         return { isValid: false, invalidReason: "missing_authorization" };
       }
       payerForError = authorization.from;
+      // SECURITY: gate on the SIGNED amount actually transferred on-chain
+      // (`authorization.value` — bound by the EIP-712 signature below and moved
+      // by settle(): transferWithAuthorization for "exact", permit+transferFrom
+      // for "upto"), not only the client-supplied `accepted.amount` checked at
+      // step 3. `accepted.amount` is unsigned request metadata, so a value gate
+      // that relies on it alone can be satisfied independently of what is
+      // actually paid. Mirrors the exact_permit `payAmount` gate above.
+      // Legitimate clients sign value == requirements.amount → never false-rejects.
+      if (BigInt(authorization.value) < BigInt(paymentRequirements.amount)) {
+        return {
+          isValid: false,
+          invalidReason: "insufficient_amount",
+          payer: authorization.from,
+        };
+      }
       if (BigInt(authorization.validBefore) <= BigInt(now)) {
         return {
           isValid: false,
