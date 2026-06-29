@@ -1,7 +1,0 @@
-UCLA nodes 1.0
-NumNodes : 4
-NumTerminals : 1
-npu_softmacro 120 120
-dma_softmacro 80 80
-slc_softmacro 160 100
-io_ring 1000 40 terminal

@@ -1,4 +1,0 @@
-[[!meta title="pages tagged job/consultancy"]]
-
-[[!inline pages="tagged(job/consultancy)" actions="no" archive="yes"
-feedshow=10]]

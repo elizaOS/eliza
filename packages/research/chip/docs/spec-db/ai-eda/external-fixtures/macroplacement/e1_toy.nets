@@ -1,9 +1,0 @@
-UCLA nets 1.0
-NumNets : 2
-NumPins : 4
-NetDegree : 2 npu_dma
-  npu_softmacro O
-  dma_softmacro I
-NetDegree : 2 npu_slc
-  npu_softmacro O
-  slc_softmacro I

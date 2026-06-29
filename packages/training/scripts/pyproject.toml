@@ -1,5 +1,0 @@
-[tool.ruff.lint]
-ignore = ["E402"]
-
-[tool.ruff.lint.per-file-ignores]
-"rl/__init__.py" = ["F401"]

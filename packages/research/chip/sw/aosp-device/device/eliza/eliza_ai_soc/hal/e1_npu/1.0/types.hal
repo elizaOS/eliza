@@ -1,9 +1,0 @@
-// Shared HIDL types for vendor.eliza.e1_npu@1.0.
-
-package vendor.eliza.e1_npu@1.0;
-
-enum Status : uint32_t {
-    OK = 0,
-    NOT_SUPPORTED = 1,
-    IO_ERROR = 2,
-};

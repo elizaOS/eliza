@@ -1,7 +1,0 @@
-E1 phone supplier-return placeholder
-lane: display_touch
-function: display_touch
-evidence_class: signed_2d_drawing
-expected_intake_path: board/kicad/e1-phone/production/sourcing/display_touch/signed-2d-drawing.pdf
-release_credit: false
-This is not supplier evidence. Replace with signed supplier artifact.

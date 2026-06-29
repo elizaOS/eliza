@@ -1,7 +1,0 @@
-# host GPU/toolchain (captured 2026-06-25T20:02:01Z)
-## nvidia-smi
-NVIDIA GeForce RTX 5080 Laptop GPU, 595.71.05, 16303 MiB
-## nvcc
-Cuda compilation tools, release 12.8, V12.8.93
-## vulkan ICDs
-asahi_icd.json gfxstream_vk_icd.json intel_hasvk_icd.json intel_icd.json lvp_icd.json nouveau_icd.json nvidia_icd.json radeon_icd.json virtio_icd.json 

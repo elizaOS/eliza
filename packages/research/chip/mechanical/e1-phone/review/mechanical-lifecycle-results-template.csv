@@ -1,7 +1,0 @@
-sample_id,measurement_id,fixture,units,min,max,cycles_required,measured,pass,operator,notes
-,volume_button_travel,evt_fixture_button_force_probe,mm,0.25,0.55,100000,,,,Measure volume cap center and both ends after cycle exposure.
-,power_button_cycle_failures,evt_fixture_button_force_probe,count,0,0,100000,,,,"Count stuck, rattle, crack, missed tactile, or electrical event failures."
-,volume_button_cycle_failures,evt_fixture_button_force_probe,count,0,0,100000,,,,"Count stuck, rattle, crack, missed tactile, or electrical event failures."
-,usb_c_post_cycle_insertion_force,evt_fixture_usb_c_insertion_gauge,N,0,40,2000,,,,Measure peak insertion force after USB-C plug cycling.
-,usb_c_post_cycle_continuity_failures,evt_fixture_usb_c_insertion_gauge,count,0,0,2000,,,,"Count VBUS, CC, D+/D-, shell-ground, or retention failures after cycling."
-,screen_post_cycle_lift_or_fpc_faults,evt_fixture_screen_bond_clamp_frame,count,0,0,500,,,,"Count screen lift, touch/display bring-up faults, or FPC connector faults after handling cycles."
