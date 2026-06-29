@@ -118,8 +118,19 @@ export interface MobileSignalsScreenTimeStatus {
     }>;
   };
   reportAvailable: boolean;
+  /** Coarse, in-extension-rendered category summaries are available (no raw export). */
   coarseSummaryAvailable: boolean;
+  /** `DeviceActivityMonitor` threshold-crossing events are available. */
   thresholdEventsAvailable: boolean;
+  /**
+   * Permanently `false` — a platform constraint, not a TODO. Apple's
+   * DeviceActivity / FamilyControls model (iOS 15+) forbids exporting raw
+   * per-app usage to the host app: usage is only readable inside a rendered
+   * `DeviceActivityReport` extension (never exfiltrated) plus
+   * `DeviceActivityMonitor` threshold events. Host-side mobile screen-time is
+   * therefore scoped to coarse summaries + threshold events; there is no
+   * macOS-style per-window dwell on iOS. See issue #9970.
+   */
   rawUsageExportAvailable: false;
   android?: {
     usageAccessGranted: boolean;
