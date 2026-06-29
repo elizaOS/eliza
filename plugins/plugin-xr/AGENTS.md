@@ -11,25 +11,44 @@ transcript through the standard message pipeline. Voice responses are generated
 via the TEXT_TO_SPEECH model and sent back as binary audio frames. The plugin
 is opt-in — register `xrPlugin` in your character's plugins array.
 
-## WEBXR_STATUS — read this before treating "XR" as spatial
+## WEBXR_STATUS — what "XR" renders, precisely (read before claiming more)
 
-The **"XR modality" is currently flat 2D DOM**, not an immersive 3D scene. The
-shared spatial renderer (`@elizaos/ui/spatial`) renders GUI and XR from one
-React tree where the only XR delta is cell sizing / touch-target scale
-(`packages/ui/src/spatial/primitives.tsx` — `fontSize * (modality === "xr" ? 1.25 : 1)`
-plus slightly larger button/field padding; see `packages/ui/src/spatial/dom.tsx`).
-There is **no** immersive `requestSession` render loop, 3D panel placement,
-depth, follow-modes, or controller hit-testing in app code yet. The
-`xr-view-host.ts` route serves a flat `<div id="xr-shell">` page.
+There are **two** XR surfaces; do not conflate them.
 
-What IS real: the WebSocket streaming protocol (`protocol.ts`), the 2D view-host
-route, and a **deterministic, headless IWER test harness** under `simulator/`
-(`navigator.xr` polyfill on an emulated Quest 3) that can start a session, set
-head/controller/hand poses, aim a controller ray at a tagged element, compute
-the hit, fire select/squeeze, and capture screenshot + per-frame pose/hit JSON.
-The harness defines the contract a future spatial renderer must satisfy — see
-`simulator/e2e/harness.spec.ts`. Do not describe XR as spatially rendered until
-that renderer lands (tracked in #9968).
+1. **Flat view-host** (`xr-view-host.ts`) — a screen-space (head-locked) 2D DOM
+   shell that loads a plugin view bundle. `SpatialSurface modality="xr"` here is
+   GUI's React tree with larger cell sizing / touch targets
+   (`packages/ui/src/spatial/primitives.tsx` — `fontSize * (modality === "xr" ? 1.25 : 1)`;
+   `packages/ui/src/spatial/dom.tsx`). This is the headset-iframe path and is
+   genuinely flat. It is NOT spatial.
+
+2. **`XRSpatialScene`** (`packages/ui/src/spatial/xr-scene.tsx`) — a **real 3D
+   spatial renderer**: authored views are placed as panels at world poses
+   (position, orientation, depth), billboarded to face a movable headset camera,
+   projected to screen by a pinhole camera (`xr-scene-math.ts`). Controller world
+   rays are intersected with panel planes; the nearest hit maps back to a DOM
+   element — controller targeting + hit-testing are real, computed 3D facts, and a
+   `move` SpatialAction relocates a panel in world space. This satisfies the
+   #9968 renderer contract: 3D placement, depth, follow-mode, and ray hit-testing
+   exist.
+
+   **Scope / honesty:** `XRSpatialScene` is **simulator-grade** — it composites
+   panels with CSS transforms so the whole pose→ray→hit→press→drag loop is
+   deterministic and headless-testable in CI. Compositing those same panels into a
+   headset's **WebGL** layer on-device (an immersive `requestSession`
+   `XRWebGLLayer` render loop) is the **native renderer's** job and is still out
+   of scope. The math core (`xr-scene-math.ts`) supports arbitrarily-oriented
+   planes for that on-device path.
+
+What IS real and tested: the WebSocket streaming protocol (`protocol.ts`), the
+flat view-host route, the **single canonical IWER harness** under `simulator/`
+(`navigator.xr` polyfill on an emulated Quest 3 — #9941 deduped; facewear
+re-exports it) that starts a session, sets head/controller/hand poses, aims a
+controller ray, computes the hit, presses, drags, and captures screenshot +
+per-frame pose/hit JSON. Coverage: `simulator/e2e/harness.spec.ts` (flat target)
+and `simulator/e2e/scene.spec.ts` (the 3D `XRSpatialScene` over the gallery
+views). Every registered view is asserted to place + render in the 3D scene by
+`packages/ui/src/spatial/__tests__/registered-view-parity.test.tsx`.
 
 ## Plugin surface
 

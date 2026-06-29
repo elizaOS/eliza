@@ -171,8 +171,8 @@ Legacy aliases `SMARTGLASSES_TRANSPORT`, `SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTG
 - **`@abandonware/noble` is an optional dep.** It is unavailable in browser contexts and on some CI runners. The native module is never imported at module load — `getNobleG1Transport()` (called from `SmartglassesService` transport selection) loads it lazily via a dynamic import and returns `null` when it is missing.
 - **Transport auto-selection order:** `even-bridge` → `web-bluetooth` → `noble`. Set `FACEWEAR_SMARTGLASSES_TRANSPORT` to force one.
 - **View bundles** (`build:views`) must be built before `test` — the test script runs `build:views && emulator:build` before vitest.
-- **`emulator/`** is a separate Bun workspace. `emulator:build` runs `bun install --force` inside it.
-- **`app-xr/`** is the WebXR browser client deployed to headsets. It is built separately and served via the view-host route.
+- **`emulator/`** is a separate Bun workspace. `emulator:build` runs `bun install --force` inside it. Its **XR browser-harness** files (`emulator.ts`, `types.ts`, `playwright-fixture.ts`, `mock-agent.ts`) are now thin **re-exports of the canonical `@elizaos/plugin-xr` simulator** (#9941 — exactly one XR harness); do not fork them. `device-emulator.ts` + `cli.ts` (the facewear BLE/device emulator) stay local.
+- **`app-xr/`** is the WebXR browser client deployed to headsets. It is built separately and served via the view-host route. Its e2e (`app-xr/e2e/`) drives the **real `view-host.ts` route** via `route-server.ts` (bun) — the deleted `view-server.mjs` mock no longer exists — and the **real IWER emulator** (`window.__XREmulator`) for `camera-pose.spec.ts`.
 - **Backward-compat aliases**: `smartglassesPlugin`, `smartglassesControlAction`, `smartglassesStatusAction`, `displaySmartglassesTextAction`, `smartglassesMicrophoneAction` are all re-exported from `src/index.ts` pointing at the same objects.
 - **`XR_WS_PORT_DEFAULT = 31338`** is exported from `xr-session-service.ts` and must stay in sync with the `FACEWEAR_WS_PORT` default in `agentConfig`.
 - See `docs/smartglasses.md` for the full Even Realities G1 protocol reference and hardware proof workflow.

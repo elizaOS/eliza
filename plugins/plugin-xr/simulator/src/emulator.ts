@@ -23,6 +23,7 @@
 import { metaQuest3, XRDevice } from "iwer";
 import type {
   AimingRay,
+  DeviceRay,
   ElementTelemetry,
   EmulatorStats,
   Handedness,
@@ -33,6 +34,7 @@ import type {
   Vec3,
   XREmulatorAPI,
   XRPose,
+  XRSceneBridge,
   XRSessionMode,
 } from "./types.ts";
 
@@ -130,8 +132,12 @@ const installedAt = performance.now();
 const frameLog: TelemetrySnapshot[] = [];
 const selectLog: InputEventRecord[] = [];
 const squeezeLog: InputEventRecord[] = [];
+/** Controllers we've given a default hand position (so we don't re-place them). */
+const controllerPlaced = new Set<Handedness>();
 
-function handednessOf(source: XRInputSource | undefined): Handedness | "unknown" {
+function handednessOf(
+  source: XRInputSource | undefined,
+): Handedness | "unknown" {
   if (source?.handedness === "left" || source?.handedness === "right") {
     return source.handedness;
   }
@@ -216,6 +222,72 @@ function elementIdOf(el: Element | null): string | null {
   return el.id || null;
 }
 
+// ── 3D scene bridge ─────────────────────────────────────────────────────────
+// When an XRSpatialScene (@elizaos/ui/spatial) is mounted it publishes
+// window.__elizaXRScene. In that case the emulator drives REAL 3D hit-tests
+// (ray ↔ panel-plane in world space) instead of the flat pinhole projection.
+
+function scene(): XRSceneBridge | undefined {
+  return window.__elizaXRScene;
+}
+
+/** A connected controller's world-space ray (origin + unit forward). */
+function controllerRay(handedness: Handedness): DeviceRay | null {
+  const c = controller(handedness);
+  if (!c?.connected) return null;
+  return { origin: vec3(c.position), direction: forward(quat(c.quaternion)) };
+}
+
+/** The headset's world-space ray. */
+function headRay(): DeviceRay {
+  return {
+    origin: vec3(xrDevice.position),
+    direction: forward(quat(xrDevice.quaternion)),
+  };
+}
+
+/** Resolve a CSS selector to an agent/element id the scene can address. */
+function selectorToElementId(selector: string): string | null {
+  const el = document.querySelector(selector) as HTMLElement | null;
+  if (!el) return null;
+  return el.dataset.agentId ?? el.id ?? null;
+}
+
+/** Place a controller at a natural hand offset from the head (once), if unset. */
+function ensureControllerPlaced(handedness: Handedness): void {
+  const c = controller(handedness);
+  if (!c) return;
+  c.connected = true;
+  if (controllerPlaced.has(handedness)) return;
+  const lateral = handedness === "left" ? -0.2 : 0.2;
+  const off = rotateByQuat(quat(xrDevice.quaternion), {
+    x: lateral,
+    y: -0.25,
+    z: -0.15,
+  });
+  c.position.set(
+    xrDevice.position.x + off.x,
+    xrDevice.position.y + off.y,
+    xrDevice.position.z + off.z,
+  );
+  controllerPlaced.add(handedness);
+}
+
+/** Rotate a vector by a quaternion (shared convention with the scene math). */
+function rotateByQuat(q: Quat, v: Vec3): Vec3 {
+  const qv = { x: q.x, y: q.y, z: q.z };
+  const t = {
+    x: 2 * (qv.y * v.z - qv.z * v.y),
+    y: 2 * (qv.z * v.x - qv.x * v.z),
+    z: 2 * (qv.x * v.y - qv.y * v.x),
+  };
+  return {
+    x: v.x + q.w * t.x + (qv.y * t.z - qv.z * t.y),
+    y: v.y + q.w * t.y + (qv.z * t.x - qv.x * t.z),
+    z: v.z + q.w * t.z + (qv.x * t.y - qv.y * t.x),
+  };
+}
+
 // ── Control API ───────────────────────────────────────────────────────────
 
 const api: XREmulatorAPI = {
@@ -287,7 +359,8 @@ const api: XREmulatorAPI = {
     const c = controller(handedness);
     if (!c) return;
     c.connected = true;
-    if (pose.position) c.position.set(pose.position.x, pose.position.y, pose.position.z);
+    if (pose.position)
+      c.position.set(pose.position.x, pose.position.y, pose.position.z);
     if (pose.orientation) {
       c.quaternion.set(
         pose.orientation.x,
@@ -307,10 +380,27 @@ const api: XREmulatorAPI = {
   },
 
   aimControllerAt(handedness: Handedness, selector: string): boolean {
+    const s = scene();
+    if (s) {
+      // 3D mode: aim the controller's world ray at the element's world position.
+      const elementId = selectorToElementId(selector);
+      if (!elementId) return false;
+      ensureControllerPlaced(handedness);
+      const c = controller(handedness);
+      if (!c) return false;
+      const q = s.aimFor(vec3(c.position), elementId);
+      if (!q) return false;
+      c.quaternion.set(q.x, q.y, q.z, q.w);
+      return true;
+    }
+    // Flat mode: aim the pinhole reticle at the element's screen center.
     const el = document.querySelector(selector);
     if (!el) return false;
     const rect = el.getBoundingClientRect();
-    const q = quatFromCenter(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    const q = quatFromCenter(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
     this.setControllerPose(handedness, { orientation: q });
     return true;
   },
@@ -319,8 +409,14 @@ const api: XREmulatorAPI = {
     const c = controller(handedness);
     if (!c) return;
     c.connected = true;
-    // IWER's `select` is a session-required action processed in capture mode
-    // (it self-drives the frame queue), firing selectstart→select→selectend.
+    // In 3D-scene mode, resolve the controller ray to a DOM element and click it
+    // so the authored view's real handler fires (the SpatialSurface dispatches
+    // the `press` SpatialAction). This is the actual user-facing press path.
+    const s = scene();
+    const ray = controllerRay(handedness);
+    if (s && ray) s.pressRay(ray);
+    // Also drive IWER's input: `select` is a session action processed in capture
+    // mode (it self-drives the frame queue), firing selectstart→select→selectend.
     await dispatchGuarded("select", { device: remoteDevice(handedness) });
   },
 
@@ -339,38 +435,84 @@ const api: XREmulatorAPI = {
   },
 
   getElementTelemetry(selector = "[data-agent-id]"): TelemetrySnapshot {
+    const s = scene();
     const elements: ElementTelemetry[] = [];
     for (const el of Array.from(document.querySelectorAll(selector))) {
       const rect = el.getBoundingClientRect();
       const id = (el as HTMLElement).dataset?.agentId ?? el.id;
       if (!id) continue;
+      const world = s?.worldPositionOf(id) ?? undefined;
       elements.push({
         elementId: id,
-        rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-        center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+        rect: {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+        center: {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        },
+        ...(world ? { world } : {}),
       });
     }
 
     const rays: AimingRay[] = [];
     const hits: HitResult[] = [];
-    const addRay = (source: "headset" | Handedness, q: Quat, origin: Vec3) => {
-      const direction = forward(q);
-      const reticle = project(direction);
-      rays.push({ source, origin, direction, reticle });
-      const el = document.elementFromPoint(reticle.x, reticle.y);
-      hits.push({ source, elementId: elementIdOf(el), point: reticle });
-    };
 
-    addRay("headset", quat(xrDevice.quaternion), vec3(xrDevice.position));
-    for (const handedness of ["left", "right"] as Handedness[]) {
-      const c = controller(handedness);
-      if (c?.connected) addRay(handedness, quat(c.quaternion), vec3(c.position));
+    if (s) {
+      // ── 3D-scene mode: cast world rays, intersect panel planes in world space.
+      const addSceneRay = (source: "headset" | Handedness, ray: DeviceRay) => {
+        const hit = s.hitTest(ray);
+        const reticle = hit ? hit.screen : project(ray.direction);
+        rays.push({
+          source,
+          origin: ray.origin,
+          direction: ray.direction,
+          reticle,
+        });
+        hits.push({
+          source,
+          elementId: hit?.elementId ?? null,
+          point: reticle,
+          ...(hit ? { world: hit.world, panelId: hit.panelId } : {}),
+        });
+      };
+      addSceneRay("headset", headRay());
+      for (const handedness of ["left", "right"] as Handedness[]) {
+        const ray = controllerRay(handedness);
+        if (ray) addSceneRay(handedness, ray);
+      }
+    } else {
+      // ── Flat mode: pinhole-project the device forward ray to a screen reticle.
+      const addRay = (
+        source: "headset" | Handedness,
+        q: Quat,
+        origin: Vec3,
+      ) => {
+        const direction = forward(q);
+        const reticle = project(direction);
+        rays.push({ source, origin, direction, reticle });
+        const el = document.elementFromPoint(reticle.x, reticle.y);
+        hits.push({ source, elementId: elementIdOf(el), point: reticle });
+      };
+      addRay("headset", quat(xrDevice.quaternion), vec3(xrDevice.position));
+      for (const handedness of ["left", "right"] as Handedness[]) {
+        const c = controller(handedness);
+        if (c?.connected)
+          addRay(handedness, quat(c.quaternion), vec3(c.position));
+      }
     }
 
     const snapshot: TelemetrySnapshot = {
       t: performance.now() - installedAt,
       sessionActive: activeSession !== null,
-      headset: { position: vec3(xrDevice.position), orientation: quat(xrDevice.quaternion) },
+      mode: s ? "scene" : "flat",
+      headset: {
+        position: vec3(xrDevice.position),
+        orientation: quat(xrDevice.quaternion),
+      },
       controllers: {
         left: controller("left")?.connected
           ? {
@@ -386,8 +528,12 @@ const api: XREmulatorAPI = {
           : undefined,
       },
       hands: {
-        left: xrDevice.hands?.left?.connected ? xrDevice.hands.left.poseId : undefined,
-        right: xrDevice.hands?.right?.connected ? xrDevice.hands.right.poseId : undefined,
+        left: xrDevice.hands?.left?.connected
+          ? xrDevice.hands.left.poseId
+          : undefined,
+        right: xrDevice.hands?.right?.connected
+          ? xrDevice.hands.right.poseId
+          : undefined,
       },
       elements,
       rays,
@@ -395,6 +541,36 @@ const api: XREmulatorAPI = {
     };
     frameLog.push(snapshot);
     return snapshot;
+  },
+
+  getHeadPose(): XRPose {
+    return {
+      position: vec3(xrDevice.position),
+      orientation: quat(xrDevice.quaternion),
+    };
+  },
+
+  getControllerPose(handedness: Handedness): XRPose | null {
+    const c = controller(handedness);
+    if (!c?.connected) return null;
+    return { position: vec3(c.position), orientation: quat(c.quaternion) };
+  },
+
+  getControllerRay(handedness: Handedness): DeviceRay | null {
+    return controllerRay(handedness);
+  },
+
+  hasScene(): boolean {
+    return scene() !== undefined;
+  },
+
+  dragController(handedness: Handedness, delta: Vec3): Vec3 | null {
+    const s = scene();
+    const ray = controllerRay(handedness);
+    if (!s || !ray) return null;
+    const hit = s.hitTest(ray);
+    if (!hit) return null;
+    return s.dragPanel(hit.panelId, delta);
   },
 
   getFrameLog(): TelemetrySnapshot[] {
@@ -413,16 +589,12 @@ const api: XREmulatorAPI = {
     // Force-close the WebSocket so the reconnect logic kicks in
     // The app exposes the socket via __xrTestHooks
     if (window.__xrTestHooks) {
-      (
-        window as { __xrForceDisconnect?: () => void }
-      ).__xrForceDisconnect?.();
+      (window as { __xrForceDisconnect?: () => void }).__xrForceDisconnect?.();
     }
   },
 
   simulateReconnect() {
-    (
-      window as { __xrForceReconnect?: () => void }
-    ).__xrForceReconnect?.();
+    (window as { __xrForceReconnect?: () => void }).__xrForceReconnect?.();
   },
 };
 
