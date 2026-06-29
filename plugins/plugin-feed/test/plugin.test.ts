@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-// `src/index.ts` pulls in `./ui/index.ts`, whose module side effects register
-// the operator surface + detail extension against the (heavy) app-core/ui-compat
-// React registries. The manifest itself is a plain object, so stub the UI
-// registries to keep this a boot-free assertion on the view declaration shape.
+// `src/index.ts` is a plain view-manifest object that, on a terminal host (no
+// DOM), also runs a lazy side-effect import of `./register-terminal-view` to
+// mount the Feed spatial view in the terminal, and re-exports the pure
+// proxy/data layers (`./routes`, `./ui/feed-data`). Stub the (heavy) app-core
+// UI registries those paths can transitively reach so this stays a boot-free
+// assertion on the view declaration shape.
 vi.mock("@elizaos/app-core/ui-compat", () => ({
-  registerOperatorSurface: () => {},
-  registerDetailExtension: () => {},
   client: {},
   selectLatestRunForApp: () => ({ run: null, matchingRuns: [] }),
   SurfaceCard: () => null,

@@ -37,7 +37,6 @@ import { safeAttachmentUrl } from "../../utils/attachment-url";
 import { formatTime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { getAppOperatorSurface } from "./surfaces/registry";
 import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,
@@ -691,11 +690,6 @@ export function GameView() {
       activeGameRun.viewerAttachment === "attached" &&
       !useEmbeddedViewer,
   );
-  const OperatorSurface = useMemo(
-    () => getAppOperatorSurface(activeGameApp),
-    [activeGameApp],
-  );
-  const hasOperatorSurface = Boolean(OperatorSurface);
   const resolvedActiveGameViewerUrl = useMemo(
     () => resolveEmbeddedViewerUrl(activeGameViewerUrl),
     [activeGameViewerUrl],
@@ -1893,12 +1887,6 @@ export function GameView() {
       value: activeGameRun?.controlAvailability ?? "unknown",
     },
   ];
-  const operatorSurfaceFocus =
-    isCompactLayout && mobileSurface === "dashboard"
-      ? "dashboard"
-      : isCompactLayout && mobileSurface === "chat"
-        ? "chat"
-        : "all";
   const openInNewTabLabel = hasViewer
     ? t("game.openInNewTab")
     : "Open launch URL";
@@ -2189,26 +2177,8 @@ export function GameView() {
           mobileSurface !== "game") ? (
           isCompactLayout ? (
             mobileSurface === "dashboard" || mobileSurface === "chat" ? (
-              hasOperatorSurface && OperatorSurface ? (
-                <div className="h-full overflow-y-auto">
-                  <OperatorSurface
-                    appName={activeGameApp}
-                    variant="live"
-                    focus={operatorSurfaceFocus}
-                  />
-                </div>
-              ) : (
-                renderLogsPanel("standalone")
-              )
+              renderLogsPanel("standalone")
             ) : null
-          ) : hasOperatorSurface && OperatorSurface ? (
-            <div className="w-[30rem] min-h-0 overflow-y-auto bg-card">
-              <OperatorSurface
-                appName={activeGameApp}
-                variant="live"
-                focus="all"
-              />
-            </div>
           ) : (
             renderLogsPanel()
           )

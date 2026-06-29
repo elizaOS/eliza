@@ -1,6 +1,5 @@
 export type {
   AppDetailExtensionProps,
-  AppOperatorSurfaceProps,
   AppRunSummary,
   AppSessionJsonValue,
   FeedActivityItem,
@@ -10,8 +9,6 @@ export type {
   FeedPredictionMarket,
   FeedTeamAgent,
   FeedWallet,
-  GameOperatorAction,
-  GameOperatorEvent,
   OverlayApp,
   OverlayAppContext,
   SurfaceTone,
@@ -40,8 +37,6 @@ export {
   toneForViewerAttachment,
 } from "@elizaos/ui/components/apps/extensions/surface.helpers";
 export { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
-export { GameOperatorShell } from "@elizaos/ui/components/apps/surfaces/GameOperatorShell";
-export { registerOperatorSurface } from "@elizaos/ui/components/apps/surfaces/registry";
 export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";
