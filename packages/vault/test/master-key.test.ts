@@ -336,9 +336,7 @@ describe("attestationMasterKey — fail-closed sealed-volume binding", () => {
 
   test("tampered attestation → key unavailable (throws, no fallback)", async () => {
     const r = attestationMasterKey(
-      refusingVerifier(
-        "state-volume key release denied: measurement-mismatch",
-      ),
+      refusingVerifier("state-volume key release denied: measurement-mismatch"),
     );
     // Fail closed: a tampered agent/policy/device yields NO key — never a
     // fallback/default/unsealed key.
