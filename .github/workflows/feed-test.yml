@@ -1,0 +1,90 @@
+name: feed-test
+
+# Path-gated CI lane for the nested packages/feed monorepo (issue #9943).
+#
+# Why this exists: packages/feed has ~525 test files but ran in ZERO CI lanes.
+# The root workspace excludes it (`!packages/feed`) and the root test runner
+# honors that negation, while feed's own `test:ci` script was invoked by nothing.
+# This lane runs feed's unit suite on every PR that touches packages/feed, so
+# feed regressions are caught instead of silently shipping behind green CI.
+#
+# Scope decision (deliberate, documented): this runs `test:unit` — the isolated
+# unit runner (scripts/test-unit-isolated.ts), which executes the bulk of feed's
+# test files and explicitly excludes the suites that need infrastructure. It does
+# NOT run the full `test:ci` script (scripts/ci/run-all-tests.sh): that script is
+# a local-dev kitchen sink that also runs typecheck + lint + a production build,
+# boots Anvil (foundry) + a server on :3000, and drives Playwright/Chroma E2E
+# against a pre-seeded `.env.test`. Standing all of that up in a stock runner is
+# fragile and would red-light every feed PR, so the heavier integration/E2E lane
+# is a follow-up (provision postgres + foundry + the server + a CI `.env`). See
+# the TODO below.
+#
+# TODO(#9943 follow-up): feed currently reports ~227 skipped tests. They need
+# triage — some are env-gated (RUN_OPTIONAL_INTEGRATION_TESTS / RUN_LIVE_LLM_TESTS),
+# some are stale. Audit and either wire the env or delete the skips, then promote
+# this lane to also run `test:integration` (with a postgres service) and the E2E
+# slice. Do NOT mass-unskip blindly.
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "packages/feed/**"
+      - ".github/workflows/feed-test.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: feed-test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+
+jobs:
+  feed-unit:
+    name: feed unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Required env for feed modules that validate configuration at import time.
+    # CI-only placeholders — no secrets. DATABASE_URL points at the postgres
+    # service below so any lazily-connecting module resolves a real DSN.
+    env:
+      DATABASE_URL: "postgres://postgres:postgres@localhost:5432/feed_test"
+      DIRECT_DATABASE_URL: "postgres://postgres:postgres@localhost:5432/feed_test"
+      NEXT_PUBLIC_STEWARD_API_URL: "http://localhost:31337"
+      STEWARD_JWT_SECRET: "ci-feed-unit-placeholder-jwt-secret"
+      CRON_SECRET: "ci-feed-unit-placeholder-cron-secret"
+      NODE_ENV: "test"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: feed_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      # packages/feed is its own monorepo, excluded from the root workspace, so
+      # it needs its own install rather than the root `bun install`.
+      - name: Install feed dependencies
+        working-directory: packages/feed
+        run: bun install --no-frozen-lockfile
+
+      - name: Run feed unit tests
+        working-directory: packages/feed
+        run: bun run test:unit
