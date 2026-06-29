@@ -174,12 +174,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "facewear app window",
-    path: "/apps/facewear",
-    readyChecks: [{ text: "Facewear" }, { text: "No devices connected" }],
-    timeoutMs: 90_000,
-  },
-  {
+    // Facewear GUI config now lives in Settings -> Wearables, not a launcher
+    // app window; only the agent TUI surface is reached by path here.
     name: "facewear tui app shell page",
     path: "/apps/facewear/tui",
     readyChecks: [
@@ -189,12 +185,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "smartglasses app window",
-    path: "/apps/smartglasses",
-    readyChecks: [{ text: "Smartglasses" }, { text: "Connect" }],
-    timeoutMs: 90_000,
-  },
-  {
+    // Smartglasses GUI config now lives in Settings -> Wearables; only the
+    // agent TUI surface is reached by path here.
     name: "smartglasses tui app shell page",
     path: "/apps/smartglasses/tui",
     readyChecks: [
@@ -245,7 +237,6 @@ const managerVisibleViewTileCases = [
   { viewId: "companion", path: "/companion" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "documents", path: "/documents" },
-  { viewId: "facewear", path: "/apps/facewear" },
   { viewId: "feed", path: "/feed" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
@@ -261,7 +252,6 @@ const managerVisibleViewTileCases = [
   { viewId: "relationships", path: "/relationships" },
   { viewId: "screenshare", path: "/screenshare" },
   { viewId: "shopify", path: "/shopify" },
-  { viewId: "smartglasses", path: "/apps/smartglasses" },
   { viewId: "social-alpha", path: "/social-alpha" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },

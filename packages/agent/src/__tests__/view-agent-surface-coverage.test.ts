@@ -152,7 +152,6 @@ const CONVERTED_SUBCOMPONENTS = [
   "settings/VoiceProfileSection",
   "settings/VoiceSection",
   "settings/WalletKeysSection",
-  "settings/XRSettingsSection",
 ] as const;
 
 function isAgentControllable(pageFile: string): boolean {
