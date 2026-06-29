@@ -151,12 +151,11 @@ export interface Bindings {
   CACHE_BACKEND?: string;
   APPS_DEPLOY_ENABLED?: string;
   APPS_DEPLOY_ALLOWED_ORG_IDS?: string;
-  // Inference hot path (#9899). INFERENCE_HOT_PATH_CACHE="true" enables the
-  // single-read auth+moderation fast path. INFERENCE_OPTIMISTIC_BILLING="true"
-  // additionally enables Tier-2 off-path billing (requires the durable backstop).
-  // SAFE_BALANCE_THRESHOLD (USD) gates the optimistic path; unset/invalid -> +Inf
-  // (every org takes the safe synchronous-reserve path).
-  INFERENCE_HOT_PATH_CACHE?: string;
+  // Inference hot path (#9899). The auth+moderation single-read cache is the
+  // default now (no flag). INFERENCE_OPTIMISTIC_BILLING="true" enables Tier-2
+  // off-path billing (requires the durable backstop). SAFE_BALANCE_THRESHOLD
+  // (USD) gates the optimistic path; unset/invalid -> +Inf (every org takes the
+  // safe synchronous-reserve path).
   INFERENCE_OPTIMISTIC_BILLING?: string;
   SAFE_BALANCE_THRESHOLD?: string;
   RATE_LIMIT_DISABLED?: string;

@@ -37,8 +37,9 @@ mock.module("./api-keys", () => ({
   },
 }));
 
-const { resolveInferenceAuthContext, extractApiKeyCredential, isInferenceHotPathCacheEnabled } =
-  await import("./inference-auth-context");
+const { resolveInferenceAuthContext, extractApiKeyCredential } = await import(
+  "./inference-auth-context"
+);
 const {
   hashApiKey,
   readInferenceAuthContext,
@@ -103,18 +104,6 @@ describe("extractApiKeyCredential", () => {
 
   test("returns null with no credential", () => {
     expect(extractApiKeyCredential(new Request("https://x/"))).toBeNull();
-  });
-});
-
-describe("isInferenceHotPathCacheEnabled", () => {
-  test("default OFF", () => {
-    expect(isInferenceHotPathCacheEnabled({})).toBe(false);
-  });
-  test("ON only for exact 'true'", () => {
-    expect(isInferenceHotPathCacheEnabled({ INFERENCE_HOT_PATH_CACHE: "true" })).toBe(true);
-    expect(isInferenceHotPathCacheEnabled({ INFERENCE_HOT_PATH_CACHE: " true " })).toBe(true);
-    expect(isInferenceHotPathCacheEnabled({ INFERENCE_HOT_PATH_CACHE: "1" })).toBe(false);
-    expect(isInferenceHotPathCacheEnabled({ INFERENCE_HOT_PATH_CACHE: "yes" })).toBe(false);
   });
 });
 
