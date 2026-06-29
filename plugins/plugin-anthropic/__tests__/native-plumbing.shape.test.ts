@@ -77,7 +77,10 @@ describe("Anthropic native text plumbing", () => {
       streamText: vi.fn(),
     }));
     vi.doMock("../providers/anthropic", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({
+        modelId: modelName,
+        modelName,
+      }),
     }));
 
     const { handleTextSmall } = await import("../models/text");
@@ -139,7 +142,10 @@ describe("Anthropic native text plumbing", () => {
       streamText: vi.fn(),
     }));
     vi.doMock("../providers/anthropic", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({
+        modelId: modelName,
+        modelName,
+      }),
     }));
 
     const { handleTextLarge } = await import("../models/text");
