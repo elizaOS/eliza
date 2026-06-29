@@ -11,6 +11,10 @@ import {
   type ModuleCacheTelemetryEvent,
 } from "./cache-telemetry";
 import { APP_PAUSE_EVENT } from "./events";
+import {
+  getRetainedModuleMaxEntries,
+  getRetainedModuleTtlMs,
+} from "./state/bounded-view-lru";
 
 type RetainedCleanup = () => void | Promise<void>;
 
@@ -32,11 +36,6 @@ interface RetainedModuleEntry<TProps extends object> {
   cleanupScheduled: boolean;
   retentionTimer: ReturnType<typeof setTimeout> | null;
 }
-
-const DEFAULT_RETAINED_MODULE_TTL_MS = 5 * 60_000;
-const LOW_MEMORY_RETAINED_MODULE_TTL_MS = 60_000;
-const DEFAULT_RETAINED_MODULE_MAX_ENTRIES = 8;
-const LOW_MEMORY_RETAINED_MODULE_MAX_ENTRIES = 3;
 
 const retainedModuleCache = new Map<
   RetainedLazyLoader<object>,
@@ -78,26 +77,6 @@ function emitRetainedTelemetry(
     ...patch,
     ...retainedCacheStats(),
   });
-}
-
-function resolveDeviceMemoryGb(): number | null {
-  if (typeof navigator === "undefined") return null;
-  const value = (navigator as { deviceMemory?: unknown }).deviceMemory;
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function getRetainedModuleTtlMs(): number {
-  const memoryGb = resolveDeviceMemoryGb();
-  return memoryGb !== null && memoryGb <= 4
-    ? LOW_MEMORY_RETAINED_MODULE_TTL_MS
-    : DEFAULT_RETAINED_MODULE_TTL_MS;
-}
-
-function getRetainedModuleMaxEntries(): number {
-  const memoryGb = resolveDeviceMemoryGb();
-  return memoryGb !== null && memoryGb <= 4
-    ? LOW_MEMORY_RETAINED_MODULE_MAX_ENTRIES
-    : DEFAULT_RETAINED_MODULE_MAX_ENTRIES;
 }
 
 function scheduleIdleWork(work: () => void): void {

@@ -69,7 +69,8 @@ import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
-import { ErrorBoundary } from "./components/ui/error-boundary";
+import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
+import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import type { CompanionShellComponentProps } from "./config/boot-config-store";
@@ -1327,10 +1328,36 @@ function ViewRouter({
     settingsInitialSection,
   });
 
+  // A distinct lifecycle identity per routed surface: builtin tab id, or
+  // tab:slug for a remote/app route so two remote views get independent
+  // boundaries + telemetry.
+  const activeViewId = appSlug ? `${tab}:${appSlug}` : tab;
+
+  // Split-view panes (routeOverride) keep a simple per-pane crash boundary; only
+  // the PRIMARY router drives the single global view-lifecycle controller +
+  // keep-alive host, so multiple ViewRouters never fight over the active id.
+  if (routeOverride) {
+    return (
+      <ViewErrorBoundary viewId={`pane:${activeViewId}`}>
+        <LazyViewBoundary>{view}</LazyViewBoundary>
+      </ViewErrorBoundary>
+    );
+  }
+
+  // The keep-alive host wraps the active view in a per-view ViewErrorBoundary +
+  // ViewTelemetryProfiler + ViewLifecycleSlot and drives the lifecycle
+  // controller (pause on app-background / tab-hidden / memory-pressure). With
+  // the default unmount-on-hide policy the host mounts exactly the active view —
+  // behaviorally identical to the prior single-branch ViewRouter.
   return (
-    <ErrorBoundary>
-      <LazyViewBoundary>{view}</LazyViewBoundary>
-    </ErrorBoundary>
+    <KeepAliveViewHost
+      activeViewId={activeViewId}
+      renderView={(viewId) =>
+        viewId === activeViewId ? (
+          <LazyViewBoundary>{view}</LazyViewBoundary>
+        ) : null
+      }
+    />
   );
 }
 

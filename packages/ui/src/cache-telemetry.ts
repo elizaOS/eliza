@@ -1,6 +1,9 @@
 export const MODULE_CACHE_TELEMETRY_EVENT = "eliza:module-cache-telemetry";
 
-export type ModuleCacheTelemetrySource = "dynamic-view" | "retained-lazy";
+export type ModuleCacheTelemetrySource =
+  | "dynamic-view"
+  | "retained-lazy"
+  | "view-lifecycle";
 
 export type ModuleCacheTelemetryAction =
   | "load"
@@ -18,7 +21,10 @@ export interface ModuleCacheTelemetryEvent {
     | "memorypressure"
     | "visibility-hidden"
     | "app-pause"
-    | "invalidate";
+    | "invalidate"
+    // View-lifecycle eviction reason: a default (non-keepAlive) view was
+    // unmounted because another view became active (#10202).
+    | "inactive";
   key?: string;
   activeCount: number;
   idleCount: number;
