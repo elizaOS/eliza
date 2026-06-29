@@ -481,14 +481,6 @@ export interface WatchStatus {
   eventCount: number;
 }
 
-// -- Floating Chat Window --
-export interface FloatingChatStatus {
-  open: boolean;
-  visible: boolean;
-  contextId: string | null;
-  bounds: WindowBounds | null;
-}
-
 // -- TalkMode --
 export type TalkModeState =
   | "idle"
@@ -2181,32 +2173,6 @@ export type ElizaDesktopRPCSchema = {
         response: WatchStatus | null;
       };
 
-      // ---- Floating Chat Window ----
-      floatingChatOpen: {
-        params: { contextId?: string; x?: number; y?: number };
-        response: FloatingChatStatus;
-      };
-      floatingChatShow: {
-        params: undefined;
-        response: FloatingChatStatus;
-      };
-      floatingChatHide: {
-        params: undefined;
-        response: FloatingChatStatus;
-      };
-      floatingChatClose: {
-        params: undefined;
-        response: FloatingChatStatus;
-      };
-      floatingChatSetContext: {
-        params: { contextId: string | null };
-        response: FloatingChatStatus;
-      };
-      floatingChatGetStatus: {
-        params: undefined;
-        response: FloatingChatStatus;
-      };
-
       // ---- Steward Sidecar ----
       stewardGetStatus: {
         params: undefined;
@@ -2358,9 +2324,6 @@ export type ElizaDesktopRPCSchema = {
 
       // Editor bridge push events
       editorSessionChanged: EditorSession | null;
-
-      // Floating chat push events
-      floatingChatStatusChanged: FloatingChatStatus;
 
       // API Base injection
       apiBaseUpdate: {
@@ -2731,14 +2694,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "fileWatcher:stopAll": "fileWatcherStopAll",
   "fileWatcher:list": "fileWatcherList",
   "fileWatcher:getStatus": "fileWatcherGetStatus",
-
-  // Floating Chat Window
-  "floatingChat:open": "floatingChatOpen",
-  "floatingChat:show": "floatingChatShow",
-  "floatingChat:hide": "floatingChatHide",
-  "floatingChat:close": "floatingChatClose",
-  "floatingChat:setContext": "floatingChatSetContext",
-  "floatingChat:getStatus": "floatingChatGetStatus",
 };
 
 /**
@@ -2797,9 +2752,6 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
 
   // Editor bridge
   "editorBridge:sessionChanged": "editorSessionChanged",
-
-  // Floating chat
-  "floatingChat:statusChanged": "floatingChatStatusChanged",
 };
 
 /**

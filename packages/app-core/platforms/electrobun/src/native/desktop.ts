@@ -286,6 +286,11 @@ export class DesktopManager {
   private tray: Tray | null = null;
   private releaseNotesWindow: BrowserWindow | null = null;
   private releaseNotesView: BrowserView | null = null;
+  // Tray popover (#9953 Phase 4): a frameless, transparent, always-on-top
+  // BrowserView panel anchored at the tray that renders the widget surface.
+  private trayPopoverWindow: BrowserWindow | null = null;
+  private trayPopoverView: BrowserView | null = null;
+  private trayPopoverUrl: string | null = null;
   private shortcuts: Map<string, ShortcutOptions> = new Map();
   private notificationCounter = 0;
   private sendToWebview: SendToWebview | null = null;
@@ -677,11 +682,21 @@ export class DesktopManager {
 
     // Electrobun tray click is simpler — no bounds/modifiers
     this.trayClickHandler = () => {
-      void this.showWindow().catch((err: unknown) => {
-        logger.warn(
-          `[Desktop] Failed to show window from tray click: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+      // When a tray popover is configured (#9953 Phase 4), a click toggles the
+      // widget popover instead of restoring the full window.
+      if (this.trayPopoverUrl) {
+        void this.toggleTrayPopover().catch((err: unknown) => {
+          logger.warn(
+            `[Desktop] Failed to toggle tray popover: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      } else {
+        void this.showWindow().catch((err: unknown) => {
+          logger.warn(
+            `[Desktop] Failed to show window from tray click: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      }
       this.send("desktopTrayClick", {
         x: 0,
         y: 0,
@@ -1860,6 +1875,105 @@ X-GNOME-Autostart-enabled=true
       windowId: win.id,
       webviewId: view.id,
     };
+  }
+
+  // MARK: - Tray popover (#9953 Phase 4)
+
+  /**
+   * Enable the tray popover. `rendererUrl` must already carry
+   * `?shellMode=tray-popover` (the caller builds it). Once configured, a tray
+   * click toggles the popover instead of restoring the full window.
+   */
+  configureTrayPopover(rendererUrl: string): void {
+    this.trayPopoverUrl = rendererUrl;
+  }
+
+  /** Whether the tray popover window is currently open. */
+  isTrayPopoverOpen(): boolean {
+    return this.trayPopoverWindow !== null;
+  }
+
+  /**
+   * Toggle the tray popover: close it if open, otherwise open a frameless,
+   * transparent, always-on-top BrowserView panel anchored at the top-right of
+   * the primary display's work area (under the macOS menu-bar tray). Mirrors the
+   * proven release-notes BrowserView pattern.
+   */
+  async toggleTrayPopover(): Promise<void> {
+    if (!this.trayPopoverUrl) return;
+
+    if (this.trayPopoverWindow) {
+      this.closeTrayPopover();
+      return;
+    }
+
+    const POPOVER_WIDTH = 360;
+    const POPOVER_HEIGHT = 480;
+    const MARGIN = 8;
+    let anchor = { x: 1920, y: 0, width: 1920, height: 1080 };
+    try {
+      const display = Screen.getPrimaryDisplay();
+      if (display?.workArea) anchor = display.workArea;
+    } catch (err) {
+      logger.warn(
+        `[Desktop] tray popover Screen.getPrimaryDisplay() failed; using default anchor: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    const x = anchor.x + anchor.width - POPOVER_WIDTH - MARGIN;
+    const y = anchor.y + MARGIN;
+
+    const buildConfig = await BuildConfig.get();
+    const renderer = this.resolvePreferredBrowserRenderer(buildConfig);
+    const win = new Electrobun.BrowserWindow({
+      title: `${getBrandConfig().appName}`,
+      frame: { x, y, width: POPOVER_WIDTH, height: POPOVER_HEIGHT },
+      renderer,
+      transparent: true,
+      titleBarStyle: "hidden",
+    });
+    win.webview.remove();
+
+    const view = new BrowserView({
+      url: this.trayPopoverUrl,
+      renderer,
+      windowId: win.id,
+      partition: RELEASE_NOTES_PARTITION,
+      sandbox: true,
+      frame: { x: 0, y: 0, width: win.frame.width, height: win.frame.height },
+    });
+
+    try {
+      (
+        win as BrowserWindow & { setAlwaysOnTop?: (flag: boolean) => void }
+      ).setAlwaysOnTop?.(true);
+    } catch {
+      // Non-fatal: popover still opens, just not pinned above other windows.
+    }
+
+    win.on("close", () => {
+      this.trayPopoverView?.remove();
+      this.trayPopoverWindow = null;
+      this.trayPopoverView = null;
+    });
+
+    this.trayPopoverWindow = win;
+    this.trayPopoverView = view;
+    win.focus();
+  }
+
+  /** Close the tray popover window if open. */
+  closeTrayPopover(): void {
+    if (!this.trayPopoverWindow) return;
+    try {
+      this.trayPopoverWindow.close();
+    } catch (err) {
+      logger.warn(
+        `[Desktop] Failed to close tray popover: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    this.trayPopoverView?.remove();
+    this.trayPopoverWindow = null;
+    this.trayPopoverView = null;
   }
 
   // MARK: - Clipboard

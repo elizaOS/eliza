@@ -568,6 +568,8 @@ export class PackagedDesktopHarness {
     tempRoot: string;
     launcherPath: string;
     apiBase: string;
+    /** Extra env vars layered onto the launch env (e.g. desktop shell flags). */
+    extraEnv?: NodeJS.ProcessEnv;
   }) {
     this.tempRoot = args.tempRoot;
     this.stateDir = path.join(args.tempRoot, "state");
@@ -589,6 +591,9 @@ export class PackagedDesktopHarness {
       appData: this.appDataDir,
       localAppData: this.localAppDataDir,
     });
+    if (args.extraEnv) {
+      this.appEnv = { ...this.appEnv, ...args.extraEnv };
+    }
   }
 
   async start(options: PackagedStartOptions = {}): Promise<void> {

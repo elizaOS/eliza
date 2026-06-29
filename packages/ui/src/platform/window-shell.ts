@@ -14,7 +14,8 @@ export type WindowShellRoute =
   | { mode: "settings"; tab?: string }
   | { mode: "surface"; tab: DetachedSurfaceTab }
   | { mode: "chat-overlay" }
-  | { mode: "onboarding-overlay" };
+  | { mode: "onboarding-overlay" }
+  | { mode: "tray-popover" };
 
 export interface DetachedShellTarget {
   settingsSection?: string;
@@ -32,6 +33,10 @@ export function parseWindowShellRoute(search: string): WindowShellRoute {
 
   if (shellMode === "onboarding-overlay") {
     return { mode: "onboarding-overlay" };
+  }
+
+  if (shellMode === "tray-popover") {
+    return { mode: "tray-popover" };
   }
 
   if (shell === "settings") {
@@ -66,12 +71,16 @@ export function isDetachedWindowShell(
   route: WindowShellRoute,
 ): route is Exclude<
   WindowShellRoute,
-  { mode: "main" } | { mode: "chat-overlay" } | { mode: "onboarding-overlay" }
+  | { mode: "main" }
+  | { mode: "chat-overlay" }
+  | { mode: "onboarding-overlay" }
+  | { mode: "tray-popover" }
 > {
   return (
     route.mode !== "main" &&
     route.mode !== "chat-overlay" &&
-    route.mode !== "onboarding-overlay"
+    route.mode !== "onboarding-overlay" &&
+    route.mode !== "tray-popover"
   );
 }
 
@@ -106,7 +115,11 @@ export function resolveDetachedShellTarget(
     throw new Error("Main windows do not have a detached shell target");
   }
 
-  if (route.mode === "chat-overlay" || route.mode === "onboarding-overlay") {
+  if (
+    route.mode === "chat-overlay" ||
+    route.mode === "onboarding-overlay" ||
+    route.mode === "tray-popover"
+  ) {
     throw new Error(
       `${route.mode} windows do not have a detached shell target`,
     );
@@ -147,7 +160,8 @@ export function syncDetachedShellLocation(
   if (
     route.mode === "main" ||
     route.mode === "chat-overlay" ||
-    route.mode === "onboarding-overlay"
+    route.mode === "onboarding-overlay" ||
+    route.mode === "tray-popover"
   ) {
     return false;
   }

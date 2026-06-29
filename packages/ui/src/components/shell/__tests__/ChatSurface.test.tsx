@@ -154,6 +154,61 @@ describe("ChatSurface", () => {
     expect(typing).toBeTruthy();
   });
 
+  it("hides the VISION button when no onVision handler is provided", () => {
+    render(<ChatSurface messages={[]} onSend={() => {}} canSend={true} />);
+    expect(screen.queryByRole("button", { name: /my screen/i })).toBeNull();
+  });
+
+  it("renders an enabled VISION button that fires onVision when wired", () => {
+    const onVision = vi.fn();
+    render(
+      <ChatSurface
+        messages={[]}
+        onSend={() => {}}
+        canSend={true}
+        onVision={onVision}
+      />,
+    );
+    const vision = screen.getByRole("button", {
+      name: /my screen/i,
+    }) as HTMLButtonElement;
+    expect(vision.disabled).toBe(false);
+    expect(vision.querySelector("svg")).not.toBeNull();
+    fireEvent.click(vision);
+    expect(onVision).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the VISION button while a capture is in flight", () => {
+    render(
+      <ChatSurface
+        messages={[]}
+        onSend={() => {}}
+        canSend={true}
+        onVision={() => {}}
+        visionActive={true}
+      />,
+    );
+    expect(
+      (screen.getByRole("button", { name: /my screen/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("disables the VISION button when canSend=false", () => {
+    render(
+      <ChatSurface
+        messages={[]}
+        onSend={() => {}}
+        canSend={false}
+        onVision={() => {}}
+      />,
+    );
+    expect(
+      (screen.getByRole("button", { name: /my screen/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
   it("marks the conversation list as a polite aria-live region for streaming announcements", () => {
     const messages: ShellMessage[] = [
       { id: "u", role: "user", content: "Hi", createdAt: 0 },
