@@ -177,10 +177,11 @@ async function searchMemoryNotes(
     if (!text) continue;
     const source = (memory.content as { source?: string } | undefined)?.source;
     if (source !== HASH_MEMORY_SOURCE) continue;
+    if (!memory.id || typeof memory.createdAt !== "number") continue;
     candidates.push({
-      id: memory.id ?? (crypto.randomUUID() as UUID),
+      id: memory.id,
       text,
-      createdAt: memory.createdAt ?? 0,
+      createdAt: memory.createdAt,
     });
   }
 
