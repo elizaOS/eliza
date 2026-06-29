@@ -1,4 +1,0 @@
-#!/bin/sh
-
-echo "tails-version is deprecated. Please use information from /etc/os-release." >> /dev/stderr
-cat /etc/os-release

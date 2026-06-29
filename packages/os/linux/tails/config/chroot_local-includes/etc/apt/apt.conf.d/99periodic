@@ -1,3 +1,0 @@
-# This effectively disables apt-daily*.{timer,service}, which might
-# interfere with Additional Software operations (#12390, #17278)
-APT::Periodic::Enable "0";

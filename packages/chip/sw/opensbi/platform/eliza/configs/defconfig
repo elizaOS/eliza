@@ -1,7 +1,0 @@
-# OpenSBI kconfig for the eliza e1_chip_cpu_variant platform.
-# Enables only the fixed (non-FDT) drivers platform.c references:
-#   ns16550a UART (uart8250), RISC-V PLIC, ACLINT MTIMER + MSWI (CLINT).
-CONFIG_SERIAL_UART8250=y
-CONFIG_IRQCHIP_PLIC=y
-CONFIG_IPI_MSWI=y
-CONFIG_TIMER_MTIMER=y

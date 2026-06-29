@@ -1,6 +1,0 @@
-{"type":"command","request_id":"1","timestamp":"2026-02-28T00:00:00Z","command":"walk.set","payload":{"speed":2,"height":0.036,"x":0.015,"y":0.0,"yaw":0.0}}
-{"type":"command","request_id":"2","timestamp":"2026-02-28T00:00:01Z","command":"walk.command","payload":{"action":"start"}}
-{"type":"command","request_id":"3","timestamp":"2026-02-28T00:00:02Z","command":"walk.set","payload":{"speed":2,"height":0.036,"x":0.0,"y":0.0,"yaw":8.0}}
-{"type":"command","request_id":"4","timestamp":"2026-02-28T00:00:03Z","command":"walk.command","payload":{"action":"stop"},"preempt":true}
-{"type":"command","request_id":"5","timestamp":"2026-02-28T00:00:04Z","command":"action.play","payload":{"name":"wave"}}
-

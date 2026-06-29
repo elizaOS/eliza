@@ -1,3 +1,0 @@
-[[!meta title="Troubleshooting Wi-Fi not working"]]
-
-[[!inline pages="doc/anonymous_internet/no-wifi.inline" raw="yes" sort="age"]]

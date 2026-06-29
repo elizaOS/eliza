@@ -1,7 +1,0 @@
-#!/bin/sh
-
-set -e
-
-echo "Configuring haveged"
-
-echo 'DAEMON_ARGS="-w 2048"' >> /etc/default/haveged

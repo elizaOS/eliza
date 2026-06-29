@@ -1,7 +1,0 @@
-.env
-node_modules/
-dist
-.cursor/
-.turbo
-coverage/
-*.log

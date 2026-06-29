@@ -1,3 +1,0 @@
-[[!meta title="People"]]
-
-Tails core contributors are listed on Tor's [People page](https://www.torproject.org/about/people/).

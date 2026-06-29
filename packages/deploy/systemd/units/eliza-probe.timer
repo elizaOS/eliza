@@ -1,9 +1,0 @@
-[Unit]
-Description=Probe Eliza health every 5 min
-
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=5min
-
-[Install]
-WantedBy=timers.target

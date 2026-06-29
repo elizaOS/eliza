@@ -1,3 +1,0 @@
-[[!meta title="Encryption and privacy"]]
-
-[[!inline pages="doc/encryption_and_privacy.index" raw="yes" sort="age"]]

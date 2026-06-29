@@ -1,6 +1,0 @@
-name: jax-save
-description: Save JAX result to numpy file
-inputs:
-  data: any
-  path: string
-implementation: jax_skills.save

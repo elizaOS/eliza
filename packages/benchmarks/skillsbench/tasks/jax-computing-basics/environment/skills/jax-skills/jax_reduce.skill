@@ -1,9 +1,0 @@
-name: jax-reduce
-description: Reduce over axis
-inputs:
-  array: jax.Array
-  op: string
-  axis: int
-outputs:
-  array: jax.Array
-implementation: jax_skills.reduce_op

@@ -1,5 +1,0 @@
-# SymbiYosys run output directories (generated per-run)
-hello_dbg_mmio_bridge/
-hello_dma/
-hello_npu/
-hello_soc_top/
