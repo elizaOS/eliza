@@ -62,8 +62,12 @@ function initializeCache(): void {
     // Convert readonly arrays to mutable arrays and populate cache
     // The actors array contains readonly objects, so we need to create new objects
     dataCache.allActors = actors.map((actor) => {
-      // Create a mutable copy of the actor data
-      const actorData = { ...actor } as ActorData;
+      // Create a mutable compatibility copy of the pack actor data.
+      const actorData = {
+        ...actor,
+        postExample: actor.postExample ?? actor.postExamples ?? [],
+        hasPool: actor.hasPool ?? false,
+      } as ActorData;
       dataCache.actors.set(actorData.id, actorData);
       return actorData;
     });
@@ -128,8 +132,9 @@ export function loadActorById(actorId: string): ActorData | null {
   initializeCache();
 
   // Check cache first (fastest - no I/O)
-  if (dataCache.actors.has(actorId)) {
-    return dataCache.actors.get(actorId)!;
+  const actor = dataCache.actors.get(actorId);
+  if (actor) {
+    return actor;
   }
 
   return null;
@@ -148,8 +153,9 @@ export function loadOrganizationById(orgId: string): Organization | null {
   initializeCache();
 
   // Check cache first (fastest - no I/O)
-  if (dataCache.organizations.has(orgId)) {
-    return dataCache.organizations.get(orgId)!;
+  const organization = dataCache.organizations.get(orgId);
+  if (organization) {
+    return organization;
   }
 
   return null;

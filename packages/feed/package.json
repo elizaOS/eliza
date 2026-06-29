@@ -2,6 +2,18 @@
   "name": "@feed/root",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "packages/examples/*",
+    "tools/*",
+    "../contracts",
+    "../core",
+    "../logger",
+    "../prompts",
+    "../registry",
+    "../shared"
+  ],
   "scripts": {
     "postinstall": "bun run scripts/postinstall-install-python-deps.ts && bun run scripts/postinstall-agent-frameworks.ts",
     "agent-frameworks:bootstrap": "bun run scripts/postinstall-agent-frameworks.ts",
