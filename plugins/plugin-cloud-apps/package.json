@@ -1,0 +1,96 @@
+{
+  "name": "@elizaos/plugin-cloud-apps",
+  "version": "2.0.3-beta.7",
+  "description": "Read-core agent plugin for Eliza Cloud Apps — answer \"what apps do I have?\" and \"tell me about app X\" across every connector",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git",
+    "directory": "plugins/plugin-cloud-apps"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "elizaos": {
+    "plugin": {
+      "capabilities": [
+        "cloud",
+        "apps"
+      ]
+    }
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "eliza-cloud",
+    "apps"
+  ],
+  "scripts": {
+    "build": "bun run build.ts",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "bun test __tests__",
+    "typecheck": "tsgo --noEmit",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check ."
+  },
+  "dependencies": {
+    "@elizaos/cloud-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@types/bun": "^1.1.0",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ELIZAOS_CLOUD_API_KEY": {
+        "type": "string",
+        "description": "Eliza Cloud API key (eliza_xxx). Required to list/inspect your Cloud apps.",
+        "required": false,
+        "sensitive": true
+      },
+      "ELIZAOS_CLOUD_BASE_URL": {
+        "type": "string",
+        "description": "Eliza Cloud API base URL (defaults to https://www.elizacloud.ai/api/v1).",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

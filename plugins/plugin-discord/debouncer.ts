@@ -3,19 +3,6 @@ import { isDiscordUserAddressed } from "./addressing";
 
 export type DebouncerFlushCallback = (messages: DiscordMessage[]) => void;
 
-export interface MessageDebouncer {
-	enqueue: (message: DiscordMessage) => void;
-	flushAll: () => void;
-	pendingCount: () => number;
-	destroy: () => void;
-}
-
-interface PendingEntry {
-	messages: DiscordMessage[];
-	timer: ReturnType<typeof setTimeout>;
-}
-
-const DEFAULT_DEBOUNCE_MS = 400;
 const DEFAULT_CHANNEL_DEBOUNCE_MS = 3_000;
 
 function runSafely(callback: () => void): void {
@@ -288,87 +275,6 @@ export function createChannelDebouncer(
 			pending.clear();
 			lastResponseTime.clear();
 			recentUnaddressed.clear();
-		},
-	};
-}
-
-export function createMessageDebouncer(
-	onFlush: DebouncerFlushCallback,
-	debounceMs: number = DEFAULT_DEBOUNCE_MS,
-	options: { maxBatch?: number } = {},
-): MessageDebouncer {
-	const pending = new Map<string, PendingEntry>();
-	const maxBatch = Math.max(1, options.maxBatch ?? Number.POSITIVE_INFINITY);
-
-	const makeKey = (message: DiscordMessage) =>
-		`${message.channel.id}:${message.author.id}`;
-
-	const flush = (key: string) => {
-		const entry = pending.get(key);
-		if (!entry) {
-			return;
-		}
-		clearTimeout(entry.timer);
-		pending.delete(key);
-		if (entry.messages.length > 0) {
-			runSafely(() => onFlush(entry.messages));
-		}
-	};
-
-	const hasMedia = (message: DiscordMessage) =>
-		(message.attachments?.size ?? 0) > 0 || (message.stickers?.size ?? 0) > 0;
-
-	const enqueue = (message: DiscordMessage) => {
-		if (debounceMs <= 0) {
-			runSafely(() => onFlush([message]));
-			return;
-		}
-
-		const key = makeKey(message);
-		if (hasMedia(message)) {
-			const entry = pending.get(key);
-			if (entry) {
-				clearTimeout(entry.timer);
-				pending.delete(key);
-				if (entry.messages.length > 0) {
-					runSafely(() => onFlush(entry.messages));
-				}
-			}
-			runSafely(() => onFlush([message]));
-			return;
-		}
-
-		const existing = pending.get(key);
-		if (existing) {
-			clearTimeout(existing.timer);
-			existing.messages.push(message);
-			if (existing.messages.length >= maxBatch) {
-				flush(key);
-				return;
-			}
-			existing.timer = setTimeout(() => flush(key), debounceMs);
-			return;
-		}
-
-		pending.set(key, {
-			messages: [message],
-			timer: setTimeout(() => flush(key), debounceMs),
-		});
-	};
-
-	return {
-		enqueue,
-		flushAll: () => {
-			for (const key of [...pending.keys()]) {
-				flush(key);
-			}
-		},
-		pendingCount: () => pending.size,
-		destroy: () => {
-			for (const [, entry] of pending) {
-				clearTimeout(entry.timer);
-			}
-			pending.clear();
 		},
 	};
 }

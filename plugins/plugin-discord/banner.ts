@@ -12,29 +12,98 @@ import {
 	type DiscordPermissionValues,
 	getPermissionValues,
 } from "./permissions";
+import type { DiscordSettings } from "./types";
 
 /** Per-account reply-config overrides used by the suppression diagnostic. */
 type AccountReplyOverrides = {
 	autoReply?: boolean;
 	shouldIgnoreDirectMessages?: boolean;
+	/** DM block (mirrors `DiscordAccountConfig.dm` in service.ts resolution). */
+	dm?: {
+		policy?: "open" | "allowlist" | "pairing" | "disabled";
+		allowFrom?: Array<string | number>;
+	};
 };
 
+/** DM policies that silently drop replies from un-allowlisted/unpaired senders. */
+type RestrictiveDmPolicy = "allowlist" | "pairing" | "disabled";
+
 /**
- * Inspect the effective Discord reply configuration and, if it will suppress
- * ALL auto-replies, emit a single startup warning naming the specific active
- * reason(s) and the exact env var(s) an operator must flip to re-enable replies.
+ * Resolve an account's effective DM allowlist, mirroring
+ * `resolveDiscordSettingsForAccount` in service.ts (per-account `dm.allowFrom`
+ * wins when non-empty, otherwise the base `allowFrom`).
+ */
+function resolveEffectiveAllowFrom(
+	config: AccountReplyOverrides,
+	base: DiscordSettings,
+): string[] {
+	const dmAllowFrom = config.dm?.allowFrom
+		?.map((value) => String(value).trim())
+		.filter((value) => value.length > 0);
+	if (dmAllowFrom && dmAllowFrom.length > 0) {
+		return dmAllowFrom;
+	}
+	return base.allowFrom ?? [];
+}
+
+/**
+ * Build the remediation message for a restrictive DM policy value. Every variant
+ * points at DISCORD_DM_POLICY (and the allowFrom escape hatch) so an operator is
+ * not misled into flipping only one var.
+ */
+function dmPolicyReason(policy: RestrictiveDmPolicy): string {
+	if (policy === "disabled") {
+		return (
+			"DISCORD_DM_POLICY='disabled' drops ALL direct messages; set " +
+			"DISCORD_DM_POLICY=open (or character.settings.discord.dmPolicy) to reply in DMs"
+		);
+	}
+	if (policy === "allowlist") {
+		return (
+			"DISCORD_DM_POLICY='allowlist' only replies to senders in DISCORD_ALLOW_FROM " +
+			"or the dynamic pairing allowlist; set DISCORD_DM_POLICY=open, or add senders to " +
+			"DISCORD_ALLOW_FROM (or character.settings.discord.allowFrom), to reply in DMs"
+		);
+	}
+	// "pairing" is the default and is issue #10216 root cause #1.
+	return (
+		"DISCORD_DM_POLICY='pairing' (the default) requires each new DM sender to " +
+		"complete pairing before the agent replies, so unpaired senders are silently " +
+		"dropped; set DISCORD_DM_POLICY=open to reply to all DMs, or add allowed senders " +
+		"to DISCORD_ALLOW_FROM (or character.settings.discord.allowFrom)"
+	);
+}
+
+/**
+ * Inspect the effective Discord reply configuration and emit up to one startup
+ * warning per distinct failure mode, naming the specific active reason(s) and
+ * the exact env var(s) an operator must flip to re-enable replies.
+ *
+ * Two independent diagnostics, because the suppressors live at different scopes:
+ *
+ *   1. GLOBAL — when EVERY enabled account is globally suppressed (passive mode
+ *      on, or every account's `autoReply` off) the bot replies to NOTHING. One
+ *      "will NOT auto-reply to ANY messages" warning, naming passive/autoReply.
+ *
+ *   2. DM-ONLY — when the bot DOES reply in channels but DM replies are still
+ *      silently dropped by `shouldIgnoreDirectMessages` and/or a restrictive
+ *      `dmPolicy` (the default 'pairing' blocks unpaired senders — issue #10216
+ *      root cause #1). A SEPARATE "channel replies are enabled but DM replies
+ *      will be suppressed" warning. The two are mutually exclusive: if the bot
+ *      replies to nothing, the DM detail is moot, so only the global one fires.
  *
  * Diagnostics only: this reads resolved settings and logs. It never mutates
- * configuration or reply behavior. The reply gate it mirrors lives in
- * `MessageManager.handleMessage` (messages.ts): a reply is suppressed when
- * `!autoReply || lifeOpsPassiveConnectorsEnabled(runtime)`. DM ignore is a
- * narrower gate (DMs only) surfaced here because it silently drops DM replies.
+ * configuration or reply behavior. The gates it mirrors live in
+ * `MessageManager.handleMessage` (messages.ts): the channel/global gate is
+ * `!autoReply || lifeOpsPassiveConnectorsEnabled(runtime)`; the DM gate is
+ * `shouldIgnoreDirectMessages` (with an allowFrom/dynamic-allowlist exception)
+ * plus the `dmPolicy` access check in `checkDmAccess`.
  *
- * Multi-account aware: per-account configs can override `autoReply` /
- * `shouldIgnoreDirectMessages` (mirrors `resolveDiscordSettingsForAccount` in
- * service.ts: `config.X ?? base.X`). The warning fires only when EVERY enabled
- * account is globally suppressed, so a single reply-enabled account is never
- * misreported as silent.
+ * Multi-account aware: per-account configs can override `autoReply`,
+ * `shouldIgnoreDirectMessages`, and `dm.policy`/`dm.allowFrom` (mirrors
+ * `resolveDiscordSettingsForAccount` in service.ts: `config.X ?? base.X`). DM
+ * suppression is only flagged on accounts that actually reply in channels, so a
+ * fully-silent account is reported once (global), not twice.
  *
  * @param runtime - The agent runtime used to resolve settings and log.
  */
@@ -60,62 +129,99 @@ export function warnIfRepliesSuppressed(runtime: IAgentRuntime): void {
 	// Resolve each enabled account's effective reply settings, mirroring
 	// resolveDiscordSettingsForAccount's `config.X ?? base.X` precedence.
 	let anyAutoReplyOff = false;
-	let anyDmIgnored = false;
-	let allGloballySuppressed = true;
+	let anyReplyEnabled = false;
+
+	// DM-suppression tracking, scoped to accounts that DO reply in channels: an
+	// account that replies to nothing is covered by the global warning instead.
+	let dmIgnoredOnReplyEnabled = false;
+	const restrictiveDmPolicies = new Set<RestrictiveDmPolicy>();
 
 	for (const account of accounts) {
 		const config = (account.config ?? {}) as AccountReplyOverrides;
 		const effectiveAutoReply = config.autoReply ?? base.autoReply;
 		const effectiveIgnoreDms =
 			config.shouldIgnoreDirectMessages ?? base.shouldIgnoreDirectMessages;
+		const effectiveDmPolicy = config.dm?.policy ?? base.dmPolicy ?? "pairing";
+		const hasAllowFrom = resolveEffectiveAllowFrom(config, base).length > 0;
 
 		if (!effectiveAutoReply) {
 			anyAutoReplyOff = true;
 		}
-		if (effectiveIgnoreDms) {
-			anyDmIgnored = true;
+
+		// An account replies in channels unless passive mode is on or its
+		// effective autoReply is off. DM suppression only matters for accounts
+		// that reply in channels — otherwise the global gate already silences it.
+		const replyEnabledInChannels = !passiveEnabled && effectiveAutoReply;
+		if (!replyEnabledInChannels) {
+			continue;
 		}
-		// An account replies somewhere unless passive mode is on or its
-		// effective autoReply is off.
-		if (!passiveEnabled && effectiveAutoReply) {
-			allGloballySuppressed = false;
+		anyReplyEnabled = true;
+
+		if (effectiveIgnoreDms) {
+			dmIgnoredOnReplyEnabled = true;
+		}
+		// A restrictive dmPolicy with no static allowlist drops unpaired/
+		// non-allowlisted senders. With an allowFrom list configured the operator
+		// has deliberately scoped DM access, so the policy itself isn't flagged.
+		if (effectiveDmPolicy !== "open" && !hasAllowFrom) {
+			restrictiveDmPolicies.add(effectiveDmPolicy);
 		}
 	}
 
-	// Only warn when EVERY enabled account is globally suppressed. A lone
-	// DM-ignore setting is intentional config, not a silent total failure, and
-	// one reply-enabled account means the bot is not silent overall.
-	if (!allGloballySuppressed) {
+	// Case 1 (GLOBAL): every enabled account is globally suppressed, so the bot
+	// will not reply to ANY message — channel or DM. A lone reply-enabled account
+	// means the bot is not silent overall, so this branch is skipped then.
+	if (!anyReplyEnabled) {
+		const reasons: string[] = [];
+		if (passiveEnabled) {
+			reasons.push(
+				"passive-connectors mode is ON (inbound persisted, replies suppressed); " +
+					"set ELIZA_LIFEOPS_PASSIVE_CONNECTORS=false " +
+					"(or LIFEOPS_PASSIVE_CONNECTORS=false) to allow replies",
+			);
+		}
+		if (anyAutoReplyOff) {
+			reasons.push(
+				"autoReply is OFF; set DISCORD_AUTO_REPLY=true " +
+					"(or character.settings.discord.autoReply=true, or the per-account " +
+					"autoReply) to allow replies",
+			);
+		}
+
+		runtime.logger.warn(
+			{ src: "plugin:discord", agentId: runtime.agentId },
+			`Discord is connected but will NOT auto-reply to any messages. Active reason(s): ${reasons
+				.map((r, i) => `(${i + 1}) ${r}`)
+				.join("; ")}.`,
+		);
 		return;
 	}
 
-	const reasons: string[] = [];
-	if (passiveEnabled) {
-		reasons.push(
-			"passive-connectors mode is ON (inbound persisted, replies suppressed); " +
-				"set ELIZA_LIFEOPS_PASSIVE_CONNECTORS=false " +
-				"(or LIFEOPS_PASSIVE_CONNECTORS=false) to allow replies",
+	// Case 2 (DM-ONLY): channel replies work, but DM replies are silently dropped
+	// by the DM-ignore flag and/or a restrictive dmPolicy (the default 'pairing'
+	// blocks unpaired senders — issue #10216 root cause #1, previously never
+	// surfaced because everything sat behind the global gate above).
+	const dmReasons: string[] = [];
+	if (dmIgnoredOnReplyEnabled) {
+		dmReasons.push(
+			"DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES is ON, so DMs are dropped except " +
+				"from senders in DISCORD_ALLOW_FROM or the dynamic pairing allowlist; set " +
+				"DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES=false to reply in DMs — note this " +
+				"alone is not enough, as DISCORD_DM_POLICY (default 'pairing') still gates " +
+				"DMs, so also set DISCORD_DM_POLICY=open or add senders to DISCORD_ALLOW_FROM",
 		);
 	}
-	if (anyAutoReplyOff) {
-		reasons.push(
-			"autoReply is OFF; set DISCORD_AUTO_REPLY=true " +
-				"(or character.settings.discord.autoReply=true, or the per-account " +
-				"autoReply) to allow replies",
-		);
+	for (const policy of restrictiveDmPolicies) {
+		dmReasons.push(dmPolicyReason(policy));
 	}
-	// Narrower suppressor: only silences DM replies. Surfaced alongside the
-	// global reason(s) since the operator likely wants DMs working too.
-	if (anyDmIgnored) {
-		reasons.push(
-			"direct messages are IGNORED (affects DM replies only); set " +
-				"DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES=false to reply in DMs",
-		);
+
+	if (dmReasons.length === 0) {
+		return;
 	}
 
 	runtime.logger.warn(
 		{ src: "plugin:discord", agentId: runtime.agentId },
-		`Discord is connected but will NOT auto-reply to any messages. Active reason(s): ${reasons
+		`Discord channel replies are enabled but DM replies will be suppressed. Active reason(s): ${dmReasons
 			.map((r, i) => `(${i + 1}) ${r}`)
 			.join("; ")}.`,
 	);
@@ -416,17 +522,17 @@ export function printDiscordBanner(runtime: IAgentRuntime): void {
 			{
 				name: "DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
 				value: ignoreBots,
-				defaultValue: "false",
+				defaultValue: "true",
 			},
 			{
 				name: "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
 				value: ignoreDMs,
-				defaultValue: "false",
+				defaultValue: "true",
 			},
 			{
 				name: "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
 				value: onlyMentions,
-				defaultValue: "false",
+				defaultValue: "true",
 			},
 		],
 		runtime,

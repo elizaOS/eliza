@@ -135,7 +135,13 @@ jobs:
 
   gpu-build:
     name: GPU build (QJL nvcc + Triton JIT)
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'gpu-ci')
+    # only run when a gpu-cuda-12.6 self-hosted runner is actually available.
+    # gated on an explicit opt-in (the `gpu-ci` PR label or a manual dispatch) so
+    # the job never auto-fires on push and hangs queued forever waiting for a
+    # runner label no registered runner currently has. flip on by adding the
+    # `gpu-ci` label to a PR, dispatching manually, or registering a gpu runner +
+    # relaxing this guard.
+    if: contains(github.event.pull_request.labels.*.name, 'gpu-ci') || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, gpu-cuda-12.6]
     timeout-minutes: 60
     steps:

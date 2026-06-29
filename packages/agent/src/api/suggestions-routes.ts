@@ -126,6 +126,9 @@ const SCOPE_STARTERS: Record<string, readonly string[]> = {
     "List my automations",
     "What ran today?",
   ],
+  // "What apps do I have?" is served by the LIST_CLOUD_APPS action
+  // (@elizaos/plugin-cloud-apps) — its WHAT_APPS_DO_I_HAVE / MY_APPS similes
+  // match this exact phrase, so clicking the chip lists the user's Cloud apps.
   "page-apps": ["What apps do I have?", "Recommend an app", "Build me an app"],
   "page-connectors": [
     "Check my connections",

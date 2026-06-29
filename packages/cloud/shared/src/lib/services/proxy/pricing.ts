@@ -3,8 +3,12 @@ import { cache } from "../../cache/client";
 import { logger } from "../../utils/logger";
 import { getProxyConfig } from "./config";
 
-// Hardcoded fallback to prevent service outage if DB pricing is misconfigured.
-const FALLBACK_COST = 1.0;
+// Fallback used only when a service's DB pricing rows are missing (a data fault,
+// e.g. a partially-seeded DB or a new serviceId shipped without a seed). Kept at
+// the low end of real per-call prices (sub-cent; cf. the legacy proxy-billing
+// defaults of $0.0003–$0.001) so a pricing miss UNDER-charges rather than billing
+// $1.00/call (~1,000–20,000x the true price). Fail-safe for the customer.
+const FALLBACK_COST = 0.001;
 const inflightPricingLoads = new Map<string, Promise<Record<string, string>>>();
 
 export class PricingNotFoundError extends Error {
@@ -39,7 +43,9 @@ async function loadPricingMap(serviceId: string): Promise<Record<string, string>
         serviceId,
         fallback: FALLBACK_COST,
       });
-      await cache.set(cacheKey, pricingMap, cacheTtl);
+      // Do NOT cache the empty map: caching it would pin the fallback for the
+      // whole TTL (up to 5 min) even after the pricing rows land. Leaving it
+      // uncached lets a transient/partial-seed miss self-heal on the next call.
       return pricingMap;
     }
 
