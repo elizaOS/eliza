@@ -5,10 +5,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { writeRendererBuildManifest } from "./renderer-build-manifest.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./repo-root.mjs";
 import { verifyStagedArtifact } from "./verify-ondevice-artifact.mjs";
 
-const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",
