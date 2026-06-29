@@ -1,12 +1,14 @@
 import crypto from "node:crypto";
 import {
   type AgentRuntime,
+  bm25Scores,
   ChannelType,
   composePrompt,
   createMessageMemory,
   type Memory,
   ModelType,
   memoryContextQaTemplate,
+  normalizeBm25Scores,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -101,26 +103,43 @@ async function ensureMemoryConnection(
   return { roomId, entityId };
 }
 
-export function scoreMemoryText(text: string, query: string): number {
+/**
+ * Rank a candidate set against `query` with Okapi BM25 (the same scorer the
+ * DocumentService keyword path uses), returning each item with a [0,1]
+ * max-normalized relevance score in input order.
+ *
+ * BM25 is corpus-aware — IDF down-weights filler/stop words and TF saturation +
+ * length normalization rank genuinely-relevant text first. The previous
+ * `scoreMemoryText` was a pairwise substring/term-presence count with no IDF, so
+ * a doc that merely contained a common query word ("the") tied with a real hit;
+ * across a large store that collapsed to recency-ordered near-noise. Ranking the
+ * whole candidate set together is what makes the IDF meaningful.
+ */
+export function rankByKeyword<T>(
+  query: string,
+  items: T[],
+  getText: (item: T) => string,
+): Array<{ item: T; score: number }> {
+  if (items.length === 0) return [];
+  const docs = items.map((item, i) => ({ id: String(i), text: getText(item) }));
+  const scores = normalizeBm25Scores(bm25Scores(query, docs));
+  return items.map((item, i) => ({ item, score: scores[i]?.score ?? 0 }));
+}
+
+/**
+ * Boolean keyword match for *filtering* (not ranking): does the text contain the
+ * whole query or any query term (≥2 chars)? Used where the caller wants
+ * "messages matching this text", not a relevance ranking.
+ */
+export function matchesKeyword(text: string, query: string): boolean {
   const normalizedText = text.toLowerCase();
-  const normalizedQuery = query.toLowerCase();
-  if (!normalizedText || !normalizedQuery) return 0;
-
-  const terms = normalizedQuery
+  const normalizedQuery = query.toLowerCase().trim();
+  if (!normalizedText || !normalizedQuery) return false;
+  if (normalizedText.includes(normalizedQuery)) return true;
+  return normalizedQuery
     .split(/\s+/)
-    .map((term) => term.trim())
-    .filter((term) => term.length >= 2);
-
-  const containsWhole = normalizedText.includes(normalizedQuery) ? 1 : 0;
-  if (terms.length === 0) {
-    return containsWhole;
-  }
-
-  let termMatches = 0;
-  for (const term of terms) {
-    if (normalizedText.includes(term)) termMatches += 1;
-  }
-  return containsWhole + termMatches / terms.length;
+    .filter((term) => term.length >= 2)
+    .some((term) => normalizedText.includes(term));
 }
 
 async function searchMemoryNotes(
@@ -136,7 +155,8 @@ async function searchMemoryNotes(
     includeEmbedding: false, // only reads content.text
   });
 
-  const hits: MemorySearchHit[] = [];
+  // Gather hash-memory candidates first, then BM25-rank them as a corpus.
+  const candidates: Array<{ id: UUID; text: string; createdAt: number }> = [];
   for (const memory of memories) {
     const text = (
       memory.content as { text?: string } | undefined
@@ -144,15 +164,25 @@ async function searchMemoryNotes(
     if (!text) continue;
     const source = (memory.content as { source?: string } | undefined)?.source;
     if (source !== HASH_MEMORY_SOURCE) continue;
-    const score = scoreMemoryText(text, query);
-    if (score <= 0) continue;
-    hits.push({
-      id: memory.id ?? crypto.randomUUID(),
+    candidates.push({
+      id: memory.id ?? (crypto.randomUUID() as UUID),
       text,
       createdAt: memory.createdAt ?? 0,
-      score,
     });
   }
+
+  const hits: MemorySearchHit[] = rankByKeyword(
+    query,
+    candidates,
+    (c) => c.text,
+  )
+    .filter(({ score }) => score > 0)
+    .map(({ item, score }) => ({
+      id: item.id,
+      text: item.text,
+      createdAt: item.createdAt,
+      score,
+    }));
 
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
@@ -530,7 +560,7 @@ export async function handleMemoryRoutes(
     if (searchQuery) {
       filtered = allMemories.filter((m) => {
         const text = (m.content as { text?: string } | undefined)?.text ?? "";
-        return scoreMemoryText(text, searchQuery) > 0;
+        return matchesKeyword(text, searchQuery);
       });
     }
 
