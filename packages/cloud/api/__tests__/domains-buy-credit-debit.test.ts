@@ -234,8 +234,10 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(402);
-    expect(body.success).toBe(false);
-    expect(body.code).toBe("insufficient_balance");
+    expect(body).toMatchObject({
+      success: false,
+      code: "insufficient_balance",
+    });
     // The bug: a declined debit must NOT register a domain on Eliza's account.
     expect(registerDomain).not.toHaveBeenCalled();
     expect(refundCredits).not.toHaveBeenCalled();
@@ -254,8 +256,10 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(402);
-    expect(body.success).toBe(false);
-    expect(body.code).toBe("below_minimum");
+    expect(body).toMatchObject({
+      success: false,
+      code: "below_minimum",
+    });
     expect(registerDomain).not.toHaveBeenCalled();
     expect(refundCredits).not.toHaveBeenCalled();
   });
@@ -272,7 +276,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(402);
-    expect(body.code).toBe("org_not_found");
+    expect(body).toMatchObject({ code: "org_not_found" });
     expect(registerDomain).not.toHaveBeenCalled();
     expect(refundCredits).not.toHaveBeenCalled();
   });
@@ -289,8 +293,10 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(200);
-    expect(body.success).toBe(true);
-    expect(body.domain).toBe("example.com");
+    expect(body).toMatchObject({
+      success: true,
+      domain: "example.com",
+    });
     expect(deductCredits).toHaveBeenCalledTimes(1);
     expect(registerDomain).toHaveBeenCalledTimes(1);
     expect(registerDomain).toHaveBeenCalledWith("example.com");
