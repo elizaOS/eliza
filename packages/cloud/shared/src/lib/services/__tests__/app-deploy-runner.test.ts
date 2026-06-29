@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { runWithCloudBindingsAsync } from "../../runtime/cloud-bindings";
 import type { AppDeployRunnerDeps } from "../app-deploy-runner";
 import { containerNameForApp, resolveImageRef } from "../app-deploy-runner";
 
@@ -123,5 +124,51 @@ describe("resolveImageRef: image allowlist gate", () => {
       metadata: { imageTag: "ghcr.io/onlyme/app:v1" },
     });
     expect(img).toBe("ghcr.io/onlyme/app:v1");
+  });
+});
+
+// #9853 follow-up — an app deploy is the THIRD shared-node image path (alongside
+// the /v1/containers and /v1/coding-containers routes). When the opt-in
+// digest-pin gate (CONTAINER_IMAGE_REQUIRE_DIGEST) is armed, all three must
+// reject a mutable `:tag`/`:latest` ref so the registry cannot swap the bytes
+// behind an allowed name after the check; previously this path skipped the gate.
+describe("resolveImageRef: digest-pin gate (#9853 follow-up)", () => {
+  const baseApp = { id: "app-1", name: "demo", metadata: {} as Record<string, unknown> };
+  const buildOff = { resolveImage: undefined } as unknown as AppDeployRunnerDeps;
+  // An allowlisted first-party digest-pinned ref (passes both gates).
+  const PINNED = `ghcr.io/elizaos/eliza@sha256:a${"0".repeat(63)}`;
+
+  test("flag ON: a mutable :tag app image is rejected", async () => {
+    await runWithCloudBindingsAsync({ CONTAINER_IMAGE_REQUIRE_DIGEST: "true" }, async () => {
+      await expect(
+        resolveImageRef(buildOff, {
+          ...baseApp,
+          metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
+        }),
+      ).rejects.toThrow(/must be pinned to a full sha256 digest/);
+    });
+  });
+
+  test("flag ON: an implicit-latest (untagged) app image is rejected", async () => {
+    await runWithCloudBindingsAsync({ CONTAINER_IMAGE_REQUIRE_DIGEST: "true" }, async () => {
+      await expect(
+        resolveImageRef(buildOff, { ...baseApp, metadata: { imageTag: "ghcr.io/elizaos/myapp" } }),
+      ).rejects.toThrow(/must be pinned to a full sha256 digest/);
+    });
+  });
+
+  test("flag ON: a digest-pinned app image passes", async () => {
+    await runWithCloudBindingsAsync({ CONTAINER_IMAGE_REQUIRE_DIGEST: "true" }, async () => {
+      const img = await resolveImageRef(buildOff, { ...baseApp, metadata: { imageTag: PINNED } });
+      expect(img).toBe(PINNED);
+    });
+  });
+
+  test("flag OFF (default): a mutable :tag app image is unchanged (passes)", async () => {
+    const img = await resolveImageRef(buildOff, {
+      ...baseApp,
+      metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
+    });
+    expect(img).toBe("ghcr.io/elizaos/myapp:v1");
   });
 });
