@@ -23,6 +23,10 @@ const uiSmokeLiveStack = path.join(
 const uiSmokeApiPort = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
 const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
+const nodeExecutable =
+  process.env.ELIZA_NODE_PATH?.trim() ||
+  process.env.npm_node_execpath?.trim() ||
+  process.execPath;
 const chromiumExecutablePath =
   process.env.ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE?.trim();
 // Real audio fed to the browser mic for the voice button-press e2e: Chromium
@@ -146,7 +150,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `node ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
+    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
     cwd: repoRoot,
     url: `http://127.0.0.1:${uiSmokePort}`,
     reuseExistingServer,
