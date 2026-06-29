@@ -31,6 +31,7 @@ import {
   InsufficientCreditsError,
   reserveCredits,
 } from "@/lib/services/ai-billing";
+import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { usageService } from "@/lib/services/usage";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
@@ -63,11 +64,42 @@ app.post("/", async (c) => {
   // been invoked, so the catch never double-applies a release on the success path.
   let billed = false;
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
-    // `requireUserOrApiKeyWithOrg` already validated the API key (when present)
-    // and exposed its id on the request context — reuse it instead of doing a
-    // second DB lookup per request.
-    const apiKeyId = c.get("apiKeyId") ?? null;
+    // Resolve auth (+ org + moderation) in a SINGLE cache read for API-key
+    // inference requests (#9899) — the same fast-path as /v1/chat/completions.
+    // This route is on the agent reply hot path: the always-on
+    // `relevant-conversations` recall provider embeds the incoming message on
+    // EVERY memory-backed turn (blocking Stage-1), so paying the old per-request
+    // auth+org+moderation DB chain here added ~1.5-6s to every reply. Non-API-key
+    // / cache-unavailable requests fall to the authoritative slow path verbatim.
+    let user: { id: string; organization_id: string };
+    let apiKeyId: string | null;
+    const resolution = await resolveInferenceAuthContext(c.req.raw);
+    if (resolution.kind === "suspended") {
+      return c.json(
+        {
+          error: {
+            message:
+              "Your account has been suspended due to policy violations.",
+            type: "account_suspended",
+            code: "moderation_violation",
+          },
+        },
+        403,
+      );
+    }
+    if (resolution.kind === "authorized") {
+      user = {
+        id: resolution.ctx.userId,
+        organization_id: resolution.ctx.orgId,
+      };
+      apiKeyId = resolution.ctx.apiKeyId;
+    } else {
+      // Slow path: `requireUserOrApiKeyWithOrg` validated the API key (when
+      // present) and exposed its id on the request context — reuse it instead of
+      // a second DB lookup.
+      user = await requireUserOrApiKeyWithOrg(c);
+      apiKeyId = c.get("apiKeyId") ?? null;
+    }
 
     if (user.organization_id) {
       const orgRateLimited = await enforceOrgRateLimit(

@@ -26,6 +26,7 @@ import * as rateLimitActual from "@/lib/middleware/rate-limit";
 // that import from these modules. afterAll restores them.
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as apiKeysActual from "@/lib/services/api-keys";
+import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
 import * as usageActual from "@/lib/services/usage";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
@@ -47,6 +48,12 @@ const validateApiKey = mock();
 mock.module("@/lib/services/api-keys", () => ({
   ...apiKeysActual,
   apiKeysService: { ...apiKeysActual.apiKeysService, validateApiKey },
+}));
+
+const resolveInferenceAuthContext = mock();
+mock.module("@/lib/services/inference-auth-context", () => ({
+  ...inferenceAuthContextActual,
+  resolveInferenceAuthContext,
 }));
 
 // Rate limiting is not under test — make the org gate a no-op (no Redis).
@@ -95,6 +102,10 @@ const embeddingsRoute = (await import("../v1/embeddings/route")).default;
 afterAll(() => {
   mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
   mock.module("@/lib/services/api-keys", () => apiKeysActual);
+  mock.module(
+    "@/lib/services/inference-auth-context",
+    () => inferenceAuthContextActual,
+  );
   mock.module("@/lib/middleware/rate-limit", () => rateLimitActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module("@/lib/services/usage", () => usageActual);
@@ -133,6 +144,7 @@ function post(body: unknown, ctx?: ExecutionContext) {
 beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
   validateApiKey.mockReset();
+  resolveInferenceAuthContext.mockReset();
   enforceOrgRateLimit.mockReset();
   reserveCredits.mockReset();
   billUsage.mockReset();
@@ -150,6 +162,10 @@ beforeEach(() => {
       organization: { id: ORG, name: "Org", is_active: true },
       is_active: true,
     };
+  });
+  resolveInferenceAuthContext.mockResolvedValue({
+    kind: "slow_path",
+    reason: "cache_unavailable",
   });
   enforceOrgRateLimit.mockResolvedValue(null);
   reserveCredits.mockResolvedValue({
@@ -261,19 +277,80 @@ describe("POST /api/v1/embeddings — insufficient-credits guard", () => {
   });
 });
 
-describe("POST /api/v1/embeddings — single key validation", () => {
-  test("the route does not re-validate the API key (no second DB lookup)", async () => {
+describe("POST /api/v1/embeddings — auth context", () => {
+  test("slow path does not re-validate the API key (no second DB lookup)", async () => {
     const { ctx, scheduled } = makeExecutionCtx();
     await post({ model: "text-embedding-3-small", input: "hi" }, ctx);
     await Promise.all(scheduled);
 
     // The auth helper validated the key once; the route reads apiKeyId from the
     // context and must NOT call apiKeysService.validateApiKey again.
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
     expect(validateApiKey).not.toHaveBeenCalled();
 
     // And the apiKeyId from context flows into billing + usage attribution.
     expect(billUsage.mock.calls[0][0].apiKeyId).toBe(API_KEY_ID);
     expect(usageCreate.mock.calls[0][0].api_key_id).toBe(API_KEY_ID);
+  });
+
+  test("cached authorized IAC skips slow auth and preserves API-key attribution", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "authorized",
+      source: "cache",
+      ctx: {
+        v: 1,
+        cachedAt: Date.now(),
+        userId: USER,
+        orgId: ORG,
+        apiKeyId: API_KEY_ID,
+        keyHash: "key-hash",
+      },
+    });
+
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+    );
+    await Promise.all(scheduled);
+
+    expect(res.status).toBe(200);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
+    expect(validateApiKey).not.toHaveBeenCalled();
+    expect(enforceOrgRateLimit).toHaveBeenCalledWith(ORG, "embeddings");
+    expect(billUsage.mock.calls[0][0].apiKeyId).toBe(API_KEY_ID);
+    expect(usageCreate.mock.calls[0][0].api_key_id).toBe(API_KEY_ID);
+  });
+
+  test("suspended IAC returns the account-suspended 403 without charging", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "suspended",
+      userId: USER,
+    });
+
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+    );
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as {
+      error: { code: string; type: string };
+    };
+    expect(body.error).toMatchObject({
+      type: "account_suspended",
+      code: "moderation_violation",
+    });
+    expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
+    expect(enforceOrgRateLimit).not.toHaveBeenCalled();
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(embedMany).not.toHaveBeenCalled();
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(scheduled.length).toBe(0);
   });
 });
 

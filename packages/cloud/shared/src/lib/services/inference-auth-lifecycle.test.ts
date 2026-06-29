@@ -13,12 +13,16 @@
  * Plus: invalidation is best-effort and must never throw into the lifecycle write.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as cacheClientActual from "../cache/client";
+import * as loggerActual from "../utils/logger";
+import * as inferenceAuthCacheActual from "./inference-auth-cache";
 
 // ── Captured side effects + per-test repository state ───────────────────────
 const invalidatedHashBatches: string[][] = [];
 const userDeleteCalls: string[] = [];
 const orgDeleteCalls: string[] = [];
+const cacheValues = new Map<string, unknown>();
 
 let userApiKeys: Array<{ key_hash: string }> = [];
 let orgApiKeys: Array<{ key_hash: string }> = [];
@@ -62,9 +66,14 @@ mock.module("../../db/repositories", () => ({
 
 mock.module("../cache/client", () => ({
   cache: {
-    get: async () => null,
-    set: async () => {},
-    del: async () => {},
+    get: async (key: string) => cacheValues.get(key) ?? null,
+    set: async (key: string, value: unknown) => {
+      cacheValues.set(key, value);
+    },
+    del: async (key: string) => {
+      cacheValues.delete(key);
+    },
+    isAvailable: () => true,
   },
 }));
 
@@ -76,11 +85,19 @@ beforeEach(() => {
   invalidatedHashBatches.length = 0;
   userDeleteCalls.length = 0;
   orgDeleteCalls.length = 0;
+  cacheValues.clear();
   userApiKeys = [];
   orgApiKeys = [];
   userRecord = undefined;
   listByOrganizationUsers = [];
   listByUserError = null;
+});
+
+afterAll(() => {
+  mock.module("./inference-auth-cache", () => inferenceAuthCacheActual);
+  mock.module("../cache/client", () => cacheClientActual);
+  mock.module("../utils/logger", () => loggerActual);
+  mock.restore();
 });
 
 describe("UsersService — IAC invalidation on lifecycle", () => {
