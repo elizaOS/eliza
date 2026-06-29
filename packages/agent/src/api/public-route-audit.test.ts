@@ -1,6 +1,6 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { publicRouteKey, scanPublicRoutes } from "./public-route-audit.ts";
 
 const BASELINE_PATH = join(
@@ -48,5 +48,42 @@ describe("public:true route allowlist (#9948)", () => {
       keys.some((k) => k.includes("/api/media/:filename")),
       "scanner should detect the pre-auth media route",
     ).toBe(true);
+  });
+
+  it("fails closed to a full scan when git change detection is unavailable", async () => {
+    const fixtureDir = join(import.meta.dirname, "__tmp-public-route-audit");
+    const fixturePath = join(fixtureDir, "new-public-route.ts");
+    mkdirSync(fixtureDir, { recursive: true });
+    writeFileSync(
+      fixturePath,
+      `export const routes = [
+  {
+    path: "/__public-route-audit-fixture",
+    public: true,
+    handler: () => new Response("ok"),
+  },
+];
+`,
+    );
+
+    vi.resetModules();
+    vi.doMock("node:child_process", () => ({
+      execFileSync: vi.fn(() => {
+        throw new Error("git unavailable");
+      }),
+    }));
+
+    try {
+      const audit = await import("./public-route-audit.ts");
+      const keys = audit.scanPublicRoutes().map(audit.publicRouteKey);
+      expect(
+        keys.some((key) => key.includes("/__public-route-audit-fixture")),
+        "scanner must not pass baseline-only when git diff data is missing",
+      ).toBe(true);
+    } finally {
+      vi.doUnmock("node:child_process");
+      vi.resetModules();
+      rmSync(fixtureDir, { recursive: true, force: true });
+    }
   });
 });
