@@ -3,6 +3,7 @@
  */
 
 import {
+  apiKeysRepository,
   type NewUser,
   organizationsRepository,
   type User,
@@ -13,6 +14,7 @@ import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
 
 function getErrorDetails(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) {
@@ -223,6 +225,26 @@ export class UsersService {
     return await usersRepository.create(data);
   }
 
+  /**
+   * Inference hot path (#9981 review gap): drop every cached IAC identity for a
+   * user's API keys so a deactivated/deleted user stops fast-pathing inference
+   * immediately rather than authorizing until the authContext TTL expires. The
+   * slow path enforces `user.is_active`, but the IAC cache short-circuits it.
+   * Best-effort: a cache failure must never break the lifecycle write. Mirrors
+   * the ban/suspend wiring already in admin.ts (reuses listByUser, no new reader).
+   */
+  private async invalidateInferenceAuthForUser(userId: string): Promise<void> {
+    try {
+      const keys = await apiKeysRepository.listByUser(userId);
+      await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
+    } catch (error) {
+      logger.warn("[UsersService] Failed to invalidate inference auth cache for user", {
+        userId,
+        ...getErrorDetails(error),
+      });
+    }
+  }
+
   async update(id: string, data: Partial<NewUser>): Promise<User | undefined> {
     const existing = await usersRepository.findById(id);
     const result = await usersRepository.update(id, data);
@@ -231,6 +253,11 @@ export class UsersService {
     }
     if (result) {
       await this.invalidateCache(result);
+    }
+    // Deactivation: when is_active flips to false, evict the user's warm IAC
+    // entries so the now-inactive account can no longer fast-path inference.
+    if (data.is_active === false) {
+      await this.invalidateInferenceAuthForUser(id);
     }
     return result;
   }
@@ -290,6 +317,10 @@ export class UsersService {
     const organizationId = user.organization_id;
 
     await this.invalidateCache(user);
+    // Resolve + evict the user's cached IAC identities BEFORE the row is deleted:
+    // at delete time the user is still active, so an is_active gate can't fire and
+    // the key_hash set must be read while the keys still exist.
+    await this.invalidateInferenceAuthForUser(id);
     await usersRepository.delete(id);
 
     // Check if this was the last user in the organization
