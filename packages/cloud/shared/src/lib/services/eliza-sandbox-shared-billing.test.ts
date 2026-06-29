@@ -156,6 +156,8 @@ function sharedSandbox(): AgentSandbox {
     headscale_ip: null,
     docker_image: null,
     image_digest: null,
+    previous_image_digest: null,
+    previous_docker_image: null,
     billing_status: "active",
     last_billed_at: null,
     hourly_rate: "0.0100",

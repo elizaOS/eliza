@@ -70,10 +70,7 @@ import {
   type CreditReservation,
   creditsService,
 } from "@/lib/services/credits";
-import {
-  isInferenceHotPathCacheEnabled,
-  resolveInferenceAuthContext,
-} from "@/lib/services/inference-auth-context";
+import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import {
   createOptimisticDebitSettler,
   getGateBalanceUsd,
@@ -752,47 +749,39 @@ export async function handleChatCompletionsPOST(
     | null = null;
 
   try {
-    // 1. Authenticate (+ moderation). #9899: when the inference hot-path cache
-    // is enabled, an API-key dedicated-agent request resolves auth + org +
-    // moderation in a SINGLE cache read (the actual hot path). Otherwise, and
-    // for non-API-key / cache-unavailable requests, the authoritative chain
-    // runs verbatim, so flag-OFF behavior is byte-identical to before.
-    const hotPathEnabled = isInferenceHotPathCacheEnabled();
+    // 1. Authenticate (+ moderation). #9899: API-key dedicated-agent requests
+    // resolve auth + org + moderation in a SINGLE cache read when the cache is
+    // available. Non-API-key / cache-unavailable requests take the authoritative
+    // slow path verbatim.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let moderationAlreadyChecked = false;
 
-    if (hotPathEnabled) {
-      const resolution = await resolveInferenceAuthContext(req);
-      if (resolution.kind === "suspended") {
-        return addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message:
-                  "Your account has been suspended due to policy violations.",
-                type: "account_suspended",
-                code: "moderation_violation",
-              },
+    const resolution = await resolveInferenceAuthContext(req);
+    if (resolution.kind === "suspended") {
+      return addCorsHeaders(
+        Response.json(
+          {
+            error: {
+              message:
+                "Your account has been suspended due to policy violations.",
+              type: "account_suspended",
+              code: "moderation_violation",
             },
-            { status: 403 },
-          ),
-        );
-      }
-      if (resolution.kind === "authorized") {
-        user = {
-          id: resolution.ctx.userId,
-          organization_id: resolution.ctx.orgId,
-        };
-        apiKey = { id: resolution.ctx.apiKeyId };
-        // The resolver already verified not-suspended (cache hit = at populate;
-        // origin miss = just now), so the synchronous moderation read is skipped.
-        moderationAlreadyChecked = true;
-      } else {
-        const authed = await requireAuthOrApiKeyWithOrg(req);
-        user = authed.user;
-        apiKey = authed.apiKey ? { id: authed.apiKey.id } : null;
-      }
+          },
+          { status: 403 },
+        ),
+      );
+    }
+    if (resolution.kind === "authorized") {
+      user = {
+        id: resolution.ctx.userId,
+        organization_id: resolution.ctx.orgId,
+      };
+      apiKey = { id: resolution.ctx.apiKeyId };
+      // The resolver already verified not-suspended (cache hit = at populate;
+      // origin miss = just now), so the synchronous moderation read is skipped.
+      moderationAlreadyChecked = true;
     } else {
       const authed = await requireAuthOrApiKeyWithOrg(req);
       user = authed.user;
@@ -883,9 +872,9 @@ export async function handleChatCompletionsPOST(
     // detection ALREADY classifies this as a reasoning model. The catalog can
     // only ADD reasoning, never remove it (modelUsesReasoningTokens ORs the two
     // signals), so for a name-pattern match the catalog cannot change
-    // computeEffectiveMaxTokens — the read is pure latency. Gated behind the
-    // hot-path flag so flag-OFF keeps the unconditional lookup (byte-identical).
-    const skipCatalogLookup = hotPathEnabled && modelUsesReasoningTokens(model);
+    // computeEffectiveMaxTokens — the read is pure latency. Default now (the
+    // hot-path cache is no longer flag-gated); pinned to the name-pattern set.
+    const skipCatalogLookup = modelUsesReasoningTokens(model);
     if (!skipCatalogLookup) {
       try {
         const catalogModel = await getCachedGatewayModelById(model);
@@ -962,11 +951,9 @@ export async function handleChatCompletionsPOST(
                 categories: result.flaggedCategories,
               },
             );
-            // Only touch the IAC when the cache is in use — keeps flag-OFF
-            // behavior byte-identical (no extra DB fan-out) (#9899).
-            if (hotPathEnabled) {
-              void apiKeysService.invalidateInferenceContextForUser(user.id);
-            }
+            // Drop the user's IAC so the next request re-checks authoritatively
+            // (#9899; the hot-path cache is the default auth path now).
+            void apiKeysService.invalidateInferenceContextForUser(user.id);
           },
         );
       }
@@ -1048,11 +1035,7 @@ export async function handleChatCompletionsPOST(
       // charge (free inference). Mirrors the IAC resolver's cache-health guard.
       let useOptimistic = false;
       let estimatedCostUsd = 0;
-      if (
-        hotPathEnabled &&
-        isOptimisticBillingEnabled() &&
-        isOptimisticBackstopAvailable()
-      ) {
+      if (isOptimisticBillingEnabled() && isOptimisticBackstopAvailable()) {
         const { totalCost } = await calculateCost(
           normalizedModel,
           provider,

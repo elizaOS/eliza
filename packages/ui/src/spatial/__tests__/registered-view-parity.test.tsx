@@ -12,8 +12,15 @@
  *  - IR  — `evaluateToSpatialTree(element)` produces a non-trivial node tree.
  *  - TUI — `renderViewToLines` + `analyzeFraming` is structurally clean at the
  *          two gate widths (uniform width, closed boxes, no truncated buttons).
- *  - DOM — `<SpatialSurface modality="gui">` and `modality="xr">` mount with
- *          non-empty markup and emit agent-surface `data-agent-id` hooks.
+ *  - GUI — `<SpatialSurface modality="gui">` mounts with non-empty markup and
+ *          emits agent-surface `data-agent-id` hooks.
+ *  - XR  — the REAL `<XRSpatialScene>` places the view as a 3D panel: the scene
+ *          control surface is published, the view mounts as a `data-xr-panel`
+ *          with a valid 3D world placement (depth > 0, in front of the head), and
+ *          it emits the same agent-surface hooks as IR. (This is the XR-specific
+ *          behaviour the #9946 contract demands — not a duplicate flat DOM mount.
+ *          The full controller-ray hit-test over every view runs in a real
+ *          browser: `plugins/plugin-xr/simulator/e2e/scene.spec.ts`.)
  *
  * A failure lists the exact `(id, surface)` pairs that didn't render, so the
  * proof points at the broken view, not a generic red X.
@@ -22,7 +29,11 @@
 import { cleanup, render } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { evaluateToSpatialTree, SpatialSurface } from "../index.ts";
+import {
+  evaluateToSpatialTree,
+  SpatialSurface,
+  XRSpatialScene,
+} from "../index.ts";
 import { isContainer, type SpatialNode } from "../ir.ts";
 import { analyzeFraming } from "../tui/framing.ts";
 import {
@@ -163,39 +174,82 @@ describe("registered view parity — every view × three surfaces", () => {
         }
       }
 
-      // --- DOM (GUI + XR) ---------------------------------------------------
-      for (const modality of ["gui", "xr"] as const) {
-        try {
-          const { container } = render(
-            <SpatialSurface modality={modality}>{element}</SpatialSurface>,
-          );
-          const surface = container.querySelector(
-            `[data-spatial-surface="${modality}"]`,
-          );
-          if (!surface) {
-            failures.push(`${id}@${modality}: surface element did not mount`);
-          } else if (surface.innerHTML.trim().length === 0) {
+      // --- DOM GUI (flat surface) ------------------------------------------
+      try {
+        const { container } = render(
+          <SpatialSurface modality="gui">{element}</SpatialSurface>,
+        );
+        const surface = container.querySelector(`[data-spatial-surface="gui"]`);
+        if (!surface) {
+          failures.push(`${id}@gui: surface element did not mount`);
+        } else if (surface.innerHTML.trim().length === 0) {
+          failures.push(`${id}@gui: surface mounted with empty markup`);
+        } else {
+          // The agent-surface contract: the DOM surface must emit exactly the
+          // `data-agent-id` hooks the authored tree declares in IR — so the agent
+          // can drive the same view on every surface. (A loading/empty default
+          // snapshot legitimately declares zero; the invariant is parity with IR.)
+          const domAgentIds =
+            container.querySelectorAll("[data-agent-id]").length;
+          if (domAgentIds !== irAgentIds.length) {
             failures.push(
-              `${id}@${modality}: surface mounted with empty markup`,
+              `${id}@gui: emitted ${domAgentIds} data-agent-id hooks, IR declares ${irAgentIds.length}`,
             );
-          } else {
-            // The agent-surface contract: the DOM surface must emit exactly the
-            // `data-agent-id` hooks the authored tree declares in IR — so the
-            // agent can drive the same view on every surface. (A loading/empty
-            // default snapshot legitimately declares zero; the invariant is
-            // parity with IR, not a fixed floor.)
-            const domAgentIds =
-              container.querySelectorAll("[data-agent-id]").length;
-            if (domAgentIds !== irAgentIds.length) {
-              failures.push(
-                `${id}@${modality}: emitted ${domAgentIds} data-agent-id hooks, IR declares ${irAgentIds.length}`,
-              );
-            }
           }
-          cleanup();
-        } catch (err) {
-          failures.push(`${id}@${modality}: ${(err as Error)?.message ?? err}`);
         }
+        cleanup();
+      } catch (err) {
+        failures.push(`${id}@gui: ${(err as Error)?.message ?? err}`);
+      }
+
+      // --- XR (REAL 3D scene renderer, not a duplicate flat mount) ----------
+      try {
+        const { container } = render(
+          <XRSpatialScene panels={[{ id, content: element }]} />,
+        );
+        const panelEl = container.querySelector(`[data-xr-panel="${id}"]`);
+        if (!panelEl) {
+          failures.push(`${id}@xr: view did not mount as a 3D panel`);
+        }
+        // The scene publishes its control surface on mount (session/scene infra).
+        const sceneApi = (
+          window as unknown as {
+            __elizaXRScene?: {
+              getPanels(): Array<{
+                id: string;
+                depth: number;
+                position: { z: number };
+              }>;
+            };
+          }
+        ).__elizaXRScene;
+        if (!sceneApi) {
+          failures.push(
+            `${id}@xr: scene control surface (__elizaXRScene) not published`,
+          );
+        } else {
+          // 3D placement is computed by xr-scene-math (independent of layout, so
+          // it holds in jsdom): the panel sits in front of the head with depth.
+          const p = sceneApi.getPanels().find((x) => x.id === id);
+          if (!p) {
+            failures.push(`${id}@xr: panel absent from scene placement`);
+          } else if (!(p.depth > 0) || !(p.position.z < 0)) {
+            failures.push(
+              `${id}@xr: panel lacks a valid 3D world placement (depth=${p.depth}, z=${p.position.z})`,
+            );
+          }
+        }
+        // Same agent-surface hooks as IR — the agent drives the view in XR too.
+        const domAgentIds =
+          container.querySelectorAll("[data-agent-id]").length;
+        if (domAgentIds !== irAgentIds.length) {
+          failures.push(
+            `${id}@xr: emitted ${domAgentIds} data-agent-id hooks, IR declares ${irAgentIds.length}`,
+          );
+        }
+        cleanup();
+      } catch (err) {
+        failures.push(`${id}@xr: ${(err as Error)?.message ?? err}`);
       }
     }
 

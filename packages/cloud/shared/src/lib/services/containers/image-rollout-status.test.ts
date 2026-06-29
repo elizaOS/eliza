@@ -196,12 +196,17 @@ describe("summarizeImageRollout — status state machine", () => {
     expect(dup?.count).toBe(2);
   });
 
-  test("canary + rollback are always reported as unsupported", () => {
+  test("canary stays unsupported; rollback is an operator-gated supported action", () => {
     const s = summarizeImageRollout({
       desiredImage: DESIRED,
       enabled: true,
       rows: [row("a", DESIRED)],
     });
-    expect(s.unsupportedActions.map((a) => a.action).sort()).toEqual(["canary", "rollback"]);
+    // canary remains unsupported until cohort routing + health gates exist.
+    expect(s.unsupportedActions.map((a) => a.action)).toEqual(["canary"]);
+    // rollback is now supported but never automatic — it is operator-gated and
+    // backed by the persisted previous_image_digest / executeDowngrade.
+    expect(s.supportedActions.map((a) => a.action)).toEqual(["rollback"]);
+    expect(s.supportedActions[0]?.requiresOperatorApproval).toBe(true);
   });
 });

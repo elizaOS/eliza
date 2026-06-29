@@ -211,6 +211,19 @@ async function dispatchOrchestratorRoutes(
     return true;
   }
 
+  // GET /api/orchestrator/accounts/readiness — loud pool-readiness gate.
+  // Returns 200 when ≥1 healthy Codex AND ≥1 healthy Claude are connected
+  // (≥2 each with ?rotation=1), or 503 with the per-provider problems when not,
+  // so CI/ops catches a degraded pool instead of the silent single-account
+  // fallback. (#9960)
+  if (method === "GET" && pathname === `${PREFIX}/accounts/readiness`) {
+    const rotation =
+      query.get("rotation") === "1" || query.get("rotation") === "true";
+    const readiness = service.getAccountReadiness({ rotation });
+    sendJson(res, readiness, readiness.ready ? 200 : 503);
+    return true;
+  }
+
   // GET /api/orchestrator/rooms — per-room participant roster (orchestrator +
   // user + each sub-agent grouped by task room), the room-scoped counterpart
   // to the flat /accounts assignment map.

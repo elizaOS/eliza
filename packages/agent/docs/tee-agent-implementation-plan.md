@@ -2,10 +2,15 @@
 
 Date: 2026-05-21
 Lane: AGENT-RUNTIME (confidential agent + confidential inference)
-Status: planning. The agent-side primitives exist and are unit-tested; the
-production wiring, the confidential-inference unseal path, and all real
-hardware quote verification are not yet built. Real TDX/CoVE quote
-verification is **BLOCKED on hardware** and is called out as such throughout.
+Status: **Phase A landed (software-only).** The agent-side primitives, the
+production boot-gate wiring, the production profile, the nonce/`report_data`
+replay binding, the signed revocation manifest, and the confidential-inference
+unseal *plumbing* (against the local mock KMS) are built and unit-tested — see
+the Phase A table in §7 and the DONE markers in §1.2. **All real hardware quote
+verification (real TDX/CoVE quote signature, RTMR, and `report_data` validation;
+the dstack guest agent; RA-TLS KMS; H100 GPU attestation) is Phase B/C and stays
+BLOCKED on hardware** — called out as such throughout. Phase A verifies a signed
+evidence *document* and fails closed; it does not claim hardware-verified trust.
 
 Scope discipline (repo `AGENTS.md`): this document is the plan only. It does
 not refactor production code. It proposes strongly-typed additions (no `any`,
@@ -77,6 +82,15 @@ they are good:
 
 ### 1.2 What is mock, stubbed, or thin — be specific
 
+> **Status reconciliation (Phase A landed).** Several gaps called out below have
+> since been closed in software (Phase A — no hardware required) and are marked
+> **DONE** inline with the implementing file. What remains genuinely blocked is
+> **real hardware quote verification** (TDX signature / RTMR / `report_data`
+> validation, the dstack guest agent, RA-TLS KMS, H100 GPU attestation) — Phase
+> B/C, **BLOCKED on hardware**. The software items below do **not** make the
+> system hardware-trusted; they verify a signed evidence *document* and fail
+> closed when it is absent, simulated, replayed, or tampered.
+
 - **No real quote verification anywhere.** `dstack-tee-provider.ts` *fetches or
   reads* a `TeeEvidence` JSON blob (`ELIZA_TEE_EVIDENCE_JSON/_URL/_PATH`,
   `DSTACK_TAPPD_URL`) and normalizes it. It never parses a TDX quote, never
@@ -88,35 +102,51 @@ they are good:
   for the macOS-feasible lane and unit tests, but it is **not** the security
   property the product claims, and the codebase does not currently hide that —
   it just hasn't built the verifier. (Honest gap, not slop.)
-- **`HttpTeeKeyReleaseClient` does not generate or bind a fresh nonce.** The
-  *policy* can carry an `expectedNonce`, but the client sends whatever nonce is
-  already in the evidence; it does not (a) request a challenge nonce from the KMS,
-  (b) generate an ephemeral keypair, or (c) bind `report_data = H(nonce || epk)`.
-  So the HTTP path as written is replayable against a passive collector. The
-  `tee-protected-agent-vm.md` and chip §3.2 docs *specify* the `report_data`
-  binding, but the client does not implement it.
+- **DONE (A7) — nonce + `report_data` replay binding.** `tee-key-release.ts` now
+  generates a fresh ephemeral X25519 keypair and a fresh nonce per request and
+  binds `report_data = SHA256(nonce || epk_pub)` (`TeeReportDataChallenge`,
+  `collectEvidenceWithReportData`). The issued nonce is set as `policy.expectedNonce`
+  so `evaluateTeeEvidencePolicy` rejects `nonce-mismatch`, closing the replay gap
+  for a passive collector. (Originally: the client sent whatever nonce was already
+  in the evidence — replayable.) The crypto binding is real; **the quote that
+  carries `report_data` is still not hardware-verified — Phase B2, BLOCKED.**
 - **`LocalTeeKeyReleaseClient` is an HMAC KDF, not a KMS.** It derives key
   material with `HMAC-SHA256(masterSecret, keyId|context|agent|policy|device)`.
   This is a faithful *model* of "deterministic app-key bound to measurement" and
   it correctly varies output per agent/policy measurement (proven by test), but
   the `masterSecret` lives in agent memory. It is a local-dev stand-in for the
   dstack decentralized KMS, not the KMS.
-- **No production wiring.** `grep` of `packages/agent/src/index.ts` shows the
-  `tee-*` modules are only `export *`-ed. **Nothing in the agent boot path calls
-  `resolveTeeRuntimePolicy`, installs the dstack provider, gates secret/model-key
-  release, or wraps the signer with `TeeSignerBackend` at runtime.** The suite is
-  a tested library with two scripts; it is not yet on the agent's actual startup
-  path. `ELIZA_TEE_REQUIRED=true` resolves a policy object but no boot code
-  *consumes* it to fail closed.
-- **No confidential-inference path at all.** There is no model-weights unseal,
-  no encrypted-at-rest weights, no `model-key` release wired into the local model
-  runtime. `secretScopes: ["agent-session","model-key","remote-signing"]` exists
-  only in the example deployment JSON; `model-key` has no consumer.
-- **DevMode / fake-quote defenses are not centralized.** The policy *can* require
-  `debugDisabled:true`, but there is no single "production profile" that a caller
-  can't forget to apply, and no rejection of dstack DevMode evidence beyond a
-  caller remembering to set the claim. No KMS-identity pinning, no RA-TLS cert
-  verification toggle, no refusal of HTTP (non-TLS) KMS in production.
+- **DONE (A4) — production boot-gate wiring.** `runtime/eliza.ts` now runs
+  `runTeeBootGate` at startup: it calls `evaluateTeeBootGate` (which resolves the
+  runtime policy, merges the production profile, collects evidence, and evaluates
+  trust ONCE), fails closed on any error, and publishes the decision via
+  `setTeeBootGateState`. Secret-bearing paths consult `teeBootGateBlocksSecrets()`
+  (`tee-boot-gate-state.ts`), and `assertTeeBootGateAllowsSecrets` throws
+  fail-closed when secrets are disabled. `ELIZA_TEE_REQUIRED=true` with no trusted
+  evidence ⇒ no model-key release, no signing, no remote-plugin sync; degraded
+  boot allowed, silent secret release never. (Originally: `tee-*` was only
+  `export *`-ed with no boot consumer.)
+- **DONE (A8) — confidential-inference unseal plumbing.**
+  `tee-confidential-inference.ts` releases the `model-key` (`MODEL_KEY_ID`) only
+  after the key-release client's evidence satisfies the policy, then decrypts the
+  at-rest weights blob in process memory and hands it to the local runtime. The
+  test asserts the weights and key never touch disk, env, or the structured
+  logger, and that tampered/absent evidence makes the key unavailable so unseal
+  throws (negative path enforced by data unavailability). (Originally: no unseal
+  path, `model-key` had no consumer.) This runs against the **local HMAC KDF /
+  mock KMS** — the **real RA-TLS KMS and real quote verification are Phase B,
+  BLOCKED.**
+- **DONE (A3/A6) — centralized production profile rejecting DevMode/simulated
+  evidence.** `tee-production-profile.ts` (`mergeTeeProductionProfile`) forces
+  `required`, `requiredClaims` (`debugDisabled`/`productionLifecycle`), and
+  `rejectSimulatedEvidence` on, so a caller cannot accept DevMode evidence by
+  forgetting a claim. `evaluateTeeEvidencePolicy` rejects evidence that
+  self-identifies as mock/simulated/debug/devmode (kind, hardwareVendor, provider,
+  quote markers, verifier) — the `tee-production-profile.test.ts` matrix proves
+  it. This is an agent-side compensating control against dstack #608 (DevMode
+  allow-all); it does **not** replace **real quote-signature verification —
+  Phase B2, BLOCKED.** KMS-identity pinning / RA-TLS cert verification config
+  fields exist (A6) but the live RA-TLS handshake is Phase B.
 - **Two `Tee*` type homes.** `packages/core/src/types/tee.ts` defines a *legacy*
   `TeeAgent`/`RemoteAttestationQuote`/`TEEMode`/`TeeType` set (old plugin-tee
   shape). The *new* canonical types live in `packages/agent/src/services/tee-evidence.ts`.
@@ -473,20 +503,24 @@ fail-closed.
 
 ### Phase A — buildable now (no hardware), software-only
 
-| ID | Work item | Effort | Gate |
+All Phase A items are **DONE** (software-only, no hardware). They verify a signed
+evidence *document* and fail closed; none of them claims hardware-verified trust —
+that stays Phase B/C, BLOCKED.
+
+| ID | Status | Work item | Gate |
 | --- | --- | --- | --- |
-| A1 | Extend `tee-full-stack-local.ts` with real policy vectors: per-topology policies (local-only, desktop, cloud-routed) + golden/tampered fixtures for every decision reason (kind/provider/measurement/version/nonce/timestamp/claim/revoked). | 1 | `tee-full-stack-local` |
-| A2 | Negative-test matrix: a vitest fixture asserting each `reason` in the decision union for crafted evidence. Pure data, no `any`. | 1 | new `tee-evidence-policy.matrix.test.ts` |
-| A3 | `teeProductionProfile()` + profile-merge helper (§4.2); unit tests that prove DevMode/debug evidence is rejected under it. | 1 | unit |
-| A4 | Boot wiring (§4.1): consume `resolveTeeRuntimePolicy` at agent startup, fail-closed `[TeeBootGate]`, wrap signer in `TeeSignerBackend`, gate model-key + agent-session release. | 2 | integration test + smoke |
-| A5 | Revocation-manifest signature verification at load (§3.4); deny unsigned/invalid manifests. | 1 | unit |
-| A6 | dstack provider hardening that needs no hardware: payload size cap (§5.6), https-only + KMS-identity-pin config fields (§5.3/5.4), constant-time nonce/key compare (§5.7), reject mock `verifier`/`hardwareVendor`/simulated quotes under production profile (§5.2). | 2 | unit |
-| A7 | Nonce + epk binding in the key-release client (§3.2): generate epk, request/echo nonce, set `report_data`, verify key wrapped to epk. (Crypto only; no real quote yet.) | 2 | unit |
-| A8 | Confidential-inference unseal *plumbing* (§2.2 steps 4–7) against the mock KMS: encrypt a weights blob at rest, release `model-key`, decrypt in-memory, hand to the local runtime; assert no temp-file/plaintext on disk and no secret in logs (§4.4). | 3 | new `tee-confidential-inference-local` script |
-| A9 | CI gate (§4.4): grep crash/telemetry serializers + env-dump paths for secret-scope keys; fail on leak. | 0.5 | new lint gate |
+| A1 | DONE | Extend `tee-full-stack-local.ts` with real policy vectors: per-topology policies (local-only, desktop, cloud-routed) + golden/tampered fixtures for every decision reason (kind/provider/measurement/version/nonce/timestamp/claim/revoked). | `tee-full-stack-local` |
+| A2 | DONE | Negative-test matrix asserting each `reason` in the decision union for crafted evidence. Pure data, no `any`. | `tee-evidence-policy.matrix.test.ts` |
+| A3 | DONE | `teeProductionProfile()` + profile-merge helper (§4.2); rejects DevMode/debug evidence. | `tee-production-profile.ts` / `.test.ts` |
+| A4 | DONE | Boot wiring (§4.1): `runTeeBootGate` in `runtime/eliza.ts`, fail-closed `[TeeBootGate]`, gate model-key + agent-session release; cross-module state via `tee-boot-gate-state.ts`. | `tee-boot-gate*.ts` / `.test.ts` |
+| A5 | DONE | Revocation-manifest Ed25519 signature verification at load (§3.4); deny unsigned/invalid manifests. | `tee-revocation.ts` / `tee-revocation-signature.test.ts` |
+| A6 | DONE | dstack provider hardening (no hardware): payload size cap, https-only + KMS-identity-pin config fields, constant-time nonce/key compare, reject mock `verifier`/`hardwareVendor`/simulated quotes under production profile. | unit |
+| A7 | DONE | Nonce + epk binding in the key-release client (§3.2): generate epk, issue/echo nonce, set `report_data`, verify key wrapped to epk. (Crypto only; no real quote yet.) | `tee-key-release.ts` / `.test.ts` |
+| A8 | DONE | Confidential-inference unseal *plumbing* (§2.2 steps 4–7) against the mock KMS: encrypt weights at rest, release `model-key`, decrypt in-memory, hand to the local runtime; assert no temp-file/plaintext on disk and no secret in logs (§4.4). | `tee-confidential-inference.ts` / `.test.ts` |
+| A9 | DONE | CI gate (§4.4): grep crash/telemetry serializers + env-dump paths for secret-scope keys; fail on leak. In-lane via `tee-secret-hygiene.test.ts`; repo-wide CLI gate `packages/scripts/audit-tee-secret-leak.mjs` (`--self-test`). | lint gate |
 
 Critical path for Phase A: A3 → A4 → A8 (the headline unseal plumbing depends on
-the production profile and boot wiring). A1/A2/A5/A6/A7/A9 parallelize.
+the production profile and boot wiring). A1/A2/A5/A6/A7/A9 parallelized.
 
 ### Phase B — cloud-TDX-gated (real dstack KMS on TDX + H100)
 

@@ -14,7 +14,6 @@ describe("registerAllCloudSurfaces", () => {
     for (const p of [
       "join",
       "dashboard/agents",
-      "dashboard/api-keys",
       "dashboard/billing",
       "dashboard/account",
       "dashboard/security",
@@ -34,5 +33,16 @@ describe("registerAllCloudSurfaces", () => {
     ]) {
       expect(paths, `missing route ${p}`).toContain(p);
     }
+  });
+
+  it("mounts the API-keys surface only once — no standalone dashboard/api-keys route", () => {
+    registerAllCloudSurfaces();
+    const apiKeysRoutes = listCloudRoutes().filter(
+      (r) => r.path === "dashboard/api-keys",
+    );
+    // The single API-keys mount is the Settings → Developer section; legacy
+    // `/dashboard/api-keys` deep links resolve to it via the CloudRouterShell
+    // compat redirect, NOT a registered route.
+    expect(apiKeysRoutes).toHaveLength(0);
   });
 });

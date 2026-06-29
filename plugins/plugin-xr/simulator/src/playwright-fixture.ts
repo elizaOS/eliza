@@ -19,10 +19,12 @@ import { fileURLToPath } from "node:url";
 import { test as base, type Page } from "@playwright/test";
 import { MockAgentServer } from "./mock-agent.ts";
 import type {
+  DeviceRay,
   EmulatorStats,
   Handedness,
   InputEventRecord,
   TelemetrySnapshot,
+  Vec3,
   XRPose,
   XRSessionMode,
 } from "./types.ts";
@@ -211,6 +213,49 @@ export class XREmulatorPage {
 
   async getSelectLog(): Promise<InputEventRecord[]> {
     return this.page.evaluate(() => window.__XREmulator.getSelectLog());
+  }
+
+  async getSqueezeLog(): Promise<InputEventRecord[]> {
+    return this.page.evaluate(() => window.__XREmulator.getSqueezeLog());
+  }
+
+  // ── 3D scene (XRSpatialScene) read-back + manipulation ─────────────────────
+
+  /** True once a mounted XRSpatialScene is driving 3D hit-tests. */
+  async hasScene(): Promise<boolean> {
+    return this.page.evaluate(() => window.__XREmulator.hasScene());
+  }
+
+  /** The current emulated headset world pose. */
+  async getHeadPose(): Promise<XRPose> {
+    return this.page.evaluate(() => window.__XREmulator.getHeadPose());
+  }
+
+  /** A connected controller's world pose, or null. */
+  async getControllerPose(handedness: Handedness): Promise<XRPose | null> {
+    return this.page.evaluate(
+      (h) => window.__XREmulator.getControllerPose(h),
+      handedness,
+    );
+  }
+
+  /** A controller's world-space aiming ray, or null. */
+  async getControllerRay(handedness: Handedness): Promise<DeviceRay | null> {
+    return this.page.evaluate(
+      (h) => window.__XREmulator.getControllerRay(h),
+      handedness,
+    );
+  }
+
+  /** Drag the panel a controller is aimed at by a world delta; returns new position. */
+  async dragController(
+    handedness: Handedness,
+    delta: Vec3,
+  ): Promise<Vec3 | null> {
+    return this.page.evaluate(
+      ({ h, d }) => window.__XREmulator.dragController(h, d),
+      { h: handedness, d: delta },
+    );
   }
 
   // ── Capture ──────────────────────────────────────────────────────────────

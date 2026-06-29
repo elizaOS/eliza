@@ -87,3 +87,32 @@ export {
   type TextProps,
   VStack,
 } from "./primitives.tsx";
+// Real 3D spatial renderer (XR modality) + its deterministic math core.
+export {
+  type XRDevicePose,
+  type XRPanelSpec,
+  type XRSceneAPI,
+  type XRSceneHit,
+  type XRScenePanelInfo,
+  XRSpatialScene,
+  type XRSpatialSceneProps,
+} from "./xr-scene.tsx";
+export {
+  billboardOrientation,
+  type Camera,
+  deviceRay,
+  forwardOf,
+  nearestPanelHit,
+  type PanelPlane,
+  type PlaneHit,
+  panelLocalToWorld,
+  projectToScreen,
+  type Quat,
+  quatLookAt,
+  type Ray,
+  rayPlaneHit,
+  screenToRay,
+  type Vec3,
+  type Viewport,
+  vec3,
+} from "./xr-scene-math.ts";

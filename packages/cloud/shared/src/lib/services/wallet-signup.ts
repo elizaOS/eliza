@@ -13,7 +13,7 @@ import { getClientIp } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
 import { organizationsService } from "./organizations";
-import { signupGrantAllowedForIp } from "./signup-grant-guard";
+import { runWithSignupGrantIpCap } from "./signup-grant-guard";
 import { usersService } from "./users";
 
 export const INITIAL_FREE_CREDITS = ((): number => {
@@ -39,21 +39,20 @@ async function grantWalletSignupCredits(params: {
 }): Promise<boolean> {
   if (params.amount <= 0) return false;
 
-  // Anti-sybil: withhold the bonus when this IP has hit the daily free-grant cap.
+  // Anti-sybil: withhold the bonus when this IP has hit the daily free-grant
+  // cap. The cap check and the grant run under a per-IP advisory lock so
+  // concurrent same-IP signups cannot each pass the cap before any commits.
   const signupIp = getClientIp();
-  if (!(await signupGrantAllowedForIp(signupIp))) {
-    return false;
-  }
-
   try {
-    await creditsService.addCredits({
-      organizationId: params.organizationId,
-      amount: params.amount,
-      description: "Wallet sign-up bonus",
-      stripePaymentIntentId: params.idempotencyKey,
-      metadata: { type: "wallet_signup", chain: params.chain, ip_address: signupIp },
+    return await runWithSignupGrantIpCap(signupIp, async () => {
+      await creditsService.addCredits({
+        organizationId: params.organizationId,
+        amount: params.amount,
+        description: "Wallet sign-up bonus",
+        stripePaymentIntentId: params.idempotencyKey,
+        metadata: { type: "wallet_signup", chain: params.chain, ip_address: signupIp },
+      });
     });
-    return true;
   } catch (err) {
     logger.error("[WalletSignup] Failed to grant initial credits:", err);
     if (params.requireInitialCredits) {

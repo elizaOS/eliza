@@ -141,6 +141,22 @@ export const agentSandboxes = pgTable(
      * those are treated as "upgrade on next cycle".
      */
     image_digest: text("image_digest"),
+    /**
+     * The image digest the agent ran on BEFORE its most recent fleet upgrade —
+     * the rollback target. Stamped at upgrade swap time from the old row's
+     * `image_digest`; `executeDowngrade` swaps the agent back onto this digest.
+     * Null until the first upgrade. Additive: pre-upgrade rows have no prior
+     * good image to roll back to, so rollback is simply unavailable for them.
+     */
+    previous_image_digest: text("previous_image_digest"),
+    /**
+     * The `docker_image` ref the agent ran on before its most recent upgrade.
+     * For managed-fleet agents this matches the current `docker_image`, but it
+     * is captured explicitly so a rollback can reconstruct the exact prior
+     * image reference (`<ref>@<previous_image_digest>`) without assuming the
+     * tag is unchanged. Null until the first upgrade.
+     */
+    previous_docker_image: text("previous_docker_image"),
     // Billing tracking fields (mirrors containers table pattern)
     billing_status: text("billing_status").$type<AgentBillingStatus>().notNull().default("active"),
     last_billed_at: timestamp("last_billed_at", { withTimezone: true }),
@@ -178,7 +194,7 @@ export const WARM_POOL_USER_ID = "00000000-0000-4000-8000-000000077002";
 
 export type AgentSandboxPoolStatus = "unclaimed";
 
-export type AgentBackupSnapshotType = "auto" | "manual" | "pre-shutdown";
+export type AgentBackupSnapshotType = "auto" | "manual" | "pre-shutdown" | "pre-upgrade";
 
 /**
  * Whether a backup row stores the agent's complete state (`full`) or only the

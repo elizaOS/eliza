@@ -17,7 +17,7 @@ src/
   vault.ts           — createVault() factory (PgliteVaultImpl wired with defaults)
   pglite-vault.ts    — PgliteVaultImpl: storage engine (PGlite DB, migration, stale-lock healing)
   crypto.ts          — encrypt/decrypt (AES-256-GCM, v1:<nonce>:<tag>:<ct> wire format)
-  master-key.ts      — MasterKeyResolver variants: osKeychainMasterKey, passphraseMasterKey, inMemoryMasterKey, defaultMasterKey
+  master-key.ts      — MasterKeyResolver variants: osKeychainMasterKey, passphraseMasterKey, inMemoryMasterKey, attestationMasterKey, defaultMasterKey (attestationMasterKey is fail-closed: releases the sealed-volume key only on trusted TEE evidence via an injected TeeAttestationVerifier)
   manager.ts         — createManager(), SecretsManager: routing layer over Vault; backend detection (1Password, Bitwarden, Proton Pass)
   inventory.ts       — listVaultInventory(), categorizeKey(), setEntryMeta(): UI-renderable metadata layer
   profiles.ts        — resolveActiveValue(), readRoutingConfig(), writeRoutingConfig(): per-key profiles + per-context routing
@@ -53,8 +53,10 @@ import {
   passphraseMasterKey,    // scrypt from ELIZA_VAULT_PASSPHRASE
   passphraseMasterKeyFromEnv,
   inMemoryMasterKey,      // tests only
+  attestationMasterKey,   // sealed-volume key, released only on trusted TEE evidence (fail-closed)
   MasterKeyUnavailableError,
 } from "@elizaos/vault";
+import type { TeeAttestationVerifier } from "@elizaos/vault"; // injected TEE trust boundary
 
 // Inventory / metadata
 import { listVaultInventory, categorizeKey, inferProviderId, setEntryMeta, readEntryMeta, removeEntryMeta } from "@elizaos/vault";

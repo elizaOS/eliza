@@ -88,11 +88,17 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   delete (window as { opener?: unknown }).opener;
 });
 
 describe("CliLoginPage", () => {
   it("auto-redirects an unauthenticated visitor straight to /login (no CLI interstitial) and arms the per-session guard", async () => {
+    // No window.opener (not script-closable): the page must never offer a
+    // "Close Window" button nor call window.close().
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
+    expect((window as { opener?: unknown }).opener).toBeUndefined();
+
     render(<CliLoginPage />);
 
     await waitFor(() =>
@@ -106,6 +112,8 @@ describe("CliLoginPage", () => {
     expect(screen.getByText("Signing in")).toBeTruthy();
     expect(screen.queryByText("CLI Authentication")).toBeNull();
     expect(screen.queryByRole("button", { name: "Sign In" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
+    expect(closeSpy).not.toHaveBeenCalled();
   });
 
   it("does NOT redirect again when the guard is already set — shows the manual sign-in fallback (loop-safety)", async () => {
@@ -120,7 +128,7 @@ describe("CliLoginPage", () => {
     expect(link.getAttribute("href")).toBe(SIGN_IN_HREF);
   });
 
-  it("completes the session when authenticated: POSTs /complete, notifies the opener, shows success, never redirects", async () => {
+  it("completes the session when authenticated: POSTs /complete, notifies the opener, shows success, never redirects or script-closes", async () => {
     sessionAuthRef.current = {
       ready: true,
       authenticated: true,
@@ -137,6 +145,7 @@ describe("CliLoginPage", () => {
       value: { postMessage },
       configurable: true,
     });
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
 
     render(<CliLoginPage />);
 
@@ -160,9 +169,10 @@ describe("CliLoginPage", () => {
     expect(screen.queryByText("ek_live_abc")).toBeNull();
     expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
     expect(navigateMock).not.toHaveBeenCalled();
+    expect(closeSpy).not.toHaveBeenCalled();
   });
 
-  it("renders the error panel when the session id is missing — no POST, no redirect", async () => {
+  it("renders the error panel when the session id is missing — no POST, no redirect, no dead close button", async () => {
     searchParamsRef.current = new URLSearchParams("");
 
     render(<CliLoginPage />);
@@ -170,9 +180,9 @@ describe("CliLoginPage", () => {
     expect(
       screen.getByText("Invalid authentication link. Missing session ID."),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
     expect(apiFetchMock).not.toHaveBeenCalled();
     expect(navigateMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
   });
 
   it("surfaces a completion failure as the error panel", async () => {

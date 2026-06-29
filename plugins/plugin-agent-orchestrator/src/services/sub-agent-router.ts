@@ -16,6 +16,11 @@ import {
   parentAgentMarkerIndex,
 } from "./parent-agent-dispatch.js";
 import {
+  createRouterLoopState,
+  type RouterLoopState,
+  routerLoopTransition,
+} from "./router-loop-guard.js";
+import {
   collectScreenshotPaths,
   deliverScreenshots,
 } from "./screenshot-delivery.js";
@@ -38,8 +43,6 @@ type RuntimeWithSendTarget = IAgentRuntime & {
 
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
-const DEFAULT_ROUND_TRIP_CAP = 32;
-const DEFAULT_STATE_LOST_RESPAWN_CAP = 3;
 const QUESTION_FOR_TASK_CREATOR = "QUESTION_FOR_TASK_CREATOR";
 const AGENT_COORDINATION = "AGENT_COORDINATION";
 const SWARM_ROLE_ORDER = ["task", "worktree", "origin"] as const;
@@ -328,73 +331,30 @@ export class SubAgentRouter extends Service {
   private acp: AcpService | null = null;
   private unsubscribe: (() => void) | undefined;
   private readonly delivered = new Set<string>();
-  private readonly roundTripCounts = new Map<string, number>();
   // Per-session accumulation of streamed child text, scanned for
   // `USE_SKILL parent-agent <json>` directives. Kept tiny (only a tail, or
   // from the marker onward) so it never grows with normal task output.
   private readonly parentAgentBuffers = new Map<string, string>();
   private readonly parentAgentDispatchCounts = new Map<string, number>();
-  private readonly capExceededSessions = new Set<string>();
   private readonly verifyRetryHandedOffSessions = new Set<string>();
-  // Backstop for the cross-session "state lost -> spawn a fresh sub-agent"
-  // respawn cascade. Each respawn is a NEW session, so roundTripCounts (keyed
-  // by sessionId) never catches it. Count session_state_lost respawns per
-  // STABLE origin lineage (taskRoomId+agentType) and stop re-injecting the
-  // event past the cap. Reset on the first task_complete for that lineage so
-  // a genuinely-progressing task is never starved.
-  private readonly stateLostRespawnCounts = new Map<string, number>();
-  private readonly stateLostCapNotified = new Set<string>();
-  // Maps completion lineage key → the FIRST session id that posted a
-  // task_complete for it. When a later task_complete arrives for the
-  // same lineage from a DIFFERENT session, we absorb it: that's a
-  // retry-cascade post (orchestrator dispatched a fresh sub-agent
-  // after the first one already shipped) and the user should see one
-  // reply, not 2-3+ overlapping messages with random page sub-
-  // resources from each retry. Issue elizaOS/eliza#7967.
-  //
-  // Same-session progressive task_completes (a sub-agent reports
-  // partial progress then completion) still post both. Parallel TASKS:create
-  // subtasks from the same user message also post independently because the
-  // lineage key includes the initial task text and agent type, not just the
-  // origin message id.
-  //
-  // The map is bounded (LRU via FIFO drop) to prevent unbounded growth
-  // across long-running sessions. 1024 origin messages is well above
-  // any reasonable workload — Discord channels typically see hundreds
-  // of message-events per hour at most.
-  private readonly completionFirstPostedSession: Map<string, string> =
-    new Map();
-  // Synchronous compare-and-set: claim the lineage's completion slot for this
-  // session, or return false if another session already holds it. Re-claiming
-  // from the SAME session returns true, so same-session progressive completes
-  // still post. There must be NO await between the get and the set, so a
-  // concurrent same-lineage retry can't slip a second post past the guard. The
-  // previous design split the check and the mark across the awaited delivery
-  // loop, leaving a TOCTOU window where two retry sessions both passed the check
-  // and double-posted (eliza#7967).
-  private tryClaimCompletion(
-    completionKey: string,
-    sessionId: string,
-  ): boolean {
-    const holder = this.completionFirstPostedSession.get(completionKey);
-    if (holder !== undefined) return holder === sessionId;
-    this.completionFirstPostedSession.set(completionKey, sessionId);
-    while (this.completionFirstPostedSession.size > 1024) {
-      const oldestKey = this.completionFirstPostedSession.keys().next().value;
-      if (!oldestKey) break;
-      this.completionFirstPostedSession.delete(oldestKey);
-    }
-    return true;
-  }
+  // The two runaway-loop backstops (per-session round-trip cap + per-lineage
+  // state_lost respawn cap) and the cross-session completion-dedupe compare-
+  // and-set are consolidated into one pure, fuzz-tested reducer. Every counter
+  // lives in `loopState`; `handleEvent` drives `routerLoopTransition` once per
+  // decision point and executes the returned decision. See router-loop-guard.ts
+  // and the fuzz test (router-loop-guard.test.ts) for the invariants — no
+  // double-post, no early force-stop, no leaked session (#9960, #7967).
+  private loopState: RouterLoopState = createRouterLoopState();
 
-  // Per-root-origin spawn cap. completionFirstPostedSession above only
+  // Per-root-origin spawn cap. The completion-dedupe slot above only
   // suppresses duplicate POSTS; it does not stop the PLANNER from re-spawning a
   // fresh sub-agent each time a (weak-model) completion comes back truncated or
   // blocked. Observed live: ONE user request fanned out to 70 TASKS_SPAWN_AGENT
   // calls (each emitting a "working on it" ack + a partial answer = Discord
-  // spam). roundTripCounts is per-session (a fresh spawn resets it),
-  // stateLostRespawnCounts only counts session_state_lost and is cleared on
-  // every task_complete, and waitForSpawnSlot caps only SIMULTANEOUS sessions —
+  // spam). The loop guard's round-trip count is per-session (a fresh spawn
+  // resets it), its state_lost count only counts session_state_lost and is
+  // cleared on every task_complete, and waitForSpawnSlot caps only SIMULTANEOUS
+  // sessions —
   // so nothing bounds SERIAL re-spawns of one user message. These count spawns
   // against the STABLE root origin (connector/parent message id + agent type,
   // NOT the per-spawn instruction text — so re-spawns collapse to one key while
@@ -448,8 +408,6 @@ export class SubAgentRouter extends Service {
     }
   }
   private started = false;
-  private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
-  private stateLostRespawnCap = DEFAULT_STATE_LOST_RESPAWN_CAP;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;
 
@@ -477,12 +435,13 @@ export class SubAgentRouter extends Service {
     }
     const capRaw = readSetting(this.runtime, "ACPX_SUB_AGENT_ROUND_TRIP_CAP");
     const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
-    if (Number.isFinite(parsed) && parsed > 0) this.roundTripCap = parsed;
     const slCapRaw = readSetting(this.runtime, "ACPX_STATE_LOST_RESPAWN_CAP");
     const slParsed = slCapRaw ? Number.parseInt(slCapRaw, 10) : NaN;
-    if (Number.isFinite(slParsed) && slParsed > 0) {
-      this.stateLostRespawnCap = slParsed;
-    }
+    this.loopState = createRouterLoopState({
+      roundTripCap: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+      stateLostRespawnCap:
+        Number.isFinite(slParsed) && slParsed > 0 ? slParsed : undefined,
+    });
     // Service registration runs in parallel — when router.start() executes,
     // AcpService may not yet be registered with the runtime, so getService
     // returns null. Static `dependencies` is not enough to order startup.
@@ -547,14 +506,13 @@ export class SubAgentRouter extends Service {
     this.acp = null;
     this.started = false;
     this.delivered.clear();
-    this.roundTripCounts.clear();
     this.parentAgentBuffers.clear();
     this.parentAgentDispatchCounts.clear();
-    this.capExceededSessions.clear();
     this.verifyRetryHandedOffSessions.clear();
-    this.completionFirstPostedSession.clear();
-    this.stateLostRespawnCounts.clear();
-    this.stateLostCapNotified.clear();
+    this.loopState = createRouterLoopState({
+      roundTripCap: this.loopState.roundTripCap,
+      stateLostRespawnCap: this.loopState.stateLostRespawnCap,
+    });
   }
 
   private async handleEvent(
@@ -618,9 +576,10 @@ export class SubAgentRouter extends Service {
     // reset its state_lost respawn counter so a later genuine restart is not
     // pre-capped by an earlier transient one.
     if (event === "task_complete") {
-      const lk = respawnLineageKey(session, origin);
-      this.stateLostRespawnCounts.delete(lk);
-      this.stateLostCapNotified.delete(lk);
+      this.loopState = routerLoopTransition(this.loopState, {
+        type: "task_complete_progress",
+        lineageKey: respawnLineageKey(session, origin),
+      }).state;
     }
 
     // The ACP session/prompt stopReason for a task_complete tells us whether the
@@ -648,41 +607,43 @@ export class SubAgentRouter extends Service {
       event === "error" &&
       pickPayloadString(data, "failureKind") === "session_state_lost"
     ) {
-      const lineageKey = respawnLineageKey(session, origin);
-      stateLostRespawnCount =
-        (this.stateLostRespawnCounts.get(lineageKey) ?? 0) + 1;
-      this.stateLostRespawnCounts.set(lineageKey, stateLostRespawnCount);
-      while (this.stateLostRespawnCounts.size > 1024) {
-        const oldest = this.stateLostRespawnCounts.keys().next().value;
-        if (oldest === undefined) break;
-        this.stateLostRespawnCounts.delete(oldest);
-      }
-      if (stateLostRespawnCount > this.stateLostRespawnCap) {
-        // Cap exhausted: stop the dead session and report ONE honest terminal
-        // failure (deduped per lineage). Do NOT respawn again and do NOT route
-        // through the completion-claim slot (that is task_complete-only —
-        // eliza#7967); fall through to the normal delivery path below with a
-        // forced terminal narration so the user is not left with a silent hang.
+      const { state, decision } = routerLoopTransition(this.loopState, {
+        type: "state_lost",
+        lineageKey: respawnLineageKey(session, origin),
+      });
+      this.loopState = state;
+      if (decision.kind === "already_terminal") {
+        // Cap exhausted and already reported once for this lineage: stop the
+        // dead session and drop silently — the user already got one honest
+        // failure (eliza#7967).
         await acp.stopSession(sessionId).catch(() => {});
-        if (this.stateLostCapNotified.has(lineageKey)) return;
-        this.stateLostCapNotified.add(lineageKey);
+        return;
+      }
+      if (decision.kind === "terminal_failure") {
+        // Cap exhausted, first time: stop the dead session and fall through to
+        // the normal delivery path below with a forced terminal narration so
+        // the user is not left with a silent hang. The completion-claim slot is
+        // task_complete-only, so an error never routes through it.
+        stateLostRespawnCount = decision.count;
+        await acp.stopSession(sessionId).catch(() => {});
         this.log(
           "warn",
           "state_lost respawn cap reached; reporting terminal failure for this origin lineage",
           {
             sessionId,
-            count: stateLostRespawnCount,
-            cap: this.stateLostRespawnCap,
+            count: decision.count,
+            cap: this.loopState.stateLostRespawnCap,
           },
         );
         stateLostExhausted = true;
-      } else {
+      } else if (decision.kind === "respawn") {
         // Under cap: recover deterministically inside the router. On success,
         // suppress the dead session's tail events and return WITHOUT posting —
         // the recovered child's task_complete becomes the only user-facing
         // message. On failure (no initialTask / spawn threw), fall through to
         // the normal error narration so the user gets an honest report instead
         // of silence.
+        stateLostRespawnCount = decision.count;
         const respawned = await this.respawnStateLost(session);
         if (respawned) {
           this.verifyRetryHandedOffSessions.add(sessionId);
@@ -692,35 +653,42 @@ export class SubAgentRouter extends Service {
       }
     }
 
-    const nextCount = (this.roundTripCounts.get(sessionId) ?? 0) + 1;
-    this.roundTripCounts.set(sessionId, nextCount);
-    // Roll the round-trip counter back when a task_complete event is
-    // suppressed downstream (verify-retry handoff, stale continuation, or
-    // cross-session completion dedupe). Those events never post a synthetic
-    // inbound, so counting them against the runaway-loop cap miscounts real
-    // round-trips and can trip the force-stop early. Only decrement if our
-    // increment is still the current value (no later event has advanced it).
+    const roundTrip = routerLoopTransition(this.loopState, {
+      type: "round_trip",
+      sessionId,
+    });
+    this.loopState = roundTrip.state;
+    const nextCount =
+      "count" in roundTrip.decision ? roundTrip.decision.count : 0;
+    const capExceeded =
+      roundTrip.decision.kind === "force_stop" ||
+      roundTrip.decision.kind === "already_capped";
+    // Roll the round-trip counter back when this event is suppressed downstream
+    // (verify-retry handoff, stale continuation, or cross-session completion
+    // dedupe). Those events never post a synthetic inbound, so counting them
+    // against the runaway-loop cap would miscount real round-trips and trip the
+    // force-stop early. The reducer only undoes the increment if it is still the
+    // current value (no later event has advanced it).
     const rollbackRoundTrip = (): void => {
-      if (this.roundTripCounts.get(sessionId) === nextCount) {
-        if (nextCount <= 1) this.roundTripCounts.delete(sessionId);
-        else this.roundTripCounts.set(sessionId, nextCount - 1);
-      }
+      this.loopState = routerLoopTransition(this.loopState, {
+        type: "rollback_round_trip",
+        sessionId,
+        expectedCount: nextCount,
+      }).state;
     };
-    const capExceeded = nextCount > this.roundTripCap;
-    if (capExceeded) {
-      if (this.capExceededSessions.has(sessionId)) {
-        this.log("debug", "round-trip cap already surfaced; suppressing", {
-          sessionId,
-          event,
-          count: nextCount,
-        });
-        return;
-      }
-      this.capExceededSessions.add(sessionId);
+    if (roundTrip.decision.kind === "already_capped") {
+      this.log("debug", "round-trip cap already surfaced; suppressing", {
+        sessionId,
+        event,
+        count: nextCount,
+      });
+      return;
+    }
+    if (roundTrip.decision.kind === "force_stop") {
       this.log("warn", "sub-agent round-trip cap exceeded; force-stopping", {
         sessionId,
         count: nextCount,
-        cap: this.roundTripCap,
+        cap: this.loopState.roundTripCap,
       });
       await acp.stopSession(sessionId).catch((err) =>
         this.log("warn", "force-stop after cap failed", {
@@ -806,9 +774,9 @@ export class SubAgentRouter extends Service {
     // name — breaking it for both the verification probe AND the user.
     const baseText = normalizeUrlsInText(
       stateLostExhausted
-        ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
+        ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.loopState.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
         : capExceeded
-          ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
+          ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.loopState.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
           : composeNarration(event, origin.label, session, data, changeSet),
     );
     // Fact-check any URLs the sub-agent claimed. Weak coding models
@@ -889,19 +857,29 @@ export class SubAgentRouter extends Service {
       event === "task_complete" ? completionLineageKey(session, origin) : null;
     // Atomically claim the lineage's completion slot BEFORE the awaited delivery
     // loop, so two same-lineage retry sessions completing in the same window
-    // cannot both pass the check and double-post (eliza#7967).
-    if (completionKey && !this.tryClaimCompletion(completionKey, sessionId)) {
-      this.log(
-        "debug",
-        "suppressing duplicate sub-agent task_complete for lineage; another session already claimed this task",
-        {
-          sessionId,
-          completionKey,
-          event,
-        },
-      );
-      rollbackRoundTrip();
-      return;
+    // cannot both pass the check and double-post (eliza#7967). The reducer's
+    // claim is a synchronous compare-and-set — there is no await between the
+    // get and the set, so the TOCTOU window is closed by construction.
+    if (completionKey) {
+      const claim = routerLoopTransition(this.loopState, {
+        type: "claim_completion",
+        completionKey,
+        sessionId,
+      });
+      this.loopState = claim.state;
+      if (claim.decision.kind === "already_claimed") {
+        this.log(
+          "debug",
+          "suppressing duplicate sub-agent task_complete for lineage; another session already claimed this task",
+          {
+            sessionId,
+            completionKey,
+            event,
+          },
+        );
+        rollbackRoundTrip();
+        return;
+      }
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
@@ -1043,7 +1021,7 @@ export class SubAgentRouter extends Service {
                 : session.status,
             subAgentAgentType: session.agentType,
             subAgentRoundTrip: nextCount,
-            subAgentRoundTripCap: this.roundTripCap,
+            subAgentRoundTripCap: this.loopState.roundTripCap,
             subAgentRoutingKind: routingKind,
             subAgentTargetRoomId: target.roomId,
             subAgentTargetRoomRole: target.roles[0],
@@ -1127,7 +1105,8 @@ export class SubAgentRouter extends Service {
     }
 
     // The lineage slot was already claimed atomically before the delivery loop
-    // (tryClaimCompletion), so there is nothing to mark here. The claim suppresses
+    // (the reducer's claim_completion), so there is nothing to mark here. The
+    // claim suppresses
     // a later retry sub-agent (different sessionId) for the same parent prompt
     // (issue elizaOS/eliza#7967); same-session progressive task_completes are
     // unaffected because the claim is keyed by sessionId, and a verify-retry
@@ -1189,9 +1168,9 @@ export class SubAgentRouter extends Service {
    * unavailable or no spawn service is registered, in which case the caller
    * falls through to an honest failure post.
    *
-   * Lineage capping lives in handleEvent (stateLostRespawnCounts +
-   * stateLostRespawnCap), parallel to the verify-retry budget, so a flapping
-   * session can't respawn unbounded.
+   * Lineage capping lives in the loop-guard reducer (the state_lost respawn
+   * count + cap), parallel to the verify-retry budget, so a flapping session
+   * can't respawn unbounded.
    */
   private async respawnStateLost(session: SessionInfo): Promise<boolean> {
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
@@ -1429,20 +1408,20 @@ Do not report done until every referenced URL in the final page resolves without
 
     const nextCount = (this.parentAgentDispatchCounts.get(sessionId) ?? 0) + 1;
     this.parentAgentDispatchCounts.set(sessionId, nextCount);
-    if (nextCount > this.roundTripCap) {
+    if (nextCount > this.loopState.roundTripCap) {
       this.log(
         "warn",
         "parent-agent dispatch cap exceeded; dropping directive",
         {
           sessionId,
           count: nextCount,
-          cap: this.roundTripCap,
+          cap: this.loopState.roundTripCap,
         },
       );
       await acp
         .sendToSession(
           sessionId,
-          `parent-agent bridge: round-trip cap (${this.roundTripCap}) reached for this session; not running further USE_SKILL parent-agent requests.`,
+          `parent-agent bridge: round-trip cap (${this.loopState.roundTripCap}) reached for this session; not running further USE_SKILL parent-agent requests.`,
         )
         .catch(() => undefined);
       return;

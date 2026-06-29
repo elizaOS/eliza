@@ -6,7 +6,7 @@ Refs: #9899 (root-cause), #9900 (instrumentation), #8434 (tracking).
 > billing-correctness, security-isolation, consistency-staleness,
 > rollout-blast-radius). The review **rejected** the original "skip the upfront
 > credit reserve entirely" model as billing-unsafe. The result is a two-tier
-> plan: **Tier 1** (ship now — safe, flag-gated, fully testable) and **Tier 2**
+> plan: **Tier 1** (ship now — safe, default-on, fully testable) and **Tier 2**
 > (deferred — requires a durable backstop before it can be correct). The
 > blocker analysis that forced the split is in the appendix.
 
@@ -47,7 +47,7 @@ read for cerebras-native ids — without any billing-correctness regression.
 
 ---
 
-## Tier 1 — single-entry auth+moderation cache (SHIP NOW, flag-gated)
+## Tier 1 — single-entry auth+moderation cache (SHIP NOW, default-on)
 
 ### `InferenceAuthContext` (IAC) — one KV entry, API-key auth only
 
@@ -99,16 +99,15 @@ produces the exact `(status, code, message)` unchanged.
   (RB-6). The synchronous `reserveCredits` write **stays** — it is the correct,
   safe credit guard (a single indexed `FOR UPDATE` UPDATE).
 
-### Catalog skip for cerebras-native ids — flag-gated + allowlisted
+### Catalog lookup for reasoning detection
 
 `getCachedGatewayModelById` exists only for reasoning-parameter detection, and
 `modelUsesReasoningTokens` already returns true via id name-pattern for the
 cerebras ids (`gpt-oss-120b` → `/^gpt-oss/`, `zai-glm-4.7` → `/^zai-glm-/`). For
 ids in the **`REASONING_MODEL_PATTERNS` allowlist**, skip the catalog read. This
-is **gated behind the same flag** so flag-OFF is byte-identical (blocker RB-1),
-and **pinned** to the name-pattern set with a guard test so a future cerebras id
-that advertises reasoning only in the catalog can't silently lose its
-reasoning-token floor (blocker RB-2).
+must stay **pinned** to the name-pattern set with a guard test so a future
+cerebras id that advertises reasoning only in the catalog can't silently lose
+its reasoning-token floor (blocker RB-2).
 
 ### Invalidation wiring (Tier 1)
 
@@ -125,11 +124,11 @@ reasoning-token floor (blocker RB-2).
 
 ### Rollout (Tier 1)
 
-`INFERENCE_HOT_PATH_CACHE` flag, **default OFF**. With OFF, the route executes the
-unmodified `requireAuthOrApiKeyWithOrg` + `shouldBlockUser` + `reserveCredits` +
-`getCachedGatewayModelById` calls verbatim — byte-identical. Enable in staging,
-confirm via the `[preforward]` log that auth+reads collapse to one cache read,
-then prod.
+The IAC resolver is the only auth path for chat completions. API-key requests use
+the auth-context cache when the shared cache backend is available; non-API-key
+and cache-unavailable requests take the existing authoritative
+`requireAuthOrApiKeyWithOrg` + `shouldBlockUser` path. Confirm via the
+`[preforward]` log that eligible API-key auth+reads collapse to one cache read.
 
 ### Tests (Tier 1)
 
@@ -138,11 +137,10 @@ then prod.
   propagates (never fail-open); cache-unavailable→slow path.
 - **Invalidation unit tests:** revoke/ban deletes the IAC entry; ban fan-out
   across multiple keys; `listByUser` correctness.
-- **Route regression:** flag OFF ⇒ identical to today; 429→403→402 priority
-  preserved on ON path; wallet headers disable fast path; app-credits path
-  unchanged; catalog skip output-identical for the allowlisted ids; a non-pattern
-  cerebras id is NOT skipped (guard test).
-- **Benchmark/assertion:** flag ON + warm IAC ⇒ hot path performs exactly **1
+- **Route regression:** 429→403→402 priority preserved; wallet headers disable
+  fast path; app-credits path unchanged; catalog skip output-identical for the
+  allowlisted ids; a non-pattern cerebras id is NOT skipped (guard test).
+- **Benchmark/assertion:** warm IAC ⇒ hot path performs exactly **1
   cache read and 0 auth/moderation DB reads** before reserve (spy on cache + db).
 
 ---
@@ -181,7 +179,7 @@ existing `settleReservation` chain, now backed by `createOptimisticDebitSettler`
    top up. So a failed debit is bounded over-spend (the in-flight call only),
    never free-forever, and self-heals on top-up (blocker BILL-1). A persistent
    debt ledger would need a migration and is intentionally NOT added (logged
-   instead) — out of scope for the flag-gated MVP.
+   instead) — out of scope for the optimistic-billing MVP.
 4. **Idempotent settlement** keyed on `requestId`: the inline settler atomically
    CLAIMS the pending entry via `cache.getAndDelete` before debiting, and the
    cron sweep claims the same way — so the two can never both charge one request
@@ -235,7 +233,8 @@ then prod.
 - **CS-5:** module-level singleton CacheClient ⇒ invalidation only works on the
   bound KV namespace, not a per-isolate memory adapter; optimization is inert if
   cache is disabled in prod.
-- **RB-1:** catalog skip must be flag-gated to keep flag-OFF byte-identical.
+- **RB-1:** deleted. The auth-context resolver is now the default path; cache
+  unavailable still falls back to the authoritative path before granting auth.
 - **RB-2:** catalog skip must be pinned to the name-pattern allowlist (else empty-
   but-billed-output regression for a catalog-only-reasoning id).
 - **RB-3:** IAC must store no `active/suspended` booleans — only cache fully-OK
@@ -260,8 +259,9 @@ The high-confidence, contained ones were FIXED:
 - **Auto-suspension didn't invalidate IAC (MED):** `updateUserModerationStatus`
   (the authoritative mutation behind chat/messages/A2A moderation) now drops the
   user's IAC when they cross into a blocking state (banned / ≥5 violations).
-- **Flag-OFF parity (LOW):** the `onViolation` IAC invalidation is now gated on
-  `hotPathEnabled`, so flag-OFF does zero IAC/DB fan-out.
+- **IAC invalidation fan-out (LOW):** async moderation invalidates the user's IAC
+  when a blocking violation is detected, so the next request re-checks
+  authoritatively.
 - **Out-of-order hint raise (LOW):** the debit settler writes the org-balance
   hint lower-only (`lowerOrgBalanceHint`), so a late concurrent debit can never
   raise the gate value.

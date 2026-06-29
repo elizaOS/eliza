@@ -835,6 +835,29 @@ export class AgentSandboxesRepository {
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
   }
 
+  /**
+   * The newest backup of a given `snapshot_type` for a sandbox. Used by
+   * `executeDowngrade` to find the `pre-upgrade` restore point captured right
+   * before the most recent fleet upgrade.
+   */
+  async getLatestBackupByType(
+    sandboxRecordId: string,
+    snapshotType: AgentBackupSnapshotType,
+  ): Promise<AgentSandboxBackup | undefined> {
+    const [r] = await dbRead
+      .select()
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId),
+          eq(agentSandboxBackups.snapshot_type, snapshotType),
+        ),
+      )
+      .orderBy(desc(agentSandboxBackups.created_at))
+      .limit(1);
+    return r ? await hydrateAgentSandboxBackup(r) : undefined;
+  }
+
   async getBackupById(backupId: string): Promise<AgentSandboxBackup | undefined> {
     const [r] = await dbRead
       .select()
