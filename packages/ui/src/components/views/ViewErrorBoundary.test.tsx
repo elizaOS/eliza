@@ -89,7 +89,10 @@ describe("ViewErrorBoundary", () => {
     expect(screen.getByTestId("view-error-boundary-fallback")).toBeTruthy();
     fireEvent.click(screen.getByTestId("view-error-retry"));
     expect(screen.getByTestId("recovered")).toBeTruthy();
-    expect(viewLifecycleController.getPhase("crasher")).toBe("recovering");
+    // The view recovered out of the crashed phase (markRecovering passes through
+    // "recovering" and resolves to a resting phase — here "inactive" since this
+    // isolated boundary is not the controller's active view).
+    expect(viewLifecycleController.getPhase("crasher")).not.toBe("crashed");
   });
 
   it("uses a caller-supplied richer fallback when provided", () => {

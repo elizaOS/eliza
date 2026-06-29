@@ -56,10 +56,27 @@ Resolved per view by `resolveViewLifecyclePolicy(viewId)` →
   `keepAlive`/`pausable` fields on `AppShellPageRegistration`, or per builtin via
   the `BUILTIN_VIEW_POLICY` map, or at runtime via `registerViewPolicy(id, …)`.
 - **Pinned** — `PINNED_VIEW_IDS = { "chat", "background" }`. **Never evicted.**
-  These already live structurally outside the routed host
+  These are **structural** surfaces that live outside the routed host
   (`ContinuousChatOverlay`/`HomeScreenMount` + `AppBackground` at the shell
-  root); the controller additionally hard-refuses to evict them. This is the
-  single, explicit exemption surface.
+  root) and are always mounted by `App()` directly. The controller refuses to
+  evict their records (the explicit exemption), and `publish()` excludes them
+  from the host render set (the routed host never paints a hidden slot for a
+  structural surface) — they render through the host only when they are the
+  active tab.
+
+### Which host honors keep-alive
+
+`KeepAliveViewHost` retains multiple views only when its `renderView(viewId)`
+can reconstruct content for **any** retained id. The app's primary `ViewRouter`
+is **active-only** (it computes one route's content per render and returns
+`null` for non-active ids), so in the app the host mounts exactly the active
+view — every view still gets a per-view boundary + telemetry + lifecycle slot +
+signal-driven pause, but builtin/plugin views are **not** retained on hide
+(default unmount-on-hide). The keep-alive + bounded-LRU + pinned mechanism is
+fully exercised by the `__e2e__` fixture (a render-by-id host) and is available
+to any future host that renders views by id. The host skips a slot whose
+`renderView` returns `null`, so an active-only `renderView` never leaves an empty
+slot behind.
 
 ## Pause / resume (timers, polling, media, native subscriptions)
 
