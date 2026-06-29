@@ -77,7 +77,13 @@ BOOT_CRASH_PATTERNS=(
   # signature instead of waiting out the full health timeout.
   'ERR_UNKNOWN_FILE_EXTENSION'
   'Unknown file extension'
-  'Failed to start'
+  # The real entrypoint fatal: bin.ts's top-level catch prints exactly this and
+  # exits 1 (packages/agent/src/bin.ts). Anchored to that prefix on purpose — a
+  # bare 'Failed to start' substring also matches benign, by-design-non-fatal
+  # WARNs such as "Service lifeops_scheduled_task_runner not found or failed to
+  # start" (scheduling boot-seed, which logs "tasks can still be scheduled at
+  # runtime"), which false-flapped this gate.
+  '[eliza-autonomous] Failed to start'
   'crashed during init'
 )
 

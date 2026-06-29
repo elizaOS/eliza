@@ -126,7 +126,9 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             bench.write_text("echo placeholder benchmark path\n", encoding="utf-8")
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/research/chip/docs", "packages/research/chip/sw"])
+                report = inv.build_report(
+                    ["packages/research/chip/docs", "packages/research/chip/sw"]
+                )
 
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["findings"], 2)
@@ -144,7 +146,9 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_binary_payloads_are_not_scanned_as_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            binary = repo / "packages/research/chip/sw/firemarshal/eliza-e1-linux-smoke/e1-npu-ml-smoke"
+            binary = (
+                repo / "packages/research/chip/sw/firemarshal/eliza-e1-linux-smoke/e1-npu-ml-smoke"
+            )
             binary.parent.mkdir(parents=True)
             binary.write_bytes(b"\x7fELF\x00unsupported workload: %s (expected %s)\x00")
 
@@ -263,7 +267,9 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 "Current scaffold remains blocked until AP and benchmark evidence lands.\n",
                 encoding="utf-8",
             )
-            task_audit = repo / "packages/research/chip/docs/project/android-on-simulated-chip-task-audit.md"
+            task_audit = (
+                repo / "packages/research/chip/docs/project/android-on-simulated-chip-task-audit.md"
+            )
             task_audit.write_text(
                 f"# {inv.OPEN_TASK_MARKER} audit\n\n"
                 f"| {inv.OPEN_TASK_MARKER} | placeholder evidence remains blocked |\n",
@@ -318,7 +324,9 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/research/chip/docs", "packages/research/chip/scripts"])
+                report = inv.build_report(
+                    ["packages/research/chip/docs", "packages/research/chip/scripts"]
+                )
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -346,7 +354,9 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             )
 
             with mock.patch.object(inv, "REPO", repo):
-                report = inv.build_report(["packages/research/chip/sw", "packages/os/linux/elizaos/scripts"])
+                report = inv.build_report(
+                    ["packages/research/chip/sw", "packages/os/linux/elizaos/scripts"]
+                )
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
@@ -419,7 +429,9 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
     def test_plan_and_survey_docs_are_not_source_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            tee_plan = repo / "packages/research/chip/docs/security/tee-plan/05-cpu-memory-performance.md"
+            tee_plan = (
+                repo / "packages/research/chip/docs/security/tee-plan/05-cpu-memory-performance.md"
+            )
             tee_plan.parent.mkdir(parents=True)
             tee_plan.write_text(
                 "This experiment plan says vector arithmetic remains BLOCKED.\n"
@@ -427,7 +439,8 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             sota_report = (
-                repo / "packages/research/chip/docs/architecture-optimization/sota-2028/cache-report.md"
+                repo
+                / "packages/research/chip/docs/architecture-optimization/sota-2028/cache-report.md"
             )
             sota_report.parent.mkdir(parents=True)
             sota_report.write_text(

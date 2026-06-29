@@ -111,10 +111,13 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
     re.compile(r"^packages/research/chip/docs/.+evidence-manifest\.json$", re.I),
     re.compile(r"^packages/research/chip/docs/security/tee-plan/.*\.md$", re.I),
     re.compile(
-        r"^packages/research/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$", re.I
+        r"^packages/research/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$",
+        re.I,
     ),
     re.compile(r"^packages/research/chip/docs/spec-db/competitor-.*\.(?:json|md|yaml|yml)$", re.I),
-    re.compile(r"^packages/research/chip/docs/spec-db/requirements/.*\.(?:json|md|yaml|yml)$", re.I),
+    re.compile(
+        r"^packages/research/chip/docs/spec-db/requirements/.*\.(?:json|md|yaml|yml)$", re.I
+    ),
 )
 TEST_FILE_PATTERNS = (
     re.compile(r"(^|/)test_[^/]+\.(c|cc|cpp|h|java|kt|py|rs|ts|tsx)$"),
@@ -411,7 +414,9 @@ PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     ),
 )
 
-GENERIC_RECHECK_COMMAND = "python3 packages/research/chip/scripts/check_chip_os_gap_keyword_inventory.py"
+GENERIC_RECHECK_COMMAND = (
+    "python3 packages/research/chip/scripts/check_chip_os_gap_keyword_inventory.py"
+)
 
 
 def cleanup_commands(path: Path, line_number: int) -> list[str]:
@@ -424,7 +429,9 @@ def cleanup_commands(path: Path, line_number: int) -> list[str]:
     if "npu" in lower_path:
         commands.append("python3 packages/research/chip/scripts/check_npu_scope.py")
     if "benchmark" in lower_path or "benchmarks" in parts:
-        commands.append("python3 packages/research/chip/scripts/check_benchmark_efficiency_scope.py")
+        commands.append(
+            "python3 packages/research/chip/scripts/check_benchmark_efficiency_scope.py"
+        )
     if "cpu_ap" in lower_path or "chipyard" in lower_path or "riscv" in lower_path:
         commands.append("python3 packages/research/chip/scripts/check_cpu_ap_scope.py")
     if "android" in parts or "aosp" in lower_path:
@@ -434,7 +441,9 @@ def cleanup_commands(path: Path, line_number: int) -> list[str]:
             "python3 packages/research/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
         )
     if "runtime" in lower_path or "peripheral" in lower_path:
-        commands.append("python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py")
+        commands.append(
+            "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"
+        )
     commands.append(GENERIC_RECHECK_COMMAND)
     deduped: list[str] = []
     for command in commands:

@@ -58,9 +58,13 @@ GATE_REPORT_ALIAS_SOURCES = {
         "packages/research/chip/scripts/run_mvp_simulator.py",
         "packages/research/chip/scripts/check_mvp_simulator.py",
     ),
-    "chipyard_payload_path.json": ("packages/research/chip/scripts/check_chipyard_payload_path.py",),
+    "chipyard_payload_path.json": (
+        "packages/research/chip/scripts/check_chipyard_payload_path.py",
+    ),
     "cpu_ap_scope.json": ("packages/research/chip/scripts/check_cpu_ap_scope.py",),
-    "cpu_ap_boot_readiness.json": ("packages/research/chip/scripts/check_cpu_ap_boot_readiness.py",),
+    "cpu_ap_boot_readiness.json": (
+        "packages/research/chip/scripts/check_cpu_ap_boot_readiness.py",
+    ),
     "software_bsp.json": ("packages/research/chip/scripts/check_software_bsp.py",),
     "aosp_product_contract.json": (
         "packages/research/chip/scripts/check_aosp_product_contract.py",
@@ -291,7 +295,9 @@ def dynamic_gate_report_specs() -> list[ReportSpec]:
             report = ROOT / "build/reports" / report_name
             if not report.is_file():
                 continue
-            source = f"packages/research/chip/{script}" if not Path(script).is_absolute() else script
+            source = (
+                f"packages/research/chip/{script}" if not Path(script).is_absolute() else script
+            )
             sources = GATE_REPORT_ALIAS_SOURCES.get(report_name, (source,))
             ident = f"gate_{gate.name}_{Path(report_name).stem}".replace("-", "_")
             specs.append(

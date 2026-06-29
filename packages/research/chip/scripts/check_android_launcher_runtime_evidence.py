@@ -35,18 +35,20 @@ FALSE_CLAIM_FLAGS = {
     "hardware_boot_claim_allowed": False,
     "production_readiness_claim_allowed": False,
 }
-RUNTIME_CAPTURE_SCRIPT = "packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py"
+RUNTIME_CAPTURE_SCRIPT = (
+    "packages/research/chip/scripts/android/capture_launcher_runtime_evidence.py"
+)
 DEFAULT_CAPTURE_EVIDENCE = (
     "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json"
 )
-DEFAULT_CAPTURE_LOGCAT = "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt"
+DEFAULT_CAPTURE_LOGCAT = (
+    "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt"
+)
 DEFAULT_CAPTURE_TRANSCRIPT = (
     "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log"
 )
 SERIAL_CAPTURE_EVIDENCE = "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_evidence.$CHIP_ANDROID_ADB_SERIAL.json"
-SERIAL_CAPTURE_LOGCAT = (
-    "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_logcat.$CHIP_ANDROID_ADB_SERIAL.txt"
-)
+SERIAL_CAPTURE_LOGCAT = "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_logcat.$CHIP_ANDROID_ADB_SERIAL.txt"
 SERIAL_CAPTURE_TRANSCRIPT = "packages/research/chip/docs/evidence/android/eliza_launcher_runtime_transcript.$CHIP_ANDROID_ADB_SERIAL.log"
 RECHECK_COMMAND = (
     "python3 packages/research/chip/scripts/check_android_launcher_runtime_evidence.py --json-only"
