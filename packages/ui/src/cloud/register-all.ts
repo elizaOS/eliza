@@ -23,7 +23,6 @@ import "./organization/routes";
 
 import { registerAdminCloudRoutes } from "./admin";
 import { registerApiExplorerCloudRoute } from "./api-explorer";
-import { registerApiKeysCloudRoute } from "./api-keys";
 import { registerApplicationsCloudRoutes } from "./applications";
 import { registerApprovalsCloudRoute } from "./approvals";
 import { registerJoinFlow } from "./join";
@@ -45,7 +44,6 @@ export function registerAllCloudSurfaces(): void {
   registerJoinFlow();
   registerPublicPages();
 
-  registerApiKeysCloudRoute();
   registerApiExplorerCloudRoute();
   registerApplicationsCloudRoutes();
   registerApprovalsCloudRoute();

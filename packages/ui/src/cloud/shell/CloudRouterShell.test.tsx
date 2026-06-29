@@ -3,7 +3,7 @@ import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { AppCatchAllRoute } from "./CloudRouterShell";
+import { AppCatchAllRoute, DASHBOARD_REDIRECTS } from "./CloudRouterShell";
 
 /**
  * Gate B regression. elizacloud.ai (an apex control-plane host) serves
@@ -102,5 +102,18 @@ describe("CloudRouterShell apex catch-all (Gate B)", () => {
     renderCatchAll();
     expect(screen.getByTestId("agent-app")).toBeTruthy();
     expect(screen.queryByTestId("login-page")).toBeNull();
+  });
+});
+
+describe("CloudRouterShell dashboard compat redirects", () => {
+  it("routes legacy /dashboard/api-keys to the single Settings mount via one redirect", () => {
+    const apiKeysRedirects = DASHBOARD_REDIRECTS.filter(
+      (r) => r.from === "dashboard/api-keys",
+    );
+    // Exactly one redirect entry — the api-keys surface is mounted only as the
+    // Settings → Developer section, so /dashboard/api-keys resolves to it and
+    // never to a (now-removed) standalone route.
+    expect(apiKeysRedirects).toHaveLength(1);
+    expect(apiKeysRedirects[0]?.to).toBe("/settings#api-keys");
   });
 });
