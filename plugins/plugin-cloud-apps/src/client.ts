@@ -12,7 +12,7 @@
 
 import type { AppDto } from "@elizaos/cloud-sdk";
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 
 /** Default Eliza Cloud API base URL (matches the cloud runtime default). */
 export const DEFAULT_CLOUD_API_BASE_URL = "https://www.elizacloud.ai/api/v1";
@@ -177,4 +177,66 @@ export function looksLikeAppId(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value.trim(),
   );
+}
+
+// ─── Reference resolution (shared by the mutating actions) ───────────────────
+
+/** Planner-option keys that may carry an app reference, in priority order. */
+const REFERENCE_OPTION_KEYS = [
+  "app",
+  "appName",
+  "name",
+  "id",
+  "appId",
+  "query",
+] as const;
+
+/**
+ * Pull an app reference from planner-supplied options or, failing that, the raw
+ * message text. Mirrors the read-core's `resolveReference` so the mutating
+ * actions resolve apps identically.
+ */
+export function extractAppReference(
+  message: Memory,
+  options?: unknown,
+): string {
+  if (options && typeof options === "object") {
+    const opts = options as Record<string, unknown>;
+    for (const key of REFERENCE_OPTION_KEYS) {
+      const value = opts[key];
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+  }
+  return (message.content?.text ?? "").trim();
+}
+
+export interface ResolvedApp {
+  /** The matched app, or null when nothing matched. */
+  app: AppDto | null;
+  /** Names of the user's apps (for a helpful not-found message). */
+  available: string[];
+}
+
+/**
+ * Resolve an app from a free-text reference against the user's apps. Id-shaped
+ * references take the direct `getApp(id)` path; names resolve via `listApps()` +
+ * {@link findAppByReference}. Read-only — used by the mutating actions to locate
+ * the target before they mutate it.
+ */
+export async function resolveApp(
+  client: ElizaCloudClient,
+  reference: string,
+): Promise<ResolvedApp> {
+  if (looksLikeAppId(reference)) {
+    const { app } = await client.getApp(reference);
+    if (app) return { app, available: [app.name] };
+  }
+  const { apps } = await client.listApps();
+  const list = apps ?? [];
+  return {
+    app: findAppByReference(list, reference),
+    available: list.map((a) => a.name),
+  };
 }
