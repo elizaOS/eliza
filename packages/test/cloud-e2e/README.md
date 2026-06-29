@@ -29,6 +29,20 @@ Per-test the harness:
 - injects an `eliza-test-session` cookie signed with `PLAYWRIGHT_TEST_AUTH_SECRET`
 - exposes `stack.mocks.hetzner.store` and `stack.urls.controlPlane` for assertions
 
+### Real wallet login (no DB seeding)
+
+`seedTestUser` inserts rows directly and never runs the login flow. To exercise
+the REAL login path, use `loginWithTestWallet(stack.urls.api)`
+(`src/helpers/wallet-login.ts`): it runs the genuine SIWE handshake
+(nonce → sign with a throwaway viem wallet → verify) against the booted cloud-api
+and returns a real API key for a free account. The stack runs the worker with
+`MOCK_REDIS=1` (shared in-process store), so the SIWE nonce survives between the
+two requests. `asSeededUser(login)` adapts the result to the `SeededUser` shape.
+
+The same flow is available as a dev/CI gate: `bun run cloud:login:test-wallet`
+(defaults to `https://api.elizacloud.ai`; pass `--base <url>` for a local stack).
+It exits non-zero if login or the authenticated probe fails.
+
 ## Specs
 
 | File                          | Covers                                                                        |
