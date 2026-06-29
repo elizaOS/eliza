@@ -404,7 +404,7 @@ function InlineCancelButton({ onCancel }: { onCancel: () => void }) {
     <button
       type="button"
       onClick={onCancel}
-      className="min-h-10 cursor-pointer rounded-sm px-3 text-sm text-white/50 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5800]/60"
+      className="min-h-10 cursor-pointer rounded-sm px-3 text-sm text-white/50 transition-colors hover:text-white"
     >
       Cancel
     </button>
