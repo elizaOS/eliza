@@ -3,6 +3,7 @@
   "packages": [
     "packages/*",
     "packages/app-core/platforms/*",
+    "packages/examples/code",
     "plugins/*",
     "packages/cloud/sdk"
   ],
@@ -19,11 +20,7 @@
         "new-beginnings",
         "beta"
       ],
-      "ignoreChanges": [
-        "**/*.md",
-        "**/test/**",
-        "**/__tests__/**"
-      ],
+      "ignoreChanges": ["**/*.md", "**/test/**", "**/__tests__/**"],
       "verifyAccess": false
     },
     "version": {
