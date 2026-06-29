@@ -230,7 +230,7 @@ function resolveBunCommand(): string {
 }
 
 function resolveExecutableFromPath(command: string): string | null {
-  const pathValue = process.env.PATH ?? "";
+  const pathValue = process.env.PATH ?? process.env.Path ?? "";
   if (!pathValue) return null;
 
   const hasExtension = path.extname(command).length > 0;

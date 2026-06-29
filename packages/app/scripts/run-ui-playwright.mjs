@@ -46,7 +46,7 @@ function resolvePlaywrightCommand() {
 }
 
 function resolveExecutableFromPath(command) {
-  const pathValue = process.env.PATH ?? "";
+  const pathValue = process.env.PATH ?? process.env.Path ?? "";
   if (!pathValue) return null;
 
   const hasExtension = path.extname(command).length > 0;
@@ -125,15 +125,42 @@ function resolveBunCommand() {
   return process.platform === "win32" ? "bun.exe" : "bun";
 }
 
+function looksLikeBun(command) {
+  const binaryName = path.basename(command).toLowerCase();
+  return binaryName === "bun" || binaryName === "bun.exe";
+}
+
+function resolveNodeCommand() {
+  for (const candidate of [
+    process.env.ELIZA_NODE_PATH?.trim(),
+    process.env.npm_node_execpath?.trim(),
+    process.execPath,
+    resolveExecutableFromPath("node"),
+  ]) {
+    if (candidate && fs.existsSync(candidate) && !looksLikeBun(candidate)) {
+      return candidate;
+    }
+  }
+
+  return process.platform === "win32" ? "node.exe" : "node";
+}
+
 const env = { ...process.env };
 delete env.NO_COLOR;
 delete env.FORCE_COLOR;
 delete env.CLICOLOR_FORCE;
 env.BUN = env.BUN || resolveBunCommand();
+env.ELIZA_NODE_PATH = env.ELIZA_NODE_PATH || resolveNodeCommand();
 
 const bunBinDir = path.dirname(env.BUN);
 const pathDelimiter = process.platform === "win32" ? ";" : ":";
-env.PATH = env.PATH ? `${bunBinDir}${pathDelimiter}${env.PATH}` : bunBinDir;
+const existingPath = env.PATH ?? env.Path ?? "";
+env.PATH = existingPath
+  ? `${bunBinDir}${pathDelimiter}${existingPath}`
+  : bunBinDir;
+if (process.platform === "win32") {
+  env.Path = env.PATH;
+}
 
 function hasPlaywrightConfig(configName) {
   return (
@@ -356,13 +383,13 @@ if (
 
 // The ui-smoke web server builds the renderer (`packages/app build:web`) whenever
 // the dist is stale — in BOTH stub and live mode (see playwright-ui-live-stack.ts
-// `viteRendererBuildNeeded` → `build:web`). That vite build BUNDLES @elizaos/core
-// (resolved via its `browser` export condition → dist/browser/index.browser.js).
-// On a fresh CI checkout (e.g. the scenario-pr `Zero-Key app browser *` jobs,
-// which run stub mode and never build core) that dist isn't built, so the build
-// aborts with `Failed to resolve entry for package "@elizaos/core"` and the whole
-// stack fails to start. Build core first — gated only on the ui-smoke config (NOT
-// on live mode), mirroring the view-build step above. Turbo-cached → a fast no-op
+// `viteRendererBuildNeeded` → `build:web`). That vite build needs linked
+// workspace package dists during config load and renderer bundling:
+// - @elizaos/shared/brand is imported by app.config.ts before Vite aliases apply.
+// - @elizaos/core is bundled through its browser export.
+// On a fresh CI checkout these dists may not exist, so the stack fails before any
+// smoke spec runs. Build them first — gated only on the ui-smoke config (NOT on
+// live mode), mirroring the view-build step above. Turbo-cached → a fast no-op
 // when already up to date; skip with ELIZA_UI_SMOKE_SKIP_CORE_BUILD=1.
 if (
   hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
@@ -374,6 +401,7 @@ if (
       path.join(repoRoot, "packages", "scripts", "run-turbo.mjs"),
       "run",
       "build",
+      "--filter=@elizaos/shared",
       "--filter=@elizaos/core",
     ],
     {

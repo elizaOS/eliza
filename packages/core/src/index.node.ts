@@ -326,6 +326,19 @@ export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export setup types and utilities
 export * from "./types/setup";
+export type {
+	EnabledViewKinds,
+	ViewKind,
+	ViewKindBearer,
+} from "./types/view-kind";
+export {
+	isAlwaysOnViewKind,
+	isViewKindEnabled,
+	isViewVisible,
+	resolveViewKind,
+	VIEW_KIND_META,
+	VIEW_KINDS,
+} from "./types/view-kind";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export {
