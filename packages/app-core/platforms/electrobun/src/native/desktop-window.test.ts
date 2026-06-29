@@ -494,7 +494,7 @@ describe("DesktopManager main window controls", () => {
 
   it("opens tray popover as an app renderer with preload, rpc, partition, and API injection", async () => {
     const manager = new DesktopManager();
-    const rpc = { request: {}, send: {} };
+    const rpc = { request: {}, send: {}, setTransport: vi.fn() };
     const injectApiBase = vi.fn();
     const wireRpc = vi.fn();
     const onWindowFocused = vi.fn();

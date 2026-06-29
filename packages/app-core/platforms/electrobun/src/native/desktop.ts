@@ -44,6 +44,10 @@ import Electrobun, {
 } from "electrobun/bun";
 import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
+import {
+  createElectrobunBrowserWindow,
+  type ElectrobunBrowserWindowOptions,
+} from "../electrobun-window-options";
 import { logger } from "../logger";
 import type {
   ClipboardReadResult,
@@ -115,19 +119,14 @@ interface OpenExternalOptions {
   url: string;
 }
 
-type TrayPopoverBrowserWindowOptions = NonNullable<
-  ConstructorParameters<typeof Electrobun.BrowserWindow>[0]
-> & {
-  partition?: string | null;
-  preload?: string;
-  rpc?: unknown;
-};
+type TrayPopoverBrowserWindowOptions = ElectrobunBrowserWindowOptions;
+type TrayPopoverRpc = TrayPopoverBrowserWindowOptions["rpc"];
 
 interface TrayPopoverConfig {
   url: string;
   preload: string;
   partition?: string | null;
-  rpc?: unknown;
+  rpc?: TrayPopoverRpc;
   injectApiBase?: (window: BrowserWindow) => void;
   wireRpc?: (window: BrowserWindow) => void;
   onWindowFocused?: (window: BrowserWindow) => void;
@@ -1963,7 +1962,7 @@ X-GNOME-Autostart-enabled=true
       ...(config.partition ? { partition: config.partition } : {}),
       ...(config.rpc ? { rpc: config.rpc } : {}),
     };
-    const win = new Electrobun.BrowserWindow(options);
+    const win = createElectrobunBrowserWindow(options);
     config.wireRpc?.(win);
     win.webview.on("dom-ready", () => {
       config.injectApiBase?.(win);
