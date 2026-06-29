@@ -961,27 +961,6 @@ export async function exportAgent(
     includeLogs: options.includeLogs ?? false,
   });
 
-  return buildEncryptedArchive(payload, password);
-}
-
-/**
- * Encrypt + pack a fully-formed export payload into the `.eliza-agent` binary
- * format (gzip → AES-256-GCM → packed file). Shared by {@link exportAgent} and
- * by third-party producers (e.g. the OCPlatform migration tool) that assemble a
- * payload from a non-Eliza source. Keeps ONE crypto/format path.
- *
- * The caller is responsible for producing a PayloadSchema-conformant payload.
- */
-export async function buildEncryptedArchive(
-  payload: AgentExportPayload,
-  password: string,
-): Promise<Buffer> {
-  if (!password || password.length < MIN_PASSWORD_LENGTH) {
-    throw new AgentExportError(
-      `A password of at least ${MIN_PASSWORD_LENGTH} characters is required to encrypt the export.`,
-    );
-  }
-
   const jsonString = JSON.stringify(payload);
   const compressed = gzipSync(Buffer.from(jsonString, "utf-8"));
 

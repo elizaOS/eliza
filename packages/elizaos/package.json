@@ -36,11 +36,11 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "commander": "^15.0.0",
-    "picocolors": "^1.1.1",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/agent": "workspace:*"
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
     "@types/node": "^25.0.3",
     "typescript": "^6.0.3",
     "vitest": "^4.0.17"

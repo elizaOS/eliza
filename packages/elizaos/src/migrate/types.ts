@@ -51,7 +51,11 @@ export interface MigratedExportPayload {
   memories: MigratedMemory[];
   components: unknown[];
   rooms: Array<Record<string, unknown>>;
-  participants: Array<{ entityId: string; roomId: string; userState: string | null }>;
+  participants: Array<{
+    entityId: string;
+    roomId: string;
+    userState: string | null;
+  }>;
   relationships: unknown[];
   worlds: Array<Record<string, unknown>>;
   tasks: unknown[];

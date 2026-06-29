@@ -144,7 +144,9 @@ export function readOcAgentHome(home: string, agentId: string): OcAgentSource {
 
   let hasSecretsDir = false;
   try {
-    hasSecretsDir = fs.statSync(path.join(resolvedHome, "secrets")).isDirectory();
+    hasSecretsDir = fs
+      .statSync(path.join(resolvedHome, "secrets"))
+      .isDirectory();
   } catch {
     hasSecretsDir = false;
   }

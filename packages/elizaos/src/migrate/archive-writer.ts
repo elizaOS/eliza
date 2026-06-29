@@ -101,7 +101,11 @@ export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
     components: [],
     rooms: [room],
     participants: [
-      { entityId: String(input.entityId), roomId: String(input.roomId), userState: null },
+      {
+        entityId: String(input.entityId),
+        roomId: String(input.roomId),
+        userState: null,
+      },
     ],
     relationships: [],
     worlds: [world],

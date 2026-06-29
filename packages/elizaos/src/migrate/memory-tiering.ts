@@ -13,8 +13,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { MigratedMemory as Memory, UUID } from "./types.js";
 import { isSelfMemory, type OcAgentSource } from "./openclaw-reader.js";
+import type { MigratedMemory as Memory, UUID } from "./types.js";
 
 export type MemoryTier = "CURRENT" | "LONGTERM" | "SELF" | "MARKER";
 

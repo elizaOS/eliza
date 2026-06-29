@@ -70,7 +70,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   const agentId = opts.agentId?.trim();
   if (!from) fail("--from <openclaw-home> is required (e.g. ~/.moltbot).");
   if (!agentId) fail("--agent-id <slug> is required (e.g. sol).");
-  if (!fs.existsSync(from!)) fail(`Home not found: ${from}`);
+  if (!fs.existsSync(from)) fail(`Home not found: ${from}`);
 
   const firewall = opts.noFirewall ? false : (opts.firewall ?? true);
   const memoryDays = opts.memoryDays ? Number(opts.memoryDays) : 14;
@@ -81,8 +81,8 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   clack.intro(pc.cyan(`migrate-agent: ${agentId}`));
 
   const plan = buildMigrationPlan({
-    from: from!,
-    agentId: agentId!,
+    from,
+    agentId,
     memoryDays,
     firewall,
     currentContext: opts.currentContext,
@@ -104,7 +104,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
     return;
   }
 
-  printPlan(plan, agentId!);
+  printPlan(plan, agentId);
 
   if (opts.dryRun) {
     clack.outro(pc.dim("dry-run: nothing written."));
@@ -115,14 +115,20 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   if (opts.emitCharacter || opts.emitMemories) {
     const { characterJson, memoriesJsonl } = emitSovereignArtifacts(plan);
     if (opts.emitCharacter) {
-      fs.mkdirSync(path.dirname(path.resolve(opts.emitCharacter)), { recursive: true });
+      fs.mkdirSync(path.dirname(path.resolve(opts.emitCharacter)), {
+        recursive: true,
+      });
       fs.writeFileSync(opts.emitCharacter, characterJson);
       clack.log.success(`character → ${opts.emitCharacter}`);
     }
     if (opts.emitMemories) {
-      fs.mkdirSync(path.dirname(path.resolve(opts.emitMemories)), { recursive: true });
+      fs.mkdirSync(path.dirname(path.resolve(opts.emitMemories)), {
+        recursive: true,
+      });
       fs.writeFileSync(opts.emitMemories, memoriesJsonl);
-      clack.log.success(`memories (${plan.memories.length}) → ${opts.emitMemories}`);
+      clack.log.success(
+        `memories (${plan.memories.length}) → ${opts.emitMemories}`,
+      );
     }
   }
 
@@ -130,7 +136,9 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   if (opts.out) {
     const password = opts.password?.trim();
     if (!password || password.length < 8) {
-      fail("--password (min 8 chars) is required to write an encrypted --out archive.");
+      fail(
+        "--password (min 8 chars) is required to write an encrypted --out archive.",
+      );
     }
     if (!firewall) {
       clack.log.warn(
@@ -140,7 +148,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
         ),
       );
     }
-    const buf = await archiveFromPlan(plan, agentId!, password!);
+    const buf = await archiveFromPlan(plan, agentId, password);
     fs.mkdirSync(path.dirname(path.resolve(opts.out)), { recursive: true });
     fs.writeFileSync(opts.out, buf);
     clack.log.success(`archive → ${opts.out} (${buf.length} bytes)`);

@@ -15,12 +15,12 @@
  * the emitted character afterward.
  */
 
-import type { MigratedCharacter as Character } from "./types.js";
 import {
   isPlaybookMemory,
   isSelfMemory,
   type OcAgentSource,
 } from "./openclaw-reader.js";
+import type { MigratedCharacter as Character } from "./types.js";
 
 export interface CharacterMapOptions {
   /**
@@ -87,7 +87,7 @@ export function mapToCharacter(
       // DocumentSourceItem: inline text knowledge about the human.
       case: "text",
       value: { text: stripFrontHeading(src.user).trim() },
-    } as unknown as NonNullable<Character["knowledge"]>[number]);
+    });
   }
 
   const character: Character = {
@@ -100,7 +100,10 @@ export function mapToCharacter(
     settings: {
       // Record the migration provenance + firewall posture in metadata.
       ...(opts.firewall
-        ? { firewall_note: "USER/personal knowledge excluded (firewalled) from this character." }
+        ? {
+            firewall_note:
+              "USER/personal knowledge excluded (firewalled) from this character.",
+          }
         : {}),
     } as Character["settings"],
   };
@@ -110,7 +113,9 @@ export function mapToCharacter(
 
 /** Derive a display name: IDENTITY "Name:" line → agentId capitalized. */
 function deriveName(src: OcAgentSource): string {
-  const fromIdentity = src.identity?.match(/^\s*[-*]?\s*\*{0,2}Name\*{0,2}:\s*(.+)$/im);
+  const fromIdentity = src.identity?.match(
+    /^\s*[-*]?\s*\*{0,2}Name\*{0,2}:\s*(.+)$/im,
+  );
   if (fromIdentity?.[1]) return fromIdentity[1].replace(/\*/g, "").trim();
   return src.agentId.charAt(0).toUpperCase() + src.agentId.slice(1);
 }

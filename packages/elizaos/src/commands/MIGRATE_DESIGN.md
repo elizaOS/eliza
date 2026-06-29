@@ -49,10 +49,11 @@ the same tool serves both "import into a DB" and "run sovereign with a mounted v
    T4 older logs → single summary marker (NOT flat-seeded; avoids resurfacing dead threads).
    Produces Memory records (no embeddings here — embeddings are added at import/seed time by the
    runtime). **Unit-testable** (tier boundaries, dedup, the T4 marker).
-4. `archive-writer.ts` — assemble a PayloadSchema-conformant `AgentExportPayload` (character +
-   memories + the minimal entities/rooms/world the records reference) and reuse the SAME pack/encrypt
-   path as `exportAgent` (magic header + PBKDF2 + AES-256-GCM + gzip). Output = a real `.eliza-agent`
-   that `importAgent` round-trips. **Integration-testable** (write → importAgent → assert counts).
+4. `archive-writer.ts` + `archive-format.ts` — assemble a PayloadSchema-conformant
+   `AgentExportPayload` (character + memories + the minimal entities/rooms/world the records
+   reference) and pack/encrypt it with the SAME V1 format `exportAgent` uses (magic header + PBKDF2 +
+   AES-256-GCM + gzip), implemented with only node built-ins. Output = a real `.eliza-agent` that
+   `importAgent` round-trips. **Integration-testable** (build → importAgent → assert counts).
 5. `commands/migrate-agent.ts` — the clack-based CLI command wiring the above + flags + dry-run +
    firewall + friendly output. Mirrors create.ts structure.
 
@@ -61,19 +62,23 @@ the same tool serves both "import into a DB" and "run sovereign with a mounted v
 any file tagged personal are EXCLUDED from the portable archive; they only land via the sovereign
 `--emit-character/--emit-memories` local path. The archive is shareable; the firewalled extract is not.
 
-## Reuse, don't fork (refactor note)
-`exportAgent`'s pack/encrypt internals (packFile/encrypt/PayloadSchema) live in agent-export.ts.
-To reuse them from the importer without duplicating crypto, export the low-level
-`buildEncryptedArchive(payload, password)` helper from agent-export.ts (small refactor: extract the
-encrypt+pack tail of exportAgent into a named export). The migrate tool calls that. This keeps ONE
-crypto/format path.
+## Self-contained format, kept honest by a real round-trip
+The `elizaos` CLI is intentionally runtime-free (see the package `CLAUDE.md` — it must not take
+`@elizaos/core`/`@elizaos/agent` as runtime deps). So rather than import `exportAgent`'s
+pack/encrypt code, `archive-format.ts` re-implements the V1 binary spec with only node `crypto`/`zlib`
+(`buildElizaAgentArchive`). The risk of two encode paths drifting is closed by a DEV-only
+round-trip test: `migrate.test.ts` builds a real archive and drives it through the actual
+`@elizaos/agent` `importAgent` (a `devDependency`), exercising the real unpack → AES-256-GCM
+decrypt → gunzip → `PayloadSchema` (zod) validation → restore. If the formats ever diverge, that test
+fails. The shipped CLI bundle stays free of any `@elizaos/*` dependency.
 
 ## Tests (ship with the PR)
 - `openclaw-reader.test.ts` — fixture home → correct classification (incl. missing-file tolerance).
 - `character-mapper.test.ts` — golden Character from a fixture persona; firewall excludes USER.
 - `memory-tiering.test.ts` — tier boundaries, N-day window, T4 marker, dedup, chunking.
-- `migrate-agent.integration.test.ts` — fixture home → archive → `importAgent` into an in-memory
-  runtime → assert character name + memory count + firewall honored. (This is the real proof.)
+- `migrate.test.ts` (`archive round-trips through the real importAgent`) — fixture home → archive →
+  real `@elizaos/agent` `importAgent` with a capturing in-memory adapter → assert character name +
+  memory/entity/room/world counts; plus a wrong-password (GCM auth) rejection. (This is the real proof.)
 - A fixture OpenClaw home under `__tests__/fixtures/oc-home/` (tiny synthetic agent, NOT Sol's real
   data — no personal content in the repo).
 
