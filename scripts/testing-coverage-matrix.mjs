@@ -20,7 +20,10 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const OUTPUT = path.join(REPO_ROOT, "docs", "TESTING_COVERAGE_MATRIX.md");
 
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/;
@@ -140,7 +143,9 @@ function main() {
   lines.push(
     "- **Skips** — count of `it/test/describe.skip`, `.todo`, `x(it|describe)`, and `.skipIf(...)` markers across those files.",
   );
-  lines.push("- **`test` script** — package exposes a `test` script (the signal the root runner sweeps on).");
+  lines.push(
+    "- **`test` script** — package exposes a `test` script (the signal the root runner sweeps on).",
+  );
   lines.push(
     "- **In CI (heuristic)** — has a `test` script AND is not excluded from the root workspace. Not a proof of execution; lane-level gating still applies.",
   );
@@ -148,7 +153,9 @@ function main() {
   lines.push("## Summary");
   lines.push("");
   lines.push(`- Packages with tests: **${totals.withTests}**`);
-  lines.push(`- Packages swept by the root runner (heuristic): **${totals.inCi}**`);
+  lines.push(
+    `- Packages swept by the root runner (heuristic): **${totals.inCi}**`,
+  );
   lines.push(`- Total test files: **${totals.testFiles}**`);
   lines.push(`- Total skipped tests: **${totals.skips}**`);
   lines.push(
@@ -163,7 +170,9 @@ function main() {
   lines.push("");
   lines.push("## Matrix");
   lines.push("");
-  lines.push("| Package | Path | Test files | Skips | `test` script | In CI (heuristic) |");
+  lines.push(
+    "| Package | Path | Test files | Skips | `test` script | In CI (heuristic) |",
+  );
   lines.push("| --- | --- | ---: | ---: | :---: | :---: |");
   for (const r of rows) {
     const inCi = r.hasTestScript && !excludedFromRoot(r.dir);
