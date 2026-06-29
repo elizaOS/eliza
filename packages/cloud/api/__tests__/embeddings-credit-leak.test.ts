@@ -20,6 +20,7 @@ import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
+import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
 import * as usageActual from "@/lib/services/usage";
 
 const aiActual = require("ai") as Record<string, unknown>;
@@ -38,6 +39,12 @@ const enforceOrgRateLimit = mock();
 mock.module("@/lib/middleware/rate-limit", () => ({
   ...rateLimitActual,
   enforceOrgRateLimit,
+}));
+
+const resolveInferenceAuthContext = mock();
+mock.module("@/lib/services/inference-auth-context", () => ({
+  ...inferenceAuthActual,
+  resolveInferenceAuthContext,
 }));
 
 mock.module("@/lib/providers/language-model", () => ({
@@ -79,6 +86,10 @@ afterAll(() => {
   mock.module("@/lib/middleware/rate-limit", () => rateLimitActual);
   mock.module("@/lib/providers/language-model", () => languageModelActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
+  mock.module(
+    "@/lib/services/inference-auth-context",
+    () => inferenceAuthActual,
+  );
   mock.module("@/lib/services/usage", () => usageActual);
   mock.module("ai", () => aiActual);
 });
@@ -149,6 +160,7 @@ function post(body: unknown, ctx?: ExecutionContext) {
 
 beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
+  resolveInferenceAuthContext.mockReset();
   enforceOrgRateLimit.mockReset();
   reserveCredits.mockReset();
   billUsage.mockReset();
@@ -164,6 +176,10 @@ beforeEach(() => {
       organization: { id: ORG, name: "Org", is_active: true },
       is_active: true,
     };
+  });
+  resolveInferenceAuthContext.mockResolvedValue({
+    kind: "slow_path",
+    reason: "non_api_key",
   });
   enforceOrgRateLimit.mockResolvedValue(null);
   usageCreate.mockResolvedValue({ id: "usage-1" });

@@ -26,6 +26,7 @@ import * as rateLimitActual from "@/lib/middleware/rate-limit";
 // that import from these modules. afterAll restores them.
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as apiKeysActual from "@/lib/services/api-keys";
+import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
 import * as usageActual from "@/lib/services/usage";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
@@ -54,6 +55,12 @@ const enforceOrgRateLimit = mock();
 mock.module("@/lib/middleware/rate-limit", () => ({
   ...rateLimitActual,
   enforceOrgRateLimit,
+}));
+
+const resolveInferenceAuthContext = mock();
+mock.module("@/lib/services/inference-auth-context", () => ({
+  ...inferenceAuthActual,
+  resolveInferenceAuthContext,
 }));
 
 // Provider config: pretend an embedding provider is configured and hand back a
@@ -95,6 +102,10 @@ const embeddingsRoute = (await import("../v1/embeddings/route")).default;
 afterAll(() => {
   mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
   mock.module("@/lib/services/api-keys", () => apiKeysActual);
+  mock.module(
+    "@/lib/services/inference-auth-context",
+    () => inferenceAuthActual,
+  );
   mock.module("@/lib/middleware/rate-limit", () => rateLimitActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module("@/lib/services/usage", () => usageActual);
@@ -132,6 +143,7 @@ function post(body: unknown, ctx?: ExecutionContext) {
 
 beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
+  resolveInferenceAuthContext.mockReset();
   validateApiKey.mockReset();
   enforceOrgRateLimit.mockReset();
   reserveCredits.mockReset();
@@ -150,6 +162,10 @@ beforeEach(() => {
       organization: { id: ORG, name: "Org", is_active: true },
       is_active: true,
     };
+  });
+  resolveInferenceAuthContext.mockResolvedValue({
+    kind: "slow_path",
+    reason: "non_api_key",
   });
   enforceOrgRateLimit.mockResolvedValue(null);
   reserveCredits.mockResolvedValue({
@@ -272,6 +288,34 @@ describe("POST /api/v1/embeddings — single key validation", () => {
     expect(validateApiKey).not.toHaveBeenCalled();
 
     // And the apiKeyId from context flows into billing + usage attribution.
+    expect(billUsage.mock.calls[0][0].apiKeyId).toBe(API_KEY_ID);
+    expect(usageCreate.mock.calls[0][0].api_key_id).toBe(API_KEY_ID);
+  });
+
+  test("cached inference auth skips the Hono auth helper and uses the cached api key id", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "authorized",
+      source: "cache",
+      ctx: {
+        v: 1,
+        cachedAt: Date.now(),
+        userId: USER,
+        orgId: ORG,
+        apiKeyId: API_KEY_ID,
+        keyHash: "key-hash",
+      },
+    });
+
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+    );
+    await Promise.all(scheduled);
+
+    expect(res.status).toBe(200);
+    expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
+    expect(validateApiKey).not.toHaveBeenCalled();
     expect(billUsage.mock.calls[0][0].apiKeyId).toBe(API_KEY_ID);
     expect(usageCreate.mock.calls[0][0].api_key_id).toBe(API_KEY_ID);
   });
