@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "comment": "Reviewed-but-kept-separate type-duplication pairs for type-duplication-audit.mjs (#10195). The candidate-finder excludes these so re-runs stay low-noise. Use `name` to suppress a whole same-name cluster, or `pairKey` (the exact 'a.file#a.name <=> b.file#b.name' key from reports/type-duplication.json) to suppress one reviewed subset/near-duplicate pair. Every entry needs a written `reason`.",
+  "entries": [
+    {
+      "name": "ExampleDistinctType",
+      "reason": "SAMPLE ENTRY — remove or replace. Demonstrates suppressing an intentionally-distinct same-named type cluster by name."
+    }
+  ]
+}
