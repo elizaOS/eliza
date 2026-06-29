@@ -77,9 +77,6 @@
       "@elizaos/plugin-phone/*": [
         "../../plugins/plugin-phone/src/*"
       ],
-      "@elizaos/plugin-elizamaker": [
-        "../../plugins/plugin-elizamaker/src/index.ts"
-      ],
       "@elizaos/plugin-form": [
         "../../plugins/plugin-form/src/index.ts"
       ],

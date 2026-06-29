@@ -478,12 +478,6 @@ const stubCatalogApps = [
     category: "social",
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-elizamaker",
-    displayName: "ElizaMaker",
-    description: "Run drop, mint, whitelist, and verification workflows.",
-    capabilities: ["drops", "minting", "whitelist"],
-  }),
-  stubCatalogApp({
     name: "@elizaos/plugin-shopify",
     displayName: "Shopify",
     description: "Manage Shopify store operations from the agent workspace.",

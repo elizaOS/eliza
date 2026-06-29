@@ -237,8 +237,8 @@ no dedicated interaction spec; it's only reached as a catalog tile.
 
 Builtin internal-tool-apps NOT in the core route probe list but with windowPaths
 (reached only via the app catalog / DIRECT_ROUTE_CASES, worth explicit
-screenshots): `/apps/elizamaker` (ElizaMaker), `/apps/inventory` (Steward),
-`/inventory` (wallet shell), `/apps/runtime`, `/apps/logs`.
+screenshots): `/apps/inventory` (Steward), `/inventory` (wallet shell),
+`/apps/runtime`, `/apps/logs`.
 
 ### Plugin views (`plugin-view-cases.ts` VIEW_CASES — 64 cases, gui+tui)
 Covered by THREE specs that all iterate `VIEW_CASES`:

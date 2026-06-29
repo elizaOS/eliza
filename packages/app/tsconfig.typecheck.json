@@ -11,9 +11,6 @@
       ],
       "@elizaos/app-*": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/app-*/register": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/plugin-elizamaker": [
-        "../../plugins/plugin-elizamaker/dist/index.d.ts"
-      ],
       "@elizaos/plugin-task-coordinator": [
         "./src/types/app-plugin-modules.d.ts"
       ],
