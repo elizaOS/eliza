@@ -178,6 +178,51 @@ describe("RemotePluginBridge action callbacks", () => {
 
     await expect(resultPromise).resolves.toEqual({ success: true });
   });
+
+  it("rejects malformed worker action results before returning to the runtime", async () => {
+    const channel = new TestChannel();
+    let registeredActions: Action[] = [];
+    const runtime = {
+      registerPlugin: async (plugin: Plugin) => {
+        registeredActions = plugin.actions ?? [];
+      },
+      unloadPlugin: async () => {},
+    } as unknown as IAgentRuntime;
+    const bridge = new RemotePluginBridge({ channel, runtime });
+    bridge.attach();
+
+    await channel.emit({
+      type: "worker-announce-plugin",
+      descriptor: {
+        name: "remote-test",
+        actions: [
+          {
+            name: "REMOTE_ACTION",
+            description: "Remote action",
+            handler: { rpc: true, id: "action:remote:handler" },
+          },
+        ],
+      },
+    });
+
+    const actionPromise = registeredActions[0]?.handler(
+      runtime,
+      { content: { text: "run" } } as never,
+      undefined,
+      undefined,
+      undefined,
+      [],
+    );
+    const rpc = channel.sent[0] as WorkerRpcMessage;
+    await channel.emit({
+      type: "worker-rpc-result",
+      requestId: rpc.requestId,
+      ok: true,
+      payload: { ok: true },
+    });
+
+    await expect(actionPromise).rejects.toThrow();
+  });
 });
 
 describe("RemotePluginBridge descriptor schema", () => {
@@ -331,6 +376,61 @@ describe("RemotePluginBridge descriptor schema", () => {
     await expect(quotePromise).resolves.toEqual({ quoted: "ETH:42" });
   });
 
+  it("defaults remote routes to GET and validates route handler results", async () => {
+    const descriptor = buildAnnounceDescriptor(
+      {
+        name: "route-surface",
+        routes: [
+          {
+            path: "/route",
+            routeHandler: () => ({ status: 200, body: { ok: true } }),
+          },
+        ],
+      },
+      createHandlerRegistry(),
+    );
+
+    const channel = new TestChannel();
+    let registered: Plugin | null = null;
+    const runtime = {
+      registerPlugin: async (plugin: Plugin) => {
+        registered = plugin;
+      },
+      unloadPlugin: async () => {},
+    } as unknown as IAgentRuntime;
+    const bridge = new RemotePluginBridge({ channel, runtime });
+    bridge.attach();
+
+    await channel.emit({ type: "worker-announce-plugin", descriptor });
+
+    const plugin = registered as Plugin | null;
+    const route = plugin?.routes?.[0] as Route | undefined;
+    expect(route?.type).toBe("GET");
+
+    const badResult = route?.routeHandler?.({} as never);
+    const badRpc = channel.sent.at(-1) as WorkerRpcMessage;
+    await channel.emit({
+      type: "worker-rpc-result",
+      requestId: badRpc.requestId,
+      ok: true,
+      payload: { body: "missing status" },
+    });
+    await expect(badResult).rejects.toThrow();
+
+    const goodResult = route?.routeHandler?.({} as never);
+    const goodRpc = channel.sent.at(-1) as WorkerRpcMessage;
+    await channel.emit({
+      type: "worker-rpc-result",
+      requestId: goodRpc.requestId,
+      ok: true,
+      payload: { status: 200, body: { ok: true } },
+    });
+    await expect(goodResult).resolves.toEqual({
+      status: 200,
+      body: { ok: true },
+    });
+  });
+
   it("parses a minimal descriptor and a descriptor that only carries metadata", async () => {
     const minimal = buildAnnounceDescriptor(
       { name: "minimal" },
@@ -403,5 +503,40 @@ describe("RemotePluginBridge descriptor schema", () => {
 
     expect(await rejection).toBeTruthy();
     expect(registerCalls).toBe(0);
+  });
+});
+
+describe("RemotePluginBridge host-rpc validation", () => {
+  it("rejects malformed createMemory payloads before calling the runtime", async () => {
+    const channel = new TestChannel();
+    let createMemoryCalls = 0;
+    const runtime = {
+      createMemory: async () => {
+        createMemoryCalls += 1;
+        return "memory-id";
+      },
+      registerPlugin: async () => {},
+      unloadPlugin: async () => {},
+    } as unknown as IAgentRuntime;
+    const bridge = new RemotePluginBridge({ channel, runtime });
+    bridge.attach();
+
+    await channel.emit({
+      type: "host-rpc",
+      requestId: 1,
+      api: "runtime",
+      method: "createMemory",
+      args: {
+        memory: {
+          content: { text: "missing entityId and roomId" },
+        },
+        tableName: "messages",
+      },
+    });
+
+    const reply = channel.sent[0] as { type: string; ok: boolean };
+    expect(reply.type).toBe("host-rpc-result");
+    expect(reply.ok).toBe(false);
+    expect(createMemoryCalls).toBe(0);
   });
 });
