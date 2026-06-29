@@ -105,12 +105,16 @@ export type {
 } from "./types.js";
 export { appAction, availableAppsProvider, createAppAction };
 
-// In a terminal host (the Node agent, no DOM), register the views-manager view
-// so it renders inline in the terminal. Lazy + DOM-guarded so the terminal
-// engine stays out of browser/mobile bundles.
+// In a terminal host (the Node agent, no DOM), register the views-manager,
+// settings, and voice views so they render inline in the terminal. Lazy +
+// DOM-guarded so the terminal engine stays out of browser/mobile bundles.
 if (typeof window === "undefined") {
 	void import("./register-terminal-view.js")
-		.then((m) => m.registerViewManagerTerminalView())
+		.then((m) => {
+			m.registerViewManagerTerminalView();
+			m.registerSettingsTerminalView();
+			m.registerVoiceTerminalView();
+		})
 		.catch(() => {
 			// Terminal rendering is best-effort; never block plugin load.
 		});
@@ -241,6 +245,44 @@ export const appControlPlugin: Plugin = {
 				}
 				return { success: false, error: `unknown capability: ${capability}` };
 			},
+		},
+		// Terminal-only surfaces: settings and voice/transcription render in the
+		// agent terminal via the spatial terminal registry (see
+		// register-terminal-view.tsx). They have no GUI bundle — the TUI mounts the
+		// registered SettingsSpatialView / VoiceSpatialView directly. `modalities:
+		// ["tui"]` lists them under GET /api/views?viewType=tui so the terminal can
+		// open them; a host pushes live config via set*TerminalSnapshot.
+		{
+			id: "settings",
+			label: "Settings",
+			description: "Agent settings and configuration",
+			icon: "Settings",
+			path: "/settings/tui",
+			modalities: ["tui"],
+			visibleInManager: true,
+			capabilities: [
+				{
+					id: "settings-get-state",
+					description:
+						"Return the current settings snapshot as structured data",
+				},
+			],
+		},
+		{
+			id: "voice",
+			label: "Voice",
+			description: "Voice configuration and recent transcript",
+			icon: "Mic",
+			path: "/voice/tui",
+			modalities: ["tui"],
+			visibleInManager: true,
+			capabilities: [
+				{
+					id: "voice-get-state",
+					description:
+						"Return the current voice/transcript snapshot as structured data",
+				},
+			],
 		},
 	],
 };
