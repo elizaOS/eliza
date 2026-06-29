@@ -1016,6 +1016,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		tableName: string;
 		embedding: number[];
 		match_threshold?: number;
+		count?: number;
 		limit?: number;
 		unique?: boolean;
 		query?: string;

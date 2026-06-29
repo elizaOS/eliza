@@ -332,6 +332,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		tableName: string;
 		embedding: number[];
 		match_threshold?: number;
+		count?: number;
 		limit?: number;
 		unique?: boolean;
 		query?: string;

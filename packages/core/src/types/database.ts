@@ -1039,6 +1039,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	searchMemories(params: {
 		embedding: number[];
 		match_threshold?: number;
+		count?: number;
 		limit?: number;
 		unique?: boolean;
 		tableName: string;

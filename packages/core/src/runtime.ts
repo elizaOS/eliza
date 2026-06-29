@@ -7953,6 +7953,7 @@ ${section_end}`;
 		embedding: number[];
 		query?: string;
 		match_threshold?: number;
+		count?: number;
 		limit?: number;
 		roomId?: UUID;
 		unique?: boolean;
