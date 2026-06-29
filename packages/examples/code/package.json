@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-code",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.3-beta.9",
   "description": "Async coding agent terminal app - Claude Code meets ElizaOS",
   "repository": {
     "type": "git",
