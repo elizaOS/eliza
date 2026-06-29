@@ -75,3 +75,40 @@ export function resolveRepoRootFromImportMeta(
     throw error;
   }
 }
+
+// The eliza workspace itself: package.json + packages/app-core + packages/agent
+// + packages/scripts. Unlike resolveRepoRoot, this does NOT defer to an outer
+// consumer container when eliza is nested as a subrepo (milady/eliza local mode).
+// Use it to locate eliza-internal `packages/scripts/*`.
+function hasElizaWorkspaceShape(dir) {
+  return (
+    existsSync(path.join(dir, "package.json")) &&
+    existsSync(path.join(dir, "packages", "app-core", "package.json")) &&
+    existsSync(path.join(dir, "packages", "agent", "package.json")) &&
+    existsSync(path.join(dir, "packages", "scripts"))
+  );
+}
+
+export function resolveElizaWorkspaceRoot(startDir = process.cwd()) {
+  let current = path.resolve(startDir);
+  while (true) {
+    if (hasElizaWorkspaceShape(current)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw new Error(`Could not resolve eliza workspace root starting from ${startDir}`);
+    }
+    current = parent;
+  }
+}
+
+export function resolveElizaWorkspaceRootFromImportMeta(
+  importMetaUrl,
+  { fallbackToCwd = false, cwd = process.cwd() } = {},
+) {
+  try {
+    return resolveElizaWorkspaceRoot(path.dirname(fileURLToPath(importMetaUrl)));
+  } catch (error) {
+    if (fallbackToCwd) return resolveElizaWorkspaceRoot(cwd);
+    throw error;
+  }
+}

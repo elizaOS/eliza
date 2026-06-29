@@ -19,7 +19,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   findMachOFiles,
   isMachO,
@@ -27,7 +27,7 @@ import {
   walkBundleFiles,
 } from "./mas-smoke.mjs";
 
-const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",
