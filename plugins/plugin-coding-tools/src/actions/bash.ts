@@ -1303,45 +1303,62 @@ export const shellAction: Action = {
         `${CODING_TOOLS_LOG_PREFIX} SHELL removed ungrounded runtime directory override; using cwd=${cwd}`,
       );
     }
-    const localStatusCommand = resolveLocalStatusCommand({
-      command,
-      messageText: messageText(message),
-    });
-    if (localStatusCommand.rewritten) {
-      command = localStatusCommand.command;
-      coreLogger.warn(
-        `${CODING_TOOLS_LOG_PREFIX} SHELL replaced local status probe with canonical command`,
-      );
-    }
-    const sourceInspectionCommand = resolveSourceInspectionCommand({
-      command,
-      messageText: messageText(message),
-    });
-    if (sourceInspectionCommand.rewritten) {
-      command = sourceInspectionCommand.command;
-      coreLogger.warn(
-        `${CODING_TOOLS_LOG_PREFIX} SHELL replaced broad source search with bounded workspace search`,
-      );
-    }
-    const diskCommand = resolveDiskInspectionCommand({
-      command,
-      messageText: messageText(message),
-    });
-    if (diskCommand.rewritten) {
-      command = diskCommand.command;
-      coreLogger.warn(
-        `${CODING_TOOLS_LOG_PREFIX} SHELL replaced broad disk scan with bounded cleanup-candidate probe`,
-      );
-    }
-    const cryptoCommand = resolveCryptoSpotPriceCommand({
-      command,
-      messageText: messageText(message),
-    });
-    if (cryptoCommand.rewritten) {
-      command = cryptoCommand.command;
-      coreLogger.warn(
-        `${CODING_TOOLS_LOG_PREFIX} SHELL replaced unreliable crypto spot-price endpoint with neutral no-key API`,
-      );
+    // The disk / memory / source-search / crypto command rewrites below are
+    // CHAT conveniences keyed on the *message text*: when a user asks "check
+    // disk space", a weak probe is rewritten into a good bounded one. The
+    // eliza-code coding sub-agent (ELIZA_PLANNER_FULL_ACTION_SURFACE) instead
+    // issues precise explicit commands (ls / mkdir / git / …) and must NEVER
+    // have them rewritten — when the build task incidentally mentioned a trigger
+    // word, EVERY `ls`/`mkdir` was replaced by an ~19s `df` cleanup scan, so the
+    // shell produced no real output, the model gave up on SHELL, and a 30s build
+    // took 90s+. Skip all message-text-keyed rewrites for the coding sub-agent;
+    // its commands run verbatim.
+    const codingSubAgentShell = ((): boolean => {
+      const v =
+        process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+      return v === "1" || v === "true" || v === "yes" || v === "on";
+    })();
+    if (!codingSubAgentShell) {
+      const localStatusCommand = resolveLocalStatusCommand({
+        command,
+        messageText: messageText(message),
+      });
+      if (localStatusCommand.rewritten) {
+        command = localStatusCommand.command;
+        coreLogger.warn(
+          `${CODING_TOOLS_LOG_PREFIX} SHELL replaced local status probe with canonical command`,
+        );
+      }
+      const sourceInspectionCommand = resolveSourceInspectionCommand({
+        command,
+        messageText: messageText(message),
+      });
+      if (sourceInspectionCommand.rewritten) {
+        command = sourceInspectionCommand.command;
+        coreLogger.warn(
+          `${CODING_TOOLS_LOG_PREFIX} SHELL replaced broad source search with bounded workspace search`,
+        );
+      }
+      const diskCommand = resolveDiskInspectionCommand({
+        command,
+        messageText: messageText(message),
+      });
+      if (diskCommand.rewritten) {
+        command = diskCommand.command;
+        coreLogger.warn(
+          `${CODING_TOOLS_LOG_PREFIX} SHELL replaced broad disk scan with bounded cleanup-candidate probe`,
+        );
+      }
+      const cryptoCommand = resolveCryptoSpotPriceCommand({
+        command,
+        messageText: messageText(message),
+      });
+      if (cryptoCommand.rewritten) {
+        command = cryptoCommand.command;
+        coreLogger.warn(
+          `${CODING_TOOLS_LOG_PREFIX} SHELL replaced unreliable crypto spot-price endpoint with neutral no-key API`,
+        );
+      }
     }
 
     const defaultTimeout = readPositiveIntSetting(

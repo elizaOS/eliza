@@ -1009,6 +1009,43 @@ describeIfPosix("shellAction", () => {
     // so give this real-I/O case its own generous budget.
   }, 90_000);
 
+  it("runs explicit coding sub-agent shell commands without message-text rewrites", async () => {
+    const previousMode = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "shell-coding-subagent-"),
+    );
+    await fs.writeFile(path.join(tempDir, "sentinel.txt"), "sentinel", "utf8");
+    process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "true";
+
+    try {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-636363636363",
+          "check disk space and free RAM on this server, summarize cleanup candidates and memory availability",
+        ),
+        undefined,
+        { command: "ls -1", cwd: tempDir },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("$ ls -1");
+      expect(result.text).toContain("sentinel.txt");
+      expect(result.text).not.toContain("df -h / /home");
+      expect(result.text).not.toContain("--- memory ---");
+      expect(result.userFacingText).toBe("sentinel.txt");
+      expect(result.verifiedUserFacing).toBe(true);
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      } else {
+        process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = previousMode;
+      }
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not treat later output section markers as cleanup candidates", () => {
     const stdout = [
       "Filesystem      Size  Used Avail Use% Mounted on",
