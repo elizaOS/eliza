@@ -79,15 +79,19 @@ jobs:
         with:
           bun-version: canary
 
-      # Install from the REPO ROOT, not from packages/feed. feed's `@feed/*`
-      # workspace packages live under packages/feed/packages/* — which the ROOT
-      # package.json already globs into the root workspace. A scoped install
-      # (`working-directory: packages/feed`) only searches feed's own `./*` and
-      # fails with `Workspace dependency "@feed/a2a" not found`. The root install
-      # resolves both `@feed/*` and `@elizaos/*`, mirroring the green
-      # feed-apply-migrations.yml lane.
-      - name: Install dependencies
+      # Install the repo root first so Bun links the root-owned elizaOS packages
+      # and the feed sub-workspaces that the root package.json globs. Then install
+      # the excluded feed root so its own app-level dependencies (drizzle-orm,
+      # Next, etc.) are available to `packages/feed/test:unit`.
+      - name: Install root workspace dependencies
         run: bun install --frozen-lockfile
+
+      - name: Install feed root dependencies
+        working-directory: packages/feed
+        run: bun install --frozen-lockfile
+
+      - name: Build @elizaos/core dist
+        run: bun run --cwd packages/core build
 
       - name: Run feed unit tests
         working-directory: packages/feed
