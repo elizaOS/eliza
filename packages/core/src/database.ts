@@ -252,6 +252,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		roomIds: UUID[];
 		tableName: string;
 		limit?: number;
+		offset?: number;
+		textContains?: string;
+		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 

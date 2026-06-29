@@ -158,10 +158,7 @@ function normalizeAgentBio(value: unknown): string[] | undefined {
 
 /** Escape an ILIKE literal so user keywords match literally (no `%`/`_` wildcards). */
 function escapeIlikeLiteral(value: string): string {
-  return value
-    .replaceAll("\\", "\\\\")
-    .replaceAll("%", "\\%")
-    .replaceAll("_", "\\_");
+  return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
 type CountMemoriesParams = {
@@ -1479,10 +1476,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
 
       if (textContains) {
-        // Push the keyword filter into the store as an indexed ILIKE; user
-        // input is escaped so `%`/`_` match literally, not as wildcards.
+        // Push the keyword filter into the store as a case-insensitive ILIKE;
+        // user input is escaped so `%`/`_` match literally, not as wildcards.
+        // This is a sequential filter over `content->>'text'`, not index-backed.
+        // TODO(#9955): pg_trgm GIN index on content->>'text' for sub-linear
+        // keyword search at scale.
         conditions.push(
-          sql`(${memoryTable.content}->>'text') ILIKE ${`%${escapeIlikeLiteral(textContains)}%`} ESCAPE '\\'`,
+          sql`(${memoryTable.content}->>'text') ILIKE ${`%${escapeIlikeLiteral(textContains)}%`} ESCAPE '\\'`
         );
       }
 
@@ -1585,6 +1585,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     roomIds: UUID[];
     tableName: string;
     limit?: number;
+    offset?: number;
+    textContains?: string;
+    includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
     return this.withDatabase(async () => {
@@ -1597,7 +1600,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       conditions.push(eq(memoryTable.agentId, this.agentId));
 
-      const query = this.db
+      const textContains = params.textContains?.trim();
+      if (textContains) {
+        // Same case-insensitive keyword predicate as getMemories: a sequential
+        // ILIKE over `content->>'text'` (not index-backed). Escaped so `%`/`_`
+        // match literally. Scoping to roomIds first narrows the scan via the
+        // (type, roomId) index. TODO(#9955): pg_trgm GIN index for scale.
+        conditions.push(
+          sql`(${memoryTable.content}->>'text') ILIKE ${`%${escapeIlikeLiteral(textContains)}%`} ESCAPE '\\'`
+        );
+      }
+
+      const baseQuery = this.db
         .select({
           id: memoryTable.id,
           type: memoryTable.type,
@@ -1613,7 +1627,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt));
 
-      const rows = params.limit ? await query.limit(params.limit) : await query;
+      const { limit, offset } = params;
+      const rows = await (async () => {
+        if (limit !== undefined && offset !== undefined && offset > 0) {
+          return baseQuery.limit(limit).offset(offset);
+        } else if (limit !== undefined) {
+          return baseQuery.limit(limit);
+        } else if (offset !== undefined && offset > 0) {
+          return baseQuery.offset(offset);
+        }
+        return baseQuery;
+      })();
 
       return rows.map((row) => ({
         id: row.id as UUID,

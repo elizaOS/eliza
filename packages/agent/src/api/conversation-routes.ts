@@ -1367,16 +1367,26 @@ export async function handleConversationRoutes(
     );
     const runtime = state.runtime;
     const waifuAccess = resolveWaifuChatAccess(req);
-    const conversationsByRoomId = new Map<string, ConversationMeta>();
+    const conversationsByRoomId = new Map<UUID, ConversationMeta>();
     for (const conv of state.conversations.values()) {
       if (state.deletedConversationIds.has(conv.id)) continue;
       if (!canWaifuAccessConversation(waifuAccess, conv)) continue;
       conversationsByRoomId.set(conv.roomId, conv);
     }
+    // Scope the keyword search to the rooms the requester can actually see, in
+    // SQL. Filtering after a global LIMIT (newest-N across *all* the agent's
+    // rooms — discord/telegram/inbox/deleted/…) would silently drop accessible
+    // matches that fall outside that window. Pushing the room set into the store
+    // applies LIMIT/OFFSET after access-scoping.
+    const accessibleRoomIds = Array.from(conversationsByRoomId.keys());
+    if (accessibleRoomIds.length === 0) {
+      json(res, { results: [], count: 0 });
+      return true;
+    }
     try {
-      const memories = await runtime.getMemories({
+      const memories = await runtime.getMemoriesByRoomIds({
         tableName: "messages",
-        agentId: runtime.agentId,
+        roomIds: accessibleRoomIds,
         textContains: query,
         includeEmbedding: false,
         limit,
@@ -1389,7 +1399,7 @@ export async function handleConversationRoutes(
             ? conversationsByRoomId.get(roomId)
             : undefined;
           if (!roomId || !conversation) return null;
-          const text = (memory.content as { text?: unknown } | undefined)?.text;
+          const text = memory.content.text;
           if (typeof text !== "string") return null;
           const rawText = text.trim();
           if (!rawText) return null;
@@ -1398,8 +1408,10 @@ export async function handleConversationRoutes(
           if (score <= 0) return null;
           const role =
             memory.entityId === runtime.agentId ? "assistant" : "user";
-          const createdAt =
-            typeof memory.createdAt === "number" ? memory.createdAt : 0;
+          // A messages memory always carries a numeric createdAt; if it somehow
+          // does not, drop the row rather than inject epoch-0 into the DTO.
+          if (typeof memory.createdAt !== "number") return null;
+          const createdAt = memory.createdAt;
           return {
             messageId: memory.id,
             conversationId: conversation.id,
