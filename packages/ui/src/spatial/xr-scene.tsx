@@ -206,9 +206,10 @@ export function XRSpatialScene({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    const containerElement: HTMLDivElement = container;
 
     function cameraNow(): Camera {
-      const rect = container!.getBoundingClientRect();
+      const rect = containerElement.getBoundingClientRect();
       return {
         position: headRef.current.position,
         orientation: headRef.current.orientation,
@@ -235,7 +236,7 @@ export function XRSpatialScene({
 
     function layout(): void {
       const cam = cameraNow();
-      const rect = container!.getBoundingClientRect();
+      const rect = containerElement.getBoundingClientRect();
       const viewport = { width: rect.width, height: rect.height };
       const placed = placedRef.current;
       placed.clear();

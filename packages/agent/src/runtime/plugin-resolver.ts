@@ -1392,7 +1392,7 @@ function computeVerdictFingerprint(
 ): string {
   const env = Object.entries(process.env)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([k, v]) => `${k}=${v ?? ""}`)
+    .map(([k, v]) => (v === undefined ? `${k}=` : `${k}=${v}`))
     .join(" ");
   return `${isNativePlatform ? "1" : "0"}${env}${JSON.stringify(config)}`;
 }

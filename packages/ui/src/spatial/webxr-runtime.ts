@@ -1,3 +1,6 @@
+/// <reference types="webxr" />
+/// <reference path="./webxr-polyfill.types.ts" />
+
 /**
  * WebXR runtime — the packaging seam that makes the XR modality *real* on every
  * platform where WebXR is supported, and gracefully available where it isn't.
