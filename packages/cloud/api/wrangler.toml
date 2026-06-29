@@ -453,8 +453,8 @@ REDIS_RATE_LIMITING = "false"
 # SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
 # synchronous-reserve path. The auth+moderation hot-path cache is the default now
 # (no flag); a cache miss falls back to the authoritative slow path.
-INFERENCE_OPTIMISTIC_BILLING = "false"
-SAFE_BALANCE_THRESHOLD = ""
+INFERENCE_OPTIMISTIC_BILLING = "true"
+SAFE_BALANCE_THRESHOLD = "5.00"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
