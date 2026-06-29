@@ -5,9 +5,14 @@ const requireServiceKey = mock(async () => ({
   organizationId: "service-org",
   userId: "service-user",
 }));
+const validateServiceKey = mock(async () => ({
+  organizationId: "service-org",
+  userId: "service-user",
+}));
 const getAgentById = mock(async () => ({
   id: "cloud-agent-1",
   organization_id: "agent-org",
+  user_id: "agent-user",
 }));
 const getAgentForWrite = mock(async () => ({
   id: "cloud-agent-1",
@@ -27,6 +32,7 @@ const checkAgentCreditGate = mock(async () => ({
 
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey,
+  validateServiceKey,
 }));
 
 mock.module("@/db/repositories/agent-billing", () => ({
@@ -77,6 +83,7 @@ describe("service agent restart route", () => {
 
   beforeEach(() => {
     requireServiceKey.mockClear();
+    validateServiceKey.mockClear();
     getAgentById.mockClear();
     getAgentForWrite.mockClear();
     getAgentForWrite.mockResolvedValue({
@@ -142,11 +149,11 @@ describe("service agent restart route", () => {
       success: true,
     });
     // The restart is delegated to the orchestrator via an enqueued job carrying
-    // the service-key identity, then sandbox billing is reactivated.
+    // the agent owner identity, then sandbox billing is reactivated.
     expect(enqueueAgentRestartOnce).toHaveBeenCalledWith({
       agentId: "cloud-agent-1",
-      organizationId: "service-org",
-      userId: "service-user",
+      organizationId: "agent-org",
+      userId: "agent-user",
     });
     expect(reactivateSandboxBillingAfterFunding).toHaveBeenCalledWith(
       "cloud-agent-1",

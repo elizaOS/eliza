@@ -37,6 +37,12 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { z } from "zod";
+import {
+  isStoredMediaUrl,
+  mediaFileNameFromUrl,
+  readStoredMediaBytes,
+  writeStoredMediaFile,
+} from "../api/media-store.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -100,6 +106,13 @@ export interface AgentExportPayload {
   worlds: World[];
   tasks: Task[];
   logs: Log[];
+  /**
+   * Content-addressed media bytes referenced by the exported memories (avatars,
+   * attachments). Each entry is a `<sha256>.<ext>` file name + its base64 bytes,
+   * so a restored agent's messages keep their images/files. Optional + additive:
+   * an export without media (or an older reader) still round-trips the DB.
+   */
+  media?: Array<{ fileName: string; base64: string }>;
 }
 
 export interface ImportResult {
@@ -116,6 +129,7 @@ export interface ImportResult {
     worlds: number;
     tasks: number;
     logs: number;
+    media: number;
   };
 }
 
@@ -190,6 +204,9 @@ const PayloadSchema = z.object({
   worlds: z.array(WorldSchema),
   tasks: z.array(TaskSchema),
   logs: z.array(LogSchema),
+  media: z
+    .array(z.object({ fileName: z.string(), base64: z.string() }))
+    .optional(),
 });
 
 type ValidatedAgentExportPayload = z.infer<typeof PayloadSchema>;
@@ -216,7 +233,66 @@ function toAgentExportPayload(
     worlds: payload.worlds,
     tasks: payload.tasks,
     logs: payload.logs,
+    media: payload.media,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Media (content-addressed store) capture / restore
+// ---------------------------------------------------------------------------
+
+const MEDIA_URL_IN_TEXT_RE = /\/api\/media\/[a-f0-9]{64}\.[a-z0-9]+/gi;
+
+/**
+ * The set of `<sha256>.<ext>` media file names referenced by the exported
+ * memories — from each message's `attachments[].url` and any media URL embedded
+ * in its text. Pure (no fs) so it unit-tests in isolation.
+ */
+export function collectReferencedMediaFileNames(memories: Memory[]): string[] {
+  const names = new Set<string>();
+  const add = (url: string | undefined | null) => {
+    if (!url || !isStoredMediaUrl(url)) return;
+    const fileName = mediaFileNameFromUrl(url);
+    if (fileName) names.add(fileName);
+  };
+  for (const mem of memories) {
+    const { attachments, text } = mem.content;
+    if (attachments) {
+      for (const attachment of attachments) add(attachment.url);
+    }
+    if (typeof text === "string") {
+      for (const match of text.matchAll(MEDIA_URL_IN_TEXT_RE)) {
+        add(match[0]);
+      }
+    }
+  }
+  return [...names];
+}
+
+/** Read each referenced media file's bytes into the base64 export entries. */
+function captureReferencedMedia(
+  memories: Memory[],
+): Array<{ fileName: string; base64: string }> {
+  const out: Array<{ fileName: string; base64: string }> = [];
+  for (const fileName of collectReferencedMediaFileNames(memories)) {
+    const bytes = readStoredMediaBytes(fileName);
+    if (bytes) out.push({ fileName, base64: bytes.toString("base64") });
+  }
+  return out;
+}
+
+/** Rehydrate the content-addressed store from the export's media entries. */
+function restoreMedia(
+  media: Array<{ fileName: string; base64: string }> | undefined,
+): number {
+  let restored = 0;
+  if (!media) return restored;
+  for (const { fileName, base64 } of media) {
+    if (writeStoredMediaFile(fileName, Buffer.from(base64, "base64"))) {
+      restored++;
+    }
+  }
+  return restored;
 }
 
 // ---------------------------------------------------------------------------
@@ -588,6 +664,7 @@ async function extractAgentData(
     worlds: agentWorlds,
     tasks: agentTasks,
     logs,
+    media: captureReferencedMedia(allMemories),
   };
 }
 
@@ -809,6 +886,11 @@ async function restoreAgentData(
   }
   logger.info(`[agent-import] Imported ${logsImported} logs`);
 
+  const mediaRestored = restoreMedia(payload.media);
+  if (mediaRestored > 0) {
+    logger.info(`[agent-import] Restored ${mediaRestored} media files`);
+  }
+
   return {
     success: true,
     agentId: newAgentId,
@@ -823,6 +905,7 @@ async function restoreAgentData(
       worlds: worldsImported,
       tasks: tasksImported,
       logs: logsImported,
+      media: mediaRestored,
     },
   };
 }

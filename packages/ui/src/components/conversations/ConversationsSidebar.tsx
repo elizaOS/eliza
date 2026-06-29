@@ -1,17 +1,28 @@
-import { MessagesSquare, Plus, Terminal as TerminalIcon } from "lucide-react";
+import {
+  MessagesSquare,
+  Plus,
+  Search,
+  Terminal as TerminalIcon,
+} from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
-import type { Conversation } from "../../api/client-types-chat";
+import type {
+  Conversation,
+  ConversationMessageSearchResult,
+} from "../../api/client-types-chat";
 import {
   PULSE_STATUSES,
   STATUS_DOT,
 } from "../../chat/coding-agent-session-state";
+import { CHAT_MESSAGE_SEARCH_EVENT } from "../../events";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { errorMessage } from "../../utils/errors";
+import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
+import { getChatMessageAnchorId } from "../composites/chat/chat-message";
 import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { getChatSourceMeta } from "../composites/chat/chat-source.helpers";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
@@ -400,6 +411,62 @@ export function ConversationsSidebar({
     });
   }, [activeTerminalSessionId]);
 
+  // ── Keyword message search (#9955) ───────────────────────────────────────
+  const [messageSearchOpen, setMessageSearchOpen] = useState(false);
+
+  // A chat-side affordance (or shortcut) can request the search panel.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const open = () => setMessageSearchOpen(true);
+    window.addEventListener(CHAT_MESSAGE_SEARCH_EVENT, open);
+    return () => window.removeEventListener(CHAT_MESSAGE_SEARCH_EVENT, open);
+  }, []);
+
+  const searchMessages = useCallback(
+    async (query: string, signal: AbortSignal) => {
+      const { results } = await client.searchConversationMessages(query, {
+        signal,
+      });
+      return results;
+    },
+    [],
+  );
+
+  const jumpToMessage = useCallback(
+    (result: ConversationMessageSearchResult) => {
+      void handleSelectConversation(result.conversationId);
+      // The thread re-renders after selection; wait a frame, then scroll the
+      // matched message into view and flash it. Tolerant of not-yet-mounted
+      // (a far-back message may still be loading) — best-effort highlight.
+      const anchorId = getChatMessageAnchorId(result.messageId);
+      let tries = 0;
+      const reveal = () => {
+        const el = document.getElementById(anchorId);
+        if (el) {
+          el.scrollIntoView({ block: "center", behavior: "smooth" });
+          // Self-contained flash (brand accent) — no external CSS rule needed.
+          el.style.transition = "outline-color 0.5s ease-out";
+          el.style.outline = "2px solid var(--primary)";
+          el.style.outlineOffset = "2px";
+          el.style.borderRadius = "8px";
+          window.setTimeout(() => {
+            el.style.outline = "2px solid transparent";
+          }, 1200);
+          window.setTimeout(() => {
+            el.style.removeProperty("outline");
+            el.style.removeProperty("outline-offset");
+            el.style.removeProperty("transition");
+          }, 1800);
+          return;
+        }
+        if (tries++ < 20) requestAnimationFrame(reveal);
+      };
+      requestAnimationFrame(reveal);
+      if (mobile) onClose?.();
+    },
+    [handleSelectConversation, mobile, onClose],
+  );
+
   const handleRowSelect = (row: ConversationsSidebarRow) => {
     setConfirmDeleteId(null);
     setMenuConversation(null);
@@ -753,6 +820,27 @@ export function ConversationsSidebar({
             }
           >
             <div className="mt-0.5 space-y-2">
+              {messageSearchOpen ? (
+                <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
+                  <MessageSearchPanel
+                    search={searchMessages}
+                    onJump={jumpToMessage}
+                    onClose={() => setMessageSearchOpen(false)}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  data-testid="conversations-search-messages"
+                  onClick={() => setMessageSearchOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-border/60 px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  {t("conversations.searchMessages", {
+                    defaultValue: "Search messages",
+                  })}
+                </button>
+              )}
               <CollapsibleChannelSection
                 sectionKey={messagesSection.key}
                 label={messagesSection.label}

@@ -103,3 +103,38 @@ scaffolding and this spec:
    a unit context.
 4. **Local LifeOps-scheduled backup** — schedule recurring backups via the
    existing LifeOps scheduled-task runner; do NOT add a second scheduler.
+
+## Image upgrade ↔ rollback & DB-migration discipline (#9964)
+
+Dedicated agents share **one** Postgres per environment (prod/staging) — there
+is no per-agent DB branch. A fleet image upgrade is therefore a **shared-schema
+change**: the new image's plugin-sql migrations run at container boot against
+the DB that agents still on the *old* image are also using. `executeDowngrade`
+rolls the **image** back (onto `previous_image_digest`, restoring the
+`pre-upgrade` snapshot before cutover), but it **cannot roll a destructive
+forward migration back** — a dropped column / retyped column / dropped table is
+gone the moment the new image applied it, and the rolled-back old image then
+reads a schema it no longer matches.
+
+**Rule: agent-image migrations MUST be expand/contract (additive-only).**
+
+- **Expand (the upgrade):** only add — new nullable columns, new tables, new
+  indexes (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`). The new
+  image reads the old schema; the old image ignores the new objects. This keeps
+  a mixed-version fleet (some agents up/down mid-rollout, capped at
+  `MAX_INFLIGHT_UPGRADES`) correct, and keeps `executeDowngrade` a real restore
+  point rather than a swap into a broken schema.
+- **Contract (the cleanup):** a column drop / rename / type change is a
+  **separate, later** migration, shipped only **after** the whole fleet is on
+  the new image and no rollback to the pre-expand image is wanted. Never combine
+  expand + contract in the image that a rollback might return from.
+- **Never** put a destructive DDL in the same image version as the feature that
+  needs it. If a value must change shape, expand (add the new column, backfill,
+  dual-write), cut over reads in a later image, then contract.
+
+This mirrors the repo-wide migration rule (`CLAUDE.md`: append-only,
+`IF NOT EXISTS`/`IF EXISTS`, small targeted migrations) and makes it binding for
+the agent-image upgrade path specifically, where a shared DB + a real rollback
+path raise the stakes. A migrate-verify-on-boot gate that health-fails an
+upgrade whose migrations did not apply cleanly is the next step, but is
+daemon/image work (see "Out of scope" above).

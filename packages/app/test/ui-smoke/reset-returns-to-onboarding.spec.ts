@@ -88,12 +88,11 @@ test("Reset Everything wipes the agent and returns to first-run onboarding", asy
   // The reset actually fires against the server...
   await resetRequest;
 
-  // ...and the renderer returns to the pre-agent first-run onboarding surface
+  // ...and the renderer returns to the pre-agent in-chat first-run surface
   // (App.tsx gates this on `!firstRunComplete`, which the local wipe sets).
   await expect(
     page
-      .getByTestId("onboarding-toast")
-      .or(page.getByTestId("first-run-shell"))
+      .getByTestId("first-run-chat")
       .or(page.getByRole("form", { name: "Bootstrap token entry" })),
   ).toBeVisible({
     timeout: 20_000,

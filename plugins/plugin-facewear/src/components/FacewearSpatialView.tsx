@@ -40,6 +40,19 @@ export interface FacewearProfileRow {
   connected: boolean;
 }
 
+/** Desktop OpenXR runtime state, mirrored from `/api/facewear/xr-runtime`. */
+export interface FacewearXrRuntimeRow {
+  /** A usable OpenXR runtime is active (immersive WebXR will reach a headset). */
+  installed: boolean;
+  /** Active runtime id (monado/steamvr/wmr/…) when installed. */
+  runtime: string | null;
+  /** The browser engine ships WebXR on this platform (false on macOS → native). */
+  webxrReady: boolean;
+  platform: string;
+  /** First actionable install URL (e.g. SteamVR) when not installed. */
+  setupUrl?: string;
+}
+
 export interface FacewearSnapshot {
   /** Supported device profiles with their derived connected state. */
   profiles: FacewearProfileRow[];
@@ -47,6 +60,8 @@ export interface FacewearSnapshot {
   devices: FacewearDeviceRow[];
   /** Number of connected devices (the header pill count). */
   connectedCount: number;
+  /** Desktop OpenXR runtime status (undefined until the runtime probe resolves). */
+  xrRuntime?: FacewearXrRuntimeRow;
   loading?: boolean;
   error?: string | null;
 }
@@ -64,6 +79,51 @@ export const EMPTY_FACEWEAR_SNAPSHOT: FacewearSnapshot = {
 
 function connectionTone(connected: boolean): SpatialTone {
   return connected ? "success" : "muted";
+}
+
+/** The desktop OpenXR runtime status line + a setup affordance when missing. */
+function FacewearRuntimeRow({
+  runtime,
+  onSetup,
+}: {
+  runtime: FacewearXrRuntimeRow;
+  onSetup: () => void;
+}) {
+  if (runtime.installed) {
+    return (
+      <HStack gap={1} align="center" agent="xr-runtime">
+        <Text tone="success">[ok]</Text>
+        <Text style="caption" tone="success" grow={1} wrap={false}>
+          {`OpenXR ready — ${runtime.runtime ?? "active"}`}
+        </Text>
+      </HStack>
+    );
+  }
+  if (!runtime.webxrReady) {
+    return (
+      <HStack gap={1} align="center" agent="xr-runtime">
+        <Text style="caption" tone="muted" grow={1}>
+          Native WebXR (visionOS) — no runtime to install
+        </Text>
+      </HStack>
+    );
+  }
+  return (
+    <HStack gap={1} align="center" agent="xr-runtime">
+      <Text tone="warning">[ ]</Text>
+      <Text style="caption" tone="warning" grow={1} wrap={false}>
+        No OpenXR runtime — immersive WebXR unavailable
+      </Text>
+      <Button
+        variant="solid"
+        tone="primary"
+        agent="xr-runtime-setup"
+        onPress={onSetup}
+      >
+        Set up
+      </Button>
+    </HStack>
+  );
 }
 
 export interface FacewearSpatialViewProps {
@@ -165,6 +225,16 @@ export function FacewearSpatialView({
           ))}
         </List>
       )}
+
+      {snapshot.xrRuntime ? (
+        <>
+          <Divider label="vr/ar runtime" />
+          <FacewearRuntimeRow
+            runtime={snapshot.xrRuntime}
+            onSetup={dispatch("xr-runtime-setup")}
+          />
+        </>
+      ) : null}
 
       <Divider label="actions" />
       <HStack gap={1} wrap>

@@ -17,7 +17,6 @@ export default defineConfig({
       "test/**/*.{test,spec}.{ts,tsx}",
     ],
     testTimeout: 15_000,
-    passWithNoTests: true,
     pool: "forks",
     server: {
       deps: {

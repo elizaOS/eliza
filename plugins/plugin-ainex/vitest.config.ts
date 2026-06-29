@@ -13,7 +13,6 @@ export default defineConfig({
       "**/*.real.test.*",
       "**/*.real.e2e.test.*",
     ],
-    passWithNoTests: true,
     testTimeout: 30000,
   },
 });

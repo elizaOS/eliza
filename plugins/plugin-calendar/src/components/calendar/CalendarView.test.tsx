@@ -15,6 +15,7 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { SpatialSurface } from "@elizaos/ui/spatial";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -114,7 +115,13 @@ describe("CalendarView (unified spatial wrapper)", () => {
   });
 
   it("renders the spatial surface with the period label and nav controls", () => {
-    const { container } = render(<CalendarView />);
+    // The view-bundle host (DynamicViewLoader) mounts the wrapper inside a
+    // SpatialSurface; mirror that so the host-provided surface attribute is present.
+    const { container } = render(
+      <SpatialSurface modality="gui">
+        <CalendarView />
+      </SpatialSurface>,
+    );
     expect(container.querySelector("[data-spatial-surface]")).toBeTruthy();
     expect(agent("prev")).toBeTruthy();
     expect(agent("today")).toBeTruthy();

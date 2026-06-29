@@ -9,16 +9,19 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 
-const { publishMock, listConnectorAccountsMock } = vi.hoisted(() => ({
-  publishMock: vi.fn(),
-  listConnectorAccountsMock: vi.fn(),
-}));
+const { getBaseUrlMock, publishMock, listConnectorAccountsMock } = vi.hoisted(
+  () => ({
+    getBaseUrlMock: vi.fn(() => "http://localhost"),
+    publishMock: vi.fn(),
+    listConnectorAccountsMock: vi.fn(),
+  }),
+);
 
 // Mock the client: getBaseUrl resolves without booting the real ElizaClient,
 // and listConnectorAccounts is the connection probe driven per-test.
 vi.mock("../../../api", () => ({
   client: {
-    getBaseUrl: () => "http://localhost",
+    getBaseUrl: getBaseUrlMock,
     listConnectorAccounts: listConnectorAccountsMock,
   },
 }));
@@ -107,11 +110,26 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  getBaseUrlMock.mockReset();
+  getBaseUrlMock.mockReturnValue("http://localhost");
   publishMock.mockReset();
   listConnectorAccountsMock.mockReset();
 });
 
 describe("CalendarUpcomingWidget", () => {
+  it("renders nothing and skips full-shell probes on limited cloud agent bases", async () => {
+    getBaseUrlMock.mockReturnValue("https://agent-1.elizacloud.ai");
+    vi.stubGlobal("fetch", vi.fn());
+
+    const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
+
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+    expect(listConnectorAccountsMock).not.toHaveBeenCalled();
+    expect(globalThis.fetch as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
   it("renders a connect affordance (not null) when no Google account is linked", async () => {
     disconnectedGoogle();
     mockFeed([]);

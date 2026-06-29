@@ -43,6 +43,8 @@
     "emulator:build": "cd emulator && bun install --force && bun run build",
     "emulator:watch": "cd emulator && bun run build:watch",
     "emulator:cli": "bun run --cwd emulator src/cli.ts",
+    "setup:sdks": "node scripts/setup-sdks.mjs",
+    "setup:openxr": "node scripts/setup-sdks.mjs --install",
     "verify:app": "bunx vitest --root ../.. run packages/registry/src/first-party/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
   },
   "dependencies": {

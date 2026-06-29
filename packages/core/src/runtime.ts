@@ -7897,6 +7897,7 @@ ${section_end}`;
 		end?: number;
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
+		textContains?: string;
 		orderBy?: "createdAt";
 		orderDirection?: "asc" | "desc";
 		includeEmbedding?: boolean;

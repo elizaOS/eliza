@@ -52,7 +52,6 @@ export default defineConfig({
       // integration specs out of the unit run (they need a full-build lane).
       "**/*.integration.test.{ts,tsx}",
     ],
-    passWithNoTests: true,
     server: {
       deps: {
         // @elizaos/agent's built dist dynamically imports every optional

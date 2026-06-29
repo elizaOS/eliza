@@ -366,13 +366,31 @@ class RedeemableEarningsService {
     sourceId: string;
     description: string;
     metadata?: Record<string, unknown>;
+    /**
+     * When true, the debit FAILS CLOSED (success:false, no write) if the
+     * locked `available_balance` is < amount, instead of flooring the balance
+     * to 0 and reporting success. Required for real money-out debits (Stripe
+     * Connect payout) so a stale pre-check, a concurrent double-submit, or
+     * read-replica lag can never transfer more than the user actually has.
+     * Default false preserves the flooring reconciliation behavior for
+     * internal callers.
+     */
+    requireSufficientBalance?: boolean;
   }): Promise<{
     success: boolean;
     newBalance: number;
     ledgerEntryId: string;
     error?: string;
   }> {
-    const { userId, amount, source, sourceId, description, metadata = {} } = params;
+    const {
+      userId,
+      amount,
+      source,
+      sourceId,
+      description,
+      metadata = {},
+      requireSufficientBalance = false,
+    } = params;
 
     if (amount <= 0) {
       return {
@@ -409,6 +427,21 @@ class RedeemableEarningsService {
           earnings: null,
           ledgerEntryId: "",
           skipped: true,
+          insufficient: false,
+          currentBalance: 0,
+        };
+      }
+
+      // Fail-closed money-out guard (computed under the row lock, on the
+      // primary): never floor-and-pass when the caller requires the full
+      // amount to be debitable.
+      if (requireSufficientBalance && new Decimal(earnings.available_balance).lessThan(amount)) {
+        return {
+          earnings: null,
+          ledgerEntryId: "",
+          skipped: false,
+          insufficient: true,
+          currentBalance: Number(earnings.available_balance),
         };
       }
 
@@ -458,8 +491,19 @@ class RedeemableEarningsService {
         earnings: updated,
         ledgerEntryId: ledgerEntry.id,
         skipped: false,
+        insufficient: false,
+        currentBalance: 0,
       };
     });
+
+    if (result.insufficient) {
+      return {
+        success: false,
+        newBalance: result.currentBalance,
+        ledgerEntryId: "",
+        error: "Insufficient redeemable balance",
+      };
+    }
 
     if (result.skipped) {
       logger.info("[RedeemableEarnings] No earnings to reduce (user has no record)", {

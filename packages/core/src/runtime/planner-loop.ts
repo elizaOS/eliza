@@ -108,6 +108,44 @@ export type {
 
 const DEFAULT_PLANNER_MAX_TOKENS = 1024;
 
+/**
+ * Coding/full-surface mode is on when the eliza-code sub-agent sets
+ * `ELIZA_PLANNER_FULL_ACTION_SURFACE` (the ACP server does). Centralized so the
+ * tool-call ceiling, the queue-drain cadence, and the output-token cap all read
+ * the same signal.
+ */
+function isCodingFullSurfaceMode(): boolean {
+	const v = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+	return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+/**
+ * Default per-call output-token ceiling for a coding planner turn. A single
+ * FILE/WRITE tool call must carry the entire file as a JSON-escaped argument —
+ * a real single-file app (the reference `tetris.html` is ~4.6k tokens once
+ * escaped) blows straight past the chat default of {@link DEFAULT_PLANNER_MAX_TOKENS}
+ * (1024), which truncates the tool-call argument mid-stream so the model either
+ * narrates without ever completing the call or the provider 400s. opencode on
+ * the same Cerebras `zai-glm-4.7` builds the same app reliably precisely because
+ * it does not clamp the file-emitting completion to a chat-sized budget.
+ * Overridable via `ELIZA_CODING_PLANNER_MAX_TOKENS`. See issue #10132.
+ */
+const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
+
+/**
+ * Resolve the planner's per-call `maxTokens`: the small chat default, or — in
+ * coding/full-surface mode — a budget large enough to emit a full file in one
+ * tool call ({@link DEFAULT_CODING_PLANNER_MAX_TOKENS}, overridable via
+ * `ELIZA_CODING_PLANNER_MAX_TOKENS`).
+ */
+function resolvePlannerMaxTokens(): number {
+	if (!isCodingFullSurfaceMode()) return DEFAULT_PLANNER_MAX_TOKENS;
+	const raw = Number(process.env.ELIZA_CODING_PLANNER_MAX_TOKENS);
+	return Number.isFinite(raw) && raw > 0
+		? Math.floor(raw)
+		: DEFAULT_CODING_PLANNER_MAX_TOKENS;
+}
+
 interface RawPlannerOutput {
 	action?: unknown;
 	parameters?: unknown;
@@ -133,14 +171,20 @@ export async function runPlannerLoop(
 	// TrajectoryLimitExceeded with no terminal REPLY → an EMPTY relay to the user.
 	// Raise the ceiling for coding builds (still bounded). Overridable via
 	// ELIZA_CODING_MAX_TOOL_CALLS.
-	const codingMode = ((): boolean => {
-		const v =
-			process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-		return v === "1" || v === "true" || v === "yes" || v === "on";
-	})();
+	const codingMode = isCodingFullSurfaceMode();
 	const codingMaxToolCalls = ((): number => {
 		const raw = Number(process.env.ELIZA_CODING_MAX_TOOL_CALLS);
 		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 80;
+	})();
+	// Weak coding models (e.g. Cerebras glm-4.7) sometimes answer a trivial build
+	// with a terminal REPLY ("Creating the app now…") instead of calling FILE.
+	// The action-first gate below re-prompts that, but the chat default of 3
+	// misses gives up too soon to convert a stubborn narrator — give coding
+	// builds more attempts to actually act. Overridable via
+	// ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES.
+	const codingMaxRequiredToolMisses = ((): number => {
+		const raw = Number(process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES);
+		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 8;
 	})();
 	const config = ((): ChainingLoopConfig => {
 		const merged = mergeChainingLoopConfig(params.config);
@@ -148,6 +192,10 @@ export async function runPlannerLoop(
 			? {
 					...merged,
 					maxToolCalls: Math.max(merged.maxToolCalls, codingMaxToolCalls),
+					maxRequiredToolMisses: Math.max(
+						merged.maxRequiredToolMisses,
+						codingMaxRequiredToolMisses,
+					),
 				}
 			: merged;
 	})();
@@ -164,8 +212,14 @@ export async function runPlannerLoop(
 	let unavailableToolCallRetries = 0;
 	let silentFailedFinishRecoveries = 0;
 	let repeatedNonTerminalToolCalls = 0;
+	// In coding mode the agent's whole job is to DO work via FILE/SHELL, so a
+	// terminal REPLY before any non-terminal tool has run is almost always the
+	// "Creating the app now…" narration that leaves nothing on disk. Force the
+	// gate on (when real coding tools are exposed) so such a turn is re-prompted
+	// into actually acting instead of being accepted as the final answer. A
+	// genuinely blocking question still surfaces after the miss budget.
 	const requireNonTerminalToolCall =
-		params.requireNonTerminalToolCall === true &&
+		(params.requireNonTerminalToolCall === true || codingMode) &&
 		hasExposedNonTerminalTool(params.tools);
 
 	// Cumulative gross prompt-token counter, summed across every planner
@@ -1221,7 +1275,10 @@ async function callPlanner(params: {
 			}),
 			modelInputBudget,
 		),
-		maxTokens: DEFAULT_PLANNER_MAX_TOKENS,
+		// Chat planner turns stay at the small DEFAULT_PLANNER_MAX_TOKENS; a coding
+		// turn must be able to emit a whole file in one tool call, so coding mode
+		// raises the cap (see resolvePlannerMaxTokens / issue #10132).
+		maxTokens: resolvePlannerMaxTokens(),
 	};
 	modelParams.providerOptions = {
 		...modelParams.providerOptions,

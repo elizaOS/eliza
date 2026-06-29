@@ -34,6 +34,11 @@ const desktopBridgeMock = vi.hoisted(() => ({
   getElectrobunRendererRpc: vi.fn(() => undefined),
   invokeDesktopBridgeRequest: vi.fn(async () => ({ id: "window-1" })),
   subscribeDesktopBridgeEvent: vi.fn(() => vi.fn()),
+  // The bottom-bar shell (useBarSurfaceWindows) imports these desktop-window
+  // helpers; the whole-module mock must define them. The open-window flow under
+  // test calls invokeDesktopBridgeRequest directly, so plain stubs suffice here.
+  openDesktopAppWindow: vi.fn(async () => ({ id: "window-1" })),
+  openDesktopLauncherWindow: vi.fn(async () => ({ id: "launcher-1" })),
 }));
 
 const dynamicViewLoaderMock = vi.hoisted(() => ({

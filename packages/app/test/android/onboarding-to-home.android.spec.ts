@@ -57,17 +57,17 @@ test.describe
           timeout: 60_000,
         });
 
-        const onboarding = page.getByTestId("onboarding-toast");
+        const onboarding = page.getByTestId("first-run-chat");
         await expect(onboarding).toBeVisible({ timeout: 60_000 });
 
-        const remoteOption = page.getByTestId("onboarding-option-remote");
+        const remoteOption = page.getByTestId("choice-remote");
         await expect(remoteOption).toBeVisible({ timeout: 30_000 });
         await activate(remoteOption);
 
-        const remoteConnect = page.getByTestId("onboarding-remote-connect");
-        await expect(remoteConnect).toBeVisible({ timeout: 30_000 });
-        await page.locator("#onboarding-remote-address").fill(HOST_AGENT_BASE);
-        await activate(remoteConnect);
+        const remoteAddress = page.getByTestId("first-run-remote-address");
+        await expect(remoteAddress).toBeVisible({ timeout: 30_000 });
+        await remoteAddress.fill(HOST_AGENT_BASE);
+        await activate(page.getByTestId("choice-connect"));
 
         await expect(onboarding).toBeHidden({ timeout: 90_000 });
 

@@ -95,7 +95,9 @@ export function resolveElizaWorkspaceRoot(startDir = process.cwd()) {
     if (hasElizaWorkspaceShape(current)) return current;
     const parent = path.dirname(current);
     if (parent === current) {
-      throw new Error(`Could not resolve eliza workspace root starting from ${startDir}`);
+      throw new Error(
+        `Could not resolve eliza workspace root starting from ${startDir}`,
+      );
     }
     current = parent;
   }
@@ -106,7 +108,9 @@ export function resolveElizaWorkspaceRootFromImportMeta(
   { fallbackToCwd = false, cwd = process.cwd() } = {},
 ) {
   try {
-    return resolveElizaWorkspaceRoot(path.dirname(fileURLToPath(importMetaUrl)));
+    return resolveElizaWorkspaceRoot(
+      path.dirname(fileURLToPath(importMetaUrl)),
+    );
   } catch (error) {
     if (fallbackToCwd) return resolveElizaWorkspaceRoot(cwd);
     throw error;

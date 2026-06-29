@@ -1,20 +1,23 @@
 /**
- * Fixture for the chat-UX gesture e2e (#8928, #8929). Renders the three new,
- * gesture-driven surfaces standalone so a headless browser can drive REAL
- * pointer gestures against them and record a video:
+ * Fixture for the chat-UX TopicGroup gesture e2e (#8928). Renders the
+ * gesture-driven TopicGroup standalone so a headless browser can drive REAL
+ * pointer gestures against it and record a video:
  *
- *   - TopicGroup    — flick UP on the header collapses to a pill; tap the pill
- *                     (or flick DOWN) expands. NO visible buttons.
- *   - ConversationSwiper — a horizontal swipe between adjacent conversations,
- *                     using the same usePullGesture deltaX/onSwipeLeft/onSwipeRight
- *                     the overlay binds (sheet-open only) in production.
+ *   - TopicGroup — flick UP on the header collapses to a pill; tap the pill
+ *                  (or flick DOWN) expands. NO visible buttons.
+ *
+ * Conversation-swipe coverage lives in conversation-swipe-fixture.tsx, which
+ * mounts the REAL ContinuousChatOverlay. The local `ConversationSwiper` mock that
+ * used to live here (a hardcoded array + its own useState(index), sharing only
+ * usePullGesture, not the real overlay/nav/async-create path) was DELETED in
+ * #9954 — it gave false confidence by passing while exercising none of the real
+ * conversation-nav code.
  */
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { TopicChipsBar } from "../TopicChipsBar";
 import { TopicGroup } from "../TopicGroup";
-import { usePullGesture } from "../use-pull-gesture";
 
 function Bubbles({ lines }: { lines: string[] }): React.JSX.Element {
   return (
@@ -54,61 +57,6 @@ function InteractiveTopicGroup(): React.JSX.Element {
   );
 }
 
-/**
- * A minimal conversation swiper mirroring the overlay wiring: the live deltaX
- * drives an edge hint, a committed swipe steps to the adjacent conversation.
- */
-function ConversationSwiper(): React.JSX.Element {
-  const conversations = ["Today's standup", "Billing thread", "Deploy incident"];
-  const [index, setIndex] = React.useState(0);
-  const [dx, setDx] = React.useState(0);
-  const gesture = usePullGesture({
-    onDragX: setDx,
-    onSwipeLeft: () => {
-      setDx(0);
-      setIndex((i) => Math.min(conversations.length - 1, i + 1));
-    },
-    onSwipeRight: () => {
-      setDx(0);
-      setIndex((i) => Math.max(0, i - 1));
-    },
-  });
-  return (
-    <div
-      data-testid="conversation-swiper"
-      {...gesture}
-      className="relative flex h-40 touch-pan-y select-none items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5"
-    >
-      {dx < 0 && index > 0 ? (
-        <div
-          data-testid="swipe-hint-left"
-          className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-white/25 to-transparent"
-          style={{ opacity: Math.min(1, -dx / 96) }}
-        />
-      ) : null}
-      {dx > 0 && index < conversations.length - 1 ? (
-        <div
-          data-testid="swipe-hint-right"
-          className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-white/25 to-transparent"
-          style={{ opacity: Math.min(1, dx / 96) }}
-        />
-      ) : null}
-      <div className="text-center">
-        <div className="text-[10px] uppercase tracking-widest text-white/40">
-          conversation {index + 1} / {conversations.length}
-        </div>
-        <div
-          data-testid="active-conversation-title"
-          className="mt-1 text-lg font-medium text-white/90"
-        >
-          {conversations[index]}
-        </div>
-        <div className="mt-1 text-[11px] text-white/40">swipe ← / →</div>
-      </div>
-    </div>
-  );
-}
-
 function App(): React.JSX.Element {
   return (
     <div
@@ -126,7 +74,6 @@ function App(): React.JSX.Element {
       }}
     >
       <InteractiveTopicGroup />
-      <ConversationSwiper />
     </div>
   );
 }

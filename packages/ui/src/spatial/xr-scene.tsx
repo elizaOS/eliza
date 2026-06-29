@@ -36,6 +36,7 @@ import {
 import type { SpatialAction } from "./context.ts";
 import { SpatialSurface } from "./dom.tsx";
 import {
+  arrangeOnArc,
   billboardOrientation,
   type Camera,
   nearestPanelHit,
@@ -180,23 +181,19 @@ export function XRSpatialScene({
   const headRef = useRef<XRDevicePose>(head);
   const placedRef = useRef<Map<string, XRScenePanelInfo>>(new Map());
 
-  // Auto-arrange panels without an explicit position onto a frontal arc.
+  // Auto-arrange panels without an explicit position onto a frontal arc (shared
+  // with the immersive bridge via xr-scene-math.arrangeOnArc).
   const runtime = useMemo<PanelRuntime[]>(() => {
-    const n = panels.length;
-    return panels.map((p, i) => {
-      const width = p.width ?? 1.2;
-      const height = p.height ?? 0.9;
-      if (p.position) return { ...p, position: p.position, width, height };
-      // Spread across a shallow arc centred on −Z, eye height.
-      const spread = (Math.PI / 180) * 50; // 50° total
-      const angle = n === 1 ? 0 : -spread / 2 + (spread * i) / (n - 1);
-      const position = vec3(
-        Math.sin(angle) * arrangeDistance,
-        DEFAULT_HEAD.position.y,
-        DEFAULT_HEAD.position.z - Math.cos(angle) * arrangeDistance,
-      );
-      return { ...p, position, width, height };
+    const arc = arrangeOnArc(panels.length, {
+      distance: arrangeDistance,
+      center: DEFAULT_HEAD.position,
     });
+    return panels.map((p, i) => ({
+      ...p,
+      position: p.position ?? arc[i],
+      width: p.width ?? 1.2,
+      height: p.height ?? 0.9,
+    }));
   }, [panels, arrangeDistance]);
 
   const runtimeRef = useRef<PanelRuntime[]>(runtime);

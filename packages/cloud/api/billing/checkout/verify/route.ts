@@ -26,6 +26,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { safeFetch } from "@/lib/security/safe-fetch";
 import { creditsService } from "@/lib/services/credits";
 import { invoicesService } from "@/lib/services/invoices";
 import { organizationsService } from "@/lib/services/organizations";
@@ -294,7 +295,9 @@ async function notifyWaifuCreditsToppedUp(params: {
     .digest("hex")}`;
 
   try {
-    const response = await fetch(webhookUrl, {
+    // SECURITY (#9853): webhookUrl is DB-stored per-agent config — IP-pin it so
+    // a malicious receiver URL can't pivot into internal/metadata networks.
+    const response = await safeFetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -44,6 +44,7 @@ import {
   TUTORIAL_CHAT_CONTROL_EVENT,
   type TutorialChatControlDetail,
 } from "../../events";
+import { useConversationSwipeJank } from "../../hooks/useConversationSwipeJank";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -1005,6 +1006,26 @@ const ThreadLine = React.memo(function ThreadLine({
   );
 });
 
+/**
+ * Render a settled `ThreadLine` exactly as the overlay does (floating, with copy
+ * + settings handlers, reasoning shown). Test-only seam for the component-tree
+ * render-parity contract (render-parity.contract.test.tsx, #9954), which diffs
+ * this surface's structure against ChatView's MessageContent over a shared
+ * corpus. Not part of the public overlay API — keep usage to that contract.
+ */
+export function __renderThreadLineForParity(
+  message: ShellMessage,
+): React.JSX.Element {
+  return (
+    <ThreadLine
+      message={message}
+      floating
+      onCopy={() => {}}
+      onOpenSettings={() => {}}
+    />
+  );
+}
+
 export function ContinuousChatOverlay({
   controller,
   agentName = "Eliza",
@@ -1057,14 +1078,27 @@ export function ContinuousChatOverlay({
   // capture until a horizontal commit, so vertical thread scrolling is
   // unaffected; it is only bound while the sheet is open (below).
   const [swipeDx, setSwipeDx] = React.useState(0);
+  // Frame-budget telemetry scoped to the swipe gesture (#9954): begin sampling
+  // on the first live drag and flush a dropped-frame/p95/fps summary into the
+  // telemetry ring on release, so swipe jank is observable without the dev HUD.
+  const swipeJank = useConversationSwipeJank();
   const conversationSwipe = usePullGesture({
-    onDragX: setSwipeDx,
+    onDragX: (dx) => {
+      // A non-zero offset means the gesture is actively dragging; 0 is the
+      // settle/cancel reset the gesture emits on release. `begin` is idempotent,
+      // so calling it every frame only starts one sampling window per gesture.
+      if (dx !== 0) swipeJank.begin();
+      else swipeJank.end();
+      setSwipeDx(dx);
+    },
     onSwipeLeft: () => {
       setSwipeDx(0);
+      swipeJank.end();
       conversationNav.goNext();
     },
     onSwipeRight: () => {
       setSwipeDx(0);
+      swipeJank.end();
       conversationNav.goPrev();
     },
   });

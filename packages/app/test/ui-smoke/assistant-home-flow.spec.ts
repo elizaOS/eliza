@@ -416,9 +416,7 @@ function launcherTile(page: Page, viewId: string) {
 async function settleHomeLauncherRail(page: Page): Promise<void> {
   await page.waitForFunction(
     () => {
-      const rail = document.querySelector(
-        '[data-testid="home-launcher-rail"]',
-      );
+      const rail = document.querySelector('[data-testid="home-launcher-rail"]');
       if (!rail) return false;
       return !(rail as HTMLElement)
         .getAnimations({ subtree: true })
@@ -442,9 +440,9 @@ async function openHomeLauncher(page: Page): Promise<void> {
   await expect(surface).toHaveAttribute("data-page", "launcher", {
     timeout: 10_000,
   });
-  await expect(
-    page.getByTestId("home-launcher-launcher-page"),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("home-launcher-launcher-page")).toBeVisible({
+    timeout: 15_000,
+  });
   await settleHomeLauncherRail(page);
 }
 
@@ -483,8 +481,7 @@ async function openReadyWorkspaceChat(page: Page): Promise<void> {
 async function openReadyChat(page: Page, targetPath = "/"): Promise<void> {
   await openAppPath(page, targetPath);
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0);
-  await expect(page.getByTestId("first-run-shell")).toHaveCount(0);
-  await expect(page.getByTestId("onboarding-toast")).toHaveCount(0);
+  await expect(page.getByTestId("first-run-chat")).toHaveCount(0);
   const composer = assistantComposer(page);
   await expect(composer).toBeVisible({ timeout: 15_000 });
   await expect(composer).toBeEnabled({ timeout: 30_000 });
@@ -743,11 +740,7 @@ test.describe("assistant home app flow", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
     await expect(page).not.toHaveURL(/first-run/, { timeout: 12_000 });
-    await expect(
-      page
-        .getByTestId("onboarding-toast")
-        .or(page.getByTestId("first-run-shell")),
-    ).toBeVisible();
+    await expect(page.getByTestId("first-run-chat")).toBeVisible();
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");

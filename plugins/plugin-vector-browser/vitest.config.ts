@@ -58,6 +58,5 @@ export default defineConfig({
       "src/**/*.{test,spec}.{ts,tsx}",
       "test/**/*.{test,spec}.{ts,tsx}",
     ],
-    passWithNoTests: true,
   },
 });

@@ -1,4 +1,4 @@
-import { CompactOnboarding } from "../../first-run/CompactOnboarding";
+import { FirstRunChat } from "../../first-run/FirstRunChat";
 import { useStartupShellController } from "../../state/use-startup-shell-controller";
 import { StartupShell } from "./StartupShell";
 
@@ -7,7 +7,7 @@ export function StartupScreen() {
   return (
     <StartupShell
       view={view}
-      firstRun={<CompactOnboarding />}
+      firstRun={<FirstRunChat />}
       onRetry={retryStartup}
     />
   );

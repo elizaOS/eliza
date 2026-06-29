@@ -788,7 +788,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
 
   const bridgeBindAddress = bridgeSecretGenerated ? "127.0.0.1" : "0.0.0.0";
   bridgeServer.listen(BRIDGE_PORT, bridgeBindAddress, () => {
-    logger.info(`Bridge server listening on ${bridgeBindAddress}:${BRIDGE_PORT}`);
+    logger.info(
+      `Bridge server listening on ${bridgeBindAddress}:${BRIDGE_PORT}`,
+    );
     if (bridgeSecretGenerated) {
       logger.warn(
         "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
@@ -807,6 +809,30 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   }
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
+
+  // Crash guards. This file is bundled by esbuild for the cloud-agent image,
+  // which only installs @elizaos/core + @elizaos/plugin-sql, so we cannot import
+  // @elizaos/shared's installProcessCrashGuards here — the guards are inlined.
+  // A rejected background promise must never take down the container; a truly
+  // uncaught exception exits non-zero so the orchestrator (Docker
+  // `--restart unless-stopped` / K8s `restartPolicy: Always`) relaunches a clean
+  // container. Exit code matches @elizaos/shared RESTART_EXIT_CODE.
+  const CLOUD_AGENT_RESTART_EXIT_CODE = 75;
+  process.on("unhandledRejection", (reason) => {
+    logger.error("Unhandled promise rejection (non-fatal)", {
+      err:
+        reason instanceof Error
+          ? (reason.stack ?? reason.message)
+          : String(reason),
+    });
+  });
+  process.on("uncaughtException", (error) => {
+    logger.error("Uncaught exception — exiting for orchestrator restart", {
+      err:
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
+    });
+    process.exit(CLOUD_AGENT_RESTART_EXIT_CODE);
+  });
 
   initRuntime()
     .then(() => {

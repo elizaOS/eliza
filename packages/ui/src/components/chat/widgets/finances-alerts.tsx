@@ -1,6 +1,7 @@
 import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useNow } from "../../../hooks/useNow";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
@@ -196,6 +197,11 @@ function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
   const nav = useWidgetNavigation();
 
   const load = useCallback(async () => {
+    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+      setData(null);
+      return;
+    }
+
     try {
       const [dashboard, recurring, sources] = await Promise.all([
         getJson("/api/lifeops/money/dashboard"),

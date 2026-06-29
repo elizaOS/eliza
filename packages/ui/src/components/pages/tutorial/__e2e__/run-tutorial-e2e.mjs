@@ -207,6 +207,32 @@ try {
       );
       assert(z === "9500", `[${view.name}] ${step.id}: spotlight z is Z_TUTORIAL 9500 (${z})`);
 
+      // Nav-lock per frame (#9957 acceptance criterion (d)): the frame's
+      // capability lock must actually block an off-path tab, not merely declare
+      // a lockTabs array. The fixture applies the real `setNavLock(step.lockTabs)`
+      // the live tour applies; assert it blocks here.
+      const lock = await page.evaluate((lockTabs) => {
+        const nav = window.__tutorial.navLock;
+        const offPath = ["settings", "camera", "apps", "views", "wallet"].find(
+          (t) => !lockTabs.includes(t),
+        );
+        return {
+          locked: nav.isLocked(),
+          onPathAllowed: nav.isAllowed(lockTabs[0]),
+          offPath,
+          offPathBlocked: offPath ? !nav.isAllowed(offPath) : true,
+        };
+      }, step.lockTabs);
+      assert(lock.locked, `[${view.name}] ${step.id}: nav-lock active for the frame`);
+      assert(
+        lock.onPathAllowed,
+        `[${view.name}] ${step.id}: on-path tab "${step.lockTabs[0]}" allowed`,
+      );
+      assert(
+        lock.offPathBlocked,
+        `[${view.name}] ${step.id}: off-path tab "${lock.offPath}" blocked by nav-lock`,
+      );
+
       if (step.targetSelector) {
         const framing = await page.evaluate((sel) => {
           const root = document.querySelector('[data-testid="tutorial-spotlight"]');

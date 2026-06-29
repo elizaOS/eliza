@@ -8,7 +8,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { platform } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -130,8 +130,80 @@ if (platform() !== "darwin") {
   }
 }
 
+// ── VR/AR Runtime (OpenXR — desktop WebXR) ─────────────────────────────────────
+// WebKitGTK (Linux desktop) and Chromium (Windows) ship the WebXR Device API, but
+// `navigator.xr` only reaches a headset when an OpenXR runtime (Monado / SteamVR /
+// WMR) is installed and active. This mirrors src/runtime/openxr-runtime.ts.
+header("VR/AR Runtime (OpenXR — Monado / SteamVR, for desktop WebXR)");
+const osPlatform = platform();
+const doInstall = process.argv.includes("--install") && !checkOnly;
+
+function readActiveRuntime(path) {
+  try {
+    const json = JSON.parse(readFileSync(path, "utf8"));
+    return json?.runtime?.library_path ? json.runtime : null;
+  } catch {
+    return null;
+  }
+}
+
+if (osPlatform === "darwin") {
+  warn("macOS uses native WebXR on visionOS Safari — no OpenXR runtime to install.");
+} else if (osPlatform === "linux") {
+  const xdg = process.env.XDG_CONFIG_HOME || resolve(process.env.HOME ?? "~", ".config");
+  const candidates = [
+    process.env.XR_RUNTIME_JSON,
+    resolve(xdg, "openxr/1/active_runtime.json"),
+    "/etc/xdg/openxr/1/active_runtime.json",
+    "/usr/local/share/openxr/1/active_runtime.json",
+    "/usr/share/openxr/1/active_runtime.json",
+  ].filter(Boolean);
+  const active = candidates.find((p) => existsSync(p) && readActiveRuntime(p));
+  if (active) {
+    const lib = readActiveRuntime(active)?.library_path ?? "";
+    ok(`Active OpenXR runtime: ${active}${lib ? ` → ${lib}` : ""}`);
+  } else {
+    warn("No active OpenXR runtime — immersive WebXR won't reach a headset yet.");
+    info("Easiest (no root, if you use Steam):  steam steam://install/250820  # SteamVR");
+    info("Monado (open source):  sudo apt-get install -y libopenxr-loader1 libopenxr1-monado monado");
+    info("Then run the compositor:  monado-service");
+    if (doInstall && hasCommand("steam")) {
+      info("Installing SteamVR via Steam…");
+      try {
+        execSync("steam steam://install/250820", { stdio: "inherit" });
+        ok("SteamVR install requested via Steam");
+      } catch {
+        warn("Could not launch Steam install — run the command above manually.");
+      }
+    } else if (doInstall) {
+      warn("Steam not found; Monado needs root (sudo) — run the apt command above.");
+    }
+  }
+} else if (osPlatform === "win32") {
+  let active = process.env.XR_RUNTIME_JSON;
+  if (!active) {
+    try {
+      const out = execSync(
+        'reg query "HKLM\\SOFTWARE\\Khronos\\OpenXR\\1" /v ActiveRuntime',
+      ).toString();
+      const line = out.split(/\r?\n/).find((l) => l.includes("ActiveRuntime"));
+      active = line?.trim().split(/\s{2,}|\t/).pop();
+    } catch {
+      active = undefined;
+    }
+  }
+  if (active && existsSync(active)) {
+    ok(`Active OpenXR runtime: ${active}`);
+  } else {
+    warn("No active OpenXR runtime registered.");
+    info("Install SteamVR:  steam steam://install/250820");
+    info("Or 'OpenXR Tools for Windows Mixed Reality' from the Microsoft Store.");
+  }
+}
+
 // ── Summary ────────────────────────────────────────────────────────────────────
 header("Summary");
 info("Run 'bun run setup:sdks' from the plugin root for full setup.");
+info("Add '--install' to attempt the no-root SteamVR install on Linux/Windows.");
 info("See DEVICES.md for per-device setup guides.");
 console.log("");

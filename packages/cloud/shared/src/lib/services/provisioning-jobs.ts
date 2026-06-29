@@ -116,6 +116,26 @@ export interface AgentUpgradeJobResult {
   durationMs: number;
 }
 
+export interface AgentDowngradeJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  /** Configured image tag/ref (must match the agent's `docker_image`). */
+  dockerImage: string;
+  /** sha256 the agent is currently on — the rollback precondition guard. */
+  fromDigest: string;
+}
+
+export interface AgentDowngradeJobResult {
+  oldNodeId: string;
+  oldContainerName: string;
+  newNodeId: string;
+  newContainerName: string;
+  /** The `previous_image_digest` the agent was rolled back onto. */
+  newDigest: string;
+  durationMs: number;
+}
+
 export interface AgentLogsJobData {
   agentId: string;
   organizationId: string;
@@ -292,6 +312,14 @@ function agentUpgradeJobResultToRecord(result: AgentUpgradeJobResult): Record<st
   return { ...result };
 }
 
+function agentDowngradeJobDataToRecord(data: AgentDowngradeJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentDowngradeJobResultToRecord(result: AgentDowngradeJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
 function agentLogsJobDataToRecord(data: AgentLogsJobData): Record<string, unknown> {
   return { ...data };
 }
@@ -452,6 +480,25 @@ function isAgentUpgradeJobData(value: unknown): value is AgentUpgradeJobData {
 export function readAgentUpgradeJobData(job: Job): AgentUpgradeJobData {
   if (!isAgentUpgradeJobData(job.data)) {
     throw new Error(`Invalid agent upgrade job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
+function isAgentDowngradeJobData(value: unknown): value is AgentDowngradeJobData {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.agentId === "string" &&
+    typeof v.organizationId === "string" &&
+    typeof v.userId === "string" &&
+    typeof v.dockerImage === "string" &&
+    typeof v.fromDigest === "string"
+  );
+}
+
+export function readAgentDowngradeJobData(job: Job): AgentDowngradeJobData {
+  if (!isAgentDowngradeJobData(job.data)) {
+    throw new Error(`Invalid agent downgrade job data for job ${job.id}`);
   }
   return job.data;
 }
@@ -682,6 +729,7 @@ const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
   JOB_TYPES.AGENT_WAKE,
   JOB_TYPES.AGENT_RESTART,
   JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_DOWNGRADE,
 ]);
 
 export class ProvisioningJobService {
@@ -1144,6 +1192,41 @@ export class ProvisioningJobService {
       // (~30s) + atomic DB swap + 30s graceful stop = ~3 min budget.
       estimatedDurationMs: 180_000,
       logName: "agent_upgrade",
+    });
+  }
+
+  /**
+   * Enqueue an explicit agent rollback (downgrade) onto the agent's persisted
+   * `previous_image_digest`. Unlike upgrade, this is never enqueued by the
+   * reconciler — it's an operator/owner action after a bad upgrade. The
+   * `pre-upgrade` snapshot is restored before cutover by `executeDowngrade`.
+   */
+  async enqueueAgentDowngradeOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    dockerImage: string;
+    fromDigest: string;
+    webhookUrl?: string;
+  }): Promise<{ created: boolean; job: Job }> {
+    return this.enqueueLifecycleJob<AgentDowngradeJobData>({
+      jobType: JOB_TYPES.AGENT_DOWNGRADE,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        dockerImage: params.dockerImage,
+        fromDigest: params.fromDigest,
+      },
+      toRecord: agentDowngradeJobDataToRecord,
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 3,
+      // Same blue/green budget as upgrade + a pre-cutover snapshot restore.
+      estimatedDurationMs: 180_000,
+      logName: "agent_downgrade",
     });
   }
 
@@ -1712,6 +1795,9 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_UPGRADE:
         await this.executeAgentUpgrade(job);
         break;
+      case JOB_TYPES.AGENT_DOWNGRADE:
+        await this.executeAgentDowngrade(job);
+        break;
       case JOB_TYPES.AGENT_LOGS:
         await this.executeAgentLogs(job);
         break;
@@ -2160,6 +2246,67 @@ export class ProvisioningJobService {
       agentId: data.agentId,
       oldNodeId: jobResult.oldNodeId,
       newNodeId: jobResult.newNodeId,
+      durationMs: jobResult.durationMs,
+    });
+  }
+
+  private async executeAgentDowngrade(job: Job): Promise<void> {
+    const data = readAgentDowngradeJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_downgrade", {
+      jobId: job.id,
+      agentId: data.agentId,
+      dockerImage: data.dockerImage,
+      fromDigest: data.fromDigest,
+    });
+
+    const startedAt = Date.now();
+    const result = await elizaSandboxService.executeDowngrade(
+      data.agentId,
+      data.organizationId,
+      data.dockerImage,
+      data.fromDigest,
+    );
+
+    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
+
+    if (!result.success) {
+      // Failures leave the agent on its current image (the swap is atomic and
+      // only commits after the rollback container is healthy); the worker's
+      // standard error handling marks the job failed with this message.
+      throw new Error(result.error ?? "Unknown agent_downgrade failure");
+    }
+
+    const jobResult: AgentDowngradeJobResult = {
+      oldNodeId: result.oldNodeId ?? "",
+      oldContainerName: result.oldContainerName ?? "",
+      newNodeId: result.newNodeId ?? "",
+      newContainerName: result.newContainerName ?? "",
+      newDigest: result.newDigest ?? "",
+      durationMs: Date.now() - startedAt,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentDowngradeJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_downgrade completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      oldNodeId: jobResult.oldNodeId,
+      newNodeId: jobResult.newNodeId,
+      newDigest: jobResult.newDigest,
       durationMs: jobResult.durationMs,
     });
   }

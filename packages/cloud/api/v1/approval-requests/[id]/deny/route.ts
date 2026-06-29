@@ -3,9 +3,12 @@
  *
  * POST /api/v1/approval-requests/:id/deny   (public — signer-facing)
  *
- * The signer chooses to reject the approval. No signature is required; this
- * transition exists so the challenger's `await_approval` can resolve to a
- * denied terminal state instead of timing out.
+ * The signer chooses to reject the approval. Like /approve, this is a
+ * signer-driven state transition on a PUBLIC (sessionless) route, so it must
+ * prove the signer's identity the same way: a signature verified by the
+ * IdentityVerificationGatekeeper. Without this gate, anyone who learns an
+ * approval id could force-deny a pending approval and grief the legitimate
+ * signer (denial-of-service on the approval flow — #10117).
  */
 
 import { Hono } from "hono";
@@ -21,19 +24,32 @@ import {
   type ApprovalRequestsService,
   createApprovalRequestsService,
 } from "@/lib/services/approval-requests";
+import {
+  createIdentityVerificationGatekeeper,
+  type IdentityVerificationGatekeeper,
+} from "@/lib/services/identity-verification-gatekeeper";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const DenySchema = z.object({
+  signature: z.string().min(1).max(4096),
+  expectedSignerIdentityId: z.string().min(1).max(256).optional(),
   reason: z.string().max(500).optional(),
 });
 
-let singleton: ApprovalRequestsService | null = null;
-function getApprovalRequestsService(): ApprovalRequestsService {
-  singleton ??= createApprovalRequestsService({
+let serviceSingleton: ApprovalRequestsService | null = null;
+let gatekeeperSingleton: IdentityVerificationGatekeeper | null = null;
+function getService(): {
+  service: ApprovalRequestsService;
+  gatekeeper: IdentityVerificationGatekeeper;
+} {
+  serviceSingleton ??= createApprovalRequestsService({
     repository: approvalRequestsRepository,
   });
-  return singleton;
+  gatekeeperSingleton ??= createIdentityVerificationGatekeeper({
+    approvalRequests: serviceSingleton,
+  });
+  return { service: serviceSingleton, gatekeeper: gatekeeperSingleton };
 }
 
 const app = new Hono<AppEnv>();
@@ -50,8 +66,8 @@ app.post("/", async (c) => {
       );
     }
 
-    const body = await c.req.json().catch(() => ({}));
-    const parsed = DenySchema.safeParse(body ?? {});
+    const body = await c.req.json().catch(() => null);
+    const parsed = DenySchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
         {
@@ -63,7 +79,24 @@ app.post("/", async (c) => {
       );
     }
 
-    const service = getApprovalRequestsService();
+    const { service, gatekeeper } = getService();
+    // Prove the signer's identity before allowing the denial — symmetric with
+    // /approve. A sessionless caller without the signer's key cannot deny.
+    const verification = await gatekeeper.verify({
+      approvalId: id,
+      signature: parsed.data.signature,
+      expectedSignerIdentityId: parsed.data.expectedSignerIdentityId,
+    });
+    if (!verification.valid || !verification.signerIdentityId) {
+      return c.json(
+        {
+          success: false,
+          error: verification.error ?? "signature verification failed",
+        },
+        400,
+      );
+    }
+
     const approvalRequest = await service.markDenied(id, parsed.data.reason);
 
     await approvalCallbackBus.publish({

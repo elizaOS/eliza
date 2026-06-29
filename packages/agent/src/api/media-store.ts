@@ -310,6 +310,38 @@ export function persistMediaBytes(
   return { url: `${MEDIA_URL_PREFIX}${fileName}`, hash, fileName };
 }
 
+/**
+ * Read a stored media file's raw bytes by its `<sha256>.<ext>` name, or null if
+ * absent/unreadable. Path-traversal-safe (the resolved path must stay in the
+ * store dir). Used by agent backup/export to bundle referenced media bytes.
+ */
+export function readStoredMediaBytes(fileName: string): Buffer | null {
+  const filePath = path.join(mediaDir(), fileName);
+  if (path.dirname(filePath) !== mediaDir()) return null;
+  try {
+    return fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write raw bytes to a stored media file by its `<sha256>.<ext>` name (the name
+ * is the content hash, so this is idempotent). Path-traversal-safe. Used by
+ * agent restore/import to rehydrate the content-addressed media store.
+ */
+export function writeStoredMediaFile(fileName: string, bytes: Buffer): boolean {
+  const filePath = path.join(mediaDir(), fileName);
+  if (path.dirname(filePath) !== mediaDir()) return false;
+  try {
+    fs.mkdirSync(mediaDir(), { recursive: true });
+    if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const DATA_URL_RE = /^data:([^;,]*)(;base64)?,([\s\S]*)$/;
 
 /** Persist a `data:` URL's bytes to the store; returns null for non-data URLs. */

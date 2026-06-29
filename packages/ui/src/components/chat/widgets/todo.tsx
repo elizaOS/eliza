@@ -1,6 +1,7 @@
 import { ListTodo } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import type { WorkbenchTodo } from "../../../api/client-types-config";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useAppSelectorShallow } from "../../../state";
@@ -169,6 +170,14 @@ function TodoSidebarWidget({ slot }: ChatSidebarWidgetProps) {
 
   const loadTodos = useCallback(
     async (silent = false) => {
+      if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+        if (mountedRef.current) {
+          setTodos(dedupeTodos(workbench?.todos ?? []));
+          setTodosLoading(false);
+        }
+        return;
+      }
+
       if (!silent && mountedRef.current) {
         setTodosLoading(true);
       }

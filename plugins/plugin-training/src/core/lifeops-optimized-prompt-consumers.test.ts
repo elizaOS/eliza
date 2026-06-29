@@ -11,7 +11,7 @@ const EXPECTED_CONSUMERS = {
   schedule_plan:
     "plugins/plugin-personal-assistant/src/actions/lib/scheduling-handler.ts",
   reminder_dispatch:
-    "plugins/plugin-personal-assistant/src/lifeops/service-mixin-reminders.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/domains/reminders-service.ts",
   inbox_triage: "plugins/plugin-inbox/src/inbox/triage-classifier.ts",
   meeting_prep: "plugins/plugin-personal-assistant/src/actions/brief.ts",
   morning_brief: "plugins/plugin-personal-assistant/src/actions/brief.ts",

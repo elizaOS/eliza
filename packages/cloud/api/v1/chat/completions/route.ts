@@ -816,11 +816,19 @@ export async function handleChatCompletionsPOST(
       }
     }
 
-    // 3. Parse request
-    const request: ChatRequest = await req.json();
+    // 3. Parse request — guard a malformed/empty body to a 400 instead of a 500.
+    // An unguarded parse throws a SyntaxError that the outer catch maps to 500
+    // (and echoes the raw parse text); the sibling agents routes already guard
+    // this. Also require `messages` to be an ARRAY so a non-array value can't
+    // slip past the length check and TypeError later in `messages.filter(...)`.
+    const request = (await req.json().catch(() => null)) as ChatRequest | null;
 
     // 4. Validate
-    if (!request.model || !request.messages?.length) {
+    if (
+      !request?.model ||
+      !Array.isArray(request.messages) ||
+      !request.messages.length
+    ) {
       return addCorsHeaders(
         Response.json(
           {
@@ -1913,7 +1921,7 @@ async function handleNonStreamingRequest(
       }),
     );
   } catch (error) {
-    await settleReservation(0);
+    await settleReservation?.(0);
     throw error;
   }
 }

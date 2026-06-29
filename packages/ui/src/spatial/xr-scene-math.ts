@@ -389,6 +389,36 @@ export function panelScreenSize(
   };
 }
 
+export interface ArrangeArcOptions {
+  /** Distance (m) the panels sit in front of the centre (default 2.4). */
+  distance?: number;
+  /** Centre/eye position the arc fans out from (default eye height 1.6 at origin). */
+  center?: Vec3;
+  /** Total horizontal spread of the arc in radians (default 50°). */
+  spread?: number;
+}
+
+/**
+ * Auto-arrange `count` panels on a shallow frontal arc centred on −Z, the layout
+ * both the CSS {@link XRSpatialScene} and the immersive bridge use for panels that
+ * have no explicit position. Returns world centre positions, left → right.
+ */
+export function arrangeOnArc(count: number, opts: ArrangeArcOptions = {}): Vec3[] {
+  const distance = opts.distance ?? 2.4;
+  const center = opts.center ?? { x: 0, y: 1.6, z: 0 };
+  const spread = opts.spread ?? (Math.PI / 180) * 50;
+  const out: Vec3[] = [];
+  for (let i = 0; i < count; i++) {
+    const angle = count <= 1 ? 0 : -spread / 2 + (spread * i) / (count - 1);
+    out.push({
+      x: center.x + Math.sin(angle) * distance,
+      y: center.y,
+      z: center.z - Math.cos(angle) * distance,
+    });
+  }
+  return out;
+}
+
 /**
  * Orientation that makes a panel at `position` face a camera at `eye` (billboard).
  * The panel's +Z normal points back toward the viewer.

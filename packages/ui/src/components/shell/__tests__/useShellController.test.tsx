@@ -15,6 +15,7 @@ import {
   createVoiceCapture,
   type VoiceCaptureFactoryOptions,
 } from "../../../voice/voice-capture-factory";
+import { resolveAdjacentConversationId } from "../conversation-nav";
 import { useShellController } from "../useShellController";
 
 // jsdom in this env ships a `window.localStorage` whose methods throw (the
@@ -294,9 +295,10 @@ describe("useShellController — conversation loading watchdog", () => {
     const { result } = renderHook(() => useShellController());
     const staleNav = result.current.conversationNav;
 
-    act(() => {
+    await act(async () => {
       staleNav.goNext();
       staleNav.goPrev();
+      await vi.advanceTimersByTimeAsync(0);
     });
 
     expect(
@@ -332,6 +334,214 @@ describe("useShellController — conversation loading watchdog", () => {
     expect(result.current.conversationLoading).toBe(false);
   });
 });
+
+// ── Conversation-nav interleaving fuzz over the REAL hook (#9954 item 1) ──────
+// The headline #9954 gap: rapid swipe ↔ new-conversation ↔ select interleavings
+// could select the wrong conversation against a stale nav closure. #10042 made
+// the swipe callbacks re-resolve through refs and drop a swipe while a switch is
+// in flight; the two hand-written cases above pin those specific shapes. This
+// block fuzzes the real `useShellController` over a LIVE mutating conversation
+// list (select flips the active id; new prepends at index 0 and activates it),
+// asserting the most-recent-first index invariants after EVERY step across the
+// named sequence plus seeded random walks — so a reintroduced stale-index or
+// off-by-one regression fails here regardless of ordering.
+describe("useShellController — conversation-nav interleaving (#9954)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  type Ctl = ReturnType<typeof useShellController>;
+  type Action = "next" | "prev" | "new" | "select";
+
+  // Records any SWIPE select (goNext/goPrev → handleSelectConversation) that
+  // targeted a conversation which is NOT a neighbour of the active id at the
+  // moment the call fired. That is exactly the stale-closure bug: with the
+  // #10042 seq/epoch guard every swipe re-resolves through refs against the
+  // LIVE active index, so this stays empty. (External `select` mutates the
+  // active id directly and never routes through handleSelectConversation, so it
+  // can't pollute this signal.) The post-rerender index invariants in
+  // `assertInvariants` alone do NOT catch a reverted guard — they hold for a
+  // wrong-but-present selection — so this call-time check is the actual teeth.
+  let staleSwipeSelects: Array<{ requested: string; activeAtCall: string }> =
+    [];
+
+  function wireMutableConversations(initialIds: string[]): void {
+    staleSwipeSelects = [];
+    appMock.value.conversations = initialIds.map((id) => ({ id }));
+    // Start on the oldest (highest index) so both swipe directions are live.
+    appMock.value.activeConversationId =
+      initialIds[initialIds.length - 1] ?? null;
+    appMock.value.handleSelectConversation = vi.fn((id: string) => {
+      const active = appMock.value.activeConversationId ?? null;
+      const neighbours = [
+        resolveAdjacentConversationId(
+          appMock.value.conversations,
+          active,
+          "prev",
+        ),
+        resolveAdjacentConversationId(
+          appMock.value.conversations,
+          active,
+          "next",
+        ),
+      ];
+      if (!neighbours.includes(id)) {
+        staleSwipeSelects.push({ requested: id, activeAtCall: String(active) });
+      }
+      appMock.value.activeConversationId = id;
+      return Promise.resolve();
+    }) as unknown as typeof appMock.value.handleSelectConversation;
+    let created = 0;
+    appMock.value.handleNewConversation = vi.fn(() => {
+      const id = `new-${created++}`;
+      appMock.value.conversations = [{ id }, ...appMock.value.conversations];
+      appMock.value.activeConversationId = id;
+      return Promise.resolve();
+    });
+  }
+
+  async function drive(
+    result: { current: Ctl },
+    rerender: () => void,
+    action: Action,
+    rng: () => number,
+  ): Promise<void> {
+    await act(async () => {
+      if (action === "next") result.current.conversationNav.goNext();
+      else if (action === "prev") result.current.conversationNav.goPrev();
+      else if (action === "new") result.current.clearConversation();
+      else {
+        // External (sidebar / deep-link) select interleaved with swipes.
+        const list = appMock.value.conversations;
+        if (list.length > 0) {
+          appMock.value.activeConversationId =
+            list[Math.floor(rng() * list.length)].id;
+        }
+      }
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    rerender();
+  }
+
+  function assertInvariants(ctl: Ctl): void {
+    const list = appMock.value.conversations;
+    const active = appMock.value.activeConversationId ?? null;
+    const expectedIndex = list.findIndex((c) => c.id === active);
+    const nav = ctl.conversationNav;
+    // The active conversation is always a member of the list (never orphaned).
+    if (active !== null) {
+      expect(list.some((c) => c.id === active)).toBe(true);
+    }
+    // nav.index tracks the active id's position in the most-recent-first list.
+    expect(nav.index).toBe(expectedIndex);
+    expect(nav.activeId).toBe(active);
+    // Edge hints are exactly the index boundaries — never navigable past an end.
+    expect(nav.hasPrev).toBe(expectedIndex > 0);
+    expect(nav.hasNext).toBe(
+      expectedIndex >= 0 && expectedIndex < list.length - 1,
+    );
+    // No transition is left in flight once the step settles.
+    expect(ctl.conversationLoading ?? false).toBe(false);
+    // Every swipe resolved against the LIVE active index — never a stale one.
+    // This is the assertion that fails if the #10042 guard is reverted.
+    expect(staleSwipeSelects).toEqual([]);
+  }
+
+  it("named sequence swipe-back → new → forward → new → forward → swipe-back stays index-consistent", async () => {
+    wireMutableConversations(["c0", "c1", "c2"]); // active = c2 (oldest, index 2)
+    const { result, rerender } = renderHook(() => useShellController());
+    assertInvariants(result.current);
+
+    const rng = mulberry32(1);
+    const sequence: Action[] = ["prev", "new", "next", "new", "next", "prev"];
+    for (const action of sequence) {
+      const before = appMock.value.activeConversationId;
+      const atIndex0Boundary =
+        action === "prev" && result.current.conversationNav.index === 0;
+      await drive(result, rerender, action, rng);
+      assertInvariants(result.current);
+      if (action === "new") {
+        // A new conversation lands at index 0 and becomes active.
+        expect(result.current.conversationNav.index).toBe(0);
+      }
+      if (atIndex0Boundary) {
+        // A swipe at the index-0 boundary is a no-op (no wrong-conversation jump).
+        expect(appMock.value.activeConversationId).toBe(before);
+      }
+    }
+    expect(
+      appMock.value.conversations.some(
+        (c) => c.id === appMock.value.activeConversationId,
+      ),
+    ).toBe(true);
+  });
+
+  it("seeded random walks keep the nav invariants on every step", async () => {
+    const actions: Action[] = ["next", "prev", "new", "select"];
+    for (let seed = 1; seed <= 12; seed++) {
+      wireMutableConversations(["a", "b", "c", "d"]);
+      const { result, rerender, unmount } = renderHook(() =>
+        useShellController(),
+      );
+      const rng = mulberry32(seed * 0x9e3779b1);
+      for (let stepN = 0; stepN < 40; stepN++) {
+        const action = actions[Math.floor(rng() * actions.length)];
+        await drive(result, rerender, action, rng);
+        assertInvariants(result.current);
+      }
+      unmount();
+    }
+  });
+
+  // The walks above rerender after EVERY op, so the nav closure is always fresh
+  // and the stale-closure race never fires — those invariants hold even with the
+  // #10042 guard reverted. The race the guard actually fixes needs TWO ops to
+  // share ONE nav closure (a second swipe dispatched before the first switch
+  // settles + rerenders). This drives exactly that: rapid bursts of two ops in a
+  // single act() with no rerender between, asserting (via the call-time
+  // adjacency check in assertInvariants) that the second op never navigates
+  // against the now-stale index. Reverting the goNext/goPrev ref-resolution in
+  // useShellController makes this fail; the guard keeps it green.
+  it("rapid swipe bursts never resolve against a stale index (#10042 regression)", async () => {
+    const burstable: Exclude<Action, "select">[] = ["next", "prev", "new"];
+    const fire = (ctl: Ctl, action: Action): void => {
+      if (action === "next") ctl.conversationNav.goNext();
+      else if (action === "prev") ctl.conversationNav.goPrev();
+      else if (action === "new") ctl.clearConversation();
+    };
+    for (let seed = 1; seed <= 12; seed++) {
+      wireMutableConversations(["a", "b", "c", "d", "e"]);
+      const { result, rerender, unmount } = renderHook(() =>
+        useShellController(),
+      );
+      const rng = mulberry32(seed * 0x85ebca6b);
+      for (let stepN = 0; stepN < 25; stepN++) {
+        const a = burstable[Math.floor(rng() * burstable.length)];
+        const b = burstable[Math.floor(rng() * burstable.length)];
+        // Both ops read the SAME `result.current` (no rerender between), so the
+        // second runs against the first's about-to-be-stale closure/index.
+        await act(async () => {
+          fire(result.current, a);
+          fire(result.current, b);
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        rerender();
+        assertInvariants(result.current);
+      }
+      unmount();
+    }
+  });
+});
+
+function mulberry32(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 // ── Rich turn status derivation (#8813) ──────────────────────────────────────
 
