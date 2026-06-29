@@ -17,7 +17,7 @@ describe("cockpit-mode", () => {
   });
 
   describe("cockpitModeToProviderPolicy", () => {
-    it("eliza-cloud small → elizaos / eliza-cloud / gpt-oss-120b", () => {
+    it("eliza-cloud small → eliza-code on eliza-cloud / gpt-oss-120b", () => {
       expect(
         cockpitModeToProviderPolicy({
           mode: "eliza-cloud",
@@ -41,28 +41,16 @@ describe("cockpit-mode", () => {
       ).toBe("zai-glm-4.7");
     });
 
-    it("native eliza-code/opencode source from eliza-cloud; pi-agent is local", () => {
+    it("opencode also sources from eliza-cloud (Cerebras), no forced model", () => {
       expect(
-        cockpitModeToProviderPolicy({ mode: "native", agentType: "elizaos" })
-          .providerSource,
-      ).toBe("eliza-cloud");
-      expect(
-        cockpitModeToProviderPolicy({ mode: "native", agentType: "opencode" })
-          .providerSource,
-      ).toBe("eliza-cloud");
-      expect(
-        cockpitModeToProviderPolicy({ mode: "native", agentType: "pi-agent" })
-          .providerSource,
-      ).toBe("local");
+        cockpitModeToProviderPolicy({ mode: "opencode", agentType: "opencode" }),
+      ).toEqual({ preferredFramework: "opencode", providerSource: "eliza-cloud" });
     });
 
-    it("native carries an explicit model only when provided", () => {
-      expect(
-        cockpitModeToProviderPolicy({ mode: "native", agentType: "opencode" }),
-      ).toEqual({ preferredFramework: "opencode", providerSource: "eliza-cloud" });
+    it("opencode carries an explicit model only when provided", () => {
       expect(
         cockpitModeToProviderPolicy({
-          mode: "native",
+          mode: "opencode",
           agentType: "opencode",
           model: "qwen-3-coder",
         }).model,
@@ -104,8 +92,8 @@ describe("cockpit-mode", () => {
         }),
       ).toEqual({ agentType: "elizaos", model: "gpt-oss-120b" });
       expect(
-        cockpitModeToSpawnOverrides({ mode: "native", agentType: "pi-agent" }),
-      ).toEqual({ agentType: "pi-agent" });
+        cockpitModeToSpawnOverrides({ mode: "opencode", agentType: "opencode" }),
+      ).toEqual({ agentType: "opencode" });
       expect(
         cockpitModeToSpawnOverrides({ mode: "subscription", agentType: "codex" }),
       ).toEqual({ agentType: "codex" });
@@ -139,8 +127,8 @@ describe("cockpit-mode", () => {
           .subtitle,
       ).toBe("Smart · zai-glm-4.7");
       expect(
-        describeCockpitMode({ mode: "native", agentType: "elizaos" }),
-      ).toEqual({ title: "eliza-code", subtitle: "Cerebras", badge: "native" });
+        describeCockpitMode({ mode: "opencode", agentType: "opencode" }),
+      ).toEqual({ title: "OpenCode", subtitle: "Cerebras", badge: "cloud" });
       expect(
         describeCockpitMode({ mode: "subscription", agentType: "claude" }),
       ).toEqual({ title: "Claude", subtitle: "Your subscription", badge: "sub" });

@@ -8,9 +8,10 @@
  * "mode" is what you pick when you spawn — or drop into — a single session. The
  * four locked modes are:
  *
- *   1. `eliza-cloud`  — Eliza Cloud inference tier (Cerebras):
+ *   1. `eliza-cloud`  — "Eliza Cloud" = eliza-code (`elizaos`) running on
+ *                       Eliza Cloud / Cerebras, with a fast/smart tier:
  *                       `small` = gpt-oss-120b, `large` = zai-glm-4.7.
- *   2. `native`       — eliza-code (`elizaos`) / `pi-agent` / `opencode`.
+ *   2. `opencode`     — OpenCode running on Cerebras (sibling cloud option).
  *   3. `subscription` — Claude / Codex via the TOS-safe subscription connector
  *                       (subscription preferred, API-key fallback — handled by
  *                       the account bridge; see `ORCHESTRATOR_BACKEND_AUTH`).
@@ -41,7 +42,7 @@ import type { TaskProviderPolicy } from "./orchestrator-task-types.js";
 /** The four cockpit mode kinds (the discriminant of {@link CockpitModeConfig}). */
 export type CockpitModeKind =
   | "eliza-cloud"
-  | "native"
+  | "opencode"
   | "subscription"
   | "experimental";
 
@@ -51,15 +52,14 @@ export type ElizaCloudTier = "small" | "large";
 /**
  * Canonical Cerebras model id per Eliza Cloud tier. `small` → gpt-oss-120b
  * (fast), `large` → zai-glm-4.7 (smart). Kept here as the single source of
- * truth so the picker label and the spawned model never drift.
+ * truth so the picker label and the spawned model never drift. (The `large`
+ * pin must exist in `FALLBACK_MODELS.cerebras` for cloud routing — see the
+ * cloud-model-toggle seam in the implementation plan.)
  */
 export const ELIZA_CLOUD_TIER_MODEL: Record<ElizaCloudTier, string> = {
   small: "gpt-oss-120b",
   large: "zai-glm-4.7",
 };
-
-/** The native (non-subscription) coding frameworks selectable in the cockpit. */
-export type NativeFramework = Extract<AgentType, "elizaos" | "pi-agent" | "opencode">;
 
 /** The subscription-backed coding frameworks selectable in the cockpit. */
 export type SubscriptionFramework = Extract<AgentType, "claude" | "codex">;
@@ -74,7 +74,7 @@ export type ExperimentalProxy = "anthropic-proxy" | "codex-cli";
  */
 export type CockpitModeConfig =
   | { mode: "eliza-cloud"; agentType: "elizaos"; tier: ElizaCloudTier }
-  | { mode: "native"; agentType: NativeFramework; model?: string }
+  | { mode: "opencode"; agentType: "opencode"; model?: string }
   | {
       mode: "subscription";
       agentType: SubscriptionFramework;
@@ -100,10 +100,9 @@ export type ProviderSource = "user-claude" | "user-openai" | "eliza-cloud" | "lo
 function providerSourceFor(config: CockpitModeConfig): ProviderSource {
   switch (config.mode) {
     case "eliza-cloud":
+    case "opencode":
+      // Both run on Eliza Cloud / Cerebras.
       return "eliza-cloud";
-    case "native":
-      // eliza-code + opencode run on Eliza Cloud (Cerebras); pi-agent is local.
-      return config.agentType === "pi-agent" ? "local" : "eliza-cloud";
     case "subscription":
     case "experimental":
       return config.agentType === "claude" ? "user-claude" : "user-openai";
@@ -119,7 +118,7 @@ function modelFor(config: CockpitModeConfig): string | undefined {
 
 /**
  * Lower a cockpit mode to a {@link TaskProviderPolicy} for the durable create
- * path. Note: the policy is intentionally inference-source agnostic about the
+ * path. Note: the policy is intentionally agnostic about the
  * subscription-vs-API-key choice — the account bridge resolves that by
  * framework (subscription preferred). Experimental modes lower to the same
  * policy as their subscription counterpart; enabling the replay proxy is a
@@ -172,14 +171,8 @@ export interface CockpitModeLabel {
   /** Secondary line, e.g. "Fast · gpt-oss-120b" or "Your subscription". */
   subtitle: string;
   /** Compact badge kind for styling. */
-  badge: "cloud" | "native" | "sub" | "exp";
+  badge: "cloud" | "sub" | "exp";
 }
-
-const NATIVE_TITLE: Record<NativeFramework, string> = {
-  elizaos: "eliza-code",
-  "pi-agent": "Pi",
-  opencode: "OpenCode",
-};
 
 const SUBSCRIPTION_TITLE: Record<SubscriptionFramework, string> = {
   claude: "Claude",
@@ -198,12 +191,8 @@ export function describeCockpitMode(config: CockpitModeConfig): CockpitModeLabel
             : `Smart · ${ELIZA_CLOUD_TIER_MODEL.large}`,
         badge: "cloud",
       };
-    case "native":
-      return {
-        title: NATIVE_TITLE[config.agentType],
-        subtitle: config.agentType === "pi-agent" ? "Local" : "Cerebras",
-        badge: "native",
-      };
+    case "opencode":
+      return { title: "OpenCode", subtitle: "Cerebras", badge: "cloud" };
     case "subscription":
       return {
         title: SUBSCRIPTION_TITLE[config.agentType],
