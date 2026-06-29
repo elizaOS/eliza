@@ -23,7 +23,7 @@ import {
   type CodingAgentTaskThreadDetail,
   client,
 } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type TaskCoordinatorSnapshot,
@@ -40,7 +40,9 @@ function errorMessage(error: unknown): string {
 export function TaskCoordinatorView() {
   const [threads, setThreads] = useState<CodingAgentTaskThread[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<CodingAgentTaskThreadDetail | null>(null);
+  const [detail, setDetail] = useState<CodingAgentTaskThreadDetail | null>(
+    null,
+  );
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -188,9 +190,7 @@ export function TaskCoordinatorView() {
         minWidth: 0,
       }}
     >
-      <SpatialSurface>
-        <TaskCoordinatorSpatialView snapshot={snapshot} onAction={onAction} />
-      </SpatialSurface>
+      <TaskCoordinatorSpatialView snapshot={snapshot} onAction={onAction} />
     </div>
   );
 }

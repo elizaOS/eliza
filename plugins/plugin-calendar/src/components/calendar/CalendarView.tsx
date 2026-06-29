@@ -18,7 +18,7 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -152,11 +152,7 @@ export function CalendarView() {
     error: calendar.error,
   };
 
-  return (
-    <SpatialSurface>
-      <CalendarSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <CalendarSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 export default CalendarView;

@@ -17,7 +17,7 @@
  */
 
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type ModelTesterProbeId,
@@ -301,9 +301,5 @@ export function ModelTesterView({
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <ModelTesterSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <ModelTesterSpatialView snapshot={snapshot} onAction={onAction} />;
 }

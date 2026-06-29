@@ -13,7 +13,6 @@
  * manifest declares and the component the app-shell page (`register.ts`) mounts.
  */
 
-import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FacewearDeviceType } from "../devices/registry.ts";
 import {
@@ -108,9 +107,5 @@ export function FacewearView() {
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <FacewearSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <FacewearSpatialView snapshot={snapshot} onAction={onAction} />;
 }

@@ -24,14 +24,14 @@
  */
 
 import { client } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PresentedDocument } from "../../document-presenter.js";
 import {
   type DocumentCard,
-  type DocumentsSearchState,
   type DocumentSearchHit,
+  type DocumentsSearchState,
   type DocumentsSnapshot,
   DocumentsSpatialView,
 } from "./DocumentsSpatialView.tsx";
@@ -173,7 +173,9 @@ const SNIPPET_MAX = 100;
 function toHit(result: DocumentSearchResultWire): DocumentSearchHit {
   const trimmed = result.text.trim();
   const snippet =
-    trimmed.length > SNIPPET_MAX ? `${trimmed.slice(0, SNIPPET_MAX - 1)}…` : trimmed;
+    trimmed.length > SNIPPET_MAX
+      ? `${trimmed.slice(0, SNIPPET_MAX - 1)}…`
+      : trimmed;
   return {
     id: result.id,
     title: result.documentTitle,
@@ -249,7 +251,9 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
         setState({
           kind: "error",
           message:
-            error instanceof Error ? error.message : "Could not load documents.",
+            error instanceof Error
+              ? error.message
+              : "Could not load documents.",
         });
       });
     return () => {
@@ -281,7 +285,11 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
     fetchersRef.current
       .fetchSearch(trimmed)
       .then((response) => {
-        setSearch({ kind: "results", query: trimmed, results: response.results });
+        setSearch({
+          kind: "results",
+          query: trimmed,
+          results: response.results,
+        });
       })
       .catch((error: unknown) => {
         setSearch({
@@ -368,11 +376,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
     [load, updateSearch],
   );
 
-  return (
-    <SpatialSurface>
-      <DocumentsSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <DocumentsSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 const EMPTY_SNAPSHOT: DocumentsSnapshot = {

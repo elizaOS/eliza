@@ -11,7 +11,7 @@
  * here is the statusless landing for hosts that evaluate this wrapper directly.
  */
 
-import { Escape, SpatialSurface } from "@elizaos/ui/spatial";
+import { Escape } from "@elizaos/ui/spatial";
 import {
   EMPTY_ORCHESTRATOR_SNAPSHOT,
   OrchestratorSpatialView,
@@ -20,14 +20,12 @@ import { OrchestratorWorkbench } from "./OrchestratorWorkbench.tsx";
 
 export function OrchestratorView() {
   return (
-    <SpatialSurface>
-      <Escape
-        width="100%"
-        height="100%"
-        tui={<OrchestratorSpatialView snapshot={EMPTY_ORCHESTRATOR_SNAPSHOT} />}
-      >
-        <OrchestratorWorkbench />
-      </Escape>
-    </SpatialSurface>
+    <Escape
+      width="100%"
+      height="100%"
+      tui={<OrchestratorSpatialView snapshot={EMPTY_ORCHESTRATOR_SNAPSHOT} />}
+    >
+      <OrchestratorWorkbench />
+    </Escape>
   );
 }

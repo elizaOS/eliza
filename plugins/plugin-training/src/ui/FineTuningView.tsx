@@ -30,7 +30,7 @@ import {
 } from "@elizaos/ui/components";
 import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks";
 import { ContentLayout } from "@elizaos/ui/layouts";
-import { Escape, SpatialSurface } from "@elizaos/ui/spatial";
+import { Escape } from "@elizaos/ui/spatial";
 import { type AppContextValue, useAppSelector } from "@elizaos/ui/state";
 import {
   confirmDesktopAction,
@@ -813,13 +813,11 @@ const EMPTY_FINE_TUNING_SNAPSHOT: FineTuningSnapshot = {
  */
 export function FineTuningView(props: { contentHeader?: ReactNode } = {}) {
   return (
-    <SpatialSurface>
-      <Escape
-        tui={<FineTuningSpatialView snapshot={EMPTY_FINE_TUNING_SNAPSHOT} />}
-      >
-        <FineTuningDashboard {...props} />
-      </Escape>
-    </SpatialSurface>
+    <Escape
+      tui={<FineTuningSpatialView snapshot={EMPTY_FINE_TUNING_SNAPSHOT} />}
+    >
+      <FineTuningDashboard {...props} />
+    </Escape>
   );
 }
 

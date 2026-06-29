@@ -28,7 +28,7 @@ import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
 import { getBootConfig } from "@elizaos/ui/config";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { WorkspaceLayout } from "@elizaos/ui/layouts";
-import { Escape, SpatialSurface } from "@elizaos/ui/spatial";
+import { Escape } from "@elizaos/ui/spatial";
 import { useAppSelector } from "@elizaos/ui/state";
 import { Clock3, Database, Hash, Layers3 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -1709,12 +1709,8 @@ export function VectorBrowserView(props: {
   contentHeader?: ReactNode;
 }) {
   return (
-    <SpatialSurface>
-      <Escape
-        tui={<VectorBrowserSpatialView snapshot={TUI_FALLBACK_SNAPSHOT} />}
-      >
-        <VectorBrowserRichView {...props} />
-      </Escape>
-    </SpatialSurface>
+    <Escape tui={<VectorBrowserSpatialView snapshot={TUI_FALLBACK_SNAPSHOT} />}>
+      <VectorBrowserRichView {...props} />
+    </Escape>
   );
 }

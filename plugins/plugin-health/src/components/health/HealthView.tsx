@@ -25,7 +25,7 @@
  */
 
 import { client } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -339,11 +339,7 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
     [load, windowDays],
   );
 
-  return (
-    <SpatialSurface>
-      <HealthSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <HealthSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 export default HealthView;

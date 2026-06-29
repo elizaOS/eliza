@@ -24,7 +24,7 @@
  */
 
 import { client } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ENTITY_KIND_FILTERS, ENTITY_KIND_LABELS } from "../../types.ts";
@@ -349,11 +349,7 @@ export function RelationshipsView(
     [load],
   );
 
-  return (
-    <SpatialSurface>
-      <RelationshipsSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <RelationshipsSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 export default RelationshipsView;

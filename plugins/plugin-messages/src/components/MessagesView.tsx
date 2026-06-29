@@ -14,7 +14,7 @@ import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
 import { consumePendingMessageRecipient } from "@elizaos/ui/app-navigate-view";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type MessagesSnapshot,
@@ -166,9 +166,5 @@ export function MessagesView() {
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <MessagesSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <MessagesSpatialView snapshot={snapshot} onAction={onAction} />;
 }

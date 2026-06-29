@@ -10,7 +10,6 @@
  * registry (see `register-terminal-view.tsx`).
  */
 
-import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useEffect } from "react";
 import {
   type PolymarketSnapshot,
@@ -69,9 +68,5 @@ export function PolymarketView() {
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <PolymarketSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <PolymarketSpatialView snapshot={snapshot} onAction={onAction} />;
 }
