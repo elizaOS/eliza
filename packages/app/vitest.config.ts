@@ -32,6 +32,7 @@ export default defineConfig({
       "src/**/*.test.{ts,tsx}",
       "scripts/**/*.test.{ts,tsx,mjs}",
       "test/**/*.test.{ts,tsx}",
+      "functions/**/*.test.{ts,tsx}",
     ],
     exclude: unitExcludes,
   },
