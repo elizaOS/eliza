@@ -18,6 +18,7 @@ import type {
   ConversationChannelType,
   ConversationGreeting,
   ConversationMessage,
+  ConversationMessageSearchResponse,
   ConversationMetadata,
   CreateConversationOptions,
   DatabaseConfigResponse,
@@ -316,6 +317,14 @@ declare module "./client-base" {
       id: string,
       options?: { signal?: AbortSignal },
     ): Promise<{ messages: ConversationMessage[] }>;
+    /**
+     * Keyword search across every conversation the user can see, ranked by
+     * relevance then recency. Backs the chat message-search affordance.
+     */
+    searchConversationMessages(
+      query: string,
+      options?: { limit?: number; offset?: number; signal?: AbortSignal },
+    ): Promise<ConversationMessageSearchResponse>;
     /**
      * Fetch the cross-channel inbox. Returns the most recent
      * messages across every connector room the agent participates in,
@@ -966,6 +975,21 @@ ElizaClient.prototype.getConversationMessages = async function (
       return text === message.text ? message : { ...message, text };
     }),
   };
+};
+
+ElizaClient.prototype.searchConversationMessages = async function (
+  this: ElizaClient,
+  query,
+  options,
+) {
+  const params = new URLSearchParams({ q: query });
+  if (options?.limit !== undefined) params.set("limit", String(options.limit));
+  if (options?.offset !== undefined)
+    params.set("offset", String(options.offset));
+  return this.fetch<ConversationMessageSearchResponse>(
+    `/api/conversations/messages/search?${params}`,
+    options?.signal ? { signal: options.signal } : undefined,
+  );
 };
 
 ElizaClient.prototype.getInboxMessages = async function (
