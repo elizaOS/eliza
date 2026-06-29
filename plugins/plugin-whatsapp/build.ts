@@ -1,95 +1,60 @@
 #!/usr/bin/env bun
-
 /**
- * Standalone build script for @elizaos/plugin-whatsapp.
- * Uses Bun's native bundler — no monorepo build-utils dependency.
+ * Build script for @elizaos/plugin-whatsapp (Node). Orchestration lives in the shared
+ * driver (plugins/plugin-build.ts); this lists only what differs.
+ *
+ * The `extra` externals preserve bare-string node builtins, transitive
+ * workspace packages, and optional native sub-packages the hand-list relied on.
+ * The `@node-llama-cpp/*` glob covers per-platform subpackages that aren't
+ * direct deps but must stay external so absent platforms don't fail to resolve.
  */
+import { buildPlugin } from "../plugin-build";
 
-import { execSync, spawnSync } from "node:child_process";
-import { join } from "node:path";
-import { externalsFromPackageJson } from "../plugin-build-externals.ts";
-
-const rmRecursiveScript = join(
-  import.meta.dirname,
-  "..",
-  "..",
-  "packages",
-  "scripts",
-  "rm-path-recursive.mjs"
-);
-
-function rmRecursive(targetPath: string) {
-  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
-    stdio: "inherit",
-  });
-  if (result.status !== 0) {
-    throw new Error(`failed to remove generated WhatsApp build output ${targetPath}`);
-  }
-}
-
-rmRecursive("dist");
-
-const external = await externalsFromPackageJson("./package.json", {
-  // Preserve bare-string node builtins, transitive workspace packages, and
-  // optional native sub-packages the hand-list relied on. The
-  // `@node-llama-cpp/*` glob covers per-platform subpackages that aren't
-  // direct deps but must stay external so absent platforms don't fail
-  // to resolve.
-  extra: [
-    "fs",
-    "path",
-    "os",
-    "http",
-    "https",
-    "crypto",
-    "stream",
-    "events",
-    "util",
-    "url",
-    "net",
-    "tls",
-    "zlib",
-    "buffer",
-    "child_process",
-    "readline",
-    "@elizaos/shared",
-    "@elizaos/agent",
-    "@elizaos/vault",
-    "@elizaos/cloud-routing",
-    "node-llama-cpp",
-    "@node-llama-cpp/*",
-    "@napi-rs/keyring",
-    "@reflink/reflink",
-    "ipull",
-    "tailwindcss",
-    "zlib-sync",
+await buildPlugin({
+  name: "@elizaos/plugin-whatsapp",
+  clean: true,
+  externals: "auto",
+  externalsOptions: {
+    extra: [
+      "fs",
+      "path",
+      "os",
+      "http",
+      "https",
+      "crypto",
+      "stream",
+      "events",
+      "util",
+      "url",
+      "net",
+      "tls",
+      "zlib",
+      "buffer",
+      "child_process",
+      "readline",
+      "@elizaos/shared",
+      "@elizaos/agent",
+      "@elizaos/vault",
+      "@elizaos/cloud-routing",
+      "node-llama-cpp",
+      "@node-llama-cpp/*",
+      "@napi-rs/keyring",
+      "@reflink/reflink",
+      "ipull",
+      "tailwindcss",
+      "zlib-sync",
+    ],
+  },
+  targets: [
+    {
+      label: "Node",
+      entry: "src/index.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+      sourcemap: "linked",
+    },
   ],
+  dtsProject: "tsconfig.build.json",
+  dtsTolerant: true,
 });
-
-const result = await Bun.build({
-  entrypoints: ["src/index.ts"],
-  outdir: "dist",
-  target: "node",
-  format: "esm",
-  external,
-  sourcemap: "linked",
-  minify: false,
-});
-
-if (!result.success) {
-  console.error("Build failed:");
-  for (const log of result.logs) {
-    console.error(log);
-  }
-  process.exit(1);
-}
-
-// Emit real declaration files via tsc
-try {
-  execSync("bunx tsc --noCheck -p tsconfig.build.json", { stdio: "inherit" });
-} catch {
-  // Non-fatal — plugin works at runtime without .d.ts files
-  console.warn("[plugin-whatsapp] tsc declaration emit failed (non-fatal)");
-}
-
-console.log("[plugin-whatsapp] Build complete");
