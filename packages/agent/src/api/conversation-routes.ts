@@ -24,8 +24,10 @@ import {
   type Content,
   createMessageMemory,
   logger,
+  type Memory,
   stringToUuid,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 import {
   PatchConversationRequestSchema,
@@ -1035,6 +1037,77 @@ async function getConversationWithRestore(
   return state.conversations.get(convId);
 }
 
+/** Default recent-window size for GET /messages (the newest N turns). */
+const CONVERSATION_MESSAGE_WINDOW = 200;
+
+/**
+ * How many messages on EACH side of an `?around=<id>` pivot to load. The
+ * centered window is roughly 2× this plus the pivot itself.
+ */
+const CONVERSATION_AROUND_RADIUS = 100;
+
+/**
+ * Load a window of messages CENTERED on `aroundMessageId` for the jump-to-message
+ * flow (#9955). The default GET /messages window is the most-recent
+ * CONVERSATION_MESSAGE_WINDOW turns, so a keyword-search hit older than that is
+ * never in the loaded thread and can't be scrolled to. Given the pivot's id this
+ * returns the pivot's own turn plus up to CONVERSATION_AROUND_RADIUS older and
+ * newer turns, ordered chronologically by the caller.
+ *
+ * Bounds are pushed into the store as getMemories `start`/`end` (createdAt
+ * range) so there is NO in-process scan. Returns the recent window unchanged
+ * when the pivot is missing or lives in another room — the latter prevents a
+ * cross-room leak via a forged `around` id.
+ */
+async function loadConversationMessagesAround(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  aroundMessageId: UUID,
+): Promise<Memory[]> {
+  const [pivot] = await runtime.getMemoriesByIds([aroundMessageId], "messages");
+  if (!pivot || pivot.roomId !== roomId) {
+    logger.warn(
+      `[conversations] around=${aroundMessageId} is not in room ${roomId}; serving the recent window instead`,
+    );
+    return runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: CONVERSATION_MESSAGE_WINDOW,
+    });
+  }
+  const pivotCreatedAt = pivot.createdAt ?? 0;
+  const [olderOrAt, newerOrAt] = await Promise.all([
+    // The pivot and everything before it, newest-first, capped. The pivot is
+    // included because `end` is inclusive of its createdAt.
+    runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      end: pivotCreatedAt,
+      limit: CONVERSATION_AROUND_RADIUS + 1,
+      orderBy: "createdAt",
+      orderDirection: "desc",
+    }),
+    // The pivot and everything after it, oldest-first, capped.
+    runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      start: pivotCreatedAt,
+      limit: CONVERSATION_AROUND_RADIUS + 1,
+      orderBy: "createdAt",
+      orderDirection: "asc",
+    }),
+  ]);
+  // Merge the two half-windows, de-duping the shared pivot (and any createdAt
+  // ties both bounds picked up) by id.
+  const byId = new Map<UUID, Memory>();
+  for (const memory of [...olderOrAt, ...newerOrAt]) {
+    if (memory.id) {
+      byId.set(memory.id, memory);
+    }
+  }
+  return Array.from(byId.values());
+}
+
 function extractConversationMetaString(
   memory: { metadata?: unknown },
   key: string,
@@ -1549,11 +1622,21 @@ export async function handleConversationRoutes(
     }
     const runtime = state.runtime;
     try {
-      const memories = await runtime.getMemories({
-        roomId: conv.roomId,
-        tableName: "messages",
-        limit: 200,
-      });
+      // `?around=<messageId>` centers the window on a specific (possibly
+      // far-back) message so a keyword-search jump can scroll to a hit older
+      // than the default recent window (#9955). Absent → unchanged recent window.
+      const aroundParam = validateUuid(requestUrl.searchParams.get("around"));
+      const memories = aroundParam
+        ? await loadConversationMessagesAround(
+            runtime,
+            conv.roomId,
+            aroundParam,
+          )
+        : await runtime.getMemories({
+            roomId: conv.roomId,
+            tableName: "messages",
+            limit: CONVERSATION_MESSAGE_WINDOW,
+          });
       // Sort by createdAt ascending
       memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
       const agentId = runtime.agentId;

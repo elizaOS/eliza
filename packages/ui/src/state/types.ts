@@ -838,6 +838,16 @@ export interface AppActions {
   handleNewConversation: (title?: string) => Promise<void>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
   handleSelectConversation: (id: string) => Promise<void>;
+  /**
+   * Replace the active thread with a window CENTERED on `messageId` so a
+   * keyword-search jump can scroll to a hit older than the most-recent window
+   * (#9955). Resolves `true` once the centered window has been committed to the
+   * active conversation, `false` if the load failed or the user navigated away.
+   */
+  loadConversationMessagesAround: (
+    conversationId: string,
+    messageId: string,
+  ) => Promise<boolean>;
   handleDeleteConversation: (id: string) => Promise<void>;
   handleRenameConversation: (id: string, title: string) => Promise<void>;
   /** LLM title from recent messages; persists on the server and updates local list. */

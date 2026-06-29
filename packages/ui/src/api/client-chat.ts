@@ -315,7 +315,16 @@ declare module "./client-base" {
     }>;
     getConversationMessages(
       id: string,
-      options?: { signal?: AbortSignal },
+      options?: {
+        signal?: AbortSignal;
+        /**
+         * When set, load a window CENTERED on this message id instead of the
+         * default recent window — so a keyword-search jump can scroll to a hit
+         * older than the most-recent turns (#9955). Bypasses the desktop-bridge
+         * RPC fast path (which only knows the recent window).
+         */
+        around?: string;
+      },
     ): Promise<{ messages: ConversationMessage[] }>;
     /**
      * Keyword search across every conversation the user can see, ranked by
@@ -950,22 +959,29 @@ ElizaClient.prototype.getConversationMessages = async function (
   options,
 ) {
   let response: { messages: ConversationMessage[] } | null = null;
-  try {
-    response = await invokeLocalDesktopChatRpc<{
-      messages: ConversationMessage[];
-    }>(this.getBaseUrl(), {
-      rpcMethod: "getConversationMessages",
-      ipcChannel: "agent",
-      params: { id },
-    });
-  } catch {
-    response = null;
+  // The desktop-bridge RPC only serves the recent window; an `around` jump must
+  // go straight to HTTP so the server can center the window on the target.
+  if (!options?.around) {
+    try {
+      response = await invokeLocalDesktopChatRpc<{
+        messages: ConversationMessage[];
+      }>(this.getBaseUrl(), {
+        rpcMethod: "getConversationMessages",
+        ipcChannel: "agent",
+        params: { id },
+      });
+    } catch {
+      response = null;
+    }
   }
   // The HTTP path is abortable (a rapid conversation swipe cancels the prior
   // in-flight load so stacked requests don't race to set the thread); the
   // desktop bridge path is local + fast and ignores the signal.
+  const query = options?.around
+    ? `?around=${encodeURIComponent(options.around)}`
+    : "";
   response ??= await this.fetch<{ messages: ConversationMessage[] }>(
-    `/api/conversations/${encodeURIComponent(id)}/messages`,
+    `/api/conversations/${encodeURIComponent(id)}/messages${query}`,
     options?.signal ? { signal: options.signal } : undefined,
   );
   return {
