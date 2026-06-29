@@ -138,19 +138,20 @@ export async function resolveImageRef(
     );
   }
   // SECURITY: an app deploy runs an image on our shared docker nodes. Gate the
-  // resolved image on the same allowlist the coding-container routes use, so a
-  // caller-supplied `metadata.imageTag` (or a mis-set APP_DEFAULT_IMAGE) cannot
-  // run an arbitrary off-namespace image. Fail-closed: empty allowlist denies.
-  // The default allowlist covers the first-party GHCR namespaces, so the default
-  // agent image and APP_DEFAULT_IMAGE under those namespaces pass unchanged.
-  const allowlist = containersEnv.codingContainerImageAllowlist();
+  // resolved image on the APPS-DEPLOY allowlist (first-party `ghcr.io/elizaos/*`
+  // ONLY by default — DELIBERATELY separate from the coding-container allowlist,
+  // which also carries personal/side-product namespaces for its BYO-image path),
+  // so a caller-supplied `metadata.imageTag` (or a mis-set APP_DEFAULT_IMAGE)
+  // cannot run an arbitrary off-namespace image. Fail-closed: empty allowlist
+  // denies. The default allowlist covers the first-party elizaOS namespace, so
+  // the stamped template image / APP_DEFAULT_IMAGE under it pass unchanged.
+  const allowlist = containersEnv.appsDeployImageAllowlist();
   if (!isCodingContainerImageAllowed(image, allowlist)) {
     const permitted = allowlist.length > 0 ? allowlist.join(", ") : "(none configured)";
     throw new Error(
       `Image '${image}' is not permitted for app ${app.id}: it is outside the ` +
-        `allowed image namespaces (${permitted}). Set app.metadata.imageTag (or ` +
-        `APP_DEFAULT_IMAGE) to an allowlisted image, or widen ` +
-        `CODING_CONTAINER_IMAGE_ALLOWLIST.`,
+        `allowed image namespaces (${permitted}). Set app.metadata.imageTag to an ` +
+        `allowlisted image, or widen APPS_DEPLOY_IMAGE_ALLOWLIST.`,
     );
   }
   // SECURITY (opt-in, default OFF): when the digest-pin gate is armed, reject a

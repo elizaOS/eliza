@@ -1,9 +1,8 @@
-import type { App } from "../../db/repositories/apps";
+import type { App, NewApp } from "../../db/repositories/apps";
+import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { AppNameConflictError, appsService } from "./apps";
-import { discordService } from "./discord";
 import { githubReposService } from "./github-repos";
-import { usersService } from "./users";
 
 /**
  * App Factory Service
@@ -38,10 +37,14 @@ export interface CreateAppOptions {
   repoName?: string;
   /** Whether the repo should be private (default: true) */
   repoPrivate?: boolean;
-  /** Whether to assign a subdomain (default: true) */
-  assignSubdomain?: boolean;
-  /** Preferred subdomain (optional, will auto-generate if not available) */
-  preferredSubdomain?: string;
+  /**
+   * Explicit container image to deploy for a TEMPLATE app (one created WITHOUT a
+   * user repo, i.e. `createGitHubRepo: false`). When set, it is stamped onto
+   * `app.metadata.imageTag` and wins over the first-party template default.
+   * Ignored for repo-backed apps (they build from their repo). Must resolve to an
+   * allowlisted image (see the apps-deploy image gate) or the deploy rejects it.
+   */
+  imageTag?: string;
 }
 
 export interface CreateAppResult {
@@ -49,9 +52,6 @@ export interface CreateAppResult {
   apiKey: string;
   githubRepo?: string;
   githubRepoCreated: boolean;
-  subdomain?: string;
-  productionUrl?: string;
-  subdomainAssigned: boolean;
   errors: string[];
 }
 
@@ -63,20 +63,16 @@ export class AppFactoryService {
    * throughout the application to ensure consistency.
    */
   async createApp(data: CreateAppInput, options: CreateAppOptions = {}): Promise<CreateAppResult> {
-    const { createGitHubRepo = true, repoPrivate = true, assignSubdomain = true } = options;
+    const { createGitHubRepo = true, repoPrivate = true } = options;
 
     const errors: string[] = [];
     let githubRepo: string | undefined;
     let githubRepoCreated = false;
-    let subdomain: string | undefined;
-    let productionUrl: string | undefined;
-    let subdomainAssigned = false;
 
     logger.info("AppFactory: Creating app", {
       name: data.name,
       organizationId: data.organization_id,
       createGitHubRepo,
-      assignSubdomain,
     });
 
     // Step 0: Validate name availability before creating anything
@@ -109,8 +105,9 @@ export class AppFactoryService {
       slug: app.slug,
     });
 
-    // Step 2: Run GitHub repo creation and subdomain assignment in PARALLEL
-    // This can save 3-10 seconds compared to sequential execution
+    // Step 2: Run repo-backed side effects (currently just GitHub repo creation)
+    // off the critical path. Kept as a task array so additional create-time work
+    // can run concurrently without reshaping the flow.
     const parallelTasks: Promise<void>[] = [];
 
     // GitHub repo creation task
@@ -157,61 +154,47 @@ export class AppFactoryService {
     // Wait for parallel tasks to complete
     await Promise.all(parallelTasks);
 
-    // Step 3: Batch update app record with all results (single DB call)
-    const updates: Record<string, string | null> = {};
+    // Step 3: Batch update the app record (single DB call) with the GitHub repo
+    // and, for template apps, the first-party template image (below).
+    const updates: Partial<NewApp> = {};
     if (githubRepo) {
       updates.github_repo = githubRepo;
     }
-    if (productionUrl) {
-      updates.app_url = productionUrl;
+
+    // TEMPLATE-IMAGE WIRING (the launch blocker): a TEMPLATE app — one created
+    // WITHOUT a user repo (createGitHubRepo === false, the path the agent's
+    // CREATE_APP / `skipGitHubRepo: true` uses) — has neither a build pipeline
+    // nor a repo image, so the deploy runner's `resolveImageRef` would throw
+    // "no image to deploy". Stamp a first-party, allowlisted template image as
+    // `metadata.imageTag` at create time so create -> deploy resolves to a
+    // prebuilt, allowlisted image. Repo-backed apps are intentionally LEFT
+    // UNTOUCHED — they still (correctly) hit the build-from-repo-disabled path
+    // until that tier is armed. A caller-supplied image (`options.imageTag`) or
+    // an image already present on the app's metadata wins and is never
+    // overwritten.
+    if (!createGitHubRepo) {
+      const existingMeta = (app.metadata as Record<string, unknown>) ?? {};
+      const existingImageTag =
+        typeof existingMeta.imageTag === "string" ? existingMeta.imageTag : undefined;
+      const imageTag =
+        options.imageTag ?? existingImageTag ?? containersEnv.appDefaultTemplateImage();
+      if (imageTag !== existingImageTag) {
+        const metadata = { ...existingMeta, imageTag };
+        updates.metadata = metadata;
+        // Reflect the stamp on the returned app so callers see it without a re-read.
+        app.metadata = metadata;
+        logger.info("AppFactory: Stamped template image on app metadata", {
+          appId: app.id,
+          imageTag,
+        });
+      }
     }
 
     if (Object.keys(updates).length > 0) {
       await appsService.update(app.id, updates);
-      logger.info("AppFactory: App record updated with parallel results", {
+      logger.info("AppFactory: App record updated", {
         appId: app.id,
         updates: Object.keys(updates),
-      });
-    }
-
-    // Only send Discord notification after the app has a deployed production URL.
-    // Draft app URLs use a sentinel host and should not create launch alerts.
-    const finalAppUrl = productionUrl || data.app_url;
-    const isDraftSentinelUrl =
-      !finalAppUrl ||
-      finalAppUrl.includes("placeholder.local") ||
-      finalAppUrl === "https://placeholder.local";
-
-    if (!isDraftSentinelUrl && productionUrl) {
-      const appUrl = productionUrl;
-      // Fetch user info to get their name (non-blocking)
-      usersService
-        .getById(data.created_by_user_id)
-        .then((user) => {
-          const userName = user?.name || user?.nickname || user?.email || null;
-          return discordService.logAppCreated({
-            appId: app.id,
-            appName: app.name,
-            slug: app.slug,
-            userName,
-            userId: data.created_by_user_id,
-            organizationId: data.organization_id,
-            appUrl,
-            description: data.description,
-            githubRepo,
-            subdomain,
-          });
-        })
-        .catch((err) => {
-          logger.warn("AppFactory: Failed to send Discord notification", {
-            appId: app.id,
-            error: err instanceof Error ? err.message : "Unknown error",
-          });
-        });
-    } else {
-      logger.info("AppFactory: Skipping Discord notification for draft app (no production URL)", {
-        appId: app.id,
-        appUrl: finalAppUrl,
       });
     }
 
@@ -220,9 +203,6 @@ export class AppFactoryService {
       apiKey,
       githubRepo,
       githubRepoCreated,
-      subdomain,
-      productionUrl,
-      subdomainAssigned,
       errors,
     };
   }
