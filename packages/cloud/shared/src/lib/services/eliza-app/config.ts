@@ -6,6 +6,7 @@
  * required for core session flows.
  */
 
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import { getPromptPreset, type PromptPreset } from "../../eliza/prompt-presets";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models";
 
@@ -33,8 +34,8 @@ const ELIZA_APP_LARGE_MODEL =
   process.env.ELIZA_APP_LARGE_MODEL || CEREBRAS_DEFAULT_TEXT_LARGE_MODEL;
 
 export const elizaAppConfig = {
-  // Frontend URL (the consumer-facing app, e.g. eliza.app)
-  appUrl: process.env.ELIZA_APP_URL || "https://eliza.app",
+  // Frontend URL (the consumer-facing agent app, e.g. app.elizacloud.ai)
+  appUrl: process.env.ELIZA_APP_URL || EXTERNAL_URLS.app,
 
   // Agent configuration
   defaultAgentId: process.env.ELIZA_APP_DEFAULT_AGENT_ID || "b850bc30-45f8-0041-a00a-83df46d8555d",
