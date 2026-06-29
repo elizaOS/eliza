@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { enforceOrgRateLimit } from "@/lib/middleware/rate-limit";
+import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import {
   RateLimitPresets,
   rateLimit,
@@ -65,8 +66,39 @@ app.use("*", rateLimit(RateLimitPresets.RELAXED));
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
-    const apiKey = await getRequestApiKeyId(c);
+    // Resolve auth (+ org + moderation) in a SINGLE cache read for API-key
+    // inference requests (#9899) — the same fast-path as /v1/chat/completions.
+    // This route is on the agent reply hot path: the always-on
+    // `relevant-conversations` recall provider embeds the incoming message on
+    // EVERY memory-backed turn (blocking Stage-1), so the old per-request
+    // auth+org+moderation DB chain added ~1.5s+ to every reply. Non-API-key /
+    // cache-unavailable requests fall to the authoritative slow path verbatim.
+    let user: { id: string; organization_id: string | null };
+    let apiKey: { id: string } | null;
+    const resolution = await resolveInferenceAuthContext(c.req.raw);
+    if (resolution.kind === "suspended") {
+      return c.json(
+        {
+          error: {
+            message:
+              "Your account has been suspended due to policy violations.",
+            type: "account_suspended",
+            code: "moderation_violation",
+          },
+        },
+        403,
+      );
+    }
+    if (resolution.kind === "authorized") {
+      user = {
+        id: resolution.ctx.userId,
+        organization_id: resolution.ctx.orgId,
+      };
+      apiKey = { id: resolution.ctx.apiKeyId };
+    } else {
+      user = await requireUserOrApiKeyWithOrg(c);
+      apiKey = await getRequestApiKeyId(c);
+    }
 
     if (user.organization_id) {
       const orgRateLimited = await enforceOrgRateLimit(
