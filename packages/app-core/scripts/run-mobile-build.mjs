@@ -155,6 +155,7 @@ export {
 export {
   ANDROID_OFFICIAL_CAPACITOR_PACKAGES,
   IOS_COCOAPODS_OWNED_SPM_PLUGINS,
+  IOS_INCOMPATIBLE_SPM_PLUGINS,
   IOS_OFFICIAL_PODS,
   MOBILE_CAPACITOR_PLUGIN_MANIFEST,
   resolveIosCustomPods,
@@ -3305,6 +3306,58 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
 
 // ── Phase 4: iOS native overlay ─────────────────────────────────────────
 
+<<<<<<< HEAD
+=======
+const IOS_PERMISSION_KEYS = [
+  [
+    "NSCameraUsageDescription",
+    "This app uses your camera to capture photos and video when you ask it to.",
+  ],
+  [
+    "NSMicrophoneUsageDescription",
+    "This app needs microphone access for voice wake, talk mode, and video capture.",
+  ],
+  [
+    "NSLocationWhenInUseUsageDescription",
+    "This app uses your location to provide location-aware responses when you allow it.",
+  ],
+  [
+    "NSLocationAlwaysAndWhenInUseUsageDescription",
+    "This app can share your location in the background so it stays up to date even when the app is not in use.",
+  ],
+  [
+    "NSPhotoLibraryUsageDescription",
+    "This app accesses your photo library to attach and share photos or videos.",
+  ],
+  [
+    "NSPhotoLibraryAddUsageDescription",
+    "This app saves captured photos and videos to your photo library.",
+  ],
+  [
+    "NSHealthShareUsageDescription",
+    "This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.",
+  ],
+  [
+    "NSHealthUpdateUsageDescription",
+    "This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.",
+  ],
+  [
+    "NSSpeechRecognitionUsageDescription",
+    "This app uses on-device speech recognition to listen for voice commands and wake words.",
+  ],
+  [
+    "NSLocalNetworkUsageDescription",
+    `This app discovers and connects to your ${APP.appName} gateway on the local network.`,
+  ],
+];
+
+const IOS_BONJOUR_SERVICES = [
+  "_eliza-gw._tcp",
+  "_elizaos-gw._tcp",
+  "_eliza._tcp",
+];
+
+>>>>>>> 67fc91c900 (refactor(mobile): split ios pod manifest)
 function overlayIos() {
   const targetAppDir = path.join(appDir, "ios", "App", "App");
 
