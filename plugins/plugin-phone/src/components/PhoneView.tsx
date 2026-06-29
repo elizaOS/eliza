@@ -11,9 +11,9 @@
  */
 
 import { Phone } from "@elizaos/capacitor-phone";
-import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { consumePendingPhoneNumber } from "@elizaos/ui/app-navigate-view";
+import { Button } from "@elizaos/ui/components/ui/button";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
