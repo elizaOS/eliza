@@ -297,8 +297,9 @@ async function executeDomainPurchase(
     wholesaleUsdCents: price.wholesaleUsdCents,
     marginUsdCents: price.marginUsdCents,
   };
+  let debit: Awaited<ReturnType<typeof creditsService.deductCredits>>;
   try {
-    await creditsService.deductCredits({
+    debit = await creditsService.deductCredits({
       organizationId,
       amount: price.totalUsdCents / 100,
       description: debitDescription,
@@ -315,6 +316,24 @@ async function executeDomainPurchase(
       };
     }
     throw err;
+  }
+  // CRITICAL: deductCredits RETURNS {success:false, reason:"insufficient_balance"}
+  // on a too-low balance — it does NOT throw — so the InsufficientCreditsError
+  // catch above never fires for that case. We MUST gate registration on the
+  // returned result; otherwise an org with insufficient credit sails past the
+  // (zero-effect) debit straight into registerDomain() and gets a real domain
+  // registered on OUR Cloudflare account for free.
+  if (!debit.success) {
+    return {
+      status: 402,
+      body: {
+        success: false,
+        error:
+          debit.reason === "insufficient_balance"
+            ? "Insufficient credit balance for this domain"
+            : "Could not debit credits for this domain",
+      },
+    };
   }
 
   // 3. register via cloudflare
