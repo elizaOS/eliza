@@ -35,7 +35,11 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
-import type { ChatGenerationResult, LogEntry } from "./chat-routes.ts";
+import type {
+  ChatFailureKind,
+  ChatGenerationResult,
+  LogEntry,
+} from "./chat-routes.ts";
 import {
   classifyChatFailure,
   generateChatResponse,
@@ -1109,6 +1113,14 @@ type ConversationRouteMessageRecord = {
   rawDiscordMessageId?: string;
   rawSenderId?: string;
   senderEntityId?: string;
+  /**
+   * Synthetic-failure classification for this turn (provider-issue /
+   * no-provider / insufficient-credits / …). Persisted on the failed
+   * assistant memory as `content.failureKind` (live result) or
+   * `metadata.chatFailureKind` (markSyntheticChatFailureContent). Round-tripped
+   * here so the renderer's gate + Retry survive a GET /messages full-replace.
+   */
+  failureKind?: ChatFailureKind;
 };
 
 async function ensureConversationGreetingStored(
@@ -1421,6 +1433,25 @@ export async function handleConversationRoutes(
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
+          // The failed assistant turn carries its classification on the live
+          // result (`content.failureKind`) or, for synthetic fallbacks, on
+          // `metadata.chatFailureKind` (markSyntheticChatFailureContent). Round
+          // it back so the renderer's provider/credits gate + Retry survive the
+          // GET /messages full-replace instead of vanishing.
+          const rawFailureKind =
+            typeof content.failureKind === "string"
+              ? content.failureKind
+              : typeof meta?.chatFailureKind === "string"
+                ? meta.chatFailureKind
+                : undefined;
+          const failureKind: ChatFailureKind | undefined =
+            rawFailureKind === "insufficient_credits" ||
+            rawFailureKind === "no_provider" ||
+            rawFailureKind === "provider_issue" ||
+            rawFailureKind === "rate_limited" ||
+            rawFailureKind === "local_inference"
+              ? rawFailureKind
+              : undefined;
           const role = m.entityId === agentId ? "assistant" : "user";
           const rawText = formatConversationMessageText(
             (m.content as { text?: string })?.text ?? "",
@@ -1502,6 +1533,7 @@ export async function handleConversationRoutes(
             rawSenderId: extractConversationMetaString(m, "fromId"),
             senderEntityId:
               typeof m.entityId === "string" ? m.entityId : undefined,
+            ...(failureKind ? { failureKind } : {}),
           } satisfies ConversationRouteMessageRecord;
         })
         // Drop action-log memories that have no visible text (e.g.
@@ -2065,6 +2097,13 @@ export async function handleConversationRoutes(
             ...(result.actionResults?.length
               ? { actionResults: result.actionResults }
               : {}),
+            // A non-throwing result can still carry a failure classification
+            // (e.g. a canned provider-issue phrase folded into the reply). Mirror
+            // the error branch so the renderer's gate + Retry persist.
+            ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+            ...(result.localInference
+              ? { localInference: result.localInference }
+              : {}),
           });
           deferredPersistence = (async () => {
             if (result.actionCallbackHistory?.length) {
@@ -2361,6 +2400,13 @@ export async function handleConversationRoutes(
           agentName: result.agentName,
           ...(result.actionResults?.length
             ? { actionResults: result.actionResults }
+            : {}),
+          // A non-throwing result can still carry a failure classification
+          // (e.g. a canned provider-issue phrase folded into the reply). Mirror
+          // the error branch so the renderer's gate + Retry persist.
+          ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+          ...(result.localInference
+            ? { localInference: result.localInference }
             : {}),
         });
       } else {

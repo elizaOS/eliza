@@ -1596,37 +1596,72 @@ export function useChatSend(deps: UseChatSendDeps) {
   }, [interruptActiveChatPipeline, ptySessionsRef]);
 
   const handleChatRetry = useCallback(
-    (assistantMsgId: string) => {
-      let retryText: string | null = null;
-      setConversationMessages((prev) => {
-        // Find the interrupted assistant message
-        const assistantIdx = prev.findIndex(
-          (m) => m.id === assistantMsgId && m.role === "assistant",
-        );
-        if (assistantIdx < 0) return prev;
-
-        // Find the preceding user message
-        let userMsg: ConversationMessage | null = null;
-        for (let i = assistantIdx - 1; i >= 0; i--) {
-          if (prev[i].role === "user") {
-            userMsg = prev[i];
-            break;
-          }
+    async (assistantMsgId: string) => {
+      const currentMessages = conversationMessagesRef.current;
+      // Find the failed/interrupted assistant message + its preceding user turn.
+      const assistantIdx = currentMessages.findIndex(
+        (m) => m.id === assistantMsgId && m.role === "assistant",
+      );
+      if (assistantIdx < 0) return;
+      let userIdx = -1;
+      for (let i = assistantIdx - 1; i >= 0; i--) {
+        if (currentMessages[i].role === "user") {
+          userIdx = i;
+          break;
         }
-        if (!userMsg) return prev;
-
-        // Remove the interrupted assistant message
-        const next = prev.filter((m) => m.id !== assistantMsgId);
-
-        retryText = userMsg.text;
-
-        return next;
-      });
-      if (retryText) {
-        void sendChatText(retryText);
       }
+      if (userIdx < 0) return;
+      const userMsg = currentMessages[userIdx];
+      const retryText = userMsg.text;
+      if (!retryText) return;
+
+      const convId = activeConversationIdRef.current;
+      const canTruncate =
+        Boolean(convId) &&
+        userMsg.source !== "local_command" &&
+        !userMsg.id.startsWith("temp-");
+
+      // Preferred path: re-run the turn IN PLACE. Truncate from the user message
+      // (inclusive) so [Q, fail] is removed server-side, then resend Q — exactly
+      // like handleChatEdit. The old behaviour only dropped the assistant bubble
+      // in memory and resent, producing a duplicate [Q, fail, Q-dup, new] turn.
+      if (canTruncate && convId) {
+        interruptActiveChatPipeline();
+        const preservedMessages = currentMessages.slice(0, userIdx);
+        conversationMessagesRef.current = preservedMessages;
+        setConversationMessages(preservedMessages);
+        try {
+          await client.truncateConversationMessages(convId, userMsg.id, {
+            inclusive: true,
+          });
+          await sendChatText(retryText, { conversationId: convId });
+        } catch (err) {
+          await loadConversationMessages(convId);
+          setActionNotice(
+            `Failed to retry message: ${err instanceof Error ? err.message : "network error"}`,
+            "error",
+            4200,
+          );
+        }
+        return;
+      }
+
+      // Fallback (no conversation id yet, optimistic/local user turn): drop the
+      // failed assistant bubble in memory and resend.
+      setConversationMessages((prev) =>
+        prev.filter((m) => m.id !== assistantMsgId),
+      );
+      void sendChatText(retryText);
     },
-    [sendChatText, setConversationMessages],
+    [
+      sendChatText,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+      interruptActiveChatPipeline,
+      loadConversationMessages,
+      setActionNotice,
+    ],
   );
 
   const handleChatEdit = useCallback(
