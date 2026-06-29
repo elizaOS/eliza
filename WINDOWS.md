@@ -109,7 +109,6 @@ Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
 | `plugin-codex-cli` | 5 | 0 fail |
 | `plugin-inmemorydb` | 5 | 0 fail |
 | `plugin-localdb` | 4 | 0 fail |
-| `plugin-eliza-classic` | 4 | 0 fail |
 | `plugin-instagram` | 4 | 0 fail |
 | `plugin-coding-tools` | 98 | 44 skipped (bash-output shell tests), 0 fail |
 | `plugin-app-control` | 94 | 4 skipped (npm-network integration), 0 fail |

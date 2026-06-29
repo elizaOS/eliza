@@ -2380,53 +2380,6 @@
         "react-dom": "^18.0.0 || ^19.0.0",
       },
     },
-    "packages/plugin-host-shim": {
-      "name": "@elizaos/plugin-host-shim",
-      "version": "0.0.1",
-      "dependencies": {
-        "@elizaos/plugin-remote-manifest": "workspace:*",
-      },
-      "devDependencies": {
-        "bun-types": "^1.3.12",
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/plugin-host-shim-android": {
-      "name": "@elizaos/plugin-host-shim-android",
-      "version": "0.0.1",
-      "dependencies": {
-        "@elizaos/plugin-host-shim": "workspace:*",
-        "@elizaos/plugin-remote-manifest": "workspace:*",
-      },
-      "devDependencies": {
-        "bun-types": "^1.3.12",
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/plugin-host-shim-electrobun": {
-      "name": "@elizaos/plugin-host-shim-electrobun",
-      "version": "0.0.1",
-      "dependencies": {
-        "@elizaos/plugin-host-shim": "workspace:*",
-        "@elizaos/plugin-remote-manifest": "workspace:*",
-      },
-      "devDependencies": {
-        "bun-types": "^1.3.12",
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/plugin-host-shim-ios": {
-      "name": "@elizaos/plugin-host-shim-ios",
-      "version": "0.0.1",
-      "dependencies": {
-        "@elizaos/plugin-host-shim": "workspace:*",
-        "@elizaos/plugin-remote-manifest": "workspace:*",
-      },
-      "devDependencies": {
-        "bun-types": "^1.3.12",
-        "typescript": "^6.0.3",
-      },
-    },
     "packages/plugin-remote-manifest": {
       "name": "@elizaos/plugin-remote-manifest",
       "version": "0.0.1",
@@ -2443,8 +2396,6 @@
       "version": "0.0.1",
       "dependencies": {
         "@elizaos/plugin-remote-manifest": "workspace:*",
-        "@elizaos/plugin-worker-runtime": "workspace:*",
-        "@elizaos/security": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "^1.3.12",
@@ -2455,9 +2406,7 @@
       "name": "@elizaos/plugin-worker-runtime",
       "version": "0.0.1",
       "dependencies": {
-        "@elizaos/core": "workspace:*",
         "@elizaos/plugin-remote-manifest": "workspace:*",
-        "@elizaos/security": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "^1.3.12",
@@ -3413,21 +3362,6 @@
         "@types/bun": "^1.2.22",
         "@types/node": "^24.5.2",
         "typescript": "^6.0.3",
-      },
-    },
-    "plugins/plugin-eliza-classic": {
-      "name": "@elizaos/plugin-eliza-classic",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-      "devDependencies": {
-        "tsup": "8.5.1",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.18",
-      },
-      "peerDependencies": {
-        "@elizaos/core": "workspace:*",
       },
     },
     "plugins/plugin-elizacloud": {
@@ -6370,8 +6304,6 @@
 
     "@elizaos/plugin-elevenlabs": ["@elizaos/plugin-elevenlabs@workspace:plugins/plugin-elevenlabs"],
 
-    "@elizaos/plugin-eliza-classic": ["@elizaos/plugin-eliza-classic@workspace:plugins/plugin-eliza-classic"],
-
     "@elizaos/plugin-elizacloud": ["@elizaos/plugin-elizacloud@workspace:plugins/plugin-elizacloud"],
 
     "@elizaos/plugin-elizamaker": ["@elizaos/plugin-elizamaker@workspace:plugins/plugin-elizamaker"],
@@ -6405,14 +6337,6 @@
     "@elizaos/plugin-groq": ["@elizaos/plugin-groq@workspace:plugins/plugin-groq"],
 
     "@elizaos/plugin-health": ["@elizaos/plugin-health@workspace:plugins/plugin-health"],
-
-    "@elizaos/plugin-host-shim": ["@elizaos/plugin-host-shim@workspace:packages/plugin-host-shim"],
-
-    "@elizaos/plugin-host-shim-android": ["@elizaos/plugin-host-shim-android@workspace:packages/plugin-host-shim-android"],
-
-    "@elizaos/plugin-host-shim-electrobun": ["@elizaos/plugin-host-shim-electrobun@workspace:packages/plugin-host-shim-electrobun"],
-
-    "@elizaos/plugin-host-shim-ios": ["@elizaos/plugin-host-shim-ios@workspace:packages/plugin-host-shim-ios"],
 
     "@elizaos/plugin-hyperliquid": ["@elizaos/plugin-hyperliquid@workspace:plugins/plugin-hyperliquid"],
 

@@ -1,6 +1,6 @@
 {
-  "scanned": 981,
-  "components": 565,
+  "scanned": 980,
+  "components": 564,
   "exactDuplicates": [
     {
       "name": "themetoggle",
@@ -1514,7 +1514,7 @@
     },
     {
       "token": "game",
-      "count": 3,
+      "count": 2,
       "entries": [
         {
           "file": "src\\components\\apps\\GameView.tsx",
@@ -1525,11 +1525,6 @@
           "file": "src\\components\\apps\\GameViewOverlay.tsx",
           "name": "GameViewOverlay",
           "tokens": ["game", "view", "overlay"]
-        },
-        {
-          "file": "src\\components\\apps\\surfaces\\GameOperatorShell.tsx",
-          "name": "GameOperatorShell",
-          "tokens": ["game", "operator", "shell"]
         }
       ]
     },

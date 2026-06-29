@@ -103,10 +103,6 @@ export default defineConfig({
       pluginAlias("plugin-discord-local"),
       pluginAlias("plugin-edge-tts"),
       pluginAlias("plugin-elevenlabs"),
-      pluginAlias(
-        "plugin-eliza-classic",
-        path.join(repoRoot, "plugins/plugin-eliza-classic/index.ts"),
-      ),
       pluginAlias("plugin-elizacloud"),
       pluginAlias(
         "plugin-farcaster",

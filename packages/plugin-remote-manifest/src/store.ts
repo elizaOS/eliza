@@ -386,16 +386,12 @@ function parseInstallRecord(
       value.permissionsGranted,
       "install.permissionsGranted",
     ),
-    devMode: optionalBooleanField(value, "devMode", "install"),
-    lastBuildAt: parseOptionalNumberOrNull(
-      value.lastBuildAt,
-      "install.lastBuildAt",
-    ),
-    lastBuildError: optionalNullableStringField(
-      value,
-      "lastBuildError",
-      "install",
-    ),
+    devMode: optionalBooleanField(value, "devMode", "install") ?? false,
+    lastBuildAt:
+      parseOptionalNumberOrNull(value.lastBuildAt, "install.lastBuildAt") ??
+      null,
+    lastBuildError:
+      optionalNullableStringField(value, "lastBuildError", "install") ?? null,
     status,
     source: parseInstallSource(
       value.source,

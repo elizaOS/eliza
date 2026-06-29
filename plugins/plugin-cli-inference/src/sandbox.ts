@@ -1,7 +1,8 @@
 /**
  * SOC2 sandbox helpers, copied from
- * `@elizaos/plugin-sub-agent-claude-code/src/sandbox.ts` so this node-only
- * model-provider plugin does not depend on the worker-bundled remote plugin.
+ * `packages/plugin-remote-manifest/src/sub-agent-claude-code/sandbox.ts` so
+ * this node-only model-provider plugin does not depend on the worker-bundled
+ * remote plugin.
  *
  * Keep in sync with the upstream copy if `SAFE_ENV_KEYS` / `SENSITIVE_ENV_RE`
  * change. Additions here over the upstream copy: the `SENSITIVE_ENV_RE` export

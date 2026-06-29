@@ -19,10 +19,6 @@
     "description": "ElevenLabs voice plugin for text-to-speech generation and conversational audio output.",
     "tags": ["feature", "voice", "text-to-speech", "audio"]
   },
-  "eliza-classic": {
-    "description": "Compatibility plugin referencing the original ELIZA-style patterns alongside legacy elizaOS agent workflows.",
-    "tags": ["feature", "compatibility", "legacy", "agents"]
-  },
   "elizacloud": {
     "description": "elizaOS plugin to connect with elizaOS Cloud services",
     "tags": ["elizacloud"]

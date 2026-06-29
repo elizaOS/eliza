@@ -1,12 +1,12 @@
 # @elizaos/plugin-worker-runtime
 
-Worker-side bootstrap for remote-mode elizaOS plugins.
+Compatibility package for the worker-side bootstrap used by remote-mode elizaOS plugins.
 
 ## What it is
 
-Remote-mode elizaOS plugins run in isolation — inside a Bun Worker thread or a separate subprocess — rather than in the main agent process. This package is the in-worker half of that system.
+Remote-mode elizaOS plugins run in isolation - inside a Bun Worker thread or a separate subprocess - rather than in the main agent process. The implementation now lives in `@elizaos/plugin-remote-manifest/worker-runtime`; this package keeps the historical `@elizaos/plugin-worker-runtime` imports working.
 
-It handles three jobs:
+The worker runtime handles three jobs:
 
 1. **Announce** — walks the plugin's surfaces (actions, providers, services, models, events, evaluators, routes), serialises all function references as stable RPC ids, and sends a JSON descriptor to the host.
 2. **Dispatch** — receives `worker-rpc` messages from the host and routes them to the correct live handler.
@@ -75,7 +75,7 @@ The service instance is created lazily on the first host invocation and reused f
 
 ## Installation
 
-This package is part of the elizaOS monorepo. It is `private: true` and consumed from the workspace:
+This package is part of the elizaOS monorepo. It is `private: true`, consumed from the workspace, and depends on `@elizaos/plugin-remote-manifest` for the real implementation:
 
 ```json
 "@elizaos/plugin-worker-runtime": "workspace:*"
@@ -84,3 +84,4 @@ This package is part of the elizaOS monorepo. It is `private: true` and consumed
 ## Boundary rules
 
 - **Init-time dynamic additions are append-only.** Surfaces appended to the plugin object during `init()` are announced with `worker-announce-dynamic`; replacements, removals, and later runtime mutations are not announced.
+- **Implementation changes belong in `packages/plugin-remote-manifest/src/worker-runtime/`.** Keep this package limited to compatibility re-exports unless the public compatibility surface itself changes.

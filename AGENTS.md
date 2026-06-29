@@ -76,8 +76,8 @@ packages/        framework, shared libraries, and product surfaces
   contracts/     on-chain contracts + ABIs
   security/ vault/ soc2-verify/  secrets, key management, compliance tooling
   os/ robot/                     device/OS images, OS landing, robotics
-  plugin-host-shim*/ plugin-worker-runtime/ plugin-remote-manifest/
-                 plugin loading shims for native/electrobun/ios/android/worker targets
+  plugin-remote-manifest/ plugin-worker-runtime/
+                 remote plugin manifests, host shims, and worker runtime support
   homepage/ docs/ docs-elizacloud-redirect/  marketing site, docs site, redirects
   examples/      30+ standalone runnable examples (each has its own README)
   benchmarks/    30+ evaluation suites (each has its own README + harness)

@@ -7,13 +7,17 @@ Manifest schema, permissions, store, and wire envelope types for remote-mode eli
 This package is the single source of truth for the remote plugin protocol used across the elizaOS
 desktop runtime. It defines the `plugin.json` manifest schema, the permission model (host + Bun
 sandbox), the on-disk install store, the worker↔host wire message types, artifact signature
-verification, and RPC MAC helpers. It is not an elizaOS agent plugin itself — it exports no
-`Plugin` object — it is a shared library consumed by other packages.
+verification, RPC MAC helpers, host shims, the worker runtime bootstrap, and the reference
+Claude Code sub-agent implementation. It is a shared library consumed by other packages.
 
 Primary consumers (each declares a `workspace:*` dependency unless noted):
 - `packages/agent` — `src/services/remote-plugin-bridge.ts`, `src/runtime/release-plugin-policy.ts`
-- `packages/plugin-host-shim-ios` — mobile host shim
-- `packages/plugin-host-shim-android` — mobile host shim
+- host shim subpaths — `./host-shim`, `./host-shim/web`, `./host-shim/ios`,
+  `./host-shim/android`, `./host-shim/electrobun`
+- worker-runtime subpaths — `./worker-runtime`, `./worker-runtime/bootstrap`,
+  `./worker-runtime/error`, `./worker-runtime/runtime-proxy`
+- `packages/plugin-worker-runtime` — compatibility wrapper package for the worker-runtime subpaths
+- `packages/plugin-sub-agent-claude-code` — compatibility wrapper package for the Claude sub-agent subpaths
 - `packages/app-core/platforms/electrobun` — desktop host, RPC schema, launch orchestrator, trace layer
 - `packages/ui` — no package.json dep; path-mapped to `src/` in `tsconfig.json` for type resolution
 
@@ -31,17 +35,22 @@ packages/plugin-remote-manifest/
     signature.ts      — Ed25519 artifact verification (SOC2 A-1); verifyPluginArtifact
     rpc-mac.ts        — HMAC-SHA256 canonical encoding for WorkerRpcMessage (SOC2 A-4)
     json.ts           — isJsonObject guard (internal)
+    host-shim/        — host shim entry points for web, iOS, Android, and Electrobun
+    worker-runtime/   — worker bootstrap, runtime proxy, dispatch, envelope, error helpers
+    sub-agent-claude-code/ — reference remote-mode Claude Code sub-agent
     *.test.ts         — co-located unit tests (run with `bun test src/`)
   examples/
     hello-remote-plugin/   — minimal background-mode reference plugin (plugin.json + worker.mjs)
     remote-plugin-clock/   — clock example
+  sandbox/
+    macos.sb / linux-bwrap.sh / SMOKE.md — Claude sub-agent sandbox assets
   scripts/
     sign-manifest.ts  — CLI: sign a plugin tarball with Ed25519 via KMS
 ```
 
 ## Export surface
 
-The package exposes eight export entries: the barrel `.` plus seven named subpaths. Import the
+The package exposes the barrel `.`, subsystem subpaths, and host-shim subpaths. Import the
 specific subpath rather than the barrel when only one subsystem is needed.
 
 | Import path | Key exports |
@@ -54,6 +63,17 @@ specific subpath rather than the barrel when only one subsystem is needed.
 | `@elizaos/plugin-remote-manifest/store` | install store CRUD: `installPrebuiltRemotePlugin`, `uninstallInstalledRemotePlugin`, `loadInstalledRemotePlugins`, `readRemotePluginRegistry`, `writeRemotePluginRegistry`, `syncRemotePluginRegistry`, `buildRemotePluginRuntimeContext`, `writeRemotePluginWorkerBootstrap`, `getRemotePluginStorePaths`, `RemotePluginStoreError` |
 | `@elizaos/plugin-remote-manifest/signature` | `verifyPluginArtifact`, `sha256File`, `PluginSignatureError`, `PLUGIN_MANIFEST_KEY` |
 | `@elizaos/plugin-remote-manifest/rpc-mac` | `canonicalRpcBytes`, `pluginRpcKeyId`, `hexEncode`, `hexDecode` |
+| `@elizaos/plugin-remote-manifest/host-shim` | shared host-shim registry and fallback helpers |
+| `@elizaos/plugin-remote-manifest/host-shim/web` | browser host shim |
+| `@elizaos/plugin-remote-manifest/host-shim/ios` | iOS host shim |
+| `@elizaos/plugin-remote-manifest/host-shim/android` | Android host shim |
+| `@elizaos/plugin-remote-manifest/host-shim/electrobun` | Electrobun desktop host shim |
+| `@elizaos/plugin-remote-manifest/worker-runtime` | worker bootstrap, dispatch, channel, and runtime proxy exports |
+| `@elizaos/plugin-remote-manifest/worker-runtime/bootstrap` | worker bootstrap entrypoint |
+| `@elizaos/plugin-remote-manifest/worker-runtime/error` | wire error serialization helpers |
+| `@elizaos/plugin-remote-manifest/worker-runtime/runtime-proxy` | worker-side runtime proxy |
+| `@elizaos/plugin-remote-manifest/sub-agent-claude-code` | reference Claude Code sub-agent plugin descriptor |
+| `@elizaos/plugin-remote-manifest/sub-agent-claude-code/worker` | reference Claude Code sub-agent worker entry |
 
 ### Core types
 

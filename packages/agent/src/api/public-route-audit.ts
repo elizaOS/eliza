@@ -10,7 +10,6 @@
  * `UPDATE_PUBLIC_ROUTE_BASELINE=1`).
  */
 
-import type { Dirent } from "node:fs";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,8 +34,13 @@ const SKIP_FILE = /\.(test|spec|d)\.tsx?$/;
 // string; excluding them keeps the audit from matching itself.
 const SELF = "public-route-audit";
 
+type WalkDirent = {
+  name: string;
+  isDirectory(): boolean;
+};
+
 function* walk(dir: string): Generator<string> {
-  let entries: Dirent<string>[];
+  let entries: WalkDirent[];
   try {
     entries = readdirSync(dir, { encoding: "utf8", withFileTypes: true });
   } catch {

@@ -178,6 +178,6 @@ bun run --cwd plugins/plugin-cli-inference build
 - **Double-activation guard.** `ELIZA_CHAT_VIA_CLI=claude` + `ELIZA_ENABLE_CLAUDE_STEALTH` both set throws in `init()` (two colliding claude routes). The guard lives in THIS plugin because `credentials.ts` is skip-worktree on the live branch.
 - **Isolated cwd per call.** Created with `mkdtemp` under `tmpdir()`, validated by `resolveSafeCwd`, removed in a `finally`. Keeps the CLI out of real projects (suppresses Claude Code repo-context identity).
 - **`/dev/null` stdin is REQUIRED** — without it the CLI waits ~3s for stdin.
-- **sandbox.ts is a copy.** Keep in sync with `packages/plugin-sub-agent-claude-code/src/sandbox.ts` if `SENSITIVE_ENV_RE` / `SAFE_ENV_KEYS` change upstream.
+- **sandbox.ts is a copy.** Keep in sync with `packages/plugin-remote-manifest/src/sub-agent-claude-code/sandbox.ts` if `SENSITIVE_ENV_RE` / `SAFE_ENV_KEYS` change upstream.
 - **Multi-account/AccountPool failover is OUT of v1** — the CLI owns one on-disk cred set. Single-token chat-inference is a documented gap.
 - See the root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
