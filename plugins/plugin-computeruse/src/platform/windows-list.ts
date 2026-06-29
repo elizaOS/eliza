@@ -15,6 +15,7 @@ import {
   validateInt,
   validateWindowId,
 } from "./helpers.js";
+import { psSpawnTimeoutMs } from "./windows-timeouts.js";
 
 function escapeAppleScriptString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -285,9 +286,14 @@ function listWindowsLinux(): WindowInfo[] {
 
 function listWindowsWindows(): WindowInfo[] {
   try {
+    // 15s (matching the capture/clipboard budgets) so a cold `powershell.exe`
+    // spawn under Defender real-time scanning (~11.6s measured, #9581) doesn't
+    // ETIMEDOUT and silently return [] — the documented "listWindows() returns
+    // 0 on a Defender-heavy host" failure. Raisable via
+    // ELIZA_COMPUTERUSE_PS_TIMEOUT_MS for extreme hosts.
     const output = execSync(
       `powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object Id, MainWindowTitle | ConvertTo-Json"`,
-      { encoding: "utf-8", timeout: 10000 },
+      { encoding: "utf-8", timeout: psSpawnTimeoutMs(15000) },
     );
     const parsed = JSON.parse(output);
     const list = Array.isArray(parsed) ? parsed : [parsed];
@@ -353,7 +359,7 @@ export function getActiveWindow(): WindowInfo | null {
         `powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`,
         {
           encoding: "utf-8",
-          timeout: 8000,
+          timeout: psSpawnTimeoutMs(8000),
           stdio: ["ignore", "pipe", "ignore"],
         },
       ).trim();
@@ -486,8 +492,14 @@ export function getWindowBounds(windowId?: string): ScreenRegion {
     `;
     // 10s: the first Add-Type call JIT-compiles the P/Invoke shim (cold csc),
     // which can exceed the 5s used elsewhere when the box is under load.
-    const out = runCommand("powershell", ["-Command", ps], 10000).trim();
-    const [left, top, right, bottom] = out.split(",").map((v) => Number(v.trim()));
+    const out = runCommand(
+      "powershell",
+      ["-Command", ps],
+      psSpawnTimeoutMs(10000),
+    ).trim();
+    const [left, top, right, bottom] = out
+      .split(",")
+      .map((v) => Number(v.trim()));
     if ([left, top, right, bottom].some((n) => !Number.isFinite(n))) {
       throw new Error(`Could not read window bounds for: ${id}`);
     }
@@ -537,7 +549,7 @@ export function focusWindow(windowId: string): void {
       if (-not $proc) { throw "Window not found: ${commandId}" }
       [Win32.Win32]::SetForegroundWindow($proc.MainWindowHandle)
     `;
-    runCommand("powershell", ["-Command", ps], 5000);
+    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
   }
 }
 
@@ -620,7 +632,7 @@ function setWindowBounds(
       if (-not $proc) { throw "Window not found: ${commandId}" }
       [Win32.Win32]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, ${safeX}, ${safeY}, ${widthArg}, ${heightArg}, ${noSizeFlag})
     `;
-    runCommand("powershell", ["-Command", ps], 5000);
+    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
     return;
   }
 
@@ -731,7 +743,7 @@ export function minimizeWindow(windowId: string): void {
       if (-not $proc) { throw "Window not found: ${commandId}" }
       [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 6)
     `;
-    runCommand("powershell", ["-Command", ps], 5000);
+    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
   }
 }
 
@@ -765,7 +777,7 @@ export function maximizeWindow(windowId: string): void {
       if (-not $proc) { throw "Window not found: ${commandId}" }
       [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 3)
     `;
-    runCommand("powershell", ["-Command", ps], 5000);
+    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
   }
 }
 
@@ -804,7 +816,7 @@ export function restoreWindow(windowId: string): void {
       if (-not $proc) { throw "Window not found: ${commandId}" }
       [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 9)
     `;
-    runCommand("powershell", ["-Command", ps], 5000);
+    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
   }
 }
 
@@ -831,7 +843,7 @@ export function closeWindow(windowId: string): void {
   } else if (os === "win32") {
     const commandId = resolveWindowCommandId(windowId);
     const ps = `Stop-Process -Id ${commandId} -ErrorAction SilentlyContinue`;
-    runCommand("powershell", ["-Command", ps], 5000);
+    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
   }
 }
 
@@ -969,7 +981,7 @@ export function getScreenSize(): ScreenSize {
     try {
       const output = execSync(WINDOWS_PRIMARY_SCREEN_SIZE_COMMAND, {
         encoding: "utf-8",
-        timeout: 5000,
+        timeout: psSpawnTimeoutMs(5000),
       });
       const bounds = JSON.parse(output);
       if (

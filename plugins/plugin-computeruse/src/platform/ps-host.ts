@@ -44,13 +44,21 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
+import { psSpawnTimeoutMs } from "./windows-timeouts.js";
 
 /** Per-process nonce so request tokens can never collide with script output. */
 const NONCE = `${process.pid.toString(36)}-${Date.now().toString(36)}`;
 let seq = 0;
 
-/** Startup budget for the (one-time) cold spawn + warmup ping. */
-const STARTUP_TIMEOUT_MS = 25_000;
+/**
+ * Startup budget for the (one-time) cold spawn + warmup ping. Raisable on
+ * extreme Defender-heavy hosts via `ELIZA_COMPUTERUSE_PS_TIMEOUT_MS` — resolved
+ * through {@link psSpawnTimeoutMs} at each use so it tracks the same floor as
+ * the per-request capture/clipboard budgets.
+ */
+const STARTUP_TIMEOUT_BASE_MS = 25_000;
+const startupTimeoutMs = (): number =>
+  psSpawnTimeoutMs(STARTUP_TIMEOUT_BASE_MS);
 /** After this many consecutive startup failures, stop trying for the session. */
 const MAX_START_FAILURES = 2;
 
@@ -223,7 +231,7 @@ async function ensureHost(): Promise<void> {
     child.once("error", onChildGone);
     host = child;
     // Warmup ping — proves the loop is reading and the process is hot.
-    await sendRaw("$null", STARTUP_TIMEOUT_MS);
+    await sendRaw("$null", startupTimeoutMs());
   })();
   try {
     await starting;
@@ -302,7 +310,7 @@ export function warmPsHost(): Promise<void> {
   // (e.g. a service (re)start after a prior dispose).
   spawnAllowed = true;
   if (!psHostAvailable()) return Promise.resolve();
-  return runPsHost("$null", STARTUP_TIMEOUT_MS).then(
+  return runPsHost("$null", startupTimeoutMs()).then(
     () => {},
     () => {},
   );

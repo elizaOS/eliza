@@ -18,13 +18,17 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { commandExists, currentPlatform } from "./helpers.js";
 import { psHostAvailable, runPsHost } from "./ps-host.js";
+import { psSpawnTimeoutMs } from "./windows-timeouts.js";
 
 // 15s to match the capture/screenshot spawn budgets. On Defender-heavy Windows
 // hosts a cold `powershell.exe` 5.1 spawn (Set-Clipboard/Get-Clipboard) can take
 // >5s under real-time AV scanning (measured ~11s on a build box), which made the
 // previous 5s budget false-fail the clipboard round-trip while the capability
-// itself was fine. See #9581 (Windows on-device CUA verification).
-const CLIPBOARD_TIMEOUT_MS = 15_000;
+// itself was fine. See #9581 (Windows on-device CUA verification). Raisable on
+// extreme hosts via `ELIZA_COMPUTERUSE_PS_TIMEOUT_MS` (psSpawnTimeoutMs floor).
+const CLIPBOARD_TIMEOUT_BASE_MS = 15_000;
+const clipboardTimeoutMs = (): number =>
+  psSpawnTimeoutMs(CLIPBOARD_TIMEOUT_BASE_MS);
 const CLIPBOARD_MAX_BYTES = 10 * 1024 * 1024; // 10 MiB cap
 
 export class ClipboardUnavailableError extends Error {
@@ -110,7 +114,7 @@ export async function readClipboard(): Promise<string> {
   // Defender). Same `Get-Clipboard -Raw` command; falls back to one-shot spawn.
   if (psHostAvailable()) {
     try {
-      return await runPsHost("Get-Clipboard -Raw", CLIPBOARD_TIMEOUT_MS);
+      return await runPsHost("Get-Clipboard -Raw", clipboardTimeoutMs());
     } catch {
       /* warm host unavailable/errored — fall back to one-shot spawn */
     }
@@ -118,7 +122,7 @@ export async function readClipboard(): Promise<string> {
   const plan = pickPlan();
   // encoding: "utf-8" forces the typed return to string.
   const out = execFileSync(plan.read.command, [...plan.read.args], {
-    timeout: CLIPBOARD_TIMEOUT_MS,
+    timeout: clipboardTimeoutMs(),
     maxBuffer: CLIPBOARD_MAX_BYTES,
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -148,7 +152,7 @@ export async function writeClipboard(text: string): Promise<void> {
       const b64 = Buffer.from(text, "utf-8").toString("base64");
       await runPsHost(
         `Set-Clipboard -Value ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64}')))`,
-        CLIPBOARD_TIMEOUT_MS,
+        clipboardTimeoutMs(),
       );
       return;
     } catch {
@@ -158,7 +162,7 @@ export async function writeClipboard(text: string): Promise<void> {
   const plan = pickPlan();
   const result = spawnSync(plan.write.command, [...plan.write.args], {
     input: text,
-    timeout: CLIPBOARD_TIMEOUT_MS,
+    timeout: clipboardTimeoutMs(),
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
   });
