@@ -193,28 +193,57 @@ deferrals, and rationale live in issue #8876.
 
 Every fix/feature ships through a **PR against `develop`**, and a reviewer must
 be able to confirm it works **without reading the code**. Full standard:
-`PR_EVIDENCE.md`. The non-negotiables:
+[`PR_EVIDENCE.md`](PR_EVIDENCE.md) — read it; it is binding. **The same standard
+is restated in every package's `CLAUDE.md` / `AGENTS.md` and is non-negotiable.**
+
+**The three laws of "done"** (the whole standard expands these):
+
+1. **Prove the real thing happened — and look at it yourself.** Record the
+   actual model trajectories (inputs *and* outputs from a **live** model, not the
+   proxy, not a mock), the real client + server logs, the real pixels/audio, and
+   the real domain artifacts (memories, knowledge, DB rows, scheduled tasks,
+   wallet balance, on-chain results, generated files). Then **open every artifact
+   and review it by hand.** Capturing is not reviewing; green CI is not proof.
+2. **Test everything for real — no larp.** Every change ships detailed,
+   full-featured **end-to-end** tests that drive the *real* path — not the happy
+   "front door" only. Cover error paths, edges, empty/invalid input, concurrency,
+   roles/permissions, and adversarial input. A test asserting against a
+   mock/stub standing in for the thing under test does **not** count; if the real
+   model/device/chain/connector is hard to reach, make it reachable — that's the
+   work. If the existing tests you touch are shallow or mocked, fixing them is
+   part of your change. (See the standing backlog: #9943, #9950, #9954, #9958,
+   #9967, #9970.)
+3. **No residuals, no shortcuts.** The goal is not "done," it is *everything*
+   done. Clear blockers by the **hard path** — build the real architecture, stand
+   up the real model/device/service, actually test it. No TODOs, stubs,
+   stepping-stones, or "follow-ups." When unsure, research, weigh options, and
+   ship the best production-ready version. Keep going until every possibility is
+   exhausted.
+
+The non-negotiables in practice:
 
 - **Always PR; never push feature/fix work straight to `develop`.** Branch as
   `feat|fix|docs|chore/<slug>`; open an issue first for anything non-trivial.
 - **Always sync before opening or updating a PR.** `git fetch origin &&
   git rebase origin/develop`, resolve **every** conflict, `bun install`, then
   `bun run verify`. A branch that can't fast-forward onto `develop` is not ready.
-- **Attach complete, real evidence** — prove the real thing happened, not a
-  mock of it:
+- **Attach complete, real, manually-reviewed evidence** — prove the real thing
+  happened, not a mock of it:
   - **Real-LLM trajectories** for agent/action/prompt/model changes —
     `packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`
-    against a **live** model (JSON report + run viewer + native jsonl).
+    against a **live** model (JSON report + run viewer + native jsonl) — **and
+    read them.**
   - **Backend logs** (structured `[ClassName] …`) and **frontend logs**
-    (console + network) showing the actual code path.
-  - **Before/after full-page screenshots** + a **video walkthrough** of the
-    flow — `bun run test:e2e:record`; for app UI,
+    (console + network) showing the actual code path firing.
+  - **Before/after full-page screenshots** (desktop + mobile) + a **video
+    walkthrough** of the whole flow — `bun run test:e2e:record`; for app UI,
     `bun run --cwd packages/app audit:app`.
   - **Per-platform capture** (screenshot + recording + logs) for native/mobile/
     desktop changes — `bun run --cwd packages/app capture:ios-sim` /
     `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`,
-    electrobun `GET /api/dev/cursor-screenshot`. Full surface→command matrix in
-    `PR_EVIDENCE.md`.
+    electrobun `GET /api/dev/cursor-screenshot`. Run native features on the real
+    device/simulator/platform matrix, not mocked-bridge desktop Chromium. Full
+    surface→command matrix in `PR_EVIDENCE.md`.
   - **Always build + deploy the latest before capturing.** Capture helpers
     screenshot whatever is **already installed/running** — they do not build.
     Before any on-device/simulator/desktop capture, rebuild and redeploy the
@@ -224,6 +253,9 @@ be able to confirm it works **without reading the code**. Full standard:
     the running build is yours (`versionName` / a known on-screen change) — a
     screenshot of a stale install proves nothing.
   - **Audio + narrated walkthrough** for voice/transcript/TTS/STT changes.
+  - **Domain artifacts** — the things the change produced (memory/knowledge/DB
+    rows, scheduled tasks, wallet balance before/after, on-chain tx hashes,
+    generated files, device output) — inspected by hand and shown.
   - Artifacts land in `.github/issue-evidence/<issue#>-<slug>.<ext>` (see that
     dir's `README.md`). Each evidence type is attached **or** explicitly marked
     N/A with a reason — never left blank. If `develop` moved and changed

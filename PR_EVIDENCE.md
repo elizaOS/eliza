@@ -9,6 +9,26 @@ and plugin. The bar is simple to state:
 
 If a human can't verify it from the evidence, it isn't done.
 
+## The three laws of "done"
+
+Everything below expands these. If you remember nothing else, remember these:
+
+1. **Prove the real thing happened — and look at it yourself.** Record the
+   actual model trajectories (inputs *and* outputs), the real logs, the real
+   pixels, the real on-chain/DB/memory state — from a **live** system, never a
+   mock asserting itself green. Then **open every artifact and review it by
+   hand.** Capturing is not reviewing; a green check is not proof.
+2. **Test everything for real — no larp.** Every change ships detailed,
+   full-featured end-to-end tests that drive the *real* path. Not the happy
+   "front door" — error paths, edges, empty/invalid input, concurrency,
+   roles/permissions, and adversarial input. A test that asserts against a
+   mock/stub/fixture standing in for the thing under test does not count.
+3. **No residuals, no shortcuts.** The goal is not "done," it is *everything*
+   done. Clear blockers by the hard path — build the real architecture, stand
+   up the real model/device/service, actually test it. No TODOs, no stubs, no
+   stepping-stones, no "follow-ups." Keep going until every possibility is
+   exhausted.
+
 ---
 
 ## 1. Always ship through a PR
@@ -57,13 +77,33 @@ leave it blank.
 | **Real LLM-call trajectory** | agent behavior, actions, providers, prompts, models | `scenario-runner` against a **live** LLM (not the deterministic proxy) — JSON report + run viewer + native jsonl | scenario report path + `.github/issue-evidence/` |
 | **Backend logs** | runtime, API, services, schedulers | structured logger output (`[ClassName] …`) showing the code path firing end to end | paste in PR + file in `.github/issue-evidence/` |
 | **Frontend logs** | any UI / client | browser console + network trace showing the request/response and state change | paste in PR + screenshot |
-| **Full-page screenshots** | any UI / client surface | the per-platform matrix below; before **and** after for the touched surface | `.github/issue-evidence/` |
-| **Video walkthrough** | any user-facing flow | the per-platform matrix below; a full click-through of the feature | `.github/issue-evidence/` (link if large) |
-| **Audio/voice walkthrough** | voice, transcript, TTS/STT, omnivoice | captured audio of the real round-trip + a narrated walkthrough of what's happening | `.github/issue-evidence/` (link if large) |
+| **Full-page screenshots** | any UI change | `audit:app` (app) / `audit:cloud` (cloud-frontend) or `test:e2e:record` sheets; before **and** after; desktop **and** mobile; portrait **and** landscape | `.github/issue-evidence/` |
+| **Video walkthrough** | any user-facing flow | `bun run test:e2e:record` (records the run) — a full click-through of the feature, start to finish | `.github/issue-evidence/` (link if large) |
+| **Audio/voice walkthrough** | voice, transcript, TTS/STT, omnivoice | captured audio of the real round-trip + a narrated walkthrough | `.github/issue-evidence/` (link if large) |
+| **Domain artifacts** | memory, knowledge, DB, wallet/chain, scheduled tasks, files, devices | the *things the change produced* — memory rows, embeddings, knowledge, DB rows, scheduled-task records, relationships, wallet balance before/after, on-chain tx hashes + explorer links, generated files, device output — inspected by hand | paste/screenshot in PR + `.github/issue-evidence/` |
 
-The point of all six is the same: **prove the real thing happened.** Real model
-calls, real log lines, real pixels, real audio — not a description of what
-should happen, not a unit test asserting a mock.
+The point of all of them is the same: **prove the real thing happened.** Real
+model calls, real log lines, real pixels, real audio, real chain/DB/memory
+state — not a description of what should happen, not a unit test asserting a
+mock.
+
+### Capturing is not reviewing
+
+Producing an artifact is half the job. The other half is **opening it and
+checking it with your own eyes**, and saying in the PR what you saw:
+
+- **Trajectories:** read the prompt, the providers/context, the raw model
+  output, and every tool/action call. Did the model actually do the thing, for
+  the right reason, with the right arguments? A captured-but-unread trajectory
+  is not evidence.
+- **Logs:** confirm the *specific* code path fired (the `[ClassName] …` lines
+  you expect), not just that the process ran.
+- **Screenshots/video:** confirm the real states render — empty, loading,
+  error, and permission-denied, not only the populated happy path.
+- **Domain artifacts:** open the DB rows / memories / knowledge / scheduled
+  tasks / wallet balance / on-chain result and confirm the shape and values are
+  what the feature claims. "The test passed" tells you nothing about whether the
+  *data* is correct.
 
 ### The tools that produce this evidence (all already in the repo)
 
@@ -79,60 +119,17 @@ bun run test:e2e:record                  # scripts/e2e-recordings/run-all.mjs
 bun run test:e2e:record:sheets           # regenerate contact sheets + viewer
 bun run test:e2e:audit-ui                # coverage of which routes are recorded
 
-# Native mobile simulator/emulator captures (screenshots + recordings + logs):
-EVIDENCE_ISSUE=<issue#> bun run test:e2e:record -- --packages=ios-sim
-EVIDENCE_ISSUE=<issue#> bun run test:e2e:record -- --packages=android-emu
+# App per-route screenshots (desktop + mobile, rest + hover), with a
+# manual-review verdict stub per page — REQUIRED for app UI changes:
+bun run --cwd packages/app audit:app
 
-# Cloud-frontend per-route screenshots (desktop + mobile, rest + hover), with a
-# manual-review verdict stub per page — REQUIRED for cloud-frontend UI changes:
-bun run --cwd packages/cloud-frontend audit:cloud
+# Per-platform capture for native/mobile/desktop changes (build + redeploy
+# first — these screenshot whatever is already installed, they do not build):
+bun run --cwd packages/app capture:ios-sim
+bun run --cwd packages/app capture:android-emu
+bun run --cwd packages/app capture:linux-desktop
+bun run --cwd packages/app capture:windows-desktop
 ```
-
-### Per-platform capture matrix
-
-Screenshot **+** recording **+** logs are the default-required set for any change
-that touches a runnable surface — pick the row(s) for the platform(s) your change
-actually runs on. "N/A" is allowed only with an explicit reason (a platform you
-did not touch), never a blank. Rows marked **partial** still need the missing
-evidence captured manually and called out in the PR until full tooling lands.
-
-| Platform | One command (screenshot + recording + logs) | Status |
-| --- | --- | --- |
-| web (browser) | `bun run test:e2e:record` (Playwright video + screenshots) + paste console/network | ready |
-| cloud-frontend | `bun run --cwd packages/cloud-frontend audit:cloud` (desktop + mobile, rest + hover) | ready |
-| app shell (web/desktop views) | `bun run --cwd packages/app audit:app` (all views, desktop + mobile, rest + hover) | ready |
-| desktop (electrobun) | during `bun run dev:desktop`: `curl -s http://127.0.0.1:$ELIZA_API_PORT/api/dev/cursor-screenshot -o shot.png` + `GET /api/dev/console-log?maxLines=400` (loopback; screenshot only — no recording yet) | partial |
-| ios-sim | `bun run --cwd packages/app capture:ios-sim -- --issue <n> --slug <s>` (`simctl io` screenshot + recordVideo + backend log) | ready |
-| android-emu | `bun run --cwd packages/app capture:android-emu -- --issue <n> --slug <s>` (`adb` screencap + screenrecord + logcat) | ready |
-| linux-desktop | `bun run --cwd packages/app capture:linux-desktop -- --issue <n> --slug <s>` (ffmpeg `x11grab` screenshot + recording + info log) | ready |
-| windows-desktop | `bun run --cwd packages/app capture:windows-desktop -- --issue <n> --slug <s>` (ffmpeg `gdigrab` screenshot + recording + info log) | ready |
-
-The `ios-sim` / `android-emu` / `linux-desktop` / `windows-desktop` helpers write
-`<issue#>-<slug>-<platform>.{png,mov/mp4,log}` into `.github/issue-evidence/` and
-**skip with a reason (exit 0)** when the platform/tooling is absent, so they are
-safe inside `bun run test:e2e:record` (the sim/emu ones are registered suites in
-`scripts/e2e-recordings/suites.mjs`).
-
-#### Build and deploy the latest build BEFORE you capture — never screenshot a stale install
-
-A capture helper screenshots whatever is **currently installed / running** — it
-does **not** build or deploy your change. Screenshotting a stale install (or an
-old dev server) proves nothing. Before capturing on any platform, build the
-current tree and push it to the target:
-
-| Platform | Build + deploy the latest, then capture |
-| --- | --- |
-| android-emu / device | `bun run --cwd packages/app build:android && bun run --cwd packages/app install:android:adb` (build APK → `adb install -r`), then `capture:android-emu` |
-| ios-sim | `bun run --cwd packages/app build:ios && bun run --cwd packages/app cap:sync:ios` → install to the booted sim, then `capture:ios-sim` |
-| desktop (electrobun) | rebuild the desktop shell so it loads the current `dist` (`bun run build` / the packaged desktop build), relaunch, then `capture:linux-desktop` / `capture:windows-desktop` |
-| web / cloud-frontend | the `test:e2e:record` / `audit:cloud` / `audit:app` harness builds + serves the current tree itself — no separate deploy |
-
-A Capacitor app bundles the web assets **into the APK/IPA at build time**, so a
-renderer change only reaches the device after a fresh `build:android` /
-`build:ios` (cap sync) **and reinstall** — restarting the old app will **not**
-pick it up. Always confirm the running build is yours (check `versionName` or a
-known on-screen change, e.g. `adb shell dumpsys package ai.elizaos.app | grep
-versionName`) before trusting any on-device screenshot.
 
 ### Where artifacts live
 
@@ -144,37 +141,103 @@ versionName`) before trusting any on-device screenshot.
   proof.
 - E2E recordings/sheets: under the recordings dir produced by
   `test:e2e:record`; link or embed the relevant frames.
-- Native mobile capture helpers also copy canonical PR artifacts under
-  `.github/issue-evidence/<issue#>-ios-sim-capture/` or
-  `.github/issue-evidence/<issue#>-android-emu-capture/`, and mirror a compact
-  bundle under `e2e-recordings/<platform>/test-results/native-capture/`.
-- Cloud-frontend audit: `packages/cloud-frontend/aesthetic-audit-output/`
-  (fill `manual-review/<slug>.md` per page — no page may stay `needs-work` /
+- App audit: `packages/app/aesthetic-audit-output/` (fill
+  `manual-review/<slug>.md` per page — no page may stay `needs-work` /
   `broken`).
 
 Large media (video/audio) that doesn't belong in git: upload it and put the
 link in the PR body, but keep a representative still/clip in `issue-evidence/`
 so the proof survives even if the link rots.
 
-## 4. Completeness & carefulness gate (before you mark a PR ready)
+## 4. Real tests — no larp, no front-door-only
+
+A passing test suite is necessary, not sufficient. Green CI does **not**
+guarantee tested (see the standing backlog: #9943, #9950, #9954, #9958, #9967,
+#9970). The tests you ship must be **real** and **thorough**:
+
+- **Exercise the real thing, not a mock of it.** A test that swaps the model,
+  device, chain, connector, or DB for a stub and then asserts the stub responded
+  is not a test of your feature — it is a test of your mock. If the real
+  dependency is hard to reach, *make it reachable*: that is the work.
+- **Assert outcomes, not routing.** "An action was selected" / "the request was
+  forwarded" is not the same as "the right thing happened." Assert the resulting
+  state, output, and side effects.
+- **Cover the whole surface, not the front door.** Happy path **and** error
+  paths, empty/invalid/oversized input, concurrency and races, role/permission
+  gating (including the denied path), timeouts/retries/rate-limits, and
+  adversarial input. Fuzz where interleaving matters.
+- **Make the test gate the PR.** A spec that exists but never runs on the PR
+  path, or a coverage floor that is "advisory," is not protection. Wire it into
+  the lane that actually blocks merge.
+- **On-device / cross-platform means on-device / cross-platform.** A native or
+  voice feature "tested" only in desktop Chromium against a mocked bridge, or
+  only on Linux-x64-synthetic audio, is unverified. Run it on the real device /
+  simulator / platform matrix.
+
+If you discover the existing tests for the area you touched are shallow or
+mocked, **fixing them is part of your change**, not a separate ticket.
+
+## 5. No residuals — finish the whole thing
+
+The goal is not "my part is done." The goal is *everything* done.
+
+- **No TODOs, stubs, stepping-stones, or "follow-ups" left behind.** If it needs
+  doing for the feature to be real, do it now.
+- **Resolve blockers by the hard path.** If the model isn't wired up, wire it
+  up. If the architecture is wrong, fix the architecture. If the thing can't be
+  tested, make it testable. Don't route around a blocker with a mock or a
+  narrower scope.
+- **When in doubt, research, weigh, and ship the best version.** Don't guess and
+  don't ship the first thing that compiles. Investigate the options, pick the
+  highest-effort production-ready one, and build that — not a placeholder you
+  intend to replace later.
+- **Clean up what you touched.** Dead code, orphaned widgets, stale config, and
+  half-migrations are residuals. Remove them.
+
+## 6. Completeness & carefulness gate (before you mark a PR ready)
 
 - [ ] Branch rebased/merged onto the **latest** `origin/develop`; **zero conflicts**.
 - [ ] `bun run verify` (typecheck + lint) passes.
-- [ ] Relevant tests pass (`bun run test`, or the scoped `--cwd <pkg> test`).
-- [ ] For agent/LLM behavior: a **real-LLM** trajectory is attached and matches the claim.
-- [ ] Backend and/or frontend logs attached, showing the actual code path.
-- [ ] For each platform the change runs on (web/cloud-frontend/app/desktop/ios-sim/android-emu/linux/windows): screenshot **+** recording **+** logs are attached via the [per-platform matrix](#per-platform-capture-matrix) command, or N/A with a reason.
+- [ ] Relevant tests pass (`bun run test`, or the scoped `--cwd <pkg> test`) — and they are **real** tests per §4, not mocks asserting themselves.
+- [ ] For agent/LLM behavior: a **real-LLM** trajectory is attached **and you read it**, and it matches the claim.
+- [ ] Backend and/or frontend logs attached, showing the actual code path firing.
+- [ ] For UI: before/after full-page screenshots (desktop + mobile) + a video walkthrough; non-happy states shown.
 - [ ] For voice/audio: captured audio of the real round-trip + a narrated walkthrough.
+- [ ] For native/on-device: captured on the real device/simulator/platform matrix, build confirmed as yours.
+- [ ] **Domain artifacts** (memory/knowledge/DB/scheduled-task/wallet/on-chain/files) inspected by hand and shown.
 - [ ] Every evidence row above is either attached **or** explicitly marked N/A with a reason.
+- [ ] No residuals: no TODOs/stubs/stepping-stones/dead code left; blockers resolved, not routed around.
 - [ ] The PR description tells a reviewer exactly what to watch/read to confirm it — no code-reading required.
 - [ ] If `develop` moved and changed behavior, evidence was **re-captured**, not reused.
 
-## 5. Why this exists
+## 7. Per-area evidence cheat-sheet
+
+What to capture and manually review, by the kind of thing you changed. This is
+the same taxonomy the per-package `CLAUDE.md` / `AGENTS.md` files point back to.
+
+| If you changed… | Capture & review (beyond logs + tests) |
+| --- | --- |
+| **Runtime / core / agent loop** | live-LLM trajectory of provider→model→action→evaluator; memory/state rows + embeddings written; task-scheduler firing logs; `build:node` vs full `build` for shared modules |
+| **A model provider plugin** | live call trajectory (request, raw response, tokens, finish reason, streamed chunks); tool-calling + structured-output parse; bad-key / model-not-found / oversized-context / rate-limit paths; latency + cost |
+| **A connector plugin** | real (or sandbox) round-trip: inbound payload → agent → outbound reply, as logs **and** a recording/screenshot of the conversation; attachments/threads/edits/multi-account/error paths; the turn's trajectory |
+| **A native / on-device bridge** | run on a real device/simulator (not mocked-bridge Chromium — #9967/#9580): device logs + captured output (photo/OCR/boxes/transcript/sensor); parity vs reference; permission-denied + lifecycle paths; a recording, build confirmed as yours |
+| **Voice / audio** | captured audio of the STT→TTS round-trip + transcript + narrated walkthrough; latency/barge-in/wake-word on real audio across platforms (not Linux-synthetic only — #9958); failure paths (no mic, silence, noise, overlap, mid-stream drop) |
+| **Wallet / chain / contracts** | tx hash(es) + explorer link, wallet balance before/after, signed-payload trail on a testnet/fork; revert/insufficient-funds/nonce/gas paths; signature-authorization checks; the initiating trajectory — never a mocked RPC |
+| **UI surface** | before/after full-page screenshots (desktop+mobile, portrait+landscape, rest+hover); video walkthrough; console+network logs; empty/loading/error/permission states; per-view verdict (no `needs-work`/`broken`) |
+| **Cloud backend** | real request→response against `bun run cloud:mock`; DB rows (Drizzle), billing/usage records, migration up **and** down; auth/role + multi-tenant isolation incl. denied paths (#9853/#9948); endpoint trajectory |
+| **Storage / memory** | the actual rows/embeddings/documents written and read back, shape inspected; query precision/recall, ordering, pagination, migration up/down; GC/retention, concurrency, large-payload paths; recall into a real turn |
+| **Benchmark / eval harness** | real-model run (not the mock fixture) → score report JSON inspected, provider/model recorded; per-item trajectories spot-reviewed; provider matrix exercised; scoring math validated; harness's own e2e against a real runtime (assert outcomes, not routing — #9970) |
+| **Agent-behavior / app plugin** | live-LLM trajectory asserting the **outcome** not routing (#9970); artifacts created (memories/knowledge/scheduled tasks/relationships/documents/outputs) inspected; runner/action/service `[ClassName]` logs; empty-state + adversarial paths |
+| **CLI / tooling** | real invocation transcript (args, stdout/stderr, exit code) + generated artifacts; bad-args/missing-deps/partial-state/permission/network failure paths; a recording of the run |
+| **OS / device images** | exercised on real hardware/emulator: boot/setup/install logs + recording, running build confirmed; native×view matrix run on-device (Kotlin/Swift, not mocked-bridge Chromium — #9967); recovery/failure paths |
+| **Docs / marketing site** | site built and changed pages rendered (before/after, desktop+mobile); link/redirect checks that resolve; embedded examples that actually run |
+
+## 8. Why this exists
 
 elizaOS ships autonomous-agent behavior across a runtime, a cloud, native
 bridges, and dozens of plugins. Most regressions are behavioral, not type
 errors — they pass CI and fail in the real loop. Recorded trajectories, real
-logs, and walkthrough media are how we make behavior **observable and
-reviewable** by a human in seconds, and how we build the corpus that trains and
-evaluates the agent. Treat the evidence as part of the change, not paperwork
-after it.
+logs, walkthrough media, and inspected domain artifacts are how we make behavior
+**observable and reviewable** by a human in seconds, and how we build the corpus
+that trains and evaluates the agent. Treat the evidence — and the manual review
+of it — as part of the change, not paperwork after it.
