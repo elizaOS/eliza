@@ -59,28 +59,28 @@ export interface OcSqliteStore {
 export interface OcAgentSource {
   agentId: string;
   home: string;
-  /** SOUL.md — core voice/values. */
+  /** SOUL.md - core voice/values. */
   soul?: string;
-  /** IDENTITY.md — name/vibe/appearance/personality. */
+  /** IDENTITY.md - name/vibe/appearance/personality. */
   identity?: string;
-  /** AGENTS.md — behavioral + ops rules. */
+  /** AGENTS.md - behavioral + ops rules. */
   agents?: string;
-  /** USER.md — about the human. FIREWALLED (personal). */
+  /** USER.md - about the human. FIREWALLED (personal). */
   user?: string;
-  /** TOOLS.md — infra/keys/notes → plugin config, NOT persona. */
+  /** TOOLS.md - infra/keys/notes → plugin config, NOT persona. */
   tools?: string;
   /** MEMORY.md (or legacy memory.md): curated long-term memory. */
   curatedMemory?: string;
   /** Which root-memory filename was found ("MEMORY.md" | "memory.md" | undefined). */
   curatedMemoryFile?: string;
-  /** HEARTBEAT.md — heartbeat checklist. */
+  /** HEARTBEAT.md - heartbeat checklist. */
   hbSignal?: string;
-  /** <agent>-awareness.md — live open-threads / relationship state. */
+  /** <agent>-awareness.md - live open-threads / relationship state. */
   awareness?: string;
-  /** memory/YYYY-MM-DD.md — daily logs, sorted newest-first. */
+  /** memory/YYYY-MM-DD.md - daily logs, sorted newest-first. */
   dailyLogs: OcDailyLog[];
   /**
-   * memory/<named>.md — non-daily memory files (journals, playbooks, channel
+   * memory/<named>.md - non-daily memory files (journals, playbooks, channel
    * guides, project/routine docs). Keyed by basename.
    */
   namedMemory: OcNamedMemory[];
@@ -126,7 +126,7 @@ function readIfPresent(p: string): string | undefined {
  * Resolve the effective agent root: the first of `<home>`, `<home>/workspace`,
  * `<home>/workspace.default` that contains any recognizable persona file or a
  * `memory/` dir. Falls back to `<home>` if none match (so missing-home behavior
- * is preserved — an empty source, not a throw).
+ * is preserved - an empty source, not a throw).
  */
 function resolveAgentRoot(home: string): string {
   const PERSONA_FILES = ["SOUL.md", "IDENTITY.md", "AGENTS.md", "MEMORY.md", "memory.md"];

@@ -1,5 +1,5 @@
 /**
- * `elizaos migrate-agent` — migrate a file-based OCPlatform agent onto Eliza.
+ * `elizaos migrate-agent` - migrate a file-based OCPlatform agent onto Eliza.
  *
  * Reads an OpenClaw agent home (SOUL/IDENTITY/USER/AGENTS/TOOLS + memory/),
  * maps it to an Eliza Character + recency-tiered memories, and emits either:
@@ -72,7 +72,7 @@ function printPlan(plan: MigratePlan, slug: string): void {
       `daily logs seen: ${plan.summary.dailyLogsTotal}`,
       `named memory:    ${plan.summary.namedMemoryTotal}`,
       `USER.md present: ${plan.summary.hasUser}`,
-      `secrets dir:     ${plan.summary.hasSecretsDir} (not read — firewalled)`,
+      `secrets dir:     ${plan.summary.hasSecretsDir} (not read - firewalled)`,
     ].join("\n"),
     "Migration plan",
   );

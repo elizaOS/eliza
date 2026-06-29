@@ -3,12 +3,12 @@
  *
  * The key design (proven on Sol): seed RECENCY-AWARE so stale threads don't
  * resurface as live. Tiers:
- *   T1 CURRENT  — <agent>-awareness.md + last N days of daily logs → verbatim
- *   T2 LONGTERM — MEMORY.md → chunked by markdown section
- *   T3 SELF     — journal/inner-state/letter files → verbatim (the becoming)
- *   T4 OLDER    — older daily logs NOT flat-seeded; one summary marker instead
+ *   T1 CURRENT  - <agent>-awareness.md + last N days of daily logs → verbatim
+ *   T2 LONGTERM - MEMORY.md → chunked by markdown section
+ *   T3 SELF     - journal/inner-state/letter files → verbatim (the becoming)
+ *   T4 OLDER    - older daily logs NOT flat-seeded; one summary marker instead
  *
- * Embeddings are NOT computed here — the Eliza runtime adds them at import/seed
+ * Embeddings are NOT computed here - the Eliza runtime adds them at import/seed
  * time. Each Memory is content-only with a tier tag in metadata + a text prefix.
  */
 

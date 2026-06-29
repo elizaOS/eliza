@@ -5,7 +5,7 @@
  * fixed file→field mapping proven in the Sol migration:
  *   SOUL.md      → system (+ bio seed)
  *   IDENTITY.md  → bio + adjectives + style.all
- *   USER.md      → knowledge (about the human) — FIREWALLED
+ *   USER.md      → knowledge (about the human) - FIREWALLED
  *   AGENTS.md    → appended behavioral notes in system
  *   playbooks    → style.chat
  *   TOOLS.md     → intentionally NOT mapped to persona (it's infra/keys)
@@ -66,7 +66,7 @@ export function mapToCharacter(
   }
   if (opts.currentContext?.trim()) {
     systemParts.push(
-      `[CURRENT CONTEXT — keep this live, it overrides static bio facts]\n${opts.currentContext.trim()}`,
+      `[CURRENT CONTEXT - keep this live, it overrides static bio facts]\n${opts.currentContext.trim()}`,
     );
   }
   const system = systemParts.join(SYS_SEP);
@@ -80,7 +80,7 @@ export function mapToCharacter(
   // ---- style.chat: the talk playbooks (HOW to talk) ----
   const chatStyle = derivePlaybookStyle(src);
 
-  // ---- knowledge: USER.md (about the human) — FIREWALLED ----
+  // ---- knowledge: USER.md (about the human) - FIREWALLED ----
   const knowledge: Character["knowledge"] = [];
   if (!opts.firewall && src.user?.trim()) {
     knowledge.push({
@@ -169,7 +169,7 @@ function deriveBio(src: OcAgentSource, name: string): string[] {
       if (out.length >= 4) break;
     }
   }
-  if (out.length === 0) out.push(`${name} — an AI agent migrated onto Eliza.`);
+  if (out.length === 0) out.push(`${name} - an AI agent migrated onto Eliza.`);
   return out;
 }
 
