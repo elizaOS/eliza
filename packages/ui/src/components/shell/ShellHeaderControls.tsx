@@ -189,6 +189,7 @@ export function ShellHeaderControls({
       onPointerDown={(event) => event.stopPropagation()}
       style={HEADER_BUTTON_STYLE}
       data-no-camera-drag="true"
+      data-testid="shell-new-chat"
     >
       <MessageCirclePlus className="pointer-events-none h-4 w-4 shrink-0" />
       {iconOnly ? null : (

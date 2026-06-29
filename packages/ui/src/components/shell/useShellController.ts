@@ -178,6 +178,13 @@ export interface ConversationNav {
   goPrev: () => void;
   /** Select the older (next) conversation. */
   goNext: () => void;
+  /** The active conversation's id, or null when none is selected/known. */
+  activeId: string | null;
+  /** The active conversation's position in the most-recent-first list, or -1
+   *  when it isn't in the list (new/not-found). Surfaced on the chat-sheet DOM so
+   *  flows like the tutorial can observe a switch/new-chat without reaching into
+   *  controller internals. */
+  index: number;
 }
 
 /**
@@ -207,6 +214,8 @@ export function buildConversationNav(
     goNext: () => {
       if (hasNext) onSelect(list[index + 1].id);
     },
+    activeId: activeConversationId ?? null,
+    index,
   };
 }
 

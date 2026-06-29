@@ -371,6 +371,8 @@ const EMPTY_CONVERSATION_NAV: ConversationNav = {
   hasNext: false,
   goPrev: () => {},
   goNext: () => {},
+  activeId: null,
+  index: -1,
 };
 
 /**
@@ -3104,6 +3106,11 @@ export function ContinuousChatOverlay({
           data-revealed={threadPresented ? "true" : "false"}
           data-chat-state={chatState}
           data-header-shown={headerVisible ? "true" : "false"}
+          // The active conversation id + its position in the most-recent-first
+          // list, surfaced so flows like the tutorial can observe a new-chat or a
+          // swipe-between-chats without reaching into controller internals.
+          data-conversation-id={conversationNav.activeId ?? undefined}
+          data-conversation-index={conversationNav.index}
           // ONE persistent element across pill ↔ input ↔ chat (never remounts —
           // that pop was the core jank). It's a transparent scale/position
           // container; the liquid glass lives in an inner layer faded by

@@ -36,6 +36,7 @@ import { AGENT_PROVISIONING_HOME_WIDGET } from "../components/chat/widgets/agent
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
 import { FINANCES_HOME_WIDGET } from "../components/chat/widgets/finances-alerts";
+import { FTU_WELCOME_HOME_WIDGET } from "../components/chat/widgets/ftu-welcome";
 import { GOALS_HOME_WIDGET } from "../components/chat/widgets/goals-attention";
 import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
 import { INBOX_HOME_WIDGET } from "../components/chat/widgets/inbox-unread";
@@ -98,6 +99,14 @@ registerWidgetComponent(
   AGENT_PROVISIONING_HOME_WIDGET.pluginId,
   AGENT_PROVISIONING_HOME_WIDGET.id,
   AGENT_PROVISIONING_HOME_WIDGET.Component,
+);
+// First-time-user welcome card (#9959): a core FTU surface, not a loadable
+// plugin, so it's always-visible and self-retires via the sunset lifecycle once
+// the user engages or dismisses it.
+registerWidgetComponent(
+  FTU_WELCOME_HOME_WIDGET.pluginId,
+  FTU_WELCOME_HOME_WIDGET.id,
+  FTU_WELCOME_HOME_WIDGET.Component,
 );
 
 // Per-plugin frontpage widgets (#9143): each surfaces a compact, attention-
@@ -309,6 +318,22 @@ export function registerBuiltinWidgetDeclarations(
 // available client-side for zero-config rendering.
 
 export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
+  // First-time-user welcome (#9959) — guided cold-start home: greeting + tappable
+  // "try saying…" chips. Ranks at the top for a cold user (welcome weight, below
+  // approval/escalation/blocked) and retires permanently once the user engages or
+  // dismisses it (sunset lifecycle).
+  {
+    id: FTU_WELCOME_HOME_WIDGET.id,
+    pluginId: FTU_WELCOME_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Welcome",
+    icon: "Sparkles",
+    order: FTU_WELCOME_HOME_WIDGET.order,
+    defaultEnabled: true,
+    signalKinds: FTU_WELCOME_HOME_WIDGET.signalKinds,
+    size: FTU_WELCOME_HOME_WIDGET.size,
+    sunset: FTU_WELCOME_HOME_WIDGET.sunset,
+  },
   // Notifications — the first-class "default" frontpage widget (#9143).
   {
     id: "notifications.recent",
@@ -609,6 +634,10 @@ const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set([
 
 const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   "music-player",
+  // First-time-user welcome (#9959): a core FTU surface, not a loadable plugin —
+  // must render on a fresh account before any plugin snapshot arrives, and
+  // self-retires via the sunset lifecycle.
+  "welcome",
   // Notifications is a core runtime feature (NotificationService), not a
   // loadable plugin, so its frontpage widget must render regardless of the
   // plugin snapshot. (#9143). Messages was removed (#9304) — redundant with the

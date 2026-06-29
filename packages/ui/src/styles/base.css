@@ -396,6 +396,7 @@ body.platform-android * {
   --ring: var(--brand-white);
 
   --accent: var(--brand-white);
+  --accent-rgb: 255, 255, 255;
   --accent-hover: var(--brand-gray);
   --accent-foreground: var(--brand-black);
   --primary: var(--brand-white);
@@ -434,6 +435,7 @@ body.platform-android * {
   --ring: var(--brand-white);
 
   --accent: var(--brand-white);
+  --accent-rgb: 255, 255, 255;
   --accent-hover: var(--brand-gray);
   --accent-foreground: var(--brand-black);
   --primary: var(--brand-white);
@@ -472,6 +474,7 @@ body.platform-android * {
   --ring: var(--brand-black);
 
   --accent: var(--brand-black);
+  --accent-rgb: 0, 0, 0;
   --accent-hover: rgba(0, 0, 0, 0.86);
   --accent-foreground: var(--brand-white);
   --primary: var(--brand-black);
@@ -494,6 +497,7 @@ body.platform-android * {
   --text-strong: var(--brand-black);
   --muted: rgba(0, 0, 0, 0.7);
   --accent: var(--brand-black);
+  --accent-rgb: 0, 0, 0;
   --accent-foreground: var(--brand-white);
   color-scheme: light;
 }
