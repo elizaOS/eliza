@@ -53,7 +53,6 @@ const OPTIONAL_LIVE_ENDPOINTS = [
   /\/api\/orchestrator\/status(?:\?|$)/,
   /\/api\/orchestrator\/tasks(?:\?|$)/,
   /\/api\/tts\/cloud(?:\?|$)/,
-  /\/api\/vincent\/status(?:\?|$)/,
 ];
 
 type DeterministicAssistantFixture = {

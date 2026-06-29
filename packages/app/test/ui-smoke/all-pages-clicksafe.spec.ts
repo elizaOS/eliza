@@ -179,18 +179,6 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     timeoutMs: 60_000,
   },
   {
-    name: "notes",
-    path: "/notes",
-    readyChecks: [{ selector: '[data-testid="simple-notes-view"]' }],
-    timeoutMs: 60_000,
-  },
-  {
-    name: "simple calendar",
-    path: "/simple-calendar",
-    readyChecks: [{ selector: '[data-testid="simple-calendar-view"]' }],
-    timeoutMs: 60_000,
-  },
-  {
     name: "stream",
     path: "/stream",
     readyChecks: [{ selector: "#root" }],
@@ -700,46 +688,6 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
           releaseManifest: null,
         },
       }),
-    });
-  });
-
-  await page.route("**/api/vincent/status**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        connected: false,
-        connectedAt: null,
-        tradingVenues: [],
-      }),
-    });
-  });
-
-  await page.route("**/api/vincent/strategy**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ connected: false, strategy: null }),
-    });
-  });
-
-  await page.route("**/api/vincent/trading-profile**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ connected: false, profile: null }),
     });
   });
 

@@ -241,9 +241,7 @@ function isIgnorableQaRequestFailure(failure: QaRequestFailure): boolean {
   if (
     (failure.errorText === "net::ERR_FAILED" ||
       failure.errorText === "net::ERR_ABORTED") &&
-    ["/api/config", "/api/first-run/status", "/api/vincent/status"].includes(
-      pathname,
-    )
+    ["/api/config", "/api/first-run/status"].includes(pathname)
   ) {
     return true;
   }
@@ -2577,14 +2575,10 @@ async function navigate(page: Page, url: string) {
 async function saveScreenshot(page: Page, profile: Profile, step: string) {
   const filename = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.png`);
   try {
-    await captureScreenshotWithQualityRetry(
-      page,
-      `${profile.id} ${step}`,
-      {
-        path: filename,
-        fullPage: true,
-      },
-    );
+    await captureScreenshotWithQualityRetry(page, `${profile.id} ${step}`, {
+      path: filename,
+      fullPage: true,
+    });
   } catch (error) {
     const noteFile = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.txt`);
     await fs.writeFile(

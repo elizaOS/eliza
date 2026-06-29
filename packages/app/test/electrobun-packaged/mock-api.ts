@@ -1645,7 +1645,7 @@ export async function startMockApiServer(
       // Catch-all for any unmatched API route (GET, POST, PUT, DELETE).
       // Returning 200 prevents the startup coordinator from seeing a 404
       // on routes that the upstream runtime adds but this mock doesn't
-      // explicitly handle (e.g. /api/agent/* lifecycle routes, /api/vincent/*).
+      // explicitly handle (e.g. /api/agent/* lifecycle routes).
       json(res, 200, { ok: true });
       return;
     }

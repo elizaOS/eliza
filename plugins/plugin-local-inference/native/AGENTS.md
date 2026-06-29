@@ -118,12 +118,11 @@ Backbones (do not change without explicit human approval):
   After the v1.0.2-eliza release, `OMNIVOICE_INSIDE_LLAMA_CPP=0` is
   removed and `packages/app-core/scripts/omnivoice-fuse/` is deleted.
 
-  The standalone `plugins/plugin-omnivoice/` plugin (separate ABI v2
-  `ov_*` symbols, separate `libomnivoice.{so,dylib,dll}`, separate
-  build script `native/build-omnivoice.mjs`) is **legacy** and is slated
-  for removal once the fused path covers the bring-your-own-GGUFs case
-  it was added for. Do not extend the standalone plugin; new voice code
-  goes through `libelizainference`.
+  The standalone OmniVoice backend (separate ABI v2 `ov_*` symbols,
+  separate `libomnivoice.{so,dylib,dll}`, separate build script
+  `native/build-omnivoice.mjs`) is **legacy**; the standalone plugin that
+  once wrapped it has been removed. Do not add a new standalone wrapper;
+  new voice code goes through `libelizainference`.
 
   Kokoro and OmniVoice both satisfy the same `OmniVoiceBackend +
   StreamingTtsBackend` contract — the runtime selector
@@ -143,9 +142,7 @@ Backbones (do not change without explicit human approval):
   `qwen3a` mtmd backport are compatibility/scaffolding only until
   verified Gemma ASR artifacts are staged; do not expose them as
   default/recommended. OmniVoice has no ASR head — do not route ASR
-  through it. The standalone `plugin-omnivoice`'s
-  `ModelType.TRANSCRIPTION` handler throws
-  `OmnivoiceTranscriptionNotSupported` to make that explicit.
+  through it.
 
   whisper.cpp is **not** in the contract — it vendors its own ggml,
   violating the one-llama.cpp-build / one-GGML-pin contract in §4.

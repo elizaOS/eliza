@@ -997,40 +997,6 @@ function smokeWalletNfts() {
   };
 }
 
-function smokeVincentStrategy(connected: boolean) {
-  return {
-    connected,
-    strategy: connected
-      ? {
-          name: "threshold",
-          venues: ["hyperliquid", "polymarket"],
-          params: { maxPositionUsd: 250, rebalanceThreshold: "5%" },
-          intervalSeconds: 900,
-          dryRun: true,
-          running: true,
-        }
-      : null,
-  };
-}
-
-function smokeVincentTradingProfile(connected: boolean) {
-  return {
-    connected,
-    profile: connected
-      ? {
-          totalPnl: "+$42.00",
-          winRate: 0.625,
-          totalSwaps: 8,
-          volume24h: "$1,234.00",
-          tokenBreakdown: [
-            { symbol: "BTC", pnl: "+$30.00", swaps: 5 },
-            { symbol: "ETH", pnl: "+$12.00", swaps: 3 },
-          ],
-        }
-      : null,
-  };
-}
-
 const EMPTY_LIFEOPS_OVERVIEW_SUMMARY = {
   activeOccurrenceCount: 0,
   overdueOccurrenceCount: 0,
@@ -2307,87 +2273,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(
         smokeShopifyCustomers(new URL(route.request().url())),
       ),
-    });
-  });
-
-  let vincentConnected = true;
-  const vincentConnectedAt = Date.parse(SMOKE_GENERATED_AT);
-
-  await page.route("**/api/vincent/status**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        connected: vincentConnected,
-        connectedAt: vincentConnected ? vincentConnectedAt : null,
-        tradingVenues: vincentConnected ? ["hyperliquid", "polymarket"] : [],
-      }),
-    });
-  });
-
-  await page.route("**/api/vincent/start-login", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    vincentConnected = true;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        authUrl: "https://heyvincent.ai/ui-smoke-auth",
-        state: "ui-smoke",
-        redirectUri: "http://127.0.0.1/callback/vincent",
-      }),
-    });
-  });
-
-  await page.route("**/api/vincent/disconnect", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    vincentConnected = false;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true }),
-    });
-  });
-
-  await page.route("**/api/vincent/strategy", async (route) => {
-    if (route.request().method() === "GET") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(smokeVincentStrategy(vincentConnected)),
-      });
-      return;
-    }
-    if (route.request().method() === "POST") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: true, ...smokeVincentStrategy(true) }),
-      });
-      return;
-    }
-    await route.fallback();
-  });
-
-  await page.route("**/api/vincent/trading-profile", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(smokeVincentTradingProfile(vincentConnected)),
     });
   });
 

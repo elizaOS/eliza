@@ -1,7 +1,8 @@
 name: Build libomnivoice
 
-# Builds the libomnivoice shared library used by @elizaos/plugin-omnivoice
-# via bun:ffi on each supported runner class and uploads the resulting
+# Builds the libomnivoice shared library (the native voice engine; source at
+# plugins/plugin-local-inference/native/omnivoice.cpp) loaded via bun:ffi on each
+# supported runner class and uploads the resulting
 # native artifact so end users don't have to compile locally.
 #
 # Triggers:

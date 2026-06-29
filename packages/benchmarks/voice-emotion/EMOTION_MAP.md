@@ -107,7 +107,7 @@ the structured-decode field-evaluator registered in
 
 | Backend | Emotion input mechanism | Notes |
 |---|---|---|
-| **OmniVoice** (primary) | `instruct` string keyword (`happy`, `sad`, etc.) | Real inference-time conditioning. `plugins/plugin-omnivoice/src/synth.ts:30-33` wires `design.emotion` → `instruct`. |
+| **OmniVoice** (primary) | `instruct` string keyword (`happy`, `sad`, etc.) | Real inference-time conditioning. The local-inference voice service (`plugins/plugin-local-inference/src/services/voice/`, libomnivoice engine `plugins/plugin-local-inference/native/omnivoice.cpp`) wires `design.emotion` → `instruct`. |
 | **OmniVoice singing GGUF** | Inline tags `[happy]`, `[sad]`, etc. in the text | Tags parsed by the GGUF at inference time. `parseExpressiveTags` passes them through. |
 | **Kokoro 82M** | **No inference-time emotion arg** — text-side prosody hint only | The ONNX signature `(input_ids, style, speed)` has no emotion parameter. Prosody is induced via emotionally-loaded text and speed variation. Per-emotion style vectors are an I7 (kokoro fine-tune) deliverable. |
 | **ElevenLabs** | `voice_settings.style` float [0, 1] | `SpeakTask.emotion?: Emotion` maps to style. |

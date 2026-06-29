@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * build-omnivoice.mjs — build the libomnivoice shared library used by
- * `@elizaos/plugin-omnivoice` via `bun:ffi`.
+ * build-omnivoice.mjs — build the libomnivoice shared library loaded via
+ * `bun:ffi` by the local-inference native voice pipeline.
  *
  * Mirrors the policy of build-llama-cpp-mtp.mjs (build the GGML-based
  * native lib using the user's system cmake + toolchain, no sudo, no

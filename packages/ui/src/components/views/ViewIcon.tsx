@@ -130,7 +130,7 @@ const KEYWORD_ICONS: Array<[RegExp, LucideIcon]> = [
   [/polymarket|hyperliquid|trade|trading|market|perp|swap/, TrendingUp],
   [/shop|store|commerce|product|cart/, ShoppingBag],
   [/steward/, Shield],
-  [/vincent|delegat|signer|\bkey\b|credential/, KeyRound],
+  [/delegat|signer|\bkey\b|credential/, KeyRound],
   [/screen ?share|display|monitor/, Monitor],
   [/fine ?tun|training|optimiz/, BrainCircuit],
   [/model|test/, TestTube2],

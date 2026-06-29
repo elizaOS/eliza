@@ -78,7 +78,7 @@ What is *wrong* and high-leverage:
    Mermaid diagrams are rare in chat; the whole graph loads regardless.
 8. **The boot critical path serially blocks React mount on loading every app
    plugin.** `main()` awaits `initializeAppModules()` — companion, lifeops,
-   vincent, task-coordinator, phone, steward, training + all side-effect modules
+   task-coordinator, phone, steward, training + all side-effect modules
    (`packages/app/src/main.tsx:499-537,2185`) — *before* `mountReactApp()`
    (`main.tsx:2228`). FCP waits on the slowest plugin import.
 9. **No `build.assetsInlineLimit` configured** (`vite.config.ts` has no such
@@ -284,7 +284,7 @@ Each finding lists: (1) problem/evidence, (2) fix sketch, (3) measurement,
 1. **Problem / evidence.** `main()` (`packages/app/src/main.tsx:2185`) awaits
    `initializeAppModules()` before `mountReactApp()` (`main.tsx:2228`).
    `initializeAppModules()` (`main.tsx:499-537`) `await`s app-core then
-   `Promise.all`s companion, lifeops, vincent, task-coordinator, phone, steward,
+   `Promise.all`s companion, lifeops, task-coordinator, phone, steward,
    training, **plus every `SIDE_EFFECT_APP_MODULE_LOADERS` entry**
    (`main.tsx:512-514`). FCP is gated on the *slowest* of those imports. Only
    app-core genuinely must load before mount (it owns `AppBootConfig`); the rest

@@ -847,8 +847,6 @@ declare module "@elizaos/ui" {
   export type StewardLogoProps = AnyValue;
   export type StewardTransactionHistoryProps = AnyValue;
   export type SurfaceTone = string;
-  export type VincentStateHookArgs = AnyValue;
-  export type VincentStateHookResult = AnyValue;
 
   export interface IosLocalAgentNativeRequestOptions {
     path: string;
