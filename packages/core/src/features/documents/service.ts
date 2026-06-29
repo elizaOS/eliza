@@ -1634,7 +1634,13 @@ export class DocumentService extends Service {
 		let vectors: number[][];
 		try {
 			// Text source matches addEmbeddingToMemory exactly: memory.content.text.
-			const texts = fragments.map((fragment) => fragment.content.text ?? "");
+			const texts = fragments.map((fragment) => {
+				const text = fragment.content.text;
+				if (!text) {
+					throw new Error("Cannot generate embedding: Memory content is empty");
+				}
+				return text;
+			});
 			vectors = await this.runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
 				texts,
 			});
