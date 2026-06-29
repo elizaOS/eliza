@@ -69,6 +69,7 @@ do
     grep -qx "${custom_tails_package}" tails/config/chroot_local-hooks/99-custom-packages-check
 done
 bash -n build.sh build-iso.sh tails/auto/build \
+    scripts/build-cache-contract.test.sh \
     scripts/dev-sign-update-manifest.sh \
     scripts/usb-write.sh \
     scripts/generate-elizaos-brand-assets.sh \
@@ -78,6 +79,7 @@ bash -n build.sh build-iso.sh tails/auto/build \
 grep -Fq 'if [ -f "${SRC}/binary.iso" ]' build-iso.sh
 grep -Fq 'find "${SRC}" -maxdepth 1 -name' build-iso.sh
 grep -Fq "sort -nr" build-iso.sh
+bash scripts/build-cache-contract.test.sh
 bash -n scripts/sync-runtime-to-chroot.sh
 sh -n \
     tails/auto/config \
