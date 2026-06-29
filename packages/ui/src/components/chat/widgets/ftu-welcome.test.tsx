@@ -61,14 +61,27 @@ describe("FtuWelcomeWidget", () => {
     expect(dismissedState()).toMatchObject({ dismissed: true });
   });
 
-  it("retires once the user has sent a first message", () => {
+  it.each([
+    "message_sent",
+    "message_received",
+  ])("retires once the first chat event arrives (%s)", (eventType) => {
     render(
       <FtuWelcome
         slot="home"
-        events={[{ id: "1", eventType: "message_sent", timestamp: 1 } as never]}
+        events={[{ id: "1", eventType, timestamp: 1 } as never]}
       />,
     );
     expect(dismissedState()).toMatchObject({ acted: true });
+  });
+
+  it("does not retire for unrelated activity", () => {
+    render(
+      <FtuWelcome
+        slot="home"
+        events={[{ id: "1", eventType: "blocked", timestamp: 1 } as never]}
+      />,
+    );
+    expect(dismissedState()).toMatchObject({ seen: 1 });
   });
 
   it("declares the show-once-then-retire sunset policy", () => {
