@@ -187,7 +187,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STEWARD_REQUEST_SIGNING_SECRETS    Comma-separated Steward HMAC secrets; first is used for signing
 #   STEWARD_REQUEST_SIGNING_KEY_ID     Optional Steward tenant signing-key id
 #   STRIPE_SECRET_KEY                  Stripe billing
-#   STRIPE_WEBHOOK_SECRET              Stripe webhook signing
+#   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
+#   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
 #   KV_REST_API_URL                    Upstash Redis REST (LEGACY fallback only; primary is REDIS_URL)
 #   KV_REST_API_TOKEN                  Upstash auth (legacy fallback)
