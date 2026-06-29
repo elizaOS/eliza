@@ -217,6 +217,12 @@ export function convertToTelegramButtons(
       case "url":
         telegramButton = Markup.button.url(button.text, button.url);
         break;
+      case "web_app":
+        telegramButton = {
+          text: button.text,
+          web_app: { url: button.url },
+        };
+        break;
       default:
         logger.warn(
           { src: "plugin:telegram", buttonKind: button.kind },

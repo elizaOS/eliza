@@ -73,6 +73,11 @@ describe("Solana browser signing routes", () => {
     walletBackendMocks.resolveWalletBackend.mockReset();
   });
 
+  it("does not mark browser signing routes as public", () => {
+    expect(solanaSignRoutes).toHaveLength(6);
+    expect(solanaSignRoutes.every((candidate) => candidate.public !== true)).toBe(true);
+  });
+
   it("closes the surface when the signing token is missing or too short", async () => {
     for (const token of [null, "short-token"]) {
       const response = res();
@@ -129,19 +134,6 @@ describe("Solana browser signing routes", () => {
     expect(response.statusCode).toBe(204);
     expect(response.headers["Access-Control-Allow-Origin"]).toBe("http://127.0.0.1:2138");
     expect(response.headers["Access-Control-Allow-Credentials"]).toBeUndefined();
-  });
-
-  it("keeps Solana signing routes behind the central plugin auth gate", () => {
-    const signingRouteNames = [
-      "wallet-solana-sign-transaction",
-      "wallet-solana-sign-all-transactions",
-      "wallet-solana-sign-message",
-      "wallet-solana-sign-and-send-transaction",
-    ];
-
-    for (const routeName of signingRouteNames) {
-      expect(route(routeName).public).not.toBe(true);
-    }
   });
 
   it("validates message body shape before resolving wallet backend", async () => {

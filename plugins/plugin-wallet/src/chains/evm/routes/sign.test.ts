@@ -75,6 +75,13 @@ describe("EVM browser signing routes", () => {
     walletBackendMocks.resolveWalletBackend.mockReset();
   });
 
+  it("does not mark browser signing routes as public", () => {
+    expect(evmSignRoutes).toHaveLength(6);
+    expect(evmSignRoutes.every((candidate) => candidate.public !== true)).toBe(
+      true,
+    );
+  });
+
   it("closes the surface when the signing token is missing or too short", async () => {
     for (const token of [null, "short-token"]) {
       const response = res();
@@ -155,19 +162,6 @@ describe("EVM browser signing routes", () => {
       "OPTIONS",
     );
     expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
-  });
-
-  it("keeps EVM signing routes behind the central plugin auth gate", () => {
-    const signingRouteNames = [
-      "wallet-evm-personal-sign",
-      "wallet-evm-sign-typed-data",
-      "wallet-evm-sign-transaction",
-      "wallet-evm-send-transaction",
-    ];
-
-    for (const routeName of signingRouteNames) {
-      expect(route(routeName).public).not.toBe(true);
-    }
   });
 
   it("rejects malformed chain ids before resolving the backend", async () => {
