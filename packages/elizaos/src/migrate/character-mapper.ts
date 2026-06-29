@@ -108,11 +108,42 @@ export function mapToCharacter(
   return character;
 }
 
-/** Derive a display name: IDENTITY "Name:" line → agentId capitalized. */
+/**
+ * Derive a display name, in priority order:
+ *   1. IDENTITY.md "Name:" line (flat .moltbot homes)
+ *   2. SOUL.md leading "# H1" heading (leaner .hermes homes have no IDENTITY,
+ *      so the persona name lives in the SOUL title, e.g. "# nyx"). We skip
+ *      generic boilerplate headings like "SOUL" / "SOUL.md".
+ *   3. agentId, capitalized (last resort).
+ */
 function deriveName(src: OcAgentSource): string {
   const fromIdentity = src.identity?.match(/^\s*[-*]?\s*\*{0,2}Name\*{0,2}:\s*(.+)$/im);
   if (fromIdentity?.[1]) return fromIdentity[1].replace(/\*/g, "").trim();
-  return src.agentId.charAt(0).toUpperCase() + src.agentId.slice(1);
+
+  const fromSoulHeading = src.soul?.match(/^\s*#\s+(.+?)\s*$/m);
+  if (fromSoulHeading?.[1]) {
+    const h = fromSoulHeading[1].replace(/\*/g, "").trim();
+    const lower = h.toLowerCase();
+    const boilerplate =
+      lower === "soul" ||
+      lower === "soul.md" ||
+      lower.startsWith("soul.md") ||
+      lower.startsWith("who you are") ||
+      lower.startsWith("who u are");
+    // Use the first word of the heading as the name when it's a single token
+    // (e.g. "# nyx"); keep short multi-word titles verbatim, else fall through.
+    if (!boilerplate && h.length > 0 && h.length <= 40) {
+      const firstWord = h.split(/\s+/)[0];
+      return /^[A-Za-z][\w-]*$/.test(firstWord) && h.split(/\s+/).length <= 4
+        ? (h.split(/\s+/).length === 1 ? cap(firstWord) : h)
+        : cap(firstWord);
+    }
+  }
+  return cap(src.agentId);
+}
+
+function cap(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
 /**

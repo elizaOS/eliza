@@ -50,6 +50,12 @@ export interface MigratePlan {
     duplicatesDropped: number;
     /** Memory bodies clipped at maxChunkLen (content truncated). */
     clipped: number;
+    /** sqlite memory stores detected in the source home. */
+    sqliteStores: number;
+    /** True if sqlite memory was detected but NOT ingested (node:sqlite missing). */
+    sqliteUningested: boolean;
+    /** Non-fatal reader warnings (sqlite-not-ported, empty-home, etc). */
+    warnings: string[];
   };
 }
 
@@ -92,6 +98,9 @@ export function buildMigrationPlan(opts: MigrateOptions): MigratePlan {
       hasSecretsDir: src.hasSecretsDir,
       duplicatesDropped,
       clipped,
+      sqliteStores: src.sqliteStores.length,
+      sqliteUningested: src.sqliteUningested,
+      warnings: src.warnings,
     },
   };
 }
