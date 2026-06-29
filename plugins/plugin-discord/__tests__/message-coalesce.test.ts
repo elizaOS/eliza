@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createChannelDebouncer, createMessageDebouncer } from "../debouncer";
+import { createChannelDebouncer } from "../debouncer";
 import {
 	getDiscordMessageCoalesceConfig,
 	makeCoalescedDiscordMessage,
@@ -63,53 +63,6 @@ describe("Discord message coalescing", () => {
 		expect(combined.content).toContain("first");
 		expect(combined.content).toContain("second");
 		expect(combined.__discordCoalescedMessageIds).toEqual(["1", "2"]);
-	});
-
-	it("flushes the receive window when max-batch is reached", () => {
-		vi.useFakeTimers();
-		try {
-			const flushed: unknown[][] = [];
-			const debouncer = createMessageDebouncer(
-				(messages) => flushed.push([...messages]),
-				8000,
-				{ maxBatch: 2 },
-			);
-
-			debouncer.enqueue(mockMessage("1", "first"));
-			expect(flushed).toHaveLength(0);
-
-			debouncer.enqueue(mockMessage("2", "second"));
-			expect(flushed).toHaveLength(1);
-			expect(flushed[0]).toHaveLength(2);
-			expect(debouncer.pendingCount()).toBe(0);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("flushes after the coalescing window expires", () => {
-		vi.useFakeTimers();
-		try {
-			const flushed: unknown[][] = [];
-			const debouncer = createMessageDebouncer(
-				(messages) => flushed.push([...messages]),
-				8000,
-				{ maxBatch: 5 },
-			);
-
-			debouncer.enqueue(mockMessage("1", "first"));
-			debouncer.enqueue(mockMessage("2", "second"));
-			expect(flushed).toHaveLength(0);
-
-			vi.advanceTimersByTime(7999);
-			expect(flushed).toHaveLength(0);
-
-			vi.advanceTimersByTime(1);
-			expect(flushed).toHaveLength(1);
-			expect(flushed[0]).toHaveLength(2);
-		} finally {
-			vi.useRealTimers();
-		}
 	});
 
 	it("does not immediately flush a channel message that mentions the bot incidentally", () => {

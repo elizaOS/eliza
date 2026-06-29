@@ -19,12 +19,6 @@ const debouncerState = vi.hoisted(() => {
 				pendingCount: vi.fn(() => 0),
 			};
 		}),
-		createMessageDebouncer: vi.fn(() => ({
-			destroy: vi.fn(),
-			enqueue: vi.fn(),
-			flushAll: vi.fn(),
-			pendingCount: vi.fn(() => 0),
-		})),
 	};
 });
 
@@ -33,7 +27,6 @@ vi.mock("../debouncer", async (importOriginal) => {
 	return {
 		...actual,
 		createChannelDebouncer: debouncerState.createChannelDebouncer,
-		createMessageDebouncer: debouncerState.createMessageDebouncer,
 	};
 });
 
@@ -64,7 +57,6 @@ function makeService(shouldRespondOnlyToMentions: boolean) {
 		handleReactionAdd: vi.fn(),
 		handleReactionRemove: vi.fn(),
 		isChannelAllowed: vi.fn(() => true),
-		messageDebouncer: undefined,
 		// A truthy manager so the flush callback runs past its early-return; the
 		// cooldown gate fires after handleMessage regardless of what it does.
 		messageManager: { handleMessage: vi.fn() },
