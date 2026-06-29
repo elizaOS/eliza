@@ -179,8 +179,15 @@ export async function runPlannerLoop(
 	let unavailableToolCallRetries = 0;
 	let silentFailedFinishRecoveries = 0;
 	let repeatedNonTerminalToolCalls = 0;
+	// In coding mode the agent's whole job is to DO work via FILE/SHELL, so a
+	// terminal REPLY before any non-terminal tool has run is almost always the
+	// "Creating the app now…" narration that leaves nothing on disk. Force the
+	// gate on (when real coding tools are exposed) so such a turn is re-prompted
+	// into actually acting instead of being accepted as the final answer. A
+	// genuinely blocking question still surfaces after the miss budget.
 	const requireNonTerminalToolCall =
-		params.requireNonTerminalToolCall === true &&
+		(params.requireNonTerminalToolCall === true ||
+			PLANNER_FULL_ACTION_SURFACE_ON) &&
 		hasExposedNonTerminalTool(params.tools);
 
 	// Cumulative gross prompt-token counter, summed across every planner
