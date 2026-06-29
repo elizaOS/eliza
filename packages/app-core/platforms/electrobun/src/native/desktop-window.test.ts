@@ -3,6 +3,8 @@ import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
 
 vi.mock("@elizaos/core", () => ({
   clearWorkspaceFolderConfig: vi.fn(),
+  formatError: (error: unknown) =>
+    error instanceof Error ? error.message : String(error),
   writeWorkspaceFolderConfig: vi.fn(),
 }));
 
