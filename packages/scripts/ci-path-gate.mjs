@@ -72,11 +72,6 @@ const CONFIGS = {
         reason: "app-core host or desktop bridge",
       },
       {
-        lanes: ["server"],
-        patterns: ["packages/tui/**"],
-        reason: "terminal UI test suite",
-      },
-      {
         lanes: ["server", "zero_key"],
         patterns: ["packages/scenario-runner/**", "packages/scripts/**"],
         reason: "scenario runner or repo scripts",

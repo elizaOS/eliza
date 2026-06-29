@@ -102,19 +102,6 @@ assertGate("full label", runGate({ config: "test", labels: "ci:full" }), {
 });
 
 assertGate(
-  "tui changes",
-  runGate({ config: "test", files: ["packages/tui/src/tui.ts"] }),
-  {
-    server: "true",
-    client: "false",
-    plugins: "false",
-    desktop: "false",
-    zero_key: "false",
-    cloud: "false",
-  },
-);
-
-assertGate(
   "android label",
   runGate({ config: "mobile", labels: "ci:android" }),
   {
