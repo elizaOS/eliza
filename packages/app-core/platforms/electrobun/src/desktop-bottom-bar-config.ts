@@ -74,6 +74,34 @@ export interface BottomBarFrame {
   height: number;
 }
 
+export type DesktopShellWindowMode = "default" | "kiosk" | "bottom-bar";
+export type DesktopShellTitleBarStyle = "hidden" | "hiddenInset" | "default";
+
+export interface DesktopShellWindowPresentation {
+  mode: DesktopShellWindowMode;
+  titleBarStyle: DesktopShellTitleBarStyle;
+  transparent: boolean;
+}
+
+export function resolveDesktopShellWindowPresentation(
+  env: Record<string, string | undefined> = process.env,
+  argv: readonly string[] = process.argv,
+  platform: typeof process.platform = process.platform,
+): DesktopShellWindowPresentation {
+  const kiosk = isKioskShellMode(env, argv);
+  const bottomBar = !kiosk && shouldStartBottomBar(env, argv);
+  return {
+    mode: kiosk ? "kiosk" : bottomBar ? "bottom-bar" : "default",
+    titleBarStyle:
+      kiosk || bottomBar
+        ? "hidden"
+        : platform === "darwin"
+          ? "hiddenInset"
+          : "default",
+    transparent: !kiosk && platform === "darwin",
+  };
+}
+
 /** Default bar height — tall enough for the glass composer + a few message lines. */
 export const DEFAULT_BOTTOM_BAR_HEIGHT = 140;
 
