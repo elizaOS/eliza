@@ -82,13 +82,14 @@ jobs:
       # Install the repo root first so Bun links the root-owned elizaOS packages
       # and the feed sub-workspaces that the root package.json globs. Then install
       # the excluded feed root so its own app-level dependencies (drizzle-orm,
-      # Next, etc.) are available to `packages/feed/test:unit`.
+      # Next, etc.) are available to `packages/feed/test:unit`. Feed postinstall
+      # bootstraps dev-only external agent frameworks, so skip scripts here.
       - name: Install root workspace dependencies
         run: bun install --frozen-lockfile
 
       - name: Install feed root dependencies
         working-directory: packages/feed
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Build @elizaos/core dist
         run: bun run --cwd packages/core build
