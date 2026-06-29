@@ -13,12 +13,29 @@ import { readOcAgentHome } from "./openclaw-reader.js";
 
 const FIXTURE = path.join(__dirname, "__tests__", "fixtures", "oc-home");
 
-/** Build a real `.eliza-agent` archive from the fixture home. */
-function buildArchive(password: string): {
+/** Personal-context strings from the fixture that MUST never reach a firewalled archive. */
+const PERSONAL_TEXT = [
+  "Secret personal info", // USER.md (about the human)
+  "This is my becoming", // tess-thoughts.md (SELF journal)
+  "Current open thread", // tess-awareness.md (relationship/awareness state)
+  "recent daily log content", // 2026-06-29.md (daily log)
+  "Long-term fact", // MEMORY.md (curated long-term memory)
+];
+
+/**
+ * Build a real `.eliza-agent` archive from the fixture home. Defaults to the
+ * SOVEREIGN posture (firewall off) so the import-compatibility test exercises
+ * the full memory corpus (CURRENT/LONGTERM/SELF/MARKER); the firewall security
+ * guarantee is proven separately in its own suite.
+ */
+function buildArchive(
+  password: string,
+  firewall = false,
+): {
   archive: Buffer;
   memoryCount: number;
 } {
-  const plan = buildMigrationPlan({ from: FIXTURE, agentId: "tess" });
+  const plan = buildMigrationPlan({ from: FIXTURE, agentId: "tess", firewall });
   const { payload } = assemblePayload({
     agentId: plan.ids.agentId,
     sourceSlug: "tess",
@@ -165,6 +182,23 @@ describe("memory-tiering", () => {
     expect(all).not.toContain("old daily log that should NOT be flat-seeded");
     expect(all).toContain("Older history");
   });
+  it("firewall excludes ALL personal-context memory (marker only)", () => {
+    const src = readOcAgentHome(FIXTURE, "tess");
+    const { memories, counts } = tierMemories(src, {
+      memoryDays: 14,
+      firewall: true,
+      ...ids,
+    });
+    expect(counts.CURRENT).toBe(0);
+    expect(counts.LONGTERM).toBe(0);
+    expect(counts.SELF).toBe(0);
+    expect(counts.MARKER).toBe(1);
+    expect(memories.length).toBe(1);
+    const all = memories.map((m) => m.content.text).join("\n");
+    for (const needle of PERSONAL_TEXT) {
+      expect(all, needle).not.toContain(needle);
+    }
+  });
 });
 
 describe("archive format", () => {
@@ -238,5 +272,69 @@ describe("sovereign artifacts + plan", () => {
       buildMigrationPlan({ from: FIXTURE, agentId: "tess", firewall: false })
         .summary.firewalled,
     ).toBe(false);
+  });
+});
+
+/**
+ * The firewall is the headline privacy guarantee: a PORTABLE archive (the
+ * default posture) must carry the persona but NOT the owner's personal memory
+ * corpus. We prove it end-to-end — build → encrypt → import through the REAL
+ * `@elizaos/agent` importer — and inspect what actually lands in the (captured)
+ * store, so the assertion is on real restored rows, not a mock.
+ */
+describe("firewall keeps the personal memory corpus out of a portable archive", () => {
+  /** Build an archive at a given firewall posture + import it via the real importer. */
+  async function importWithFirewall(firewall: boolean) {
+    const plan = buildMigrationPlan({
+      from: FIXTURE,
+      agentId: "tess",
+      firewall,
+    });
+    const { payload } = assemblePayload({
+      agentId: plan.ids.agentId,
+      sourceSlug: "tess",
+      character: plan.character,
+      entityId: plan.ids.entityId,
+      roomId: plan.ids.roomId,
+      memories: plan.memories,
+    });
+    const archive = buildElizaAgentArchive(payload, "fw-password");
+    const { adapter, captured } = makeCapturingAdapter();
+    const runtime = { adapter } as unknown as ImportRuntime;
+    const result = await importAgent(runtime, archive, "fw-password");
+    return { plan, result, captured };
+  }
+
+  it("default (firewall ON): persona imports, but only a MARKER memory — no personal text", async () => {
+    const { plan, result, captured } = await importWithFirewall(true);
+
+    expect(plan.summary.firewalled).toBe(true);
+    expect(result.success).toBe(true);
+    // The persona still round-trips.
+    expect(captured.agents[0]?.name).toBe("Tess");
+    // The seeded corpus is exactly the firewall marker — nothing personal.
+    expect(
+      captured.memories.every((m) =>
+        m.memory.content.text.startsWith("[MARKER]"),
+      ),
+    ).toBe(true);
+    // Not a single byte of personal context anywhere in the restored store.
+    const blob = JSON.stringify(captured);
+    for (const needle of PERSONAL_TEXT) {
+      expect(blob, needle).not.toContain(needle);
+    }
+  });
+
+  it("sovereign (firewall OFF): the SAME personal text DOES round-trip", async () => {
+    const { captured } = await importWithFirewall(false);
+    const memText = captured.memories
+      .map((m) => m.memory.content.text)
+      .join("\n");
+    // Proof the firewall (not absence of source data) is what removed the text
+    // above: with it off, the journal / awareness / daily / MEMORY content lands.
+    expect(memText).toContain("This is my becoming"); // SELF journal
+    expect(memText).toContain("Current open thread"); // awareness
+    expect(memText).toContain("recent daily log content"); // daily log
+    expect(memText).toContain("Long-term fact"); // MEMORY.md
   });
 });

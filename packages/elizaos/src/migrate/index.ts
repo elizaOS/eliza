@@ -73,6 +73,10 @@ export function buildMigrationPlan(opts: MigrateOptions): MigratePlan {
     roomId,
     entityId,
     agentId,
+    // Firewall the personal memory corpus out of portable archives (the same
+    // posture the character mapper uses for USER.md). Sovereign-local passes
+    // firewall=false to seed the full corpus on the owner's own machine.
+    firewall,
   });
 
   return {
