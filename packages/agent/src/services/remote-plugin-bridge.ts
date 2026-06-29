@@ -385,9 +385,7 @@ export class RemotePluginBridge {
 
     const envelopeSchema = HandledWorkerEnvelopeSchemas[message.type];
     if (envelopeSchema && !envelopeSchema.safeParse(message).success) {
-      throw new Error(
-        `Invalid remote plugin worker message: ${message.type}`,
-      );
+      throw new Error(`Invalid remote plugin worker message: ${message.type}`);
     }
 
     switch (message.type) {
