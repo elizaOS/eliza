@@ -1909,7 +1909,7 @@ X-GNOME-Autostart-enabled=true
     this.trayPopoverConfig = config;
   }
 
-  /** Push an update to the open tray-popover app renderer, if present. */
+  /** Invoke `fn` for the open tray-popover window, if any. */
   forEachTrayPopoverWindow(fn: (window: BrowserWindow) => void): void {
     if (this.trayPopoverWindow) {
       fn(this.trayPopoverWindow);
