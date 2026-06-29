@@ -825,8 +825,7 @@ export async function handleChatCompletionsPOST(
 
     // 4. Validate
     if (
-      !request ||
-      !request.model ||
+      !request?.model ||
       !Array.isArray(request.messages) ||
       !request.messages.length
     ) {
@@ -1922,7 +1921,7 @@ async function handleNonStreamingRequest(
       }),
     );
   } catch (error) {
-    await settleReservation(0);
+    await settleReservation?.(0);
     throw error;
   }
 }

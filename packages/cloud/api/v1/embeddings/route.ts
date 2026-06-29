@@ -112,15 +112,17 @@ app.post("/", async (c) => {
     // Guard a malformed/empty body to a 400 instead of a 500 (mirrors the agents
     // routes). An unguarded parse throws a SyntaxError that failureResponse maps
     // to 500 on this always-on agent-recall hot path.
-    const request = (await c.req.json().catch(() => null)) as EmbeddingsRequest | null;
+    const request = (await c.req
+      .json()
+      .catch(() => null)) as EmbeddingsRequest | null;
 
-    if (!request || !request.model || !request.input) {
+    if (!request?.model || !request.input) {
       return c.json(
         {
           error: {
             message: "Missing required fields: model and input",
             type: "invalid_request_error",
-            param: !request.model ? "model" : "input",
+            param: !request?.model ? "model" : "input",
             code: "missing_required_parameter",
           },
         },
