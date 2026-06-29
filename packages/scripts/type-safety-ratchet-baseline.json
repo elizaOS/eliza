@@ -1,6 +1,6 @@
 {
   "schema": "eliza_type_safety_ratchet_v1",
-  "updatedAt": "2026-06-28T22:11:45.423Z",
+  "updatedAt": "2026-06-29T04:59:46.866Z",
   "scope": {
     "trackedOnly": true,
     "enumeration": "git ls-files",
@@ -35,6 +35,11 @@
       "**/mocks/**",
       "**/test/**",
       "**/tests/**"
+    ],
+    "emptyFallbackScope": [
+      "packages/core/src/",
+      "packages/agent/src/",
+      "packages/app-core/src/"
     ]
   },
   "limits": {
@@ -42,7 +47,11 @@
     "asAny": 0,
     "explicitAny": 126,
     "tsSuppress": 0,
-    "nonNullAssertion": 572
+    "nonNullAssertion": 567,
+    "nullishEmptyString": 636,
+    "nullishEmptyArray": 589,
+    "nullishEmptyObject": 378,
+    "nullishZero": 406
   },
-  "filesScanned": 9867
+  "filesScanned": 9873
 }

@@ -38,7 +38,47 @@ const KIND_LABELS = {
   explicitAny: "explicit `: any` annotation",
   tsSuppress: "@ts-expect-error / @ts-ignore",
   nonNullAssertion: "non-null assertion (!)",
+  // Empty-fallback sludge (#9940). A nullish-coalescing default that is an
+  // empty string / array / object / 0 at a pipeline edge conflates "not loaded"
+  // / "broken upstream" with "legitimately empty", so a broken pipeline renders
+  // as a silent no-op instead of failing observably. Scoped to the runtime
+  // packages (core/agent/app-core) via EMPTY_FALLBACK_SCOPE — those are the
+  // measured hotspots and the layers architecture rule 8 governs.
+  nullishEmptyString: '`?? ""` (core/agent/app-core)',
+  nullishEmptyArray: "`?? []` (core/agent/app-core)",
+  nullishEmptyObject: "`?? {}` (core/agent/app-core)",
+  nullishZero: "`?? 0` (core/agent/app-core)",
 };
+
+// The empty-fallback budget only governs the runtime packages named in #9940;
+// the cast/suppression kinds above stay repo-wide.
+const EMPTY_FALLBACK_SCOPE = [
+  "packages/core/src/",
+  "packages/agent/src/",
+  "packages/app-core/src/",
+];
+
+function inEmptyFallbackScope(relPath) {
+  return EMPTY_FALLBACK_SCOPE.some((prefix) => relPath.startsWith(prefix));
+}
+
+// Classify the right operand of a `??` as an empty-fallback default, or return
+// undefined. Parenthesized operands are unwrapped by the caller.
+function emptyFallbackKind(node, ts) {
+  if (ts.isStringLiteral(node) && node.text === "") {
+    return "nullishEmptyString";
+  }
+  if (ts.isArrayLiteralExpression(node) && node.elements.length === 0) {
+    return "nullishEmptyArray";
+  }
+  if (ts.isObjectLiteralExpression(node) && node.properties.length === 0) {
+    return "nullishEmptyObject";
+  }
+  if (ts.isNumericLiteral(node) && Number(node.text) === 0) {
+    return "nullishZero";
+  }
+  return undefined;
+}
 
 const EXCLUDED_SEGMENTS = new Set([
   "__fixtures__",
@@ -168,7 +208,20 @@ function collectUnsafeCasts(sourceText, relPath) {
     return current;
   }
 
+  const trackEmptyFallbacks = inEmptyFallbackScope(relPath);
+
   function visit(node) {
+    if (
+      trackEmptyFallbacks &&
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+    ) {
+      const kind = emptyFallbackKind(unwrapExpression(node.right), ts);
+      if (kind) {
+        record(kind, node);
+      }
+    }
+
     if (ts.isAsExpression(node)) {
       if (node.type.kind === ts.SyntaxKind.AnyKeyword) {
         record("asAny", node);
@@ -230,13 +283,9 @@ function collectUnsafeCasts(sourceText, relPath) {
 }
 
 function summarize(findings) {
-  const counts = {
-    asUnknownAs: 0,
-    asAny: 0,
-    explicitAny: 0,
-    tsSuppress: 0,
-    nonNullAssertion: 0,
-  };
+  const counts = Object.fromEntries(
+    Object.keys(KIND_LABELS).map((kind) => [kind, 0]),
+  );
   for (const finding of findings) {
     counts[finding.kind] += 1;
   }
@@ -304,6 +353,9 @@ function baselinePayload(files, counts) {
         "**/test/**",
         "**/tests/**",
       ],
+      // The nullish* empty-fallback kinds are additionally scoped to these
+      // runtime packages (#9940); the cast/suppression kinds are repo-wide.
+      emptyFallbackScope: EMPTY_FALLBACK_SCOPE,
     },
     limits: counts,
     filesScanned: files.length,
@@ -418,8 +470,18 @@ function runSelfTest() {
     const ten = (value as Result)!;
     let eleven!: Result;
     const twelve: any = value;
+    const emptyStr = (value as { s?: string }).s ?? "";
+    const nonEmptyStr = (value as { s?: string }).s ?? "fallback";
+    const emptyArr = (value as { a?: number[] }).a ?? [];
+    const emptyObj = (value as { o?: object }).o ?? {};
+    const zero = (value as { n?: number }).n ?? 0;
+    const parenEmpty = (value as { s?: string }).s ?? ("");
   `;
-  const counts = summarize(collectUnsafeCasts(sample, "sample.ts"));
+  // Use an in-scope path so the empty-fallback budget (scoped to
+  // core/agent/app-core) is exercised alongside the repo-wide cast kinds.
+  const counts = summarize(
+    collectUnsafeCasts(sample, "packages/core/src/sample.ts"),
+  );
   if (
     counts.asUnknownAs !== 2 ||
     counts.asAny !== 1 ||
@@ -429,10 +491,33 @@ function runSelfTest() {
     counts.tsSuppress !== 2 ||
     // `ten` is a NonNullExpression; `eleven!` is a definite-assignment
     // assertion (not counted), so exactly one non-null assertion is expected.
-    counts.nonNullAssertion !== 1
+    counts.nonNullAssertion !== 1 ||
+    // `?? ""` appears twice (plain + parenthesized); `?? "fallback"` is not an
+    // empty-string fallback and must not be counted.
+    counts.nullishEmptyString !== 2 ||
+    counts.nullishEmptyArray !== 1 ||
+    counts.nullishEmptyObject !== 1 ||
+    counts.nullishZero !== 1
   ) {
     console.error(
       `[type-safety-ratchet] self-test failed: ${JSON.stringify(counts)}`,
+    );
+    process.exit(1);
+  }
+
+  // Out-of-scope files must NOT contribute empty-fallback findings (the budget
+  // is scoped; only the runtime packages are governed).
+  const outOfScope = summarize(
+    collectUnsafeCasts(sample, "packages/ui/src/sample.ts"),
+  );
+  if (
+    outOfScope.nullishEmptyString !== 0 ||
+    outOfScope.nullishEmptyArray !== 0 ||
+    outOfScope.nullishEmptyObject !== 0 ||
+    outOfScope.nullishZero !== 0
+  ) {
+    console.error(
+      `[type-safety-ratchet] self-test failed (scope leak): ${JSON.stringify(outOfScope)}`,
     );
     process.exit(1);
   }
