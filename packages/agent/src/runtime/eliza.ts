@@ -1075,6 +1075,12 @@ function trimEnvString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function trimCloudCredential(value: unknown): string | undefined {
+  const trimmed = trimEnvString(value);
+  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return undefined;
+  return trimmed;
+}
+
 type MutableConfigEnv = Record<string, unknown> & {
   vars?: Record<string, unknown>;
 };
@@ -1121,6 +1127,17 @@ function readEffectiveEnvValue(
   return trimEnvString(env[key]) ?? readConfigEnvValue(config, key);
 }
 
+function readEffectiveCloudCredential(
+  config: ElizaConfig,
+  key: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  return (
+    trimCloudCredential(env[key]) ??
+    trimCloudCredential(readConfigEnvValue(config, key))
+  );
+}
+
 function isProvisionedCloudContainer(env: NodeJS.ProcessEnv = process.env) {
   return env.ELIZA_CLOUD_PROVISIONED === "1";
 }
@@ -1135,8 +1152,8 @@ export function ensureProvisionedCloudContainerConfig(
   }
 
   const apiKey =
-    trimEnvString(config.cloud?.apiKey) ??
-    trimEnvString(env.ELIZAOS_CLOUD_API_KEY);
+    trimCloudCredential(config.cloud?.apiKey) ??
+    readEffectiveCloudCredential(config, "ELIZAOS_CLOUD_API_KEY", env);
   if (!apiKey) {
     return false;
   }
@@ -1145,11 +1162,11 @@ export function ensureProvisionedCloudContainerConfig(
   const cloud = config.cloud ?? {};
   const baseUrl =
     trimEnvString(config.cloud?.baseUrl) ??
-    trimEnvString(env.ELIZAOS_CLOUD_BASE_URL);
+    readEffectiveEnvValue(config, "ELIZAOS_CLOUD_BASE_URL", env);
   const agentId =
     trimEnvString(config.cloud?.agentId) ??
-    trimEnvString(env.ELIZA_CLOUD_AGENT_ID) ??
-    trimEnvString(env.WAIFU_ELIZA_CLOUD_AGENT_ID);
+    readEffectiveEnvValue(config, "ELIZA_CLOUD_AGENT_ID", env) ??
+    readEffectiveEnvValue(config, "WAIFU_ELIZA_CLOUD_AGENT_ID", env);
 
   if (
     config.cloud?.enabled !== true ||
@@ -1188,20 +1205,52 @@ export function ensureProvisionedCloudContainerConfig(
     );
     const cloudRouting = buildDefaultElizaCloudServiceRouting({
       includeInference: true,
-      nanoModel: trimEnvString(env.ELIZAOS_CLOUD_NANO_MODEL),
-      smallModel: trimEnvString(env.ELIZAOS_CLOUD_SMALL_MODEL),
-      mediumModel: trimEnvString(env.ELIZAOS_CLOUD_MEDIUM_MODEL),
-      largeModel: trimEnvString(env.ELIZAOS_CLOUD_LARGE_MODEL),
-      megaModel: trimEnvString(env.ELIZAOS_CLOUD_MEGA_MODEL),
-      responseHandlerModel: trimEnvString(
-        env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL,
+      nanoModel: readEffectiveEnvValue(config, "ELIZAOS_CLOUD_NANO_MODEL", env),
+      smallModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_SMALL_MODEL",
+        env,
       ),
-      shouldRespondModel: trimEnvString(env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL),
-      actionPlannerModel: trimEnvString(env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL),
-      plannerModel: trimEnvString(env.ELIZAOS_CLOUD_PLANNER_MODEL),
-      responseModel: trimEnvString(env.ELIZAOS_CLOUD_RESPONSE_MODEL),
-      mediaDescriptionModel: trimEnvString(
-        env.ELIZAOS_CLOUD_MEDIA_DESCRIPTION_MODEL,
+      mediumModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_MEDIUM_MODEL",
+        env,
+      ),
+      largeModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_LARGE_MODEL",
+        env,
+      ),
+      megaModel: readEffectiveEnvValue(config, "ELIZAOS_CLOUD_MEGA_MODEL", env),
+      responseHandlerModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL",
+        env,
+      ),
+      shouldRespondModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL",
+        env,
+      ),
+      actionPlannerModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL",
+        env,
+      ),
+      plannerModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_PLANNER_MODEL",
+        env,
+      ),
+      responseModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_RESPONSE_MODEL",
+        env,
+      ),
+      mediaDescriptionModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_MEDIA_DESCRIPTION_MODEL",
+        env,
       ),
     });
     config.serviceRouting = {
@@ -2097,17 +2146,40 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     | undefined;
   if (effectivelyEnabled) {
     const nano =
-      llmText?.nanoModel || models?.nano || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
+      llmText?.nanoModel ||
+      models?.nano ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_NANO_MODEL") ||
+      DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const small =
-      llmText?.smallModel || models?.small || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
-    const medium = llmText?.mediumModel || models?.medium || small;
+      llmText?.smallModel ||
+      models?.small ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_SMALL_MODEL") ||
+      DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
+    const medium =
+      llmText?.mediumModel ||
+      models?.medium ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_MEDIUM_MODEL") ||
+      small;
     const large =
-      llmText?.largeModel || models?.large || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
-    const mega = llmText?.megaModel || models?.mega || large;
+      llmText?.largeModel ||
+      models?.large ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_LARGE_MODEL") ||
+      DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
+    const mega =
+      llmText?.megaModel ||
+      models?.mega ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_MEGA_MODEL") ||
+      large;
     const responseHandlerModel =
-      llmText?.responseHandlerModel || llmText?.shouldRespondModel;
+      llmText?.responseHandlerModel ||
+      llmText?.shouldRespondModel ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL") ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL");
     const actionPlannerModel =
-      llmText?.actionPlannerModel || llmText?.plannerModel;
+      llmText?.actionPlannerModel ||
+      llmText?.plannerModel ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL") ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_PLANNER_MODEL");
     process.env.SMALL_MODEL = small;
     process.env.NANO_MODEL = nano;
     process.env.MEDIUM_MODEL = medium;
