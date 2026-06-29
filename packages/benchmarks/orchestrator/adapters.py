@@ -2503,6 +2503,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
     }
     registry_dir_map = {
         "context_bench": "context-bench",
+        "recall_bench": "recall-bench",
         "terminal_bench": "terminal-bench",
         "tau_bench": "tau-bench",
         "vending_bench": "vending-bench",

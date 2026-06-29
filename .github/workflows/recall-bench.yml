@@ -1,0 +1,81 @@
+name: recall-bench
+
+# Memory recall / retrieval benchmark + regression gate (issue #9956).
+#
+# Drives the REAL @elizaos/core recall pipeline (DocumentService
+# hybrid/vector/keyword + the low-level runtime.searchMemories/embedRecallQuery
+# path + the scoreMemoryText chat-search surface) over a deterministic,
+# key-free, concept-hash-embedded corpus and gates IR quality + latency against
+# budgets.json. The harness is CI-safe with NO API keys: the embedding is a
+# deterministic content-hash model, so a runner with no model credentials still
+# exercises the genuine recall path. Exit:
+#   0  measured rows present, all budgets pass
+#   1  a quality floor missed / latency ceiling crossed / fail-open not
+#      observable / broken pipeline  → fails CI (the gate)
+#   2  nothing measurable on this host (genuine boot failure)
+# so a genuine recall-quality or fail-open regression turns CI red.
+
+on:
+  pull_request:
+    paths:
+      - "packages/benchmarks/recall-bench/**"
+      # The real @elizaos/core recall source the harness gates on:
+      - "packages/core/src/features/documents/**"
+      - "packages/core/src/runtime.ts"
+      - "packages/agent/src/api/memory-routes.ts"
+      - ".github/workflows/recall-bench.yml"
+  schedule:
+    # 05:40 UTC — alongside the other nightly benchmark lanes.
+    - cron: "40 5 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: recall-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness-gate:
+    name: recall harness + budget regression gate (no keys)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: canary
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install workspace
+        run: bun install
+      - name: Generate shared i18n assets
+        # The real-path test imports @elizaos/core source, which expects the
+        # generated keyword data to exist in a fresh checkout.
+        run: bun run --cwd packages/shared build:i18n
+      - name: IR-metrics unit tests (no install needed)
+        run: bun test packages/benchmarks/recall-bench/ir-metrics.test.ts
+      - name: Metric-schema contract
+        run: bun test packages/benchmarks/recall-bench/metric-schema.test.ts
+      - name: Real-path recall regression test
+        run: bun test --conditions=eliza-source packages/benchmarks/recall-bench/recall-eval.test.ts
+      - name: recall-bench harness + budget regression gate
+        run: |
+          set +e
+          node packages/benchmarks/recall-bench/run-all.mjs
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "recall-bench: all budgets pass" ;;
+            2) echo "recall-bench: nothing measurable (boot failed) on this runner" ;;
+            1) echo "::error::recall-bench quality/latency/fail-open regression (exit 1)"; exit 1 ;;
+            *) echo "::error::recall-bench harness errored (exit $code)"; exit "$code" ;;
+          esac
+      - name: Upload recall-bench summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recall-bench-summary
+          path: packages/benchmarks/recall-bench/results/summary/
+          if-no-files-found: ignore

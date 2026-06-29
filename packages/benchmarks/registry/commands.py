@@ -38,6 +38,7 @@ try:
         _score_from_orchestrator_lifecycle_json,
         _score_from_osworld_json,
         _score_from_realm_json,
+        _score_from_recall_bench_json,
         _score_from_rlmbench_json,
         _score_from_scambench_json,
         _score_from_social_alpha_json,
@@ -90,6 +91,7 @@ except ImportError:
         _score_from_orchestrator_lifecycle_json,
         _score_from_osworld_json,
         _score_from_realm_json,
+        _score_from_recall_bench_json,
         _score_from_rlmbench_json,
         _score_from_scambench_json,
         _score_from_social_alpha_json,
@@ -303,6 +305,34 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _realm_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="realm-benchmark-*.json")
+
+    def _recall_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        # recall-bench is a key-free deterministic harness: it drives the REAL
+        # @elizaos/core recall pipeline with a deterministic concept-hash
+        # embedding, so no provider/model credentials are needed. Run the TS
+        # harness under bun with the eliza-source export condition (it imports
+        # @elizaos/core + @elizaos/plugin-sql source) and point it at output_dir.
+        args = [
+            "bun",
+            "--conditions=eliza-source",
+            "recall-kpi.ts",
+            "--json",
+            "--output-dir",
+            str(output_dir),
+        ]
+        tier = extra.get("tier")
+        if isinstance(tier, str) and tier.strip():
+            args.extend(["--tier", tier.strip()])
+        elif extra.get("smoke") is True or extra.get("stub") is True or (model.provider or "").strip().lower() == "mock":
+            # Smoke path: shrink the corpus for a fast wiring check.
+            args.append("--smoke")
+        seed = extra.get("seed")
+        if isinstance(seed, int):
+            args.extend(["--seed", str(seed)])
+        return args
+
+    def _recall_bench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="recall_bench_*.json")
 
     def _mint_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, repo("benchmarks/mint/run_benchmark.py"), "--output-dir", str(output_dir)]
@@ -2275,6 +2305,27 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_realm_cmd,
             locate_result=_realm_result,
             extract_score=_score_from_realm_json,
+        ),
+        BenchmarkDefinition(
+            id="recall_bench",
+            display_name="Recall Bench",
+            description="Memory recall / retrieval IR-quality + latency benchmark over @elizaos/core",
+            cwd_rel="benchmarks/recall-bench",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/recall-bench/recall-kpi.ts",),
+                notes=(
+                    "Key-free deterministic harness: drives the REAL @elizaos/core "
+                    "recall pipeline (DocumentService hybrid/vector/keyword + "
+                    "embedRecallQuery + scoreMemoryText) with a deterministic "
+                    "concept-hash embedding. Bun runtime, eliza-source condition. "
+                    "Set tier=standard for the >=1k-fragment corpus or smoke=true "
+                    "for the fast wiring check. Has its own CI lane (recall-bench.yml)."
+                ),
+            ),
+            build_command=_recall_bench_cmd,
+            locate_result=_recall_bench_result,
+            extract_score=_score_from_recall_bench_json,
         ),
         BenchmarkDefinition(
             id="mint",

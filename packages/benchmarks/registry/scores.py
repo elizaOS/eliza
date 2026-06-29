@@ -573,6 +573,41 @@ def _score_from_vision_language_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_recall_bench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from recall-bench results (#9956).
+
+    The recall-bench harness drives the REAL @elizaos/core recall pipeline over a
+    deterministic labeled corpus and emits IR quality + latency per recall mode.
+    The top-level ``metrics`` object carries the scorer headline:
+    ``overall_accuracy`` = hybrid recall@5 (the primary DocumentService recall
+    mode), ``total_tasks`` = number of queries scored. A zero-task result is not
+    publishable.
+    """
+    root = expect_dict(data, ctx="recall_bench:root")
+    metrics_obj = get_optional(root, "metrics")
+    metrics = (
+        expect_dict(metrics_obj, ctx="recall_bench:metrics")
+        if isinstance(metrics_obj, dict)
+        else root
+    )
+    overall = expect_float(
+        get_required(metrics, "overall_accuracy", ctx="recall_bench:metrics"),
+        ctx="recall_bench:overall_accuracy",
+    )
+    total_tasks = expect_float(
+        get_required(metrics, "total_tasks", ctx="recall_bench:metrics"),
+        ctx="recall_bench:total_tasks",
+    )
+    if total_tasks <= 0:
+        raise ValueError("recall_bench: zero-task score is not publishable")
+    return ScoreExtraction(
+        score=overall,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={"overall_accuracy": overall, "total_tasks": total_tasks},
+    )
+
+
 def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from RLM benchmark results.
 
