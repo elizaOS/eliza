@@ -1,9 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
 
+vi.mock("@elizaos/core", () => ({
+  clearWorkspaceFolderConfig: vi.fn(),
+  formatError: (error: unknown) =>
+    error instanceof Error ? error.message : String(error),
+  writeWorkspaceFolderConfig: vi.fn(),
+}));
+
+vi.mock("./mac-window-effects", () => ({
+  enableVibrancy: vi.fn(() => false),
+  ensureShadow: vi.fn(() => false),
+  setNativeDragRegion: vi.fn(),
+  setTrafficLightsPosition: vi.fn(),
+}));
+
 const electrobunMock = vi.hoisted(() => {
   type Handler = (event?: unknown) => void;
   const handlers = new Map<string, Handler[]>();
+  type MockBrowserWindow = {
+    id: number;
+    frame: { x: number; y: number; width: number; height: number };
+    options: Record<string, unknown>;
+    webview: {
+      on: ReturnType<typeof vi.fn>;
+      remove: ReturnType<typeof vi.fn>;
+    };
+    on: ReturnType<typeof vi.fn>;
+    close: ReturnType<typeof vi.fn>;
+    focus: ReturnType<typeof vi.fn>;
+    setAlwaysOnTop: ReturnType<typeof vi.fn>;
+    emit: (event: string) => void;
+    emitWebview: (event: string) => void;
+  };
+  let nextBrowserWindowId = 1;
+  const browserWindowInstances: MockBrowserWindow[] = [];
   const trayInstances: Array<{
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
@@ -30,6 +61,52 @@ const electrobunMock = vi.hoisted(() => {
       }
     },
   };
+  const BrowserWindow = vi.fn(function FakeNativeBrowserWindow(
+    this: MockBrowserWindow,
+    options: Record<string, unknown>,
+  ) {
+    const windowHandlers = new Map<string, Array<() => void>>();
+    const webviewHandlers = new Map<string, Array<() => void>>();
+    this.id = nextBrowserWindowId++;
+    this.options = options;
+    this.frame = (options.frame as MockBrowserWindow["frame"] | undefined) ?? {
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 600,
+    };
+    this.webview = {
+      on: vi.fn((event: string, handler: () => void) => {
+        const list = webviewHandlers.get(event) ?? [];
+        list.push(handler);
+        webviewHandlers.set(event, list);
+      }),
+      remove: vi.fn(),
+    };
+    this.on = vi.fn((event: string, handler: () => void) => {
+      const list = windowHandlers.get(event) ?? [];
+      list.push(handler);
+      windowHandlers.set(event, list);
+    });
+    this.close = vi.fn(() => {
+      for (const handler of windowHandlers.get("close") ?? []) {
+        handler();
+      }
+    });
+    this.focus = vi.fn();
+    this.setAlwaysOnTop = vi.fn();
+    this.emit = (event: string) => {
+      for (const handler of windowHandlers.get(event) ?? []) {
+        handler();
+      }
+    };
+    this.emitWebview = (event: string) => {
+      for (const handler of webviewHandlers.get(event) ?? []) {
+        handler();
+      }
+    };
+    browserWindowInstances.push(this);
+  });
   const Tray = vi.fn(function FakeTray(this: {
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
@@ -79,13 +156,18 @@ const electrobunMock = vi.hoisted(() => {
   return {
     events,
     handlers,
+    browserWindowInstances,
     trayInstances,
+    BrowserWindow,
     GlobalShortcut,
     Tray,
     Utils,
     reset() {
       handlers.clear();
+      nextBrowserWindowId = 1;
+      browserWindowInstances.splice(0);
       trayInstances.splice(0);
+      BrowserWindow.mockClear();
       events.on.mockClear();
       events.off.mockClear();
       GlobalShortcut.isRegistered.mockClear();
@@ -104,11 +186,22 @@ const electrobunMock = vi.hoisted(() => {
 
 vi.mock("electrobun/bun", () => {
   return {
-    default: { events: electrobunMock.events },
+    default: {
+      events: electrobunMock.events,
+      BrowserWindow: electrobunMock.BrowserWindow,
+    },
+    BrowserWindow: electrobunMock.BrowserWindow,
     BrowserView: vi.fn(),
     BuildConfig: {
       appIdentifier: "test.eliza",
       appVersion: "0.0.0-test",
+      get: vi.fn(async () => ({
+        defaultRenderer: "native",
+        availableRenderers: ["native"],
+        cefVersion: "cef-test",
+        bunVersion: "bun-test",
+        runtime: "test",
+      })),
     },
     ContextMenu: {
       on: vi.fn(),
@@ -116,6 +209,9 @@ vi.mock("electrobun/bun", () => {
     GlobalShortcut: electrobunMock.GlobalShortcut,
     Screen: {
       getAllDisplays: vi.fn(() => []),
+      getPrimaryDisplay: vi.fn(() => ({
+        workArea: { x: 100, y: 50, width: 900, height: 700 },
+      })),
     },
     Session: {
       defaultSession: {},
@@ -394,6 +490,56 @@ describe("DesktopManager main window controls", () => {
 
     await vi.waitFor(() => expect(requestQuit).toHaveBeenCalledTimes(1));
     expect(electrobunMock.Utils.quit).not.toHaveBeenCalled();
+  });
+
+  it("opens tray popover as an app renderer with preload, rpc, partition, and API injection", async () => {
+    const manager = new DesktopManager();
+    const rpc = { request: {}, send: {} };
+    const injectApiBase = vi.fn();
+    const wireRpc = vi.fn();
+    const onWindowFocused = vi.fn();
+
+    manager.configureTrayPopover({
+      url: "http://127.0.0.1:5173/?shellMode=tray-popover",
+      preload: "// preload",
+      partition: "persist:eliza-main",
+      rpc,
+      injectApiBase,
+      wireRpc,
+      onWindowFocused,
+    });
+
+    await manager.toggleTrayPopover();
+
+    const win = electrobunMock.browserWindowInstances[0];
+    expect(electrobunMock.BrowserWindow).toHaveBeenCalledTimes(1);
+    expect(win.options).toMatchObject({
+      url: "http://127.0.0.1:5173/?shellMode=tray-popover",
+      preload: "// preload",
+      partition: "persist:eliza-main",
+      rpc,
+      renderer: "native",
+      transparent: true,
+      titleBarStyle: "hidden",
+    });
+    expect(win.frame).toEqual({
+      x: 100 + 900 - 360 - 8,
+      y: 50 + 8,
+      width: 360,
+      height: 480,
+    });
+    expect(win.webview.remove).not.toHaveBeenCalled();
+    expect(wireRpc).toHaveBeenCalledWith(win);
+    expect(onWindowFocused).toHaveBeenCalledWith(win);
+    expect(win.setAlwaysOnTop).toHaveBeenCalledWith(true);
+    expect(win.focus).toHaveBeenCalledTimes(1);
+
+    const seen: unknown[] = [];
+    manager.forEachTrayPopoverWindow((window) => seen.push(window));
+    expect(seen).toEqual([win]);
+
+    win.emitWebview("dom-ready");
+    expect(injectApiBase).toHaveBeenCalledWith(win);
   });
 
   it("awaits tray teardown during dispose", async () => {

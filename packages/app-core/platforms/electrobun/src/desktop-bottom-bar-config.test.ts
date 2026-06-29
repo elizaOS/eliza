@@ -3,6 +3,7 @@ import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
+  resolveDesktopShellWindowPresentation,
   shouldStartBottomBar,
 } from "./desktop-bottom-bar-config";
 
@@ -103,6 +104,52 @@ describe("desktop bottom-bar config", () => {
         { height: 1 },
       );
       expect(frame.height).toBe(48);
+    });
+  });
+
+  describe("resolveDesktopShellWindowPresentation", () => {
+    it("reports the default platform titlebar metadata", () => {
+      expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
+        mode: "default",
+        titleBarStyle: "default",
+        transparent: false,
+      });
+      expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
+        mode: "default",
+        titleBarStyle: "hiddenInset",
+        transparent: true,
+      });
+    });
+
+    it("reports hidden titlebar metadata for the bottom-bar shell", () => {
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZA_DESKTOP_BOTTOM_BAR: "1" },
+          [],
+          "darwin",
+        ),
+      ).toEqual({
+        mode: "bottom-bar",
+        titleBarStyle: "hidden",
+        transparent: true,
+      });
+    });
+
+    it("reports kiosk as hidden and opaque", () => {
+      expect(
+        resolveDesktopShellWindowPresentation(
+          {
+            ELIZA_DESKTOP_BOTTOM_BAR: "1",
+            ELIZAOS_SHELL_MODE: "kiosk",
+          },
+          [],
+          "darwin",
+        ),
+      ).toEqual({
+        mode: "kiosk",
+        titleBarStyle: "hidden",
+        transparent: false,
+      });
     });
   });
 });

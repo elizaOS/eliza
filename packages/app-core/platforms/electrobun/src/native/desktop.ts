@@ -115,6 +115,24 @@ interface OpenExternalOptions {
   url: string;
 }
 
+type TrayPopoverBrowserWindowOptions = NonNullable<
+  ConstructorParameters<typeof Electrobun.BrowserWindow>[0]
+> & {
+  partition?: string | null;
+  preload?: string;
+  rpc?: unknown;
+};
+
+interface TrayPopoverConfig {
+  url: string;
+  preload: string;
+  partition?: string | null;
+  rpc?: unknown;
+  injectApiBase?: (window: BrowserWindow) => void;
+  wireRpc?: (window: BrowserWindow) => void;
+  onWindowFocused?: (window: BrowserWindow) => void;
+}
+
 interface ShowItemInFolderOptions {
   path: string;
 }
@@ -287,10 +305,9 @@ export class DesktopManager {
   private releaseNotesWindow: BrowserWindow | null = null;
   private releaseNotesView: BrowserView | null = null;
   // Tray popover (#9953 Phase 4): a frameless, transparent, always-on-top
-  // BrowserView panel anchored at the tray that renders the widget surface.
+  // app renderer window anchored at the tray that renders the widget surface.
   private trayPopoverWindow: BrowserWindow | null = null;
-  private trayPopoverView: BrowserView | null = null;
-  private trayPopoverUrl: string | null = null;
+  private trayPopoverConfig: TrayPopoverConfig | null = null;
   private shortcuts: Map<string, ShortcutOptions> = new Map();
   private notificationCounter = 0;
   private sendToWebview: SendToWebview | null = null;
@@ -684,7 +701,7 @@ export class DesktopManager {
     this.trayClickHandler = () => {
       // When a tray popover is configured (#9953 Phase 4), a click toggles the
       // widget popover instead of restoring the full window.
-      if (this.trayPopoverUrl) {
+      if (this.trayPopoverConfig) {
         void this.toggleTrayPopover().catch((err: unknown) => {
           logger.warn(
             `[Desktop] Failed to toggle tray popover: ${err instanceof Error ? err.message : String(err)}`,
@@ -1880,12 +1897,23 @@ X-GNOME-Autostart-enabled=true
   // MARK: - Tray popover (#9953 Phase 4)
 
   /**
-   * Enable the tray popover. `rendererUrl` must already carry
+   * Enable the tray popover. The URL must already carry
    * `?shellMode=tray-popover` (the caller builds it). Once configured, a tray
    * click toggles the popover instead of restoring the full window.
+   *
+   * This is an app renderer surface, not external content: it needs the app
+   * preload/RPC/API-base boot path and app partition so auth, settings, and
+   * runtime updates match the main window.
    */
-  configureTrayPopover(rendererUrl: string): void {
-    this.trayPopoverUrl = rendererUrl;
+  configureTrayPopover(config: TrayPopoverConfig): void {
+    this.trayPopoverConfig = config;
+  }
+
+  /** Push an update to the open tray-popover app renderer, if present. */
+  forEachTrayPopoverWindow(fn: (window: BrowserWindow) => void): void {
+    if (this.trayPopoverWindow) {
+      fn(this.trayPopoverWindow);
+    }
   }
 
   /** Whether the tray popover window is currently open. */
@@ -1895,12 +1923,12 @@ X-GNOME-Autostart-enabled=true
 
   /**
    * Toggle the tray popover: close it if open, otherwise open a frameless,
-   * transparent, always-on-top BrowserView panel anchored at the top-right of
-   * the primary display's work area (under the macOS menu-bar tray). Mirrors the
-   * proven release-notes BrowserView pattern.
+   * transparent, always-on-top app renderer window anchored at the top-right of
+   * the primary display's work area (under the macOS menu-bar tray).
    */
   async toggleTrayPopover(): Promise<void> {
-    if (!this.trayPopoverUrl) return;
+    const config = this.trayPopoverConfig;
+    if (!config) return;
 
     if (this.trayPopoverWindow) {
       this.closeTrayPopover();
@@ -1924,22 +1952,21 @@ X-GNOME-Autostart-enabled=true
 
     const buildConfig = await BuildConfig.get();
     const renderer = this.resolvePreferredBrowserRenderer(buildConfig);
-    const win = new Electrobun.BrowserWindow({
+    const options: TrayPopoverBrowserWindowOptions = {
       title: `${getBrandConfig().appName}`,
+      url: config.url,
+      preload: config.preload,
       frame: { x, y, width: POPOVER_WIDTH, height: POPOVER_HEIGHT },
       renderer,
       transparent: true,
       titleBarStyle: "hidden",
-    });
-    win.webview.remove();
-
-    const view = new BrowserView({
-      url: this.trayPopoverUrl,
-      renderer,
-      windowId: win.id,
-      partition: RELEASE_NOTES_PARTITION,
-      sandbox: true,
-      frame: { x: 0, y: 0, width: win.frame.width, height: win.frame.height },
+      ...(config.partition ? { partition: config.partition } : {}),
+      ...(config.rpc ? { rpc: config.rpc } : {}),
+    };
+    const win = new Electrobun.BrowserWindow(options);
+    config.wireRpc?.(win);
+    win.webview.on("dom-ready", () => {
+      config.injectApiBase?.(win);
     });
 
     try {
@@ -1951,13 +1978,11 @@ X-GNOME-Autostart-enabled=true
     }
 
     win.on("close", () => {
-      this.trayPopoverView?.remove();
       this.trayPopoverWindow = null;
-      this.trayPopoverView = null;
     });
 
     this.trayPopoverWindow = win;
-    this.trayPopoverView = view;
+    config.onWindowFocused?.(win);
     win.focus();
   }
 
@@ -1971,9 +1996,7 @@ X-GNOME-Autostart-enabled=true
         `[Desktop] Failed to close tray popover: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    this.trayPopoverView?.remove();
     this.trayPopoverWindow = null;
-    this.trayPopoverView = null;
   }
 
   // MARK: - Clipboard
