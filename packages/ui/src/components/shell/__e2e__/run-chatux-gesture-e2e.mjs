@@ -1,12 +1,15 @@
 /**
- * Real-browser gesture e2e + video capture for the chat-UX surfaces (#8928,
- * #8929). Bundles chatux-gesture-fixture.tsx with esbuild, loads it in headless
- * chromium via Playwright, and drives REAL pointer gestures:
+ * Real-browser gesture e2e + video capture for the chat-UX TopicGroup (#8928).
+ * Bundles chatux-gesture-fixture.tsx with esbuild, loads it in headless chromium
+ * via Playwright, and drives REAL pointer gestures:
  *
  *   - TopicGroup: flick UP on the header → collapses to a pill (no buttons);
  *     tap the pill → expands.
- *   - ConversationSwiper: swipe LEFT → next conversation; swipe RIGHT → previous
- *     (edge hint lights with the drag).
+ *
+ * Conversation-swipe coverage moved to run-conversation-swipe-e2e.mjs, which
+ * drives the REAL ContinuousChatOverlay through a new-conversation interleaving
+ * (#9954). The local `ConversationSwiper` mock that used to be asserted here was
+ * deleted — it passed while exercising none of the real conversation-nav path.
  *
  * Captures a screenshot per state AND records a continuous .webm video of the
  * whole sequence. Exits non-zero on any failed assertion or page error.
@@ -181,22 +184,6 @@ assert(
   "Flick DOWN on the pill expands the group again",
 );
 await snap(page, "topic-expanded-after-flick-down");
-
-// ── 3. ConversationSwiper: swipe LEFT → next conversation ───────────────
-const title = page.getByTestId("active-conversation-title");
-const t0 = await title.textContent();
-await drag(page, "conversation-swiper", -160, 0, { steps: 12, slow: false });
-await page.waitForTimeout(250);
-const t1 = await title.textContent();
-assert(t0 !== t1, `Swipe LEFT navigates to the next conversation (${t0} → ${t1})`);
-await snap(page, "swipe-left-next");
-
-// Mid-swipe edge hint (hold to show the glow) — swipe RIGHT back.
-await drag(page, "conversation-swiper", 160, 0, { steps: 12, slow: false });
-await page.waitForTimeout(250);
-const t2 = await title.textContent();
-assert(t2 === t0, `Swipe RIGHT returns to the previous conversation (${t1} → ${t2})`);
-await snap(page, "swipe-right-prev");
 
 assert(errors.length === 0, `no page errors (saw ${errors.length})`);
 if (errors.length) console.log(errors.join("\n"));
