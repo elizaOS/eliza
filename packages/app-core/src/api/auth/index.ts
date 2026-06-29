@@ -12,6 +12,7 @@ export {
   ensureCompatApiAuthorizedAsync,
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
+  ensureRouteMinRole,
   extractHeaderValue,
   getCompatApiToken,
   getProvidedApiToken,

@@ -10,7 +10,7 @@ import { type RoleGateRole, roleRank } from "@elizaos/core";
 import { resolveApiToken } from "@elizaos/shared";
 // AuthStore is statically imported elsewhere in the package; the dynamic
 // import below was INEFFECTIVE_DYNAMIC_IMPORT.
-import { AuthStore } from "../services/auth-store.js";
+import { type AuthIdentityRow, AuthStore } from "../services/auth-store.js";
 import {
   CSRF_HEADER_NAME,
   findActiveSession,
@@ -21,6 +21,10 @@ import { isTrustedLocalRequest } from "./compat-route-shared.js";
 import { sendJsonError } from "./response.js";
 
 export { tokenMatches } from "./auth/tokens.js";
+
+interface CompatStateLike {
+  current: { adapter?: { db?: unknown } | null } | null;
+}
 
 /**
  * Normalise a potentially multi-valued HTTP header into a single string.
@@ -398,6 +402,144 @@ export function ensureMinRole(
   return roleRank(resolveBoundaryRole(req, env)) >= roleRank(minRole);
 }
 
+type RouteRoleResolution =
+  | { ok: true; role: RoleGateRole }
+  | { ok: false; status: 401 | 403 | 429; reason: string };
+
+function roleForAuthIdentity(
+  identity: Pick<AuthIdentityRow, "kind"> | null,
+): RoleGateRole {
+  if (identity?.kind === "owner") return "OWNER";
+  if (identity?.kind === "machine") return "USER";
+  return "NONE";
+}
+
+async function resolveSessionRole(
+  store: AuthStore,
+  identityId: string,
+): Promise<RoleGateRole> {
+  const identity = await store.findIdentity(identityId).catch(() => null);
+  return roleForAuthIdentity(identity);
+}
+
+async function resolveAuthorizedRouteRole(
+  req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
+  state: CompatStateLike,
+  options: { skipCsrf?: boolean; now?: number } = {},
+): Promise<RouteRoleResolution> {
+  const ip = req.socket.remoteAddress ?? null;
+  if (isAuthRateLimited(ip)) {
+    return {
+      ok: false,
+      status: 429,
+      reason: "Too many authentication attempts",
+    };
+  }
+
+  if (isTrustedLocalRequest(req)) return { ok: true, role: "OWNER" };
+
+  const adapter = state.current?.adapter;
+  const db = adapter?.db;
+  if (!db) {
+    const expectedToken = getCompatApiToken();
+    if (!expectedToken) {
+      recordFailedAuth(ip);
+      return { ok: false, status: 401, reason: "Unauthorized" };
+    }
+
+    const providedToken = getProvidedApiToken(req);
+    if (providedToken && tokenMatches(expectedToken, providedToken)) {
+      return { ok: true, role: "OWNER" };
+    }
+
+    recordFailedAuth(ip);
+    return { ok: false, status: 401, reason: "Unauthorized" };
+  }
+
+  const store = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
+  const method = (req.method ?? "GET").toUpperCase();
+  const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
+
+  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
+  if (sessionCookie) {
+    const session = await findActiveSession(
+      store,
+      sessionCookie,
+      options.now,
+    ).catch(() => null);
+    if (session) {
+      if (csrfRequired) {
+        const csrfHeader = extractHeaderValue(
+          (req.headers as http.IncomingHttpHeaders)[CSRF_HEADER_NAME],
+        );
+        if (!verifyCsrfToken(session, csrfHeader)) {
+          return { ok: false, status: 403, reason: "csrf_required" };
+        }
+      }
+      return {
+        ok: true,
+        role: await resolveSessionRole(store, session.identityId),
+      };
+    }
+  }
+
+  const provided = getProvidedApiToken(req);
+  if (provided) {
+    const sessionFromBearer = await findActiveSession(
+      store,
+      provided,
+      options.now,
+    ).catch(() => null);
+    if (sessionFromBearer) {
+      return {
+        ok: true,
+        role: await resolveSessionRole(store, sessionFromBearer.identityId),
+      };
+    }
+
+    const expectedToken = getCompatApiToken();
+    if (
+      process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" &&
+      expectedToken &&
+      tokenMatches(expectedToken, provided)
+    ) {
+      return { ok: true, role: "OWNER" };
+    }
+  }
+
+  recordFailedAuth(ip);
+  return { ok: false, status: 401, reason: "Unauthorized" };
+}
+
+/**
+ * Cookie/session-aware route guard with a canonical minimum role.
+ *
+ * This is the async counterpart to {@link ensureMinRole}: it preserves the
+ * existing route auth semantics (trusted loopback, session cookie with CSRF,
+ * session bearer, and Android's configured local-auth bearer) while letting
+ * sensitive HTTP routes require OWNER instead of accepting any valid session.
+ */
+export async function ensureRouteMinRole(
+  req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
+  res: http.ServerResponse,
+  state: CompatStateLike,
+  minRole: RoleGateRole,
+  options: { skipCsrf?: boolean; now?: number } = {},
+): Promise<boolean> {
+  const resolved = await resolveAuthorizedRouteRole(req, state, options);
+  if (!resolved.ok) {
+    sendJsonError(res, resolved.status, resolved.reason);
+    return false;
+  }
+
+  if (roleRank(resolved.role) < roleRank(minRole)) {
+    sendJsonError(res, 403, "Insufficient role");
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * Gate a sensitive route. Without a configured token, only trusted same-machine
  * dashboard requests are allowed. Remote callers need a real auth method.
@@ -422,10 +564,6 @@ export function ensureCompatSensitiveRouteAuthorized(
     return false;
   }
   return ensureCompatApiAuthorized(req, res);
-}
-
-interface CompatStateLike {
-  current: { adapter?: { db?: unknown } | null } | null;
 }
 
 /**
