@@ -32,6 +32,15 @@ import {
   reserveCredits,
 } from "@/lib/services/ai-billing";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
+import {
+  createOptimisticDebitSettler,
+  getGateBalanceUsd,
+  isOptimisticBackstopAvailable,
+  isOptimisticBillingEnabled,
+  isOptimisticEligible,
+  resolveSafeBalanceThresholdUsd,
+  writePendingInferenceCharge,
+} from "@/lib/services/inference-billing-fast-path";
 import { usageService } from "@/lib/services/usage";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
@@ -179,38 +188,139 @@ app.post("/", async (c) => {
       : request.input;
     const estimatedInputTokens = estimateTokens(inputText);
 
-    let reservation: Awaited<ReturnType<typeof reserveCredits>>;
-    try {
-      reservation = await reserveCredits(
-        {
-          organizationId: user.organization_id,
-          userId: user.id,
-          model,
-          provider,
-          billingSource,
-        },
-        estimatedInputTokens,
-        0,
-      );
-    } catch (error) {
-      if (error instanceof InsufficientCreditsError) {
-        return c.json(
+    // #9899 Tier-2 optimistic billing on the embeddings recall hot path. When
+    // enabled AND this org's balance comfortably clears SAFE_BALANCE_THRESHOLD,
+    // SKIP the synchronous reserve write (~0.8-1.7s of serial credit DB on every
+    // memory-backed reply) and defer the ACTUAL-cost debit to the post-response
+    // settle, backed by a durable KV pending-charge. Gated + fail-SAFE: flag off
+    // / null org / low balance / cache down / non-durable backstop all fall
+    // through to the synchronous reserve below, VERBATIM (same try/catch/402 as
+    // today). The success-path settleBilling and the catch are left byte-for-byte
+    // unchanged: on the optimistic path the reservation we hand billUsage is one
+    // whose `reconcile` IS the actual-cost debit, so there is exactly one charge
+    // site (billUsage's `reservation.reconcile(totalCost)`) on either path.
+    const requestId = c.req.header("x-request-id") || crypto.randomUUID();
+    const orgId = user.organization_id;
+    let reservation: Awaited<ReturnType<typeof reserveCredits>> | undefined;
+    let optimisticReady = false;
+
+    if (
+      orgId &&
+      isOptimisticBillingEnabled() &&
+      isOptimisticBackstopAvailable()
+    ) {
+      // Embeddings cost ~$0, so SAFE_BALANCE_THRESHOLD is the real guard: the
+      // gate estimate is 0 (balance must still clear the threshold).
+      // resolveSafeBalanceThresholdUsd() returns +Infinity when unset/invalid →
+      // isOptimisticEligible returns false → no org is fast-pathed on misconfig.
+      const balanceUsd = await getGateBalanceUsd(orgId);
+      const useOptimistic = isOptimisticEligible({
+        enabled: true,
+        useAppCredits: false,
+        balanceUsd,
+        thresholdUsd: resolveSafeBalanceThresholdUsd(),
+        estimatedCostUsd: 0,
+      });
+      if (useOptimistic) {
+        // Durability gate: take the optimistic path ONLY if the pending-charge
+        // backstop actually persisted. The inline debit only fires when it
+        // CLAIMS this entry (getAndDelete) at settle time, so a missing entry
+        // would mean free inference — fall back to the synchronous reserve
+        // instead. estimatedCostUsd:0 keeps this within the route's existing
+        // under-bill-on-Worker-death acceptance: the inline settler charges the
+        // REAL cost in steady state; only a DROPPED settle (isolate eviction)
+        // falls to the cron sweep, which then charges 0 — a sub-cent under-bill,
+        // NEVER an over-bill from a blind estimate.
+        const persisted = await writePendingInferenceCharge(
           {
-            error: {
-              message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-              type: "insufficient_quota",
-              code: "insufficient_balance",
-            },
+            requestId,
+            organizationId: orgId,
+            userId: user.id,
+            apiKeyId,
+            model,
+            provider,
+            billingSource: billingSource ?? "",
+            estimatedCostUsd: 0,
           },
-          402,
+          Date.now(),
         );
+        if (persisted) {
+          // Build a reservation whose `reconcile` IS the optimistic debit
+          // settler. We deliberately do NOT use
+          // creditsService.createAnonymousReservation() here — its reconcile is
+          // a no-op (`async () => {}`), which would make billUsage charge
+          // NOTHING (free embeddings — the known trap). When settleBilling calls
+          // billUsage(..., reservation) → reservation.reconcile(totalCost), the
+          // settler atomically claims the KV backstop (so the cron sweep can't
+          // also charge) and debits the ACTUAL marked-up cost via deductCredits.
+          const optimisticSettler = createOptimisticDebitSettler({
+            requestId,
+            organizationId: orgId,
+            userId: user.id,
+            model,
+            provider,
+            billingSource: billingSource ?? "",
+          });
+          reservation = {
+            reservedAmount: 0,
+            reservationTransactionId: null,
+            reconcile: async (actualCost: number) => {
+              await optimisticSettler(actualCost);
+            },
+          };
+          optimisticReady = true;
+        } else {
+          logger.warn(
+            "[Embeddings] optimistic backstop not durable; using synchronous reserve",
+            { requestId, organizationId: orgId },
+          );
+        }
       }
-      throw error;
     }
 
-    // Idempotent settler over the just-taken reservation. Used only by the catch
-    // below to release the hold on a provider failure; the success path settles
-    // via billUsage(reservation) instead (see settleBilling).
+    if (!optimisticReady) {
+      // SAFE PATH — byte-identical to today: synchronous reserve up front + a
+      // clean 402 on insufficient balance. Also the path for flag-off, null-org,
+      // low-balance, and cache-down requests.
+      try {
+        reservation = await reserveCredits(
+          {
+            organizationId: user.organization_id,
+            userId: user.id,
+            model,
+            provider,
+            billingSource,
+          },
+          estimatedInputTokens,
+          0,
+        );
+      } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          return c.json(
+            {
+              error: {
+                message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+                type: "insufficient_quota",
+                code: "insufficient_balance",
+              },
+            },
+            402,
+          );
+        }
+        throw error;
+      }
+    }
+
+    // Idempotent settler over whatever reservation we built. Used only by the
+    // catch below to release on a provider failure; the success path settles via
+    // billUsage(reservation) instead (see settleBilling). For the optimistic
+    // reservation, settleReservation(0) → reconcile(0) → optimisticSettler(0):
+    // it claims (removes) the pending entry and debits nothing.
+    if (!reservation) {
+      // Unreachable: every branch above assigns `reservation` or returns/throws.
+      // Narrows the `| undefined` for the settler type below.
+      throw new Error("[Embeddings] credit reservation missing");
+    }
     settleReservation = createCreditReservationSettler(reservation);
 
     logger.info("[Embeddings] Request", {
