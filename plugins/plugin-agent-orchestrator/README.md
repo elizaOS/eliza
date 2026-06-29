@@ -27,7 +27,7 @@ Native TypeScript ACP is the default transport. Set the default coding agent wit
 ```bash
 export ELIZA_ACP_TRANSPORT=native
 export ELIZA_ACP_DEFAULT_AGENT=elizaos
-export ELIZA_ELIZAOS_ACP_COMMAND="elizaos"
+export ELIZA_ELIZAOS_ACP_COMMAND="eliza-code-acp"
 export ELIZA_PI_AGENT_ACP_COMMAND="pi-agent"
 export ELIZA_CODEX_ACP_COMMAND="npx -y @zed-industries/codex-acp@0.14.0"
 export ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
@@ -141,7 +141,7 @@ All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=native`
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport mode. Accepted values include `native`/`direct` and `cli`/`acpx`. |
 | `ELIZA_ACP_CLI` | `acpx` | ACPX executable name or absolute path for the CLI transport. |
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type. Primary choices: `elizaos`, `pi-agent`, `opencode`. |
-| `ELIZA_ELIZAOS_ACP_COMMAND` | `elizaos` | Native elizaOS ACP command. |
+| `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command. |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @zed-industries/codex-acp@0.14.0` | Native Codex ACP command. |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |

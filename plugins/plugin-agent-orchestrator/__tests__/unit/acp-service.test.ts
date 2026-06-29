@@ -386,7 +386,7 @@ describe("AcpService", () => {
     );
   });
 
-  it("defaults untyped native sessions to the elizaos agent", async () => {
+  it("defaults untyped native sessions to the elizaos agent via eliza-code-acp", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: undefined }));
     await service.start();
 
@@ -401,6 +401,29 @@ describe("AcpService", () => {
     // The "elizaos" agent type resolves to the eliza-code ACP server binary
     // (the elizaos CLI has no ACP mode); the spawn command is eliza-code-acp.
     expect(nativeClientMock.instances[0]?.opts.command).toBe("eliza-code-acp");
+  });
+
+  it("honors explicit elizaos ACP command overrides", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ELIZAOS_ACP_COMMAND: "custom-eliza-acp --stdio",
+      }),
+    );
+    await service.start();
+
+    const spawned = await service.spawnSession({
+      name: "custom-elizaos",
+      agentType: "elizaos",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(spawned.agentType).toBe("elizaos");
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      "custom-eliza-acp --stdio",
+    );
   });
 
   it("supports pi-agent as a configured native default", async () => {
