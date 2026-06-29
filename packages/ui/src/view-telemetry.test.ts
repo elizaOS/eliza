@@ -1,11 +1,25 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { FrameBudgetSummary } from "./hooks/frame-budget";
 import {
+  emitConversationSwipeJank,
   emitViewInteraction,
   readViewInteractions,
   VIEW_INTERACTION_RING_MAX,
   VIEW_INTERACTION_TELEMETRY_EVENT,
+  type ViewInteractionEvent,
 } from "./view-telemetry";
+
+const SAMPLE_SUMMARY: FrameBudgetSummary = {
+  sampleCount: 8,
+  fps: 42,
+  meanFrameMs: 23.8,
+  p95FrameMs: 48,
+  worstFrameMs: 120,
+  droppedFrames: 3,
+  longTasks: 1,
+  budgetMs: 16.67,
+};
 
 function clearRing() {
   (
@@ -65,5 +79,38 @@ describe("view-telemetry", () => {
     expect(events[events.length - 1].count).toBe(
       VIEW_INTERACTION_RING_MAX + 24,
     );
+  });
+
+  it("retains a conversation-swipe-jank summary + direction into the ring and CustomEvent", () => {
+    const seen: ViewInteractionEvent[] = [];
+    const handler = (e: Event) => {
+      seen.push((e as CustomEvent<ViewInteractionEvent>).detail);
+    };
+    window.addEventListener(VIEW_INTERACTION_TELEMETRY_EVENT, handler);
+
+    emitConversationSwipeJank(SAMPLE_SUMMARY, "next");
+
+    window.removeEventListener(VIEW_INTERACTION_TELEMETRY_EVENT, handler);
+
+    const latest = readViewInteractions().at(-1);
+    expect(latest).toMatchObject({
+      source: "conversation-swipe",
+      action: "conversation-swipe-jank",
+      direction: "next",
+      // Headline dropped-frame count is surfaced on `count` for ring scanners.
+      count: SAMPLE_SUMMARY.droppedFrames,
+    });
+    // The full frame-budget summary survives intact into the ring…
+    expect(latest?.frameBudget?.droppedFrames).toBe(3);
+    expect(latest?.frameBudget?.p95FrameMs).toBe(48);
+    // …and the dispatched CustomEvent carries the same payload.
+    expect(seen).toHaveLength(1);
+    expect(seen[0].direction).toBe("next");
+    expect(seen[0].frameBudget?.worstFrameMs).toBe(120);
+  });
+
+  it("omits direction for a cancelled (uncommitted) swipe window", () => {
+    emitConversationSwipeJank(SAMPLE_SUMMARY);
+    expect(readViewInteractions().at(-1)?.direction).toBeUndefined();
   });
 });
