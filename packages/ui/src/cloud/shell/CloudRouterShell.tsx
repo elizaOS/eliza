@@ -54,29 +54,32 @@ import { StewardAuthProvider } from "./StewardProvider";
  * old bookmarks may still point at. `:param` segments are substituted from the
  * matched route params, and the original query string is preserved.
  */
-const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> = [
-  // Legacy build/* surface → agents.
-  { from: "dashboard/build/*", to: "/dashboard/my-agents" },
-  // Media generators were folded into the API explorer.
-  { from: "dashboard/image", to: "/dashboard/api-explorer" },
-  { from: "dashboard/video", to: "/dashboard/api-explorer" },
-  { from: "dashboard/gallery", to: "/dashboard/api-explorer" },
-  { from: "dashboard/voices", to: "/dashboard/api-explorer" },
-  // Containers were unified under agents.
-  { from: "dashboard/containers", to: "/dashboard/agents" },
-  { from: "dashboard/containers/:id", to: "/dashboard/agents/:id" },
-  { from: "dashboard/containers/agents/:id", to: "/dashboard/agents/:id" },
-  // In-dashboard quick chat was removed; real chat lives in the app. Send old
-  // deep links back to the agent detail page.
-  { from: "dashboard/agents/:id/chat", to: "/dashboard/agents/:id" },
-  // App-create modal is opened from the apps list, not its own route.
-  { from: "dashboard/apps/create", to: "/dashboard/apps" },
-  // New app-IA targets: billing / api-keys move into settings sections.
-  { from: "dashboard/billing", to: "/settings#billing" },
-  { from: "dashboard/api-keys", to: "/settings#api-keys" },
-  // Knowledge/Documents now lives in the app; old deep links land on the agents list.
-  { from: "dashboard/documents", to: "/dashboard/agents" },
-];
+export const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> =
+  [
+    // Legacy build/* surface → agents.
+    { from: "dashboard/build/*", to: "/dashboard/my-agents" },
+    // Media generators were folded into the API explorer.
+    { from: "dashboard/image", to: "/dashboard/api-explorer" },
+    { from: "dashboard/video", to: "/dashboard/api-explorer" },
+    { from: "dashboard/gallery", to: "/dashboard/api-explorer" },
+    { from: "dashboard/voices", to: "/dashboard/api-explorer" },
+    // Containers were unified under agents.
+    { from: "dashboard/containers", to: "/dashboard/agents" },
+    { from: "dashboard/containers/:id", to: "/dashboard/agents/:id" },
+    { from: "dashboard/containers/agents/:id", to: "/dashboard/agents/:id" },
+    // In-dashboard quick chat was removed; real chat lives in the app. Send old
+    // deep links back to the agent detail page.
+    { from: "dashboard/agents/:id/chat", to: "/dashboard/agents/:id" },
+    // App-create modal is opened from the apps list, not its own route.
+    { from: "dashboard/apps/create", to: "/dashboard/apps" },
+    // New app-IA targets: billing / api-keys move into settings sections. The
+    // API-keys surface has no standalone route — this redirect is its sole entry
+    // for every in-repo `/dashboard/api-keys` link and old deep link.
+    { from: "dashboard/billing", to: "/settings#billing" },
+    { from: "dashboard/api-keys", to: "/settings#api-keys" },
+    // Knowledge/Documents now lives in the app; old deep links land on the agents list.
+    { from: "dashboard/documents", to: "/dashboard/agents" },
+  ];
 
 /** Substitute `:param` segments from the matched route params. */
 function ParamRedirect({ to }: { to: string }): React.JSX.Element {

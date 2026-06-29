@@ -52,6 +52,40 @@ function ipv4FromMappedIpv6(address: string): string | null {
     }
   }
 
+  // Deprecated IPv4-compatible IPv6 (`::/96`, RFC 4291 §2.5.5.1): `::a.b.c.d` or
+  // its compressed-hex form `::HHHH:LLLL` with the high 96 bits all zero. These
+  // embed an IPv4 address that resolvers may route — `::169.254.169.254` reaches
+  // the cloud metadata endpoint — so decode the IPv4 and screen it. `::` and
+  // `::1` are NOT IPv4-compatible host addresses and are handled elsewhere.
+  if (normalized.startsWith("::") && normalized !== "::" && normalized !== "::1") {
+    const tail = normalized.slice("::".length);
+    if (tail.includes(".")) {
+      // `::a.b.c.d` — the only colon-less, dotted tail after `::`.
+      if (!tail.includes(":")) {
+        return tail;
+      }
+    } else {
+      const tailParts = tail.split(":");
+      if (tailParts.length === 2) {
+        const high = Number.parseInt(tailParts[0], 16);
+        const low = Number.parseInt(tailParts[1], 16);
+        if (
+          Number.isInteger(high) &&
+          Number.isInteger(low) &&
+          high >= 0 &&
+          high <= 0xffff &&
+          low >= 0 &&
+          low <= 0xffff &&
+          // Exclude the tiny low range (`::0`–`::ffff`) that is not a routable
+          // IPv4-compatible host: a single trailing group is `::N`, not `::H:L`.
+          (high !== 0 || low !== 0)
+        ) {
+          return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+        }
+      }
+    }
+  }
+
   return null;
 }
 

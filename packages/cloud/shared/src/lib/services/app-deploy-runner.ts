@@ -57,7 +57,7 @@ import {
 } from "./app-deploy-orchestrator";
 import { deriveAppPublicUrl } from "./app-url";
 import { appsService } from "./apps";
-import { isCodingContainerImageAllowed } from "./coding-containers";
+import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import { ContainerJobEnqueuer, type ContainerJobsWriter } from "./container-job-service";
 import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 import type { UserDatabaseService } from "./user-database";
@@ -151,6 +151,21 @@ export async function resolveImageRef(
         `allowed image namespaces (${permitted}). Set app.metadata.imageTag (or ` +
         `APP_DEFAULT_IMAGE) to an allowlisted image, or widen ` +
         `CODING_CONTAINER_IMAGE_ALLOWLIST.`,
+    );
+  }
+  // SECURITY (opt-in, default OFF): when the digest-pin gate is armed, reject a
+  // mutable `:tag`/`:latest` reference so the registry cannot swap the bytes
+  // behind an allowed name after this check. This is the SAME gate the two
+  // container routes (`/v1/containers`, `/v1/coding-containers`) enforce; an
+  // app deploy is the third shared-node image path, so it must enforce it too —
+  // otherwise CONTAINER_IMAGE_REQUIRE_DIGEST=true would still let an app deploy
+  // run a mutable tag while the routes reject it.
+  if (imageRequiresDigestPin(image, containersEnv.requireDigestPinnedImages())) {
+    throw new Error(
+      `Image '${image}' for app ${app.id} must be pinned to a full sha256 digest ` +
+        `(e.g. repo@sha256:<64 hex>): the digest-pin gate ` +
+        `(CONTAINER_IMAGE_REQUIRE_DIGEST) is enabled and a mutable tag can be ` +
+        `swapped after this check.`,
     );
   }
   return image;

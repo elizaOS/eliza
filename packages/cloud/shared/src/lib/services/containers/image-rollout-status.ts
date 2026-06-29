@@ -60,8 +60,20 @@ export interface ImageRolloutSummary {
     poolReadyAt: Date | null;
     healthUrl: string | null;
   }>;
+  /**
+   * Operator-gated actions that ARE supported but never run automatically. A
+   * rollback swaps each agent back onto its persisted `previous_image_digest`
+   * via `elizaSandboxService.executeDowngrade`; it requires an explicit
+   * operator action (`requiresOperatorApproval`) and is only available once a
+   * prior good image has been persisted (i.e. after at least one upgrade).
+   */
+  supportedActions: Array<{
+    action: "rollback";
+    requiresOperatorApproval: true;
+    note: string;
+  }>;
   unsupportedActions: Array<{
-    action: "canary" | "rollback";
+    action: "canary";
     reason: string;
   }>;
 }
@@ -197,16 +209,18 @@ export function summarizeImageRollout(params: {
       a.image.localeCompare(b.image),
     ),
     staleRows,
+    supportedActions: [
+      {
+        action: "rollback",
+        requiresOperatorApproval: true,
+        note: "Operator-gated: swaps each agent back onto its persisted previous_image_digest via executeDowngrade. Never runs automatically.",
+      },
+    ],
     unsupportedActions: [
       {
         action: "canary",
         reason:
           "Unsupported until per-cohort claim routing and health gates protect ready-pool replacement.",
-      },
-      {
-        action: "rollback",
-        reason:
-          "Unsupported until previous desired images are persisted and operator approval gates automated rollback.",
       },
     ],
   };

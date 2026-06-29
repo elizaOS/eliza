@@ -46,6 +46,13 @@ describe("outbound URL SSRF validation", () => {
     "::ffff:127.0.0.1",
     "::ffff:7f00:1",
     "0:0:0:0:0:ffff:a00:1",
+    // Deprecated IPv4-compatible IPv6 (`::/96`): the embedded IPv4 must be
+    // screened — `::169.254.169.254` would otherwise reach cloud metadata.
+    "::169.254.169.254",
+    "::127.0.0.1",
+    "::10.0.0.1",
+    "::a9fe:a9fe", // compressed-hex form of ::169.254.169.254
+    "::7f00:1", // compressed-hex form of ::127.0.0.1
   ])("classifies %s as forbidden", (address) => {
     expect(isForbiddenIpAddress(address)).toBe(true);
   });

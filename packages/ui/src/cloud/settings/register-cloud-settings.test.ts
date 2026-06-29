@@ -52,22 +52,30 @@ describe("register-cloud-settings", () => {
     expect(developer?.order).toBeLessThan(2);
   });
 
-  it("registers every Cloud-group section with group=cloud", () => {
+  it("registers every Cloud-group section with group=cloud, visible to a plain user", () => {
     const byId = new Map(listSettingsSections().map((s) => [s.id, s]));
     for (const id of CLOUD_SECTION_IDS) {
       const section = byId.get(id);
       expect(section, `missing section ${id}`).toBeDefined();
       expect(section?.group).toBe(CLOUD_SETTINGS_GROUP_ID);
       expect(section?.Component).toBeTypeOf("function");
+      // Account / Billing / Organization stay in normal Settings — no developer
+      // gate, so a plain USER role sees them.
+      expect(section?.viewKind).not.toBe("developer");
+      expect(section?.viewKind).not.toBe("preview");
+      expect(section?.developerOnly).not.toBe(true);
     }
   });
 
-  it("registers developer cloud sections into the Developer group behind the developer view gate", () => {
+  it("hides the developer cloud sections from a plain user via the developer view gate", () => {
     const byId = new Map(listSettingsSections().map((s) => [s.id, s]));
     for (const id of DEVELOPER_SECTION_IDS) {
       const section = byId.get(id);
       expect(section, `missing section ${id}`).toBeDefined();
       expect(section?.group).toBe(DEVELOPER_SETTINGS_GROUP_ID);
+      // viewKind "developer" is the gate input the SettingsView reads to hide
+      // these from a non-developer USER role (dev builds default the toggle on;
+      // prod defaults it off).
       expect(section?.viewKind).toBe("developer");
       expect(section?.Component).toBeTypeOf("function");
     }

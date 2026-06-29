@@ -18,7 +18,7 @@ import { discordService } from "./services/discord";
 import { emailService } from "./services/email";
 import { invitesService } from "./services/invites";
 import { organizationsService } from "./services/organizations";
-import { signupGrantAllowedForIp } from "./services/signup-grant-guard";
+import { runWithSignupGrantIpCap } from "./services/signup-grant-guard";
 import { usersService } from "./services/users";
 import type { UserWithOrganization } from "./types";
 import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
@@ -429,17 +429,21 @@ export async function syncUserFromSteward(
   const initialCredits = getInitialCredits();
   const signupIp = getClientIp();
 
-  if (initialCredits > 0 && (await signupGrantAllowedForIp(signupIp))) {
+  if (initialCredits > 0) {
     try {
-      await creditsService.addCredits({
-        organizationId: organization.id,
-        amount: initialCredits,
-        description: "Initial free credits - Welcome bonus",
-        metadata: {
-          type: "initial_free_credits",
-          source: "signup",
-          ip_address: signupIp,
-        },
+      // The cap check and the grant run under a per-IP advisory lock so
+      // concurrent same-IP signups cannot each pass the cap before any commits.
+      await runWithSignupGrantIpCap(signupIp, async () => {
+        await creditsService.addCredits({
+          organizationId: organization.id,
+          amount: initialCredits,
+          description: "Initial free credits - Welcome bonus",
+          metadata: {
+            type: "initial_free_credits",
+            source: "signup",
+            ip_address: signupIp,
+          },
+        });
       });
     } catch (error) {
       logger.error(

@@ -11,7 +11,9 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
     ALTER TABLE "agent_sandboxes"
       ADD COLUMN IF NOT EXISTS "pool_status" text,
       ADD COLUMN IF NOT EXISTS "pool_ready_at" timestamptz,
-      ADD COLUMN IF NOT EXISTS "claimed_at" timestamptz
+      ADD COLUMN IF NOT EXISTS "claimed_at" timestamptz,
+      ADD COLUMN IF NOT EXISTS "previous_image_digest" text,
+      ADD COLUMN IF NOT EXISTS "previous_docker_image" text
   `);
 
   await dbWrite.execute(sql`

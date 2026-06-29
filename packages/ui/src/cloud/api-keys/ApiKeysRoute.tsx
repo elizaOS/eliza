@@ -1,5 +1,5 @@
 /**
- * API-keys cloud route entry.
+ * API-keys surface.
  *
  * Lifted from `@elizaos/cloud-frontend/src/dashboard/api-keys/Page.tsx`. Gates
  * on the Steward session, fetches the keys with {@link useApiKeys}, maps the
@@ -7,8 +7,7 @@
  * renders {@link ApiKeysView}. Loading / error states use the cloud-ui dashboard
  * placeholders; the page title is set via {@link useDocumentTitle} (no Helmet).
  *
- * The same component is exported for both the registered standalone route and
- * the Wave-3 settings-section wrapper (see `index.ts`).
+ * Mounted only through the Settings → Developer section ({@link ApiKeysSection}).
  */
 
 import { useContext } from "react";
@@ -61,10 +60,7 @@ function deriveSummary(keys: ApiKeyDisplay[]): ApiKeysSummaryData {
   };
 }
 
-/**
- * The API-keys surface. Embeddable: used directly by the Wave-3 settings
- * section and wrapped by {@link ApiKeysRoute} for the standalone route.
- */
+/** The API-keys surface, rendered by the Settings → Developer section. */
 export function ApiKeysSurface() {
   const t = useCloudT();
   const auth = useContext(LocalStewardAuthContext);
@@ -105,9 +101,4 @@ export function ApiKeysSurface() {
   return (
     <ApiKeysView keys={displayKeys} summary={deriveSummary(displayKeys)} />
   );
-}
-
-/** Default export consumed by the cloud-route registry. */
-export default function ApiKeysRoute() {
-  return <ApiKeysSurface />;
 }
