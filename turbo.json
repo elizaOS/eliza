@@ -85,8 +85,17 @@
     },
     "@elizaos/prompts#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": [],
-      "cache": false
+      "outputs": [
+        "specs/actions/plugins.generated.json",
+        "$TURBO_ROOT$/packages/core/src/generated/action-docs.ts"
+      ],
+      "inputs": [
+        "package.json",
+        "scripts/**",
+        "src/**",
+        "specs/**",
+        "$TURBO_ROOT$/plugins/**/*.ts"
+      ]
     },
     "@elizaos/app-core#build": {
       "dependsOn": [

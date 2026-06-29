@@ -2,11 +2,23 @@
   "name": "@elizaos/example-code",
   "version": "2.0.0-beta.0",
   "description": "Async coding agent terminal app - Claude Code meets ElizaOS",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git",
+    "directory": "packages/examples/code"
+  },
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "eliza-code": "./dist/index.js",
     "eliza-code-acp": "./dist/acp.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "start": "bun src/index.ts",

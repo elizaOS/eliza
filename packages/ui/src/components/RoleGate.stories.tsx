@@ -22,15 +22,15 @@ function RoleCard() {
     <div
       style={{
         fontFamily: "system-ui, sans-serif",
-        color: "#e5e5e5",
+        color: "#f5f5f5",
         background: "#111",
         padding: 24,
         borderRadius: 12,
         width: 360,
       }}
     >
-      <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 12 }}>
-        current role: <strong style={{ color: "#ff5800" }}>{role}</strong> ·
+      <div style={{ fontSize: 13, color: "#cbd5e1", marginBottom: 12 }}>
+        current role: <strong style={{ color: "#ff8a3d" }}>{role}</strong> ·
         owner={String(isOwner)} · admin={String(isAdmin)}
       </div>
       <RoleGate
@@ -59,8 +59,8 @@ function Row({ label, denied }: { label: string; denied?: boolean }) {
         padding: "8px 12px",
         marginBottom: 6,
         borderRadius: 8,
-        background: denied ? "#1a1a1a" : "#222",
-        color: denied ? "#555" : "#e5e5e5",
+        background: denied ? "#202020" : "#262626",
+        color: denied ? "#a3a3a3" : "#f5f5f5",
         textDecoration: denied ? "line-through" : "none",
       }}
     >

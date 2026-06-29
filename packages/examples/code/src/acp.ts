@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * eliza-code ACP server — lets eliza-code run AS a coding sub-agent that the
  * elizaOS orchestrator (plugin-agent-orchestrator) can spawn over the Agent
