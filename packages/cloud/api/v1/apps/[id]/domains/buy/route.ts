@@ -29,10 +29,7 @@ import {
   cloudflareRegistrarService,
   type RegisteredDomain,
 } from "@/lib/services/cloudflare-registrar";
-import {
-  creditsService,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+import { creditsService } from "@/lib/services/credits";
 import { computeDomainPrice } from "@/lib/services/domain-pricing";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
@@ -182,7 +179,7 @@ interface PurchaseContext {
  * claim winner and return the HTTP outcome. Throws only on truly unexpected
  * errors (the caller releases the claim and maps them via failureResponse).
  */
-async function executeDomainPurchase(
+export async function executeDomainPurchase(
   ctx: PurchaseContext,
 ): Promise<PurchaseOutcome> {
   const { organizationId, appId, appUrl, domain } = ctx;
@@ -297,32 +294,17 @@ async function executeDomainPurchase(
     wholesaleUsdCents: price.wholesaleUsdCents,
     marginUsdCents: price.marginUsdCents,
   };
-  let debit: Awaited<ReturnType<typeof creditsService.deductCredits>>;
-  try {
-    debit = await creditsService.deductCredits({
-      organizationId,
-      amount: price.totalUsdCents / 100,
-      description: debitDescription,
-      metadata: debitMetadata,
-    });
-  } catch (err) {
-    if (err instanceof InsufficientCreditsError) {
-      return {
-        status: 402,
-        body: {
-          success: false,
-          error: "Insufficient credit balance for this domain",
-        },
-      };
-    }
-    throw err;
-  }
   // CRITICAL: deductCredits RETURNS {success:false, reason:"insufficient_balance"}
-  // on a too-low balance — it does NOT throw — so the InsufficientCreditsError
-  // catch above never fires for that case. We MUST gate registration on the
+  // on a too-low balance — it does NOT throw. We MUST gate registration on the
   // returned result; otherwise an org with insufficient credit sails past the
   // (zero-effect) debit straight into registerDomain() and gets a real domain
   // registered on OUR Cloudflare account for free.
+  const debit = await creditsService.deductCredits({
+    organizationId,
+    amount: price.totalUsdCents / 100,
+    description: debitDescription,
+    metadata: debitMetadata,
+  });
   if (!debit.success) {
     return {
       status: 402,
