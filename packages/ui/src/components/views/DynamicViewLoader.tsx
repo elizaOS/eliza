@@ -77,8 +77,6 @@ import {
   SurfaceSection,
 } from "../apps/extensions/surface.tsx";
 import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
-import { GameOperatorShell } from "../apps/surfaces/GameOperatorShell.tsx";
-import { registerOperatorSurface } from "../apps/surfaces/registry.ts";
 import { PagePanel } from "../composites/page-panel/index.ts";
 import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
@@ -339,10 +337,8 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   Input,
   Spinner,
   PagePanel,
-  GameOperatorShell,
   registerDetailExtension,
   registerOverlayApp,
-  registerOperatorSurface,
   useApp,
   useAppSelector,
   useAppSelectorShallow,
@@ -439,8 +435,6 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/components/ui/textarea": () => import("../ui/textarea.tsx"),
   "@elizaos/ui/components/ui/tooltip-extended": () =>
     import("../ui/tooltip-extended.tsx"),
-  "@elizaos/ui/components/apps/surfaces/GameOperatorShell": () =>
-    import("../apps/surfaces/GameOperatorShell.tsx"),
   "lucide-react": () => import("lucide-react"),
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
   "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),

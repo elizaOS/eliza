@@ -56,16 +56,22 @@ describe("Escape — the DOM-escape primitive", () => {
     expect(lines.join("\n")).toContain("chart in app");
   });
 
-  it("TUI/IR: with no `tui` fallback, emits the placeholder text node", () => {
+  it("TUI/IR: with no `tui` fallback, emits the placeholder inside the escape box (metadata preserved)", () => {
     const tree = evaluateToSpatialTree(
-      <Escape>
+      <Escape agent="pnl-chart">
         <canvas />
       </Escape>,
-    );
-    expect(tree).toMatchObject({
+    ) as SpatialBoxNode;
+    expect(tree.type).toBe("box");
+    expect(tree.direction).toBe("column");
+    expect(tree.children).toHaveLength(1);
+    expect(tree.children[0]).toMatchObject({
       type: "text",
       value: "[interactive view — open in app]",
     });
+    // Same box metadata the with-`tui` path preserves — agent id survives even
+    // when there is no authored fallback.
+    expect(tree.agent).toMatchObject({ id: "pnl-chart" });
   });
 
   it("carries agent metadata onto the escape box fallback", () => {

@@ -821,7 +821,6 @@ declare module "@elizaos/ui" {
   export type WindowShellRoute = string;
   export type AppDetailExtensionProps = AnyValue;
   export type AppBootConfig = AnyValue;
-  export type AppOperatorSurfaceProps = AnyValue;
   export type AppRunSummary = AnyValue;
   export type AppSessionJsonValue = AnyValue;
   export type BrandingConfig = AnyValue;
@@ -839,8 +838,6 @@ declare module "@elizaos/ui" {
   export type FeedTeamAgent = AnyValue;
   export type FeedWallet = AnyValue;
   export type FineTuningViewProps = AnyValue;
-  export type GameOperatorAction = AnyValue;
-  export type GameOperatorEvent = AnyValue;
   export type NetworkStatusChangeDetail = AnyValue;
   export type OverlayApp = AnyValue;
   export type OverlayAppContext = AnyValue;
@@ -881,7 +878,6 @@ declare module "@elizaos/ui" {
   export const CONNECT_EVENT: string;
   export const ELIZA_DEFAULT_THEME: string;
   export const ErrorBoundary: ComponentType<AnyValue>;
-  export const GameOperatorShell: ComponentType<AnyValue>;
   export const Input: ComponentType<AnyValue>;
   export const IOS_LOCAL_AGENT_IPC_BASE: string;
   export const MOBILE_LOCAL_AGENT_API_BASE: string;
@@ -914,7 +910,6 @@ declare module "@elizaos/ui" {
   export const loadUiTheme: AnyFunction;
   export const normalizeMobileRuntimeMode: AnyFunction;
   export const registerDetailExtension: AnyFunction;
-  export const registerOperatorSurface: AnyFunction;
   export const registerOverlayApp: AnyFunction;
   export const resolveWindowShellRoute: AnyFunction;
   export const routeFirstRunDeepLink: AnyFunction;
