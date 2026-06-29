@@ -5,17 +5,11 @@ import type { CompatRuntimeState } from "./compat-route-shared";
 
 const mocks = vi.hoisted(() => ({
   verifyEmbedLaunch: vi.fn(),
-  readCompatJsonBody: vi.fn(),
 }));
 
 vi.mock("./auth/embed-handshake", () => ({
   verifyEmbedLaunch: mocks.verifyEmbedLaunch,
 }));
-
-vi.mock("./compat-route-shared", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./compat-route-shared")>();
-  return { ...actual, readCompatJsonBody: mocks.readCompatJsonBody };
-});
 
 import { verifyEmbedSessionToken } from "./auth/embed-session-token";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
@@ -40,11 +34,23 @@ function fakeRes() {
   };
 }
 
-function fakeReq(method: string, pathname: string): http.IncomingMessage {
+// The route runs behind the runtime's plugin-route adapter (rawPath: true),
+// which pre-parses the JSON body and attaches it as `req.body`. Mirror that here
+// by setting `req.body` rather than mocking the body reader — the real
+// `readCompatJsonBody` honours the pre-parsed body and returns it synchronously,
+// so the test never depends on streaming a (never-ending) fake socket.
+function fakeReq(
+  method: string,
+  pathname: string,
+  body?: Record<string, unknown>,
+): http.IncomingMessage {
   const req = new http.IncomingMessage(new Socket());
   req.method = method;
   req.url = pathname;
   req.headers = { host: "example.com" };
+  if (body !== undefined) {
+    (req as http.IncomingMessage & { body?: unknown }).body = body;
+  }
   return req;
 }
 
@@ -57,7 +63,6 @@ const runtimeState = (current: unknown): CompatRuntimeState =>
 
 beforeEach(() => {
   mocks.verifyEmbedLaunch.mockReset();
-  mocks.readCompatJsonBody.mockReset();
 });
 
 describe("handleEmbedAuthRoutes", () => {
@@ -85,10 +90,9 @@ describe("handleEmbedAuthRoutes", () => {
   });
 
   it("400 on missing/invalid input (verify never called)", async () => {
-    mocks.readCompatJsonBody.mockResolvedValue({ platform: "telegram" });
     const r = fakeRes();
     await handleEmbedAuthRoutes(
-      fakeReq("POST", "/api/embed/auth"),
+      fakeReq("POST", "/api/embed/auth", { platform: "telegram" }),
       r.res,
       runtimeState({}),
     );
@@ -97,13 +101,12 @@ describe("handleEmbedAuthRoutes", () => {
   });
 
   it("400 on an unknown platform", async () => {
-    mocks.readCompatJsonBody.mockResolvedValue({
-      platform: "slack",
-      signedLaunchPayload: "x",
-    });
     const r = fakeRes();
     await handleEmbedAuthRoutes(
-      fakeReq("POST", "/api/embed/auth"),
+      fakeReq("POST", "/api/embed/auth", {
+        platform: "slack",
+        signedLaunchPayload: "x",
+      }),
       r.res,
       runtimeState({}),
     );
@@ -112,10 +115,6 @@ describe("handleEmbedAuthRoutes", () => {
   });
 
   it("403 (fail closed) when the handshake rejects", async () => {
-    mocks.readCompatJsonBody.mockResolvedValue({
-      platform: "telegram",
-      signedLaunchPayload: "forged",
-    });
     mocks.verifyEmbedLaunch.mockResolvedValue({
       ok: false,
       status: 403,
@@ -123,7 +122,10 @@ describe("handleEmbedAuthRoutes", () => {
     });
     const r = fakeRes();
     await handleEmbedAuthRoutes(
-      fakeReq("POST", "/api/embed/auth"),
+      fakeReq("POST", "/api/embed/auth", {
+        platform: "telegram",
+        signedLaunchPayload: "forged",
+      }),
       r.res,
       runtimeState({}),
     );
@@ -132,11 +134,6 @@ describe("handleEmbedAuthRoutes", () => {
   });
 
   it("200 with the verified principal on success", async () => {
-    mocks.readCompatJsonBody.mockResolvedValue({
-      platform: "telegram",
-      signedLaunchPayload: "valid",
-      accountId: "acct-1",
-    });
     mocks.verifyEmbedLaunch.mockResolvedValue({
       ok: true,
       entityId: "11111111-1111-1111-1111-111111111111",
@@ -150,7 +147,11 @@ describe("handleEmbedAuthRoutes", () => {
     };
     const r = fakeRes();
     await handleEmbedAuthRoutes(
-      fakeReq("POST", "/api/embed/auth"),
+      fakeReq("POST", "/api/embed/auth", {
+        platform: "telegram",
+        signedLaunchPayload: "valid",
+        accountId: "acct-1",
+      }),
       r.res,
       runtimeState(runtime),
     );
@@ -184,10 +185,6 @@ describe("handleEmbedAuthRoutes", () => {
   });
 
   it("returns a null token when no signing secret is configured", async () => {
-    mocks.readCompatJsonBody.mockResolvedValue({
-      platform: "telegram",
-      signedLaunchPayload: "valid",
-    });
     mocks.verifyEmbedLaunch.mockResolvedValue({
       ok: true,
       entityId: "22222222-2222-2222-2222-222222222222",
@@ -196,7 +193,10 @@ describe("handleEmbedAuthRoutes", () => {
     });
     const r = fakeRes();
     await handleEmbedAuthRoutes(
-      fakeReq("POST", "/api/embed/auth"),
+      fakeReq("POST", "/api/embed/auth", {
+        platform: "telegram",
+        signedLaunchPayload: "valid",
+      }),
       r.res,
       runtimeState({ agentId: "agent", getSetting: () => undefined }),
     );
