@@ -103,6 +103,8 @@ import {
   resizeWindow,
   restoreWindow,
   switchWindow,
+  warmScreenSizeCache,
+  warmWindowsCache,
 } from "../platform/windows-list.js";
 import { SceneBuilder, type SceneUpdateEvent } from "../scene/scene-builder.js";
 import type { Scene, SceneVlmElement } from "../scene/scene-types.js";
@@ -263,7 +265,13 @@ export class ComputerUseService extends Service {
     // host fails to warm. No-op off Windows.
     if (currentPlatform() === "win32") {
       void warmPsHost()
-        .then(() => warmDisplaysCache())
+        .then(() =>
+          Promise.all([
+            warmDisplaysCache(),
+            warmWindowsCache(),
+            warmScreenSizeCache(),
+          ]),
+        )
         .catch(() => {});
     }
 
@@ -1066,21 +1074,24 @@ export class ComputerUseService extends Service {
           });
         }
         case "focus":
-          focusWindow(this.requireWindowTarget(params));
+          await focusWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
             success: true,
             message: "Focused window.",
           });
         case "switch":
-          switchWindow(this.requireWindowTarget(params));
+          await switchWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
             success: true,
             message: "Switched window.",
           });
         case "arrange":
-          return this.succeedEntry(entry, arrangeWindows(params.arrangement));
+          return this.succeedEntry(
+            entry,
+            await arrangeWindows(params.arrangement),
+          );
         case "move": {
-          const result = moveWindow(
+          const result = await moveWindow(
             this.requireWindowTarget(params),
             this.requireNumber(params.x, "x is required for window move"),
             this.requireNumber(params.y, "y is required for window move"),
@@ -1088,31 +1099,31 @@ export class ComputerUseService extends Service {
           return this.succeedEntry(entry, result);
         }
         case "minimize":
-          minimizeWindow(this.requireWindowTarget(params));
+          await minimizeWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
             success: true,
             message: "Window minimized.",
           });
         case "maximize":
-          maximizeWindow(this.requireWindowTarget(params));
+          await maximizeWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
             success: true,
             message: "Window maximized.",
           });
         case "restore":
-          restoreWindow(this.requireWindowTarget(params));
+          await restoreWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
             success: true,
             message: "Window restored.",
           });
         case "close":
-          closeWindow(this.requireWindowTarget(params));
+          await closeWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
             success: true,
             message: "Window closed.",
           });
         case "get_current_window_id": {
-          const active = getActiveWindow();
+          const active = await getActiveWindow();
           return this.succeedEntry(entry, {
             success: true,
             windowId: active?.id ?? null,
@@ -1135,7 +1146,7 @@ export class ComputerUseService extends Service {
           });
         }
         case "set_bounds": {
-          const result = resizeWindow(
+          const result = await resizeWindow(
             this.requireWindowTarget(params),
             this.requireNumber(params.x, "x is required for set_bounds"),
             this.requireNumber(params.y, "y is required for set_bounds"),
@@ -1147,7 +1158,7 @@ export class ComputerUseService extends Service {
         case "get_window_size":
         case "get_window_position": {
           // windowId is optional — defaults to the focused/foreground window.
-          const bounds = getWindowBounds(params.windowId);
+          const bounds = await getWindowBounds(params.windowId);
           return this.succeedEntry(entry, {
             success: true,
             bounds,
@@ -1267,15 +1278,9 @@ export class ComputerUseService extends Service {
             await writeBytes(targetPath, params.base64),
           );
         case "create_dir":
-          return this.finishFileEntry(
-            entry,
-            await createDirectory(targetPath),
-          );
+          return this.finishFileEntry(entry, await createDirectory(targetPath));
         case "directory_exists":
-          return this.finishFileEntry(
-            entry,
-            await directoryExists(targetPath),
-          );
+          return this.finishFileEntry(entry, await directoryExists(targetPath));
         case "get_file_size":
           return this.finishFileEntry(entry, await getFileSize(targetPath));
         default:
@@ -1905,6 +1910,11 @@ export class ComputerUseService extends Service {
   async refreshScene(
     mode: "idle" | "active" | "agent-turn" = "agent-turn",
   ): Promise<Scene> {
+    // Pre-seed the window cache via the warm host so the (sync) listWindows the
+    // scene's app enumeration runs hits a fresh cache instead of cold-spawning
+    // powershell.exe (which, exceeding its timeout on Defender-heavy hosts,
+    // would otherwise return an empty window list). No-op off Windows.
+    await warmWindowsCache();
     return this.sceneBuilder.tick(mode);
   }
 
