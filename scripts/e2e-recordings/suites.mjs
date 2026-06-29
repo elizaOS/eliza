@@ -54,12 +54,12 @@ export const UI_E2E_SUITES = [
       "Runs the shared agent-surface fixture in Chromium, drives fill/click/focus capability bridge interactions, and records screenshots.",
   },
   {
-    name: "ui-springboard",
-    displayName: "Springboard view launcher",
+    name: "ui-launcher",
+    displayName: "Launcher view launcher",
     configDir: "packages/ui",
-    script: "test:springboard-e2e",
+    script: "test:launcher-e2e",
     coverage:
-      "Runs the Springboard launcher fixture in Chromium, asserts tiles + image tiles render, captures desktop/mobile rest + edit screenshots, drives tap-launch/long-press-edit/favorite/page-nav with a recorded video, and asserts the view-interaction telemetry stream fired.",
+      "Runs the Launcher launcher fixture in Chromium, asserts tiles + image tiles render, captures desktop/mobile rest + edit screenshots, drives tap-launch/long-press-edit/favorite/page-nav with a recorded video, and asserts the view-interaction telemetry stream fired.",
   },
   {
     name: "app-xr",

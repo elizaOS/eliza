@@ -3,35 +3,35 @@ import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import { cn } from "../../lib/utils";
 import {
   goHome,
-  goSpringboard,
+  goLauncher,
   setShellSurfacePage,
   useShellSurface,
 } from "../../state/shell-surface-store";
-import type { HomeSpringboardPage } from "./home-springboard-events";
+import type { HomeLauncherPage } from "./home-launcher-events";
 
-export interface HomeSpringboardSurfaceProps {
+export interface HomeLauncherSurfaceProps {
   home: React.ReactNode;
-  springboard: React.ReactElement<{ onNavigateHomeFromEdge?: () => void }>;
-  initialPage?: HomeSpringboardPage;
+  launcher: React.ReactElement<{ onNavigateHomeFromEdge?: () => void }>;
+  initialPage?: HomeLauncherPage;
   className?: string;
 }
 
 /**
- * The home ↔ springboard rail. It owns NO local navigation state — `page` is
+ * The home ↔ launcher rail. It owns NO local navigation state — `page` is
  * read from (and every transition is dispatched to) the single shell-surface
- * store, so this surface, the inner Springboard, the chat controller, and the
+ * store, so this surface, the inner Launcher, the chat controller, and the
  * page indicator can never disagree. One horizontal flick on either half maps to
- * exactly one store intent (home → springboard on a left flick; springboard →
+ * exactly one store intent (home → launcher on a left flick; launcher →
  * home on a right flick), and a single combined indicator reflects the store —
  * there is no second, competing dot strip.
  */
-export function HomeSpringboardSurface({
+export function HomeLauncherSurface({
   home,
-  springboard,
+  launcher,
   initialPage = "home",
   className,
-}: HomeSpringboardSurfaceProps): React.JSX.Element {
-  const { page, springboardPage, springboardEditing } = useShellSurface();
+}: HomeLauncherSurfaceProps): React.JSX.Element {
+  const { page, launcherPage, launcherEditing } = useShellSurface();
 
   // The mounting route decides which half shows first. Re-runs only when the
   // route actually changes `initialPage`, so an in-session swipe is never
@@ -44,11 +44,11 @@ export function HomeSpringboardSurface({
   // the same press, so the flick doesn't also tap-launch the tile underneath.
   const suppressClickRef = React.useRef(false);
   const pager = useHorizontalPager<HTMLElement>({
-    page: page === "springboard" ? 1 : 0,
+    page: page === "launcher" ? 1 : 0,
     pageCount: 2,
-    // Let the inner Springboard own app-page swipes after page 1. On the first
+    // Let the inner Launcher own app-page swipes after page 1. On the first
     // app page, or while editing, the parent owns the right-swipe home gesture.
-    enabled: page === "home" || springboardPage === 0 || springboardEditing,
+    enabled: page === "home" || launcherPage === 0 || launcherEditing,
     onPageChange: (nextPage) => {
       suppressClickRef.current = true;
       window.setTimeout(() => {
@@ -57,7 +57,7 @@ export function HomeSpringboardSurface({
       if (nextPage === 0) {
         goHome();
       } else {
-        goSpringboard();
+        goLauncher();
       }
     },
   });
@@ -71,15 +71,15 @@ export function HomeSpringboardSurface({
     [],
   );
   // No page indicator: the dots collided with the floating chat composer, and
-  // the swipe gesture (left → springboard, right → home / back a page) is the
-  // sole, sufficient navigation. Paging across springboard pages stays a swipe.
+  // the swipe gesture (left → launcher, right → home / back a page) is the
+  // sole, sufficient navigation. Paging across launcher pages stays a swipe.
 
   return (
     <section
       ref={pager.viewportRef}
-      data-testid="home-springboard-surface"
+      data-testid="home-launcher-surface"
       data-page={page}
-      // `select-none`: this is a swipeable launcher (home ↔ springboard), so a
+      // `select-none`: this is a swipeable launcher (home ↔ launcher), so a
       // horizontal drag must pan the rail, never text-select the tile labels /
       // widget text underneath. (Vertical scroll of the home widget list is
       // untouched.)
@@ -90,11 +90,11 @@ export function HomeSpringboardSurface({
     >
       <div
         ref={pager.railRef}
-        data-testid="home-springboard-rail"
+        data-testid="home-launcher-rail"
         className="absolute inset-0 flex w-[200%] motion-reduce:transition-none"
       >
         <div
-          data-testid="home-springboard-home-page"
+          data-testid="home-launcher-home-page"
           aria-hidden={page !== "home"}
           // `touch-pan-y`: reserve vertical panning for the browser (the home
           // widget list scrolls) but claim every horizontal gesture for the
@@ -112,8 +112,8 @@ export function HomeSpringboardSurface({
           {home}
         </div>
         <div
-          data-testid="home-springboard-springboard-page"
-          aria-hidden={page !== "springboard"}
+          data-testid="home-launcher-launcher-page"
+          aria-hidden={page !== "launcher"}
           // Same as the home half: vertical scroll (the tile grid) stays with
           // the browser, horizontal flicks (right → back home) are ours.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"
@@ -124,7 +124,7 @@ export function HomeSpringboardSurface({
           onLostPointerCapture={pager.handlers.onLostPointerCapture}
           onClickCapture={suppressCommittedSwipeClick}
         >
-          {React.cloneElement(springboard, {
+          {React.cloneElement(launcher, {
             onNavigateHomeFromEdge: goHome,
           })}
         </div>

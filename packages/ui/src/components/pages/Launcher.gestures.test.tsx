@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
-// Gesture-layer + telemetry coverage for the Springboard. motion/react is mocked
+// Gesture-layer + telemetry coverage for the Launcher. motion/react is mocked
 // so the test can drive the Reorder.Group onReorder bridge and the swipe-paging
 // motion.div onDragEnd directly (jsdom can't perform a real pointer drag). The
 // real-motion render path (page dots, favorites, image tiles) is covered by the
-// sibling Springboard.test.tsx, which does NOT mock motion.
+// sibling Launcher.test.tsx, which does NOT mock motion.
 
 import {
   act,
@@ -16,13 +16,13 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { SPRINGBOARD_STORAGE_KEY } from "../../state/springboard-layout";
+import { LAUNCHER_STORAGE_KEY } from "../../state/launcher-layout";
 import {
   readViewInteractions,
   type ViewInteractionAction,
 } from "../../view-telemetry";
 
-// Captures the latest gesture callbacks the Springboard hands to motion/react.
+// Captures the latest gesture callbacks the Launcher hands to motion/react.
 const bus = vi.hoisted(() => ({
   onDragEnd: null as
     | null
@@ -59,7 +59,7 @@ vi.mock("motion/react", () => ({
 }));
 
 // Import AFTER the mock is registered.
-import { Springboard } from "./Springboard";
+import { Launcher } from "./Launcher";
 
 /**
  * Edit mode is entered via a long-press on a tile (the visible Edit button was
@@ -102,7 +102,7 @@ function actions(): ViewInteractionAction[] {
 }
 
 function horizontalSwipe(dx: number): void {
-  const pageWindow = screen.getByTestId("springboard-page-window");
+  const pageWindow = screen.getByTestId("launcher-page-window");
   fireEvent.pointerDown(pageWindow, {
     pointerId: 1,
     clientX: 500,
@@ -134,9 +134,9 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe("Springboard drag-reorder bridge", () => {
+describe("Launcher drag-reorder bridge", () => {
   it("persists a reordered page through moveIcon and emits a reorder event", () => {
-    render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
+    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
     longPressTile("View 0");
     // Page 0 holds the first 20 ids; move the first to the end.
     expect(bus.values.slice(0, 3)).toEqual(["v0", "v1", "v2"]);
@@ -146,7 +146,7 @@ describe("Springboard drag-reorder bridge", () => {
     });
 
     const stored = JSON.parse(
-      window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY) ?? "{}",
+      window.localStorage.getItem(LAUNCHER_STORAGE_KEY) ?? "{}",
     );
     expect(stored.manual).toBe(true);
     expect(stored.pages[0][0]).toBe("v1");
@@ -158,38 +158,38 @@ describe("Springboard drag-reorder bridge", () => {
   });
 });
 
-describe("Springboard swipe paging (onDragEnd)", () => {
+describe("Launcher swipe paging (onDragEnd)", () => {
   it("advances a page past the swipe threshold and emits page-swipe", () => {
-    render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
+    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
     expect(
-      screen.getByTestId("springboard-page-0").getAttribute("aria-hidden"),
+      screen.getByTestId("launcher-page-0").getAttribute("aria-hidden"),
     ).toBe("false");
     expect(
-      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+      screen.getByTestId("launcher-page-1").getAttribute("aria-hidden"),
     ).toBe("true");
     act(() => {
       horizontalSwipe(-300);
     });
     // Page 1 now shows v20..v24.
     expect(
-      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+      screen.getByTestId("launcher-page-1").getAttribute("aria-hidden"),
     ).toBe("false");
     expect(actions()).toContain("page-swipe");
   });
 
   it("ignores a drag below the threshold", () => {
-    render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
+    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
     act(() => {
       horizontalSwipe(-30);
     });
     expect(
-      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+      screen.getByTestId("launcher-page-1").getAttribute("aria-hidden"),
     ).toBe("true");
     expect(actions()).not.toContain("page-swipe");
   });
 
   it("clamps at the first page (no underflow)", () => {
-    render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
+    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
     // Already on page 0; a rightward swipe would go to -1 → clamped, no event.
     act(() => {
       horizontalSwipe(300);
@@ -198,24 +198,22 @@ describe("Springboard swipe paging (onDragEnd)", () => {
   });
 
   it("does not page while in edit mode", () => {
-    render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
+    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
     longPressTile("View 0");
     act(() => {
       horizontalSwipe(-300);
     });
     expect(
-      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+      screen.getByTestId("launcher-page-1").getAttribute("aria-hidden"),
     ).toBe("true");
     expect(actions()).not.toContain("page-swipe");
   });
 });
 
-describe("Springboard interaction telemetry", () => {
+describe("Launcher interaction telemetry", () => {
   it("emits launch on tap", () => {
     const onLaunch = vi.fn();
-    render(
-      <Springboard entries={[entry("chat", "Chat")]} onLaunch={onLaunch} />,
-    );
+    render(<Launcher entries={[entry("chat", "Chat")]} onLaunch={onLaunch} />);
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(onLaunch).toHaveBeenCalledTimes(1);
     const launch = readViewInteractions().find((e) => e.action === "launch");
@@ -224,19 +222,17 @@ describe("Springboard interaction telemetry", () => {
 
   it("emits favorite then unfavorite as the dock is toggled", () => {
     render(
-      <Springboard entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
+      <Launcher entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
     );
     longPressTile("Notes");
-    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
-    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
+    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
+    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
     expect(actions()).toContain("favorite");
     expect(actions()).toContain("unfavorite");
   });
 
   it("emits edit-mode enter/exit via long-press toggle", () => {
-    render(
-      <Springboard entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,
-    );
+    render(<Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />);
     // First long-press enters edit mode, the second exits it.
     longPressTile("Chat");
     longPressTile("Chat");

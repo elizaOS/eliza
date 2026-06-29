@@ -6,7 +6,7 @@ import { useRoutableViews } from "../../hooks/useAvailableViews";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
-import { SpringboardSurface } from "./SpringboardSurface";
+import { LauncherSurface } from "./LauncherSurface";
 
 vi.mock("../../hooks/useAvailableViews", () => ({
   useRoutableViews: vi.fn(),
@@ -100,20 +100,20 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("SpringboardSurface", () => {
-  it("shows Settings as a favorite and hides Home/Springboard self-links", () => {
-    render(<SpringboardSurface />);
+describe("LauncherSurface", () => {
+  it("shows Settings as a favorite and hides Home/Launcher self-links", () => {
+    render(<LauncherSurface />);
 
-    expect(screen.getByTestId("springboard-tile-settings")).toBeTruthy();
-    expect(screen.getByTestId("springboard-tile-phone")).toBeTruthy();
-    expect(screen.getByTestId("springboard-tile-notes")).toBeTruthy();
-    expect(screen.queryByTestId("springboard-tile-chat")).toBeNull();
-    expect(screen.queryByTestId("springboard-tile-views")).toBeNull();
-    expect(screen.queryByTestId("springboard-tile-views-manager")).toBeNull();
+    expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
+    expect(screen.getByTestId("launcher-tile-phone")).toBeTruthy();
+    expect(screen.getByTestId("launcher-tile-notes")).toBeTruthy();
+    expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-views-manager")).toBeNull();
   });
 
   it("navigates loaded views through the browser route", () => {
-    render(<SpringboardSurface />);
+    render(<LauncherSurface />);
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
@@ -130,7 +130,7 @@ describe("SpringboardSurface", () => {
       get,
     });
 
-    render(<SpringboardSurface />);
+    render(<LauncherSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Weather" }));
 
     expect(get).toHaveBeenCalledTimes(1);
@@ -151,13 +151,13 @@ describe("SpringboardSurface", () => {
       error: null,
       refresh: vi.fn(),
     });
-    render(<SpringboardSurface />);
+    render(<LauncherSurface />);
 
-    const page = screen.getByTestId("springboard-page-0");
+    const page = screen.getByTestId("launcher-page-0");
     const ids = Array.from(
-      page.querySelectorAll<HTMLElement>('[data-testid^="springboard-tile-"]'),
+      page.querySelectorAll<HTMLElement>('[data-testid^="launcher-tile-"]'),
     ).map((node) =>
-      node.getAttribute("data-testid")?.replace("springboard-tile-", ""),
+      node.getAttribute("data-testid")?.replace("launcher-tile-", ""),
     );
 
     expect(ids).toEqual(["phone", "settings", "notes", "weather"]);

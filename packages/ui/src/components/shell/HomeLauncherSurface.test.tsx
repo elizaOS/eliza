@@ -7,10 +7,10 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { HomeSpringboardSurface } from "./HomeSpringboardSurface";
-import { dispatchHomeSpringboardNavigation } from "./home-springboard-events";
+import { HomeLauncherSurface } from "./HomeLauncherSurface";
+import { dispatchHomeLauncherNavigation } from "./home-launcher-events";
 
-function SpringboardProbe({
+function LauncherProbe({
   onNavigateHomeFromEdge,
 }: {
   onNavigateHomeFromEdge?: () => void;
@@ -24,19 +24,19 @@ function SpringboardProbe({
 
 afterEach(() => cleanup());
 
-describe("HomeSpringboardSurface", () => {
-  it("keeps both pages mounted and flips to Springboard on a left flick", () => {
+describe("HomeLauncherSurface", () => {
+  it("keeps both pages mounted and flips to Launcher on a left flick", () => {
     render(
-      <HomeSpringboardSurface
+      <HomeLauncherSurface
         home={<div data-testid="home-pane">home</div>}
-        springboard={<SpringboardProbe />}
+        launcher={<LauncherProbe />}
       />,
     );
 
     expect(screen.getByTestId("home-pane")).toBeTruthy();
     expect(screen.getByText("edge home")).toBeTruthy();
 
-    const homePage = screen.getByTestId("home-springboard-home-page");
+    const homePage = screen.getByTestId("home-launcher-home-page");
     fireEvent.pointerDown(homePage, {
       isPrimary: true,
       clientX: 260,
@@ -54,47 +54,47 @@ describe("HomeSpringboardSurface", () => {
     });
 
     expect(
-      screen.getByTestId("home-springboard-surface").getAttribute("data-page"),
-    ).toBe("springboard");
+      screen.getByTestId("home-launcher-surface").getAttribute("data-page"),
+    ).toBe("launcher");
   });
 
-  it("accepts navigation events and lets Springboard edge-swipe back home", () => {
+  it("accepts navigation events and lets Launcher edge-swipe back home", () => {
     render(
-      <HomeSpringboardSurface
+      <HomeLauncherSurface
         home={<div>home</div>}
-        springboard={<SpringboardProbe />}
+        launcher={<LauncherProbe />}
       />,
     );
 
-    act(() => dispatchHomeSpringboardNavigation("springboard"));
+    act(() => dispatchHomeLauncherNavigation("launcher"));
     expect(
-      screen.getByTestId("home-springboard-surface").getAttribute("data-page"),
-    ).toBe("springboard");
+      screen.getByTestId("home-launcher-surface").getAttribute("data-page"),
+    ).toBe("launcher");
 
     fireEvent.click(screen.getByText("edge home"));
 
     expect(
-      screen.getByTestId("home-springboard-surface").getAttribute("data-page"),
+      screen.getByTestId("home-launcher-surface").getAttribute("data-page"),
     ).toBe("home");
   });
 
-  it("honors initialPage so the launcher route opens on the Springboard", () => {
+  it("honors initialPage so the launcher route opens on the Launcher", () => {
     render(
-      <HomeSpringboardSurface
+      <HomeLauncherSurface
         home={<div>home</div>}
-        springboard={<SpringboardProbe />}
-        initialPage="springboard"
+        launcher={<LauncherProbe />}
+        initialPage="launcher"
       />,
     );
     expect(
-      screen.getByTestId("home-springboard-surface").getAttribute("data-page"),
-    ).toBe("springboard");
+      screen.getByTestId("home-launcher-surface").getAttribute("data-page"),
+    ).toBe("launcher");
   });
 
   // -- Gesture disambiguation (reliability) ---------------------------------
   // The home page hosts a vertically-scrollable widget list, so the swipe
   // detector must NOT mistake a scroll / short drag / rightward drag for a
-  // home→springboard page flip. These guard that disambiguation.
+  // home→launcher page flip. These guard that disambiguation.
   function flick(
     page: HTMLElement,
     {
@@ -124,18 +124,18 @@ describe("HomeSpringboardSurface", () => {
 
   function renderSurface() {
     render(
-      <HomeSpringboardSurface
+      <HomeLauncherSurface
         home={<div data-testid="home-pane">home</div>}
-        springboard={<SpringboardProbe />}
+        launcher={<LauncherProbe />}
       />,
     );
-    return screen.getByTestId("home-springboard-surface");
+    return screen.getByTestId("home-launcher-surface");
   }
 
   it("does NOT flip on a vertical scroll (dy dominates) — widget scroll is safe", () => {
     const surface = renderSurface();
     // dx past the distance threshold but the drag is mostly vertical.
-    flick(screen.getByTestId("home-springboard-home-page"), {
+    flick(screen.getByTestId("home-launcher-home-page"), {
       dx: -110,
       dy: 220,
     });
@@ -144,19 +144,19 @@ describe("HomeSpringboardSurface", () => {
 
   it("does NOT flip on a short left drag below the distance threshold", () => {
     const surface = renderSurface();
-    flick(screen.getByTestId("home-springboard-home-page"), { dx: -40, dy: 2 });
+    flick(screen.getByTestId("home-launcher-home-page"), { dx: -40, dy: 2 });
     expect(surface.getAttribute("data-page")).toBe("home");
   });
 
-  it("does NOT flip on a rightward drag (only left opens the Springboard)", () => {
+  it("does NOT flip on a rightward drag (only left opens the Launcher)", () => {
     const surface = renderSurface();
-    flick(screen.getByTestId("home-springboard-home-page"), { dx: 140, dy: 2 });
+    flick(screen.getByTestId("home-launcher-home-page"), { dx: 140, dy: 2 });
     expect(surface.getAttribute("data-page")).toBe("home");
   });
 
   it("ignores a non-primary pointer (e.g. multi-touch / secondary button)", () => {
     const surface = renderSurface();
-    flick(screen.getByTestId("home-springboard-home-page"), {
+    flick(screen.getByTestId("home-launcher-home-page"), {
       dx: -140,
       dy: 2,
       isPrimary: false,
@@ -166,10 +166,10 @@ describe("HomeSpringboardSurface", () => {
 
   it("flips on a decisive, mostly-horizontal left flick", () => {
     const surface = renderSurface();
-    flick(screen.getByTestId("home-springboard-home-page"), {
+    flick(screen.getByTestId("home-launcher-home-page"), {
       dx: -140,
       dy: 10,
     });
-    expect(surface.getAttribute("data-page")).toBe("springboard");
+    expect(surface.getAttribute("data-page")).toBe("launcher");
   });
 });

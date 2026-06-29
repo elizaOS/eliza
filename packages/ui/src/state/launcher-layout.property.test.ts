@@ -1,10 +1,10 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
+  LAUNCHER_DOCK_LIMIT,
+  type LauncherLayout,
   reconcileLayout,
-  SPRINGBOARD_DOCK_LIMIT,
-  type SpringboardLayout,
-} from "./springboard-layout.js";
+} from "./launcher-layout.js";
 
 // Ids drawn from a small pool so available / favorites / pages overlap (and
 // collide / go stale) the way a real catalog churns. Input is deliberately
@@ -12,7 +12,7 @@ import {
 // prove reconcileLayout always produces a clean layout regardless.
 const arbId = fc.integer({ min: 0, max: 40 }).map((n) => `v${n}`);
 const arbAvailable = fc.uniqueArray(arbId, { maxLength: 30 });
-const arbLayout: fc.Arbitrary<SpringboardLayout> = fc.record({
+const arbLayout: fc.Arbitrary<LauncherLayout> = fc.record({
   favorites: fc.array(arbId, { maxLength: 8 }),
   pages: fc.array(fc.array(arbId, { maxLength: 10 }), { maxLength: 5 }),
   manual: fc.boolean(),
@@ -33,9 +33,7 @@ describe("reconcileLayout invariants (property-based)", () => {
           const placed = [...out.favorites, ...flat];
 
           // 1. The dock never exceeds the cap.
-          expect(out.favorites.length).toBeLessThanOrEqual(
-            SPRINGBOARD_DOCK_LIMIT,
-          );
+          expect(out.favorites.length).toBeLessThanOrEqual(LAUNCHER_DOCK_LIMIT);
           // 2. Everything placed is actually available (no stale ids leak).
           for (const id of placed) {
             expect(availableSet.has(id)).toBe(true);

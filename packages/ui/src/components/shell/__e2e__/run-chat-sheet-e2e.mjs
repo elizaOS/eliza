@@ -330,11 +330,11 @@ async function runDragSuite(p, pointer, tag) {
     grabberBarOpacity === "1",
     `[${pointer}] grabber bar paints (inner-span opacity "${grabberBarOpacity}" === "1", not opacity-0) (#9142)`,
   );
-  // The sheet header (maximize/clear/springboard) shows at HALF and up now,
+  // The sheet header (maximize/clear/launcher) shows at HALF and up now,
   // not only at FULL.
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
-      (await p.getByTestId("chat-full-springboard").count()) === 1,
+      (await p.getByTestId("chat-full-launcher").count()) === 1,
     `[${pointer}] HALF detent shows the sheet header`,
   );
 
@@ -351,16 +351,16 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // Header (post home↔springboard consolidation, #9450): Maximize + Copy +
-  // Clear on the left, a single Springboard button on the right (the old
+  // Header (post home↔launcher consolidation, #9450): Maximize + Copy +
+  // Clear on the left, a single Launcher button on the right (the old
   // Home/Views/Settings trio collapsed into one launcher target). Copy only
   // shows when there's a thread (the default fixture seeds one).
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
       (await p.getByTestId("chat-full-clear").count()) === 1 &&
       (await p.getByTestId("chat-full-copy-conversation").count()) === 1 &&
-      (await p.getByTestId("chat-full-springboard").count()) === 1,
-    `[${pointer}] header shows maximize + copy + clear + springboard`,
+      (await p.getByTestId("chat-full-launcher").count()) === 1,
+    `[${pointer}] header shows maximize + copy + clear + launcher`,
   );
   // Maximize → full-bleed (edge-to-edge): data-maximized flips + panel reaches x=0.
   await p.getByTestId("chat-full-maximize").click();
@@ -1188,7 +1188,7 @@ try {
   }
 
   // HEADER NAV (post-consolidation): the per-tab Home/Views/Settings trio is
-  // gone — a single always-present, always-enabled Springboard button replaces
+  // gone — a single always-present, always-enabled Launcher button replaces
   // it, and the old testids must stay gone (regression guard for #9450).
   {
     const p = await ctrl();
@@ -1200,9 +1200,9 @@ try {
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "half", "NAV: opened to half");
     assert(
-      (await p.getByTestId("chat-full-springboard").count()) === 1 &&
-        !(await p.getByTestId("chat-full-springboard").isDisabled()),
-      "NAV: single springboard button present and enabled",
+      (await p.getByTestId("chat-full-launcher").count()) === 1 &&
+        !(await p.getByTestId("chat-full-launcher").isDisabled()),
+      "NAV: single launcher button present and enabled",
     );
     assert(
       (await p.getByTestId("chat-full-home").count()) === 0 &&
@@ -1213,7 +1213,7 @@ try {
     await p.close();
   }
 
-  // NAVIGATE-AND-CLOSE: tapping Springboard animates OUT of maximize (if
+  // NAVIGATE-AND-CLOSE: tapping Launcher animates OUT of maximize (if
   // maximized) and collapses the sheet, THEN navigates — the page swap waits for
   // the close animation to start, so it reads as the chat closing into the new
   // view rather than a jump-cut from full-screen.
@@ -1233,23 +1233,23 @@ try {
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 1,
-      "NAV-CLOSE: maximized before tapping springboard",
+      "NAV-CLOSE: maximized before tapping launcher",
     );
-    await p.getByTestId("chat-full-springboard").click();
+    await p.getByTestId("chat-full-launcher").click();
     await p.waitForTimeout(600);
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 0,
-      "NAV-CLOSE: tapping springboard animates OUT of maximize",
+      "NAV-CLOSE: tapping launcher animates OUT of maximize",
     );
     assert(
       (await detent(p)) === "collapsed",
-      "NAV-CLOSE: tapping springboard collapses the sheet (close)",
+      "NAV-CLOSE: tapping launcher collapses the sheet (close)",
     );
     assert(
       sink.logs.some((l) => l.includes("navigateHome")),
-      "NAV-CLOSE: springboard navigation fires after the close starts",
+      "NAV-CLOSE: launcher navigation fires after the close starts",
     );
     await p.close();
   }

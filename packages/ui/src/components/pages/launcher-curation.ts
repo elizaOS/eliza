@@ -83,7 +83,7 @@ function normalizedPath(path: string | undefined): string {
   return withoutQuery.startsWith("/") ? withoutQuery : `/${withoutQuery}`;
 }
 
-export function canonicalSpringboardId(entry: Pick<ViewEntry, "id" | "path">) {
+export function canonicalLauncherId(entry: Pick<ViewEntry, "id" | "path">) {
   const byId = ID_ALIASES.get(entry.id) ?? entry.id;
   if (SYSTEM_INDEX.has(byId) || DEVELOPER_INDEX.has(byId)) return byId;
 
@@ -94,15 +94,15 @@ export function canonicalSpringboardId(entry: Pick<ViewEntry, "id" | "path">) {
   return byId;
 }
 
-export function springboardKindForCanonicalId(canonicalId: string): ViewKind {
+export function launcherKindForCanonicalId(canonicalId: string): ViewKind {
   if (SYSTEM_INDEX.has(canonicalId)) return "system";
   if (DEVELOPER_INDEX.has(canonicalId)) return "developer";
   return "preview";
 }
 
-export function normalizeSpringboardEntry(entry: ViewEntry): ViewEntry {
-  const canonicalId = canonicalSpringboardId(entry);
-  const viewKind = springboardKindForCanonicalId(canonicalId);
+export function normalizeLauncherEntry(entry: ViewEntry): ViewEntry {
+  const canonicalId = canonicalLauncherId(entry);
+  const viewKind = launcherKindForCanonicalId(canonicalId);
   return {
     ...entry,
     developerOnly: viewKind === "developer",
@@ -110,7 +110,7 @@ export function normalizeSpringboardEntry(entry: ViewEntry): ViewEntry {
   };
 }
 
-export function isCuratedSpringboardEntryVisible(
+export function isCuratedLauncherEntryVisible(
   entry: ViewEntry,
   enabledKinds: EnabledViewKinds,
 ): boolean {
@@ -118,7 +118,7 @@ export function isCuratedSpringboardEntryVisible(
 }
 
 function preferenceScore(entry: ViewEntry): number {
-  const canonicalId = canonicalSpringboardId(entry);
+  const canonicalId = canonicalLauncherId(entry);
   const path = normalizedPath(entry.path);
   let score = 0;
   if (entry.state === "loaded") score += 100;
@@ -129,12 +129,12 @@ function preferenceScore(entry: ViewEntry): number {
   return score;
 }
 
-export function dedupeSpringboardEntries(entries: ViewEntry[]): ViewEntry[] {
+export function dedupeLauncherEntries(entries: ViewEntry[]): ViewEntry[] {
   const order: string[] = [];
   const byCanonical = new Map<string, ViewEntry>();
 
   for (const entry of entries) {
-    const canonicalId = canonicalSpringboardId(entry);
+    const canonicalId = canonicalLauncherId(entry);
     const existing = byCanonical.get(canonicalId);
     if (!existing) {
       order.push(canonicalId);
@@ -152,7 +152,7 @@ export function dedupeSpringboardEntries(entries: ViewEntry[]): ViewEntry[] {
 }
 
 function orderTuple(entry: ViewEntry): [number, number, string] {
-  const canonicalId = canonicalSpringboardId(entry);
+  const canonicalId = canonicalLauncherId(entry);
   const kind = resolveViewKind(entry);
   if (kind === "system") {
     return [0, SYSTEM_INDEX.get(canonicalId) ?? Number.MAX_SAFE_INTEGER, ""];
@@ -163,7 +163,7 @@ function orderTuple(entry: ViewEntry): [number, number, string] {
   return [2, Number.MAX_SAFE_INTEGER, entry.label];
 }
 
-export function compareSpringboardEntries(
+export function compareLauncherEntries(
   left: ViewEntry,
   right: ViewEntry,
 ): number {
@@ -177,7 +177,7 @@ export function compareSpringboardEntries(
   });
 }
 
-export function springboardPageGroups(entries: ViewEntry[]): string[][] {
+export function launcherPageGroups(entries: ViewEntry[]): string[][] {
   const system: string[] = [];
   const developer: string[] = [];
   const preview: string[] = [];

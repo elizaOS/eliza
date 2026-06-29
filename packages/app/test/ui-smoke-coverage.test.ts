@@ -113,10 +113,10 @@ const DEDICATED_TOOL: Readonly<Record<string, string>> = {
     "generic per-control interaction harness for dynamically-loaded plugin GUI " +
     "views (#8796). Run on demand via `bun run --cwd packages/app test:e2e " +
     "test/ui-smoke/plugin-views-interaction.spec.ts`, not default smoke.",
-  "springboard-interaction.spec.ts":
-    "drives the Springboard view-catalog controls (edit mode, favorite dock, " +
+  "launcher-interaction.spec.ts":
+    "drives the Launcher view-catalog controls (edit mode, favorite dock, " +
     "paging, tap-to-launch) (#8796). Run on demand via `bun run --cwd " +
-    "packages/app test:e2e test/ui-smoke/springboard-interaction.spec.ts`.",
+    "packages/app test:e2e test/ui-smoke/launcher-interaction.spec.ts`.",
   "chat-view-memory-stability.spec.ts":
     "chat-view re-render / memory-stability harness (#9048). Run on demand via " +
     "`bun run --cwd packages/app test:e2e test/ui-smoke/chat-view-memory-stability.spec.ts`.",

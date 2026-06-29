@@ -41,7 +41,7 @@ import {
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
-import { dispatchHomeSpringboardNavigation } from "./home-springboard-events";
+import { dispatchHomeLauncherNavigation } from "./home-launcher-events";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
@@ -153,9 +153,9 @@ export interface ShellController {
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
    *  `no_provider` failure gate to let the user wire a provider in one tap. */
   openSettings: () => void;
-  /** Return to the combined Home/Springboard surface and select Home. */
+  /** Return to the combined Home/Launcher surface and select Home. */
   navigateHome?: () => void;
-  /** Open the combined Home/Springboard surface and select Springboard. */
+  /** Open the combined Home/Launcher surface and select Launcher. */
   navigateToViews?: () => void;
   /** The active app tab. */
   currentTab?: string;
@@ -285,16 +285,16 @@ export function useShellController(): ShellController {
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
-  // Return to the combined Home/Springboard route and reset its internal page.
+  // Return to the combined Home/Launcher route and reset its internal page.
   // If the route is not mounted yet, the next mount starts on Home; if it is
-  // already mounted on Springboard, this event flips it without a remount.
+  // already mounted on Launcher, this event flips it without a remount.
   const navigateHome = React.useCallback(() => {
     setTab("chat");
-    dispatchHomeSpringboardNavigation("home");
+    dispatchHomeLauncherNavigation("home");
   }, [setTab]);
   const navigateToViews = React.useCallback(() => {
     setTab("chat");
-    dispatchHomeSpringboardNavigation("springboard");
+    dispatchHomeLauncherNavigation("launcher");
   }, [setTab]);
 
   // True while a clear or conversation switch is fetching the next thread, so

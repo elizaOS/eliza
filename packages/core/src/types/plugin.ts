@@ -365,7 +365,7 @@ export interface PluginAppBridge {
  *   the view, covering status/home-indicator safe areas so the shared wallpaper
  *   cannot leak through.
  * - `shared`: the view intentionally sits on the same unified background used
- *   by Home/Springboard.
+ *   by Home/Launcher.
  */
 export type AppShellBackgroundPolicy = "opaque" | "shared";
 

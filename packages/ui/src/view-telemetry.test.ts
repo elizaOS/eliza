@@ -19,14 +19,14 @@ afterEach(() => clearRing());
 describe("view-telemetry", () => {
   it("retains emitted events in the ring with stamped at/route", () => {
     emitViewInteraction({
-      source: "springboard",
+      source: "launcher",
       action: "launch",
       viewId: "x",
     });
     const events = readViewInteractions();
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      source: "springboard",
+      source: "launcher",
       action: "launch",
       viewId: "x",
     });
@@ -53,7 +53,7 @@ describe("view-telemetry", () => {
   it("bounds the ring to VIEW_INTERACTION_RING_MAX, dropping the oldest", () => {
     for (let i = 0; i < VIEW_INTERACTION_RING_MAX + 25; i += 1) {
       emitViewInteraction({
-        source: "springboard",
+        source: "launcher",
         action: "page-swipe",
         count: i,
       });

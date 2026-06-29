@@ -12,23 +12,23 @@ import {
   installHomeRoutes,
   makeScreenshotter,
   settleHomeEntrance,
-  swipeLeftToSpringboard,
+  swipeLeftToLauncher,
 } from "./onboarding-to-home.shared";
 
 // CRITICAL FLOW — completing onboarding lands on the HOME screen (the floating
 // chat overlay over the home widgets), and a swipe-left flips to the
-// springboard launcher.
+// launcher.
 //
 // This boots a fresh device (no first-run-complete), drives the REAL onboarding
 // UI to completion via the simplest non-cloud path — Local runtime →
 // on-device ("all-local") inference — which calls
 // completeFirstRun("chat", { launchCompanionOverlay: true }). That sets the tab
 // to "chat" → ChatRouteShellContent → HomeScreenMount(initialPage="home") →
-// HomeSpringboardSurface(home=HomeScreen[<WidgetHost slot="home">],
-// springboard=SpringboardSurface). So the post-onboarding landing is the home:
+// HomeLauncherSurface(home=HomeScreen[<WidgetHost slot="home">],
+// launcher=LauncherSurface). So the post-onboarding landing is the home:
 // the ContinuousChatOverlay composer is present AND the home widget host renders
 // its seeded per-plugin cards. A real left-flick on the home page then pans the
-// rail to the springboard (data-page="springboard") and reveals a launcher tile.
+// rail to the launcher (data-page="launcher") and reveals a launcher tile.
 //
 // The fixtures, route mocks, and flow helpers are shared with the mobile-
 // viewport lane (onboarding-to-home-mobile.spec.ts) via onboarding-to-home.shared.
@@ -40,7 +40,7 @@ const SCREENSHOT_DIR = path.join(
 );
 const screenshot = makeScreenshotter(SCREENSHOT_DIR);
 
-test.describe("onboarding → home → springboard", () => {
+test.describe("onboarding → home → launcher", () => {
   test.beforeEach(({ page }) => {
     installPageDiagnosticsGuard(page);
   });
@@ -49,7 +49,7 @@ test.describe("onboarding → home → springboard", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("completing onboarding lands on the home and swipe-left opens the springboard", async ({
+  test("completing onboarding lands on the home and swipe-left opens the launcher", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
@@ -75,7 +75,7 @@ test.describe("onboarding → home → springboard", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "home");
 
-    await swipeLeftToSpringboard(page, surface);
-    await screenshot(page, "springboard");
+    await swipeLeftToLauncher(page, surface);
+    await screenshot(page, "launcher");
   });
 });

@@ -64,7 +64,7 @@ export interface AppWorkspaceChromeProps {
    *   majority of routed views, which own their full surface.
    * - `"transparent"`: paints no background, so the unified app wallpaper
    *   (mounted once at the shell root) shows through — used by views that opt
-   *   into the shared background (e.g. Settings), matching the springboard.
+   *   into the shared background (e.g. Settings), matching the launcher.
    *   Readability over an arbitrary wallpaper is handled by the shell's
    *   translucent scrim layer, not by this pane.
    */

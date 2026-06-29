@@ -87,13 +87,13 @@ async function screenshot(page: Page, name: string): Promise<void> {
   });
 }
 
-async function activeSpringboardPageIndex(page: Page): Promise<number> {
-  const pages = page.locator('[data-testid^="springboard-page-"]');
+async function activeLauncherPageIndex(page: Page): Promise<number> {
+  const pages = page.locator('[data-testid^="launcher-page-"]');
   const pageCount = await pages.count();
   for (let index = 0; index < pageCount; index += 1) {
     const candidate = pages.nth(index);
     const testId = await candidate.getAttribute("data-testid");
-    const pageIndex = testId?.match(/^springboard-page-(\d+)$/)?.[1];
+    const pageIndex = testId?.match(/^launcher-page-(\d+)$/)?.[1];
     if (pageIndex == null) continue;
     if ((await candidate.getAttribute("aria-hidden")) !== "true") {
       return Number(pageIndex);
@@ -102,13 +102,13 @@ async function activeSpringboardPageIndex(page: Page): Promise<number> {
   return 0;
 }
 
-async function swipeSpringboardPage(
+async function swipeLauncherPage(
   page: Page,
   direction: "next" | "previous",
 ): Promise<void> {
-  const target = page.getByTestId("springboard-page-window").first();
+  const target = page.getByTestId("launcher-page-window").first();
   const box = await target.boundingBox();
-  if (!box) throw new Error("springboard page window is not laid out");
+  if (!box) throw new Error("launcher page window is not laid out");
   const y = box.y + box.height * 0.45;
   const startX =
     direction === "next" ? box.x + box.width * 0.78 : box.x + box.width * 0.22;
@@ -166,36 +166,36 @@ async function openViewManager(page: Page): Promise<void> {
   );
 }
 
-function springboardTile(page: Page, viewId: string) {
-  return page.getByTestId(`springboard-tile-${viewId}`).first();
+function launcherTile(page: Page, viewId: string) {
+  return page.getByTestId(`launcher-tile-${viewId}`).first();
 }
 
-async function expectSpringboardTile(
+async function expectLauncherTile(
   page: Page,
   viewId: string,
 ): Promise<void> {
-  await expect(springboardTile(page, viewId)).toBeVisible();
+  await expect(launcherTile(page, viewId)).toBeVisible();
 }
 
 function viewLaunchButton(page: Page, viewId: string) {
-  return springboardTile(page, viewId).getByRole("button").first();
+  return launcherTile(page, viewId).getByRole("button").first();
 }
 
-async function revealSpringboardTile(
+async function revealLauncherTile(
   page: Page,
   viewId: string,
 ): Promise<void> {
-  const tile = springboardTile(page, viewId);
+  const tile = launcherTile(page, viewId);
   await expect(tile).toBeAttached();
   const pageTestId = await tile.evaluate((node) =>
     node
-      .closest('[data-testid^="springboard-page-"]')
+      .closest('[data-testid^="launcher-page-"]')
       ?.getAttribute("data-testid"),
   );
-  const pageIndex = pageTestId?.match(/^springboard-page-(\d+)$/)?.[1];
+  const pageIndex = pageTestId?.match(/^launcher-page-(\d+)$/)?.[1];
   if (pageIndex == null) return;
 
-  const pageLocator = page.getByTestId(`springboard-page-${pageIndex}`);
+  const pageLocator = page.getByTestId(`launcher-page-${pageIndex}`);
   if ((await pageLocator.getAttribute("aria-hidden")) === "true") {
     const targetPageIndex = Number(pageIndex);
     const pageButton = page.getByRole("button", {
@@ -205,9 +205,9 @@ async function revealSpringboardTile(
       await pageButton.click();
     } else {
       for (let attempt = 0; attempt < 8; attempt += 1) {
-        const activePageIndex = await activeSpringboardPageIndex(page);
+        const activePageIndex = await activeLauncherPageIndex(page);
         if (activePageIndex === targetPageIndex) break;
-        await swipeSpringboardPage(
+        await swipeLauncherPage(
           page,
           targetPageIndex > activePageIndex ? "next" : "previous",
         );
@@ -218,22 +218,22 @@ async function revealSpringboardTile(
   }
 }
 
-async function launchSpringboardView(
+async function launchLauncherView(
   page: Page,
   viewId: string,
 ): Promise<void> {
-  await revealSpringboardTile(page, viewId);
+  await revealLauncherTile(page, viewId);
   await viewLaunchButton(page, viewId).click();
 }
 
-async function longPressSpringboardView(
+async function longPressLauncherView(
   page: Page,
   viewId: string,
 ): Promise<void> {
-  await revealSpringboardTile(page, viewId);
+  await revealLauncherTile(page, viewId);
   const button = viewLaunchButton(page, viewId);
   const box = await button.boundingBox();
-  if (!box) throw new Error(`springboard tile ${viewId} is not laid out`);
+  if (!box) throw new Error(`launcher tile ${viewId} is not laid out`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.waitForTimeout(500);
@@ -241,46 +241,46 @@ async function longPressSpringboardView(
 }
 
 async function editModeVisible(page: Page): Promise<boolean> {
-  const badge = page.locator('[data-testid^="springboard-fav-"]').first();
+  const badge = page.locator('[data-testid^="launcher-fav-"]').first();
   if ((await badge.count()) === 0) return false;
   return badge.isVisible().catch(() => false);
 }
 
-async function enterSpringboardEditMode(
+async function enterLauncherEditMode(
   page: Page,
   viewId: string,
 ): Promise<void> {
   if (!(await editModeVisible(page))) {
-    await longPressSpringboardView(page, viewId);
+    await longPressLauncherView(page, viewId);
   }
   await expect(
-    page.locator('[data-testid^="springboard-fav-"]').first(),
+    page.locator('[data-testid^="launcher-fav-"]').first(),
   ).toBeVisible();
 }
 
-async function exitSpringboardEditMode(
+async function exitLauncherEditMode(
   page: Page,
   viewId: string,
 ): Promise<void> {
   if (await editModeVisible(page)) {
-    await longPressSpringboardView(page, viewId);
+    await longPressLauncherView(page, viewId);
   }
   await expect(
-    page.locator('[data-testid^="springboard-fav-"]').first(),
+    page.locator('[data-testid^="launcher-fav-"]').first(),
   ).toHaveCount(0);
 }
 
-async function editSpringboardView(page: Page, viewId: string): Promise<void> {
-  await enterSpringboardEditMode(page, viewId);
-  await page.getByTestId(`springboard-edit-${viewId}`).click();
+async function editLauncherView(page: Page, viewId: string): Promise<void> {
+  await enterLauncherEditMode(page, viewId);
+  await page.getByTestId(`launcher-edit-${viewId}`).click();
 }
 
-async function deleteSpringboardView(
+async function deleteLauncherView(
   page: Page,
   viewId: string,
 ): Promise<void> {
-  await enterSpringboardEditMode(page, viewId);
-  await page.getByTestId(`springboard-delete-${viewId}`).click();
+  await enterLauncherEditMode(page, viewId);
+  await page.getByTestId(`launcher-delete-${viewId}`).click();
 }
 
 async function installElectrobunDynamicViewBridge(
@@ -541,9 +541,9 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   await expect(
     page.getByRole("form", { name: "Dynamic view management" }),
   ).toBeVisible();
-  await expectSpringboardTile(page, "local-notes");
-  await expectSpringboardTile(page, "notes");
-  await expectSpringboardTile(page, "simple-calendar");
+  await expectLauncherTile(page, "local-notes");
+  await expectLauncherTile(page, "notes");
+  await expectLauncherTile(page, "simple-calendar");
   await screenshot(page, "00-view-manager-ready");
 
   await page.getByLabel("Dynamic view ID").fill("actual-local-ledger");
@@ -565,14 +565,14 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     entrypoint: "/dynamic-views/actual-local-ledger.js",
     update: true,
   });
-  await expectSpringboardTile(page, "actual-local-ledger");
+  await expectLauncherTile(page, "actual-local-ledger");
   await screenshot(page, "01-local-created");
 
-  await launchSpringboardView(page, "actual-local-ledger");
+  await launchLauncherView(page, "actual-local-ledger");
   await expect(page).toHaveURL(/\/apps\/actual-local-ledger$/);
   await openViewManager(page);
 
-  await editSpringboardView(page, "actual-local-ledger");
+  await editLauncherView(page, "actual-local-ledger");
   await expect(page.getByLabel("Dynamic view ID")).toHaveValue(
     "actual-local-ledger",
   );
@@ -589,9 +589,9 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     entrypoint: "/apps/actual-local-ledger",
     update: true,
   });
-  await expectSpringboardTile(page, "actual-local-ledger");
+  await expectLauncherTile(page, "actual-local-ledger");
   await expect(page.getByText(/^Actual Local Ledger$/)).toHaveCount(0);
-  await exitSpringboardEditMode(page, "actual-local-ledger");
+  await exitLauncherEditMode(page, "actual-local-ledger");
 
   await page.getByLabel("Dynamic view ID").fill("actual-remote-ledger");
   await page.getByLabel("Dynamic view title").fill("Actual Remote Ledger");
@@ -612,10 +612,10 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     entrypoint: "/dynamic-views/actual-remote-ledger.js",
     update: true,
   });
-  await expectSpringboardTile(page, "actual-remote-ledger");
+  await expectLauncherTile(page, "actual-remote-ledger");
   await screenshot(page, "02-remote-created");
 
-  await launchSpringboardView(page, "actual-local-ledger");
+  await launchLauncherView(page, "actual-local-ledger");
   await expect(page).toHaveURL(/\/apps\/actual-local-ledger$/);
   expect(
     remoteBundleRequests,
@@ -625,7 +625,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
 
   await openViewManager(page);
 
-  await launchSpringboardView(page, "actual-remote-ledger");
+  await launchLauncherView(page, "actual-remote-ledger");
   await expect(page).toHaveURL(/\/apps\/actual-remote-ledger$/);
   await expect(
     page.getByText("Actual remote ledger module loaded"),
@@ -634,7 +634,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   await screenshot(page, "04-remote-module-loaded");
 
   await openViewManager(page);
-  await editSpringboardView(page, "actual-remote-ledger");
+  await editLauncherView(page, "actual-remote-ledger");
   await page
     .getByLabel("Dynamic view title")
     .fill("Actual Remote Ledger Updated");
@@ -648,12 +648,12 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     entrypoint: "/dynamic-views/actual-remote-ledger.js",
     update: true,
   });
-  await expectSpringboardTile(page, "actual-remote-ledger");
+  await expectLauncherTile(page, "actual-remote-ledger");
   await expect(page.getByText(/^Actual Remote Ledger$/)).toHaveCount(0);
-  await exitSpringboardEditMode(page, "actual-remote-ledger");
+  await exitLauncherEditMode(page, "actual-remote-ledger");
 
   const remoteRequestsAfterFirstOpen = remoteBundleRequests;
-  await launchSpringboardView(page, "actual-remote-ledger");
+  await launchLauncherView(page, "actual-remote-ledger");
   await expect(page).toHaveURL(/\/apps\/actual-remote-ledger$/);
   await expect(
     page.getByText("Actual remote ledger module loaded"),
@@ -665,13 +665,13 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
 
   await openViewManager(page);
 
-  await launchSpringboardView(page, "notes");
+  await launchLauncherView(page, "notes");
   await expect(page).toHaveURL(/\/notes$/);
   await expect(page.getByTestId("simple-notes-view")).toBeVisible();
   await screenshot(page, "06-notes-open");
   await openViewManager(page);
 
-  await launchSpringboardView(page, "simple-calendar");
+  await launchLauncherView(page, "simple-calendar");
   await expect(page).toHaveURL(/\/simple-calendar$/);
   await expect(page.getByTestId("simple-calendar-view")).toBeVisible();
   await screenshot(page, "07-simple-calendar-open");
@@ -690,21 +690,21 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   await expect(page.getByTestId("view-layout-surface")).toHaveCount(0);
   await openViewManager(page);
 
-  await deleteSpringboardView(page, "actual-remote-ledger");
+  await deleteLauncherView(page, "actual-remote-ledger");
   expect(unregisterCalls.at(-1)).toBe("actual-remote-ledger");
   await expect(page.getByRole("status")).toContainText(
     "Deleted Actual Remote Ledger Updated.",
   );
-  await expect(springboardTile(page, "actual-remote-ledger")).toHaveCount(0);
-  await deleteSpringboardView(page, "actual-local-ledger");
+  await expect(launcherTile(page, "actual-remote-ledger")).toHaveCount(0);
+  await deleteLauncherView(page, "actual-local-ledger");
   expect(unregisterCalls.at(-1)).toBe("actual-local-ledger");
   await expect(page.getByRole("status")).toContainText(
     "Deleted Actual Local Ledger Updated.",
   );
-  await expect(springboardTile(page, "actual-local-ledger")).toHaveCount(0);
-  await expectSpringboardTile(page, "local-notes");
-  await expectSpringboardTile(page, "notes");
-  await expectSpringboardTile(page, "simple-calendar");
+  await expect(launcherTile(page, "actual-local-ledger")).toHaveCount(0);
+  await expectLauncherTile(page, "local-notes");
+  await expectLauncherTile(page, "notes");
+  await expectLauncherTile(page, "simple-calendar");
   expect(registerCalls).toEqual([
     {
       id: "actual-local-ledger",

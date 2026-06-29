@@ -112,7 +112,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       "move",
       "go",
     ],
-    deepLink: { label: "Open Springboard", tab: "views" },
+    deepLink: { label: "Open Launcher", tab: "views" },
   },
   {
     id: "navigate-by-talking",
@@ -429,7 +429,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       "tasks",
       "actions",
     ],
-    deepLink: { label: "Open Springboard", tab: "views" },
+    deepLink: { label: "Open Launcher", tab: "views" },
   },
   {
     id: "what-are-skills",
@@ -450,21 +450,21 @@ export const HELP_ENTRIES: HelpEntry[] = [
   {
     id: "views-and-apps",
     category: "What Eliza can do",
-    question: "What is the Springboard?",
+    question: "What is the Launcher?",
     answer:
-      "The Springboard is the launcher for every screen Eliza can show you — things like your tasks, documents, memories, settings, or specialized tools. Swipe right from the home dashboard to reach it, open any screen from there or by asking the chat, and Eliza can also open them for you.",
+      "The Launcher is the home for every screen Eliza can show you — things like your tasks, documents, memories, settings, or specialized tools. Swipe right from the home dashboard to reach it, open any screen from there or by asking the chat, and Eliza can also open them for you.",
     keywords: [
-      "springboard",
+      "launcher",
       "views",
       "apps",
       "screens",
       "tools",
       "tiles",
-      "launcher",
+      "springboard",
       "surfaces",
       "what",
     ],
-    deepLink: { label: "Open Springboard", tab: "views" },
+    deepLink: { label: "Open Launcher", tab: "views" },
   },
 
   // ── Troubleshooting ───────────────────────────────────────────────────────

@@ -1,9 +1,9 @@
 /**
- * Real-browser e2e + screenshot + video for the Springboard view launcher —
- * no app server. Bundles springboard-fixture.tsx with esbuild, loads it in
+ * Real-browser e2e + screenshot + video for the Launcher view launcher —
+ * no app server. Bundles launcher-fixture.tsx with esbuild, loads it in
  * headless chromium via Playwright, and:
  *
- *   - asserts the springboard + tiles render (≥1 tile, ≥1 image tile),
+ *   - asserts the launcher + tiles render (≥1 tile, ≥1 image tile),
  *   - captures REST + EDIT screenshots at desktop (1180×900) and mobile
  *     (402×874),
  *   - records a .webm walkthrough driving REAL interactions: tap-launch a tile,
@@ -14,7 +14,7 @@
  *
  * Exits non-zero on any failed assertion or page error.
  *
- * Run: bun run --cwd packages/ui test:springboard-e2e
+ * Run: bun run --cwd packages/ui test:launcher-e2e
  */
 
 import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
@@ -25,7 +25,7 @@ import { build } from "esbuild";
 import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = join(here, "output-springboard");
+const outDir = join(here, "output-launcher");
 const videoDir = join(outDir, "video");
 await mkdir(outDir, { recursive: true });
 await mkdir(videoDir, { recursive: true });
@@ -39,7 +39,7 @@ function assert(cond, msg) {
 
 // The tile hero-image resolver (ViewTileImage → resolveApiUrl) imports the
 // @elizaos/shared barrel, which transitively reaches @elizaos/core / node
-// builtins — all DEAD in the browser at render (the springboard renders from
+// builtins — all DEAD in the browser at render (the launcher renders from
 // the fixture's hand-built entries; no API base is set so URLs pass through
 // unchanged). Stub @elizaos/core to a no-op Proxy and every node builtin to a
 // no-op module so the browser bundle builds, mirroring run-home-screen-e2e. If
@@ -91,7 +91,7 @@ const stubNodeBuiltins = {
 };
 
 const result = await build({
-  entryPoints: [join(here, "springboard-fixture.tsx")],
+  entryPoints: [join(here, "launcher-fixture.tsx")],
   bundle: true,
   format: "iife",
   platform: "browser",
@@ -103,13 +103,13 @@ const result = await build({
 });
 const js = result.outputFiles[0].text;
 console.log(`✓ fixture bundled (${js.length} bytes)`);
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>springboard e2e</title>
+const html = `<!doctype html><html><head><meta charset="utf-8"><title>launcher e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%;background:#0a0d16;color:#f4f4f5}</style>
 <!-- Shim node-ish globals the dead-in-browser graph touches at module init. -->
 <script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
-const htmlPath = join(outDir, "springboard.html");
+const htmlPath = join(outDir, "launcher.html");
 await writeFile(htmlPath, html);
 const url = `file://${htmlPath}`;
 
@@ -174,14 +174,14 @@ async function longPress(p, testid, ms) {
 
 const readTelemetry = (p) =>
   p.evaluate(() => window.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? []);
-const readCalls = (p) => p.evaluate(() => window.__springboardCalls ?? {});
+const readCalls = (p) => p.evaluate(() => window.__launcherCalls ?? {});
 
 /** Edit mode pulses every tile (no pin badge anymore) — the editing signal. */
 const editingTileCount = (p) =>
   p.evaluate(
     () =>
       document.querySelectorAll(
-        '[data-testid^="springboard-tile-"] button.animate-pulse',
+        '[data-testid^="launcher-tile-"] button.animate-pulse',
       ).length,
   );
 
@@ -193,20 +193,20 @@ async function captureViewport(name, viewport, deviceScaleFactor) {
   const page = await browser.newPage({ viewport, deviceScaleFactor });
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto(url);
-  await page.waitForSelector('[data-testid="springboard"]');
+  await page.waitForSelector('[data-testid="launcher"]');
   await page.waitForTimeout(400);
 
-  const tiles = await page.locator('[data-testid^="springboard-tile-"]').count();
+  const tiles = await page.locator('[data-testid^="launcher-tile-"]').count();
   assert(tiles >= 1, `${name}: ≥1 tile renders (${tiles})`);
   const images = await page
-    .locator('[data-testid^="springboard-image-"]')
+    .locator('[data-testid^="launcher-image-"]')
     .count();
   assert(images >= 1, `${name}: ≥1 image tile renders (${images})`);
   await snap(page, `${name}-rest`);
 
   // Enter edit mode via a long-press on a tile (the Edit button was removed —
   // long-press is the sole entry point now).
-  await longPress(page, "springboard-tile-wallet", 500);
+  await longPress(page, "launcher-tile-wallet", 500);
   await page.waitForTimeout(300);
   assert(
     (await editingTileCount(page)) > 0,
@@ -234,12 +234,12 @@ const context = await browser.newContext({
 const page = await context.newPage();
 page.on("pageerror", (e) => errors.push(String(e)));
 await page.goto(url);
-await page.waitForSelector('[data-testid="springboard"]');
+await page.waitForSelector('[data-testid="launcher"]');
 await page.waitForTimeout(400);
 
 // 1. Tap-launch a tile (first page tile that is not docked).
 const launchTarget = "calendar";
-await page.getByTestId(`springboard-tile-${launchTarget}`).getByRole("button").first().click();
+await page.getByTestId(`launcher-tile-${launchTarget}`).getByRole("button").first().click();
 await page.waitForTimeout(250);
 const callsAfterLaunch = await readCalls(page);
 assert(
@@ -249,7 +249,7 @@ assert(
 );
 
 // 2. Long-press a tile (450ms threshold) → enters edit mode.
-await longPress(page, `springboard-tile-wallet`, 500);
+await longPress(page, `launcher-tile-wallet`, 500);
 await page.waitForTimeout(250);
 assert(
   (await editingTileCount(page)) > 0,
@@ -258,7 +258,7 @@ assert(
 
 // 3. Page navigation — click the "Page 2" dot. Exit edit first (a second
 //    long-press toggles it off) so the walkthrough ends on a clean grid.
-await longPress(page, `springboard-tile-wallet`, 500);
+await longPress(page, `launcher-tile-wallet`, 500);
 await page.waitForTimeout(250);
 assert(
   (await editingTileCount(page)) === 0,
@@ -279,7 +279,7 @@ if ((await page2.count()) > 0) {
 //    a committed flick (the user reported left/right swipe felt broken). We're
 //    on page 2 from the dot-nav above; swipe RIGHT → page 1, then LEFT → page 2.
 async function swipeDrag(p, dx) {
-  const box = await p.getByTestId("springboard").boundingBox();
+  const box = await p.getByTestId("launcher").boundingBox();
   const y = box.y + box.height / 2;
   // Start off-centre so the drag has room to travel within the surface.
   const startX = box.x + box.width / 2 - Math.sign(dx) * box.width * 0.2;
@@ -320,14 +320,14 @@ await browser.close();
 // Rename the recorded video to a stable name.
 const vids = (await readdir(videoDir)).filter((f) => f.endsWith(".webm"));
 if (vids[0]) {
-  await rename(join(videoDir, vids[0]), join(outDir, "springboard-walkthrough.webm"));
-  console.log("  🎬 springboard-walkthrough.webm");
+  await rename(join(videoDir, vids[0]), join(outDir, "launcher-walkthrough.webm"));
+  console.log("  🎬 launcher-walkthrough.webm");
 }
 
 console.log(`\nScreenshots (${shot}) → ${outDir}`);
 if (failures > 0) {
-  console.error(`\nSPRINGBOARD E2E FAILED (${failures})`);
+  console.error(`\nLAUNCHER E2E FAILED (${failures})`);
   process.exit(1);
 }
-console.log("\nSPRINGBOARD E2E PASSED");
+console.log("\nLAUNCHER E2E PASSED");
 process.exit(0);
