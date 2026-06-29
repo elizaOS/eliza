@@ -268,8 +268,8 @@ grep -q 'text-txt' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
 grep -q 'text-destructive' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
-first_run_shell="${REPO_ROOT}/packages/ui/src/first-run/CompactOnboarding.tsx"
-grep -q 'className="first-run-screen' "${first_run_shell}"
+first_run_shell="${REPO_ROOT}/packages/ui/src/first-run/FirstRunChat.tsx"
+grep -q 'first-run-chat' "${first_run_shell}"
 grep -q 'text-white' "${first_run_shell}"
 if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
     "${first_run_shell}"
