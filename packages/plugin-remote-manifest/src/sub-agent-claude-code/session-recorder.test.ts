@@ -22,7 +22,7 @@ import {
 } from "./session-recorder.js";
 
 const removePathRecursive = fileURLToPath(
-  new URL("../../scripts/rm-path-recursive.mjs", import.meta.url),
+  new URL("../../../scripts/rm-path-recursive.mjs", import.meta.url),
 );
 
 describe("sub-agent session transcript redaction", () => {
