@@ -315,7 +315,7 @@ containerDescribe("ElizaCloudClient real API e2e: container lifecycle", () => {
 
     const created = await client.createContainer({
       name: `sdk-e2e-${Date.now()}`,
-      project_name: "sdk-e2e",
+      projectName: "sdk-e2e",
       image: imageUri,
     });
     const containerId = created.data.id;
@@ -327,7 +327,10 @@ containerDescribe("ElizaCloudClient real API e2e: container lifecycle", () => {
         true,
       );
       await expect(
-        client.updateContainer(containerId, { desired_count: 1 }),
+        client.updateContainer(containerId, {
+          action: "scale",
+          desiredCount: 1,
+        }),
       ).resolves.toBeTruthy();
       await expect(
         client.getContainerHealth(containerId),

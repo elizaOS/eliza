@@ -639,28 +639,47 @@ export interface CloudContainer {
   updated_at: string;
 }
 
+/**
+ * Body for `POST /api/v1/containers`.
+ *
+ * Field names MUST match the server zod schema (`CreateContainerSchema` in
+ * `packages/cloud/api/v1/containers/route.ts`) verbatim — the server is
+ * camelCase. The server validates with `z.object`, which strips unknown keys,
+ * so a snake_case body (`project_name`, `environment_vars`, …) is silently
+ * dropped before the handler ever runs. That previously discarded
+ * `environmentVars.ELIZA_APP_ID` (per-app monetization attribution) and
+ * `projectName` (the sticky deploy key) on every container create, even on the
+ * happy path. Keep this in exact camelCase agreement with the server.
+ */
 export interface CreateContainerRequest {
+  /** Human-readable container name (1–100 chars). */
   name: string;
-  project_name: string;
-  description?: string;
-  port?: number;
-  desired_count?: number;
-  cpu?: number;
-  memory?: number;
-  environment_vars?: Record<string, string>;
-  health_check_path?: string;
-  /** Internal coding-container bootstrap mount. Defaults to /data. */
-  volume_mount_path?: string;
-  /** Internal coding-container source bundle, written into the mounted volume before start. */
-  bootstrap_source?: JsonValue;
   /** Full image reference (e.g. `ghcr.io/owner/repo:tag`). The Hetzner-Docker backend pulls it directly. */
   image: string;
+  /** Stable project key (sticky scheduling/volumes). Defaults to a slug of `name` server-side. */
+  projectName?: string;
+  port?: number;
+  cpu?: number;
+  memoryMb?: number;
+  /**
+   * Caller-supplied environment. Carries `ELIZA_APP_ID` for per-app
+   * monetization attribution; platform-reserved keys are rejected server-side.
+   */
+  environmentVars?: Record<string, string>;
+  healthCheckPath?: string;
 }
 
-export interface UpdateContainerRequest
-  extends Partial<CreateContainerRequest> {
-  status?: ContainerStatus;
-}
+/**
+ * Body for `PATCH /api/v1/containers/:id`. Mirrors the server's
+ * action-discriminated union (`PatchSchema` in
+ * `packages/cloud/api/v1/containers/[id]/route.ts`): restart | setEnv | scale.
+ * The server rejects any body without a recognized `action`, so this is a
+ * discriminated union, not a partial of the create body.
+ */
+export type UpdateContainerRequest =
+  | { action: "restart" }
+  | { action: "setEnv"; environmentVars: Record<string, string> }
+  | { action: "scale"; desiredCount: number };
 
 export interface CreateContainerResponse {
   success: boolean;

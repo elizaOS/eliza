@@ -246,6 +246,74 @@ describe("ElizaCloudClient.getContainerLogs", () => {
   });
 });
 
+describe("ElizaCloudClient.createContainer wire contract", () => {
+  it("serializes a camelCase body so projectName and environmentVars.ELIZA_APP_ID survive (per-app monetization)", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      data: { id: "c_1" },
+    });
+
+    // Typed against CreateContainerRequest: this object only compiles if the
+    // SDK type is camelCase. A revert to snake_case fails the build here.
+    await client.createContainer({
+      name: "My App",
+      image: "ghcr.io/elizaos/my-app:latest",
+      projectName: "my-app",
+      port: 3000,
+      cpu: 1792,
+      memoryMb: 1792,
+      environmentVars: { ELIZA_APP_ID: "app_abc123", FOO: "bar" },
+      healthCheckPath: "/health",
+    });
+
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/containers",
+      method: "POST",
+    });
+
+    const body = requests[0]?.body as Record<string, unknown>;
+    // The exact keys the server's CreateContainerSchema accepts — all camelCase.
+    expect(body).toMatchObject({
+      name: "My App",
+      image: "ghcr.io/elizaos/my-app:latest",
+      projectName: "my-app",
+      port: 3000,
+      cpu: 1792,
+      memoryMb: 1792,
+      healthCheckPath: "/health",
+    });
+    // ELIZA_APP_ID rides through environmentVars — the field the casing bug dropped.
+    expect((body.environmentVars as Record<string, string>).ELIZA_APP_ID).toBe(
+      "app_abc123",
+    );
+
+    // Regression guard: none of the legacy snake_case keys may reach the wire.
+    // Those are exactly what the server zod silently stripped, taking
+    // ELIZA_APP_ID and the sticky projectName with them.
+    for (const dropped of [
+      "project_name",
+      "environment_vars",
+      "health_check_path",
+      "memory",
+      "desired_count",
+    ]) {
+      expect(body).not.toHaveProperty(dropped);
+    }
+  });
+
+  it("sends the action-discriminated PATCH body verbatim for updateContainer", async () => {
+    const { client, requests } = createClientRecorder({ success: true });
+
+    await client.updateContainer("c_1", { action: "scale", desiredCount: 1 });
+
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/containers/c_1",
+      method: "PATCH",
+      body: { action: "scale", desiredCount: 1 },
+    });
+  });
+});
+
 describe("ElizaCloudClient path parameter encoding", () => {
   it("percent-encodes path parameters that contain slashes, query markers, and fragments", async () => {
     const { client, requests } = createClientRecorder();
