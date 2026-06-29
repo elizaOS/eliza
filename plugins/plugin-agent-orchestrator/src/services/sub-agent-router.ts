@@ -268,7 +268,10 @@ function taskRequestsReachableArtifact(text: string): boolean {
 // drops. Requires a provide-verb adjacent to the url/link noun so a bare
 // mention of "url" in an input request does not match.
 function taskRequestsProvidedUrl(text: string): boolean {
-  return /\b(?:give|send|share|provide|return|show|tell|get|need|want|what(?:'?s| is)|where(?:'?s| is))\b[^.?!\n]{0,40}\b(?:url|link|address)\b/i.test(
+  // Only UNAMBIGUOUS provide/output verbs. Deliberately EXCLUDES `get`/`need`/
+  // `want`, which routinely introduce an INPUT URL ("get the URL <x> and
+  // summarize it") rather than requesting one back.
+  return /\b(?:give|send|share|provide|return|show|tell|what(?:'?s| is)|where(?:'?s| is))\b[^.?!\n]{0,40}\b(?:url|link|address)\b/i.test(
     text,
   );
 }

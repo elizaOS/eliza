@@ -22,8 +22,16 @@
  */
 
 /** Default suppression window. A reply re-delivered within this many ms of the
- * first delivery to the same room with the same normalized text is a dupe. */
-const DEFAULT_DEDUPE_WINDOW_MS = 4000;
+ * first delivery to the same room with the same normalized text is a dupe.
+ *
+ * Kept short on purpose. The cross-path fan-out this guards (the SAME logical
+ * reply reaching both the client_chat send handler AND the autonomy relay)
+ * happens within milliseconds, so a tight window reliably catches it while
+ * minimizing the chance of collapsing two GENUINELY independent same-text
+ * sends to the same room (e.g. two split swarm results both saying "Done").
+ * Attachments already discriminate distinct media sends (see
+ * {@link deliveryIdentityFromContent}); this window bounds the text-only case. */
+const DEFAULT_DEDUPE_WINDOW_MS = 2000;
 
 /** Cap the live key set so a long-running server can't grow this unbounded. */
 const MAX_TRACKED_KEYS = 512;
