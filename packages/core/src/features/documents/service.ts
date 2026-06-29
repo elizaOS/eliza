@@ -1478,9 +1478,9 @@ export class DocumentService extends Service {
 			},
 		);
 
-		for (const fragment of fragments) {
-			await this.processDocumentFragment(fragment);
-		}
+		await this.processDocumentFragmentsBatched(fragments, {
+			continueOnError: false,
+		});
 
 		return {
 			documentId: options.documentId,
@@ -1576,16 +1576,9 @@ export class DocumentService extends Service {
 			finalScope,
 		);
 
-		for (const fragment of fragments) {
-			try {
-				await this.processDocumentFragment(fragment);
-			} catch (error) {
-				logger.error(
-					{ error },
-					`DocumentService: Error processing fragment ${fragment.id} for document ${item.id}`,
-				);
-			}
-		}
+		await this.processDocumentFragmentsBatched(fragments, {
+			continueOnError: true,
+		});
 	}
 
 	private async processDocumentFragment(fragment: Memory): Promise<void> {
@@ -1596,6 +1589,110 @@ export class DocumentService extends Service {
 		} catch (error) {
 			logger.error({ error }, `Error processing fragment ${fragment.id}`);
 			throw error;
+		}
+	}
+
+	/**
+	 * Embed + persist a batch of document fragments.
+	 *
+	 * When a {@link ModelType.TEXT_EMBEDDING_BATCH} model is registered (e.g. the
+	 * cloud plugin), every fragment is embedded in ONE round-trip instead of N
+	 * serial single-text embeds, the returned vectors are written back IN ORDER
+	 * (`fragments[i].embedding = vectors[i]`), then each fragment is persisted.
+	 *
+	 * The embedded text is exactly `fragment.content.text` — the same value
+	 * {@link IAgentRuntime.addEmbeddingToMemory} embeds (see runtime.ts:
+	 * `useModel(TEXT_EMBEDDING, { text: memory.content.text })`) — so batched and
+	 * serial fragments receive byte-for-byte identical embedding input.
+	 *
+	 * Any batch failure (no batch model registered, the model call throwing, or a
+	 * returned vector count that does not match the fragment count) falls back to
+	 * the existing serial per-fragment path so no fragment is left unembedded.
+	 *
+	 * @param fragments fragments to embed + persist, processed in array order.
+	 * @param options.continueOnError when true, a single fragment's persist
+	 *   failure is logged and skipped (matching the per-fragment try/catch at the
+	 *   `_internalAddDocument` call site); when false the error propagates
+	 *   (matching the `updateDocument` call site).
+	 */
+	private async processDocumentFragmentsBatched(
+		fragments: Memory[],
+		options: { continueOnError: boolean },
+	): Promise<void> {
+		if (fragments.length === 0) {
+			return;
+		}
+
+		// No batch model → keep the original serial behaviour unchanged.
+		if (!this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH)) {
+			await this.processDocumentFragmentsSerial(fragments, options);
+			return;
+		}
+
+		let vectors: number[][];
+		try {
+			// Text source matches addEmbeddingToMemory exactly: memory.content.text.
+			const texts = fragments.map((fragment) => fragment.content.text ?? "");
+			vectors = await this.runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
+				texts,
+			});
+			if (!Array.isArray(vectors) || vectors.length !== fragments.length) {
+				// A count/shape mismatch can't be mapped back to fragments safely.
+				throw new Error(
+					`TEXT_EMBEDDING_BATCH returned ${
+						Array.isArray(vectors) ? vectors.length : "a non-array"
+					} vectors for ${fragments.length} fragments`,
+				);
+			}
+		} catch (error) {
+			logger.warn(
+				{ error },
+				"[DocumentService] Batch fragment embedding failed; falling back to serial per-fragment embedding",
+			);
+			await this.processDocumentFragmentsSerial(fragments, options);
+			return;
+		}
+
+		// Vectors are valid + count-matched. Assign in order, then persist each.
+		for (let i = 0; i < fragments.length; i++) {
+			fragments[i].embedding = vectors[i];
+		}
+
+		for (const fragment of fragments) {
+			try {
+				await this.runtime.createMemory(fragment, DOCUMENT_FRAGMENTS_TABLE);
+			} catch (error) {
+				logger.error(
+					{ error },
+					`[DocumentService] Error persisting fragment ${fragment.id}`,
+				);
+				if (!options.continueOnError) {
+					throw error;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Serial per-fragment embed + persist path. The fallback used when no
+	 * TEXT_EMBEDDING_BATCH model is registered or the batch call fails.
+	 */
+	private async processDocumentFragmentsSerial(
+		fragments: Memory[],
+		options: { continueOnError: boolean },
+	): Promise<void> {
+		for (const fragment of fragments) {
+			try {
+				await this.processDocumentFragment(fragment);
+			} catch (error) {
+				if (!options.continueOnError) {
+					throw error;
+				}
+				logger.error(
+					{ error },
+					`[DocumentService] Error processing fragment ${fragment.id} during serial fallback`,
+				);
+			}
 		}
 	}
 
