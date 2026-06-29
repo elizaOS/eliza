@@ -238,21 +238,17 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
 };
 
 /**
- * Plugins that ship with no test file at all (`discoverZeroTestPlugins`). Issue
- * #8802 requires each to either gain a real test or be documented as
- * intentionally test-exempt with a written justification. Every key here is a
- * justification; a newly added zero-test plugin that is not listed fails the
- * gate until it gets a test or an entry. (plugin-discord-local and
- * plugin-elizamaker were on the issue's original list and now have real route
- * tests, so they are deliberately absent here.)
+ * Plugins that ship with no test file at all (`discoverZeroTestPlugins`) yet are
+ * intentionally test-exempt, each with a written justification. Issue #8802
+ * requires every zero-test plugin to either gain a real test or be listed here;
+ * a newly added zero-test plugin that is not listed fails the gate.
+ *
+ * Currently empty: every plugin under `plugins/` ships at least one test.
+ * `plugin-tee` and `plugin-native-shared-types` gained real tests (#9991);
+ * `plugin-action-bench` and `plugin-xmtp` were vestigial `bun.lock`-only
+ * directories left by the v2.0.4 baseline squash (action-bench's runtime lives
+ * in plugin-training; xmtp had no source) and were removed (#9943). Keep this
+ * map empty unless a genuinely untestable plugin lands — never paper a missing
+ * test with an exemption.
  */
-export const ZERO_TEST_EXEMPT: Record<string, string> = {
-  "plugin-action-bench":
-    "Benchmark/eval harness plugin used to drive scenario benchmarks; it has no shipped runtime behavior to unit-test and runs only under the benchmark lanes.",
-  "plugin-native-shared-types":
-    "Pure shared TypeScript type/contract definitions for the native bridges; there is no runtime behavior to test.",
-  "plugin-tee":
-    "Trusted-execution (dstack TEE) attestation/key-release; requires real TEE hardware + a dstack socket, validated by the dedicated TEE smoke scripts.",
-  "plugin-xmtp":
-    "XMTP messaging connector; requires a live XMTP network identity + keys, validated by the live messaging matrix rather than keyless unit tests.",
-};
+export const ZERO_TEST_EXEMPT: Record<string, string> = {};

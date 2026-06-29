@@ -3,9 +3,11 @@
  *
  * Scans the cloud-shared repositories for reads/updates/deletes against the
  * Product-2 *apps tenant data-plane* whose WHERE clause is ONLY the primary-key
- * `id` (`eq(<table>.id, _)`) with no organization/app ownership predicate. Such
- * pk-only access trusts the caller to have already authorized ownership, so a
- * NEW unscoped query against a tenant table must not land silently before GA.
+ * `id` (`eq(<table>.id, _)`, `inArray(<table>.id, _)`, or those predicates
+ * wrapped in `and(...)`/`or(...)`) with no organization/app ownership
+ * predicate. Such pk-only access trusts the caller to have already authorized
+ * ownership, so a NEW unscoped query against a tenant table must not land
+ * silently before GA.
  *
  * A method may opt out with an explicit annotation that documents WHY the
  * lookup is intentionally id-only (e.g. authorization happens in the route
@@ -55,19 +57,119 @@ function parse(file: string): ts.SourceFile {
   return ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
 }
 
-/**
- * If `where` is a SOLE `eq(<table>.id, _)` against a tenant data-plane table,
- * return that table's identifier name; otherwise undefined. An `and(...)`/`or(...)`
- * combinator or a predicate on any other column is — by construction — not a
- * single eq on the pk, so it is never flagged.
- */
-function solePrimaryKeyTable(where: ts.Expression): string | undefined {
+function primaryKeyPredicateTable(where: ts.Expression): string | undefined {
   if (!ts.isCallExpression(where)) return undefined;
-  if (!ts.isIdentifier(where.expression) || where.expression.text !== "eq") return undefined;
+  if (!ts.isIdentifier(where.expression)) return undefined;
+  if (where.expression.text !== "eq" && where.expression.text !== "inArray") return undefined;
   const lhs = where.arguments[0];
   if (!lhs || !ts.isPropertyAccessExpression(lhs)) return undefined;
   if (!ts.isIdentifier(lhs.expression) || lhs.name.text !== "id") return undefined;
   return TENANT_DATA_PLANE_TABLES.has(lhs.expression.text) ? lhs.expression.text : undefined;
+}
+
+function isConstArrayDeclaration(node: ts.VariableDeclaration): boolean {
+  return (
+    ts.isIdentifier(node.name) &&
+    node.initializer !== undefined &&
+    ts.isArrayLiteralExpression(node.initializer) &&
+    ts.isVariableDeclarationList(node.parent) &&
+    Boolean(node.parent.flags & ts.NodeFlags.Const)
+  );
+}
+
+function constArrayInitializerFromStatement(
+  statement: ts.Statement,
+  name: string,
+): ts.ArrayLiteralExpression | undefined {
+  if (!ts.isVariableStatement(statement)) return undefined;
+  let found: ts.ArrayLiteralExpression | undefined;
+  for (const declaration of statement.declarationList.declarations) {
+    if (isConstArrayDeclaration(declaration) && declaration.name.text === name) {
+      found = declaration.initializer;
+    }
+  }
+  return found;
+}
+
+function statementScope(node: ts.Node): ts.NodeArray<ts.Statement> | undefined {
+  if (ts.isBlock(node) || ts.isSourceFile(node) || ts.isModuleBlock(node)) {
+    return node.statements;
+  }
+  return undefined;
+}
+
+function findVisibleConstArrayInitializer(
+  name: string,
+  from: ts.Node,
+): ts.ArrayLiteralExpression | undefined {
+  for (let scope: ts.Node | undefined = from.parent; scope; scope = scope.parent) {
+    const statements = statementScope(scope);
+    if (!statements) continue;
+
+    let found: ts.ArrayLiteralExpression | undefined;
+    for (const statement of statements) {
+      if (statement.pos >= from.pos) break;
+      if (statement.end > from.pos) continue;
+      found = constArrayInitializerFromStatement(statement, name) ?? found;
+    }
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function expandedExpressions(
+  expression: ts.Expression,
+  seenArrays: Set<string>,
+): ts.Expression[] | undefined {
+  if (!ts.isSpreadElement(expression)) return [expression];
+
+  const spread = expression.expression;
+  if (ts.isArrayLiteralExpression(spread)) {
+    return [...spread.elements];
+  }
+  if (!ts.isIdentifier(spread) || seenArrays.has(spread.text)) {
+    return undefined;
+  }
+
+  const initializer = findVisibleConstArrayInitializer(spread.text, expression);
+  if (!initializer) return undefined;
+  seenArrays.add(spread.text);
+  const expanded = [...initializer.elements];
+  seenArrays.delete(spread.text);
+  return expanded;
+}
+
+/**
+ * If `where` is composed only of pk predicates against tenant data-plane
+ * tables, return those table identifier names; otherwise undefined. Any
+ * predicate on another column (for example `organization_id` / `app_id`) makes
+ * the query scoped for this narrow gate and therefore not a violation.
+ */
+function primaryKeyOnlyTables(
+  where: ts.Expression,
+  seenArrays = new Set<string>(),
+): Set<string> | undefined {
+  const direct = primaryKeyPredicateTable(where);
+  if (direct) return new Set([direct]);
+
+  if (!ts.isCallExpression(where)) return undefined;
+  if (!ts.isIdentifier(where.expression)) return undefined;
+  if (where.expression.text !== "and" && where.expression.text !== "or") return undefined;
+
+  const tables = new Set<string>();
+  let sawPkPredicate = false;
+  for (const arg of where.arguments) {
+    const expanded = expandedExpressions(arg, seenArrays);
+    if (!expanded?.length) return undefined;
+    for (const expr of expanded) {
+      const childTables = primaryKeyOnlyTables(expr, seenArrays);
+      if (!childTables) return undefined;
+      sawPkPredicate = true;
+      for (const table of childTables) tables.add(table);
+    }
+  }
+
+  return sawPkPredicate ? tables : undefined;
 }
 
 /** Outermost enclosing function/method: its name (for reporting) and full text.
@@ -120,12 +222,14 @@ export function findUnscopedTenantReads(repoFiles: string[]): TenantScopeViolati
     const visit = (node: ts.Node): void => {
       const where = whereExpression(node);
       if (where) {
-        const table = solePrimaryKeyTable(where);
-        if (table) {
+        const tables = primaryKeyOnlyTables(where);
+        if (tables) {
           const fn = enclosingFunction(node);
           if (!ALLOW_ANNOTATION.test(fn.text)) {
             const { line } = source.getLineAndCharacterOfPosition(node.getStart());
-            violations.push({ file, line: line + 1, table, method: fn.name });
+            for (const table of tables) {
+              violations.push({ file, line: line + 1, table, method: fn.name });
+            }
           }
         }
       }
@@ -147,7 +251,7 @@ if (import.meta.main) {
     );
     for (const v of violations) {
       console.error(
-        `  ${relative(process.cwd(), v.file)}:${v.line}  ${v.method}() → eq(${v.table}.id, …)`,
+        `  ${relative(process.cwd(), v.file)}:${v.line}  ${v.method}() → pk-only ${v.table}.id predicate`,
       );
     }
     console.error(

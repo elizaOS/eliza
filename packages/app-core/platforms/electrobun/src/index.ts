@@ -37,7 +37,7 @@ import { readNavigationEventUrl } from "./cloud-auth-window";
 import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
-  shouldStartBottomBar,
+  resolveDesktopShellWindowPresentation,
 } from "./desktop-bottom-bar-config";
 import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
@@ -995,11 +995,12 @@ function resolveBottomBarFrame(): {
 }
 
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
-  const kiosk = isKioskShellMode();
+  const presentation = resolveDesktopShellWindowPresentation();
+  const kiosk = presentation.mode === "kiosk";
   // Chromeless bottom-bar shell (#9953): a frameless, transparent, always-on-top
   // bar pinned to the screen bottom that renders the chat-overlay shell only.
   // Opt-in and mutually exclusive with kiosk.
-  const bottomBar = !kiosk && shouldStartBottomBar();
+  const bottomBar = presentation.mode === "bottom-bar";
   const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
   const rendererUrl = kiosk
     ? appendKioskShellModeParam(baseRendererUrl)
@@ -1044,16 +1045,11 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         x: state.x,
         y: state.y,
       };
-  const titleBarStyle =
-    kiosk || bottomBar
-      ? "hidden"
-      : process.platform === "darwin"
-        ? "hiddenInset"
-        : "default";
+  const titleBarStyle = presentation.titleBarStyle;
   // Bottom bar wants a transparent surface so the desktop shows through the
   // empty region above the bar; on darwin it pairs with vibrancy. Win/Linux
   // transparency support varies, so the bar stays opaque there for now.
-  const transparent = !kiosk && process.platform === "darwin";
+  const transparent = presentation.transparent;
   const forceMainWindowCef = shouldForceMainWindowCef(
     process.env,
     process.platform,
@@ -1188,9 +1184,10 @@ function attachMainWindow(
   wireMainWindowAfterCreate(win, rpc, sendToWebview);
   currentWindow = win;
   currentSendToWebview = sendToWebview;
+  const presentation = resolveDesktopShellWindowPresentation();
   setCurrentMainWindow(win, {
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    transparent: process.platform === "darwin",
+    titleBarStyle: presentation.titleBarStyle,
+    transparent: presentation.transparent,
   });
   trackFocusedWindow(win);
   // Reveal the Dock icon in tray-first mode whenever a main window is attached,
@@ -1775,6 +1772,10 @@ function injectApiBaseIntoOpenRendererWindows(): void {
   surfaceWindowManager?.forEachWindow((w) => {
     injectApiBase(w as BrowserWindow);
   });
+
+  getDesktopManager().forEachTrayPopoverWindow((w) => {
+    injectApiBase(w);
+  });
 }
 
 /**
@@ -1789,6 +1790,9 @@ function collectOpenRendererWindows(): BrowserWindow[] {
   }
   surfaceWindowManager?.forEachWindow((w) => {
     windows.push(w as BrowserWindow);
+  });
+  getDesktopManager().forEachTrayPopoverWindow((w) => {
+    windows.push(w);
   });
   return windows;
 }
@@ -2790,10 +2794,26 @@ async function main(): Promise<void> {
     // shouldEnableTrayPopover); Win/Linux keep the text context menu.
     if (shouldEnableTrayPopover()) {
       try {
-        const base = await resolveRendererUrl();
+        const base = await resolveRendererUrlForCurrentRuntime();
         const popoverUrl = new URL(base);
         popoverUrl.searchParams.set("shellMode", "tray-popover");
-        desktop.configureTrayPopover(popoverUrl.href);
+        const { rpc } = createDesktopRpc("tray-popover");
+        const buildInfo = await BuildConfig.get();
+        const mainWindowPartition = resolveMainWindowPartition(process.env, {
+          platform: process.platform,
+          buildInfo,
+        });
+        desktop.configureTrayPopover({
+          url: popoverUrl.href,
+          preload: readResolvedPreloadScript(import.meta.dir),
+          partition: mainWindowPartition,
+          rpc,
+          wireRpc: () => wireSettingsRpcAfterCreate(rpc),
+          injectApiBase,
+          onWindowFocused: (window) => {
+            lastFocusedWindow = window;
+          },
+        });
         logger.info("[Main] Tray popover enabled");
       } catch (err) {
         logger.warn(
