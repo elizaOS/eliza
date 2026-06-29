@@ -5808,6 +5808,31 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
+		if (messageHandler.processMessage === "RESPOND") {
+			const injectionGate = await runShouldRespondInjectionGate({
+				runtime: args.runtime,
+				message: args.message,
+				resolveSenderRole: () => senderRole,
+			});
+			if (injectionGate.blocked) {
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						agentId: args.runtime.agentId,
+						reason: injectionGate.reason,
+						score: injectionGate.score,
+					},
+					"[ShouldRespondRiskGate] suppressing Stage 1 response before side effects or planner tools",
+				);
+				return {
+					kind: "terminal",
+					action: "IGNORE",
+					messageHandler,
+					state: args.state,
+				};
+			}
+		}
+
 		// Kick off the FACTS_AND_RELATIONSHIPS stage in parallel with whichever
 		// Stage 2 path runs (simple reply or planner). This stage is purely a
 		// side-effect: it dedups + persists user-stated facts/relationships
