@@ -489,11 +489,10 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				channelType === DiscordChannelType.GroupDM;
 
 			if (isDm) {
-				if (service.messageDebouncer) {
-					service.messageDebouncer.enqueue(message);
-				} else {
-					await service.messageManager.handleMessage(message);
-				}
+				// DMs are 1:1 and gain nothing from debouncing; the
+				// message-debouncer enqueue/flush path can intermittently drop
+				// them, leaving the bot silent. Dispatch DMs directly.
+				await service.messageManager.handleMessage(message);
 			} else if (service.channelDebouncer) {
 				service.channelDebouncer.enqueue(message);
 			} else if (service.messageDebouncer) {
