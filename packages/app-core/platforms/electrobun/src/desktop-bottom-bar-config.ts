@@ -94,6 +94,7 @@ export function computeBottomBarFrame(
   const margin = Math.max(0, Math.round(options?.margin ?? 0));
   const width = Math.max(1, Math.round(workArea.width) - margin * 2);
   const x = Math.round(workArea.x) + margin;
-  const y = Math.round(workArea.y) + Math.round(workArea.height) - height - margin;
+  const y =
+    Math.round(workArea.y) + Math.round(workArea.height) - height - margin;
   return { x, y, width, height };
 }

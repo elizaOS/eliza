@@ -34,19 +34,20 @@ import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
-import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
-import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
-import {
-  shouldCreateDesktopTray,
-  shouldStartOnboardingOverlay,
-  shouldStartTrayFirst,
-} from "./desktop-tray-config";
-import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
   shouldStartBottomBar,
 } from "./desktop-bottom-bar-config";
+import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
+import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
+import {
+  shouldCreateDesktopTray,
+  shouldEnableTrayPopover,
+  shouldStartOnboardingOverlay,
+  shouldStartTrayFirst,
+} from "./desktop-tray-config";
+import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
 import { appendKioskShellModeParam, isKioskShellMode } from "./kiosk-mode";
@@ -2782,6 +2783,23 @@ async function main(): Promise<void> {
       logger.warn(
         `[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+
+    // Tray popover (#9953 Phase 4): when enabled, a tray click opens a widget
+    // popover instead of restoring the full window. macOS-only today (see
+    // shouldEnableTrayPopover); Win/Linux keep the text context menu.
+    if (shouldEnableTrayPopover()) {
+      try {
+        const base = await resolveRendererUrl();
+        const popoverUrl = new URL(base);
+        popoverUrl.searchParams.set("shellMode", "tray-popover");
+        desktop.configureTrayPopover(popoverUrl.href);
+        logger.info("[Main] Tray popover enabled");
+      } catch (err) {
+        logger.warn(
+          `[Main] Tray popover configuration failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   } else {
     logger.info("[Main] Desktop tray disabled by environment");

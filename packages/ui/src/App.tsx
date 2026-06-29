@@ -162,6 +162,7 @@ import {
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
 import { useEnabledViewKinds } from "./state/useViewKinds";
+import { WidgetHost } from "./widgets";
 
 const BackgroundView = lazyNamedView(
   () => import("./components/pages/BackgroundView"),
@@ -367,6 +368,7 @@ function useIsPopout(): boolean {
 type ShellMode =
   | "chat-overlay"
   | "onboarding-overlay"
+  | "tray-popover"
   | "voice-selftest"
   | "voice-workbench"
   | "launcher"
@@ -391,6 +393,7 @@ function readShellMode(): ShellMode {
     "";
   if (raw === "chat-overlay") return "chat-overlay";
   if (raw === "onboarding-overlay") return "onboarding-overlay";
+  if (raw === "tray-popover") return "tray-popover";
   if (raw === "voice-selftest") return "voice-selftest";
   if (raw === "voice-workbench") return "voice-workbench";
   if (raw === "launcher") return "launcher";
@@ -418,6 +421,24 @@ function ChatOverlayShell() {
       className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
     >
       <ShellFoundationMount />
+    </div>
+  );
+}
+
+/**
+ * Native tray popover surface (#9953 Phase 4). Renders ONLY the widget surface
+ * (reusing the shell widget registry's "home" slot) inside the frameless,
+ * transparent, always-on-top window the native tray anchors near its icon — no
+ * app chrome. Each widget self-hides when it has nothing to show, so the popover
+ * is a compact at-a-glance panel.
+ */
+function TrayPopoverShell() {
+  return (
+    <div
+      data-testid="tray-popover-shell"
+      className="fixed inset-0 overflow-y-auto bg-transparent p-3"
+    >
+      <WidgetHost slot="home" layout="stack" />
     </div>
   );
 }
@@ -2106,6 +2127,18 @@ export function App() {
         <ShellControllerProvider>
           <ChatOverlayShell />
         </ShellControllerProvider>
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
+  // Native tray popover window — render JUST the widget surface, no app chrome
+  // or onboarding gate. The native tray anchors this transparent, always-on-top
+  // window beside its icon (#9953 Phase 4).
+  if (shellMode === "tray-popover") {
+    return (
+      <BugReportProvider value={bugReport}>
+        <TrayPopoverShell />
         <BugReportModal />
       </BugReportProvider>
     );
