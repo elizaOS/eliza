@@ -26,7 +26,10 @@ const AGENT = "de42b5ff-72d3-4a1a-8a16-19aee293bfea";
 const CREATED = new Date("2026-06-18T00:00:00.000Z");
 const APP_ORIGIN = "https://localhost";
 
-function patchConversation(body: unknown, origin?: string): Promise<Response> {
+function patchConversation(
+  body: unknown,
+  origin?: string,
+): Response | Promise<Response> {
   const headers: Record<string, string> = {
     Authorization: "Bearer user-api-key",
     "Content-Type": "application/json",
@@ -39,7 +42,7 @@ function patchConversation(body: unknown, origin?: string): Promise<Response> {
   });
 }
 
-function deleteConversation(origin?: string): Promise<Response> {
+function deleteConversation(origin?: string): Response | Promise<Response> {
   const headers: Record<string, string> = {
     Authorization: "Bearer user-api-key",
   };
