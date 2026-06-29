@@ -77,6 +77,22 @@ export const UI_E2E_SUITES = [
     coverage:
       "Runs the standalone Feed DAG visualizer browser e2e with screenshots, traces, and videos.",
   },
+  {
+    name: "ios-sim",
+    displayName: "iOS simulator capture",
+    configDir: "packages/app",
+    script: "capture:ios-sim",
+    coverage:
+      "Captures a booted iOS simulator (simctl screenshot + recordVideo + best-effort backend log) into .github/issue-evidence/. Skips with a reason (exit 0) off macOS or when no simulator is booted, so it is safe in the sweep on Linux CI.",
+  },
+  {
+    name: "android-emu",
+    displayName: "Android emulator capture",
+    configDir: "packages/app",
+    script: "capture:android-emu",
+    coverage:
+      "Captures an attached Android emulator/device (adb screencap + screenrecord + logcat tail) into .github/issue-evidence/. Skips with a reason (exit 0) when adb is missing or no device is attached.",
+  },
 ];
 
 export const UI_E2E_COVERED_BY_APP = [

@@ -46,6 +46,14 @@ bun run test:e2e:record
 
 # App + cloud-UI per-route screenshots (REQUIRED for UI changes)
 bun run --cwd packages/app audit:app
+
+# Native per-platform capture (screenshot + recording + logs → this dir).
+# Skip-with-reason (exit 0) when no simulator/emulator is present:
+bun run --cwd packages/app capture:ios-sim -- --issue <n> --slug <s>
+bun run --cwd packages/app capture:android-emu -- --issue <n> --slug <s>
 ```
+
+See the per-platform capture matrix in `PR_EVIDENCE.md` for the full
+surface→command mapping.
 
 Reference the file(s) from the PR body so the proof travels with the change.

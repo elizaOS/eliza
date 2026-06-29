@@ -15,7 +15,7 @@ Node-only (`"platforms": ["node"]`) — exported from `index.node.ts` only.
 
 ## Enable
 
-Single env gate: **`ELIZA_CHAT_VIA_CLI=claude`**, **`claude-sdk`**, or **`codex`**.
+Single env gate: **`ELIZA_CHAT_VIA_CLI=claude`**, **`claude-sdk`**, **`codex`**, or **`codex-sdk`**.
 
 - Unset → the plugin is never added to the resolved set (`auto-enable.ts shouldEnable` is false), and even if force-loaded its models map is empty. INERT; no existing code path changes.
 - `claude` / `codex` → the large-tier handlers **cold-spawn** that CLI per call (`claude --print` / `codex exec`).
@@ -93,6 +93,32 @@ SDK at the Claude Code executable.
 returns a session-limit error); plan a fallback (a key/Cloud tier, or stealth on
 a self-host) for production continuity.
 
+## Warm Codex SDK backend (`ELIZA_CHAT_VIA_CLI=codex-sdk`)
+
+The codex peer of `claude-sdk` (`src/codex-sdk-session.ts`). Runs the brain on a
+ChatGPT/Codex subscription via `@openai/codex-sdk` (loaded by variable dynamic
+import; reads `~/.codex/auth.json` itself). A `CodexSdkSession` keeps ONE warm
+`Thread` (`codex.startThread()` once, `thread.run()` per turn) instead of the
+`codex exec` cold-spawn-per-call. Two modes:
+
+- **TEXT** (`generate`): `thread.run(body)` with `sandboxMode:"read-only"`,
+  `approvalPolicy:"never"`, `networkAccessEnabled:false` → a warm completion
+  engine; returns the turn's `finalResponse`.
+- **ROUTE** (`route`): codex NATIVE structured output (`outputSchema`) constrains
+  the turn to `{action, params}` (params as a JSON string for OpenAI strict mode),
+  reliable at scale. REQUIRES `ELIZA_CLI_CODEX_BIN` pointing at the system codex —
+  the SDK bundles an old codex (0.80.0) that rejects current models/structured output.
+
+codex-sdk has no thread-level system prompt, so the system is folded into the
+body and ONE warm thread per `(model, mode)` serves every system prompt. Per-tier
+models: `ELIZA_CLI_CODEX_PLANNER_MODEL` + `ELIZA_CLI_CODEX_MODEL`;
+`ELIZA_CLI_CODEX_REASONING_EFFORT` sets `modelReasoningEffort`.
+
+**Status:** LIVE-VERIFIED in the bot on a ChatGPT/Codex sub — btc \$59,527, eth
+\$1,566, weather, identity, knows-user, 8×8=64; live-info routes to WEB_FETCH and
+synthesizes the real fetched value (after the canonical-contentToText fix). Needs
+`ELIZA_CLI_CODEX_BIN`=system codex. 12 fake-SDK unit tests.
+
 ## Layout
 
 ```
@@ -127,7 +153,10 @@ plugins/plugin-cli-inference/
 | `ELIZA_CLI_CLAUDE_PLANNER_MODEL` | No | (falls back to large) | `claude-sdk` small/planner tier model (e.g. sonnet) |
 | `ELIZA_CLI_CLAUDE_BIN` | No | (SDK default) | `claude-sdk`: path to the Claude Code executable the SDK drives |
 | `ELIZA_CLI_SDK_RESTART_AFTER_TURNS` | No | `20` | `claude-sdk`: restart a warm session after N turns (bounds context) |
-| `ELIZA_CLI_CODEX_MODEL` | No | `gpt-5.5` | `codex exec -m` |
+| `ELIZA_CLI_CODEX_MODEL` | No | `gpt-5.5` | codex large-tier model (`codex exec -m` / SDK large tier) |
+| `ELIZA_CLI_CODEX_PLANNER_MODEL` | No | (falls back to large) | `codex-sdk` small/planner tier model |
+| `ELIZA_CLI_CODEX_REASONING_EFFORT` | No | (sdk default) | `codex-sdk`: `modelReasoningEffort` (minimal..xhigh) |
+| `ELIZA_CLI_CODEX_BIN` | No | (sdk bundled) | `codex-sdk`: path to the system codex binary (REQUIRED — bundled 0.80.0 rejects current models) |
 | `ELIZA_CLI_TIMEOUT_MS` | No | `120000` | per-call spawn timeout (SIGTERM on expiry; CLI backends) |
 
 ## Errors

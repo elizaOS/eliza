@@ -84,6 +84,30 @@ bun run test:e2e:audit-ui                # coverage of which routes are recorded
 bun run --cwd packages/cloud-frontend audit:cloud
 ```
 
+### Per-platform capture matrix
+
+Screenshot **+** recording **+** logs are the default-required set for any change
+that touches a runnable surface — pick the row(s) for the platform(s) your change
+actually runs on. "N/A" is allowed only with an explicit reason (a platform you
+did not touch), never a blank. Rows marked **TODO** have no orchestrated tooling
+yet; capture manually and say so until the tooling lands.
+
+| Platform | One command (screenshot + recording + logs) | Status |
+| --- | --- | --- |
+| web (browser) | `bun run test:e2e:record` (Playwright video + screenshots) + paste console/network | ready |
+| cloud-frontend | `bun run --cwd packages/cloud-frontend audit:cloud` (desktop + mobile, rest + hover) | ready |
+| app shell (web/desktop views) | `bun run --cwd packages/app audit:app` (all views, desktop + mobile, rest + hover) | ready |
+| desktop (electrobun) | during `bun run dev:desktop`: `curl -s http://127.0.0.1:$ELIZA_API_PORT/api/dev/cursor-screenshot -o shot.png` + `GET /api/dev/console-log?maxLines=400` (loopback; screenshot only — no recording yet) | partial |
+| ios-sim | `bun run --cwd packages/app capture:ios-sim -- --issue <n> --slug <s>` (`simctl io` screenshot + recordVideo + backend log) | ready |
+| android-emu | `bun run --cwd packages/app capture:android-emu -- --issue <n> --slug <s>` (`adb` screencap + screenrecord + logcat) | ready |
+| linux-desktop | **TODO** — no orchestrated headed-capture helper yet (ffmpeg `x11grab` candidate); capture manually and note it | TODO |
+| windows-desktop | **TODO** — no orchestrated headed-capture helper yet (ffmpeg `gdigrab` candidate); capture manually and note it | TODO |
+
+The `ios-sim` / `android-emu` helpers write `<issue#>-<slug>-<platform>.{png,mov/mp4,log}`
+into `.github/issue-evidence/` and **skip with a reason (exit 0)** when the
+platform/tooling is absent, so they are safe inside `bun run test:e2e:record`
+(both are registered suites in `scripts/e2e-recordings/suites.mjs`).
+
 ### Where artifacts live
 
 - Issue/PR-scoped artifacts: **`.github/issue-evidence/<issue#>-<slug>.<ext>`**
@@ -110,6 +134,7 @@ so the proof survives even if the link rots.
 - [ ] For agent/LLM behavior: a **real-LLM** trajectory is attached and matches the claim.
 - [ ] Backend and/or frontend logs attached, showing the actual code path.
 - [ ] For UI: before/after full-page screenshots + a video walkthrough.
+- [ ] For each platform the change runs on (web/cloud-frontend/app/desktop/ios-sim/android-emu/linux/windows): screenshot **+** recording **+** logs are attached via the [per-platform matrix](#per-platform-capture-matrix) command, or N/A with a reason.
 - [ ] For voice/audio: captured audio of the real round-trip + a narrated walkthrough.
 - [ ] Every evidence row above is either attached **or** explicitly marked N/A with a reason.
 - [ ] The PR description tells a reviewer exactly what to watch/read to confirm it — no code-reading required.

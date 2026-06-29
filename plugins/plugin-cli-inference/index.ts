@@ -11,6 +11,7 @@ import {
   ROUTER_SYSTEM_PROMPT,
 } from "./src/clean-routing-planner";
 import { CodexCli } from "./src/codex-cli-exec";
+import { CodexSdkSession } from "./src/codex-sdk-session";
 import { flattenPrompt } from "./src/prompt-flatten";
 
 /**
@@ -75,7 +76,9 @@ function textPlannerEnabled(): boolean {
 // "claude-sdk"  → WARM Claude Agent SDK session (TOS-clean + sanctioned + fast
 //                 ~2s/turn after warm-up); the recommended Claude route.
 // "codex"       → cold `codex exec` per call (TOS-clean ChatGPT OAuth).
-type CliBackend = "claude" | "claude-sdk" | "codex";
+// "codex-sdk"   → WARM Codex SDK thread (TOS-clean ChatGPT OAuth + fast); the
+//                 codex peer of claude-sdk. ROUTE mode uses native outputSchema.
+type CliBackend = "claude" | "claude-sdk" | "codex" | "codex-sdk";
 
 function readEnv(name: string): string | undefined {
   if (typeof process === "undefined") return undefined;
@@ -90,7 +93,9 @@ function getSetting(runtime: IAgentRuntime, key: string): string | undefined {
 /** Resolve the configured backend, or undefined when the plugin is inert. */
 export function resolveCliBackend(source: { ELIZA_CHAT_VIA_CLI?: string }): CliBackend | undefined {
   const raw = source.ELIZA_CHAT_VIA_CLI?.trim().toLowerCase();
-  if (raw === "claude" || raw === "claude-sdk" || raw === "codex") return raw;
+  if (raw === "claude" || raw === "claude-sdk" || raw === "codex" || raw === "codex-sdk") {
+    return raw;
+  }
   return undefined;
 }
 
@@ -172,6 +177,43 @@ export async function disposeSdkSessions(): Promise<void> {
   const all = [...sdkSessions.values()];
   sdkSessions.clear();
   await Promise.all(all.map((s) => s.dispose()));
+  const codex = [...codexSdkSessions.values()];
+  codexSdkSessions.clear();
+  for (const s of codex) s.dispose();
+}
+
+// Warm Codex SDK threads, keyed by (model, mode). codex-sdk has no thread-level
+// system prompt (it's folded into the body), so ONE warm thread per (model, mode)
+// serves every system prompt — simpler than the claude cache.
+const codexSdkSessions = new Map<string, CodexSdkSession>();
+
+/** The codex model for a given tier (planner/small can differ from large). */
+function resolveCodexModel(runtime: IAgentRuntime, modelType: string): string {
+  const large = getSetting(runtime, "ELIZA_CLI_CODEX_MODEL");
+  const small = getSetting(runtime, "ELIZA_CLI_CODEX_PLANNER_MODEL");
+  const isSmallTier = modelType === ModelType.ACTION_PLANNER || modelType === ModelType.TEXT_SMALL;
+  return ((isSmallTier ? small : large) || large || "gpt-5.5").trim();
+}
+
+/** Lazily create + cache a warm Codex SDK thread for a (model, mode). */
+function getCodexSdkSession(
+  runtime: IAgentRuntime,
+  model: string,
+  router: boolean
+): CodexSdkSession {
+  const key = `${model}\u001f${router ? "route" : "text"}`;
+  let session = codexSdkSessions.get(key);
+  if (!session) {
+    session = new CodexSdkSession({
+      model,
+      router,
+      reasoningEffort: getSetting(runtime, "ELIZA_CLI_CODEX_REASONING_EFFORT"),
+      codexBinPath: getSetting(runtime, "ELIZA_CLI_CODEX_BIN"),
+      restartAfterTurns: parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_RESTART_AFTER_TURNS")),
+    });
+    codexSdkSessions.set(key, session);
+  }
+  return session;
 }
 
 function parseTimeout(value: string | undefined): number | undefined {
@@ -206,7 +248,9 @@ async function generateViaCli(
     // Should be unreachable: the handlers are only registered when a backend is
     // set. Throw so useModel/AccountPool treat it as a provider failure rather
     // than silently returning empty.
-    throw new Error("[cli-inference] ELIZA_CHAT_VIA_CLI is not set to claude|claude-sdk|codex");
+    throw new Error(
+      "[cli-inference] ELIZA_CHAT_VIA_CLI is not set to claude|claude-sdk|codex|codex-sdk"
+    );
   }
   const generateParams = {
     system: params.system,
@@ -228,6 +272,14 @@ async function generateViaCli(
     const framedSystem = frameTextSystemPrompt(system);
     const framedBody = appendTextDirective(body);
     return getSdkSession(runtime, model, framedSystem, false).generate(framedBody);
+  }
+  if (backend === "codex-sdk") {
+    // Warm Codex SDK thread. codex-sdk folds the system into the body, so frame
+    // the body the same way (the SDK model is agentic too) and run TEXT mode.
+    const model = resolveCodexModel(runtime, modelType);
+    const { system, body } = flattenPrompt(generateParams);
+    const framedBody = appendTextDirective(`${frameTextSystemPrompt(system)}\n\n${body}`);
+    return getCodexSdkSession(runtime, model, false).generate(framedBody);
   }
   const cli = backend === "claude" ? buildClaude(runtime) : buildCodex(runtime);
   return cli.generate(generateParams);
@@ -262,6 +314,16 @@ async function planViaCli(runtime: IAgentRuntime, params: GenerateTextParams): P
     const model = resolveSdkModel(runtime, ModelType.ACTION_PLANNER);
     const session = getSdkSession(runtime, model, ROUTER_SYSTEM_PROMPT, true);
     return session.route(buildRouterBody(params));
+  }
+  if (backend === "codex-sdk") {
+    // codex routes via NATIVE structured output (outputSchema) for a reliable
+    // {action, params} shape. The clean-routing prompt (menu + transcript +
+    // persona) is folded into the body (codex-sdk has no thread-level system
+    // prompt); the session applies the schema + parses the result.
+    const model = resolveCodexModel(runtime, ModelType.ACTION_PLANNER);
+    const session = getCodexSdkSession(runtime, model, true);
+    const clean = buildCleanRoutingParams(params);
+    return session.route(`${clean.system ?? ""}\n\n${clean.prompt ?? ""}`);
   }
   return generateViaCli(runtime, buildCleanRoutingParams(params), ModelType.ACTION_PLANNER);
 }
@@ -357,6 +419,7 @@ export {
   TEXT_COMPLETION_FRAMING,
 } from "./src/clean-routing-planner";
 export { CodexCli, parseCodexJsonl } from "./src/codex-cli-exec";
+export { CodexSdkSession } from "./src/codex-sdk-session";
 export { flattenPrompt } from "./src/prompt-flatten";
 export { LARGE_TIER_MODEL_TYPES, PLANNER_MODEL_TYPES, textPlannerEnabled };
 
