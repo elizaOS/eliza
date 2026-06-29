@@ -245,7 +245,9 @@ export function evaluateRoleKeyedRisk(
  * phase so it runs concurrently with the should-respond model call and stamps
  * the message with `RiskFactors`. Mirrors `registerCoreIncomingMessageSecurityHook`.
  */
-export function registerCoreShouldRespondRiskHook(runtime: IAgentRuntime): void {
+export function registerCoreShouldRespondRiskHook(
+	runtime: IAgentRuntime,
+): void {
 	const spec: PipelineHookSpec = {
 		id: "core:should-respond-injection-risk",
 		phase: "parallel_with_should_respond",

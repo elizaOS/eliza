@@ -86,9 +86,7 @@ describe("Launcher", () => {
     expect(screen.getByTestId("launcher-kind-alpha").textContent).toBe(
       "Preview",
     );
-    expect(screen.getByTestId("launcher-kind-trace").textContent).toBe(
-      "Dev",
-    );
+    expect(screen.getByTestId("launcher-kind-trace").textContent).toBe("Dev");
   });
 
   it("launches a view on tap (not in edit mode)", () => {
@@ -234,9 +232,7 @@ describe("Launcher", () => {
   });
 
   it("drops views that are no longer available on re-render", () => {
-    const { rerender } = render(
-      <Launcher entries={FEW} onLaunch={() => {}} />,
-    );
+    const { rerender } = render(<Launcher entries={FEW} onLaunch={() => {}} />);
     expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
     rerender(
       <Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,

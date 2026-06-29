@@ -487,10 +487,7 @@ export class SecurityModule {
 		return {
 			urgency: this.calculateKeywordScore(text, URGENCY_KEYWORDS),
 			authority: this.calculateKeywordScore(text, AUTHORITY_KEYWORDS),
-			intimidation: this.calculateKeywordScore(
-				text,
-				INTIMIDATION_KEYWORDS,
-			),
+			intimidation: this.calculateKeywordScore(text, INTIMIDATION_KEYWORDS),
 			liking: this.detectFactorScore(text, "liking"),
 			reciprocity: this.detectFactorScore(text, "reciprocity"),
 			commitment: this.detectFactorScore(text, "commitment"),
