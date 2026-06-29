@@ -6,6 +6,7 @@ import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
 import type { DialogueMetadata } from "../types/message-content";
 import { logger } from "../utils/logger";
+import { callbackRoomBelongsToOrganization } from "./callback-channel-authz";
 
 export type AppChargeCallbackStatus = "paid" | "failed";
 export type AppChargeCallbackProvider = "stripe" | "oxapay";
@@ -226,7 +227,11 @@ export class AppChargeCallbacksService {
     const channel = callbackChannel(metadata);
     if (channel) {
       try {
-        result.roomMessageCreated = await this.createRoomMessage(payload, channel);
+        result.roomMessageCreated = await this.createRoomMessage(
+          payload,
+          channel,
+          chargeRequest.organization_id,
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         result.errors.push(message);
@@ -304,10 +309,23 @@ export class AppChargeCallbacksService {
   private async createRoomMessage(
     payload: AppChargeCallbackPayload,
     channel: AppChargeCallbackChannel,
+    chargeOrganizationId: string,
   ): Promise<boolean> {
     const roomId = roomIdFromChannel(channel);
     const agentId = agentIdFromChannel(channel);
     if (!roomId || !agentId) {
+      return false;
+    }
+
+    // The channel's roomId/agentId are attacker-controlled (set by the charge
+    // creator). Only write into the room if it belongs to the creator's org —
+    // otherwise a forged settlement message could be injected cross-tenant.
+    const authorized = await callbackRoomBelongsToOrganization({
+      roomId,
+      chargeOrganizationId,
+      logContext: "AppChargeCallbacks",
+    });
+    if (!authorized) {
       return false;
     }
 

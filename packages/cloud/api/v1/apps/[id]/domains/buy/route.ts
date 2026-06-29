@@ -15,6 +15,7 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { dbRead, dbWrite } from "@/db/client";
+import { creditTransactionsRepository } from "@/db/repositories/credit-transactions";
 import { domainPurchaseIdempotency } from "@/db/schemas/domain-purchase-idempotency";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -250,6 +251,32 @@ async function executeDomainPurchase(
       "unavailable",
     );
     if (registered) {
+      // The domain is registered on our Cloudflare account but has NO
+      // managed_domains row — the orphan left behind when a prior buy's
+      // post-register persist failed (charged + registered, never assigned).
+      // Only the org that actually paid (debit not refunded) may re-claim it
+      // here without a fresh debit. Any other org is denied so a registered
+      // orphan can't be assigned cross-tenant for free (#10253). The 409 copy
+      // is identical to the not-registered case so it never leaks that the
+      // domain exists on our account.
+      const ownsOrphan =
+        await creditTransactionsRepository.hasUnrefundedDomainPurchase(
+          organizationId,
+          domain,
+        );
+      if (!ownsOrphan) {
+        logger.warn(
+          "[Domains Buy] refusing to assign a registered domain with no prior purchase by this org",
+          { appId, domain, organizationId },
+        );
+        return {
+          status: 409,
+          body: {
+            success: false,
+            error: "Domain is not available for registration",
+          },
+        };
+      }
       const result = await persistAndAssignCloudflareDomain({
         organizationId,
         appId,
@@ -352,16 +379,47 @@ async function executeDomainPurchase(
     appId,
     "post-register",
   );
-  const result = await persistAndAssignCloudflareDomain({
-    organizationId,
-    appId,
-    appUrl,
-    domain,
-    cloudflareRegistrationId: registrationId,
-    purchasePriceCents: price.totalUsdCents,
-    renewalPriceCents: renewalPrice.totalUsdCents,
-    registered: reg,
-  });
+  let result: Awaited<ReturnType<typeof persistAndAssignCloudflareDomain>>;
+  try {
+    result = await persistAndAssignCloudflareDomain({
+      organizationId,
+      appId,
+      appUrl,
+      domain,
+      cloudflareRegistrationId: registrationId,
+      purchasePriceCents: price.totalUsdCents,
+      renewalPriceCents: renewalPrice.totalUsdCents,
+      registered: reg,
+    });
+  } catch (persistErr) {
+    // Register + debit already succeeded, so the domain genuinely belongs to
+    // this org — we do NOT refund and do NOT deregister (the registration
+    // stands). The unrefunded domain_purchase debit makes it recoverable: the
+    // org can re-call buy and the recovery branch above will assign it for free
+    // (ownership proven by that debit). Surfacing a clear 502 (instead of the
+    // bare outer-catch failure, which would leave a silent charged orphan) tells
+    // the caller to retry to finish setup. (#10253)
+    logger.error(
+      "[Domains Buy] post-register persist failed — domain registered + charged, recoverable on retry",
+      {
+        appId,
+        domain,
+        organizationId,
+        registrationId,
+        error: extractErrorMessage(persistErr),
+      },
+    );
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error:
+          "Domain was registered and charged, but final setup did not complete. Retry to finish assigning it to your app.",
+        code: "persist_failed_recoverable",
+        domain,
+      },
+    };
+  }
 
   return {
     status: 200,
