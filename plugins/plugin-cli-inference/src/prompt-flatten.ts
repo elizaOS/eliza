@@ -38,7 +38,13 @@ function toolOutputToText(output: unknown): string {
   return String(output);
 }
 
-function contentToText(content: ChatMessage["content"]): string {
+/**
+ * Flatten a message's content into text, surfacing tool-call / tool-result parts
+ * (not just plain text). Canonical implementation — the clean-routing planner
+ * imports this so the two paths can't drift (a divergent copy that dropped tool
+ * results once caused the planner to hallucinate live-info answers).
+ */
+export function contentToText(content: ChatMessage["content"]): string {
   if (content == null) return "";
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
