@@ -19,6 +19,14 @@ async function expectCloudPath(locator: Locator) {
   expect(url.searchParams.get("intent")).toBe("launch");
 }
 
+async function expectWebAppPath(locator: Locator) {
+  const href = await locator.getAttribute("href");
+  expect(href).toBeTruthy();
+  const url = new URL(href ?? "", "https://app.elizacloud.ai");
+  expect(url.hostname).toBe("app.elizacloud.ai");
+  expect(url.pathname).toMatch(/^\/?$/);
+}
+
 async function _expectExternalOrLocal(
   locator: Locator,
   productionHost: string,
@@ -69,6 +77,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   const productNav = page.getByRole("navigation", {
     name: "Eliza products",
   });
+  await expectWebAppPath(productNav.getByRole("link", { name: /^Web app$/ }));
   await expect(
     productNav.getByRole("link", { name: /^Download$/ }),
   ).toHaveAttribute("href", "#download");
@@ -77,6 +86,9 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   await expect(
     page.getByRole("link", { name: /^Download$/ }).first(),
   ).toHaveAttribute("href", "#download");
+  await expectWebAppPath(
+    page.getByRole("link", { name: /^Open web app$/ }).first(),
+  );
   await expectCloudPath(
     page.getByRole("link", { name: /^Try Eliza Cloud$/ }).first(),
   );
@@ -185,9 +197,16 @@ test("homepage live marketing links resolve for cloud, os, release, and download
     uniqueHrefs.set(url.toString(), link.label);
   }
 
+  const appLinks = [...uniqueHrefs.keys()].filter((href) => {
+    const url = new URL(href);
+    return url.hostname === "app.elizacloud.ai";
+  });
+  expect(appLinks).toHaveLength(1);
+  expect(new URL(appLinks[0]).pathname).toMatch(/^\/?$/);
+
   const cloudLinks = [...uniqueHrefs.keys()].filter((href) => {
     const url = new URL(href);
-    return url.hostname.endsWith("elizacloud.ai");
+    return ["elizacloud.ai", "www.elizacloud.ai"].includes(url.hostname);
   });
   expect(cloudLinks).toHaveLength(1);
   expect(new URL(cloudLinks[0]).pathname).toMatch(/^\/login\/?$/);
@@ -219,7 +238,10 @@ test("homepage live marketing links resolve for cloud, os, release, and download
   );
 
   const nonCloudHrefs = [...uniqueHrefs.keys()].filter(
-    (href) => !new URL(href).hostname.endsWith("elizacloud.ai"),
+    (href) =>
+      !["app.elizacloud.ai", "elizacloud.ai", "www.elizacloud.ai"].includes(
+        new URL(href).hostname,
+      ),
   );
   expect(nonCloudHrefs.sort()).toEqual(expectedNonCloudTargets.sort());
 

@@ -73,7 +73,7 @@ export const DEFAULT_BRANDING: BrandingConfig = {
   orgName: "elizaos",
   repoName: "eliza",
   docsUrl: "https://docs.elizaos.ai",
-  appUrl: "https://app.elizaos.ai",
+  appUrl: "https://app.elizacloud.ai",
   bugReportUrl:
     "https://github.com/elizaos/eliza/issues/new?template=bug_report.yml",
   hashtag: "#ElizaAgent",

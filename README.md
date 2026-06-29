@@ -3,7 +3,8 @@
   <h1>elizaOS</h1>
   <p><strong>Your agentic operating system.</strong></p>
   <p>
-    <a href="https://eliza.app">Get the app</a> ·
+    <a href="https://eliza.app">Homepage</a> ·
+    <a href="https://app.elizacloud.ai">Web app</a> ·
     <a href="https://os.elizacloud.ai">Install the OS</a> ·
     <a href="https://docs.elizaos.ai/">Docs</a> ·
     <a href="https://plugins.elizacloud.ai">App catalog</a>
@@ -21,11 +22,11 @@ The agent, your data, and the models all run on your device. [Eliza Cloud](#eliz
 
 ## Get Eliza
 
-| Platform                              | How                                          |
-| ------------------------------------- | -------------------------------------------- |
-| **Web**                               | Open [eliza.app](https://eliza.app)          |
-| **Desktop** — macOS · Windows · Linux | Download from [eliza.app](https://eliza.app) |
-| **iOS · Android**                     | App Store · Play · sideload                  |
+| Platform                              | How                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------- |
+| **Web**                               | Open [app.elizacloud.ai](https://app.elizacloud.ai)                 |
+| **Desktop** — macOS · Windows · Linux | Download from [GitHub Releases](https://github.com/elizaOS/eliza/releases) |
+| **iOS · Android**                     | App Store · Play · sideload                                         |
 
 Run from source:
 

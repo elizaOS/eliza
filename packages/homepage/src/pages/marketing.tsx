@@ -14,6 +14,7 @@ import { releaseData } from "@/generated/release-data";
 import { useT } from "@/providers/I18nProvider";
 
 const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
+const webAppUrl = EXTERNAL_URLS.app;
 const osUrl = EXTERNAL_URLS.os;
 const releaseFallbackUrl = `${EXTERNAL_URLS.github}/releases`;
 
@@ -153,6 +154,11 @@ export default function MarketingPage() {
             defaultValue: "Eliza products",
           })}
         >
+          <a href={webAppUrl}>
+            {t("homepage_eliza.marketing.navWebApp", {
+              defaultValue: "Web app",
+            })}
+          </a>
           <a href="#download">
             {t("homepage_eliza.marketing.navDownloads", {
               defaultValue: "Downloads",
@@ -194,7 +200,13 @@ export default function MarketingPage() {
                 })}
               </p>
               <div className="app-cta-row">
-                <a href="#download" className="app-cta app-cta--black">
+                <a href={webAppUrl} className="app-cta app-cta--black">
+                  <ExternalLink className="app-icon" aria-hidden="true" />
+                  {t("homepage_eliza.marketing.ctaOpenWebApp", {
+                    defaultValue: "Open web app",
+                  })}
+                </a>
+                <a href="#download" className="app-cta app-cta--glass">
                   <Download className="app-icon" aria-hidden="true" />
                   {t("homepage_eliza.marketing.ctaDownload", {
                     defaultValue: "Download the app",
@@ -439,6 +451,11 @@ export default function MarketingPage() {
               defaultValue: "Footer",
             })}
           >
+            <a href={webAppUrl}>
+              {t("homepage_eliza.marketing.footerWebApp", {
+                defaultValue: "Web app",
+              })}
+            </a>
             <a href="#download">
               {t("homepage_eliza.marketing.navDownloads", {
                 defaultValue: "Downloads",
