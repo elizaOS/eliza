@@ -7,7 +7,7 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Memory, UUID } from "@elizaos/core";
+import type { Content, Memory, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   readStoredMediaBytes,
@@ -18,7 +18,7 @@ import { collectReferencedMediaFileNames } from "./agent-export.ts";
 const SHA_A = "a".repeat(64);
 const SHA_B = "b".repeat(64);
 
-function mem(content: Record<string, unknown>): Memory {
+function mem(content: Content): Memory {
   return {
     id: "00000000-0000-0000-0000-000000000001" as UUID,
     entityId: "00000000-0000-0000-0000-000000000002" as UUID,
@@ -32,7 +32,7 @@ function mem(content: Record<string, unknown>): Memory {
 describe("collectReferencedMediaFileNames", () => {
   it("collects media file names from attachments and embedded text URLs, deduped", () => {
     const memories = [
-      mem({ attachments: [{ url: `/api/media/${SHA_A}.png` }] }),
+      mem({ attachments: [{ id: "media-a", url: `/api/media/${SHA_A}.png` }] }),
       mem({ text: `see /api/media/${SHA_B}.jpg here` }),
       // duplicate of A via text — must dedupe
       mem({ text: `again /api/media/${SHA_A}.png` }),
@@ -44,9 +44,11 @@ describe("collectReferencedMediaFileNames", () => {
 
   it("ignores non-stored and malformed URLs", () => {
     const memories = [
-      mem({ attachments: [{ url: "https://example.com/cat.png" }] }),
+      mem({
+        attachments: [{ id: "remote-cat", url: "https://example.com/cat.png" }],
+      }),
       mem({ text: "no media here, just /api/media/short.png" }),
-      mem({ content: undefined } as never),
+      mem({}),
     ];
     expect(collectReferencedMediaFileNames(memories)).toEqual([]);
   });

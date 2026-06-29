@@ -256,12 +256,12 @@ export function collectReferencedMediaFileNames(memories: Memory[]): string[] {
     if (fileName) names.add(fileName);
   };
   for (const mem of memories) {
-    const content = mem.content as
-      | { text?: string; attachments?: Array<{ url?: string }> }
-      | undefined;
-    for (const attachment of content?.attachments ?? []) add(attachment?.url);
-    if (typeof content?.text === "string") {
-      for (const match of content.text.matchAll(MEDIA_URL_IN_TEXT_RE)) {
+    const { attachments, text } = mem.content;
+    if (attachments) {
+      for (const attachment of attachments) add(attachment.url);
+    }
+    if (typeof text === "string") {
+      for (const match of text.matchAll(MEDIA_URL_IN_TEXT_RE)) {
         add(match[0]);
       }
     }
@@ -286,7 +286,8 @@ function restoreMedia(
   media: Array<{ fileName: string; base64: string }> | undefined,
 ): number {
   let restored = 0;
-  for (const { fileName, base64 } of media ?? []) {
+  if (!media) return restored;
+  for (const { fileName, base64 } of media) {
     if (writeStoredMediaFile(fileName, Buffer.from(base64, "base64"))) {
       restored++;
     }
