@@ -76,6 +76,7 @@
     "test:migration": "vitest run __tests__/migration/",
     "test:migration:postgres": "vitest run __tests__/migration/",
     "test:real": "bun run test:integration && bun run test:migration",
+    "test:real:files": "vitest run --config vitest.real.config.ts",
     "test:e2e:upgrade": "bash __tests__/migration/e2e/run-upgrade-test.sh",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

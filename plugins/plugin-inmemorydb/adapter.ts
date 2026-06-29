@@ -580,10 +580,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         }
       }
       if (textContains) {
-        const text = (m.content as { text?: unknown } | undefined)?.text;
         if (
-          typeof text !== "string" ||
-          !text.toLowerCase().includes(textContains)
+          !String(m.content.text ?? "")
+            .toLowerCase()
+            .includes(textContains)
         ) {
           return false;
         }
@@ -598,9 +598,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
       const aId = typeof a.id === "string" ? a.id : "";
       const bId = typeof b.id === "string" ? b.id : "";
-      return direction === "asc"
-        ? aId.localeCompare(bId)
-        : bId.localeCompare(aId);
+      return direction === "asc" ? aId.localeCompare(bId) : bId.localeCompare(aId);
     });
 
     const offset = typeof params.offset === "number" ? params.offset : 0;
@@ -615,18 +613,33 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     roomIds: UUID[];
     tableName: string;
     limit?: number;
+    offset?: number;
+    textContains?: string;
+    includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
     if (params.roomIds.length === 0) return [];
     const roomSet = new Set(params.roomIds);
-    const memories = await this.storage.getWhere<StoredMemory>(
-      COLLECTIONS.MEMORIES,
-      (m) =>
-        roomSet.has(m.roomId as UUID) &&
-        (params.tableName ? m.metadata?.type === params.tableName : true)
-    );
+    const textContains = params.textContains?.trim().toLowerCase();
+    const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
+      if (!roomSet.has(m.roomId as UUID)) return false;
+      if (params.tableName && m.metadata?.type !== params.tableName) return false;
+      // Same case-insensitive `includes` semantics the SQL adapter pushes
+      // down as ILIKE.
+      if (
+        textContains &&
+        !String(m.content.text ?? "")
+          .toLowerCase()
+          .includes(textContains)
+      ) {
+        return false;
+      }
+      return true;
+    });
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-    const sliced = params.limit ? memories.slice(0, params.limit) : memories;
+    const offset = typeof params.offset === "number" ? params.offset : 0;
+    let sliced = offset > 0 ? memories.slice(offset) : memories;
+    if (params.limit !== undefined) sliced = sliced.slice(0, params.limit);
     return sliced.map(toMemory);
   }
 
