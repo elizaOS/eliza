@@ -43,7 +43,6 @@ import {
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
-import { getFloatingChatManager } from "./floating-chat-window";
 import { appendKioskShellModeParam, isKioskShellMode } from "./kiosk-mode";
 import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
@@ -2616,18 +2615,6 @@ async function main(): Promise<void> {
     });
   }
   seedFirstPartyRemotePluginsForStartup();
-
-  // Configure the floating chat manager now that the renderer URL is resolved.
-  // This must run after createMainWindow() so rendererUrlPromise is already set.
-  void resolveRendererUrl().then((url) => {
-    let preload = "";
-    try {
-      preload = readResolvedPreloadScript(import.meta.dir);
-    } catch {
-      /* non-fatal */
-    }
-    getFloatingChatManager().configure(url, preload);
-  });
 
   // Per-window RPC tracking: surface windows each get their own typed
   // RPC built up front via createDesktopRpc, baked into the BrowserWindow

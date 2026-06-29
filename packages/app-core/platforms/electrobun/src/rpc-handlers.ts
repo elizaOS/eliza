@@ -73,7 +73,6 @@ import {
   readFirstRunOptionsViaHttp,
   readFirstRunStatusViaHttp,
 } from "./first-run-rpc";
-import { getFloatingChatManager } from "./floating-chat-window";
 import {
   composeInboxChatsSnapshot,
   composeInboxMessagesSnapshot,
@@ -306,7 +305,6 @@ export function buildBunRpcHandlers({
   const desktop = getDesktopManager();
   const editorBridge = getEditorBridge();
   const fileWatcher = getFileWatcher();
-  const floatingChat = getFloatingChatManager();
   const gateway = getGatewayDiscovery();
   const gpuWindow = getGpuWindowManager();
   const location = getLocationManager();
@@ -1416,30 +1414,6 @@ export function buildBunRpcHandlers({
     fileWatcherList: async () => ({ watches: fileWatcher.listWatches() }),
     fileWatcherGetStatus: async (params: { watchId: string }) =>
       fileWatcher.getWatch(params.watchId),
-
-    // ---- Floating Chat Window ----
-    floatingChatOpen: async (
-      params: { contextId?: string; x?: number; y?: number } | undefined,
-    ) => {
-      return floatingChat.open(params ?? {});
-    },
-    floatingChatShow: async () => {
-      floatingChat.show();
-      return floatingChat.getStatus();
-    },
-    floatingChatHide: async () => {
-      floatingChat.hide();
-      return floatingChat.getStatus();
-    },
-    floatingChatClose: async () => {
-      floatingChat.close();
-      return floatingChat.getStatus();
-    },
-    floatingChatSetContext: async (params: { contextId: string | null }) => {
-      floatingChat.setContextId(params.contextId);
-      return floatingChat.getStatus();
-    },
-    floatingChatGetStatus: async () => floatingChat.getStatus(),
   };
 }
 
