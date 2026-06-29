@@ -31,7 +31,7 @@
 		"lint:check": "bun run lint",
 		"format": "bunx @biomejs/biome format --write src",
 		"format:check": "bunx @biomejs/biome format src",
-		"typecheck": "tsc --noEmit -p tsconfig.build.json",
+		"typecheck": "node ../../packages/scripts/with-package-build-lock.mjs packages/ui -- tsgo --noEmit -p tsconfig.build.json",
 		"build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
 		"build:views": "bunx --bun vite build --config vite.config.views.ts",
 		"build:types": "tsc --noCheck -p tsconfig.build.json",

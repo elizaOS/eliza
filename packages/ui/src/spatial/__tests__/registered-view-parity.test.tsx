@@ -92,7 +92,7 @@ describe("registered view parity — every view × three surfaces", () => {
     // Most app plugins ship a register-terminal-view.tsx; the glob/vite path
     // imports them all (the raw-bun review harness drops the `as`-cast files).
     // Floor is set below the live count so it tolerates the in-flight removal of
-    // app-bundled plugins (waifu ×2 / vincent / simple-views / companion) while
+    // app-bundled plugins (companion) while
     // still catching a catastrophic loss of spatial-view registration.
     expect(registeredIds.length).toBeGreaterThanOrEqual(24);
   });

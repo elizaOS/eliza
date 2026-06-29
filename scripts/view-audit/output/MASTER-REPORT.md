@@ -9,8 +9,8 @@
 | Classification | Count | Views |
 |---|---|---|
 | **REAL_BUG** | 7 | fine-tuning, knowledge, tasks, wallet, browser, hyperliquid, wallet.inventory |
-| **MIXED** | 6 | logs, automations, trajectory-logger, phone-companion, vincent, plugins |
-| **EXPECTED** | 13 | trajectories, relationships, memories, stream, smartglasses, polymarket, waifu-imagegen, waifu-swap, settings.wallet-rpc, apps-catalog, database, phone, messages, contacts |
+| **MIXED** | 6 | logs, automations, trajectory-logger, phone-companion, plugins |
+| **EXPECTED** | 13 | trajectories, relationships, memories, stream, smartglasses, polymarket, settings.wallet-rpc, apps-catalog, database, phone, messages, contacts |
 | **DEV_ARTIFACT** | 5 | views-catalog, character, rolodex, orchestrator, facewear |
 
 ### Counts by severity
@@ -18,7 +18,7 @@
 | Severity | Count | Views |
 |---|---|---|
 | **P1** | 4 | fine-tuning, knowledge, browser, plugins |
-| **P2** | 7 | tasks, wallet, wallet.inventory, automations, phone-companion, vincent, hyperliquid |
+| **P2** | 7 | tasks, wallet, wallet.inventory, automations, phone-companion, hyperliquid |
 | **P3** | 3 | logs, polymarket, database |
 | **none** | 18 | (all EXPECTED + DEV_ARTIFACT) |
 
@@ -51,7 +51,6 @@
 | **wallet.inventory** | P2 | `GET /api/wallet/nfts` | Same NFT 404 banner on a configured wallet | Same as `wallet` — auto-enabled `plugin-wallet` had no `/nfts` branch | `InventoryView.tsx:2184`; `useWalletState.ts:311-323`; `client-wallet.ts:209-211` | Done: `plugin-wallet` owns `GET /api/wallet/nfts` and returns 200 with empty arrays when no keys/RPC/source are available |
 | **automations** | P2 | `GET /api/automations` | Raw red "Not found" banner between filter chips and empty state on device | Endpoint owned only by `plugin-workflow`, deliberately excluded from mobile ("Phones cannot host the workflow runtime"), but the tile is registered under mobile-loaded `plugin-task-coordinator` | `AutomationsFeed.tsx:235,238-245`; owner `plugin-workflow/src/routes/automations.ts:30`; exclusion `core-plugins.ts:39` | In the `refresh()` catch, `if (isApiError(e) && e.status === 404)` set an empty `AutomationListResponse` (clean "Nothing scheduled yet"), mirroring `StreamView.tsx:58`. Reserve banner for non-404 |
 | **phone-companion** | P2 | n/a (Capacitor) | Uncaught `CapacitorException: "ElizaIntent" plugin is not implemented on android` | `ElizaIntent` registered with only a `web` fallback; no Android native plugin; `getPairingStatus()` called without `.catch()` | `PhoneCompanionApp.tsx:56`; registration `eliza-intent.ts:113` | (2, preferred) add `android: () => new ElizaIntentWeb()` to `registerPlugin` so Android resolves the web fallback (`paired:false`); (1) keep a `.catch()` guard on the call |
-| **vincent** | P2 | `GET /api/vincent/status` | Misleading red "Not found" banner over a working disconnected screen on device | Vincent is an opt-in `server-launch` app; its routes mount only on launch. On the un-launched base agent the status call 404s and the dashboard treats it as a hard error | `useVincentDashboard.ts:56,90-95`; banner `VincentAppView.tsx:118` | In the catch, `if (err instanceof ApiError && err.status === 404)` set `vincentConnected=false` + clear `error` (keep the Connect CTA); only surface `error` for real failures |
 | **hyperliquid** | P2 | `GET /api/hyperliquid/status` | Self-contradictory "Not found · Reads blocked · 0 markets" on device (sibling Shopify/Polymarket degrade cleanly) | App-route plugin's bare `/plugin` subpath import is unresolvable in the mobile bundle → swallowed as `OptionalAppRoutePluginUnavailableError` → routes never mount → 404; hook surfaces raw error instead of degrading | `useHyperliquidState.ts:33-63`; copy `HyperliquidAppView.tsx:107-111` | Catch the `ApiError` 404 and set a degraded `{publicReadReady:false}` state with friendly copy ("Unavailable on this device"), mirroring `ShopifyAppView.helpers.ts:14-15`. Fix the "Reads blocked · 0 markets" copy |
 | **logs** | P3 | `GET /api/logs` (works) | React duplicate-key warnings (4×) on the log rows | Log-row key `${timestamp}-${source}-${level}-${message}` collides for identical lines emitted in the same millisecond; `LogEntry` has no unique id | `LogsView.tsx:308-310` | Add the array index to the key: `filteredLogs.map((entry, i) => ...)` with `key={`${i}-${entry.timestamp}-${entry.source}-${entry.level}`}` |
 | **polymarket** | P3 | `GET /api/polymarket/markets` (→ upstream) | Device "Markets unavailable" because the agent couldn't reach `gamma-api.polymarket.com` (works on web) | External third-party API unreachable from the device process; view degrades gracefully (DisconnectedState) but has no manual retry | `PolymarketAppView.tsx:314` | Working-as-intended degradation; optional: add a "Retry" button calling the existing `refresh()` instead of waiting for the silent 20s poll |
@@ -81,7 +80,6 @@ Many views were flagged only by the crawler's **`notFound`/`offline` body-text s
 - **memories** — full feed; `errorBoundary` flag matched a stored chat memory literally containing "Something went wrong on my…".
 - **stream** — correct "STREAMING UNAVAILABLE / enable the streaming plugin" degradation (404→`setStreamAvailable(false)` by design); blank web capture is a pre-hydration timing artifact.
 - **smartglasses** — correct "Offline / Web Bluetooth unavailable" when no G1 paired; flag matched "unavailable".
-- **waifu-imagegen / waifu-swap** — documented "No agent is configured" notice when no waifu token injected; frontend-only, no backend route.
 - **settings.wallet-rpc** — renders fully (core `/api/secrets/inventory` route); device flag matched shell-chrome body text. Empty wallet-keys list is the seeded-agent empty state.
 - **apps-catalog** — full render on device; blank web body is a pre-hydration timing artifact; hero 404 is cosmetic (icon fallback).
 - **phone / messages / contacts** — Android-fork-only surfaces; web correctly degrades to the Views catalog via `isAndroidPhoneSurfaceEnabled()` / `androidOnly` gating. Native permission prompts (READ_SMS/READ_CONTACTS) are graceful inline notices.
@@ -99,7 +97,6 @@ Many views were flagged only by the crawler's **`notFound`/`offline` body-text s
 |---|---|---|
 | tasks | `/api/orchestrator/tasks` | mobile + web (Node-only orchestrator) |
 | automations | `/api/automations` | mobile (workflow excluded) |
-| vincent | `/api/vincent/status` | base agent (server-launch, un-launched) |
 | hyperliquid | `/api/hyperliquid/status` | mobile (app-route subpath unresolvable) |
 | wallet / wallet.inventory | `/api/wallet/nfts` | fixed in always-loaded `plugin-wallet` |
 | knowledge | `/api/documents` | mobile (app-core boot tail skipped) |

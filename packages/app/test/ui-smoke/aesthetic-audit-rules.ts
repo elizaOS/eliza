@@ -33,9 +33,16 @@ export interface VerdictFinding {
   qualityIssues: string[];
   /** Readable text length in the view root; ~0 means the view never painted. */
   readableChars: number;
+  /** Border/divider edges per 1M viewport pixels. */
+  borderDividerDensity: number;
+  /** Visible text characters per 10K viewport pixels. */
+  textDensity: number;
+  /** Estimated unoccupied viewport ratio, 0..1. */
+  whitespaceRatio: number;
   blueColors: string[];
   hoverViolations: string[];
   overlayPresent: boolean;
+  overlayClearanceIssues: string[];
   borderRadiusViolations: string[];
   /**
    * Count of rendered border/divider elements (a visible border on any side,
@@ -82,6 +89,51 @@ export function exceedsMinimalismBudget(
 ): boolean {
   const density = minimalismDensity(finding);
   return density !== null && density > ceiling;
+}
+
+export interface AestheticMetricBudget {
+  /** Max border/divider edges per 1M viewport pixels. */
+  maxBorderDividerDensity: number;
+  /** Max visible text characters per 10K viewport pixels. */
+  maxTextDensity: number;
+  /** Min estimated unoccupied viewport ratio, 0..1. */
+  minWhitespaceRatio: number;
+}
+
+function formatMetric(value: number, digits = 2): string {
+  return Number.isFinite(value) ? value.toFixed(digits) : "n/a";
+}
+
+export function evaluateAestheticMetricBudget(
+  finding: Pick<
+    VerdictFinding,
+    "borderDividerDensity" | "textDensity" | "whitespaceRatio"
+  >,
+  budget: AestheticMetricBudget,
+): string[] {
+  const issues: string[] = [];
+  if (finding.borderDividerDensity > budget.maxBorderDividerDensity) {
+    issues.push(
+      `border/divider density ${formatMetric(finding.borderDividerDensity)} > ${formatMetric(
+        budget.maxBorderDividerDensity,
+      )}`,
+    );
+  }
+  if (finding.textDensity > budget.maxTextDensity) {
+    issues.push(
+      `text density ${formatMetric(finding.textDensity)} > ${formatMetric(
+        budget.maxTextDensity,
+      )}`,
+    );
+  }
+  if (finding.whitespaceRatio < budget.minWhitespaceRatio) {
+    issues.push(
+      `whitespace ratio ${formatMetric(finding.whitespaceRatio)} < ${formatMetric(
+        budget.minWhitespaceRatio,
+      )}`,
+    );
+  }
+  return issues;
 }
 
 /** Parse the `TAB_PATHS` map out of the navigation index source. */
@@ -210,7 +262,8 @@ export function computeVerdict(finding: VerdictFinding): AestheticVerdict {
   if (
     finding.blueColors.length > 0 ||
     finding.hoverViolations.length > 0 ||
-    !finding.overlayPresent
+    !finding.overlayPresent ||
+    finding.overlayClearanceIssues.length > 0
   ) {
     return "needs-work";
   }

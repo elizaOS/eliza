@@ -251,17 +251,17 @@ from the boot critical path this doc covers.
 
 ## Optimization landed: shrink the first-paint critical path
 
-`initializeAppModules()` blocked the first React mount on **10** plugin imports,
+`initializeAppModules()` blocked the first React mount on **9** plugin imports,
 but the boot config only reads **3** of them synchronously (companion app
-registration + scene-status hook + inference-notice resolver). The other 7
-(`personal-assistant`, `vincent`, `task-coordinator` ×2, `phone`, `steward`,
+registration + scene-status hook + inference-notice resolver). The other 6
+(`personal-assistant`, `task-coordinator` ×2, `phone`, `steward`,
 `training`) were awaited purely for self-registration side effects and to
 pre-warm their `React.lazy` chunks — none feeds the boot config build.
 
 Those 7 now ride the existing idle path (`BOOT_CONFIG_DEFERRED_MODULE_LOADERS`
 via `scheduleAppModuleIdleLoads`), exactly like `SIDE_EFFECT_APP_MODULE_LOADERS`,
 and the idle wave is kicked only after React has had a paint opportunity. The
-blocking `await Promise.all` is 3 imports instead of 10; their nav tabs / overlay
+blocking `await Promise.all` is 3 imports instead of 9; their nav tabs / overlay
 apps register a tick later (and on-demand render still triggers the cached
 import if idle work has not run), so no surface is missed. The `app-modules`
 `performance.measure` quantifies the win per boot.

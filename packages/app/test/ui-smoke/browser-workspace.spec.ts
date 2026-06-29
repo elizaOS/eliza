@@ -47,7 +47,7 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("browser workspace can create live tabs and switch selection", async ({
+test("browser workspace can create, navigate, switch, and close tabs", async ({
   page,
   request,
 }) => {
@@ -68,13 +68,16 @@ test("browser workspace can create live tabs and switch selection", async ({
   );
   await expect(addressInput).toBeVisible({ timeout: 120_000 });
   const goButton = browserWorkspaceView.getByRole("button", { name: "Go" });
+  const closeAllButton = browserWorkspaceView.getByTestId(
+    "browser-workspace-close-all-tabs",
+  );
   await expect(goButton).toBeVisible({ timeout: 120_000 });
+  await expect(closeAllButton).toBeVisible({ timeout: 120_000 });
 
-  await expect(tabsSurface.getByText("No browser tabs yet")).toBeVisible({
-    timeout: 120_000,
-  });
+  await expect(tabsSurface.getByText("No User Tabs")).toHaveCount(1);
   await expect(addressInput).toHaveValue("");
   await expect(newTabButton).toBeEnabled();
+  await expect(closeAllButton).toBeDisabled();
 
   await addressInput.fill("");
   await addressInput.pressSequentially("example.com");
@@ -90,6 +93,7 @@ test("browser workspace can create live tabs and switch selection", async ({
     "https://example.com/",
   );
   await expect(addressInput).toHaveValue("https://example.com/");
+  await expect(closeAllButton).toBeEnabled();
 
   const blankTabButtons = tabsSurface.locator(
     '[role="tab"][title="about:blank"]',
@@ -103,4 +107,28 @@ test("browser workspace can create live tabs and switch selection", async ({
   const blankTabButton = blankTabButtons.nth(blankTabCount);
   await expect(blankTabButton).toHaveAttribute("title", "about:blank");
   await expect(addressInput).toHaveValue("about:blank");
+
+  await addressInput.fill("docs.elizaos.ai");
+  await expect(addressInput).toHaveValue("docs.elizaos.ai");
+  await goButton.click();
+  await expect(addressInput).toHaveValue("https://docs.elizaos.ai/");
+  await expect(
+    tabsSurface.locator('[role="tab"][title="https://docs.elizaos.ai/"]'),
+  ).toHaveCount(1);
+
+  await openAppPath(page, "/chat");
+  await expect(page).toHaveURL(/\/chat$/, { timeout: 20_000 });
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/browser$/, { timeout: 20_000 });
+  await expect(browserWorkspaceView).toBeVisible({ timeout: 60_000 });
+  await expect(addressInput).toHaveValue("https://docs.elizaos.ai/");
+  await page.goForward({ waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/chat$/, { timeout: 20_000 });
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/browser$/, { timeout: 20_000 });
+
+  await closeAllButton.click();
+  await expect(tabsSurface.getByText("No User Tabs")).toHaveCount(1);
+  await expect(addressInput).toHaveValue("");
+  await expect(closeAllButton).toBeDisabled();
 });

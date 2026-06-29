@@ -17,8 +17,10 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 
 import {
 	buildCatalogSlashCommands,
+	buildDiscordEmbedCommand,
 	mapCatalogCommand,
 	registerCatalogSlashCommands,
+	resolveDiscordEmbedUrl,
 } from "../catalog-commands";
 import {
 	getRegisteredCommands,
@@ -315,6 +317,65 @@ describe("auth gating", () => {
 	});
 });
 
+describe("Discord embedded app launch command", () => {
+	it("normalizes a configured HTTPS app URL to /embed?platform=discord", () => {
+		expect(
+			resolveDiscordEmbedUrl(
+				makeRuntime({
+					getSetting: vi.fn((key: string) =>
+						key === "ELIZA_EMBED_URL"
+							? "https://app.elizacloud.ai/"
+							: undefined,
+					),
+				}),
+			),
+		).toBe("https://app.elizacloud.ai/embed?platform=discord");
+		expect(
+			resolveDiscordEmbedUrl(
+				makeRuntime({
+					getSetting: vi.fn((key: string) =>
+						key === "ELIZA_EMBED_URL"
+							? "http://app.elizacloud.ai/embed"
+							: undefined,
+					),
+				}),
+			),
+		).toBeNull();
+	});
+
+	it("replies with an embed launch link only for OWNER or ADMIN senders", async () => {
+		const command = buildDiscordEmbedCommand();
+
+		hasRoleAccess.mockResolvedValue(false);
+		const denied = makeInteraction();
+		await command.execute(
+			denied as never,
+			makeRuntime({
+				getSetting: vi.fn(() => "https://app.elizacloud.ai/embed"),
+			}),
+		);
+		expect(denied.reply.mock.calls[0]?.[0]).toMatchObject({
+			content: expect.stringContaining("OWNER or ADMIN"),
+			ephemeral: true,
+		});
+
+		hasRoleAccess.mockReset();
+		hasRoleAccess.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+		const allowed = makeInteraction();
+		await command.execute(
+			allowed as never,
+			makeRuntime({
+				getSetting: vi.fn(() => "https://app.elizacloud.ai/embed"),
+			}),
+		);
+		expect(allowed.reply.mock.calls[0]?.[0]).toMatchObject({
+			content:
+				"Open the Eliza app: https://app.elizacloud.ai/embed?platform=discord",
+			ephemeral: true,
+		});
+	});
+});
+
 describe("registerCatalogSlashCommands", () => {
 	let added: string[] = [];
 
@@ -340,10 +401,19 @@ describe("registerCatalogSlashCommands", () => {
 			expect(names).not.toContain("status");
 			expect(names).not.toContain("settings");
 			// New catalog commands are added.
+			if (before.has("app")) {
+				expect(names).not.toContain("app");
+			} else {
+				expect(names).toContain("app");
+			}
 			expect(names).toContain("orchestrator");
 			expect(names).toContain("think");
 
 			const registry = getRegisteredCommands();
+			expect(registry.get("app")).toMatchObject({
+				name: "app",
+				execute: expect.any(Function),
+			});
 			for (const name of names) {
 				expect(registry.has(name)).toBe(true);
 			}

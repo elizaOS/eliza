@@ -37,8 +37,6 @@ type PageState =
 
 type PanelTone = "accent" | "danger" | "success";
 
-const CLOUD_LANDING_PATH = "/join";
-
 const PANEL_TONE_CLASSES: Record<
   PanelTone,
   { container: string; icon: string }
@@ -199,11 +197,6 @@ export default function CliLoginPage() {
     };
   }, [authenticated, ready, sessionId, t]);
 
-  useEffect(() => {
-    if (completion.status !== "success") return;
-    navigate(CLOUD_LANDING_PATH, { replace: true });
-  }, [completion.status, navigate]);
-
   const pageState = getPageState({
     authenticated,
     completion,
@@ -268,31 +261,15 @@ export default function CliLoginPage() {
     return (
       <CliLoginPanel
         actions={
-          <>
-            {sessionId ? (
-              <Button
-                asChild
-                className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
-              >
-                <a href={signInHref}>
-                  {t("cloud.cliLogin.signInAgain", {
-                    defaultValue: "Sign In Again",
-                  })}
-                </a>
-              </Button>
-            ) : null}
-            <Button
-              asChild
-              variant="outline"
-              className="w-full mt-2 border-white/14 hover:bg-white/10"
-            >
-              <a href={CLOUD_LANDING_PATH}>
-                {t("cloud.cliLogin.openCloud", {
-                  defaultValue: "Open Eliza Cloud",
+          sessionId ? (
+            <a href={signInHref} className="w-full">
+              <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
+                {t("cloud.cliLogin.signInAgain", {
+                  defaultValue: "Sign In Again",
                 })}
-              </a>
-            </Button>
-          </>
+              </Button>
+            </a>
+          ) : null
         }
         description={pageState.errorMessage}
         icon={AlertCircle}
@@ -374,19 +351,17 @@ export default function CliLoginPage() {
     return (
       <CliLoginPanel
         actions={
-          <Button
-            asChild
-            className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
-          >
-            <a href={CLOUD_LANDING_PATH}>
-              {t("cloud.cliLogin.openCloud", {
-                defaultValue: "Open Eliza Cloud",
+          <a href="/" className="w-full">
+            <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
+              {t("cloud.cliLogin.continueToDashboard", {
+                defaultValue: "Continue to dashboard",
               })}
-            </a>
-          </Button>
+            </Button>
+          </a>
         }
         description={t("cloud.cliLogin.successDescription", {
-          defaultValue: "You're signed in. Redirecting you to Eliza Cloud.",
+          defaultValue:
+            "You're signed in. Your credentials were sent to the app you started from.",
         })}
         icon={CheckCircle2}
         title={t("cloud.cliLogin.authComplete", {
@@ -397,8 +372,8 @@ export default function CliLoginPage() {
         <div className="w-full border border-green-500/20 bg-green-500/5 p-4">
           <p className="text-sm text-green-400 flex items-center justify-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
-            {t("cloud.cliLogin.redirectingToDashboard", {
-              defaultValue: "Opening your dashboard...",
+            {t("cloud.cliLogin.returnToApp", {
+              defaultValue: "Return to your app to continue.",
             })}
           </p>
         </div>

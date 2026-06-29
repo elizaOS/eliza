@@ -1,16 +1,18 @@
 import { describe, expect, it } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AuditDispatcher, AuditEvent, EmitInput } from "@elizaos/security";
 import fc from "fast-check";
 import {
@@ -18,6 +20,10 @@ import {
   redactTranscriptLine,
   SessionRecorder,
 } from "./session-recorder.js";
+
+const removePathRecursive = fileURLToPath(
+  new URL("../../scripts/rm-path-recursive.mjs", import.meta.url),
+);
 
 describe("sub-agent session transcript redaction", () => {
   it("redacts common credential and PII shapes before transcript persistence", () => {
@@ -113,7 +119,7 @@ describe("sub-agent session transcript redaction", () => {
       },
     });
 
-    rmSync(sessionsRoot, { recursive: true, force: true });
+    removeTempRoot(sessionsRoot);
   });
 
   it("prunes only old session directories", () => {
@@ -134,10 +140,38 @@ describe("sub-agent session transcript redaction", () => {
     expect(existsSync(recentDir)).toBe(true);
     expect(existsSync(join(sessionsRoot, "not-a-session"))).toBe(true);
 
-    rmSync(sessionsRoot, { recursive: true, force: true });
+    removeTempRoot(sessionsRoot);
+  });
+
+  it("does not prune symlink escapes from the sessions root", () => {
+    const sessionsRoot = mkTempRoot();
+    const outsideRoot = mkTempRoot();
+    const outsideSession = join(outsideRoot, "old");
+    const symlinkSession = join(sessionsRoot, "old-link");
+    const now = Date.parse("2026-01-31T00:00:00.000Z");
+    mkdirSync(outsideSession);
+    writeFileSync(join(outsideSession, "transcript.log"), "keep");
+    symlinkSync(outsideSession, symlinkSession, "dir");
+    const oldTime = new Date(now - 31 * 24 * 60 * 60 * 1000);
+    utimesSync(symlinkSession, oldTime, oldTime);
+
+    expect(pruneOldSessions(now, sessionsRoot)).toBe(0);
+    expect(existsSync(outsideSession)).toBe(true);
+    expect(readFileSync(join(outsideSession, "transcript.log"), "utf8")).toBe(
+      "keep",
+    );
+
+    removeTempRoot(sessionsRoot);
+    removeTempRoot(outsideRoot);
   });
 });
 
 function mkTempRoot(): string {
   return mkdtempSync(join(tmpdir(), "sub-agent-recorder-"));
+}
+
+function removeTempRoot(root: string): void {
+  execFileSync("node", [removePathRecursive, root], {
+    stdio: ["ignore", "ignore", "ignore"],
+  });
 }

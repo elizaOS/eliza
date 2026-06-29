@@ -1204,7 +1204,7 @@ function ensureOmnivoiceTtsAssetsInBackground(bundleRoot: string): void {
   const tier = path.basename(bundleRoot) || "2b";
   const stagingDir = path.join(bundleRoot, "tts.staging");
   omnivoiceTtsDownloadInflight = (async () => {
-    rmSync(stagingDir, { recursive: true, force: true });
+    removeAospGeneratedStagingDir(stagingDir, bundleRoot);
     mkdirSync(stagingDir, { recursive: true });
     for (const name of OMNIVOICE_TTS_FILES) {
       const url = `https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/${tier}/tts/${name}`;
@@ -1232,7 +1232,7 @@ function ensureOmnivoiceTtsAssetsInBackground(bundleRoot: string): void {
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      rmSync(stagingDir, { recursive: true, force: true });
+      removeAospGeneratedStagingDir(stagingDir, bundleRoot);
     })
     .finally(() => {
       omnivoiceTtsDownloadInflight = null;
@@ -1293,7 +1293,7 @@ function ensureKokoroTtsAssetsInBackground(
   if (existsSync(kokoroDir)) return;
   const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
   kokoroTtsDownloadInflight = (async () => {
-    rmSync(stagingDir, { recursive: true, force: true });
+    removeAospGeneratedStagingDir(stagingDir, bundleRoot);
     mkdirSync(stagingDir, { recursive: true });
     const downloads: Array<{ url: string; name: string }> = [
       {
@@ -1332,11 +1332,36 @@ function ensureKokoroTtsAssetsInBackground(
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      rmSync(stagingDir, { recursive: true, force: true });
+      removeAospGeneratedStagingDir(stagingDir, bundleRoot);
     })
     .finally(() => {
       kokoroTtsDownloadInflight = null;
     });
+}
+
+export function removeAospGeneratedStagingDir(
+  stagingDir: string,
+  bundleRoot: string,
+): void {
+  const root = path.resolve(bundleRoot);
+  const target = path.resolve(stagingDir);
+  if (
+    !path.basename(target).endsWith(".staging") ||
+    target === root ||
+    target === process.cwd() ||
+    target === path.parse(target).root ||
+    !target.startsWith(`${root}${path.sep}`)
+  ) {
+    throw new Error(
+      `[aosp-local-inference] Refusing to remove unsafe staging directory: ${stagingDir}`,
+    );
+  }
+  rmSync(target, {
+    recursive: true,
+    force: true,
+    maxRetries: 3,
+    retryDelay: 100,
+  });
 }
 
 /**

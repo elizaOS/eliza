@@ -24,6 +24,7 @@ import { RECORDINGS_DIR, REPO_ROOT, UI_E2E_SUITES } from "./suites.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const SKIP_EXIT_CODE = 77;
 
 const SCRIPTS_DIR = __dirname;
 const PACKAGES = UI_E2E_SUITES;
@@ -71,11 +72,95 @@ function runScript(scriptFile) {
   return result.status ?? 1;
 }
 
+function formatCommand(command) {
+  return command.join(" ");
+}
+
+function resolveCommand(command) {
+  const [bin, ...args] = command;
+  return [bin === "node" ? process.execPath : bin, args];
+}
+
+function runCommandSuite(pkg) {
+  if (pkg.checkCommand) {
+    const [checkBin, checkArgs] = resolveCommand(pkg.checkCommand);
+    const check = spawnSync(checkBin, checkArgs, {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: { ...process.env },
+    });
+    const checkOutput = [check.stdout, check.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    if (check.status === SKIP_EXIT_CODE) {
+      const reason = checkOutput || "platform/tooling unavailable";
+      console.warn(`  [skip] ${pkg.name}: ${reason}`);
+      return {
+        name: pkg.name,
+        passed: false,
+        skipped: true,
+        exitCode: SKIP_EXIT_CODE,
+        reason,
+      };
+    }
+    if (check.status !== 0) {
+      if (checkOutput) console.warn(checkOutput);
+      console.warn(
+        `  ✗ ${pkg.name} availability check failed (exit ${check.status})`,
+      );
+      return {
+        name: pkg.name,
+        passed: false,
+        skipped: false,
+        exitCode: check.status ?? 1,
+      };
+    }
+  }
+
+  const outputDir = path.join(RECORDINGS_DIR, pkg.name, "test-results");
+  fs.mkdirSync(outputDir, { recursive: true });
+  console.log(`  Running: ${formatCommand(pkg.command)}`);
+  console.log(`  Output:  e2e-recordings/${pkg.name}/test-results/`);
+
+  const [bin, args] = resolveCommand(pkg.command);
+  const result = spawnSync(bin, args, {
+    cwd: REPO_ROOT,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      E2E_RECORD: "1",
+      ...(pkg.recordEnv ?? {}),
+    },
+  });
+
+  const exitCode = result.status ?? 1;
+  const passed = exitCode === 0;
+  if (passed) {
+    console.log(`  ✓ ${pkg.name} passed`);
+  } else if (exitCode === SKIP_EXIT_CODE) {
+    console.warn(`  [skip] ${pkg.name}: platform/tooling unavailable`);
+    return {
+      name: pkg.name,
+      passed: false,
+      skipped: true,
+      exitCode,
+      reason: "platform/tooling unavailable",
+    };
+  } else {
+    console.warn(`  ✗ ${pkg.name} failed (exit ${exitCode})`);
+  }
+
+  return { name: pkg.name, passed, skipped: false, exitCode };
+}
+
 /**
  * Run a single package's E2E test suite with recording enabled.
  * Returns { name, passed: boolean, skipped: boolean, exitCode: number }.
  */
 function runPackageTests(pkg) {
+  if (pkg.command) return runCommandSuite(pkg);
+
   const configDirAbs = path.join(REPO_ROOT, pkg.configDir);
 
   // Skip if the package directory doesn't exist
@@ -83,7 +168,13 @@ function runPackageTests(pkg) {
     console.warn(
       `  [skip] ${pkg.name}: directory not found (${pkg.configDir})`,
     );
-    return { name: pkg.name, passed: false, skipped: true, exitCode: -1 };
+    return {
+      name: pkg.name,
+      passed: false,
+      skipped: true,
+      exitCode: -1,
+      reason: `directory not found (${pkg.configDir})`,
+    };
   }
 
   // Check the script exists in package.json
@@ -94,14 +185,26 @@ function runPackageTests(pkg) {
     );
   } catch {
     console.warn(`  [skip] ${pkg.name}: could not read package.json`);
-    return { name: pkg.name, passed: false, skipped: true, exitCode: -1 };
+    return {
+      name: pkg.name,
+      passed: false,
+      skipped: true,
+      exitCode: -1,
+      reason: "could not read package.json",
+    };
   }
 
   if (!pkgJson.scripts?.[pkg.script]) {
     console.warn(
       `  [skip] ${pkg.name}: script "${pkg.script}" not defined in package.json`,
     );
-    return { name: pkg.name, passed: false, skipped: true, exitCode: -1 };
+    return {
+      name: pkg.name,
+      passed: false,
+      skipped: true,
+      exitCode: -1,
+      reason: `script "${pkg.script}" not defined in package.json`,
+    };
   }
 
   // Ensure the recording output directory exists so Playwright has somewhere to write
@@ -230,7 +333,9 @@ async function main() {
   }
   if (skipped.length > 0) {
     console.log(`\nSkipped (${skipped.length}):`);
-    for (const r of skipped) console.log(`  - ${r.name}`);
+    for (const r of skipped) {
+      console.log(`  - ${r.name}${r.reason ? `: ${r.reason}` : ""}`);
+    }
   }
 
   const indexPath = path.join(RECORDINGS_DIR, "index.html");

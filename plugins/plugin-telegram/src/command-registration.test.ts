@@ -1,5 +1,4 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { getConnectorCommands } from "@elizaos/plugin-commands";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The connector bridge gates auth via the agent role model (`hasRoleAccess`).
@@ -15,12 +14,63 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   return { ...actual, hasRoleAccess };
 });
 
+const pluginCommandsMock = vi.hoisted(() => ({
+  getConnectorCommands: vi.fn(() => [
+    {
+      name: "think",
+      description: "Set thinking level",
+      target: { kind: "agent" },
+    },
+    {
+      name: "stop",
+      description: "Stop the current task",
+      target: { kind: "agent" },
+    },
+    {
+      name: "settings",
+      description: "Open settings",
+      target: { kind: "navigate", viewId: "settings" },
+    },
+    {
+      name: "restart",
+      description: "Restart the agent",
+      target: { kind: "agent" },
+      requiresAuth: true,
+    },
+  ]),
+  gateConnectorCommandByName: vi.fn(
+    (
+      _agentId: string,
+      commandName: string,
+      sender: { isAuthorized?: boolean },
+    ) =>
+      commandName === "restart" && !sender.isAuthorized
+        ? { allowed: false, reply: "This command requires authorization." }
+        : { allowed: true },
+  ),
+  resolveCommand: vi.fn(async (_runtime, message) => {
+    const text = message.content?.text ?? "";
+    if (text.startsWith("/think")) {
+      return { handled: true, reply: "Thinking set to high." };
+    }
+    return { handled: false };
+  }),
+  resolveSettingsSection: vi.fn((raw: string) =>
+    raw === "ai-model" ? "AI Model" : undefined,
+  ),
+}));
+
+vi.mock("@elizaos/plugin-commands", () => pluginCommandsMock);
+
 import {
   applyTelegramSetMyCommands,
   buildTelegramCommandDescriptors,
   registerTelegramCommandHandlers,
+  resolveTelegramEmbedUrl,
 } from "./command-registration";
 import type { MessageManager } from "./messageManager";
+
+const { getConnectorCommands } = pluginCommandsMock;
 
 const TELEGRAM_COMMAND_NAME = /^[a-z0-9_]{1,32}$/;
 
@@ -114,10 +164,14 @@ describe("registerTelegramCommandHandlers", () => {
     // Reserved names owned by other services must be skipped.
     expect(registered.map((entry) => entry.name)).not.toContain("eliza_pair");
     expect(registered.map((entry) => entry.name)).not.toContain("start");
-    // bot.command was invoked once per registered command, with the name first.
-    expect(command).toHaveBeenCalledTimes(registered.length);
+    // bot.command is invoked once per registered catalog command, plus /app for
+    // the Telegram Mini App launch surface.
+    expect(command).toHaveBeenCalledTimes(registered.length + 1);
     const registeredNames = command.mock.calls.map((call) => call[0]);
-    expect(registeredNames).toEqual(registered.map((entry) => entry.name));
+    expect(registeredNames).toEqual([
+      "app",
+      ...registered.map((entry) => entry.name),
+    ]);
     // Every registered handler is a function (the second arg).
     for (const call of command.mock.calls) {
       expect(typeof call[1]).toBe("function");
@@ -165,6 +219,58 @@ describe("registerTelegramCommandHandlers", () => {
     expect(reply).toHaveBeenCalledTimes(1);
     expect(reply.mock.calls[0]?.[0]).toContain("settings");
     expect(reply.mock.calls[0]?.[0]).toContain("Eliza app");
+  });
+});
+
+describe("Telegram Mini App launch command", () => {
+  it("normalizes a configured HTTPS app URL to /embed?platform=telegram", () => {
+    expect(
+      resolveTelegramEmbedUrl(
+        makeRuntime({ ELIZA_EMBED_URL: "https://app.elizacloud.ai/" }),
+      ),
+    ).toBe("https://app.elizacloud.ai/embed?platform=telegram");
+    expect(
+      resolveTelegramEmbedUrl(
+        makeRuntime({ ELIZA_EMBED_URL: "http://app.elizacloud.ai/embed" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("emits a web_app button only for OWNER or ADMIN senders", async () => {
+    hasRoleAccess.mockResolvedValue(false);
+    const denied = registerHandlers(
+      makeRuntime({ ELIZA_EMBED_URL: "https://app.elizacloud.ai/embed" }),
+    );
+    const deniedHandler = denied.handlers.get("app");
+    const deniedCtx = makeCtx("/app");
+    await deniedHandler?.(deniedCtx.ctx);
+    expect(deniedCtx.reply.mock.calls[0]?.[0]).toContain("OWNER or ADMIN");
+
+    hasRoleAccess.mockReset();
+    hasRoleAccess.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const allowed = registerHandlers(
+      makeRuntime({ ELIZA_EMBED_URL: "https://app.elizacloud.ai/embed" }),
+    );
+    const allowedHandler = allowed.handlers.get("app");
+    const allowedCtx = makeCtx("/app");
+    await allowedHandler?.(allowedCtx.ctx);
+    expect(allowedCtx.reply).toHaveBeenCalledWith(
+      "Open the Eliza app.",
+      expect.objectContaining({
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "Open Eliza",
+                web_app: {
+                  url: "https://app.elizacloud.ai/embed?platform=telegram",
+                },
+              },
+            ],
+          ],
+        },
+      }),
+    );
   });
 });
 

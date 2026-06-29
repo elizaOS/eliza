@@ -317,22 +317,6 @@ async function installElectrobunDynamicViewBridge(
   });
 }
 
-async function navigateSplitView(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", {
-        detail: {
-          action: "split-view",
-          viewId: "notes",
-          views: ["notes", "simple-calendar"],
-          layout: "horizontal",
-          placement: "right",
-        },
-      }),
-    );
-  });
-}
-
 test.beforeEach(({ page }) => {
   installPageDiagnosticsGuard(page);
 });
@@ -367,37 +351,19 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
       },
     ],
     [
-      "notes",
+      "shopify",
       {
-        id: "notes",
-        label: "Notes",
+        id: "shopify",
+        label: "Shopify",
         viewType: "gui",
         viewKind: "developer",
-        description: "Simple sticky notes wall",
-        path: "/notes",
+        description: "Shopify storefront view for view switching QA",
+        path: "/shopify",
         available: true,
-        pluginName: "@elizaos/plugin-simple-views",
-        tags: ["notes", "qa"],
+        pluginName: "@elizaos/plugin-shopify",
+        tags: ["shopify", "qa"],
         desktopTabEnabled: true,
-        bundleUrl: "/api/views/notes/bundle.js",
-        componentExport: "default",
-        visibleInManager: true,
-      },
-    ],
-    [
-      "simple-calendar",
-      {
-        id: "simple-calendar",
-        label: "Simple Calendar",
-        viewType: "gui",
-        viewKind: "developer",
-        description: "Simple local calendar for view switching QA",
-        path: "/simple-calendar",
-        available: true,
-        pluginName: "@elizaos/plugin-simple-views",
-        tags: ["calendar", "qa"],
-        desktopTabEnabled: true,
-        bundleUrl: "/api/views/simple-calendar/bundle.js",
+        bundleUrl: "/api/views/shopify/bundle.js",
         componentExport: "default",
         visibleInManager: true,
       },
@@ -411,30 +377,6 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     update: boolean;
   }> = [];
   const unregisterCalls: string[] = [];
-  const simpleViewsState = {
-    notes: [
-      {
-        id: "note-ui-smoke",
-        title: "UI smoke note",
-        body: "Rendered from the optional simple views plugin.",
-        color: "yellow",
-        createdAt: "2026-06-25T00:00:00.000Z",
-        updatedAt: "2026-06-25T00:00:00.000Z",
-      },
-    ],
-    events: [
-      {
-        id: "event-ui-smoke",
-        title: "UI smoke calendar event",
-        date: "2026-06-25",
-        time: "09:00",
-        notes: "Rendered from the optional simple views plugin.",
-        color: "green",
-        createdAt: "2026-06-25T00:00:00.000Z",
-      },
-    ],
-    selectedDate: "2026-06-25",
-  };
 
   await installElectrobunDynamicViewBridge(page, {
     async register(payload) {
@@ -454,45 +396,13 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     },
   });
 
-  await page.route("**/api/simple-views/state", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(simpleViewsState),
-    });
-  });
-
-  await page.route("**/api/simple-views/interact", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        success: true,
-        text: "OK",
-        state: simpleViewsState,
-      }),
-    });
-  });
-
   await page.route("**/api/views**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname === "/api/views/notes/bundle.js") {
+    if (url.pathname === "/api/views/shopify/bundle.js") {
       await route.fulfill({
         status: 200,
         contentType: "application/javascript",
-        body: simpleViewBundle("simple-notes-view", "Notes", "UI smoke note"),
-      });
-      return;
-    }
-    if (url.pathname === "/api/views/simple-calendar/bundle.js") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/javascript",
-        body: simpleViewBundle(
-          "simple-calendar-view",
-          "Simple Calendar",
-          "UI smoke calendar event",
-        ),
+        body: simpleViewBundle("shopify-view", "Shopify", "Shopify storefront"),
       });
       return;
     }
@@ -542,8 +452,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     page.getByRole("form", { name: "Dynamic view management" }),
   ).toBeVisible();
   await expectLauncherTile(page, "local-notes");
-  await expectLauncherTile(page, "notes");
-  await expectLauncherTile(page, "simple-calendar");
+  await expectLauncherTile(page, "shopify");
   await screenshot(page, "00-view-manager-ready");
 
   await page.getByLabel("Dynamic view ID").fill("actual-local-ledger");
@@ -665,29 +574,10 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
 
   await openViewManager(page);
 
-  await launchLauncherView(page, "notes");
-  await expect(page).toHaveURL(/\/notes$/);
-  await expect(page.getByTestId("simple-notes-view")).toBeVisible();
-  await screenshot(page, "06-notes-open");
-  await openViewManager(page);
-
-  await launchLauncherView(page, "simple-calendar");
-  await expect(page).toHaveURL(/\/simple-calendar$/);
-  await expect(page.getByTestId("simple-calendar-view")).toBeVisible();
-  await screenshot(page, "07-simple-calendar-open");
-
-  await navigateSplitView(page);
-  await expect(page.getByTestId("view-layout-surface")).toBeVisible();
-  await expect(page.getByTestId("view-layout-pane-notes")).toBeVisible();
-  await expect(
-    page.getByTestId("view-layout-pane-simple-calendar"),
-  ).toBeVisible();
-  await expect(page.getByTestId("simple-notes-view")).toBeVisible();
-  await expect(page.getByTestId("simple-calendar-view")).toBeVisible();
-  await screenshot(page, "08-notes-calendar-split-view");
-
-  await page.getByTestId("view-layout-close").click();
-  await expect(page.getByTestId("view-layout-surface")).toHaveCount(0);
+  await launchLauncherView(page, "shopify");
+  await expect(page).toHaveURL(/\/shopify$/);
+  await expect(page.getByTestId("shopify-view")).toBeVisible();
+  await screenshot(page, "06-shopify-open");
   await openViewManager(page);
 
   await deleteLauncherView(page, "actual-remote-ledger");
@@ -703,8 +593,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   );
   await expect(launcherTile(page, "actual-local-ledger")).toHaveCount(0);
   await expectLauncherTile(page, "local-notes");
-  await expectLauncherTile(page, "notes");
-  await expectLauncherTile(page, "simple-calendar");
+  await expectLauncherTile(page, "shopify");
   expect(registerCalls).toEqual([
     {
       id: "actual-local-ledger",

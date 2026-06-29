@@ -1,7 +1,5 @@
 /**
  * Full Eliza Runtime for Browser Extension
- *
- * Based on examples/avatar/src/runtime/runtimeManager.ts
  */
 
 import {

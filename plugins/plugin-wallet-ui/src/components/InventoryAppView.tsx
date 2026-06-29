@@ -415,10 +415,12 @@ function ChainLogoBadge({
   chain,
   size = 18,
   className,
+  testId,
 }: {
   chain: string;
   size?: number;
   className?: string;
+  testId?: string;
 }) {
   const [errored, setErrored] = useState(false);
   const logoUrl = errored ? null : getNativeLogoUrl(chain);
@@ -433,6 +435,7 @@ function ChainLogoBadge({
       title={chain}
       role="img"
       aria-label={chain}
+      data-testid={testId}
     >
       {logoUrl ? (
         <img
@@ -1208,6 +1211,7 @@ function WalletRailAddress({
       aria-label={
         address ? `Copy ${emptyLabel} address` : `${emptyLabel} unavailable`
       }
+      data-testid={`wallet-copy-${emptyLabel.toLowerCase()}-address`}
       {...agentProps}
     >
       <span className="flex shrink-0 -space-x-1.5">
@@ -1217,6 +1221,7 @@ function WalletRailAddress({
             chain={chain}
             size={18}
             className="ring-1 ring-bg"
+            testId={`wallet-address-chain-chip-${chain}`}
           />
         ))}
       </span>
@@ -1276,6 +1281,7 @@ function WalletChainCluster() {
           chain={chain}
           size={18}
           className="ring-1 ring-bg"
+          testId={`wallet-chain-chip-${chain}`}
         />
       ))}
     </span>
@@ -1439,6 +1445,7 @@ function WalletRailTabButton({
       aria-label={tab.label}
       aria-current={active ? "true" : undefined}
       title={tab.label}
+      data-testid={`wallet-tab-${tab.id}`}
       {...agentProps}
     >
       <tab.icon className="h-3.5 w-3.5 shrink-0" />
@@ -1468,7 +1475,10 @@ function TokenRailRowImpl({
       description: `Hide the ${row.symbol} token from the list`,
     });
   return (
-    <div className="group flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20">
+    <div
+      className="group flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20"
+      data-testid={`wallet-token-row-${slug}`}
+    >
       <TokenIdentityIcon row={row} size={46} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-txt">
@@ -1493,6 +1503,7 @@ function TokenRailRowImpl({
             onClick={() => onHideToken(row)}
             aria-label={`Hide ${row.symbol}`}
             title={`Hide ${row.symbol}`}
+            data-testid={`wallet-token-hide-${slug}`}
             {...hideAgentProps}
           >
             <EyeOff className="h-3.5 w-3.5" />

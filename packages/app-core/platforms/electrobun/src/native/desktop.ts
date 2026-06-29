@@ -120,7 +120,13 @@ interface OpenExternalOptions {
 }
 
 type TrayPopoverBrowserWindowOptions = ElectrobunBrowserWindowOptions;
-type TrayPopoverRpc = TrayPopoverBrowserWindowOptions["rpc"];
+
+/**
+ * The Electrobun RPC handle the BrowserWindow constructor accepts. Derived from
+ * the constructor type so the tray popover passes exactly what the main window
+ * does, with no `unknown` cast that would erase `setTransport`.
+ */
+type TrayPopoverRpc = NonNullable<TrayPopoverBrowserWindowOptions["rpc"]>;
 
 interface TrayPopoverConfig {
   url: string;
@@ -1908,7 +1914,7 @@ X-GNOME-Autostart-enabled=true
     this.trayPopoverConfig = config;
   }
 
-  /** Push an update to the open tray-popover app renderer, if present. */
+  /** Invoke `fn` for the open tray-popover window, if any. */
   forEachTrayPopoverWindow(fn: (window: BrowserWindow) => void): void {
     if (this.trayPopoverWindow) {
       fn(this.trayPopoverWindow);

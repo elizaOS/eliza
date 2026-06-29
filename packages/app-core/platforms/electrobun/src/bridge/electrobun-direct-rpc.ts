@@ -323,11 +323,10 @@ function installRendererLogMirror(): void {
 
       try {
         const response = await originalFetch(...args);
-        // Suppress only known optional boot-probe 404s; keep all other
-        // renderer missing-route diagnostics visible.
+        // Surface every renderer HTTP failure; ok responses are not diagnostics.
         const level = response.ok
           ? null
-          : httpErrorDiagnosticLevel(response.status, { url, method });
+          : httpErrorDiagnosticLevel(response.status);
         if (level) {
           reportDiagnostic(
             level,
@@ -389,12 +388,7 @@ function installRendererLogMirror(): void {
           return;
         }
         const level =
-          xhr.status >= 400
-            ? httpErrorDiagnosticLevel(xhr.status, {
-                url: diag.url,
-                method: diag.method,
-              })
-            : null;
+          xhr.status >= 400 ? httpErrorDiagnosticLevel(xhr.status) : null;
         if (level) {
           reportDiagnostic(level, "xhr", `HTTP ${xhr.status}`, {
             url: diag.url,

@@ -149,7 +149,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		name: "APP",
 		contexts: ["automation", "settings", "code"],
 		contextGate: { anyOf: ["automation", "settings", "code"] },
-		roleGate: { minRole: "USER" },
+		roleGate: { minRole: "OWNER" },
 		similes: ["APP_CONTROL", "MANAGE_APPS"],
 		description:
 			"Unified app control. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",

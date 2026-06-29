@@ -66,9 +66,6 @@ const ROUTES = [
   ["/hyperliquid", "hyperliquid"],
   ["/polymarket", "polymarket"],
   ["/shopify", "shopify"],
-  ["/waifu-imagegen", "waifu-imagegen"],
-  ["/waifu-swap", "waifu-swap"],
-  ["/vincent", "vincent"],
   ["/steward", "steward"],
   ["/companion", "companion"],
   // settings + each section
@@ -137,12 +134,16 @@ async function main() {
     } else if (m.method === "Log.entryAdded") {
       const ent = m.params?.entry;
       if (ent && ["error", "warning"].includes(ent.level)) {
-        consoleErrors.push(`[log:${ent.level}] ${(ent.text || "").slice(0, 200)}`);
+        consoleErrors.push(
+          `[log:${ent.level}] ${(ent.text || "").slice(0, 200)}`,
+        );
       }
     } else if (m.method === "Network.responseReceived") {
       const r = m.params?.response;
       if (r && r.status >= 400) {
-        netFailures.push(`${r.status} ${(r.url || "").replace(/^https?:\/\/[^/]+/, "").slice(0, 120)}`);
+        netFailures.push(
+          `${r.status} ${(r.url || "").replace(/^https?:\/\/[^/]+/, "").slice(0, 120)}`,
+        );
       }
     } else if (m.method === "Network.loadingFailed") {
       const u = m.params?.errorText;
@@ -181,7 +182,10 @@ async function main() {
   // caught by the render-state text signals instead.
   await send("Runtime.enable", {});
   await send("Page.enable", {});
-  appendFileSync(`${OUT}/progress.log`, `[setup] domains enabled, crawling ${ROUTES.length} routes\n`);
+  appendFileSync(
+    `${OUT}/progress.log`,
+    `[setup] domains enabled, crawling ${ROUTES.length} routes\n`,
+  );
 
   const findings = [];
   for (const [route, slug] of ROUTES) {
@@ -227,7 +231,10 @@ async function main() {
         const cap = await send("Page.captureScreenshot", { format: "png" });
         if (cap.result?.data) {
           shot = `${slug}.png`;
-          writeFileSync(`${OUT}/${shot}`, Buffer.from(cap.result.data, "base64"));
+          writeFileSync(
+            `${OUT}/${shot}`,
+            Buffer.from(cap.result.data, "base64"),
+          );
         }
       } catch {}
     }
@@ -261,10 +268,16 @@ async function main() {
     // incremental write so partial results survive a hang/termination
     writeFileSync(
       `${OUT}/report-${LABEL}.json`,
-      JSON.stringify({ surface: LABEL, count: findings.length, findings }, null, 2),
+      JSON.stringify(
+        { surface: LABEL, count: findings.length, findings },
+        null,
+        2,
+      ),
     );
   }
-  console.error(`\nWROTE ${OUT}/report-${LABEL}.json (${findings.length} routes)`);
+  console.error(
+    `\nWROTE ${OUT}/report-${LABEL}.json (${findings.length} routes)`,
+  );
   ws.close();
 }
 

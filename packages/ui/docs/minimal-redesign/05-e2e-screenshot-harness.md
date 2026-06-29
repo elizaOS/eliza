@@ -249,8 +249,8 @@ Covered by THREE specs that all iterate `VIEW_CASES`:
 Plugin view ids covered (each gui + most also tui): companion, contacts,
 hyperliquid, lifeops, focus, calendar, documents, finances, goals, health,
 inbox, relationships, todos, messages, model-tester, phone, polymarket,
-shopify, steward, vincent, wallet, vector-browser, 2004scape, feed,
-views-manager, clawville, hyperscape, scape,
+shopify, steward, wallet, vector-browser, feed,
+views-manager,
 screenshare, social-alpha, task-coordinator, orchestrator, trajectory-logger,
 training, facewear, smartglasses.
 

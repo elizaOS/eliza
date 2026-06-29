@@ -53,6 +53,43 @@ function externalScanEnabled(): boolean {
   return value === "1" || value === "true" || value === "yes";
 }
 
+function isSubpath(target: string, root: string): boolean {
+  const relative = path.relative(root, target);
+  return (
+    relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)
+  );
+}
+
+async function resolveRemovableElizaPath(
+  target: string,
+): Promise<
+  | { status: "safe"; path: string }
+  | { status: "missing" }
+  | { status: "unsafe" }
+> {
+  if (!isWithinElizaRoot(target)) return { status: "unsafe" };
+
+  let rootRealPath: string;
+  try {
+    rootRealPath = await fs.realpath(localInferenceRoot());
+  } catch {
+    return { status: "missing" };
+  }
+
+  try {
+    const targetRealPath = await fs.realpath(target);
+    if (!isSubpath(targetRealPath, rootRealPath)) {
+      return { status: "unsafe" };
+    }
+    return { status: "safe", path: target };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { status: "missing" };
+    }
+    throw error;
+  }
+}
+
 /**
  * Return models currently usable by the curated local-inference path.
  *
@@ -142,8 +179,14 @@ export async function removeElizaModel(id: string): Promise<{
     target.bundleRoot && isWithinElizaRoot(target.bundleRoot)
       ? target.bundleRoot
       : target.path;
+  const removable = await resolveRemovableElizaPath(removePath);
+  if (removable.status === "unsafe") {
+    return { removed: false, reason: "external" };
+  }
   try {
-    await fs.rm(removePath, { recursive: true, force: true });
+    if (removable.status === "safe") {
+      await fs.rm(removable.path, { recursive: true, force: true });
+    }
   } catch {
     // If the file was already gone we still want to clear the registry entry.
   }

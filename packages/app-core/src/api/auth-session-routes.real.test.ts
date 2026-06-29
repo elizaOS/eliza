@@ -14,7 +14,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
 import { _resetSensitiveLimiters } from "./auth/sensitive-rate-limit";
-import { SESSION_COOKIE_NAME } from "./auth/sessions";
+import { createMachineSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import { _resetAuthRateLimiter } from "./auth.ts";
 import {
   _resetAuthSessionRoutesLimiter,
@@ -251,8 +251,10 @@ describe("P1 session routes (real pglite)", () => {
     const meBody = meRes.body() as {
       identity: { id: string };
       session: { id: string };
+      access: { role: string };
     };
     expect(meBody.identity.id).toBe(setupBody.identity.id);
+    expect(meBody.access.role).toBe("OWNER");
 
     // /api/auth/logout — destroys the session
     const logoutReq = fakeReq({
@@ -273,6 +275,9 @@ describe("P1 session routes (real pglite)", () => {
     const meAfterRes = fakeRes();
     await handleAuthSessionRoutes(meAfterReq, meAfterRes.res, harness.state);
     expect(meAfterRes.status()).toBe(401);
+    expect(
+      (meAfterRes.body() as { access: { role: string } }).access.role,
+    ).toBe("GUEST");
   });
 
   it("local /api/auth/me succeeds without a password session", async () => {
@@ -294,6 +299,7 @@ describe("P1 session routes (real pglite)", () => {
         mode: string;
         passwordConfigured: boolean;
         ownerConfigured: boolean;
+        role: string;
       };
     };
     expect(body.session.kind).toBe("local");
@@ -301,6 +307,7 @@ describe("P1 session routes (real pglite)", () => {
     expect(body.access.mode).toBe("local");
     expect(body.access.passwordConfigured).toBe(false);
     expect(body.access.ownerConfigured).toBe(false);
+    expect(body.access.role).toBe("OWNER");
   });
 
   it("local /api/auth/me succeeds before the auth DB is exposed", async () => {
@@ -326,6 +333,7 @@ describe("P1 session routes (real pglite)", () => {
         mode: string;
         passwordConfigured: boolean;
         ownerConfigured: boolean;
+        role: string;
       };
     };
     expect(body.session.kind).toBe("local");
@@ -333,6 +341,45 @@ describe("P1 session routes (real pglite)", () => {
     expect(body.access.mode).toBe("local");
     expect(body.access.passwordConfigured).toBe(false);
     expect(body.access.ownerConfigured).toBe(false);
+    expect(body.access.role).toBe("OWNER");
+  });
+
+  it("machine /api/auth/me reports USER boundary role", async () => {
+    const machine = await harness.store.createIdentity({
+      id: "machine-client",
+      kind: "machine",
+      displayName: "machine-client",
+      createdAt: Date.now(),
+      passwordHash: null,
+    });
+    const { session } = await createMachineSession(harness.store, {
+      identityId: machine.id,
+      scopes: ["api"],
+      label: "test-machine",
+    });
+
+    const res = fakeRes();
+    await handleAuthSessionRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/me",
+        bearer: session.id,
+        ip: "10.0.0.8",
+      }),
+      res.res,
+      harness.state,
+    );
+
+    expect(res.status()).toBe(200);
+    const body = res.body() as {
+      identity: { kind: string };
+      session: { kind: string };
+      access: { mode: string; role: string };
+    };
+    expect(body.identity.kind).toBe("machine");
+    expect(body.session.kind).toBe("machine");
+    expect(body.access.mode).toBe("session");
+    expect(body.access.role).toBe("USER");
   });
 
   it("setup is one-shot — second call returns 409", async () => {

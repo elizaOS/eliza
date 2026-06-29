@@ -12,19 +12,18 @@ Per-view UX + code + state inventory of elizaOS **plugin** views (under `plugins
 
 **Essentially everything is REAL** — live data wiring, real protocols, no "coming soon." The honest exceptions:
 
-- **Vincent trading profile data — permanent stub:** `/api/vincent/trading-profile` is hardwired to `profile: null` (`plugins/plugin-vincent/src/routes.ts:464-471`), so the current spatial view treats P&L as optional until Vincent exposes real profile data.
 - **Steward `StewardVaultOverview.tsx` (477 lines) — DEAD CODE:** fully built, test-covered, **never rendered** (`StewardView` only mounts `ApprovalQueue` + `TransactionHistory`; grep finds only self + test referencing it).
 - **plugin-xr — registers NO ViewDeclaration:** it ships only a server-side XR HTML host-chrome route (`plugins/plugin-xr/src/routes/xr-view-host.ts`) that mounts *other* plugins' bundles. Assessed as chrome only.
 - **Finances DTO layer self-declares as a "migration scaffold"** (`plugins/plugin-finances/src/types.ts:1-9`) even though the view renders real route data.
 
 ### Structural redundancy patterns (apply across many plugins)
 
-1. **XR ViewDeclarations are dead duplicates.** Almost every plugin declares `default` + `xr` + `tui`, but the `xr` entry re-points at the **same web component** as `default` (hyperliquid/shopify/steward/vincent/task-coordinator/screenshare/model-tester all do this). No XR-specific render exists. The genuinely separate surface is the authored-once `*SpatialView.tsx` (terminal/XR via `@elizaos/ui/spatial`), registered for the terminal only.
+1. **XR ViewDeclarations are dead duplicates.** Almost every plugin declares `default` + `xr` + `tui`, but the `xr` entry re-points at the **same web component** as `default` (hyperliquid/shopify/steward/task-coordinator/screenshare/model-tester all do this). No XR-specific render exists. The genuinely separate surface is the authored-once `*SpatialView.tsx` (terminal/XR via `@elizaos/ui/spatial`), registered for the terminal only.
 2. **The `*SpatialView.tsx` files are the minimalist reference the GUI views should converge toward.** `OrchestratorSpatialView.tsx`, `ModelTesterSpatialView.tsx`, `TrajectoryLoggerSpatialView.tsx` already use single-glyph-by-color status marks + `Divider label="…"` sections + borderless lists — exactly the target density. The web twins diverged into maximalism. This is **convergence, not new design.**
-3. **A second full dark codepath: hand-maintained `#020617`/cyan TUI trees.** Hyperliquid/shopify/steward/vincent/wallet/polymarket each clone the web view as an inline-styled near-black JSX tree with hardcoded `rgba(125,211,252,…)` cyan borders — the exact heavy/dark treatment the redesign abandons, and ignoring Eliza tokens.
-4. **Copy-pasted heavy card recipes.** The `linear-gradient + inset-shadow rounded-2xl/3xl` card is pasted 6+ times across Steward + Vincent. The games' `HeroHeader` + `StatusStripCard` + `HeroFrame` trio (~250 lines) is copy-pasted **byte-for-byte** across clawville, hyperscape, and defense (only accent + emoji differ).
+3. **A second full dark codepath: hand-maintained `#020617`/cyan TUI trees.** Hyperliquid/shopify/steward/wallet/polymarket each clone the web view as an inline-styled near-black JSX tree with hardcoded `rgba(125,211,252,…)` cyan borders — the exact heavy/dark treatment the redesign abandons, and ignoring Eliza tokens.
+4. **Copy-pasted heavy card recipes.** The `linear-gradient + inset-shadow rounded-2xl/3xl` card is pasted 6+ times across Steward.
 5. **State over-encoding.** Connection/run status routinely shown 3-4× on one screen (border tint + badge + icon color + summary card + header pill). Wallet's account header packs ~12 chips/badges.
-6. **Off-brand color drift.** Shopify/clawville/hyperscape/defense hardcode `#ff5800` (≠ brand `#ff8a24`); XR host chrome hardcodes indigo `#6366f1` (blue is forbidden) + near-black bg, with its own inline design system.
+6. **Off-brand color drift.** Shopify hardcodes `#ff5800` (≠ brand `#ff8a24`); XR host chrome hardcodes indigo `#6366f1` (blue is forbidden) + near-black bg, with its own inline design system.
 
 ### Worst slop offenders (ranked, cross-section)
 
@@ -34,15 +33,14 @@ Per-view UX + code + state inventory of elizaOS **plugin** views (under `plugins
 4. **Wallet `InventoryView.tsx` (2578 lines, ~37 components)** — rail-vs-dashboard duplication (NFTs/LP/positions rendered twice), ~12-badge account header.
 5. **Game operator surfaces** — ~250 lines of triplicated hero chrome + double-HUD (bespoke hero on top of the legacy shared operator shell that already showed the same status/objective/location) + 34vh marketing banner pushing HUD below the fold.
 6. **Shopify `ShopifySetupCard`** (`ShopifyAppView.tsx:111-261`) — ~150 inline-styled lines (hero, `<p>`, two described `SetupField`s with env-var `<code>`, capability pills) to say "set 2 env vars."
-7. **Vincent legacy card stack** — resolved in the current tree by replacing the old overlay/card implementation with one `VincentSpatialView` shared by GUI, XR, and TUI.
 
 ### Highest-impact simplifications
 
 - **Make the orchestrator task room = the floating chat overlay.** The conversation stream (`OrchestratorWorkbench.tsx:3931`) is already a chat; the redesign wants chat primary. Single biggest alignment win.
 - **Flatten every "wall of bordered boxes"** into borderless icon+color lists — the repo already ships the template (`*SpatialView.tsx`). Targets: orchestrator's 8 sections, tasks-panel's 6 DetailLists, screenshare's 7 metric tiles, model-tester's 8 cards, smartglasses' 6 panels, finances' 3 cards.
 - **Flip wallet + finances to a light surface** (match polymarket, the only one already light).
-- **Delete dead/stub UI:** `StewardVaultOverview.tsx`; keep Vincent's P&L data optional until the profile route returns real data.
-- **Extract the triplicated game hero chrome once** (or delete in favor of one shared operator shell); kill double-HUD + triple status badges; shrink the 34vh banner to a thin status-dot bar.
+- **Delete dead/stub UI:** `StewardVaultOverview.tsx`.
+- **Extract the triplicated game hero chrome once** (or delete in favor of `GameOperatorShell`); kill double-HUD + triple status badges; shrink the 34vh banner to a thin status-dot bar.
 - **Move human-in-the-loop approvals (Steward) INTO chat** — it's a yes/no agent prompt by nature.
 - **Drop all manual refresh buttons** — polling already exists everywhere; refresh via chat.
 - **Fix brand color drift** (`#ff5800`→`#ff8a24`; XR indigo→orange, lighten bg).
@@ -52,7 +50,6 @@ Per-view UX + code + state inventory of elizaOS **plugin** views (under `plugins
 - **MERGE `CodingAgentTasksPanel` + `OrchestratorWorkbench`** — same task data, read-only-lite vs full read/write, already share the `TaskCardList` kit.
 - **MERGE the orchestrator task room with the floating chat** — same conversation, two surfaces.
 - **Steward → collapses to a history audit table** once approvals move to chat.
-- **Vincent → already collapsed to one spatial status/action view**; strategy editing still lacks a GUI trigger, so chat remains the better interface for changes.
 - **Hyperliquid → a read-only ticker**; most is chat-answerable.
 - **Screenshare → 2 chat actions + one live status pill** ("share my screen" / "connect to <link>").
 - **Demote out of primary nav** (developer/hardware tools, reach via chat or a dev/device drawer): vector-browser, trajectory-logger, smartglasses, model-tester.
@@ -132,9 +129,9 @@ Theme split (make all 3 light like polymarket); two near-identical hardcoded-pal
 
 ---
 
-# Part B — Hyperliquid · Shopify · Steward · Vincent
+# Part B — Hyperliquid · Shopify · Steward
 
-Each plugin declares **3 ViewDeclarations** but only **2 distinct components** — the `xr` variant reuses the same React component as the default web view; the 3rd is a hand-maintained `#020617`/cyan TUI. All four follow an identical pattern: full-screen `fixed inset-0 z-50` overlay shells with header (back + status pill + refresh), a polling hook, and the dark TUI clone. Each re-implements its own header and owns a manual Refresh button despite existing polling.
+Each plugin declares **3 ViewDeclarations** but only **2 distinct components** — the `xr` variant reuses the same React component as the default web view; the 3rd is a hand-maintained `#020617`/cyan TUI. All three follow an identical pattern: full-screen `fixed inset-0 z-50` overlay shells with header (back + status pill + refresh), a polling hook, and the dark TUI clone. Each re-implements its own header and owns a manual Refresh button despite existing polling.
 
 ## 1. Hyperliquid — `hyperliquid` (web+xr) — `src/HyperliquidAppView.tsx:72-258`
 
@@ -177,7 +174,7 @@ ViewDeclaration: `src/plugin.ts:379-405`. Children: `ApprovalQueue.tsx`, `Transa
 - **States:** disconnected (`:97`)→empty panel + mono `STEWARD_API_URL + STEWARD_API_KEY` hint; connecting (`null`)→"Connecting…" (`:152`); connected→Approvals/History tabs; ApprovalQueue: loading/empty/populated/per-tx `actionInFlight`/inline reject dialog/toast on new approvals (`:251`); History: loading/empty/table/filters/pagination.
 - **Structure:** h1 (`:133`), h2 disconnected (`:105`); header `PagePanel` + tablist + cards/table; heavy borders — tablist `border` (`:161`), **each approval card is `rounded-3xl border` w/ gradient bg + inset shadow** (`ApprovalQueue.tsx:436`), table `divide-y`; badges (connected pill, pending-count on tab + toolbar, chain pill, policy-reason boxes, `StatusBadge` per row); reject-reason input + status/chain `<select>`; history `<table>` 6 cols (`:334-401`).
 
-  **Heaviest offending JSX** — the approval card wrapper (`ApprovalQueue.tsx:436`): `rounded-3xl` border + 2-stop `linear-gradient` + inset box-shadow (this exact recipe copy-pasted across Vincent too). Each card stacks time+clock+chain-pill, "To"/"Amount" labeled pair, policy-reason warning boxes, action buttons, inline reject form.
+  **Heaviest offending JSX** — the approval card wrapper (`ApprovalQueue.tsx:436`): `rounded-3xl` border + 2-stop `linear-gradient` + inset box-shadow. Each card stacks time+clock+chain-pill, "To"/"Amount" labeled pair, policy-reason warning boxes, action buttons, inline reject form.
 - **Heaviness / slop critique:** `2xs uppercase tracking-wider` micro-labels ("To"/"Amount"/"Policy reason" `:454/466/481`) above self-evident values. The gradient+inset-shadow card is exactly the heavy treatment to drop. Two redundant pending counters (tab + toolbar). `formatTime` hand-rolled in both `ApprovalQueue.tsx:349` and `TransactionHistory.tsx:234`.
 - **Minimization recommendations:** **Most defensible view in the set** — transaction approval is a real security gate that should be deliberate. Flatten: approval card→flat row `{amount} → {to-short} · {chain} · {time}` + Approve/Reject (drop gradient/inset-shadow/micro-labels/card chrome). Reject reason→single optional inline field on Reject only. Policy-reason→one colored line. Disconnected→"Connect Steward"→settings (drop the dev-facing env string). History as secondary tab; status as colored text. **Big win: pending approvals should push INTO the floating chat** ("Approve transfer of 0.5 ETH to 0xabc…? [Approve] [Reject]") — the agent already toasts new approvals (`:251`).
 - **Even-simpler note:** **Approvals are the strongest candidate to move into chat** (yes/no agent prompt). Then Steward collapses to just `TransactionHistory` — a single audit table — removing ApprovalQueue's 549 lines of nested card/dialog JSX.
@@ -185,16 +182,6 @@ ViewDeclaration: `src/plugin.ts:379-405`. Children: `ApprovalQueue.tsx`, `Transa
 **DEAD CODE — `StewardVaultOverview.tsx` (477 lines):** fully-built vault overview (addresses, per-chain balances, webhook events) but **never rendered** — `StewardView` mounts only `ApprovalQueue` + `TransactionHistory` (`:189-204`); grep finds only self + `.test.tsx`. Recommend deletion (or wire as a 3rd tab). Contains heavy `try/Promise.allSettled` chain-snapshot logic + the same gradient-card aesthetic.
 
 **TUI** (`StewardTuiView` `:210-401`): same `#020617` parallel impl, 2 `minHeight:420` sections, `data-view-state` JSON (`:256`).
-
-## 4. Vincent — `vincent` (GUI+XR+TUI) — `src/VincentView.tsx` + `src/components/VincentSpatialView.tsx`
-
-ViewDeclaration: `src/plugin.ts:110-130`. One declaration exposes `VincentView`; the presentational `VincentSpatialView` is shared by GUI, XR, and the terminal registry.
-
-- **Purpose:** Vincent trading-account OAuth + wallet/strategy/P&L overview (Hyperliquid/Polymarket via heyvincent.ai).
-- **Real or stub?** **MOSTLY REAL.** `useVincentDashboard` (15s poll) drives connection/wallet/balances/strategy. The P&L route still returns `profile: null`, but the deleted P&L card no longer ships a dead full-detail UI.
-- **States:** disconnected → compact status + connect/open actions; loading and error lines; connected → wallet addresses, non-dust balance summary, strategy line, optional profile P&L if the route ever returns it.
-- **Structure:** single spatial card authored with `@elizaos/ui/spatial`; no separate overlay-app component, disconnected teaser, or parallel TUI JSX tree. GUI/XR wrap it in `SpatialSurface`; TUI registers the same `VincentSpatialView` through `register-terminal-view.tsx`.
-- **Residual critique:** Strategy updates still exist as a route and terminal `interact()` capability, but there is no GUI edit control. That remains better served by chat unless a genuinely repeated GUI workflow appears.
 
 ---
 
@@ -349,65 +336,3 @@ Snapshot-driven terminal render (via `registerSpatialTerminalView("smartglasses"
 ### Part D cross-cutting
 
 Spatial views are the lightest already (trajectory-logger, facewear both ship a flatter `@elizaos/ui/spatial` twin — converge the GUI toward them). Phase-body duplication is a real DRY target. Connection state over-encoded everywhere (pick one signal: color). XR host chrome off-brand (indigo + near-black, bypasses tokens) — mechanical high-value fix. Vector-browser, trajectory-logger, smartglasses are developer/hardware tools — demote out of the primary tab set.
-
----
-
-# Part E — Games (chrome/HUD only)
-
-**Architectural note (all 5):** the React views do NOT render the game canvas — the canvas is a fullscreen `<iframe>` served from each plugin's `routes.ts` (`GET /api/apps/<game>/viewer`) embedding a remote client. The iframe wrapper HTML is minimal and fine (`plugin-scape/src/routes.ts:218-272`). The reviewed `*OperatorSurface.tsx` files are the **operator/spectator dashboard chrome** beside the game — that's where all the slop lives. Two visual systems: scape/2004scape use shared token-aware game-surface primitives with a 34vh hero + 4-chip strip + many stacked cards; clawville/hyperscape/defense use a hand-rolled `HeroHeader`+`StatusStripCard`+`HeroFrame` trio copy-pasted ~250 lines into all three (only accent/emoji differ) plus the legacy shared operator shell.
-
-## 1. plugin-scape — `scape` — `plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx` (~1040 lines)
-
-- **Purpose:** Operator dashboard for an autonomous OSRS-alike (xRSPS) agent. ViewDecl `index.ts:49-89`.
-- **Real or stub?** **REAL.** `selectLatestRunForApp`, live `session.telemetry` parsed into agent/goal/journal/nearby/skills/inventory, `client.sendAppRunMessage`/`controlAppRun`. Game = real iframe (`routes.ts:245`).
-- **States:** no-run "ready" (`:643-668`), live (`:700`), 8 connection sub-states via `connectionLabel`/`connectionTone` (`:417-453`: idle/connecting/auth-pending/spawn-pending/connected/reconnecting/closed/failed), paused.
-- **Chrome/HUD:** `GameSurfaceHero` (34vh image banner + title + pulsing status pill + Pause/Resume CTA) → `GameSurfaceStrip` (4 chips) → `GameSurfaceZone` with a **badge row** (status + viewerAttachment + health + paused + "N active runs" `:730-745`) then up to **8 stacked `SurfaceSection`s** (Agent 4 cards / Controls / Active Goal / Steering / Journal / Nearby 4 cards / Skills badge cloud / Recent Actions).
-
-  **Heaviest offending JSX** — the badge row (`:730-745`) duplicating the hero status (status + viewerAttachment + health + paused + "N active runs").
-- **Heaviness / slop critique:** Hero status pill + badge row + "Agent→Bot SDK" card state run status **three times**. "Controls" duplicates the hero Pause/Resume. 8 connection states for what a glanceable UI needs as 3. ~⅓ of the file is defensive telemetry coercion (`asRecord`/`readString`/`extractX` `:148-390`). Box-in-box-in-box (cards inside sections inside a zone).
-- **Minimization recommendations:** Delete the badge row + standalone Controls section (`:788-822`); fold Pause/Resume into the hero CTA only. Collapse Agent's 4 cards→one line (name · HP · location). Drop "N active runs", status-word repeats, the Skills cloud. Keep one status pill, one identity line, goal; let the floating chat own steering.
-
-## 2. plugin-2004scape — `2004scape` — `plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx`
-
-- **Purpose:** Operator dashboard for an autonomous RS-2004 bot. ViewDecl `index.ts:15-55`.
-- **Real or stub?** **REAL.** Same shared game-surface primitive set; live telemetry (player/tutorial/nearbyTargets/combatStyle/gameMessages), `postAppRunCommand`. Game = real proxied iframe.
-- **States:** no-run "ready" (`:850-875`), live (`:903`), runtime sub-states (`:723-734`), autoplay on/off, tutorial active/clear.
-- **Chrome/HUD:** same hero + 4-chip strip + zone; badge row, then **Runtime** (4 cards: Login/Autoplay/Tutorial/Steering `:946-975`), **Live State** (5 cards Goal/Intent/Player/Viewer/Field Intel + 3 sub-lists), **Steering**.
-
-  **Heaviest offending JSX** — the "Runtime" 4-card stack, all derived status strings (`:946-975`).
-- **Heaviness / slop critique:** **Worst card-density of the five** — 9 `SurfaceCard`s + 3 sub-feeds + 4 chips + badge row, almost all derived English strings ("Live steering ready", "Waiting for the command bridge"). ~30 lines of label/tone derivation (`:704-786`). Login/Steering/Viewer/Runtime = infra plumbing as game HUD. Re-implements its own `Button` (`:47-70`) instead of importing `@elizaos/ui`.
-- **Minimization recommendations:** Cut the entire Runtime section (→a connection dot). Reduce Live State to Goal + Player line. Keep at most one feed. Collapse derived-string helpers to one connection state. Import the shared `Button`.
-
-## 3. plugin-clawville — `clawville` — `plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx`
-
-- **Purpose:** Operator panel for ClawVille (sea-themed 3D agent game). ViewDecl `index.ts:41-82`.
-- **Real or stub?** **REAL.** `client.sendAppRunMessage`, live telemetry, optimistic event log, legacy shared operator shell. Game = real iframe (clawville.world).
-- **States:** no-run "empty" (`:507-546`), live (`:561`); status→live/attention/idle (`:62-66`); sending-command in flight.
-- **Chrome/HUD:** hand-rolled `HeroHeader` (34vh + blur status chip + accent CTA `:185-273`) → 3 `StatusStripCard`s (Location/Relay/Goal) → legacy shared operator shell (own title + statusLabel + objective + detailItems + actions + feed + composer); empty state adds a 🦀 waiting-zone (`:379-414`).
-
-  **Heaviest offending JSX** — the `HeroHeader` (`:196-272`, ~80 inline-styled lines, **byte-identical to hyperscape** except accent/emoji).
-- **Heaviness / slop critique:** **Double-HUD** — bespoke hero+strip AND the legacy shared operator shell (which had its own status/objective/location), so status/objective/location render **twice**. 34vh marketing banner eats a third of the panel before any operational info. ~250 lines duplicated verbatim across this + hyperscape. Emoji icons (🦀🏘💬⚡📍🎯) clash with the orange/blue/flat brand.
-- **Minimization recommendations:** Delete the bespoke `HeroHeader`/`StatusStripCard`/`HeroFrame` or fold it into one shared shell. If a banner stays, shrink to a thin title bar + status dot. Extract the one shared shell (stop triplicating). Replace emoji with brand icons + orange/blue.
-
-## 4. plugin-hyperscape — `hyperscape` — `plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx`
-
-- **Purpose:** Spectate-and-steer host surface (follow an agent in a live world). ViewDecl `index.ts:14-53`.
-- **Real or stub?** **REAL** (thin — no service/actions, pure app-manager). Live session via `selectLatestRunForApp` + `sendAppRunMessage`/`controlAppRun`; viewer auto-login via wallet auth. Game = real iframe.
-- **States:** no-run "ready" (`:564-597`), live (`:600`); status→live/attention/idle (`:37-41`); pause/resume in flight.
-- **Chrome/HUD:** same copy-pasted `HeroHeader` (34vh) + 4 `StatusStripCard`s + a badge row (status + viewerAttachment + health + "N active runs" `:650-667`) + **Host** section (4 cards: Auth/Follow/Runtime/Viewer `:671-701`) + **State** section (3 cards + activity feed) + **Operator Relay** (suggested prompts + Pause/Resume).
-
-  **Heaviest offending JSX** — the "Host" section (`:671-701`): 4 cards of pure infra (auth bootstrap, follow target, background/foreground, viewer attachment + heartbeat), e.g. `formatViewerAuthLabel(run)` → "Viewer does not need app auth."
-- **Heaviness / slop critique:** Triple status restatement (hero pill + 4 chips + badge row + Health card). The whole Host section is connection plumbing surfaced as game HUD — nothing a spectator needs. Mixes both visual systems in one file. Same ~250 duplicated hero lines.
-- **Minimization recommendations:** Delete the Host section + badge row. Keep Follow target + Goal + a single connection dot; route steering to the floating chat. Drop "N active runs". Pick one visual system. De-duplicate the hero/strip.
-
-### Part E cross-cutting (highest leverage)
-
-1. **~250 lines of `HeroHeader`+`StatusStripCard`+`HeroFrame` copy-pasted byte-for-byte** across clawville/hyperscape (only accent + emoji differ) — extract once / fold into one shared operator shell.
-2. **Double-HUD** (clawville) — bespoke hero+strip on top of a shared shell that already shows status/objective/detail.
-3. **Triple status restatement** (scape/2004scape/hyperscape) — hero pill + 4-chip strip + `SurfaceBadge` row + often a Health card.
-4. **34vh marketing hero banner** pushes operational HUD below the fold — a thin title + status-dot bar is enough.
-5. **Card sprawl** surfaces connection/auth plumbing ("Viewer does not need app auth", "Waiting for the command bridge") as game HUD.
-6. **Per-view Steering/suggested-prompt/Pause-Resume blocks** duplicate what the primary floating chat overlay should own.
-7. **Emoji icon language + hardcoded `#ff5800`** (clawville/hyperscape) conflict with brand orange `#ff8a24` / blue `#1d91e8`.
-</content>
-</invoke>

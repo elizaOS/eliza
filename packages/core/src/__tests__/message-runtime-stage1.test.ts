@@ -175,6 +175,21 @@ function makeRuntime(
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it("keeps the message pipeline from laundering missing planner inputs through empty fallbacks", async () => {
+		const source = await readFile(
+			join(__dirname, "../services/message.ts"),
+			"utf8",
+		);
+
+		expect(source).not.toContain('memory.content.text?.trim() ?? ""');
+		expect(source).not.toContain(
+			'messageText: getUserMessageText(params.message) ?? ""',
+		);
+		expect(source).not.toContain(
+			'text: getUserMessageText(params.message) ?? ""',
+		);
+	});
+
 	it("requests the required native message-handler tool and parses tool arguments", async () => {
 		const runtime = makeRuntime([
 			{

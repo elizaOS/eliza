@@ -7,7 +7,7 @@ import { Divider, SpatialSurface } from "../index.ts";
  *
  * The DOM `Divider` primitive has three render branches: vertical rule,
  * labeled horizontal rule, and plain horizontal rule. The `label` prop is a
- * documented section-separator used by 20+ spatial views (health, vincent,
+ * documented section-separator used by 20+ spatial views (health,
  * steward, phone, training, contacts, polymarket, wallet …). A "declutter"
  * pass that drops the labeled branch makes those section headers silently
  * vanish while still type-checking (the prop stays on `DividerProps`). These

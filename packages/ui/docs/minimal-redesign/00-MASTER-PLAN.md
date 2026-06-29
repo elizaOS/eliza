@@ -18,7 +18,7 @@ inventories live in the sibling files:
 - `01-builtin-system-views.md` — Apps, Plugins, Config, Settings sections, Cloud, Release, Runtime, Secrets, Heartbeats
 - `02-builtin-data-character-views.md` — Database, Memory, Logs, Documents, Relationships, Automations, Browser, Media, Camera, Character, Help, Tutorial
 - `03-plugin-views-productivity.md` — Calendar, Todos, Goals, Health, Blocker/Focus, Inbox, Contacts, Phone, Messages, Companion, LifeOps, Documents, Relationships, Social, Feed
-- `04-plugin-views-finance-tools-games.md` — Wallet, Finances, Polymarket, Hyperliquid, Shopify, Steward, Vincent, Task-coordinator, Screenshare, Model-tester, Vector-browser, Trajectory-logger, Facewear/XR, games
+- `04-plugin-views-finance-tools-games.md` — Wallet, Finances, Polymarket, Hyperliquid, Shopify, Steward, Task-coordinator, Screenshare, Model-tester, Vector-browser, Trajectory-logger, Facewear/XR, games
 - `05-e2e-screenshot-harness.md` — how to boot the stack, navigate, and screenshot every view at desktop + mobile
 
 ## The single source of "the look"

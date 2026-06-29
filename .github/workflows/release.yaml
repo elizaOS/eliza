@@ -118,12 +118,18 @@ jobs:
       # release.yaml uses oven-sh/setup-bun directly (not setup-bun-workspace),
       # so it gets no .turbo restore by default — the publish build was cold
       # every run. Restore the local Turbo cache (shared with ci/test runs via
-      # the runner.os prefix) and the Bun install cache.
+      # the runner.os prefix) and the Bun install cache. Use the same
+      # content-derived key as setup-bun-workspace so exact hits can still save
+      # fresh task results after Turbo-relevant inputs change.
+      - name: Compute Turbo cache key
+        id: turbo_cache_key
+        run: node packages/scripts/turbo-cache-key.mjs --github-output
+
       - name: Restore Turbo cache (GitHub Actions)
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: .turbo
-          key: turbo-${{ runner.os }}-release-${{ hashFiles('package.json', 'bun.lock', 'bunfig.toml', 'turbo.json') }}
+          key: turbo-${{ runner.os }}-release-${{ steps.turbo_cache_key.outputs.turbo_cache_key }}
           restore-keys: |
             turbo-${{ runner.os }}-release-
             turbo-${{ runner.os }}-

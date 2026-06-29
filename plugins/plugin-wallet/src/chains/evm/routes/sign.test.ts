@@ -75,6 +75,13 @@ describe("EVM browser signing routes", () => {
     walletBackendMocks.resolveWalletBackend.mockReset();
   });
 
+  it("does not mark browser signing routes as public", () => {
+    expect(evmSignRoutes).toHaveLength(6);
+    expect(evmSignRoutes.every((candidate) => candidate.public !== true)).toBe(
+      true,
+    );
+  });
+
   it("closes the surface when the signing token is missing or too short", async () => {
     for (const token of [null, "short-token"]) {
       const response = res();

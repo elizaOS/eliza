@@ -9,7 +9,7 @@ import type {
   RemotePluginWorkerMessage,
   WorkerRpcMessage,
 } from "@elizaos/plugin-remote-manifest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildAnnounceDescriptor,
   createHandlerRegistry,
@@ -503,6 +503,196 @@ describe("RemotePluginBridge descriptor schema", () => {
 
     expect(await rejection).toBeTruthy();
     expect(registerCalls).toBe(0);
+  });
+
+  it("rejects handled worker messages that do not match the wire envelope", async () => {
+    const channel = new TestChannel();
+    const runtime = {
+      registerPlugin: async () => {},
+      unloadPlugin: async () => {},
+    } as unknown as IAgentRuntime;
+    const bridge = new RemotePluginBridge({ channel, runtime });
+
+    await expect(
+      (
+        bridge as unknown as {
+          onMessage(m: RemotePluginWorkerMessage): Promise<void>;
+        }
+      ).onMessage({
+        type: "worker-rpc-result",
+        ok: true,
+        payload: null,
+      } as unknown as RemotePluginWorkerMessage),
+    ).rejects.toThrow("Invalid remote plugin worker message");
+  });
+
+  it("rejects non-object remote provider results instead of returning empty context", async () => {
+    const channel = new TestChannel();
+    let registered: Plugin | null = null;
+    const runtime = {
+      registerPlugin: async (plugin: Plugin) => {
+        registered = plugin;
+      },
+      unloadPlugin: async () => {},
+    } as unknown as IAgentRuntime;
+    const bridge = new RemotePluginBridge({ channel, runtime });
+    bridge.attach();
+
+    await channel.emit({
+      type: "worker-announce-plugin",
+      descriptor: {
+        name: "bad-provider",
+        providers: [
+          {
+            name: "BAD_PROVIDER",
+            get: { rpc: true, id: "provider:bad:get" },
+          },
+        ],
+      },
+    });
+
+    const plugin = registered as unknown as Plugin;
+    expect(plugin).toBeTruthy();
+    const providerPromise = plugin.providers?.[0]?.get(
+      runtime,
+      { content: { text: "read context" } } as never,
+      {} as never,
+    );
+    const rpc = channel.sent.at(-1) as WorkerRpcMessage;
+    expect(rpc).toMatchObject({
+      type: "worker-rpc",
+      surface: "provider",
+      target: "provider:bad:get",
+    });
+    await channel.emit({
+      type: "worker-rpc-result",
+      requestId: rpc.requestId,
+      ok: true,
+      payload: "not a provider result",
+    });
+
+    await expect(providerPromise).rejects.toThrow(
+      "Remote provider BAD_PROVIDER returned invalid ProviderResult",
+    );
+  });
+
+  it("rejects malformed remote action results at the worker-rpc boundary", async () => {
+    const channel = new TestChannel();
+    let registered: Plugin | null = null;
+    const runtime = {
+      registerPlugin: async (plugin: Plugin) => {
+        registered = plugin;
+      },
+      unloadPlugin: async () => {},
+    } as unknown as IAgentRuntime;
+    const bridge = new RemotePluginBridge({ channel, runtime });
+    bridge.attach();
+
+    await channel.emit({
+      type: "worker-announce-plugin",
+      descriptor: {
+        name: "bad-action-result",
+        actions: [
+          {
+            name: "BAD_ACTION",
+            description: "Bad action result",
+            handler: { rpc: true, id: "action:bad:handler" },
+          },
+        ],
+      },
+    });
+
+    const plugin = registered as unknown as Plugin;
+    expect(plugin).toBeTruthy();
+    const actionPromise = plugin.actions?.[0]?.handler(
+      runtime,
+      { content: { text: "run" } } as never,
+      undefined,
+      undefined,
+      undefined,
+      [],
+    );
+    const rpc = channel.sent.at(-1) as WorkerRpcMessage;
+    expect(rpc).toMatchObject({
+      type: "worker-rpc",
+      surface: "action",
+      target: "action:bad:handler",
+    });
+    await channel.emit({
+      type: "worker-rpc-result",
+      requestId: rpc.requestId,
+      ok: true,
+      payload: "not an action result",
+    });
+
+    await expect(actionPromise).rejects.toThrow();
+  });
+
+  it("rejects malformed host createMemory payloads before invoking runtime", async () => {
+    const channel = new TestChannel();
+    const createMemory = vi.fn();
+    const runtime = {
+      createMemory,
+      registerPlugin: async () => {},
+      unloadPlugin: async () => {},
+    } as unknown as IAgentRuntime;
+    const bridge = new RemotePluginBridge({ channel, runtime });
+    bridge.attach();
+
+    await channel.emit({
+      type: "host-rpc",
+      requestId: 77,
+      api: "runtime",
+      method: "createMemory",
+      args: {
+        memory: {
+          content: { text: "missing identity and room" },
+        },
+      },
+    } as unknown as RemotePluginWorkerMessage);
+
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(channel.sent.at(-1)).toMatchObject({
+      type: "host-rpc-result",
+      requestId: 77,
+      ok: false,
+      error: {
+        name: "ZodError",
+      },
+    });
+  });
+
+  it("rejects malformed host event payloads before invoking runtime", async () => {
+    const channel = new TestChannel();
+    const emitEvent = vi.fn();
+    const runtime = {
+      emitEvent,
+      registerPlugin: async () => {},
+      unloadPlugin: async () => {},
+    } as unknown as IAgentRuntime;
+    const bridge = new RemotePluginBridge({ channel, runtime });
+    bridge.attach();
+
+    await channel.emit({
+      type: "host-rpc",
+      requestId: 78,
+      api: "runtime",
+      method: "emitEvent",
+      args: {
+        name: "MESSAGE_RECEIVED",
+        payload: "not an event payload",
+      },
+    } as unknown as RemotePluginWorkerMessage);
+
+    expect(emitEvent).not.toHaveBeenCalled();
+    expect(channel.sent.at(-1)).toMatchObject({
+      type: "host-rpc-result",
+      requestId: 78,
+      ok: false,
+      error: {
+        name: "ZodError",
+      },
+    });
   });
 });
 

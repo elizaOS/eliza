@@ -524,7 +524,10 @@ export interface AppsRouteContext
   runtime: unknown | null;
   favoriteApps?: FavoriteAppsStore;
   installPluginDirect?: DirectInstallPlugin;
+  actorRole?: AppsRouteActorRole | null;
 }
+
+export type AppsRouteActorRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
 function sanitizeFavoriteAppNames(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -538,6 +541,12 @@ function sanitizeFavoriteAppNames(value: unknown): string[] {
     apps.push(trimmed);
   }
   return apps;
+}
+
+function canLaunchApps(
+  actorRole: AppsRouteActorRole | null | undefined,
+): boolean {
+  return actorRole === "OWNER" || actorRole === "ADMIN";
 }
 
 function isNonAppRegistryPlugin(plugin: RegistryPluginInfo): boolean {
@@ -669,8 +678,8 @@ function resolveRunSteeringTarget(
 }
 
 function buildSteeringDisposition(
-  run: AppRunSummary,
-  subroute: string,
+  _run: AppRunSummary,
+  _subroute: string,
   upstreamStatus: number,
   upstreamBody: Record<string, unknown> | null,
 ): AppRunSteeringDisposition {
@@ -877,6 +886,7 @@ export async function handleAppsRoutes(
     error,
     runtime,
     installPluginDirect,
+    actorRole,
   } = ctx;
 
   if (method === "GET" && pathname === "/api/apps") {
@@ -1156,6 +1166,10 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/launch") {
     try {
+      if (!canLaunchApps(actorRole)) {
+        error(res, "App launch requires OWNER or ADMIN role", 403);
+        return true;
+      }
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
       if (rawBody === null) return true;
       const parsed = PostLaunchAppRequestSchema.safeParse(rawBody);

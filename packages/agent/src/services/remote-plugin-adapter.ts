@@ -5,6 +5,7 @@ import {
 } from "node:crypto";
 
 import {
+  type ActionResult,
   type AppPackageRouteContext,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
@@ -16,6 +17,10 @@ import {
   type ModelTypeName,
   type Plugin,
   type PluginAppBridge,
+  type PluginAppLaunchDiagnostic,
+  type PluginAppLaunchPreparation,
+  type PluginAppSessionState,
+  type PluginAppViewerAuthMessage,
   type PluginCallRouteParams,
   type PluginCallServiceParams,
   type PluginInvokeActionParams,
@@ -315,20 +320,24 @@ export function createRemoteCapabilityPlugin(
                   prepared,
                   output,
                 }) =>
-                  (
-                    await requireCapabilityRouter(
-                      runtime,
-                    ).plugin.processEvaluator({
-                      ...endpointSelection(endpointId),
-                      moduleId: module.id,
-                      evaluator: evaluator.name,
-                      message: toJsonObject(message),
-                      state: toJsonObject(state),
-                      options: toJsonObject(options),
-                      prepared: toJsonValue(prepared),
-                      output: toJsonValue(output),
-                    })
-                  ).result as never,
+                  requireRemoteEvaluatorProcessResult(
+                    (
+                      await requireCapabilityRouter(
+                        runtime,
+                      ).plugin.processEvaluator({
+                        ...endpointSelection(endpointId),
+                        moduleId: module.id,
+                        evaluator: evaluator.name,
+                        message: toJsonObject(message),
+                        state: toJsonObject(state),
+                        options: toJsonObject(options),
+                        prepared: toJsonValue(prepared),
+                        output: toJsonValue(output),
+                      })
+                    ).result,
+                    module.id,
+                    evaluator.name,
+                  ) as never,
               },
             ],
           }
@@ -354,16 +363,20 @@ export function createRemoteCapabilityPlugin(
           })
         ).shouldRun,
       evaluate: async (context) =>
-        (
-          await requireCapabilityRouter(
-            context.runtime,
-          ).plugin.evaluateResponseHandlerEvaluator({
-            ...endpointSelection(endpointId),
-            moduleId: module.id,
-            evaluator: evaluator.name,
-            context: responseHandlerContextToJsonObject(context),
-          })
-        ).patch as never,
+        requireRemoteResponseHandlerPatch(
+          (
+            await requireCapabilityRouter(
+              context.runtime,
+            ).plugin.evaluateResponseHandlerEvaluator({
+              ...endpointSelection(endpointId),
+              moduleId: module.id,
+              evaluator: evaluator.name,
+              context: responseHandlerContextToJsonObject(context),
+            })
+          ).patch,
+          module.id,
+          evaluator.name,
+        ) as never,
     }),
   );
   const responseHandlerFieldEvaluators = (
@@ -654,12 +667,19 @@ function createRemoteAppBridge(
 
   if (hookSet.has("prepareLaunch")) {
     bridge.prepareLaunch = async (ctx) =>
-      (await call(ctx.runtime, "prepareLaunch", ctx)).result as never;
+      requireRemoteLaunchPreparation(
+        (await call(ctx.runtime, "prepareLaunch", ctx)).result,
+        moduleId,
+        "prepareLaunch",
+      );
   }
   if (hookSet.has("resolveViewerAuthMessage")) {
     bridge.resolveViewerAuthMessage = async (ctx) =>
-      (await call(ctx.runtime, "resolveViewerAuthMessage", ctx))
-        .result as never;
+      requireRemoteViewerAuthMessage(
+        (await call(ctx.runtime, "resolveViewerAuthMessage", ctx)).result,
+        moduleId,
+        "resolveViewerAuthMessage",
+      );
   }
   if (hookSet.has("ensureRuntimeReady")) {
     bridge.ensureRuntimeReady = async (ctx) => {
@@ -668,16 +688,27 @@ function createRemoteAppBridge(
   }
   if (hookSet.has("collectLaunchDiagnostics")) {
     bridge.collectLaunchDiagnostics = async (ctx) =>
-      ((await call(ctx.runtime, "collectLaunchDiagnostics", ctx)).result ??
-        []) as never;
+      requireRemoteLaunchDiagnostics(
+        (await call(ctx.runtime, "collectLaunchDiagnostics", ctx)).result,
+        moduleId,
+        "collectLaunchDiagnostics",
+      );
   }
   if (hookSet.has("resolveLaunchSession")) {
     bridge.resolveLaunchSession = async (ctx) =>
-      (await call(ctx.runtime, "resolveLaunchSession", ctx)).result as never;
+      requireRemoteLaunchSession(
+        (await call(ctx.runtime, "resolveLaunchSession", ctx)).result,
+        moduleId,
+        "resolveLaunchSession",
+      );
   }
   if (hookSet.has("refreshRunSession")) {
     bridge.refreshRunSession = async (ctx) =>
-      (await call(ctx.runtime, "refreshRunSession", ctx)).result as never;
+      requireRemoteLaunchSession(
+        (await call(ctx.runtime, "refreshRunSession", ctx)).result,
+        moduleId,
+        "refreshRunSession",
+      );
   }
   if (hookSet.has("stopRun")) {
     bridge.stopRun = async (ctx: unknown) => {
@@ -795,26 +826,34 @@ async function callRemoteAppRoutes(
     })
   ).result;
 
-  if (!result || typeof result !== "object" || Array.isArray(result)) {
+  if (!isJsonObject(result)) {
+    throw remoteDecodeError(
+      moduleId,
+      "handleAppRoutes",
+      "returned a non-object route response",
+    );
+  }
+
+  if (result.handled === false) {
     return false;
   }
 
-  const response = result as JsonObject;
-  if (response.handled !== true) {
-    return false;
+  if (result.handled !== true) {
+    throw remoteDecodeError(
+      moduleId,
+      "handleAppRoutes",
+      "must return handled: true or handled: false",
+    );
   }
 
+  const status = requireRemoteRouteStatus(result.status, moduleId);
   const headers = sanitizeRemoteRouteResponseHeaders(
-    toStringRecord(response.headers),
+    requireRemoteRouteHeaders(result.headers, moduleId),
   );
   for (const [key, value] of Object.entries(headers)) {
     ctx.res.setHeader(key, value);
   }
-  const status =
-    typeof response.status === "number" && Number.isInteger(response.status)
-      ? response.status
-      : 200;
-  const responseBody = response.body;
+  const responseBody = result.body;
   if (
     responseBody !== undefined &&
     responseBody !== null &&
@@ -2188,6 +2227,232 @@ function requireCapabilityRouterFromNullable(
   return requireCapabilityRouter(runtime);
 }
 
+function remoteDecodeError(
+  moduleId: string,
+  hook: string,
+  reason: string,
+): CapabilityError {
+  return new CapabilityError({
+    code: "CAPABILITY_DECODE_FAILED",
+    message: `Remote plugin "${moduleId}" ${hook} ${reason}.`,
+    capability: "plugin",
+    method: `plugin.${hook}`,
+  });
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function requireRemoteEvaluatorProcessResult(
+  result: JsonObject | undefined,
+  moduleId: string,
+  evaluatorName: string,
+): ActionResult | undefined {
+  if (result === undefined) return undefined;
+  if (typeof result.success !== "boolean") {
+    throw remoteDecodeError(
+      moduleId,
+      `evaluator.${evaluatorName}.process`,
+      "returned an action result without boolean success",
+    );
+  }
+  return result as unknown as ActionResult;
+}
+
+function requireRemoteResponseHandlerPatch(
+  patch: JsonObject | undefined,
+  moduleId: string,
+  evaluatorName: string,
+): JsonObject | undefined {
+  if (patch === undefined) return undefined;
+  const validators: Record<string, (value: JsonValue) => boolean> = {
+    processMessage: isJsonObject,
+    requiresTool: (value) => typeof value === "boolean",
+    setContexts: isJsonObjectArray,
+    addContexts: isJsonObjectArray,
+    addCandidateActions: isStringArray,
+    addParentActionHints: isStringArray,
+    addContextSlices: isStringArray,
+    clearCandidateActions: (value) => typeof value === "boolean",
+    clearParentActionHints: (value) => typeof value === "boolean",
+    deterministicToolCall: isJsonObject,
+    clearReply: (value) => typeof value === "boolean",
+    reply: (value) => typeof value === "string",
+    debug: isStringArray,
+  };
+  for (const [key, value] of Object.entries(patch)) {
+    const validate = validators[key];
+    if (!validate) {
+      throw remoteDecodeError(
+        moduleId,
+        `responseHandler.${evaluatorName}.evaluate`,
+        `returned unknown patch field "${key}"`,
+      );
+    }
+    if (!validate(value)) {
+      throw remoteDecodeError(
+        moduleId,
+        `responseHandler.${evaluatorName}.evaluate`,
+        `returned invalid patch field "${key}"`,
+      );
+    }
+  }
+  return patch;
+}
+
+function requireRemoteLaunchPreparation(
+  result: JsonValue | undefined,
+  moduleId: string,
+  hook: string,
+): PluginAppLaunchPreparation | null {
+  if (result === null) return null;
+  if (!isJsonObject(result)) {
+    throw remoteDecodeError(moduleId, hook, "returned invalid launch data");
+  }
+  if (
+    result.launchUrl !== undefined &&
+    result.launchUrl !== null &&
+    typeof result.launchUrl !== "string"
+  ) {
+    throw remoteDecodeError(moduleId, hook, "returned invalid launchUrl");
+  }
+  if (
+    result.viewer !== undefined &&
+    result.viewer !== null &&
+    !isJsonObject(result.viewer)
+  ) {
+    throw remoteDecodeError(moduleId, hook, "returned invalid viewer");
+  }
+  if (result.diagnostics !== undefined) {
+    requireRemoteLaunchDiagnostics(result.diagnostics, moduleId, hook);
+  }
+  return result as unknown as PluginAppLaunchPreparation;
+}
+
+function requireRemoteViewerAuthMessage(
+  result: JsonValue | undefined,
+  moduleId: string,
+  hook: string,
+): PluginAppViewerAuthMessage | null {
+  if (result === null) return null;
+  if (!isJsonObject(result)) {
+    throw remoteDecodeError(
+      moduleId,
+      hook,
+      "returned invalid viewer auth message",
+    );
+  }
+  return result as unknown as PluginAppViewerAuthMessage;
+}
+
+function requireRemoteLaunchDiagnostics(
+  result: JsonValue | undefined,
+  moduleId: string,
+  hook: string,
+): PluginAppLaunchDiagnostic[] {
+  if (result === undefined) {
+    throw remoteDecodeError(moduleId, hook, "returned no diagnostics payload");
+  }
+  if (!Array.isArray(result)) {
+    throw remoteDecodeError(moduleId, hook, "returned non-array diagnostics");
+  }
+  for (const diagnostic of result) {
+    if (!isJsonObject(diagnostic)) {
+      throw remoteDecodeError(moduleId, hook, "returned invalid diagnostic");
+    }
+    if (
+      typeof diagnostic.code !== "string" ||
+      typeof diagnostic.message !== "string" ||
+      !(
+        diagnostic.severity === "info" ||
+        diagnostic.severity === "warning" ||
+        diagnostic.severity === "error"
+      )
+    ) {
+      throw remoteDecodeError(moduleId, hook, "returned invalid diagnostic");
+    }
+  }
+  return result as unknown as PluginAppLaunchDiagnostic[];
+}
+
+function requireRemoteLaunchSession(
+  result: JsonValue | undefined,
+  moduleId: string,
+  hook: string,
+): PluginAppSessionState | null {
+  if (result === null) return null;
+  if (!isJsonObject(result)) {
+    throw remoteDecodeError(moduleId, hook, "returned invalid session");
+  }
+  for (const key of ["sessionId", "appName", "mode", "status"]) {
+    if (typeof result[key] !== "string") {
+      throw remoteDecodeError(moduleId, hook, `returned invalid ${key}`);
+    }
+  }
+  return result as unknown as PluginAppSessionState;
+}
+
+function requireRemoteRouteStatus(
+  status: JsonValue | undefined,
+  moduleId: string,
+): number {
+  if (status === undefined) return 200;
+  if (
+    typeof status !== "number" ||
+    !Number.isInteger(status) ||
+    status < 100 ||
+    status > 599
+  ) {
+    throw remoteDecodeError(
+      moduleId,
+      "handleAppRoutes",
+      "returned invalid status",
+    );
+  }
+  return status;
+}
+
+function requireRemoteRouteHeaders(
+  headers: JsonValue | undefined,
+  moduleId: string,
+): Record<string, string> {
+  if (headers === undefined) return {};
+  if (!isJsonObject(headers)) {
+    throw remoteDecodeError(
+      moduleId,
+      "handleAppRoutes",
+      "returned invalid headers",
+    );
+  }
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (
+      typeof value !== "string" &&
+      typeof value !== "number" &&
+      typeof value !== "boolean"
+    ) {
+      throw remoteDecodeError(
+        moduleId,
+        "handleAppRoutes",
+        `returned invalid header "${key}"`,
+      );
+    }
+    result[key] = String(value);
+  }
+  return result;
+}
+
+function isStringArray(value: JsonValue): boolean {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
+function isJsonObjectArray(value: JsonValue): boolean {
+  return Array.isArray(value) && value.every(isJsonObject);
+}
+
 function toJsonObject(value: unknown): JsonObject | undefined {
   const json = toJsonValue(value);
   if (json && typeof json === "object" && !Array.isArray(json)) {
@@ -2337,21 +2602,6 @@ function sanitizeRemoteRouteResponseHeaders<
     result[key] = value;
   }
   return result as T;
-}
-
-function toStringRecord(value: JsonValue | undefined): Record<string, string> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  const result: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry === "string") {
-      result[key] = entry;
-    } else if (typeof entry === "number" || typeof entry === "boolean") {
-      result[key] = String(entry);
-    }
-  }
-  return result;
 }
 
 function toJsonValue(value: unknown): JsonValue | undefined {

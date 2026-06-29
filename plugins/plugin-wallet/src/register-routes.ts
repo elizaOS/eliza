@@ -9,3 +9,5 @@ registerAppRoutePluginLoader("@elizaos/plugin-wallet:routes", async () => {
   const { walletRoutePlugin } = await import("./routes/plugin");
   return walletRoutePlugin;
 });
+
+export const walletRouteRegistration = true;

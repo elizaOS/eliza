@@ -64,7 +64,7 @@ describe("index.html local-agent fetch bridge", () => {
     const { agentRequest, originalFetch } = createHarness("web");
 
     const response = await window.fetch(
-      "http://127.0.0.1:31337/api/vincent/status",
+      "http://127.0.0.1:31337/api/wallet/config",
     );
 
     expect(await response.text()).toBe("original");
@@ -77,7 +77,7 @@ describe("index.html local-agent fetch bridge", () => {
     const { agentRequest, originalFetch } = createHarness("ios");
 
     const response = await window.fetch(
-      "http://127.0.0.1:31337/api/vincent/status?x=1",
+      "http://127.0.0.1:31337/api/wallet/config?x=1",
     );
 
     expect(await response.text()).toBe("bridged");
@@ -85,7 +85,7 @@ describe("index.html local-agent fetch bridge", () => {
     expect(originalFetch).not.toHaveBeenCalled();
     expect(agentRequest).toHaveBeenCalledWith({
       method: "GET",
-      path: "/api/vincent/status?x=1",
+      path: "/api/wallet/config?x=1",
       headers: {},
       body: null,
     });
@@ -94,12 +94,12 @@ describe("index.html local-agent fetch bridge", () => {
   it("continues to bridge explicit IPC URLs on every platform", async () => {
     const { agentRequest, originalFetch } = createHarness("web");
 
-    await window.fetch("eliza-local-agent://ipc/api/vincent/status");
+    await window.fetch("eliza-local-agent://ipc/api/wallet/config");
 
     expect(originalFetch).not.toHaveBeenCalled();
     expect(agentRequest).toHaveBeenCalledWith({
       method: "GET",
-      path: "/api/vincent/status",
+      path: "/api/wallet/config",
       headers: {},
       body: null,
     });
@@ -110,7 +110,7 @@ describe("index.html local-agent fetch bridge", () => {
       throw new Error("platform unavailable");
     });
 
-    await window.fetch("http://127.0.0.1:31337/api/vincent/status");
+    await window.fetch("http://127.0.0.1:31337/api/wallet/config");
 
     expect(originalFetch).toHaveBeenCalledTimes(1);
     expect(agentRequest).not.toHaveBeenCalled();

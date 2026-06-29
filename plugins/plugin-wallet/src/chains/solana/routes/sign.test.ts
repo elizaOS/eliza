@@ -73,6 +73,11 @@ describe("Solana browser signing routes", () => {
     walletBackendMocks.resolveWalletBackend.mockReset();
   });
 
+  it("does not mark browser signing routes as public", () => {
+    expect(solanaSignRoutes).toHaveLength(6);
+    expect(solanaSignRoutes.every((candidate) => candidate.public !== true)).toBe(true);
+  });
+
   it("closes the surface when the signing token is missing or too short", async () => {
     for (const token of [null, "short-token"]) {
       const response = res();

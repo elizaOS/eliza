@@ -65,6 +65,7 @@ const AGENT_REPLY_TIMEOUT_MS = 60_000;
 
 /** The catalog surface this bridge serves. */
 const DISCORD_SURFACE = "discord";
+const DISCORD_EMBED_COMMAND = "app";
 
 /**
  * Map a Discord interaction onto the runtime entity / room the rest of the
@@ -127,6 +128,67 @@ export async function resolveDiscordSenderAuth(
 		isAuthorized: isOwner,
 		isElevated: isAdmin,
 		senderName: interaction.user.username,
+	};
+}
+
+export function resolveDiscordEmbedUrl(runtime: IAgentRuntime): string | null {
+	const configured = [
+		runtime.getSetting?.("DISCORD_EMBED_URL"),
+		runtime.getSetting?.("ELIZA_EMBED_URL"),
+		process.env.DISCORD_EMBED_URL,
+		process.env.ELIZA_EMBED_URL,
+		process.env.ELIZA_APP_URL,
+	].find(
+		(value): value is string =>
+			typeof value === "string" && value.trim().length > 0,
+	);
+	if (!configured) return null;
+	try {
+		const url = new URL(configured.trim());
+		if (url.protocol !== "https:") return null;
+		if (url.pathname === "/" || url.pathname === "") url.pathname = "/embed";
+		url.searchParams.set("platform", "discord");
+		return url.toString();
+	} catch {
+		return null;
+	}
+}
+
+export function buildDiscordEmbedCommand(): SlashCommand {
+	return {
+		name: DISCORD_EMBED_COMMAND,
+		description: "Open the Eliza app from Discord.",
+		execute: async (interaction, runtime) => {
+			const sender = await resolveDiscordSenderAuth(interaction, runtime);
+			if (!sender.isAuthorized && !sender.isElevated) {
+				await safeInteractionCall(() =>
+					interaction.reply({
+						content:
+							"Opening the Eliza app from Discord requires OWNER or ADMIN access.",
+						ephemeral: true,
+					}),
+				);
+				return;
+			}
+
+			const embedUrl = resolveDiscordEmbedUrl(runtime);
+			if (!embedUrl) {
+				await safeInteractionCall(() =>
+					interaction.reply({
+						content: "The Eliza embedded app URL is not configured.",
+						ephemeral: true,
+					}),
+				);
+				return;
+			}
+
+			await safeInteractionCall(() =>
+				interaction.reply({
+					content: `Open the Eliza app: ${embedUrl}`,
+					ephemeral: true,
+				}),
+			);
+		},
 	};
 }
 
@@ -392,7 +454,13 @@ export function registerCatalogSlashCommands(
 ): SlashCommand[] {
 	const existingNames = new Set(getRegisteredCommands().keys());
 	const commands = buildCatalogSlashCommands(existingNames, runtime.agentId);
+	if (!existingNames.has(DISCORD_EMBED_COMMAND)) {
+		const embedCommand = buildDiscordEmbedCommand();
+		addCommand(embedCommand);
+		commands.unshift(embedCommand);
+	}
 	for (const command of commands) {
+		if (command.name === DISCORD_EMBED_COMMAND) continue;
 		addCommand(command);
 	}
 	runtime.logger.info(

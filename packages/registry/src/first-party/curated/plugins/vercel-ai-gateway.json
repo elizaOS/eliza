@@ -20,7 +20,8 @@
       "sensitive": true,
       "label": "Api Key",
       "help": "Alternate env var for AI Gateway API key.",
-      "advanced": false
+      "advanced": false,
+      "autoEnableProvider": true
     },
     "VERCEL_OIDC_TOKEN": {
       "type": "secret",
@@ -36,7 +37,8 @@
       "sensitive": true,
       "label": "Gateway Api Key",
       "help": "API key for Vercel AI Gateway (OpenAI-compatible endpoints).",
-      "advanced": false
+      "advanced": false,
+      "autoEnableProvider": true
     },
     "AI_GATEWAY_BASE_URL": {
       "type": "url",

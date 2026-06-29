@@ -39,11 +39,14 @@ describe("public:true route allowlist (#9948)", () => {
     ).toEqual([]);
   });
 
-  it("finds the known wallet signing routes (scanner sanity)", () => {
+  it("finds a known public route (scanner sanity)", () => {
+    // The content-addressed media route is served pre-auth by design (the
+    // sha256 hash is the capability), so it is a stable anchor proving the
+    // scanner detects real `public: true` routes.
     const keys = scanPublicRoutes().map(publicRouteKey);
     expect(
-      keys.some((k) => k.includes("/wallet/evm/personal-sign")),
-      "scanner should detect the wallet personal-sign public route",
+      keys.some((k) => k.includes("/api/media/:filename")),
+      "scanner should detect the pre-auth media route",
     ).toBe(true);
   });
 });

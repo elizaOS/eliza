@@ -1,0 +1,72 @@
+{
+  "id": "zai",
+  "name": "z.ai",
+  "description": "z.ai model provider for text generation.",
+  "npmName": "@elizaos/plugin-zai",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["ai-provider", "llm", "zai", "z.ai", "glm"],
+  "config": {
+    "ZAI_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "z.ai API Key",
+      "help": "Primary API key for z.ai model requests.",
+      "advanced": false,
+      "autoEnableProvider": true
+    },
+    "Z_AI_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Legacy z.ai API Key",
+      "help": "Legacy API key alias accepted when ZAI_API_KEY is absent.",
+      "advanced": true,
+      "autoEnableProvider": true
+    },
+    "ZAI_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://api.z.ai/api/paas/v4",
+      "label": "z.ai Base URL",
+      "help": "Base URL for z.ai OpenAI-compatible API requests.",
+      "advanced": true
+    },
+    "ZAI_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "glm-4.5-air",
+      "label": "Small Model",
+      "help": "Model identifier for TEXT_SMALL.",
+      "advanced": false
+    },
+    "ZAI_LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "glm-5.1",
+      "label": "Large Model",
+      "help": "Model identifier for TEXT_LARGE.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Brain",
+    "group": "models",
+    "groupOrder": 10,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://z.ai",
+    "repository": "https://github.com/elizaOS/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}

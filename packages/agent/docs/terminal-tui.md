@@ -45,12 +45,15 @@ is gated by `isTerminalTuiEnabled()` (`src/tui/tui-enabled.ts`):
 - Otherwise it auto-enables only when **both** `stdin` and `stdout` are TTYs and
   the process is not running under `CI`/`NODE_ENV=test`.
 
-## Transport and the loopback trust boundary
+## Transport, auth, and the loopback trust boundary
 
-The TUI client (`readJson` in `agent-terminal-tui.ts`) sends **only**
-`Content-Type: application/json` — there is no `Authorization`/`Bearer` token.
-It works because it hits `127.0.0.1`, which the backend treats as trusted via
-`isTrustedLocalRequest`.
+The TUI client (`readJson` in `agent-terminal-tui.ts`) always sends
+`Content-Type: application/json`. When `ELIZA_API_TOKEN` is set in the TUI
+process, it also sends `Authorization: Bearer <ELIZA_API_TOKEN>`, which is the
+same token key the backend's `isAuthorized` path validates.
+
+Without `ELIZA_API_TOKEN`, local sessions work because the client hits
+`127.0.0.1`, which the backend treats as trusted via `isTrustedLocalRequest`.
 
 That trust gate is **disabled when `X-Forwarded-For` is present** (see
 `src/api/server-helpers-auth-trust.test.ts`) — i.e. through any reverse proxy or
@@ -59,14 +62,14 @@ tunnel. The default API bind host is also `127.0.0.1`
 **loopback-only by construction**:
 
 - It is safe to run on the same host as the backend with no auth.
-- It will **not** work end-to-end through a proxy/tunnel that injects
-  `X-Forwarded-For`, because the loopback trust the client depends on is dropped
-  there and the client carries no token to fall back on.
+- It can work through a proxy/tunnel only when the TUI process has
+  `ELIZA_API_TOKEN` set to a token accepted by the backend.
+- It will **not** work end-to-end through a proxy/tunnel with no token when that
+  proxy injects `X-Forwarded-For`, because the loopback trust the client depends
+  on is dropped there.
 
-If a token-authenticated remote terminal is ever required, it must add an
-`Authorization` header to `readJson` and mint a local token — do **not** rely on
-the `X-Forwarded-For`-fragile loopback gate, and do **not** add an `sshd` to the
-agent.
+Do **not** rely on the `X-Forwarded-For`-fragile loopback gate for remote access,
+and do **not** add an `sshd` to the agent.
 
 ## How a registered terminal view reaches the screen
 

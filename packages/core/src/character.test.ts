@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import * as characterModule from "./character";
 import { normalizeCharacterInput } from "./character";
 
 describe("normalizeCharacterInput", () => {
@@ -15,5 +18,15 @@ describe("normalizeCharacterInput", () => {
 				item.item.case === "path" ? item.item.value : null,
 			),
 		).toEqual(["./documents/current.md", "./knowledge/legacy.md"]);
+	});
+
+	it("does not own provider plugin auto-enable rules", () => {
+		expect("buildCharacterPlugins" in characterModule).toBe(false);
+
+		const source = readFileSync(
+			resolve(import.meta.dirname, "character.ts"),
+			"utf8",
+		);
+		expect(source).not.toContain("@elizaos/plugin-");
 	});
 });

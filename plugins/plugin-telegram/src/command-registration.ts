@@ -71,6 +71,7 @@ const TELEGRAM_MESSAGE_MAX = 4096;
 /** The catalog surface this bridge serves. */
 const TELEGRAM_SURFACE = "telegram";
 const DEFAULT_ACCOUNT_ID = "default";
+const TELEGRAM_EMBED_COMMAND = "app";
 
 /** A catalog command projected onto Telegram's native command surface. */
 export interface TelegramCommandDescriptor {
@@ -162,6 +163,29 @@ function firstCommandArg(text: string): string | undefined {
 
 function messageText(ctx: Context): string {
   return ctx.message && "text" in ctx.message ? ctx.message.text : "";
+}
+
+export function resolveTelegramEmbedUrl(runtime: IAgentRuntime): string | null {
+  const configured = [
+    runtime.getSetting?.("TELEGRAM_EMBED_URL"),
+    runtime.getSetting?.("ELIZA_EMBED_URL"),
+    process.env.TELEGRAM_EMBED_URL,
+    process.env.ELIZA_EMBED_URL,
+    process.env.ELIZA_APP_URL,
+  ].find(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
+  );
+  if (!configured) return null;
+  try {
+    const url = new URL(configured.trim());
+    if (url.protocol !== "https:") return null;
+    if (url.pathname === "/" || url.pathname === "") url.pathname = "/embed";
+    url.searchParams.set("platform", "telegram");
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -329,6 +353,41 @@ function buildCommandHandler(
   };
 }
 
+function registerTelegramEmbedCommand(
+  bot: Telegraf<Context>,
+  runtime: IAgentRuntime,
+  accountId: string,
+): void {
+  bot.command(TELEGRAM_EMBED_COMMAND, async (ctx) => {
+    const sender = await resolveTelegramSenderAuth(ctx, runtime, accountId);
+    if (!sender.isAuthorized && !sender.isElevated) {
+      await ctx.reply(
+        "Opening the Eliza app from Telegram requires OWNER or ADMIN access.",
+      );
+      return;
+    }
+
+    const embedUrl = resolveTelegramEmbedUrl(runtime);
+    if (!embedUrl) {
+      await ctx.reply("The Eliza embedded app URL is not configured.");
+      return;
+    }
+
+    await ctx.reply("Open the Eliza app.", {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "Open Eliza",
+              web_app: { url: embedUrl },
+            },
+          ],
+        ],
+      },
+    });
+  });
+}
+
 /**
  * Register Telegraf `bot.command(...)` handlers for every catalog command.
  * Returns the registered descriptors (the caller reads `.length`). Each handler
@@ -341,6 +400,7 @@ export function registerTelegramCommandHandlers(
   accountId: string,
 ): TelegramCommandDescriptor[] {
   const descriptors = buildTelegramCommandDescriptors(runtime.agentId);
+  registerTelegramEmbedCommand(bot, runtime, accountId);
   for (const descriptor of descriptors) {
     const handler = buildCommandHandler(
       descriptor,

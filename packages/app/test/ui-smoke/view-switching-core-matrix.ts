@@ -18,6 +18,7 @@ export const REQUIRED_CORE_VIEW_IDS = [
   "character",
   "settings",
   "tasks",
+  "automations",
   "orchestrator",
   "transcripts",
   "wallet",
@@ -92,6 +93,13 @@ export const CORE_VIEW_SWITCH_TARGETS: readonly CoreViewSwitchTarget[] = [
     path: "/apps/tasks",
     kind: "core-view",
     readySelector: '[data-testid="tasks-view"]',
+  },
+  {
+    id: "automations",
+    label: "Automations",
+    path: "/automations",
+    kind: "core-view",
+    readySelector: '[data-testid="automations-shell"]',
   },
   {
     id: "orchestrator",

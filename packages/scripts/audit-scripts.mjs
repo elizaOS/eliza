@@ -132,6 +132,14 @@ function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
+function readTextIfReadable(file) {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 function isExcluded(relPath) {
   const norm = relPath.split(path.sep).join("/");
   return EXCLUDED_SUBTREES.some(
@@ -171,7 +179,7 @@ function collectPackageJsons(root) {
 function buildReferenceCorpus(root) {
   const chunks = [];
   walk(path.join(root, ".github", "workflows"), (file) => {
-    if (/\.(ya?ml)$/.test(file)) chunks.push(readFileSync(file, "utf8"));
+    if (/\.(ya?ml)$/.test(file)) chunks.push(readTextIfReadable(file));
   });
   // Every package.json's script bodies (no exclusions — broad reference coverage).
   const seenPkg = new Set([path.join(root, "package.json")]);
@@ -187,21 +195,21 @@ function buildReferenceCorpus(root) {
   }
   for (const base of ["docs", "packages", "plugins", "apps", ".github"]) {
     walk(path.join(root, base), (file) => {
-      if (file.endsWith(".md")) chunks.push(readFileSync(file, "utf8"));
+      if (file.endsWith(".md")) chunks.push(readTextIfReadable(file));
     });
   }
   walk(path.join(root, "scripts"), (file) => {
     if (/\.(mjs|cjs|js|ts|mts|cts)$/.test(file))
-      chunks.push(readFileSync(file, "utf8"));
+      chunks.push(readTextIfReadable(file));
   });
   walk(path.join(root, "packages", "scripts"), (file) => {
     if (/\.(mjs|cjs|js|ts|mts|cts)$/.test(file))
-      chunks.push(readFileSync(file, "utf8"));
+      chunks.push(readTextIfReadable(file));
   });
   // Root-level docs (README, AGENTS, CLAUDE, …) without recursing into packages.
   for (const entry of readdirSync(root)) {
     if (entry.endsWith(".md"))
-      chunks.push(readFileSync(path.join(root, entry), "utf8"));
+      chunks.push(readTextIfReadable(path.join(root, entry)));
   }
   return chunks.join("\n");
 }

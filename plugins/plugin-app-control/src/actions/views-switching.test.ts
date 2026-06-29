@@ -437,7 +437,7 @@ describe("view switching — VIEWS action resolver", () => {
 					label: "Notes",
 					description: "Simple notes",
 					path: "/notes",
-					pluginName: "@elizaos/plugin-simple-views",
+					pluginName: "@elizaos/plugin-shopify",
 					available: true,
 					viewType: "gui",
 					tags: ["notes"],

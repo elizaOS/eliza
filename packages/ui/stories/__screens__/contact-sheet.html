@@ -24,7 +24,7 @@
   <h1>Registered plugin views — one view, three surfaces</h1>
   <p class="meta">33 views. Each is authored once and rendered to GUI (DOM), XR (scaled DOM), and TUI (real terminal lines). Per-view verdict stubs under <code>review/</code>.</p>
 </header>
-<nav><a href="#calendar">calendar</a><a href="#clawville">clawville</a><a href="#companion">companion</a><a href="#contacts">contacts</a><a href="#defense-of-the-agents">defense-of-the-agents</a><a href="#documents">documents</a><a href="#facewear">facewear</a><a href="#feed">feed</a><a href="#finances">finances</a><a href="#focus">focus</a><a href="#goals">goals</a><a href="#health">health</a><a href="#hyperliquid">hyperliquid</a><a href="#inbox">inbox</a><a href="#messages">messages</a><a href="#model-tester">model-tester</a><a href="#orchestrator">orchestrator</a><a href="#phone">phone</a><a href="#polymarket">polymarket</a><a href="#relationships">relationships</a><a href="#screenshare">screenshare</a><a href="#shopify">shopify</a><a href="#social-alpha">social-alpha</a><a href="#steward">steward</a><a href="#todos">todos</a><a href="#training">training</a><a href="#trajectory-logger">trajectory-logger</a><a href="#vector-browser">vector-browser</a><a href="#views-manager">views-manager</a><a href="#vincent">vincent</a><a href="#waifu-imagegen">waifu-imagegen</a><a href="#waifu-swap">waifu-swap</a><a href="#wallet">wallet</a></nav>
+<nav><a href="#calendar">calendar</a><a href="#companion">companion</a><a href="#contacts">contacts</a><a href="#documents">documents</a><a href="#facewear">facewear</a><a href="#feed">feed</a><a href="#finances">finances</a><a href="#focus">focus</a><a href="#goals">goals</a><a href="#health">health</a><a href="#hyperliquid">hyperliquid</a><a href="#inbox">inbox</a><a href="#messages">messages</a><a href="#model-tester">model-tester</a><a href="#orchestrator">orchestrator</a><a href="#phone">phone</a><a href="#polymarket">polymarket</a><a href="#relationships">relationships</a><a href="#screenshare">screenshare</a><a href="#shopify">shopify</a><a href="#social-alpha">social-alpha</a><a href="#steward">steward</a><a href="#todos">todos</a><a href="#training">training</a><a href="#trajectory-logger">trajectory-logger</a><a href="#vector-browser">vector-browser</a><a href="#views-manager">views-manager</a><a href="#wallet">wallet</a></nav>
 
   <section class="view" id="calendar">
     <h2>calendar</h2>
@@ -49,45 +49,6 @@
 ╰──────────────────────────────────────────────────────╯</pre></figure>
     </div>
     <p class="review">verdict: <a href="review/calendar.md">review/calendar.md</a></p>
-  </section>
-
-  <section class="view" id="clawville">
-    <h2>clawville</h2>
-    <div class="row">
-      <figure><figcaption>GUI</figcaption><img src="gui/clawville.png" loading="lazy" alt="clawville gui"></figure>
-      <figure><figcaption>XR</figcaption><img src="xr/clawville.png" loading="lazy" alt="clawville xr"></figure>
-      <figure class="tui"><figcaption>TUI (56 cols)</figcaption><pre>0         1         2         3         4         5     
-01234567890123456789012345678901234567890123456789012345
-╭─ ClawVille ──────────────────────────────────────────╮
-│                                                      │
-│ starting                             commands locked │
-│                                                      │
-│ ────────────────────── status ────────────────────── │
-│                                                      │
-│ run                                             none │
-│ location                                    the reef │
-│ learned                                            0 │
-│                                                      │
-│ Near the reef                                        │
-│                                                      │
-│ ───────────────────── commands ───────────────────── │
-│                                                      │
-│                No commands available                 │
-│                                                      │
-│ ───────────────────── compose ────────────────────── │
-│                                                      │
-│ ClawVille command                                    │
-│ ›                                                    │
-│                                                      │
-│ [ Send command ]                                     │
-│                                                      │
-│ ────────────────────── events ────────────────────── │
-│                                                      │
-│                    No events yet                     │
-│                                                      │
-╰──────────────────────────────────────────────────────╯</pre></figure>
-    </div>
-    <p class="review">verdict: <a href="review/clawville.md">review/clawville.md</a></p>
   </section>
 
   <section class="view" id="companion">
@@ -155,47 +116,6 @@
 ╰──────────────────────────────────────────────────────╯</pre></figure>
     </div>
     <p class="review">verdict: <a href="review/contacts.md">review/contacts.md</a></p>
-  </section>
-
-  <section class="view" id="defense-of-the-agents">
-    <h2>defense-of-the-agents</h2>
-    <div class="row">
-      <figure><figcaption>GUI</figcaption><img src="gui/defense-of-the-agents.png" loading="lazy" alt="defense-of-the-agents gui"></figure>
-      <figure><figcaption>XR</figcaption><img src="xr/defense-of-the-agents.png" loading="lazy" alt="defense-of-the-agents xr"></figure>
-      <figure class="tui"><figcaption>TUI (56 cols)</figcaption><pre>0         1         2         3         4         5     
-01234567890123456789012345678901234567890123456789012345
-╭─ Defense of the Agents ──────────────────────────────╮
-│                                                      │
-│ idle                                   relay syncing │
-│                                                      │
-│ no live match                                        │
-│                                                      │
-│ ─────────────────────── hero ─────────────────────── │
-│                                                      │
-│ Not deployed                                         │
-│                                                      │
-│ manual                                               │
-│                                                      │
-│ ───────────────────── commands ───────────────────── │
-│                                                      │
-│ [ Autoplay off ]                          [ Recall ] │
-│                                                      │
-│ [ top ]          [ mid ]          [ bot ]            │
-│                                                      │
-│ ───────────────────── compose ────────────────────── │
-│                                                      │
-│ Defense command                                      │
-│ ›                                                    │
-│                                                      │
-│ [ Send command ]                                     │
-│                                                      │
-│ ────────────────────── events ────────────────────── │
-│                                                      │
-│                 No match events yet                  │
-│                                                      │
-╰──────────────────────────────────────────────────────╯</pre></figure>
-    </div>
-    <p class="review">verdict: <a href="review/defense-of-the-agents.md">review/defense-of-the-agents.md</a></p>
   </section>
 
   <section class="view" id="documents">
@@ -840,95 +760,6 @@
 ╰──────────────────────────────────────────────────────╯</pre></figure>
     </div>
     <p class="review">verdict: <a href="review/views-manager.md">review/views-manager.md</a></p>
-  </section>
-
-  <section class="view" id="vincent">
-    <h2>vincent</h2>
-    <div class="row">
-      <figure><figcaption>GUI</figcaption><img src="gui/vincent.png" loading="lazy" alt="vincent gui"></figure>
-      <figure><figcaption>XR</figcaption><img src="xr/vincent.png" loading="lazy" alt="vincent xr"></figure>
-      <figure class="tui"><figcaption>TUI (56 cols)</figcaption><pre>0         1         2         3         4         5     
-01234567890123456789012345678901234567890123456789012345
-╭─ Vincent ────────────────────────────────────────────╮
-│                                                      │
-│ disconnected                                 trading │
-│                                                      │
-│ ────────────────────── access ────────────────────── │
-│                                                      │
-│ Connect Vincent to trade on Hyperliquid and          │
-│ Polymarket.                                          │
-│                                                      │
-│ [ Connect ]                              [ Refresh ] │
-│                                                      │
-│ ───────────────────── strategy ───────────────────── │
-│                                                      │
-│                No strategy configured                │
-│                                                      │
-╰──────────────────────────────────────────────────────╯</pre></figure>
-    </div>
-    <p class="review">verdict: <a href="review/vincent.md">review/vincent.md</a></p>
-  </section>
-
-  <section class="view" id="waifu-imagegen">
-    <h2>waifu-imagegen</h2>
-    <div class="row">
-      <figure><figcaption>GUI</figcaption><img src="gui/waifu-imagegen.png" loading="lazy" alt="waifu-imagegen gui"></figure>
-      <figure><figcaption>XR</figcaption><img src="xr/waifu-imagegen.png" loading="lazy" alt="waifu-imagegen xr"></figure>
-      <figure class="tui"><figcaption>TUI (56 cols)</figcaption><pre>0         1         2         3         4         5     
-01234567890123456789012345678901234567890123456789012345
-╭─ Image Generation ───────────────────────────────────╮
-│                                                      │
-│ credits-settled                           markup n/a │
-│                                                      │
-│ ────────────────────── prompt ────────────────────── │
-│                                                      │
-│ prompt                                               │
-│ ›                                                    │
-│                                                      │
-│ model    openai/gpt-image-2/text-to-image aspect 1:1 │
-│                                                      │
-│ [ Generate ]                                         │
-│                                                      │
-│ ────────────────────── result ────────────────────── │
-│                                                      │
-│      no image yet — credits settle on generate       │
-│                                                      │
-╰──────────────────────────────────────────────────────╯</pre></figure>
-    </div>
-    <p class="review">verdict: <a href="review/waifu-imagegen.md">review/waifu-imagegen.md</a></p>
-  </section>
-
-  <section class="view" id="waifu-swap">
-    <h2>waifu-swap</h2>
-    <div class="row">
-      <figure><figcaption>GUI</figcaption><img src="gui/waifu-swap.png" loading="lazy" alt="waifu-swap gui"></figure>
-      <figure><figcaption>XR</figcaption><img src="xr/waifu-swap.png" loading="lazy" alt="waifu-swap xr"></figure>
-      <figure class="tui"><figcaption>TUI (56 cols)</figcaption><pre>0         1         2         3         4         5     
-01234567890123456789012345678901234567890123456789012345
-╭─ Swap ───────────────────────────────────────────────╮
-│                                                      │
-│ PancakeSwap v3                         slippage 0.5% │
-│                                                      │
-│ ─────────────────────── from ─────────────────────── │
-│                                                      │
-│ from                                                 │
-│ ▾                                                    │
-│                                                      │
-│ amount                                               │
-│ ›                                                    │
-│                                                      │
-│ ──────────────────────── to ──────────────────────── │
-│                                                      │
-│ to                                                   │
-│ ▾                                                    │
-│                                                      │
-│ enter an amount                                      │
-│                                                      │
-│ [ Swap ]                                             │
-│                                                      │
-╰──────────────────────────────────────────────────────╯</pre></figure>
-    </div>
-    <p class="review">verdict: <a href="review/waifu-swap.md">review/waifu-swap.md</a></p>
   </section>
 
   <section class="view" id="wallet">

@@ -16,20 +16,50 @@ declare global {
   interface Window {
     /** Set by the XR view-host (plugin-facewear / plugin-xr) inside a headset. */
     __elizaXRContext?: unknown;
+    /**
+     * The single shell-level modality owner (#9946). A shell sets this once
+     * (`setShellModality`) to declare which surface it presents; every leaf's
+     * `detectDomModality()` then reads it instead of each re-guessing, so the
+     * GUI/TUI/XR contract has one authoritative source. A headset (`__elizaXRContext`)
+     * still wins so the XR host is never overridden.
+     */
+    __elizaShellModality?: SpatialModality;
   }
 }
 
+function isSpatialModality(value: unknown): value is SpatialModality {
+  return value === "gui" || value === "tui" || value === "xr";
+}
+
 /**
- * Detect the active DOM modality (`gui` vs `xr`).
+ * Declare the shell-level presentation modality (#9946). Call once from the
+ * shell that owns the surface (e.g. `packages/app` mounts the GUI shell).
+ * Returns a disposer that restores the previous value.
+ */
+export function setShellModality(modality: SpatialModality): () => void {
+  if (typeof window === "undefined") return () => {};
+  const previous = window.__elizaShellModality;
+  window.__elizaShellModality = modality;
+  return () => {
+    window.__elizaShellModality = previous;
+  };
+}
+
+/**
+ * Detect the active DOM modality (`gui` / `tui` / `xr`).
  *
- * The XR view-host (`plugin-facewear` / `plugin-xr`) sets `window.__elizaXRContext`
- * when a view runs inside a headset — the same signal `getActiveViewModality()`
- * uses. Mirrored here (without importing `platform/` so the spatial barrel stays
- * Capacitor-free) so `<SpatialSurface>` picks the surface automatically.
+ * Order of authority: a headset (`__elizaXRContext`, set by plugin-facewear /
+ * plugin-xr) always wins; otherwise the shell-level owner (`__elizaShellModality`)
+ * decides; otherwise default to `gui`. This keeps the spatial barrel Capacitor-
+ * free while giving the modality contract a single shell-level source.
  */
 export function detectDomModality(): SpatialModality {
-  if (typeof window !== "undefined" && window.__elizaXRContext) {
+  if (typeof window === "undefined") return "gui";
+  if (window.__elizaXRContext) {
     return "xr";
+  }
+  if (isSpatialModality(window.__elizaShellModality)) {
+    return window.__elizaShellModality;
   }
   return "gui";
 }

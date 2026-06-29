@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -150,5 +151,20 @@ describe("__loadAppRoutePluginFromSpecifierForTest", () => {
     expect(
       plugin.routes?.some((route) => route.path === "/api/orchestrator/status"),
     ).toBe(true);
+  });
+});
+
+describe("app-core route plugin ownership boundary", () => {
+  it("does not hardcode first-party plugin route-loader fallbacks", () => {
+    const source = readFileSync(
+      path.resolve(import.meta.dirname, "eliza.ts"),
+      "utf8",
+    );
+
+    expect(source).not.toContain("@elizaos/plugin-workflow/plugin-routes");
+    expect(source).not.toContain("@elizaos/plugin-wallet/routes/plugin");
+    expect(source).not.toContain(
+      "@elizaos/plugin-agent-orchestrator/setup-routes",
+    );
   });
 });

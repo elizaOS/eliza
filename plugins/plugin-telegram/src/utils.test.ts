@@ -38,15 +38,19 @@ describe("convertToTelegramButtons", () => {
     const buttons: Button[] = [
       { kind: "url", text: "Open", url: "https://x.com" },
       { kind: "login", text: "Login", url: "https://x.com/auth" },
+      { kind: "web_app", text: "Launch app", url: "https://x.com/embed/app" },
       { kind: "url", text: "", url: "https://x.com" } as Button, // missing text → skipped
       { kind: "url", text: "NoUrl" } as Button, // missing url → skipped
     ];
     const out = convertToTelegramButtons(buttons);
-    expect(out).toHaveLength(2);
+    expect(out).toHaveLength(3);
     expect(out[0]).toMatchObject({ text: "Open", url: "https://x.com" });
     // login buttons carry a login_url object rather than a plain url.
     expect((out[1] as { login_url?: { url: string } }).login_url?.url).toBe(
       "https://x.com/auth",
+    );
+    expect((out[2] as { web_app?: { url: string } }).web_app?.url).toBe(
+      "https://x.com/embed/app",
     );
   });
 

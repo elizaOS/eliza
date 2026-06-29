@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   AGENT_API_PORT,
+  APP_ID,
   adbReverse,
   adbTry,
   isInstalled,
@@ -80,11 +81,12 @@ export default async function globalSetup() {
     "android.permission.RECORD_AUDIO",
     "android.permission.CAMERA",
   ]) {
-    adbTry(adb, ["-s", serial, "shell", "pm", "grant", "ai.elizaos.app", perm]);
+    adbTry(adb, ["-s", serial, "shell", "pm", "grant", APP_ID, perm]);
   }
 
   // host backend: route the device's loopback :31337 to the host agent.
   if (BACKEND === "host") {
+    adbTry(adb, ["-s", serial, "shell", "am", "force-stop", APP_ID]);
     adbReverse(adb, serial, AGENT_API_PORT, AGENT_API_PORT);
     console.log(
       `[android-e2e] host backend: adb reverse tcp:${AGENT_API_PORT} -> host:${AGENT_API_PORT}`,

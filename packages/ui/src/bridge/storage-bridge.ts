@@ -71,6 +71,8 @@ const SYNCED_KEYS = new Set([
   "eliza:ios-local-agent:eliza-1-bundles:v1",
   "eliza:ios-full-bun-smoke:request",
   "eliza:ios-full-bun-smoke:result",
+  "eliza:ios-onboarding-smoke:request",
+  "eliza:ios-onboarding-smoke:result",
 ]);
 
 // In-memory cache of values from Preferences (for native)

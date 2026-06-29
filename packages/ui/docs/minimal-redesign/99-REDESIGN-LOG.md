@@ -24,7 +24,7 @@ Verdicts: `good` · `needs-work` · `broken`. Newest at bottom.
 
 ## P2 — plugin sweep wave 2 (typecheck-verified)
 - **Steward** (ApprovalQueue, TransactionHistory): text Refresh → icon-only (16/16 tests pass).
-- Wallet-ui / Vincent / Screenshare / Model-tester: audited, already clean (icon refresh, functional chips, no restating subtitles). Model-tester category swatches kept (they distinguish presets).
+- Wallet-ui / Screenshare / Model-tester: audited, already clean (icon refresh, functional chips, no restating subtitles). Model-tester category swatches kept (they distinguish presets).
 
 ## P5 — e2e coverage
 - Added `packages/app/test/ui-smoke/builtin-views-visual.spec.ts`: screenshots every App.tsx-rendered builtin view (views/settings/plugins/character/automations/memories/database/logs/camera/help) at **desktop + mobile**, asserting the view mounts, renders readable content, and throws no uncaught page error. 20/20 pass against the stub live stack. Complements the existing plugin-views-visual.spec (plugin bundles). Production-build screenshots confirm the launcher/settings/plugins redesigns render correctly at both viewports.
@@ -35,7 +35,6 @@ Verdicts: `good` · `needs-work` · `broken`. Newest at bottom.
 - The single light look + brand normalization is verified end-to-end; the "lots of black" is resolved by the pin (most views were already token-light; Finances/feed/social dark/hero treatments are now light/flat).
 
 ## Honest remaining (lower value / out-of-scope-for-redesign)
-- Games (scape/2004scape/clawville/hyperscape/defense): fullscreen game canvases — the view IS the game; only chrome applies.
 - XR/facewear ViewDeclarations: research flags these as dead duplicates → cleanup, not redesign.
 - Dev/diagnostic views (Runtime/Trajectories/Database deep-clean): render light; recommend demote-behind-Advanced (product decision) over polish. Database has a double-render hazard.
 - Comms TUI-twin dead code removal (ContactsTuiView/PhoneTuiView/MessagesTuiView): verify-dead first.
@@ -59,7 +58,7 @@ Re-ran the loop end-to-end with a workflow-driven assessment of ALL 43 routed vi
 - **Tokens (canonical):** base.css + theme.css `--brand-orange` #ff5800 → **#ff8a24**; base.css `--brand-blue` #0b35f1 → **#1d91e8**. brand-gold.css memory-type cues: decorative indigo/purple/green/amber → blue(messages)+orange(memories)+neutral. Resolved a real base.css↔presets.ts inconsistency.
 - **Chat home (owner chose "keep warm, just de-black"):** removed the literal near-black rim layer + the decorative blue rim from ChatAmbientBackground (breathe is now warm-white ↔ #ff8a24); HomeScreen activity tones sky/amber → orange/red (green=ok kept); dropped the uppercase home-card eyebrow. The warm-orange home stays as the signature "brand moment"; every other view is light.
 - **Wave 1 (12 dark → light):** calendar, documents, focus, goals, inbox, phone, shopify, steward, todos, health, camera — #0a0a0a/#020617 → var(--background); off-brand accents → orange/red/neutral. Visually verified light + on-brand (goals/finances/calendar/wallet render light with orange accents).
-- **Wave 2a (15 plugin packages):** brand + de-slop (companion, contacts, finances, hyperliquid, messages, polymarket, relationships, vector-browser, vincent, social, feed, screenshare, wallet/inventory, tasks/task-coordinator, model-tester).
+- **Wave 2a (15 plugin packages):** brand + de-slop (companion, contacts, finances, hyperliquid, messages, polymarket, relationships, vector-browser, social, feed, screenshare, wallet/inventory, tasks/task-coordinator, model-tester).
 - **Wave 2b (13 builtin views + shared page-panel chrome):** settings, plugins, database, memories, logs, relationships, runtime, skills, trajectories, automations, character, help, tutorial.
 
 Discipline notes: TUI/terminal variants left intentionally dark (terminal aesthetic); games + remote-desktop viewer out of scope; controls that `*.test.*` asserts (Refresh/search/filter chips) were RESTYLED on-brand, not deleted (deleting them needs the tests updated first — a follow-up). Verified: packages/ui typecheck 0 errors; every touched plugin typecheck/build:types clean; all 25 plugin view bundles rebuild. Stub view list de-stale'd (removed LifeOps).

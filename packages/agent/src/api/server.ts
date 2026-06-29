@@ -41,6 +41,7 @@ import {
 } from "@elizaos/core";
 import type {
   AppManagerLike,
+  AppsRouteActorRole,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
@@ -3238,6 +3239,9 @@ async function handleRequest(
     const appManager = ctx?.getAppManager
       ? await ctx.getAppManager()
       : (state.appManager as AppManagerLike);
+    const appActorRole: AppsRouteActorRole = isAuthorized(req)
+      ? "OWNER"
+      : "GUEST";
     if (
       await handleAppsRoutes({
         req,
@@ -3304,6 +3308,7 @@ async function handleRequest(
         json,
         error,
         runtime: state.runtime,
+        actorRole: appActorRole,
         favoriteApps: {
           read: () => readFavoriteAppsFromConfig(state.config),
           write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
