@@ -1,8 +1,8 @@
 "use client";
 
+import { consumeStewardPkceVerifier } from "@elizaos/shared/steward-session-client";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { consumeStewardPkceVerifier } from "@elizaos/shared/steward-session-client";
 import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
 
 type FeedStewardOAuthProvider = "google" | "discord" | "twitter";
@@ -107,7 +107,10 @@ export default function OAuthCallbackPage() {
       return;
     }
 
-    const redirectUri = buildFeedOAuthRedirectUri(window.location.origin, provider);
+    const redirectUri = buildFeedOAuthRedirectUri(
+      window.location.origin,
+      provider,
+    );
 
     fetch("/api/auth/steward/oauth/exchange", {
       method: "POST",
