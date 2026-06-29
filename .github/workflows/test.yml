@@ -53,6 +53,9 @@ jobs:
       - name: Validate CI path gate
         run: node packages/scripts/ci-path-gate.self-test.mjs
 
+      - name: Validate CI workflow dedup contract
+        run: node packages/scripts/ci-workflow-dedup-contract.mjs
+
       - name: Determine affected test lanes
         id: filter
         shell: bash
