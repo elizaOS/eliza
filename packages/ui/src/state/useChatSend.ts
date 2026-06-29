@@ -1202,9 +1202,11 @@ export function useChatSend(deps: UseChatSendDeps) {
               ? "The agent is busy right now — wait a few seconds and resend."
               : status === 503 || status === 502
                 ? "The agent is still waking up — give it a moment and resend."
-                : kind === "network" || kind === "timeout"
-                  ? "Couldn't reach the agent — check your connection and resend."
-                  : "That message didn't go through — please resend.";
+                : kind === "timeout"
+                  ? "The agent took too long to respond — give it a moment and resend."
+                  : kind === "network"
+                    ? "Couldn't reach the agent — check your connection and resend."
+                    : "That message didn't go through — please resend.";
           setActionNotice(notice, "error", 8_000);
           // Reconcile from the server for non-auth errors — loadConversationMessages
           // no longer wipes the thread on transient failures (404-only clear), so
