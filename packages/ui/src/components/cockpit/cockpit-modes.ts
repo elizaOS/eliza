@@ -17,6 +17,11 @@
  *   4. Experimental TOS-unsafe Claude / Codex (gated)
  */
 
+import type {
+  CodingAgentCreateTaskInput,
+  CodingAgentTaskProviderPolicy,
+} from "../../api/client-types-cloud";
+
 /** Eliza Cloud inference tiers. `small` is fast; `large` is smart. */
 export type ElizaCloudTier = "small" | "large";
 
@@ -154,4 +159,79 @@ export function optionIdForConfig(
 /** Read the Eliza Cloud tier from a config (defaults to `small` for non-cloud). */
 export function tierForConfig(config: CockpitModeConfig): ElizaCloudTier {
   return config.mode === "eliza-cloud" ? config.tier : "small";
+}
+
+/** `providerSource` discriminant: where inference/credentials are sourced. */
+export type ProviderSource =
+  | "user-claude"
+  | "user-openai"
+  | "eliza-cloud"
+  | "local";
+
+/** The inference/credential source label for a mode (mirrors the orchestrator
+ * canonical `cockpit-mode.ts`). */
+export function cockpitModeProviderSource(
+  config: CockpitModeConfig,
+): ProviderSource {
+  switch (config.mode) {
+    case "eliza-cloud":
+    case "opencode":
+      // Both run on Eliza Cloud / Cerebras.
+      return "eliza-cloud";
+    case "subscription":
+    case "experimental":
+      return config.agentType === "claude" ? "user-claude" : "user-openai";
+  }
+}
+
+/** The model hint for a mode (undefined ⇒ let the host pick its default). */
+export function cockpitModeModel(
+  config: CockpitModeConfig,
+): string | undefined {
+  return config.mode === "eliza-cloud"
+    ? ELIZA_CLOUD_TIER_MODEL[config.tier]
+    : config.model;
+}
+
+/**
+ * Lower a cockpit mode to the orchestrator's create-task `providerPolicy`.
+ * The server-canonical lowering is the plugin's `cockpitModeToProviderPolicy`;
+ * this client mirror produces the identical `{preferredFramework, providerSource,
+ * model}` the create-task route's `asProviderPolicy` parser accepts.
+ */
+export function cockpitModeToProviderPolicy(
+  config: CockpitModeConfig,
+): CodingAgentTaskProviderPolicy {
+  const policy: CodingAgentTaskProviderPolicy = {
+    preferredFramework: config.agentType,
+    providerSource: cockpitModeProviderSource(config),
+  };
+  const model = cockpitModeModel(config);
+  if (model !== undefined) policy.model = model;
+  return policy;
+}
+
+/** First non-empty line of `text`, trimmed to `max` chars — used as a task title. */
+function deriveTitle(text: string, max = 80): string {
+  const firstLine = text.split("\n").find((l) => l.trim().length > 0) ?? "";
+  const trimmed = firstLine.trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+}
+
+/**
+ * Build the orchestrator create-task input for a new cockpit session from a
+ * free-text goal + the selected mode. `title` defaults to the goal's first line.
+ */
+export function buildCockpitCreateTaskInput(opts: {
+  goal: string;
+  mode: CockpitModeConfig;
+  title?: string;
+}): CodingAgentCreateTaskInput {
+  const goal = opts.goal.trim();
+  const title = (opts.title?.trim() || deriveTitle(goal)) ?? goal;
+  return {
+    title,
+    goal,
+    providerPolicy: cockpitModeToProviderPolicy(opts.mode),
+  };
 }
