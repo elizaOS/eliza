@@ -220,6 +220,13 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
               </span>
             ) : null}
           </div>
+          {/* Co-render the live setup/status panel (e.g. Telegram bot-token
+              validation + identity) alongside the env-config form, matching the
+              canonical /connectors surface (plugin-view-connectors.tsx). Without
+              this, a `local-config` connector that also has a setup panel
+              (telegram bot mode) showed the raw-token form only. `setupPanel` is
+              already null-gated to `setupPluginId`, so it is a no-op otherwise. */}
+          {setupPanel}
         </div>
       ) : setupPanel ? (
         setupPanel
