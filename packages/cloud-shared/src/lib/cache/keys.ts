@@ -207,6 +207,10 @@ export const CacheKeys = {
     authContext: (fullKeyHash: string) => `iac:auth:${fullKeyHash}:v1`,
     /** Optimistic org-balance hint (Tier-2 billing; unused while billing flag is OFF). */
     orgBalance: (orgId: string) => `iac:org-balance:${orgId}:v1`,
+    /** Durable per-request pending-charge backstop (Tier-2 optimistic billing). */
+    pendingCharge: (requestId: string) => `iac:pending:${requestId}:v1`,
+    /** Scan prefix for the pending-charge sweep (matches pendingCharge entries). */
+    pendingChargePrefix: () => `iac:pending:`,
   },
 } as const;
 
@@ -353,6 +357,7 @@ export const CacheTTL = {
   inference: {
     authContext: 60, // 1 minute - worst-case revoked/banned exposure ~= TTL + KV lag
     orgBalance: 15, // 15 seconds - optimistic-billing gate hint, kept tight to bound drift
+    pendingCharge: 3600, // 60 min - sweep window = TTL - grace(20m) = 40m, survives cron hiccups
   },
 } as const;
 

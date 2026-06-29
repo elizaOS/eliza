@@ -825,6 +825,51 @@ export class CacheClient {
   }
 
   /**
+   * Scan for keys under a prefix (env-stripped), bounded by `maxKeys`. Used by
+   * the Tier-2 optimistic-billing pending-charge sweep (#9899). Returns keys
+   * WITHOUT the environment prefix (callers pass the logical key prefix and `pk`
+   * re-adds the env prefix internally).
+   */
+  async scanByPrefix(prefix: string, maxKeys = 1000): Promise<string[]> {
+    const redis = await this.getRedisClient();
+    if (!redis) return [];
+
+    const env = getCloudAwareEnv();
+    const envPrefix = `${env.ENVIRONMENT || "local"}:`;
+    const match = this.pk(`${prefix}*`);
+    const out: string[] = [];
+    // Opaque string cursor — see delPattern. parseInt-ing KV's continuation token
+    // broke pagination, so the sweep only ever saw the first ~100 pending keys and
+    // stragglers leaked (TTL-expired uncharged).
+    let cursor: string | number = "0";
+    let iterations = 0;
+
+    try {
+      do {
+        const [next, keys]: [string | number, string[]] = await redis.scan(cursor, {
+          match,
+          count: 100,
+        });
+        cursor = String(next);
+        for (const key of keys) {
+          out.push(key.startsWith(envPrefix) ? key.slice(envPrefix.length) : key);
+          if (out.length >= maxKeys) return out;
+        }
+        if (++iterations >= 1000) break;
+      } while (cursor !== "0");
+      this.resetFailures();
+      return out;
+    } catch (error) {
+      this.recordFailure();
+      logger.warn("[Cache] SCAN_BY_PREFIX failed", {
+        prefix,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return out;
+    }
+  }
+
+  /**
    * Gets multiple values from cache in a single operation.
    *
    * @param keys - Array of cache keys.

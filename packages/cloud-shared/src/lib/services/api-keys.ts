@@ -11,7 +11,10 @@ import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "../pricing";
 import { logger } from "../utils/logger";
-import { invalidateInferenceAuthContextByKeyHash } from "./inference-auth-cache";
+import {
+  invalidateInferenceAuthContextByKeyHash,
+  invalidateInferenceAuthContextsByKeyHashes,
+} from "./inference-auth-cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -164,6 +167,17 @@ export class ApiKeysService {
     // immediately. Every revoke/deactivate/delete path funnels through here.
     await Promise.all([cache.del(cacheKey), invalidateInferenceAuthContextByKeyHash(keyHash)]);
     logger.debug("[ApiKeys] Invalidated API key cache");
+  }
+
+  /**
+   * Drop the inference hot-path (IAC) entries for ALL of a user's API keys.
+   * Used by the Tier-2 optimistic-billing path (#9899) to force a user back onto
+   * the safe synchronous-reserve path after an uncollected debit, and by
+   * user-level moderation/ban transitions.
+   */
+  async invalidateInferenceContextForUser(userId: string): Promise<void> {
+    const keys = await apiKeysRepository.listByUser(userId);
+    await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
   }
 
   async getById(id: string): Promise<ApiKey | undefined> {

@@ -295,6 +295,15 @@ export class CreditsService {
     };
   }
 
+  /**
+   * Read an organization's current credit balance in USD. Used by the Tier-2
+   * optimistic-billing gate to decide fast-vs-safe path (#9899).
+   */
+  async getOrganizationBalanceUsd(organizationId: string): Promise<number> {
+    const org = await organizationsRepository.findById(organizationId);
+    return org ? Number(org.credit_balance) : 0;
+  }
+
   // Credit Transactions
   async getTransactionById(id: string): Promise<CreditTransaction | undefined> {
     return await creditTransactionsRepository.findById(id);
@@ -378,6 +387,10 @@ export class CreditsService {
     success: boolean;
     newBalance: number;
     transaction: CreditTransaction | null;
+    // Delegated verbatim from reserveAndDeductCredits, which sets this on a
+    // failed debit. Declared here so callers (e.g. the Tier-2 optimistic-billing
+    // settler, #9899) can read result.reason under strict typecheck.
+    reason?: "insufficient_balance" | "below_minimum" | "org_not_found";
   }> {
     // Delegate to reserveAndDeduct with no minimum balance requirement
     return this.reserveAndDeductCredits(params);
