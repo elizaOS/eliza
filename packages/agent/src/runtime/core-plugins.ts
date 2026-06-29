@@ -129,6 +129,7 @@ export const CORE_PLUGINS: readonly string[] = [
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
+  "@elizaos/plugin-cloud-apps", // read-core for Eliza Cloud Apps: LIST_CLOUD_APPS / GET_APP + CLOUD_APPS provider (reaches local/native + Discord/Telegram via the shared pipeline). Read-only; mutating/money actions are deferred to Phase 3b. Cloud-hosted agents add this separately via agent-loader, gated behind CLOUD_APPS_PLUGIN_ENABLED.
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target=device via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
   "@elizaos/plugin-shell", // shell service, approvals, and history provider
   "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools (desktop-only
