@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-
+import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
 import {
   ANDROID_BUILD_TARGETS,
   resolveAndroidBuildTarget,
@@ -58,6 +58,12 @@ describe("Android mobile build target table", () => {
     expect(
       resolveAndroidBuildTarget("android-cloud", { debug: true }).target,
     ).toBe("android-cloud-debug");
+  });
+
+  it("fails loudly for unknown public Android targets", () => {
+    expect(() => resolveAndroidBuildTarget("android-tv")).toThrow(
+      "[mobile-build] Unknown Android build target: android-tv",
+    );
   });
 });
 
@@ -147,6 +153,25 @@ describe("Android Gradle command table", () => {
         ],
         buildArgs: ["-PelizaAospBuild=true", ":app:assembleRelease"],
       },
+    );
+  });
+
+  it("fails loudly for unknown AAR metadata variants", () => {
+    const target = {
+      ...ANDROID_BUILD_TARGETS.android,
+      gradle: {
+        ...ANDROID_BUILD_TARGETS.android.gradle,
+        metadataVariant: "profile",
+      },
+    };
+
+    expect(() =>
+      resolveAndroidGradleCommandsForTarget(target, {
+        env: {},
+        settingsGradle: "",
+      }),
+    ).toThrow(
+      "[mobile-build] Unknown Android AAR metadata variant for android: profile",
     );
   });
 });
