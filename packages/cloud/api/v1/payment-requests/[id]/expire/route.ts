@@ -9,7 +9,7 @@
  */
 
 import { Hono } from "hono";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -43,23 +43,11 @@ app.post("/", async (c) => {
       );
     }
 
-    // Org-scoped: only ever sweeps this caller's own past-due rows. Using the
-    // unscoped `expirePast` here let any authed user trigger a global
-    // cross-tenant sweep (least-privilege / blast-radius bug, #10117).
-    const expiredIds = await service.expirePastForOrg(
+    // Scoped to THIS request id + the caller's org — not the global sweep.
+    const { paymentRequest: after, expired: wasExpired } = await service.expire(
+      id,
       user.organization_id,
-      new Date(),
     );
-    const wasExpired = expiredIds.includes(id);
-
-    const after = await service.get(id, user.organization_id);
-    if (!after) {
-      throw new ApiError(
-        500,
-        "internal_error",
-        "Payment request vanished after expire",
-      );
-    }
 
     return c.json({
       success: true,
