@@ -9,7 +9,7 @@
  */
 
 import { Hono } from "hono";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -43,17 +43,11 @@ app.post("/", async (c) => {
       );
     }
 
-    const expiredIds = await service.expirePast(new Date());
-    const wasExpired = expiredIds.includes(id);
-
-    const after = await service.get(id, user.organization_id);
-    if (!after) {
-      throw new ApiError(
-        500,
-        "internal_error",
-        "Payment request vanished after expire",
-      );
-    }
+    // Scoped to THIS request id + the caller's org — not the global sweep.
+    const { paymentRequest: after, expired: wasExpired } = await service.expire(
+      id,
+      user.organization_id,
+    );
 
     return c.json({
       success: true,
