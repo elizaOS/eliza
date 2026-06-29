@@ -42,6 +42,11 @@
       "reason": "Generic per-control interaction harness for dynamically-loaded plugin GUI views (#8796). Run on demand via `bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-interaction.spec.ts`, not default smoke."
     },
     {
+      "spec": "launcher-interaction.spec.ts",
+      "category": "dedicated-tool",
+      "reason": "Drives Launcher view-catalog controls (#8796; renamed from springboard-interaction in #10001). Run on demand, not as a keyless PR gate."
+    },
+    {
       "spec": "settings-spacing-audit.spec.ts",
       "category": "dedicated-tool",
       "reason": "Runs on demand via `ELIZA_SETTINGS_SPACING=1 node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/settings-spacing-audit.spec.ts`; it measures per-section safe-area/spacing and writes a JSON verdict plus notch-simulated screenshots to reports/settings-spacing, so it is a deliberate layout-audit harness (self-skips unless ELIZA_SETTINGS_SPACING=1)."
