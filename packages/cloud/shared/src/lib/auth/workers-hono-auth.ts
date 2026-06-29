@@ -87,6 +87,7 @@ function toAuthedUser(user: UserWithOrganization): AuthedUser {
   return {
     id: user.id,
     email: user.email ?? null,
+    email_verified: user.email_verified ?? null,
     organization_id: user.organization_id ?? null,
     organization: user.organization
       ? {
