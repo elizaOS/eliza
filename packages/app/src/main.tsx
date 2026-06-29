@@ -43,9 +43,9 @@ import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
 import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
+import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
-import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
