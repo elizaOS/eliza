@@ -88,6 +88,8 @@ interface StructuralFingerprint {
   choiceOptionValues: string[];
   hasCodeBlock: boolean;
   codeBlockCount: number;
+  hasInlineCode: boolean;
+  inlineCodeCount: number;
   hasSecretRequest: boolean;
   hasReasoning: boolean;
   hasNoProviderGate: boolean;
@@ -101,6 +103,10 @@ function fingerprint(root: HTMLElement): StructuralFingerprint {
     .filter((id) => id.startsWith("choice-") && !id.startsWith("choice-custom"))
     .sort();
   const codeBlocks = root.querySelectorAll('[data-testid="code-block"]');
+  // Inline `` `code` `` spans lift to the inline code primitive (a distinct
+  // testid from block-level fences). Tracked so the inline-code divergence
+  // between the two surfaces can be pinned, not silently drift.
+  const inlineCode = root.querySelectorAll('[data-testid="inline-code"]');
   // The reasoning block (ThinkingBlock) has no testid; it is the accent-bordered
   // disclosure whose toggle includes the label "Thinking" (alongside a chevron
   // glyph). Detect it structurally.
@@ -117,6 +123,8 @@ function fingerprint(root: HTMLElement): StructuralFingerprint {
     choiceOptionValues: choiceOptions,
     hasCodeBlock: codeBlocks.length > 0,
     codeBlockCount: codeBlocks.length,
+    hasInlineCode: inlineCode.length > 0,
+    inlineCodeCount: inlineCode.length,
     hasSecretRequest:
       root.querySelector('[data-testid="sensitive-request"]') !== null,
     hasReasoning,
@@ -216,6 +224,25 @@ const CORPUS: Array<{ name: string; message: ConversationMessage }> = [
   },
 ];
 
+/**
+ * Render the same message through BOTH surfaces and return each one's structural
+ * fingerprint: MessageContent (the ChatView path) and ThreadLine (the overlay
+ * path, via the `__renderThreadLineForParity` seam). Cleans up between and after
+ * so the two trees never coexist in the jsdom document.
+ */
+function renderBoth(message: ConversationMessage): {
+  viewPrint: StructuralFingerprint;
+  overlayPrint: StructuralFingerprint;
+} {
+  const view = withApp(<MessageContent message={message} />);
+  const viewPrint = fingerprint(view.container);
+  cleanup();
+  const overlay = withApp(__renderThreadLineForParity(toShellMessage(message)));
+  const overlayPrint = fingerprint(overlay.container);
+  cleanup();
+  return { viewPrint, overlayPrint };
+}
+
 describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
   beforeEach(() => {
     clientMock.getPlugins.mockResolvedValue([]);
@@ -228,15 +255,7 @@ describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
 
   for (const { name, message } of CORPUS) {
     it(`renders the same structure on both surfaces: ${name}`, () => {
-      const view = withApp(<MessageContent message={message} />);
-      const viewPrint = fingerprint(view.container);
-      cleanup();
-
-      const overlay = withApp(
-        __renderThreadLineForParity(toShellMessage(message)),
-      );
-      const overlayPrint = fingerprint(overlay.container);
-
+      const { viewPrint, overlayPrint } = renderBoth(message);
       expect(overlayPrint).toEqual(viewPrint);
     });
   }
@@ -258,5 +277,81 @@ describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
     expect([...seen].sort()).toEqual(
       ["choice", "code", "no-provider", "reasoning", "secret"].sort(),
     );
+  });
+});
+
+// ── PINNED divergences ──────────────────────────────────────────────────────
+//
+// The two surfaces DO legitimately diverge in three structural ways today. These
+// are pinned (not "fixed" here) so each is a CONSCIOUS contract: the only way to
+// reconcile a surface is to flip the assertion in this file, never a silent edit
+// to one switch statement. Mirrors how parser-parity.contract.test.ts pins the
+// FORM-marker regex asymmetry with an explicit, commented expectation.
+describe("chat render parity — PINNED divergences (intended/tracked) — #9954 item 7", () => {
+  beforeEach(() => {
+    clientMock.getPlugins.mockResolvedValue([]);
+  });
+  afterEach(() => {
+    cleanup();
+    __setAppValueForTests(null);
+    vi.clearAllMocks();
+  });
+
+  // (1) Inline `` `code` ``. ChatView's MessageTextBody lifts each backtick span
+  //     into the inline code primitive (data-testid="inline-code"); the overlay's
+  //     InlineWidgetText keeps a single-text segment literal in a plain <span>, so
+  //     the backticks render as prose. Diverges whenever a text run holds inline
+  //     code. (ChatView shows the richer inline affordance; the overlay keeps
+  //     transcript prose minimal — intended.)
+  it("PIN: inline `code` lifts to the inline code primitive in ChatView, stays literal in the overlay", () => {
+    const { viewPrint, overlayPrint } = renderBoth(
+      assistant("Run `npm install` then `npm run dev` to start."),
+    );
+    expect(viewPrint.inlineCodeCount).toBe(2);
+    expect(viewPrint.hasInlineCode).toBe(true);
+    expect(overlayPrint.inlineCodeCount).toBe(0);
+    expect(overlayPrint.hasInlineCode).toBe(false);
+  });
+
+  // (2) Reasoning on a single-text-segment reply. MessageContent's fast path
+  //     returns the plain body BEFORE its multi-segment branch that renders the
+  //     ThinkingBlock, so a plain reply WITH reasoning shows no Thinking
+  //     disclosure in ChatView. ThreadLine renders the ThinkingBlock for every
+  //     settled assistant turn with reasoning. (Latent ChatView drop — see the
+  //     test's FLAG; reconciling it would flip this pin to agreement.) When the
+  //     body is multi-segment, BOTH render it — that case is in the agreement
+  //     corpus ("reasoning + code"), so this pins ONLY the single-segment gap.
+  it("PIN: reasoning on a plain single-segment reply shows Thinking only in the overlay", () => {
+    const { viewPrint, overlayPrint } = renderBoth(
+      assistant("You're free after 3pm.", {
+        reasoning: "I checked the calendar and the afternoon is open.",
+      }),
+    );
+    expect(viewPrint.hasReasoning).toBe(false);
+    expect(overlayPrint.hasReasoning).toBe(true);
+  });
+
+  // (3) Secret request with a rich body + reasoning. MessageContent early-returns
+  //     ONLY the SensitiveRequestBlock — body code/widgets and reasoning are
+  //     suppressed. ThreadLine co-renders the body (so a fenced block still shows
+  //     a code block), the secret block, AND reasoning. Both emit exactly one
+  //     sensitive-request (agreement); the surrounding body is what diverges.
+  it("PIN: a secret request suppresses the body in ChatView, co-renders it in the overlay", () => {
+    const { viewPrint, overlayPrint } = renderBoth(
+      assistant("Paste the token:\n```ts\nconst t = 1;\n```", {
+        reasoning: "Explaining why the key is needed before I ask for it.",
+        secretRequest: SECRET_REQUEST,
+      }),
+    );
+    expect(viewPrint).toMatchObject({
+      hasSecretRequest: true,
+      hasCodeBlock: false,
+      hasReasoning: false,
+    });
+    expect(overlayPrint).toMatchObject({
+      hasSecretRequest: true,
+      hasCodeBlock: true,
+      hasReasoning: true,
+    });
   });
 });
