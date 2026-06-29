@@ -189,8 +189,14 @@ function cleanupKnownStateDirsSync(): void {
 
 function resolveBunCommand(): string {
   const bunFromEnv = process.env.BUN?.trim();
-  if (bunFromEnv && existsSync(bunFromEnv)) {
-    return bunFromEnv;
+  if (bunFromEnv) {
+    if (existsSync(bunFromEnv)) {
+      return bunFromEnv;
+    }
+    const bunEnvFromPath = resolveExecutableFromPath(bunFromEnv);
+    if (bunEnvFromPath) {
+      return bunEnvFromPath;
+    }
   }
 
   const bunInstallRoot = process.env.BUN_INSTALL?.trim();
@@ -215,7 +221,41 @@ function resolveBunCommand(): string {
     return homeBun;
   }
 
+  const bunFromPath = resolveExecutableFromPath("bun");
+  if (bunFromPath) {
+    return bunFromPath;
+  }
+
   return process.platform === "win32" ? "bun.exe" : "bun";
+}
+
+function resolveExecutableFromPath(command: string): string | null {
+  const pathValue = process.env.PATH ?? "";
+  if (!pathValue) return null;
+
+  const hasExtension = path.extname(command).length > 0;
+  const pathExts =
+    process.platform === "win32"
+      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+          .split(";")
+          .map((ext) => ext.trim())
+          .filter(Boolean)
+      : [""];
+  const binaryNames =
+    process.platform === "win32" && !hasExtension
+      ? pathExts.map((ext) => `${command}${ext.toLowerCase()}`)
+      : [command];
+
+  for (const dir of pathValue.split(path.delimiter)) {
+    if (!dir) continue;
+    for (const binaryName of binaryNames) {
+      const candidate = path.join(dir, binaryName);
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
 }
 
 function contentTypeFor(filePath: string): string {
