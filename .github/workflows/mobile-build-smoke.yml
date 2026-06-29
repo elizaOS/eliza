@@ -183,6 +183,50 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Run iOS local-chat simulator smoke (#9943)
+        # Wire the existing iOS chat device smoke into CI. mobile-local-chat-smoke
+        # drives a real chat turn through the installed simulator app (the iOS
+        # self-driving-WebView mechanism — WKWebView is not CDP/Playwright-drivable,
+        # so this is the only viable iOS device-chat coverage). It previously ran
+        # in ZERO CI lanes (issue #9943 item 5). Non-blocking on introduction:
+        # promote to a hard fail once it is confirmed green on the macOS runner.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p packages/app/test-results/ios-local-chat
+          ELIZA_API_PORT=31337 ELIZA_PAIRING_DISABLED=1 \
+            node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/scripts/serve-real-local-agent.ts \
+            > packages/app/test-results/ios-local-chat/host-agent.log 2>&1 &
+          HOST_AGENT_PID=$!
+          cleanup() {
+            kill "$HOST_AGENT_PID" 2>/dev/null || true
+            wait "$HOST_AGENT_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:31337/api/health >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
+              echo "Host agent exited before /api/health became ready"
+              cat packages/app/test-results/ios-local-chat/host-agent.log
+              exit 1
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:31337/api/health >/dev/null
+          node packages/app/scripts/mobile-local-chat-smoke.mjs \
+            --platform ios --require-installed --api-base http://127.0.0.1:31337
+
+      - name: Upload iOS local-chat evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-local-chat
+          path: packages/app/test-results/ios-local-chat/**
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Verify required Info.plist keys for background HealthKit
         # Background HealthKit + BGTaskScheduler integration is in
         # progress: no plist generator is configured yet (no
