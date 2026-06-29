@@ -39,10 +39,15 @@
 
 import { generate, type QueriesFile, TIERS } from "./corpus-gen.ts";
 import {
-	evaluateRetrieval,
-	percentiles,
-	type RankedQuery,
-} from "./ir-metrics.ts";
+	hitRateAtK,
+	mean,
+	ndcgAtK,
+	percentile,
+	precisionAtK,
+	type QueryResult,
+	recallAtK,
+	reciprocalRank,
+} from "./metrics.ts";
 import { loadBudgets, ms, pct, recordResult } from "./lib.mjs";
 import { K_VALUES, METRIC_SCHEMA, skippedRow } from "./metric-schema.mjs";
 import {
@@ -105,25 +110,33 @@ function scoreMode(
 	fragmentIdsByDocKey: Map<string, import("@elizaos/core").UUID[]>,
 ): ModeMetric {
 	const resById = new Map(run.results.map((r) => [r.queryId, r.resultIds]));
-	const ranked: RankedQuery[] = queries.queries.map((q) => ({
-		resultIds: resById.get(q.queryId) ?? [],
-		relevantIds: relevantFragmentIds(q, fragmentIdsByDocKey),
+	const ranked: QueryResult[] = queries.queries.map((q) => ({
+		retrieved: resById.get(q.queryId) ?? [],
+		relevant: relevantFragmentIds(q, fragmentIdsByDocKey),
 	}));
-	const m = evaluateRetrieval(ranked, KVALS);
-	const { p50, p95 } = percentiles(run.latenciesMs);
+	// Macro-average the shared metrics.ts per-query functions (#10153 foundation)
+	// across the K set. mean() returns null for an empty set (honesty contract).
+	const atK = (fn: (r: QueryResult, k: number) => number) =>
+		Object.fromEntries(
+			KVALS.map((k) => [k, mean(ranked.map((r) => fn(r, k)))]),
+		) as Record<number, number | null>;
+	const recallByK = atK(recallAtK);
+	const ndcgByK = atK(ndcgAtK);
+	const p50 = percentile(run.latenciesMs, 50);
+	const p95 = percentile(run.latenciesMs, 95);
 	return {
 		mode,
 		measured: true,
-		numQueries: m.numQueries,
-		precisionAtK: m.precisionAtK,
-		recallAtK: m.recallAtK,
-		mrr: m.meanReciprocalRank,
-		ndcgAtK: m.ndcgAtK,
-		hitRateAtK: m.hitRateAtK,
+		numQueries: ranked.length,
+		precisionAtK: atK(precisionAtK),
+		recallAtK: recallByK,
+		mrr: mean(ranked.map((r) => reciprocalRank(r))),
+		ndcgAtK: ndcgByK,
+		hitRateAtK: atK(hitRateAtK),
 		latencyMsP50: p50 == null ? null : Number(p50.toFixed(2)),
 		latencyMsP95: p95 == null ? null : Number(p95.toFixed(2)),
-		recallAt5: m.recallAtK[5] ?? null,
-		ndcgAt10: m.ndcgAtK[10] ?? null,
+		recallAt5: recallByK[5] ?? null,
+		ndcgAt10: ndcgByK[10] ?? null,
 	};
 }
 

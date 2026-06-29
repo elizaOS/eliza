@@ -19,7 +19,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { generate, type QueriesFile, TIERS } from "./corpus-gen.ts";
-import { evaluateRetrieval } from "./ir-metrics.ts";
+import { mean, type QueryResult, recallAtK } from "./metrics.ts";
 import {
 	bootHarness,
 	ingestCorpus,
@@ -39,11 +39,11 @@ function recallAt5Of(
 	fragmentIdsByDocKey: Map<string, UUID[]>,
 ): number {
 	const resById = new Map(run.results.map((r) => [r.queryId, r.resultIds]));
-	const ranked = q.queries.map((query) => ({
-		resultIds: resById.get(query.queryId) ?? [],
-		relevantIds: relevantFragmentIds(query, fragmentIdsByDocKey),
+	const ranked: QueryResult[] = q.queries.map((query) => ({
+		retrieved: resById.get(query.queryId) ?? [],
+		relevant: relevantFragmentIds(query, fragmentIdsByDocKey),
 	}));
-	return evaluateRetrieval(ranked, [5]).recallAtK[5];
+	return mean(ranked.map((r) => recallAtK(r, 5))) ?? 0;
 }
 
 /** Macro recall@5 for a DocumentService search mode. */

@@ -10,7 +10,7 @@ embedding). Nothing here is mocked or fabricated.
 
 | test | result |
 | --- | --- |
-| `ir-metrics.test.ts` (12 tests) + `metric-schema.test.ts` (5 tests) | **17 pass / 0 fail** — see `unit-tests.log` |
+| `metrics.test.ts` (foundation #10153, 19 tests, vitest) + `metric-schema.test.ts` (5 tests, bun) | **24 pass / 0 fail** |
 | `recall-eval.test.ts` (real-runtime, 3 tests) | **3 pass / 0 fail** — see `recall-eval-test.log` |
 | `tsc -p tsconfig.check.json` | clean (no errors) |
 | `python -m pytest packages/benchmarks/tests/test_ci_coverage.py` | **4 pass** (registry wiring intact) |

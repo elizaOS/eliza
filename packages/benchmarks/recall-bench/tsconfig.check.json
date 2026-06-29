@@ -12,8 +12,8 @@
     "types": ["node", "bun"]
   },
   "include": [
-    "ir-metrics.ts",
-    "ir-metrics.test.ts",
+    "metrics.ts",
+    "concept-lexicon.ts",
     "corpus-gen.ts",
     "recall-harness.ts",
     "recall-kpi.ts",

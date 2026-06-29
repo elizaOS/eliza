@@ -54,8 +54,8 @@ jobs:
         # The real-path test imports @elizaos/core source, which expects the
         # generated keyword data to exist in a fresh checkout.
         run: bun run --cwd packages/shared build:i18n
-      - name: IR-metrics unit tests (no install needed)
-        run: bun test packages/benchmarks/recall-bench/ir-metrics.test.ts
+      - name: IR-metrics unit tests (foundation, #10153)
+        run: bunx vitest run packages/benchmarks/recall-bench/metrics.test.ts
       - name: Metric-schema contract
         run: bun test packages/benchmarks/recall-bench/metric-schema.test.ts
       - name: Real-path recall regression test

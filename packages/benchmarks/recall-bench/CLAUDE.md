@@ -9,7 +9,7 @@ contract) but, unlike memperf, **is registered** in the orchestrator
 ## Layout
 
 ```
-ir-metrics.ts / .test.ts   IR metrics (P/R/MRR/nDCG/HitRate) + known-value unit test
+metrics.ts / .test.ts      IR metrics (P/R/MRR/nDCG/HitRate) + known-value unit test (#10153)
 concept-lexicon.ts         shared topic/concept vocab (corpus + embedding agree on it)
 corpus-gen.ts              deterministic seeded (42) templated corpus + query generator
 recall-harness.ts          boots inline runtime + concept-hash embedding + documentsPlugin
@@ -26,7 +26,7 @@ fixtures/                  materialized small corpus (regenerable from corpus-ge
 ## Run
 
 ```bash
-bun test packages/benchmarks/recall-bench/ir-metrics.test.ts          # no install needed
+bunx vitest run packages/benchmarks/recall-bench/metrics.test.ts      # no install needed (#10153)
 bun test --conditions=eliza-source packages/benchmarks/recall-bench/recall-eval.test.ts
 bun run bench:recall                                                   # node run-all.mjs
 node packages/benchmarks/recall-bench/run-all.mjs --tier standard      # >=1k fragments
@@ -77,7 +77,7 @@ The harness emits top-level `metrics.overall_accuracy` (= hybrid recall@5) +
 
 ## Definition of done
 
-`bun test` (ir-metrics + metric-schema), `bun test --conditions=eliza-source
+`bunx vitest run metrics.test.ts` + `bun test metric-schema.test.ts`, `bun test --conditions=eliza-source
 recall-eval.test.ts`, and `node run-all.mjs` (exit 0) all green; budgets in
 `budgets.json` reflect a real baseline with margin; CI lane `.github/workflows/recall-bench.yml`
 present.
