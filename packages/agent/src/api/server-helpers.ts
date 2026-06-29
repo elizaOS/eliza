@@ -713,8 +713,15 @@ export async function persistConversationRoomTitle(
 // Wallet context augmentation
 // ---------------------------------------------------------------------------
 
+// Wallet-context augmentation should only fire on genuine wallet/crypto intent.
+// Bare words like "token", "send", "sol", "eth", or "address" often appear in
+// normal developer tasks and should not inject wallet context by themselves.
 const WALLET_CONTEXT_INTENT_RE =
-  /\b(wallet|address|balance|swap|trade|transfer|send|token|bnb|eth|sol|onchain|on-chain)\b/i;
+  /\b(wallet|on-?chain|crypto)\b|\b0x[a-fA-F0-9]{40}\b|(?:\b(?:swap|trade|transfer|buy|sell|approve|send|bridge)\b(?=[\s\S]{0,40}\b(?:token|eth|ethereum|sol|solana|t?bnb|bsc|usdc|usdt|busd|dai|weth|wbtc|btc|wallet|crypto|coin|on-?chain)\b))|(?:\b(?:token|eth|ethereum|sol|solana|t?bnb|bsc|usdc|usdt|busd|dai|weth|wbtc|btc)\b(?=[\s\S]{0,40}\b(?:wallet|balance|swap|trade|transfer|buy|sell|approve|send|bridge|address|crypto|coin|on-?chain|funds|holdings|portfolio)\b))|(?:\b(?:balance|holdings|portfolio|funds|address)\b(?=[\s\S]{0,40}\b(?:wallet|crypto|coin|on-?chain|eth|ethereum|sol|solana|t?bnb|bsc|token|usdc|usdt|busd|dai|weth|wbtc|btc)\b))/i;
+
+export function isWalletContextAugmentationIntent(prompt: string): boolean {
+  return WALLET_CONTEXT_INTENT_RE.test(prompt);
+}
 
 function buildWalletContextPrompt(
   runtime: AgentRuntime,
@@ -766,7 +773,7 @@ export function maybeAugmentChatMessageWithWalletContext(
 ): ReturnType<typeof createMessageMemory> {
   const userPrompt = extractCompatTextContent(message.content).trim();
   if (!userPrompt) return message;
-  if (!WALLET_CONTEXT_INTENT_RE.test(userPrompt)) return message;
+  if (!isWalletContextAugmentationIntent(userPrompt)) return message;
   return {
     ...message,
     content: {
