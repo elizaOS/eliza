@@ -17,8 +17,17 @@ const fixture = (name: string): string =>
 describe("tenant-scope gate (#9853 P1.6)", () => {
   test("flags a pk-only read against a tenant data-plane table", () => {
     const violations = findUnscopedTenantReads([fixture("unscoped.ts")]);
-    expect(violations).toHaveLength(1);
-    expect(violations[0]).toMatchObject({ table: "apps", method: "findById" });
+    expect(violations).toHaveLength(5);
+    expect(violations.map((v) => v.method).sort()).toEqual([
+      "findById",
+      "findByIdWrappedInAnd",
+      "findByIdWrappedInOr",
+      "findByIds",
+      "findBySpreadConditions",
+    ]);
+    for (const violation of violations) {
+      expect(violation.table).toBe("apps");
+    }
   });
 
   test("passes when the read is annotated global-scope or carries an ownership predicate", () => {

@@ -7,6 +7,7 @@
 declare const dbRead: { query: { apps: { findFirst(args: unknown): Promise<unknown> } } };
 declare function eq(a: unknown, b: unknown): unknown;
 declare function and(...parts: unknown[]): unknown;
+declare function inArray(a: unknown, b: unknown): unknown;
 declare const apps: { id: unknown; organization_id: unknown };
 
 export class ScopedFixtureRepo {
@@ -19,5 +20,16 @@ export class ScopedFixtureRepo {
     return await dbRead.query.apps.findFirst({
       where: and(eq(apps.organization_id, orgId), eq(apps.id, id)),
     });
+  }
+
+  async findScopedIds(orgId: string, ids: string[]): Promise<unknown> {
+    return await dbRead.query.apps.findFirst({
+      where: and(eq(apps.organization_id, orgId), inArray(apps.id, ids)),
+    });
+  }
+
+  async findScopedSpread(orgId: string, id: string): Promise<unknown> {
+    const conditions = [eq(apps.id, id), eq(apps.organization_id, orgId)];
+    return await dbRead.query.apps.findFirst({ where: and(...conditions) });
   }
 }
