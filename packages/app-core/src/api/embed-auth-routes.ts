@@ -34,6 +34,10 @@ export async function handleEmbedAuthRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   state: CompatRuntimeState,
+  // Injectable so tests exercise the route without a module mock for the
+  // handshake — module mocks race under vmForks parallel load. Defaults to the
+  // real verifier in production.
+  deps: { verifyEmbedLaunch: typeof verifyEmbedLaunch } = { verifyEmbedLaunch },
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -66,7 +70,7 @@ export async function handleEmbedAuthRoutes(
   const accountId =
     typeof body.accountId === "string" ? body.accountId : undefined;
 
-  const result = await verifyEmbedLaunch(
+  const result = await deps.verifyEmbedLaunch(
     { platform, signedLaunchPayload, accountId },
     runtime,
   );
