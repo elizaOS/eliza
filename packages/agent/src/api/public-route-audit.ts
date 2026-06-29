@@ -170,7 +170,12 @@ function listCandidateFiles(): string[] {
   if (process.env.UPDATE_PUBLIC_ROUTE_BASELINE === "1") {
     return allCandidateFiles();
   }
-  const files = [...baselineCandidateFiles(), ...changedCandidateFiles()];
+  const baselineFiles = baselineCandidateFiles();
+  const changedFiles = changedCandidateFiles();
+  const files =
+    changedFiles.length > 0
+      ? [...baselineFiles, ...changedFiles]
+      : [...baselineFiles, ...allCandidateFiles()];
   return files.filter((file, index) => files.indexOf(file) === index);
 }
 
