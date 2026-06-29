@@ -28,10 +28,69 @@ interface MiddlewareContext {
 
 const PROXY_PREFIXES = ["/api/", "/steward/"];
 
+// ── Embedded-app launch surface (#9947) ──────────────────────────────────────
+//
+// The dashboard is reused verbatim (single `build:web` bundle) inside a
+// 3rd-party iframe for Telegram Mini Apps and Discord Activities. Those pages
+// live under `/embed`, are served by the SPA catch-all, and authenticate with a
+// token-based embed session (minted by `embed-auth` after the platform launch
+// handshake) — NOT the first-party Steward cookie, which cannot cross into a
+// 3rd-party frame. The only middleware concern is the framing policy: emit a
+// `frame-ancestors` CSP scoped to `/embed` so the platform clients can embed
+// the view, and drop any global anti-framing header for that path only. Every
+// other path keeps its existing behaviour untouched.
+
+const EMBED_PATH_PREFIX = "/embed";
+
+/** Client origins permitted to iframe the embed surface. */
+const EMBED_FRAME_ANCESTORS = [
+  "'self'",
+  "https://telegram.org",
+  "https://*.telegram.org",
+  "https://web.telegram.org",
+  "https://discord.com",
+  "https://*.discord.com",
+  "https://*.discordsays.com",
+] as const;
+
+export function isEmbedPath(pathname: string): boolean {
+  return (
+    pathname === EMBED_PATH_PREFIX ||
+    pathname.startsWith(`${EMBED_PATH_PREFIX}/`)
+  );
+}
+
+/** CSP (+ companion) headers that make the embed surface framable. */
+export function buildEmbedSecurityHeaders(): Record<string, string> {
+  return {
+    "Content-Security-Policy": `frame-ancestors ${EMBED_FRAME_ANCESTORS.join(" ")}`,
+  };
+}
+
+/** Return a copy of `response` with the embed framing policy applied. */
+export function applyEmbedSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(buildEmbedSecurityHeaders())) {
+    headers.set(name, value);
+  }
+  headers.delete("X-Frame-Options");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export const onRequest = async (
   context: MiddlewareContext,
 ): Promise<Response> => {
   const url = new URL(context.request.url);
+
+  if (isEmbedPath(url.pathname)) {
+    const response = await context.next();
+    return applyEmbedSecurityHeaders(response);
+  }
+
   const shouldProxy = PROXY_PREFIXES.some((prefix) =>
     url.pathname.startsWith(prefix),
   );

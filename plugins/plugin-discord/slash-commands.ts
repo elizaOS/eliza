@@ -412,6 +412,57 @@ const modelCommand: SlashCommand = {
 	},
 };
 
+/**
+ * Resolve the HTTPS URL of the dashboard embed surface for the Discord Activity
+ * launch. An explicit `DISCORD_ACTIVITY_URL` wins; otherwise the public app URL
+ * gets `/embed` appended. Non-HTTPS / unset values yield `null`.
+ */
+export function resolveDiscordEmbedUrl(runtime: IAgentRuntime): string | null {
+	const explicit = runtime.getSetting("DISCORD_ACTIVITY_URL");
+	if (typeof explicit === "string" && explicit.startsWith("https://")) {
+		return explicit;
+	}
+	const base =
+		runtime.getSetting("ELIZA_PUBLIC_URL") ??
+		runtime.getSetting("APP_PUBLIC_URL") ??
+		runtime.getSetting("ELIZA_APP_URL");
+	if (typeof base === "string" && base.startsWith("https://")) {
+		return `${base.replace(/\/+$/, "")}/embed`;
+	}
+	return null;
+}
+
+/**
+ * `/app` — open the dashboard as a Discord Activity (#9947).
+ *
+ * Role-gated to OWNER/ADMIN via `requiredRole` (enforced by `handleSlashCommand`
+ * before `execute` runs, using the agent role model and the interaction
+ * sender's resolved entity). The reply is the Activity launch entry point; the
+ * embed surface re-verifies identity server-side via the OAuth2 launch
+ * handshake (`verifyEmbedLaunch` in app-core `embed-auth`) once it loads.
+ */
+const appCommand: SlashCommand = {
+	name: "app",
+	description: "Open the Eliza dashboard (owners/admins only)",
+	ephemeral: true,
+	requiredRole: "ADMIN",
+	async execute(interaction, runtime) {
+		const url = resolveDiscordEmbedUrl(runtime);
+		if (!url) {
+			await interaction.reply({
+				content:
+					"The dashboard embed URL is not configured. Set `DISCORD_ACTIVITY_URL` (or `ELIZA_PUBLIC_URL`) to an HTTPS origin.",
+				ephemeral: true,
+			});
+			return;
+		}
+		await interaction.reply({
+			content: `Open the Eliza dashboard: ${url}`,
+			ephemeral: true,
+		});
+	},
+};
+
 function registerBuiltins(): void {
 	for (const command of [
 		helpCommand,
@@ -421,6 +472,7 @@ function registerBuiltins(): void {
 		settingsCommand,
 		modelCommand,
 		setupCommand,
+		appCommand,
 	]) {
 		commands.set(command.name, command);
 	}

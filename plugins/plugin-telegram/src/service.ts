@@ -44,6 +44,7 @@ import {
   registerTelegramCommandHandlers,
 } from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
+import { registerTelegramEmbedLaunchCommand } from "./embed-launch";
 import { MessageManager } from "./messageManager";
 import { registerTelegramTaskBoardCommand } from "./task-board";
 import {
@@ -753,6 +754,9 @@ export class TelegramService extends Service {
         this.runtime,
         commandMessageManager,
       );
+      // #9947: role-gated Mini App launch (`/app`) — emits a `web_app` button
+      // opening the dashboard embed view for OWNER/ADMIN senders only.
+      registerTelegramEmbedLaunchCommand(bot, this.runtime, accountId);
     }
 
     await bot.launch({
