@@ -192,6 +192,14 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
               onParamChange={handleParamChange}
             />
           )}
+          {/* Co-render the live setup/status panel (e.g. Telegram bot-token
+              validation + identity) directly under the env-config form, matching
+              the canonical /connectors surface (plugin-view-connectors.tsx) where
+              the panel sits between the form and the save action. Without this, a
+              `local-config` connector that also has a setup panel (telegram bot
+              mode) showed the raw-token form only. `setupPanel` is already
+              null-gated to `setupPluginId`, so it is a no-op otherwise. */}
+          {setupPanel}
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="default"
