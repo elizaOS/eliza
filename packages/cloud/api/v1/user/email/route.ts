@@ -67,7 +67,8 @@ app.patch("/", async (c) => {
       return c.json(
         {
           success: false,
-          error: "This email domain cannot be set here. Please contact support.",
+          error:
+            "This email domain cannot be set here. Please contact support.",
         },
         403,
       );
