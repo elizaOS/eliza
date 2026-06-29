@@ -126,7 +126,31 @@ export async function runPlannerLoop(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
 	const plannerContext = normalizePlannerContext(params.context);
-	const config = mergeChainingLoopConfig(params.config);
+	// Coding/full-surface mode (the eliza-code sub-agent sets
+	// ELIZA_PLANNER_FULL_ACTION_SURFACE): a real build legitimately makes many
+	// tool calls (read several files, write several, run tests). The chat default
+	// (maxToolCalls=16) caps that mid-build, ending the turn on a
+	// TrajectoryLimitExceeded with no terminal REPLY → an EMPTY relay to the user.
+	// Raise the ceiling for coding builds (still bounded). Overridable via
+	// ELIZA_CODING_MAX_TOOL_CALLS.
+	const codingMode = ((): boolean => {
+		const v =
+			process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+		return v === "1" || v === "true" || v === "yes" || v === "on";
+	})();
+	const codingMaxToolCalls = ((): number => {
+		const raw = Number(process.env.ELIZA_CODING_MAX_TOOL_CALLS);
+		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 80;
+	})();
+	const config = ((): ChainingLoopConfig => {
+		const merged = mergeChainingLoopConfig(params.config);
+		return codingMode
+			? {
+					...merged,
+					maxToolCalls: Math.max(merged.maxToolCalls, codingMaxToolCalls),
+				}
+			: merged;
+	})();
 	const trajectory: PlannerTrajectory = {
 		context: plannerContext,
 		steps: [],
@@ -190,6 +214,14 @@ export async function runPlannerLoop(
 	// `maxRequiredToolMisses`, throws `TrajectoryLimitExceeded`, and the
 	// caller surfaces a generic apology instead of the planner's real answer.
 	let lastTerminalRefusalText: string | undefined;
+
+	// Coding/full-surface mode (set above from ELIZA_PLANNER_FULL_ACTION_SURFACE):
+	// when the model emits a batch of tool calls in a single response, execute
+	// EVERY queued call before re-evaluating. A real build needs all of its
+	// FILE/SHELL calls to run; a dedicated coding agent drains the whole batch and
+	// feeds the results back together. Chat mode keeps its
+	// re-evaluate-after-each-action cadence (one action, then evaluate).
+	const codingDrainQueue = codingMode;
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
@@ -295,6 +327,25 @@ export async function runPlannerLoop(
 					message: plannerOutput.messageToUser,
 				});
 				if (trajectory.steps.some((step) => step.toolCall)) {
+					// Coding mode: the model emitted a final text summary AFTER
+					// executing build tools — it's signalling completion. Finish with
+					// that message instead of running the chat completion-evaluator,
+					// which can decline to FINISH and trip terminal_only_continuations
+					// (observed live: a successful 4-file build threw 3/2 and relayed an
+					// EMPTY reply). The model, not the evaluator, owns termination here.
+					if (codingDrainQueue) {
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								preferredFinalMessageFromToolOrModel(
+									trajectory,
+									plannerOutput.messageToUser,
+								),
+								trajectory,
+							),
+						};
+					}
 					const evaluator = await evaluateTrajectory(
 						params,
 						trajectory,
@@ -593,6 +644,14 @@ export async function runPlannerLoop(
 			};
 		}
 
+		// Coding mode: keep executing the rest of this model-emitted tool-call
+		// batch before evaluating/re-planning. Terminal calls already returned
+		// above, so anything still queued is non-terminal build work (more FILE
+		// writes / SHELL runs) that the model asked for in the same response.
+		if (codingDrainQueue && trajectory.plannedQueue.length > 0) {
+			continue;
+		}
+
 		await maybeCompactBeforeNextModelCall({
 			trajectory,
 			config,
@@ -603,6 +662,20 @@ export async function runPlannerLoop(
 			iteration,
 			logger: params.runtime.logger,
 		});
+
+		// Coding mode: the MODEL — not the chat completion-evaluator — owns
+		// termination. After a tool batch is fully drained, re-plan (give the
+		// model another tools round) so it can run the next step (e.g. SHELL
+		// after writing files) and only ends the turn by emitting a terminal
+		// call (REPLY/STOP), handled at the top of the loop. `maxToolCalls`
+		// bounds runaway loops. This gives the eliza-code sub-agent a real
+		// coding-agent loop instead of chat's evaluate-after-each-action — the
+		// chat evaluator would otherwise prematurely FINISH after the first
+		// file write (before the build's SHELL run / verification).
+		if (codingDrainQueue) {
+			trajectory.plannedQueue.length = 0;
+			continue;
+		}
 
 		// Conservative gate (PR #7514): when a successful tool drained the queue
 		// and the just-completed planner call gave us a clean explicit
