@@ -147,7 +147,7 @@ describe("Solana browser signing routes", () => {
       await route(routeName).handler(
         req({ authorization: "Bearer caller-token", body: {} }),
         response,
-        runtime(null),
+        runtime(null)
       );
       expect(response.statusCode).toBe(503);
       expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
