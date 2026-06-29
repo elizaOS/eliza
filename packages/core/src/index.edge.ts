@@ -105,6 +105,7 @@ export * from "./utils/description-compressed-lint";
 export * from "./utils/environment";
 export * from "./utils/prompt-compression";
 export * from "./utils/read-env";
+export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
 export * from "./validation";
 

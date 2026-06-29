@@ -189,6 +189,7 @@ export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
 export * from "./utils/read-env";
+export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 // Validation helpers (validateActionKeywords / validateActionRegex /
