@@ -7,6 +7,7 @@
 - Moved the pure Android Gradle argument builder to `packages/app-core/scripts/mobile/android-gradle.mjs`.
 - Moved the Android build target table and target-name resolution to `packages/app-core/scripts/mobile/targets/android.mjs`, with data-only phase keys mapped back to the existing driver functions.
 - Added `packages/app-core/scripts/run-mobile-build-android-targets.test.mjs` for the target table and Gradle command contracts.
+- Intentional behavior delta: the shared driver runs configured source audits both before and after Gradle. For `android-system`, that adds a post-Gradle `auditAndroidSystemSource("post-gradle")` pass so generated privileged APK sources cannot drift after Gradle mutation.
 
 ## Verification
 
@@ -15,6 +16,7 @@
 - `bun run --cwd packages/app-core test -- scripts/run-mobile-build-android-targets.test.mjs scripts/run-mobile-build-ios-engine-gate.test.mjs`
 - `bun test packages/app-core/scripts/run-mobile-build-android-targets.test.mjs packages/app-core/scripts/run-mobile-build-android-app-actions.test.mjs packages/app-core/scripts/run-mobile-build-ios-engine-gate.test.mjs packages/app-core/scripts/run-mobile-build-brand-separation.test.mts`
 - `node packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug`
+- Fail-loud coverage: the target-table unit test now asserts unknown public Android targets and unknown AAR metadata variants throw explicit `[mobile-build]` errors.
 
 ## Native Android Evidence
 
