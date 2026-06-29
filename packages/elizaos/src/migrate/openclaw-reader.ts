@@ -69,7 +69,7 @@ export interface OcAgentSource {
   user?: string;
   /** TOOLS.md — infra/keys/notes → plugin config, NOT persona. */
   tools?: string;
-  /** MEMORY.md (or legacy memory.md) — curated long-term memory. */
+  /** MEMORY.md (or legacy memory.md): curated long-term memory. */
   curatedMemory?: string;
   /** Which root-memory filename was found ("MEMORY.md" | "memory.md" | undefined). */
   curatedMemoryFile?: string;
@@ -244,7 +244,7 @@ function readSqliteMemory(
       db.close();
     }
   } catch {
-    // Table missing / locked / not the expected shape — let caller warn.
+    // Table missing / locked / not the expected shape: let caller warn.
     return null;
   }
 
