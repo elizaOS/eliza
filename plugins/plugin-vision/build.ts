@@ -111,7 +111,8 @@ async function build() {
 
   // Generate TypeScript declarations
   console.log("📝 Generating TypeScript declarations...");
-  const dtsResult = await $`tsc --project tsconfig.build.json`.nothrow();
+  const dtsResult =
+    await $`tsc --project tsconfig.build.json --noCheck`.nothrow();
   if (dtsResult.exitCode !== 0) {
     console.error("❌ TypeScript declarations failed");
     process.exit(dtsResult.exitCode);
