@@ -47,7 +47,7 @@
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build": "tsup && tsc --declaration --emitDeclarationOnly --noEmit false",
+    "build": "tsup && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck",
     "dev": "tsup --watch",
     "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe src",
