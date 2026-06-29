@@ -48,8 +48,7 @@ test("first-run starts with setup choices before capability settings", async ({
   await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
   const firstRunSurface = page
-    .getByTestId("first-run-shell")
-    .or(page.getByTestId("onboarding-toast"))
+    .getByTestId("first-run-chat")
     .or(page.getByRole("form", { name: "Bootstrap token entry" }));
   await expect(firstRunSurface).toBeVisible();
   const bootstrapGate = page.getByRole("form", {
@@ -61,30 +60,19 @@ test("first-run starts with setup choices before capability settings", async ({
     ).toHaveCount(0);
     return;
   }
-  await expect(
-    page
-      .getByRole("heading", { name: /Where should .* run\?/ })
-      .or(page.getByText("Let's get you started"))
-      .or(page.getByTestId("onboarding-option-cloud")),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByTestId("first-run-runtime-cloud")
-      .or(page.getByTestId("onboarding-option-cloud")),
-  ).toBeVisible();
-  const localRuntime = page.getByTestId("first-run-runtime-local");
+  // The in-chat first-run flow greets first and offers the runtime choices as
+  // in-chat ChoiceWidget options. The Computer Use switch must NOT be reachable
+  // before the agent exists.
+  await expect(page.getByTestId("first-run-greeting")).toBeVisible();
+  await expect(page.getByTestId("choice-cloud")).toBeVisible();
+  const localRuntime = page.getByTestId("choice-local");
   if (await localRuntime.count()) {
     await expect(localRuntime).toBeVisible();
   }
-  const remoteRuntime = page.getByTestId("first-run-runtime-remote");
+  const remoteRuntime = page.getByTestId("choice-remote");
   if (await remoteRuntime.count()) {
     await expect(remoteRuntime).toBeVisible();
   }
-  await expect(
-    page
-      .getByRole("button", { name: /^(Connect|Start)$/ })
-      .or(page.getByTestId("onboarding-option-cloud")),
-  ).toBeVisible();
   await expect(
     page.getByRole("switch", { name: "Enable Computer Use" }),
   ).toHaveCount(0);
