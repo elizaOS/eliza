@@ -11,7 +11,6 @@
  * bodies — none of which fit the same-origin JSON-only typed `api<T>` client.
  */
 
-import { getApiBaseUrl } from "@elizaos/cloud-shared/lib/config/client-env";
 import {
   type ApiEndpoint,
   type EndpointParameter,
@@ -85,6 +84,14 @@ interface AudioResponseData {
   _audioUrl?: string;
   _size?: number;
   message?: string;
+}
+
+function getApiBaseUrl(): string {
+  if (typeof window === "undefined") {
+    return "http://localhost:3000";
+  }
+
+  return window.location.origin;
 }
 
 export function ApiTester({
