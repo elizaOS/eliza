@@ -1305,6 +1305,20 @@ export function accumulateToolCallDeltas(
   }
 }
 
+/**
+ * Accumulated arguments of the lowest-index streamed tool call. The Stage-1
+ * RESPONSE_HANDLER reply forces a single HANDLE_RESPONSE call (index 0), so this
+ * is the reply envelope (`{"shouldRespond":...,"replyText":...}`) as it grows.
+ * Returns "" before any call has appeared in the stream.
+ */
+export function lowestIndexToolCallArgs(acc: Map<number, StreamingToolCallAcc>): string {
+  let lowest: number | undefined;
+  for (const index of acc.keys()) {
+    if (lowest === undefined || index < lowest) lowest = index;
+  }
+  return lowest === undefined ? "" : (acc.get(lowest)?.args ?? "");
+}
+
 /** Materialize accumulated tool-call deltas into the buffered-path shape. */
 export function finalizeStreamedToolCalls(
   acc: Map<number, StreamingToolCallAcc>
@@ -1473,6 +1487,19 @@ export async function streamNativeChatCompletion(
   const finishD = deferred<string | undefined>();
   const toolCallsD = deferred<NativeToolCall[]>();
 
+  // Stage-1 RESPONSE_HANDLER forces `tool_choice:"required"`, so Cerebras returns
+  // the whole reply envelope (incl. `replyText`) as tool-call ARGUMENT deltas —
+  // never `delta.content`. Surface those into the textStream so the runtime's
+  // ResponseSkeletonStreamExtractor can emit `replyText` token-by-token (it
+  // filters to the visible reply span, so control fields never leak to the UI).
+  // Gated to the structured reply path (`streamStructured`, the only caller that
+  // reaches the streaming branch); planner/other native calls keep args buffered.
+  // `streamedReplyArgs` tracks what we've already surfaced so the Cerebras final
+  // aggregated re-send (which replaces the accumulator) is not re-emitted twice.
+  const streamReplyToolArgs =
+    (params as { streamStructured?: boolean }).streamStructured === true;
+  let streamedReplyArgs = "";
+
   async function* generate(): AsyncGenerator<string> {
     try {
       for await (const frame of parseOpenAiSseStream(body)) {
@@ -1494,6 +1521,23 @@ export async function streamNativeChatCompletion(
         }
         if (delta.tool_calls) {
           accumulateToolCallDeltas(toolAcc, delta.tool_calls);
+          if (streamReplyToolArgs) {
+            const replyArgs = lowestIndexToolCallArgs(toolAcc);
+            if (
+              replyArgs.length > streamedReplyArgs.length &&
+              replyArgs.startsWith(streamedReplyArgs)
+            ) {
+              const suffix = replyArgs.slice(streamedReplyArgs.length);
+              streamedReplyArgs = replyArgs;
+              accumulated += suffix;
+              yield suffix;
+            } else if (replyArgs && replyArgs !== streamedReplyArgs) {
+              // Aggregated re-send replaced the accumulator (possibly with a
+              // case-divergent copy); the incremental preview is already on the
+              // wire — advance the cursor without re-streaming a duplicate.
+              streamedReplyArgs = replyArgs;
+            }
+          }
         }
         const fr = firstString(choice.finish_reason);
         if (fr) finishReason = fr;
