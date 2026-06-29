@@ -3778,10 +3778,13 @@ ElizaClient.prototype.getOrchestratorAccountReadiness = async function (
   opts,
 ) {
   const qs = opts?.rotation ? "?rotation=1" : "";
-  // Always 200 with the verdict body; `ready: false` + `problems` is the loud,
-  // displayable signal (the panel renders it; the CLI exits non-zero on it).
+  // The route returns 503 when the pool is degraded — but that 503 body IS the
+  // verdict the panel renders, not an error. allowNonOk skips the throw so we
+  // read the body on both 200 (ready) and 503 (degraded).
   return this.fetch<OrchestratorAccountReadiness>(
     `/api/orchestrator/accounts/readiness${qs}`,
+    undefined,
+    { allowNonOk: true },
   );
 };
 

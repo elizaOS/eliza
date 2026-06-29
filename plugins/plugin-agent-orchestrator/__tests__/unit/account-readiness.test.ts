@@ -173,7 +173,7 @@ describe("GET /api/orchestrator/accounts/readiness", () => {
     );
   });
 
-  it("surfaces ready=false + problems (the loud verdict) when the pool is degraded", async () => {
+  it("fails loudly with 503 + problems when the pool is degraded", async () => {
     await withBridge(
       () => av("claude", [{ total: 1, enabled: 1, healthy: 1 }]), // no codex
       async () => {
@@ -187,7 +187,7 @@ describe("GET /api/orchestrator/accounts/readiness", () => {
           "/api/orchestrator/accounts/readiness",
           ctxWith(makeService()),
         );
-        expect(res.statusCode).toBe(200);
+        expect(res.statusCode).toBe(503);
         const body = res.json();
         expect(body.ready).toBe(false);
         expect((body.problems as string[]).join(" ")).toContain("codex");
@@ -212,6 +212,7 @@ describe("GET /api/orchestrator/accounts/readiness", () => {
           "/api/orchestrator/accounts/readiness",
           ctxWith(makeService()),
         );
+        expect(res.statusCode).toBe(503);
         expect(res.json().required).toBe(2);
         expect(res.json().ready).toBe(false);
       },

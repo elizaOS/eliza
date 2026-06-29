@@ -211,17 +211,17 @@ async function dispatchOrchestratorRoutes(
     return true;
   }
 
-  // GET /api/orchestrator/accounts/readiness — pool-readiness verdict.
-  // Always 200 with the structured verdict ({ ready, providers, problems }):
-  // `ready: false` + `problems` is the loud, displayable signal the dashboard
-  // panel renders and the `check:account-readiness` CLI exits non-zero on,
-  // surfacing a degraded pool instead of the silent single-account fallback.
-  // Requires ≥1 healthy Codex AND ≥1 healthy Claude (≥2 each with ?rotation=1).
-  // (#9960)
+  // GET /api/orchestrator/accounts/readiness — loud pool-readiness gate.
+  // Returns 200 when ≥1 healthy Codex AND ≥1 healthy Claude are connected
+  // (≥2 each with ?rotation=1), or 503 with the per-provider problems when not,
+  // so CI/ops catches a degraded pool instead of the silent single-account
+  // fallback. The dashboard account-health panel reads the verdict body on
+  // either status (allowNonOk). (#9960)
   if (method === "GET" && pathname === `${PREFIX}/accounts/readiness`) {
     const rotation =
       query.get("rotation") === "1" || query.get("rotation") === "true";
-    sendJson(res, service.getAccountReadiness({ rotation }));
+    const readiness = service.getAccountReadiness({ rotation });
+    sendJson(res, readiness, readiness.ready ? 200 : 503);
     return true;
   }
 
