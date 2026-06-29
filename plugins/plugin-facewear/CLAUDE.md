@@ -6,6 +6,8 @@ Unified facewear plugin for elizaOS — adds XR headset streaming and BLE smartg
 
 Registered as `@elizaos/plugin-facewear` (opt-in, category `hardware`). Connects Eliza agents to Meta Quest 3, XReal, Apple Vision Pro (WebXR over WebSocket), and Even Realities G1/G2 smartglasses (BLE via Noble, Web Bluetooth, or a native bridge). Provides bidirectional voice + camera streaming for XR headsets, a full G1 display/control protocol for smartglasses, and in-app view panels for device management.
 
+**This is the single home for VR/AR/smartglasses + their setup** — device pairing, native app SDKs (`scripts/setup-sdks.mjs`), and the desktop **OpenXR runtime** detector/installer (`src/runtime/`) all live here. `@elizaos/plugin-xr` is superseded by this plugin. The immersive renderer itself (WebXR session + DOM→texture panels) lives in `@elizaos/ui/spatial` (`enterImmersiveScene` / `enterImmersiveFromSpecs`); facewear owns the device + runtime **setup** that makes it reachable.
+
 ## Plugin surface
 
 ### Services
@@ -30,6 +32,7 @@ Registered as `@elizaos/plugin-facewear` (opt-in, category `hardware`). Connects
 | `XR_LIST_VIEWS` (`facewearListViewsAction`) | `actions/view-actions.ts` | Enumerate + optionally send view catalog to headset |
 | `XR_RESIZE_VIEW` (`facewearResizeViewAction`) | `actions/view-actions.ts` | Scale / reposition a view panel |
 | `XR_QUERY_VISION` (`facewearQueryVisionAction`) | `actions/vision-query.ts` | Describe current XR camera frame |
+| `SETUP_XR_RUNTIME` (`facewearSetupRuntimeAction`) | `actions/xr-runtime-setup.ts` | Detect the desktop OpenXR runtime (Monado/SteamVR/WMR) + show install steps |
 
 ### Providers
 | Name | File | What it injects |
@@ -45,6 +48,7 @@ Registered as `@elizaos/plugin-facewear` (opt-in, category `hardware`). Connects
 | `GET /api/facewear/devices` | `routes/device-config.ts` | JSON list of all device profiles |
 | `GET /api/facewear/devices/:id` | `routes/device-config.ts` | Single device profile |
 | `GET /api/facewear/status` | `routes/device-config.ts` | Connected device list from `FacewearService` |
+| `GET /api/facewear/xr-runtime` | `routes/xr-runtime.ts` | Desktop OpenXR runtime status + install plan (drives the FacewearView "vr/ar runtime" row) |
 | simulator route | `routes/simulator-route.ts` | Simulator UI host |
 | view-host route | `routes/view-host.ts` | Serve in-headset view bundles |
 | views route | `routes/views.ts` | View catalog endpoint |
@@ -120,6 +124,8 @@ bun run --cwd plugins/plugin-facewear lint           # Biome check src/
 bun run --cwd plugins/plugin-facewear test           # vitest (builds views + emulator first)
 bun run --cwd plugins/plugin-facewear emulator:build # build emulator only
 bun run --cwd plugins/plugin-facewear emulator:cli   # run emulator CLI
+bun run --cwd plugins/plugin-facewear setup:sdks     # check native app SDKs + OpenXR runtime
+bun run --cwd plugins/plugin-facewear setup:openxr   # install a desktop OpenXR runtime (no-root SteamVR where possible)
 bun run --cwd plugins/plugin-facewear verify:app     # registry + plugin-registration integration tests
 ```
 
