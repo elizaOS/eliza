@@ -97,7 +97,7 @@ function FtuWelcomeWidget({
           data-testid="ftu-welcome-dismiss"
           aria-label="Dismiss welcome"
           onClick={() => dismissHomeWidget(WIDGET_KEY)}
-          className="text-sm text-white/40 transition-colors hover:text-white/70"
+          className="text-sm text-white/60 transition-colors hover:text-white/80"
         >
           Dismiss
         </button>
