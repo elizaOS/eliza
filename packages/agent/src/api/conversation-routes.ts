@@ -1358,8 +1358,7 @@ function clampMessageSearchLimit(value: string | null): number {
 }
 
 function normalizeMessageSearchQuery(value: string | null): string {
-  if (typeof value !== "string") return "";
-  return value.trim().replace(/\s+/g, " ");
+  return (value === null ? "" : value).trim().replace(/\s+/g, " ");
 }
 
 /** A `…keyword…` excerpt around the first match, or a head-truncated fallback. */
