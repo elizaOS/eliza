@@ -91,6 +91,12 @@ export interface ShellController {
       metadata?: Record<string, unknown>;
     },
   ) => void;
+  /** Show the agent the screen: sends a vision-intent turn so the agent runs its
+   *  plugin-vision screen-capture action. Backs the bottom-bar VISION button. */
+  captureVision: () => void;
+  /** True from a VISION tap until the resulting turn is in flight (pulses the
+   *  VISION button). */
+  visionCapturing: boolean;
   /** Toggle continuous ("open voice") capture. Used by a quick tap on the mic. */
   toggleRecording: () => void;
   /** Begin capture unconditionally. Used by push-to-talk press. `"dictate"`
@@ -1197,6 +1203,22 @@ export function useShellController(): ShellController {
   // failureKind gate ("Connect a provider") that the transcript renders.
   const canSend = agentStatus?.state !== "stopped";
 
+  // VISION button: a tap sends a screen-vision turn so the agent runs its
+  // plugin-vision screen-capture action (server-side capture + analysis). The
+  // transient `visionCapturing` flag pulses the button until the turn is in
+  // flight (responding rises), then clears.
+  const [visionCapturing, setVisionCapturing] = React.useState(false);
+  const captureVision = React.useCallback(() => {
+    if (!canSend) return;
+    setVisionCapturing(true);
+    send("Take a look at my screen and tell me what you see.", {
+      metadata: { vision: { surface: "screen" } },
+    });
+  }, [canSend, send]);
+  React.useEffect(() => {
+    if (visionCapturing && responding) setVisionCapturing(false);
+  }, [visionCapturing, responding]);
+
   return {
     phase,
     responding,
@@ -1211,6 +1233,8 @@ export function useShellController(): ShellController {
     close,
     isOpen,
     send,
+    captureVision,
+    visionCapturing,
     toggleRecording,
     startRecording: startCapture,
     stopRecording: stopCapture,

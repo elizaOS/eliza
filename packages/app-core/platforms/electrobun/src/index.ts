@@ -13,6 +13,7 @@ import Electrobun, {
   ApplicationMenu,
   BrowserView,
   BuildConfig,
+  Screen,
   Updater,
   Utils,
   WGPU,
@@ -41,6 +42,11 @@ import {
   shouldStartTrayFirst,
 } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
+import {
+  appendChatOverlayShellModeParam,
+  computeBottomBarFrame,
+  shouldStartBottomBar,
+} from "./desktop-bottom-bar-config";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
 import { appendKioskShellModeParam, isKioskShellMode } from "./kiosk-mode";
@@ -962,11 +968,43 @@ async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
   return rendererUrl;
 }
 
+/**
+ * Resolve the chromeless bottom-bar window frame from the primary display's
+ * usable work area. Falls back to a 1080p estimate if the Screen API is
+ * unavailable (the user-visible bar still opens; only the width estimate is off).
+ */
+function resolveBottomBarFrame(): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  let workArea = { x: 0, y: 0, width: 1920, height: 1080 };
+  try {
+    const display = Screen.getPrimaryDisplay();
+    if (display?.workArea) {
+      workArea = display.workArea;
+    }
+  } catch (err) {
+    logger.warn(
+      `[main-window] bottom-bar Screen.getPrimaryDisplay() failed; using default geometry: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return computeBottomBarFrame(workArea);
+}
+
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   const kiosk = isKioskShellMode();
+  // Chromeless bottom-bar shell (#9953): a frameless, transparent, always-on-top
+  // bar pinned to the screen bottom that renders the chat-overlay shell only.
+  // Opt-in and mutually exclusive with kiosk.
+  const bottomBar = !kiosk && shouldStartBottomBar();
+  const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
   const rendererUrl = kiosk
-    ? appendKioskShellModeParam(await resolveRendererUrlForCurrentRuntime())
-    : await resolveRendererUrlForCurrentRuntime();
+    ? appendKioskShellModeParam(baseRendererUrl)
+    : bottomBar
+      ? appendChatOverlayShellModeParam(baseRendererUrl)
+      : baseRendererUrl;
   const buildInfo = await BuildConfig.get();
   const mainWindowPartition = resolveMainWindowPartition(process.env, {
     platform: process.platform,
@@ -997,17 +1035,23 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     preload = "// preload unavailable";
   }
 
-  const windowFrame = {
-    width: state.width,
-    height: state.height,
-    x: state.x,
-    y: state.y,
-  };
-  const titleBarStyle = kiosk
-    ? "hidden"
-    : process.platform === "darwin"
-      ? "hiddenInset"
-      : "default";
+  const windowFrame = bottomBar
+    ? resolveBottomBarFrame()
+    : {
+        width: state.width,
+        height: state.height,
+        x: state.x,
+        y: state.y,
+      };
+  const titleBarStyle =
+    kiosk || bottomBar
+      ? "hidden"
+      : process.platform === "darwin"
+        ? "hiddenInset"
+        : "default";
+  // Bottom bar wants a transparent surface so the desktop shows through the
+  // empty region above the bar; on darwin it pairs with vibrancy. Win/Linux
+  // transparency support varies, so the bar stays opaque there for now.
   const transparent = !kiosk && process.platform === "darwin";
   const forceMainWindowCef = shouldForceMainWindowCef(
     process.env,
@@ -1053,8 +1097,8 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       frame: {
         x: 0,
         y: 0,
-        width: state.width,
-        height: state.height,
+        width: windowFrame.width,
+        height: windowFrame.height,
       },
       windowId: win.id,
       rpc,
@@ -1090,6 +1134,23 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         `[main-window] kiosk setFullScreen() failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    return win;
+  }
+
+  // Bottom-bar shell: pin always-on-top and (on darwin) apply vibrancy. The bar
+  // has fixed, display-derived geometry, so skip bounds persistence + the
+  // first-launch maximize entirely.
+  if (bottomBar) {
+    try {
+      (
+        win as typeof win & { setAlwaysOnTop?: (flag: boolean) => void }
+      ).setAlwaysOnTop?.(true);
+    } catch (err) {
+      logger.warn(
+        `[main-window] bottom-bar setAlwaysOnTop() failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    applyMacOSWindowEffects(win);
     return win;
   }
 

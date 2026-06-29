@@ -1518,6 +1518,8 @@ function ShellFoundationMount() {
           greeting={greetingForTimeOfDay()}
           recording={controller.recording}
           onToggleRecording={controller.toggleRecording}
+          onVision={controller.captureVision}
+          visionActive={controller.visionCapturing}
         />
       </AssistantOverlay>
     </>
