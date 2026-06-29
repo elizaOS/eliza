@@ -79,11 +79,16 @@ jobs:
         with:
           bun-version: canary
 
-      # packages/feed is its own monorepo, excluded from the root workspace, so
-      # it needs its own install rather than the root `bun install`.
-      - name: Install feed dependencies
+      # Install the repo root first so Bun links the root-owned elizaOS packages
+      # and the feed sub-workspaces that the root package.json globs. Then install
+      # the excluded feed root so its own app-level dependencies (drizzle-orm,
+      # Next, etc.) are available to `packages/feed/test:unit`.
+      - name: Install root workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install feed root dependencies
         working-directory: packages/feed
-        run: bun install --no-frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Build @elizaos/core dist
         run: bun run --cwd packages/core build
