@@ -58,7 +58,8 @@
   },
   "dependencies": {
     "@feed/shared": "workspace:*",
-    "@feed/db": "workspace:*"
+    "@feed/db": "workspace:*",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

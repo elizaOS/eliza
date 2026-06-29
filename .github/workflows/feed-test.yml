@@ -94,6 +94,9 @@ jobs:
       - name: Build @elizaos/core dist
         run: bun run --cwd packages/core build
 
+      - name: Build @elizaos/core dist
+        run: bun run --cwd packages/core build
+
       - name: Run feed unit tests
         working-directory: packages/feed
         run: bun run test:unit
