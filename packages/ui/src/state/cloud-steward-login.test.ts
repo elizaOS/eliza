@@ -9,6 +9,22 @@ import {
 
 const STEWARD_TOKEN_KEY = "steward_session_token";
 
+/** Build a minimal (unsigned) JWT whose payload carries the given `exp`. */
+function makeJwt(expSecondsFromNow: number | null): string {
+  const enc = (obj: unknown) =>
+    btoa(JSON.stringify(obj))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  const header = enc({ alg: "none", typ: "JWT" });
+  const payload = enc(
+    expSecondsFromNow === null
+      ? {}
+      : { exp: Math.floor(Date.now() / 1000) + expSecondsFromNow },
+  );
+  return `${header}.${payload}.sig`;
+}
+
 describe("cloud-steward-login seam", () => {
   beforeEach(() => {
     localStorage.removeItem(STEWARD_TOKEN_KEY);
@@ -23,18 +39,71 @@ describe("cloud-steward-login seam", () => {
     expect(hasStewardLoginLauncher()).toBe(false);
   });
 
-  it("resolves immediately with the stored Steward token (no launcher call)", async () => {
-    localStorage.setItem(STEWARD_TOKEN_KEY, "existing-jwt");
+  it("resolves immediately with an opaque stored token (device-code/Remote, no launcher call)", async () => {
+    // Non-JWT opaque session tokens have no decodable `exp` → left to the legacy
+    // flow (preserved), so they still short-circuit.
+    localStorage.setItem(STEWARD_TOKEN_KEY, "opaque-device-code-token");
     const launcher = vi.fn(async () => ({ token: "launcher-jwt" }));
     const unregister = registerStewardLoginLauncher(launcher);
     try {
       await expect(launchStewardLogin()).resolves.toEqual({
-        token: "existing-jwt",
+        token: "opaque-device-code-token",
       });
       expect(launcher).not.toHaveBeenCalled();
     } finally {
       unregister();
     }
+  });
+
+  it("short-circuits on a still-valid Steward JWT (no launcher call)", async () => {
+    const token = makeJwt(600);
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    const launcher = vi.fn(async () => ({ token: "launcher-jwt" }));
+    const unregister = registerStewardLoginLauncher(launcher);
+    try {
+      await expect(launchStewardLogin()).resolves.toEqual({ token });
+      expect(launcher).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  it("forces re-auth on an expired Steward JWT (clears stale token, invokes launcher)", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
+    const launcher = vi.fn(async () => ({ token: "fresh-jwt" }));
+    const unregister = registerStewardLoginLauncher(launcher);
+    try {
+      await expect(launchStewardLogin()).resolves.toEqual({
+        token: "fresh-jwt",
+      });
+      expect(launcher).toHaveBeenCalledTimes(1);
+      // Stale token must be drained so it can't 401 later flows in a loop.
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    } finally {
+      unregister();
+    }
+  });
+
+  it("forces re-auth on a JWT expiring within the safety margin", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(5));
+    const launcher = vi.fn(async () => ({ token: "fresh-jwt" }));
+    const unregister = registerStewardLoginLauncher(launcher);
+    try {
+      await expect(launchStewardLogin()).resolves.toEqual({
+        token: "fresh-jwt",
+      });
+      expect(launcher).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("clears the stale token and throws when an expired JWT has no launcher", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
+    await expect(launchStewardLogin()).rejects.toThrow(
+      /Steward login surface is not mounted/,
+    );
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
   it("invokes the registered launcher when no token is stored", async () => {
