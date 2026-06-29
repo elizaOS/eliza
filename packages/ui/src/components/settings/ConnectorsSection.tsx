@@ -24,6 +24,7 @@ import {
   readPendingFocusConnector,
 } from "../../events";
 import { useAppSelector } from "../../state";
+import { ConnectorBodyLayout } from "../connectors/ConnectorBodyLayout";
 import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
 import type { ConnectorMode } from "../connectors/ConnectorModeSelector.helpers";
 import { useConnectorMode } from "../connectors/ConnectorModeSelector.hooks";
@@ -177,60 +178,64 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
         />
       ) : null}
 
-      {showPluginConfig ? (
-        <div className="space-y-3">
-          {plugin.id === "telegram" ? (
-            <TelegramPluginConfig
-              plugin={plugin}
-              pluginConfigs={pluginConfigs}
-              onParamChange={handleParamChange}
-            />
-          ) : (
-            <PluginConfigForm
-              plugin={plugin}
-              pluginConfigs={pluginConfigs}
-              onParamChange={handleParamChange}
-            />
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              className="h-8 gap-1.5 rounded-sm px-4 text-xs-tight font-semibold"
-              onClick={() => {
-                void handleSave();
-              }}
-              disabled={!hasPendingConfig || isSaving}
-            >
-              <Save className="h-3.5 w-3.5" aria-hidden="true" />
-              {isSaving
-                ? t("common.saving", { defaultValue: "Saving..." })
-                : didSave
-                  ? t("pluginsview.Saved", { defaultValue: "Saved" })
-                  : t("pluginsview.SaveSettings", {
-                      defaultValue: "Save settings",
-                    })}
-            </Button>
-            {plugin.id === "discord" ? (
-              <span className="text-xs-tight text-muted">
-                {t("settings.sections.connectors.discordAppIdHint", {
-                  defaultValue:
-                    "Application ID is optional; it is auto-resolved from the bot token when possible.",
-                })}
-              </span>
-            ) : null}
+      <ConnectorBodyLayout
+        showPluginConfig={showPluginConfig}
+        className="space-y-3"
+        setupPanel={setupPanel}
+        configForm={
+          <>
+            {plugin.id === "telegram" ? (
+              <TelegramPluginConfig
+                plugin={plugin}
+                pluginConfigs={pluginConfigs}
+                onParamChange={handleParamChange}
+              />
+            ) : (
+              <PluginConfigForm
+                plugin={plugin}
+                pluginConfigs={pluginConfigs}
+                onParamChange={handleParamChange}
+              />
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="default"
+                size="sm"
+                className="h-8 gap-1.5 rounded-sm px-4 text-xs-tight font-semibold"
+                onClick={() => {
+                  void handleSave();
+                }}
+                disabled={!hasPendingConfig || isSaving}
+              >
+                <Save className="h-3.5 w-3.5" aria-hidden="true" />
+                {isSaving
+                  ? t("common.saving", { defaultValue: "Saving..." })
+                  : didSave
+                    ? t("pluginsview.Saved", { defaultValue: "Saved" })
+                    : t("pluginsview.SaveSettings", {
+                        defaultValue: "Save settings",
+                      })}
+              </Button>
+              {plugin.id === "discord" ? (
+                <span className="text-xs-tight text-muted">
+                  {t("settings.sections.connectors.discordAppIdHint", {
+                    defaultValue:
+                      "Application ID is optional; it is auto-resolved from the bot token when possible.",
+                  })}
+                </span>
+              ) : null}
+            </div>
+          </>
+        }
+        fallback={
+          <div className="text-xs-tight text-muted">
+            {t("settings.sections.connectors.ownSetupSurface", {
+              defaultValue: "{{name}} uses its own setup surface.",
+              name: plugin.name,
+            })}
           </div>
-        </div>
-      ) : setupPanel ? (
-        setupPanel
-      ) : (
-        <div className="text-xs-tight text-muted">
-          {t("settings.sections.connectors.ownSetupSurface", {
-            defaultValue: "{{name}} uses its own setup surface.",
-            name: plugin.name,
-          })}
-        </div>
-      )}
+        }
+      />
     </div>
   );
 }

@@ -16,6 +16,7 @@ import {
 import { useAppSelectorShallow } from "../../state";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { PagePanel } from "../composites/page-panel";
+import { ConnectorBodyLayout } from "../connectors/ConnectorBodyLayout";
 import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
 import { useConnectorMode } from "../connectors/ConnectorModeSelector.hooks";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
@@ -1159,9 +1160,11 @@ function ConnectorPluginCard({
           </PagePanel.Notice>
         )}
 
-        {showPluginConfig ? (
-          <div className="space-y-4">
-            {plugin.id === "telegram" ? (
+        <ConnectorBodyLayout
+          showPluginConfig={showPluginConfig}
+          setupPanel={supportsConnectorSetupPanel ? connectorSetupPanel : null}
+          configForm={
+            plugin.id === "telegram" ? (
               <TelegramPluginConfig
                 plugin={plugin}
                 pluginConfigs={pluginConfigs}
@@ -1173,14 +1176,14 @@ function ConnectorPluginCard({
                 pluginConfigs={pluginConfigs}
                 onParamChange={handleParamChange}
               />
-            )}
-            {connectorSetupPanel}
-          </div>
-        ) : supportsConnectorSetupPanel ? (
-          connectorSetupPanel
-        ) : (
-          <div className="text-sm text-muted">{noConfigurationNeededLabel}</div>
-        )}
+            )
+          }
+          fallback={
+            <div className="text-sm text-muted">
+              {noConfigurationNeededLabel}
+            </div>
+          }
+        />
 
         {plugin.validationErrors && plugin.validationErrors.length > 0 && (
           <PagePanel.Notice tone="danger" className="mt-3 text-xs">

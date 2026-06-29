@@ -79,4 +79,26 @@ describe("ConnectorsSection mode routing", () => {
       }),
     ).toBe(true);
   });
+
+  // Regression guard for #10281: telegram bot-token mode is the one connector
+  // where the env form AND a dedicated setup panel must BOTH render. Settings
+  // previously rendered them either/or and silently dropped the
+  // TelegramBotSetupPanel. The form gate (showForm) and the panel gate
+  // (hasConnectorSetupPanel) must be simultaneously true so ConnectorBodyLayout
+  // co-renders them.
+  it("co-renders the form AND the setup panel for telegram bot mode (#10281)", () => {
+    const route = routeFor("telegram", "bot");
+    expect(route.managementMode).toBe("local-config");
+    expect(route.setupPluginId).toBe("telegram");
+    expect(route.showForm).toBe(true);
+    // The companion panel that Settings used to drop.
+    expect(hasConnectorSetupPanel(route.setupPluginId ?? "")).toBe(true);
+  });
+
+  it("does NOT co-render a panel for discord bot mode (form only)", () => {
+    const route = routeFor("discord", "bot");
+    expect(route.showForm).toBe(true);
+    // Discord (the headline connector) has no setup panel — form-only is correct.
+    expect(hasConnectorSetupPanel(route.setupPluginId ?? "")).toBe(false);
+  });
 });

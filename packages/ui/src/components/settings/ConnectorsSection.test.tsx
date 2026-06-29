@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginInfo } from "../../api";
+import type { PluginInfo, PluginParamDef } from "../../api";
 
 const appMock = vi.hoisted(() => ({
   value: {} as {
@@ -42,6 +42,9 @@ vi.mock("../connectors/TelegramAccountConnectorPanel", () => ({
 vi.mock("../connectors/WhatsAppQrOverlay", () => ({
   WhatsAppQrOverlay: () => <div />,
 }));
+vi.mock("../connectors/TelegramBotSetupPanel", () => ({
+  TelegramBotSetupPanel: () => <div data-testid="telegram-bot-setup-panel" />,
+}));
 
 import { ConnectorsSection } from "./ConnectorsSection";
 
@@ -78,6 +81,42 @@ describe("ConnectorsSection", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  function botTokenParam(): PluginParamDef {
+    return {
+      key: "TELEGRAM_BOT_TOKEN",
+      type: "string",
+      description: "BotFather token",
+      required: true,
+      sensitive: true,
+      currentValue: null,
+      isSet: false,
+    };
+  }
+
+  // Regression test for #10281: in Telegram bot-token mode the Settings →
+  // Connectors surface must render the env-config form AND the live
+  // TelegramBotSetupPanel together. It previously rendered them either/or and
+  // silently dropped the panel.
+  it("co-renders the Telegram bot-token form AND its setup panel (#10281)", () => {
+    appMock.value.plugins = [
+      plugin({
+        id: "telegram",
+        name: "Telegram",
+        parameters: [botTokenParam()],
+      }),
+    ];
+
+    render(<ConnectorsSection />);
+
+    // Telegram defaults to the plugin-managed mode; select Bot Token explicitly
+    // (the mode where both the form and the panel apply).
+    fireEvent.click(screen.getByTestId("connector-mode-telegram-bot"));
+
+    // The env form (its save control) AND the companion panel both present.
+    expect(screen.getByText("Save settings")).toBeTruthy();
+    expect(screen.getByTestId("telegram-bot-setup-panel")).toBeTruthy();
   });
 
   it("falls back to icon components instead of raw emoji icon metadata", () => {
