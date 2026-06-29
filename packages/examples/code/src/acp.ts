@@ -64,8 +64,18 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
     // packages (a different cwd resolves stale/broken builds from the bun cache).
     // The build target is conveyed purely through the workspace-root env.
     if (cwd) {
-      process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= cwd;
-      process.env.SHELL_ALLOWED_DIRECTORY ??= cwd;
+      // The sub-agent's own task workspace is always reachable. ALSO grant
+      // access to the published-apps directory (when the host configured one)
+      // so the agent can read/edit/republish an EXISTING deployed app — not just
+      // build new ones into a throwaway workspace. Without this, "edit the
+      // coinflip app" lands in an empty workspace, the app dir is sandbox-blocked,
+      // and nothing happens. Roots are comma-separated; the agent picks the path
+      // (its workspace for scripts, the apps dir for web apps) by the task.
+      const appsDir = process.env.ELIZA_AGENT_HOME_APPS_DIR?.trim();
+      const roots =
+        appsDir && appsDir !== cwd ? `${cwd},${appsDir}` : cwd;
+      process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= roots;
+      process.env.SHELL_ALLOWED_DIRECTORY ??= roots;
     }
     // Drop-in for the opencode coding sub-agent: when the host configured
     // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no

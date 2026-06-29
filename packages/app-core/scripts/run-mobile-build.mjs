@@ -70,7 +70,6 @@ import {
   resolvePlatformTemplateRoot as resolvePlatformTemplateRootImpl,
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
-import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
 import {
   androidUsesAppDirFor,
   MTP_FORK_SRC_CANDIDATES,
@@ -111,11 +110,17 @@ import {
 } from "./mobile/android-manifest.mjs";
 import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
 import {
-  ensurePlistArrayStrings,
+  mergeIosInfoPlist,
   removePbxListEntries,
   replaceIosAppGroupPlaceholders,
-  replaceOrInsertPlistString,
 } from "./mobile/ios-plist.mjs";
+import {
+  ANDROID_OFFICIAL_CAPACITOR_PACKAGES,
+  IOS_COCOAPODS_OWNED_SPM_PLUGINS,
+  IOS_INCOMPATIBLE_SPM_PLUGINS,
+  IOS_OFFICIAL_PODS,
+  resolveIosCustomPods,
+} from "./mobile/ios-pods.mjs";
 import { resolveAndroidBuildTarget } from "./mobile/targets/android.mjs";
 
 export {
@@ -147,6 +152,13 @@ export {
   stripXmlComments,
   validateAndroidAppActionsXmlResource,
 } from "./mobile/android-manifest.mjs";
+export {
+  ANDROID_OFFICIAL_CAPACITOR_PACKAGES,
+  IOS_COCOAPODS_OWNED_SPM_PLUGINS,
+  IOS_OFFICIAL_PODS,
+  MOBILE_CAPACITOR_PLUGIN_MANIFEST,
+  resolveIosCustomPods,
+} from "./mobile/ios-pods.mjs";
 export {
   ANDROID_BUILD_TARGETS,
   resolveAndroidBuildTarget,
@@ -2177,254 +2189,6 @@ export function injectAospAssetThinning(content) {
   return ensureCloudBuildAssetThinning(content);
 }
 
-export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
-  {
-    packageName: "@capacitor/app",
-    android: { patchAgp9: true },
-    iosPods: [
-      { name: "CapacitorApp", kind: "official", spmHandling: "incompatible" },
-    ],
-  },
-  {
-    packageName: "@capacitor/barcode-scanner",
-    android: { patchAgp9: true },
-    iosPods: [
-      {
-        name: "CapacitorBarcodeScanner",
-        kind: "official",
-        spmHandling: "incompatible",
-      },
-    ],
-  },
-  {
-    packageName: "@capacitor/background-runner",
-    android: { patchAgp9: true },
-    iosPods: [
-      {
-        name: "CapacitorBackgroundRunner",
-        kind: "official",
-        spmHandling: "incompatible",
-      },
-    ],
-  },
-  {
-    packageName: "@capacitor-community/background-runner",
-    android: { patchAgp9: true },
-  },
-  {
-    packageName: "@capacitor/preferences",
-    android: { patchAgp9: true },
-    notes:
-      "Preferences stays on CocoaPods because the generated iOS SPM package is stripped.",
-    iosPods: [
-      {
-        name: "CapacitorPreferences",
-        kind: "official",
-        spmHandling: "incompatible",
-      },
-    ],
-  },
-  {
-    packageName: "@capacitor/haptics",
-    android: { patchAgp9: true },
-    iosPods: [
-      {
-        name: "CapacitorHaptics",
-        kind: "official",
-        spmHandling: "incompatible",
-      },
-    ],
-  },
-  {
-    packageName: "@capacitor/keyboard",
-    android: { patchAgp9: true },
-    iosPods: [
-      {
-        name: "CapacitorKeyboard",
-        kind: "official",
-        spmHandling: "incompatible",
-      },
-    ],
-  },
-  {
-    packageName: "@capacitor/network",
-    iosPods: [
-      {
-        name: "CapacitorNetwork",
-        kind: "official",
-        spmHandling: "incompatible",
-      },
-    ],
-  },
-  {
-    packageName: "@capacitor/push-notifications",
-    android: { patchAgp9: true },
-    iosPods: [
-      {
-        name: "CapacitorPushNotifications",
-        kind: "official",
-        spmHandling: "incompatible",
-      },
-    ],
-  },
-  {
-    packageName: "@capacitor/browser",
-    android: { patchAgp9: true },
-    iosPods: [
-      {
-        name: "CapacitorBrowser",
-        kind: "official",
-        spmHandling: "incompatible",
-      },
-    ],
-  },
-  {
-    packageName: "@capacitor/status-bar",
-    android: { patchAgp9: true },
-    iosPods: [
-      {
-        name: "CapacitorStatusBar",
-        kind: "official",
-        spmHandling: "incompatible",
-      },
-    ],
-  },
-  {
-    packageName: "@elizaos/capacitor-agent",
-    iosPods: [{ name: "ElizaosCapacitorAgent", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-appblocker",
-    iosPods: [{ name: "ElizaosCapacitorAppblocker", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-camera",
-    iosPods: [{ name: "ElizaosCapacitorCamera", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-calendar",
-    iosPods: [{ name: "ElizaosCapacitorCalendar", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-canvas",
-    iosPods: [{ name: "ElizaosCapacitorCanvas", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-eliza-tasks",
-    iosPods: [{ name: "ElizaosCapacitorElizaTasks", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-gateway",
-    iosPods: [{ name: "ElizaosCapacitorGateway", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-location",
-    iosPods: [{ name: "ElizaosCapacitorLocation", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-mobile-signals",
-    iosPods: [{ name: "ElizaosCapacitorMobileSignals", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-screencapture",
-    iosPods: [{ name: "ElizaosCapacitorScreencapture", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-swabble",
-    iosPods: [{ name: "ElizaosCapacitorSwabble", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-talkmode",
-    iosPods: [{ name: "ElizaosCapacitorTalkmode", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-websiteblocker",
-    iosPods: [{ name: "ElizaosCapacitorWebsiteblocker", kind: "custom" }],
-  },
-  {
-    packageName: "@elizaos/capacitor-bun-runtime",
-    iosPods: [
-      {
-        name: "ElizaosCapacitorBunRuntime",
-        kind: "custom",
-        include: "bunRuntime",
-      },
-    ],
-  },
-  {
-    packageName: "@elizaos/capacitor-mobile-agent-bridge",
-    iosPods: [
-      {
-        name: "ElizaosCapacitorMobileAgentBridge",
-        kind: "custom",
-        include: "mobileAgentTunnel",
-      },
-    ],
-  },
-  {
-    packageName: "llama-cpp-capacitor",
-    iosPods: [
-      {
-        name: "LlamaCpp",
-        kind: "custom",
-        include: "llama",
-        spmHandling: "cocoapods-owned",
-      },
-      {
-        name: "LlamaCppCapacitor",
-        kind: "custom",
-        include: "llama",
-        spmHandling: "cocoapods-owned",
-      },
-    ],
-  },
-  {
-    packageName: "@elizaos/bun-ios-runtime",
-    iosPods: [
-      {
-        name: "ElizaBunEngine",
-        kind: "custom",
-        include: "fullBunEngine",
-      },
-    ],
-  },
-];
-
-function manifestIosPods() {
-  return MOBILE_CAPACITOR_PLUGIN_MANIFEST.flatMap((plugin) =>
-    (plugin.iosPods ?? []).map((pod) => ({
-      ...pod,
-      packageName: plugin.packageName,
-    })),
-  );
-}
-
-function iosPodTuple(pod) {
-  return [pod.name, pod.packageName];
-}
-
-function shouldIncludeIosCustomPod(pod, context) {
-  switch (pod.include ?? "always") {
-    case "always":
-      return true;
-    case "bunRuntime":
-      return context.includeBunRuntime;
-    case "mobileAgentTunnel":
-      return context.includeTunnelBridge;
-    case "llama":
-      return context.includeLlama && !context.appStoreBuild;
-    case "fullBunEngine":
-      return context.includeFullBunEngine;
-    default:
-      throw new Error(`Unknown iOS pod include gate: ${pod.include}`);
-  }
-}
-
-export const ANDROID_OFFICIAL_CAPACITOR_PACKAGES =
-  MOBILE_CAPACITOR_PLUGIN_MANIFEST.filter(
-    (plugin) => plugin.android?.patchAgp9,
-  ).map((plugin) => plugin.packageName);
-
 function patchInstalledCapacitorPluginGradleForAgp9(pkgName) {
   for (const pkgRoot of resolvePackageAbsolutePathCandidates(pkgName)) {
     patchGradleFileForAgp9(
@@ -3541,94 +3305,6 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
 
 // ── Phase 4: iOS native overlay ─────────────────────────────────────────
 
-const IOS_PERMISSION_KEYS = [
-  [
-    "NSCameraUsageDescription",
-    "This app uses your camera to capture photos and video when you ask it to.",
-  ],
-  [
-    "NSMicrophoneUsageDescription",
-    "This app needs microphone access for voice wake, talk mode, and video capture.",
-  ],
-  [
-    "NSLocationWhenInUseUsageDescription",
-    "This app uses your location to provide location-aware responses when you allow it.",
-  ],
-  [
-    "NSLocationAlwaysAndWhenInUseUsageDescription",
-    "This app can share your location in the background so it stays up to date even when the app is not in use.",
-  ],
-  [
-    "NSPhotoLibraryUsageDescription",
-    "This app accesses your photo library to attach and share photos or videos.",
-  ],
-  [
-    "NSPhotoLibraryAddUsageDescription",
-    "This app saves captured photos and videos to your photo library.",
-  ],
-  [
-    "NSHealthShareUsageDescription",
-    "This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.",
-  ],
-  [
-    "NSHealthUpdateUsageDescription",
-    "This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.",
-  ],
-  [
-    "NSSpeechRecognitionUsageDescription",
-    "This app uses on-device speech recognition to listen for voice commands and wake words.",
-  ],
-  [
-    "NSLocalNetworkUsageDescription",
-    `This app discovers and connects to your ${APP.appName} gateway on the local network.`,
-  ],
-];
-
-export const IOS_OFFICIAL_PODS = manifestIosPods()
-  .filter((pod) => pod.kind === "official")
-  .map(iosPodTuple);
-
-export function resolveIosCustomPods({
-  includeLlama = false,
-  includeCompatBunRuntime = false,
-  includeFullBunEngine = false,
-  appStoreBuild = false,
-  includeMobileAgentBridge = false,
-} = {}) {
-  const includeBunRuntime = includeCompatBunRuntime || includeFullBunEngine;
-  const includeTunnelBridge =
-    !appStoreBuild && (includeFullBunEngine || includeMobileAgentBridge);
-  const context = {
-    appStoreBuild,
-    includeBunRuntime,
-    includeFullBunEngine,
-    includeLlama,
-    includeTunnelBridge,
-  };
-  return manifestIosPods()
-    .filter((pod) => pod.kind === "custom")
-    .filter((pod) => shouldIncludeIosCustomPod(pod, context))
-    .map(iosPodTuple);
-}
-
-const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set(
-  manifestIosPods()
-    .filter((pod) => pod.spmHandling === "incompatible")
-    .map((pod) => pod.name),
-);
-
-export const IOS_COCOAPODS_OWNED_SPM_PLUGINS = new Set(
-  manifestIosPods()
-    .filter((pod) => pod.spmHandling === "cocoapods-owned")
-    .map((pod) => pod.name),
-);
-
-const IOS_BONJOUR_SERVICES = [
-  "_eliza-gw._tcp",
-  "_elizaos-gw._tcp",
-  "_eliza._tcp",
-];
-
 function overlayIos() {
   const targetAppDir = path.join(appDir, "ios", "App", "App");
 
@@ -3637,15 +3313,6 @@ function overlayIos() {
   if (fs.existsSync(plistPath)) {
     let plist = fs.readFileSync(plistPath, "utf8");
     let dirty = false;
-    for (const [key, desc] of IOS_PERMISSION_KEYS) {
-      if (!plist.includes(key)) {
-        plist = plist.replace(
-          "</dict>",
-          `\t<key>${key}</key>\n\t<string>${desc}</string>\n</dict>`,
-        );
-        dirty = true;
-      }
-    }
     // UIBackgroundModes and BGTaskSchedulerPermittedIdentifiers are MERGED,
     // not force-set: the template Info.plist already declares the modes the
     // ElizaTasks plugin needs (`processing`, `remote-notification`) and the
@@ -3653,28 +3320,12 @@ function overlayIos() {
     // `ai.eliza.tasks.processing`). The overlay only guarantees the baseline
     // `fetch` mode is present and that the ElizaTasks identifiers survive a
     // regeneration where a downstream embedder forgot to copy them.
-    const nextPlist = ensurePlistUrlScheme(
-      ensurePlistArrayStrings(
-        ensurePlistArrayStrings(
-          ensurePlistArrayStrings(
-            replaceOrInsertPlistString(
-              plist,
-              "CFBundleDisplayName",
-              "$(ELIZA_DISPLAY_NAME)",
-            ),
-            "NSBonjourServices",
-            IOS_BONJOUR_SERVICES,
-          ),
-          "UIBackgroundModes",
-          ["fetch", "processing", "remote-notification"],
-        ),
-        "BGTaskSchedulerPermittedIdentifiers",
-        ["ai.eliza.tasks.refresh", "ai.eliza.tasks.processing"],
-      ),
-      APP.urlScheme,
-    );
-    if (nextPlist !== plist) {
-      plist = nextPlist;
+    const nextPlist = mergeIosInfoPlist(plist, {
+      appName: APP.appName,
+      urlScheme: APP.urlScheme,
+    });
+    if (nextPlist.changed) {
+      plist = nextPlist.content;
       dirty = true;
     }
     if (dirty) {
