@@ -36,16 +36,38 @@ function routeErrorStatus(error: unknown): number {
   return error instanceof EvmSignInputError ? 400 : 500;
 }
 
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname
+      .replace(/^\[|\]$/g, "")
+      .toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "0.0.0.0" ||
+      host.endsWith(".localhost")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
-  const origin = (req.headers?.origin as string | undefined) ?? "*";
-  res.setHeader?.("Access-Control-Allow-Origin", origin);
+  // Only reflect a loopback Origin; never echo an arbitrary cross-origin
+  // attacker origin and never combine it with credentialed CORS. These are
+  // signing endpoints — a reflected Origin + Access-Control-Allow-Credentials
+  // would be a credential-leak vector (#9948).
+  const origin = req.headers?.origin as string | undefined;
+  if (origin && isLoopbackOrigin(origin)) {
+    res.setHeader?.("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader?.("Vary", "Origin");
   res.setHeader?.("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader?.(
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, X-Wallet-Sign-Token",
   );
-  res.setHeader?.("Access-Control-Allow-Credentials", "true");
   res.setHeader?.("Access-Control-Max-Age", "600");
 }
 

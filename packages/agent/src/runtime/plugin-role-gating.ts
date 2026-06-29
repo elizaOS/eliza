@@ -14,18 +14,29 @@ import type {
   Plugin,
   Provider,
   ProviderResult,
+  RoleGateRole,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, satisfiesRoleGate } from "@elizaos/core";
 
-type RoleGate = "user" | "admin" | "owner";
+// Lowercase tier alias kept for override-map ergonomics. Each tier normalizes to
+// a canonical `RoleGateRole` (`TIER_TO_CANONICAL_ROLE`) so the pass/fail decision
+// runs through the shared `satisfiesRoleGate` primitive instead of a local rank
+// reimplementation.
+type RoleGateTier = "user" | "admin" | "owner";
+
+const TIER_TO_CANONICAL_ROLE: Readonly<Record<RoleGateTier, RoleGateRole>> = {
+  user: "USER",
+  admin: "ADMIN",
+  owner: "OWNER",
+};
 
 // ---------------------------------------------------------------------------
 // Provider-level gating — providers that expose sensitive context.
 // Keys are exact provider `name` strings.
 // ---------------------------------------------------------------------------
 
-const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
+const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGateTier>> = {
   // Shell
   shellHistoryProvider: "admin",
   terminalUsage: "admin",
@@ -87,9 +98,7 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
 // metadata stamped onto the current message, so resolved role decisions are not
 // cached across turns.
 type RoleCheckValue = {
-  role: string;
-  isOwner: boolean;
-  isAdmin: boolean;
+  role: RoleGateRole;
 } | null;
 
 const roleCheckInflightByRuntime = new WeakMap<
@@ -145,9 +154,7 @@ async function fetchSenderRole(
 ): Promise<RoleCheckValue> {
   const checkSenderRole = await loadCheckSenderRole();
   const fresh = await checkSenderRole(runtime, message);
-  return fresh
-    ? { role: fresh.role, isOwner: fresh.isOwner, isAdmin: fresh.isAdmin }
-    : null;
+  return fresh ? { role: fresh.role } : null;
 }
 
 async function getCachedSenderRole(
@@ -159,9 +166,7 @@ async function getCachedSenderRole(
   if (!entityId || !roomId) {
     const checkSenderRole = await loadCheckSenderRole();
     const fresh = await checkSenderRole(runtime, message);
-    return fresh
-      ? { role: fresh.role, isOwner: fresh.isOwner, isAdmin: fresh.isAdmin }
-      : null;
+    return fresh ? { role: fresh.role } : null;
   }
 
   const key = `${runtime.agentId}|${entityId}|${roomId}|${liveRoleMetadataKey(message)}`;
@@ -185,29 +190,23 @@ async function getCachedSenderRole(
 // ---------------------------------------------------------------------------
 
 function roleCheckPasses(
-  check: { isOwner?: boolean; isAdmin?: boolean; role?: string },
-  gate: RoleGate,
+  check: { role: RoleGateRole },
+  tier: RoleGateTier,
 ): boolean {
-  switch (gate) {
-    case "owner":
-      return check.isOwner === true;
-    case "admin":
-      return check.isAdmin === true;
-    case "user":
-      // USER, ADMIN, and OWNER all pass the "user" gate.
-      // Only GUEST (rank 0) is blocked.
-      return check.role !== "GUEST" && check.role !== "NONE";
-    default:
-      return false;
-  }
+  // Route through the canonical gate primitive: the caller's resolved role must
+  // out-rank the override tier. OWNER passes "owner", OWNER/ADMIN pass "admin",
+  // and anyone above GUEST passes "user".
+  return satisfiesRoleGate([check.role], {
+    minRole: TIER_TO_CANONICAL_ROLE[tier],
+  });
 }
 
 /**
  * Wrap a provider's get function so it returns empty content for callers
  * below the gate. Providers don't block; they just withhold context.
  */
-function gateProvider(provider: Provider, gate: RoleGate): void {
-  if ((provider as { __roleGate?: RoleGate }).__roleGate === gate) {
+function gateProvider(provider: Provider, tier: RoleGateTier): void {
+  if ((provider as { __roleGate?: RoleGateTier }).__roleGate === tier) {
     return;
   }
 
@@ -219,13 +218,13 @@ function gateProvider(provider: Provider, gate: RoleGate): void {
     state: State,
   ): Promise<ProviderResult> => {
     const check = await getCachedSenderRole(runtime, message);
-    if (!check || !roleCheckPasses(check, gate)) {
+    if (!check || !roleCheckPasses(check, tier)) {
       return { text: "" };
     }
 
     return originalGet.call(provider, runtime, message, state);
   };
-  (provider as { __roleGate?: RoleGate }).__roleGate = gate;
+  (provider as { __roleGate?: RoleGateTier }).__roleGate = tier;
 }
 
 /**
@@ -242,9 +241,9 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
     if (plugin.providers?.length) {
       for (const provider of plugin.providers) {
         const providerName = (provider as { name?: string }).name ?? "";
-        const providerGate = PROVIDER_ROLE_OVERRIDES[providerName];
-        if (providerGate) {
-          gateProvider(provider, providerGate);
+        const providerTier = PROVIDER_ROLE_OVERRIDES[providerName];
+        if (providerTier) {
+          gateProvider(provider, providerTier);
           totalProviders++;
         }
       }
@@ -257,4 +256,4 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
 }
 
 /** Exported for testing. */
-export { PROVIDER_ROLE_OVERRIDES };
+export { PROVIDER_ROLE_OVERRIDES, TIER_TO_CANONICAL_ROLE };

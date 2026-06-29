@@ -8,9 +8,10 @@
  *
  * The companion JS shim in `../../../browser-shim/` bakes the token into a
  * registered Wallet-Standard provider and proxies `signTransaction` /
- * `signMessage` / `signAndSendTransaction` to these routes. CORS is permissive
- * (any origin, with the token as the actual auth) because the shim runs inside
- * arbitrary dApp pages whose origin is not knowable in advance.
+ * `signMessage` / `signAndSendTransaction` to these routes. The shared bearer
+ * token is the actual auth; CORS only reflects loopback origins and is never
+ * credentialed, so an arbitrary dApp page cannot read responses cross-origin
+ * (#9948).
  */
 
 import type {
@@ -32,16 +33,36 @@ function routeErrorStatus(error: unknown): number {
   return error instanceof SolanaSignInputError ? 400 : 500;
 }
 
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "0.0.0.0" ||
+      host.endsWith(".localhost")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
-  const origin = (req.headers?.origin as string | undefined) ?? "*";
-  res.setHeader?.("Access-Control-Allow-Origin", origin);
+  // Only reflect a loopback Origin; never echo an arbitrary cross-origin
+  // attacker origin and never combine it with credentialed CORS. These are
+  // signing endpoints — a reflected Origin + Access-Control-Allow-Credentials
+  // would be a credential-leak vector (#9948).
+  const origin = req.headers?.origin as string | undefined;
+  if (origin && isLoopbackOrigin(origin)) {
+    res.setHeader?.("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader?.("Vary", "Origin");
   res.setHeader?.("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader?.(
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, X-Wallet-Sign-Token"
   );
-  res.setHeader?.("Access-Control-Allow-Credentials", "true");
   res.setHeader?.("Access-Control-Max-Age", "600");
 }
 

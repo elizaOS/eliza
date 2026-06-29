@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+	roleRank as gateRoleRank,
+	satisfiesRoleGate,
+} from "./runtime/context-gates.ts";
+import {
+	CANONICAL_ROLE_RANK,
 	canModifyRole,
 	getEntityRole,
 	isAgentSelf,
 	matchEntityToConnectorAdminWhitelist,
 	normalizeRole,
+	ROLE_RANK,
 } from "./roles.ts";
 import type { IAgentRuntime, Memory } from "./types";
 
@@ -86,5 +92,54 @@ describe("matchEntityToConnectorAdminWhitelist", () => {
 			),
 		).toBeNull();
 		expect(matchEntityToConnectorAdminWhitelist(null, whitelist)).toBeNull();
+	});
+});
+
+describe("canonical role rank (#9948)", () => {
+	it("orders all tiers NONE < GUEST < USER < ADMIN < OWNER", () => {
+		expect(CANONICAL_ROLE_RANK.NONE).toBeLessThan(CANONICAL_ROLE_RANK.GUEST);
+		expect(CANONICAL_ROLE_RANK.GUEST).toBeLessThan(CANONICAL_ROLE_RANK.USER);
+		expect(CANONICAL_ROLE_RANK.USER).toBeLessThan(CANONICAL_ROLE_RANK.ADMIN);
+		expect(CANONICAL_ROLE_RANK.ADMIN).toBeLessThan(CANONICAL_ROLE_RANK.OWNER);
+	});
+
+	it("treats USER and MEMBER as the same tier", () => {
+		expect(CANONICAL_ROLE_RANK.MEMBER).toBe(CANONICAL_ROLE_RANK.USER);
+	});
+
+	it("derives the RoleName-keyed ROLE_RANK from the canonical table", () => {
+		expect(ROLE_RANK.GUEST).toBe(CANONICAL_ROLE_RANK.GUEST);
+		expect(ROLE_RANK.USER).toBe(CANONICAL_ROLE_RANK.USER);
+		expect(ROLE_RANK.ADMIN).toBe(CANONICAL_ROLE_RANK.ADMIN);
+		expect(ROLE_RANK.OWNER).toBe(CANONICAL_ROLE_RANK.OWNER);
+	});
+
+	it("makes context-gates ranking share the one source of truth", () => {
+		// Previously context-gates kept its own literal that could drift.
+		expect(gateRoleRank("OWNER")).toBe(CANONICAL_ROLE_RANK.OWNER);
+		expect(gateRoleRank("ADMIN")).toBe(CANONICAL_ROLE_RANK.ADMIN);
+		expect(gateRoleRank("USER")).toBe(CANONICAL_ROLE_RANK.USER);
+		expect(gateRoleRank("MEMBER")).toBe(CANONICAL_ROLE_RANK.USER);
+		expect(gateRoleRank("GUEST")).toBe(CANONICAL_ROLE_RANK.GUEST);
+		expect(gateRoleRank("NONE")).toBe(CANONICAL_ROLE_RANK.NONE);
+	});
+
+	it("gates a minRole:OWNER context to OWNER only", () => {
+		expect(satisfiesRoleGate(["OWNER"], { minRole: "OWNER" })).toBe(true);
+		expect(satisfiesRoleGate(["ADMIN"], { minRole: "OWNER" })).toBe(false);
+		expect(satisfiesRoleGate(["USER"], { minRole: "ADMIN" })).toBe(false);
+		expect(satisfiesRoleGate(["MEMBER"], { minRole: "USER" })).toBe(true);
+	});
+});
+
+describe("role gate rejects unknown tiers (#9948)", () => {
+	it("ranks an unknown role as 0 (below GUEST) so a stray value can never pass a gate", () => {
+		// The RoleGateRole type no longer has a `(string & {})` escape, but the
+		// runtime must still fail closed if an unknown value reaches roleRank.
+		expect(gateRoleRank("SUPERUSER" as never)).toBe(0);
+		expect(satisfiesRoleGate(["SUPERUSER" as never], { minRole: "GUEST" })).toBe(
+			false,
+		);
+		expect(satisfiesRoleGate(["OWNER"], { minRole: "GUEST" })).toBe(true);
 	});
 });

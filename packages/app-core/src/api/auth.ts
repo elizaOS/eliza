@@ -6,6 +6,7 @@
  */
 
 import type http from "node:http";
+import { type RoleGateRole, roleRank } from "@elizaos/core";
 import { resolveApiToken } from "@elizaos/shared";
 // AuthStore is statically imported elsewhere in the package; the dynamic
 // import below was INEFFECTIVE_DYNAMIC_IMPORT.
@@ -340,6 +341,63 @@ export function ensureAuthSessionOrBootstrap(
   return { kind: "denied", status: 401, reason: "auth_required" };
 }
 
+// ── Role-aware boundary helpers ───────────────────────────────────────────────
+//
+// The HTTP boundary is binary today: `ensureCompatApiAuthorized` /
+// `isTrustedLocalRequest` answer one yes/no question (FULL access or 401/403).
+// These helpers layer a canonical role tier on top of those exact primitives —
+// no new auth scheme — so callers can express a *minimum* role instead of just
+// "authenticated". The role vocabulary + ranking is owned by `@elizaos/core`
+// (`roleRank` over the canonical rank table); we never define ranks here.
+
+/**
+ * Classify the caller into a canonical boundary role using the existing trust
+ * + token primitives in this module.
+ *
+ *   - trusted same-machine dashboard request → `"OWNER"`
+ *   - request presenting the configured `ELIZA_API_TOKEN` → `"OWNER"`
+ *     (that token grants full access today; there is no non-owner token tier
+ *     at this synchronous boundary — session tiers are resolved on the async
+ *     DB-backed path instead)
+ *   - everything else → `"NONE"`
+ *
+ * Fails closed: any path that is not a recognised owner principal resolves to
+ * `"NONE"` (rank 0).
+ */
+export function resolveBoundaryRole(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+  env: NodeJS.ProcessEnv = process.env,
+): RoleGateRole {
+  if (isTrustedLocalRequest(req)) {
+    return "OWNER";
+  }
+
+  const expectedToken = resolveApiToken(env);
+  if (expectedToken) {
+    const provided = getProvidedApiToken(req);
+    if (provided && tokenMatches(expectedToken, provided)) {
+      return "OWNER";
+    }
+  }
+
+  return "NONE";
+}
+
+/**
+ * Returns `true` iff the caller's boundary role ranks at or above `minRole`.
+ *
+ * This is a pure predicate (no response side effects) so it composes with any
+ * gating strategy. It fails closed: an unrecognised caller resolves to `"NONE"`
+ * (rank 0), which only satisfies a `"NONE"` minimum.
+ */
+export function ensureMinRole(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+  minRole: RoleGateRole,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return roleRank(resolveBoundaryRole(req, env)) >= roleRank(minRole);
+}
+
 /**
  * Gate a sensitive route. Without a configured token, only trusted same-machine
  * dashboard requests are allowed. Remote callers need a real auth method.
@@ -349,9 +407,11 @@ export function ensureCompatSensitiveRouteAuthorized(
   res: http.ServerResponse,
 ): boolean {
   if (!getCompatApiToken()) {
-    // No API token configured. Allow only the same-machine dashboard path.
-    // Remote access must use a configured auth method.
-    if (isTrustedLocalRequest(req)) {
+    // No API token configured. The only principal we can name on a tokenless
+    // boundary is the trusted same-machine OWNER — resolve the caller through
+    // the role path and require OWNER rather than trusting the request
+    // ambiently. Remote access must use a configured auth method.
+    if (ensureMinRole(req, "OWNER")) {
       return true;
     }
     sendJsonError(
