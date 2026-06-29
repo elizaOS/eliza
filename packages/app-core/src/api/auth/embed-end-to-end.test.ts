@@ -12,7 +12,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 const { hasRoleAccess } = vi.hoisted(() => ({
-  hasRoleAccess: vi.fn(async () => true),
+  hasRoleAccess: vi.fn(
+    async (_runtime: unknown, _message: unknown, _role: string) => true,
+  ),
 }));
 
 vi.mock("@elizaos/core", async (importOriginal) => {
