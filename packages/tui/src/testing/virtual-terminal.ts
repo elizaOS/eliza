@@ -203,6 +203,15 @@ export class VirtualTerminal implements Terminal {
   }
 
   /**
+   * Each individual `write()` the host issued, in order. One entry per frame
+   * the differential renderer flushed — the per-event source for building an
+   * asciicast (`.cast`) recording where each write becomes a playback frame.
+   */
+  getWriteEvents(): string[] {
+    return [...this.writeLog];
+  }
+
+  /**
    * Clear the terminal viewport
    */
   clear(): void {
