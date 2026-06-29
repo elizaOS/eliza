@@ -521,6 +521,9 @@
   "primitives-progress--empty": ["aria-progressbar-name"],
   "primitives-progress--quarter": ["aria-progressbar-name"],
   "primitives-progress--three-quarters": ["aria-progressbar-name"],
+  "primitives-rolegate--admin": ["color-contrast"],
+  "primitives-rolegate--owner": ["color-contrast"],
+  "primitives-rolegate--user": ["color-contrast"],
   "primitives-savefooter--default": ["color-contrast"],
   "primitives-savefooter--error-state": ["color-contrast"],
   "primitives-savefooter--saved": ["color-contrast"],
@@ -637,5 +640,6 @@
   "toolevents-toolcalleventlog--running": ["color-contrast"],
   "toolevents-toolcalleventlog--success": ["color-contrast"],
   "views-dynamicviewloader--failed-to-load": ["color-contrast"],
-  "views-shellviewagentsurface--character-view": ["color-contrast"]
+  "views-shellviewagentsurface--character-view": ["color-contrast"],
+  "widgets-homewidgets--populated": ["color-contrast"]
 }
