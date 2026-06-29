@@ -950,6 +950,35 @@ export async function hasRoleAccess(
 	}
 }
 
+/**
+ * Persist the deployed-app owner as an EXPLICIT, auditable grant on a world's
+ * metadata: `roles[ownerId] = "OWNER"` together with `roleSources[ownerId] =
+ * "owner"`. Before this, the owner's OWNER status was emergent — inferred from
+ * `ownership.ownerId` at read time and (at best) a bare `roles` entry with no
+ * recorded source — so it could not be audited or distinguished from a manual /
+ * connector grant (#9948). This records the grant and its provenance.
+ *
+ * Pure + idempotent: mutates `metadata` in place and returns `true` iff it
+ * actually changed something (so callers only persist on a real change).
+ */
+export function recordOwnerGrant(
+	metadata: RolesWorldMetadata,
+	ownerId: string,
+): boolean {
+	metadata.roles ??= {};
+	metadata.roleSources ??= {};
+	let changed = false;
+	if (metadata.roles[ownerId] !== "OWNER") {
+		metadata.roles[ownerId] = "OWNER";
+		changed = true;
+	}
+	if (metadata.roleSources[ownerId] !== "owner") {
+		metadata.roleSources[ownerId] = "owner";
+		changed = true;
+	}
+	return changed;
+}
+
 export async function setEntityRole(
 	runtime: IAgentRuntime,
 	message: Memory,
