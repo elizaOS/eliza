@@ -21,6 +21,8 @@ import {
   inferAgentRuntimeTarget,
 } from "../../state/agent-runtime-target";
 import { loadPersistedActiveServer } from "../../state/persistence";
+import { AdvancedToggle } from "./AdvancedToggle";
+import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -78,6 +80,7 @@ const STORE_LOCAL_DISABLED_DOCS_URL =
 export function RuntimeSettingsSection() {
   const t = useAppSelector((s) => s.t);
   const { state: runtimeModeState } = useRuntimeMode();
+  const advancedEnabled = useAdvancedSettingsEnabled();
   const [migrationMessage, setMigrationMessage] = useState<string | null>(null);
   const [migrationBusy, setMigrationBusy] = useState(false);
 
@@ -232,7 +235,19 @@ export function RuntimeSettingsSection() {
         })}
       </SettingsGroup>
 
+      {/* The default surface is the runtime-mode picker above. The one-time
+          sandbox-import migration is an expert operation, so it lives behind the
+          shared advanced toggle rather than cluttering a fresh user's view. */}
       {storeBuild ? (
+        <SettingsGroup>
+          <SettingsRow
+            label={t("settings.advanced", { defaultValue: "Advanced" })}
+            control={<AdvancedToggle label="Advanced" />}
+          />
+        </SettingsGroup>
+      ) : null}
+
+      {storeBuild && advancedEnabled ? (
         <SettingsGroup
           title={t("settings.runtime.sandboxGroupTitle", {
             defaultValue: "Sandbox build",
