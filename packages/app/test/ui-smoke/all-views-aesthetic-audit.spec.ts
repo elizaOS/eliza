@@ -130,9 +130,15 @@ function buildAuditCases(): AuditCase[] {
   return cases;
 }
 
+// {desktop,mobile} × {landscape,portrait}. "desktop" (landscape) and "mobile"
+// (portrait) keep their original names so existing AESTHETIC_VERDICT_DEBT keys
+// stay valid; the two added entries cover the previously-unverified orientations
+// (portrait desktop/tablet, landscape phone) — see #9945.
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "mobile", width: 390, height: 844 },
+  { name: "desktop-portrait", width: 1024, height: 1366 },
+  { name: "mobile-landscape", width: 844, height: 390 },
 ] as const;
 
 // ── Brand-color analysis (ported from cloud-frontend aesthetic-audit) ────────

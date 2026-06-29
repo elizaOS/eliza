@@ -6,6 +6,7 @@
  */
 
 import type { ActionResult, HandlerCallback, ViewType } from "@elizaos/core";
+import { subviewsForView } from "./settings-subviews.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 
 function formatViewTable(
@@ -31,6 +32,13 @@ function formatViewTable(
 		lines.push(
 			`  ${view.id},${view.label},${view.viewType ?? "gui"},${pathStr},${avail}`,
 		);
+		// Surface addressable sub-sections (e.g. Settings sections) so the planner
+		// can deep-link one via the VIEWS `subview` param.
+		const subviews = subviewsForView(view.id);
+		if (subviews && subviews.length > 0) {
+			const rendered = subviews.map((s) => `${s.id}:${s.label}`).join(", ");
+			lines.push(`    subviews[${subviews.length}]{id:label}: ${rendered}`);
+		}
 	}
 	return lines.join("\n");
 }
@@ -49,6 +57,10 @@ export async function runViewsList({
 	const views = await client.listViews({ viewType });
 	const text = formatViewTable(views, viewType);
 	await callback?.({ text });
+	const viewsWithSubviews = views.map((view) => {
+		const subviews = subviewsForView(view.id);
+		return subviews ? { ...view, subviews } : view;
+	});
 	return {
 		success: true,
 		text,
@@ -57,6 +69,6 @@ export async function runViewsList({
 			viewType: viewType ?? "gui",
 			viewCount: views.length,
 		},
-		data: { views },
+		data: { views: viewsWithSubviews },
 	};
 }

@@ -79,6 +79,23 @@ export default defineConfig({
 				find: "@elizaos/ui/spatial",
 				replacement: path.join(uiSrc, "spatial/index.ts"),
 			},
+			// React-free settings-section metadata consumed by the VIEWS action's
+			// subview deep-linking (token resolution + planner subview list).
+			// Resolve to source so tests need no built @elizaos/ui dist.
+			{
+				find: "@elizaos/ui/components/settings/settings-section-tokens",
+				replacement: path.join(
+					uiSrc,
+					"components/settings/settings-section-tokens.ts",
+				),
+			},
+			{
+				find: "@elizaos/ui/components/settings/settings-section-meta",
+				replacement: path.join(
+					uiSrc,
+					"components/settings/settings-section-meta.ts",
+				),
+			},
 			{
 				find: "@elizaos/tui",
 				replacement: path.join(tuiSrc, "index.ts"),

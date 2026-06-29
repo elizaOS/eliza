@@ -25,6 +25,7 @@ import {
 import {
   type ActiveViewLayout,
   createNavigateViewHandler,
+  type NavigateViewDetail,
 } from "./app-navigate-view";
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
@@ -1838,7 +1839,7 @@ export function App() {
   // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleNavigateView = createNavigateViewHandler({
+    const baseHandler = createNavigateViewHandler({
       availableViewsForDesktopTabs,
       closeDesktopTab,
       desktopTabs,
@@ -1848,6 +1849,25 @@ export function App() {
       setTab,
       setViewLayout,
     });
+    // An agent-dispatched navigate to the Settings view that carries a `subview`
+    // deep-links a section. Route it through the same settings state the
+    // slash-command path uses (initialSection + #hash) instead of the generic
+    // path nav, which would drop the requested section.
+    const handleNavigateView = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      if (
+        detail?.subview &&
+        (detail.viewId === "settings" || detail.viewPath === "/settings")
+      ) {
+        console.debug(
+          `[SettingsNavigate] routing subview "${detail.subview}" to SettingsView initialSection`,
+        );
+        setSettingsInitialSection(detail.subview);
+        setTab("settings");
+        return;
+      }
+      baseHandler(event);
+    };
     window.addEventListener("eliza:navigate:view", handleNavigateView);
     return () =>
       window.removeEventListener("eliza:navigate:view", handleNavigateView);

@@ -19,6 +19,7 @@ import {
 	logger,
 	resolveServerOnlyPort,
 } from "@elizaos/core";
+import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
 import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
@@ -318,11 +319,34 @@ function resolveRegisteredNotesView(
 interface NavigateResult {
 	ok: boolean;
 	text: string;
+	/** Resolved sub-section the renderer was asked to focus (settings only). */
+	subview?: string;
+}
+
+/**
+ * Resolve a caller-supplied sub-section token into the value the renderer
+ * focuses. Settings is the only view with addressable sub-sections today, so we
+ * reuse the canonical client token→section-id map (`resolveSettingsSectionToken`)
+ * rather than inventing a second mapping. An unknown token for the settings view
+ * (or any token for another view) is passed through verbatim — the renderer
+ * applies the same resolution and ignores values it doesn't recognize.
+ */
+function resolveSubviewForView(
+	view: ViewSummary,
+	subview: string | undefined,
+): string | undefined {
+	const token = subview?.trim();
+	if (!token) return undefined;
+	if (view.id === "settings") {
+		return resolveSettingsSectionToken(token) ?? token.toLowerCase();
+	}
+	return token;
 }
 
 async function navigateToView(
 	view: ViewSummary,
 	requestedViewType?: ViewType,
+	subview?: string,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
 	// A 501/404 means this shell doesn't implement the navigate route — opening
@@ -332,6 +356,7 @@ async function navigateToView(
 	// chain's verifiedUserFacing logic.
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
+	const resolvedSubview = resolveSubviewForView(view, subview);
 
 	try {
 		const resp = await fetch(
@@ -339,18 +364,28 @@ async function navigateToView(
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ path: view.path, viewType: requestedViewType }),
+				body: JSON.stringify({
+					path: view.path,
+					viewType: requestedViewType,
+					...(resolvedSubview ? { subview: resolvedSubview } : {}),
+				}),
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
+		const sectionSuffix = resolvedSubview ? ` → ${resolvedSubview}` : "";
 		if (resp.ok)
 			return {
 				ok: true,
-				text: `Navigated to ${view.label} (${view.viewType ?? "gui"}).`,
+				text: `Navigated to ${view.label}${sectionSuffix} (${view.viewType ?? "gui"}).`,
+				subview: resolvedSubview,
 			};
 		// 501/404 = navigation route unsupported by this shell; opening succeeds.
 		if (resp.status === 501 || resp.status === 404)
-			return { ok: true, text: `Opened ${view.label}.` };
+			return {
+				ok: true,
+				text: `Opened ${view.label}${sectionSuffix}.`,
+				subview: resolvedSubview,
+			};
 
 		const body = await resp.text().catch(() => "");
 		logger.warn(
@@ -441,14 +476,16 @@ export async function runViewsShow({
 	}
 
 	const view = resolution.view;
-	const result = await navigateToView(view, viewType);
+	const subview =
+		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
+	const result = await navigateToView(view, viewType, subview ?? undefined);
 
 	// Record the switch so the compose hook injects the acknowledgement provider
 	// (and the provider phrases it) on this turn's reply and the immediate next.
 	if (result.ok) markViewSwitch(message?.roomId);
 
 	logger.info(
-		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}`,
+		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
 	);
 	await callback?.({ text: result.text });
 	return {
@@ -459,7 +496,8 @@ export async function runViewsShow({
 			viewId: view.id,
 			viewType: view.viewType ?? viewType ?? "gui",
 			label: view.label,
+			...(result.subview ? { subview: result.subview } : {}),
 		},
-		data: { view },
+		data: { view, ...(result.subview ? { subview: result.subview } : {}) },
 	};
 }

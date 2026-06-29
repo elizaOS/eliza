@@ -106,4 +106,25 @@ describe("views client", () => {
 			updatedAt: "2026-05-31T08:00:00.000Z",
 		});
 	});
+
+	it("parses the open subview/section from current-view state (#9945)", async () => {
+		const fetchMock = vi.fn(async () =>
+			jsonResponse({
+				currentView: {
+					viewId: "settings",
+					viewPath: "/settings",
+					viewLabel: "Settings",
+					viewType: "gui",
+					subview: "voice",
+					updatedAt: "2026-05-31T08:00:00.000Z",
+				},
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(createViewsClient().getCurrentView()).resolves.toMatchObject({
+			viewId: "settings",
+			subview: "voice",
+		});
+	});
 });

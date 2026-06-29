@@ -319,6 +319,54 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     expect(state?.action).toBe("pin-tab");
   });
 
+  // ── #9945: settings subview deep-linking ──────────────────────────────────
+
+  it("threads a body subview into the frame, response, and current state", async () => {
+    const { ctx, json, broadcastWs } = makeNavigateCtx("settings", {
+      subview: "voice",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "shell:navigate:view",
+        viewId: "settings",
+        subview: "voice",
+      }),
+    );
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        ok: true,
+        viewId: "settings",
+        subview: "voice",
+      }),
+    );
+    expect(getCurrentViewState()?.subview).toBe("voice");
+  });
+
+  it("accepts `section` as an alias for `subview`", async () => {
+    const { ctx, broadcastWs } = makeNavigateCtx("settings", {
+      section: "connectors",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({ viewId: "settings", subview: "connectors" }),
+    );
+  });
+
+  it("omits subview from the frame when the body has none", async () => {
+    const { ctx, broadcastWs } = makeNavigateCtx("settings", {});
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    const frame = broadcastWs.mock.calls[0][0] as Record<string, unknown>;
+    expect("subview" in frame).toBe(false);
+  });
+
   // ── #8788: turn-scoped "view switch just happened" stamp ──────────────────
 
   function makeCurrentCtx(): {
