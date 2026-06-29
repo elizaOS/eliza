@@ -69,6 +69,10 @@ import {
   type CreditReservation,
   creditsService,
 } from "@/lib/services/credits";
+import {
+  isInferenceHotPathCacheEnabled,
+  resolveInferenceAuthContext,
+} from "@/lib/services/inference-auth-context";
 import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
@@ -738,8 +742,49 @@ export async function handleChatCompletionsPOST(
     | null = null;
 
   try {
-    // 1. Authenticate
-    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(req);
+    // 1. Authenticate (+ moderation). #9899: when the inference hot-path cache
+    // is enabled, an API-key dedicated-agent request resolves auth + org +
+    // moderation in a SINGLE cache read (the actual hot path). Otherwise, and for
+    // non-API-key / cache-unavailable requests, the authoritative chain runs
+    // verbatim, so flag-OFF behavior is byte-identical to before.
+    let user: { id: string; organization_id: string };
+    let apiKey: { id: string } | null;
+    let moderationAlreadyChecked = false;
+    if (isInferenceHotPathCacheEnabled()) {
+      const resolution = await resolveInferenceAuthContext(req);
+      if (resolution.kind === "suspended") {
+        return addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message:
+                  "Your account has been suspended due to policy violations.",
+                type: "account_suspended",
+                code: "moderation_violation",
+              },
+            },
+            { status: 403 },
+          ),
+        );
+      }
+      if (resolution.kind === "authorized") {
+        user = {
+          id: resolution.ctx.userId,
+          organization_id: resolution.ctx.orgId,
+        };
+        apiKey = { id: resolution.ctx.apiKeyId };
+        // The resolver already verified not-suspended, so skip the synchronous read.
+        moderationAlreadyChecked = true;
+      } else {
+        const authed = await requireAuthOrApiKeyWithOrg(req);
+        user = authed.user;
+        apiKey = authed.apiKey ? { id: authed.apiKey.id } : null;
+      }
+    } else {
+      const authed = await requireAuthOrApiKeyWithOrg(req);
+      user = authed.user;
+      apiKey = authed.apiKey ? { id: authed.apiKey.id } : null;
+    }
     // Pre-forward TTFT measurement (#9899): measured TTFT through this route is
     // ~6.5s while cerebras-direct is ~0.24s — 100% of the overhead is here, not
     // the model. These marks are emitted as an X-Eliza-Preforward-Ms response
@@ -852,8 +897,12 @@ export async function handleChatCompletionsPOST(
       maxUses: request.webSearchMaxUses,
     });
 
-    // 5. Check content moderation
-    if (await contentModerationService.shouldBlockUser(user.id)) {
+    // 5. Check content moderation (skipped when the hot-path resolver already
+    // verified not-suspended at cache-populate / origin-miss time).
+    if (
+      !moderationAlreadyChecked &&
+      (await contentModerationService.shouldBlockUser(user.id))
+    ) {
       return addCorsHeaders(
         Response.json(
           {

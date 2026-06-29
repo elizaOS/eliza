@@ -11,6 +11,7 @@ import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "../pricing";
 import { logger } from "../utils/logger";
+import { invalidateInferenceAuthContextByKeyHash } from "./inference-auth-cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -158,7 +159,10 @@ export class ApiKeysService {
    */
   async invalidateCache(keyHash: string): Promise<void> {
     const cacheKey = CacheKeys.apiKey.validation(keyHash.substring(0, 16));
-    await cache.del(cacheKey);
+    // Also drop the inference hot-path (IAC) entry, keyed by the FULL key hash,
+    // so a revoked/updated key stops authenticating via the single-read cache
+    // immediately. Every revoke/deactivate/delete path funnels through here.
+    await Promise.all([cache.del(cacheKey), invalidateInferenceAuthContextByKeyHash(keyHash)]);
     logger.debug("[ApiKeys] Invalidated API key cache");
   }
 

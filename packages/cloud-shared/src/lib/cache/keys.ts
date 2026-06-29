@@ -201,6 +201,13 @@ export const CacheKeys = {
     signups: (start: string, end: string) => `user-metrics:signups:${start}:${end}:v1`,
     pattern: () => `user-metrics:*`,
   },
+  /** Inference hot path (#9899). IAC = a single KV read collapsing auth+org+moderation. */
+  inference: {
+    /** Fully-authorized inference identity, keyed by FULL sha256(key) for exact invalidation. */
+    authContext: (fullKeyHash: string) => `iac:auth:${fullKeyHash}:v1`,
+    /** Optimistic org-balance hint (Tier-2 billing; unused while billing flag is OFF). */
+    orgBalance: (orgId: string) => `iac:org-balance:${orgId}:v1`,
+  },
 } as const;
 
 /**
@@ -342,6 +349,10 @@ export const CacheTTL = {
     retention: 3600, // 1 hour - pre-computed data changes once per day
     activeUsers: 300, // 5 minutes - live query
     signups: 300, // 5 minutes - live query
+  },
+  inference: {
+    authContext: 60, // 1 minute - worst-case revoked/banned exposure ~= TTL + KV lag
+    orgBalance: 15, // 15 seconds - optimistic-billing gate hint, kept tight to bound drift
   },
 } as const;
 
