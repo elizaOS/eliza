@@ -170,7 +170,9 @@ TIMESTAMP_KEYS = {
     "result_recorded_at",
 }
 
-GENERIC_RECHECK_COMMAND = "python3 packages/research/chip/scripts/check_chip_os_evidence_provenance.py"
+GENERIC_RECHECK_COMMAND = (
+    "python3 packages/research/chip/scripts/check_chip_os_evidence_provenance.py"
+)
 NPU_NNAPI_CAPTURE_COMMAND = (
     "E1_NPU_WRITE_PROOF_JSON=1 "
     "E1_NPU_MACS_PER_INFERENCE=<measured-macs> "
@@ -205,9 +207,13 @@ def provenance_commands(category: str, path: Path) -> list[str]:
     path_parts = set(path.parts)
     commands: list[str] = []
     if category == "host_local_path":
-        commands.append(f"python3 packages/research/chip/scripts/provenance_sanitize.py {path_text}")
+        commands.append(
+            f"python3 packages/research/chip/scripts/provenance_sanitize.py {path_text}"
+        )
     if category in {"missing_timestamp", "missing_claim_boundary"}:
-        commands.append(f"python3 packages/research/chip/scripts/normalize_report_provenance.py {path_text}")
+        commands.append(
+            f"python3 packages/research/chip/scripts/normalize_report_provenance.py {path_text}"
+        )
 
     if "peripherals" in path_parts or path_text.endswith("_sim.log"):
         commands.append(
@@ -237,7 +243,9 @@ def provenance_commands(category: str, path: Path) -> list[str]:
             "python3 packages/research/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
         )
     elif path.name == "chip-os-optimization-gap-inventory.json":
-        commands.append("python3 packages/research/chip/scripts/check_chip_os_optimization_gap_inventory.py")
+        commands.append(
+            "python3 packages/research/chip/scripts/check_chip_os_optimization_gap_inventory.py"
+        )
     elif path_text.startswith("packages/research/chip/build/reports/"):
         commands.append("python3 packages/research/chip/scripts/check_chip_os_report_freshness.py")
 

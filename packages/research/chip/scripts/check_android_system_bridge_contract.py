@@ -110,9 +110,15 @@ FALSE_CLAIM_FLAGS = {
     "cts_vts_claim_allowed": False,
     "gms_claim_allowed": False,
 }
-RUNTIME_CAPTURE_SCRIPT = "packages/research/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
-DEFAULT_RUNTIME_OUTPUT = "packages/research/chip/docs/evidence/android/system_bridge_runtime_evidence.json"
-DEFAULT_RUNTIME_LOGCAT = "packages/research/chip/docs/evidence/android/system_bridge_runtime_logcat.log"
+RUNTIME_CAPTURE_SCRIPT = (
+    "packages/research/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
+)
+DEFAULT_RUNTIME_OUTPUT = (
+    "packages/research/chip/docs/evidence/android/system_bridge_runtime_evidence.json"
+)
+DEFAULT_RUNTIME_LOGCAT = (
+    "packages/research/chip/docs/evidence/android/system_bridge_runtime_logcat.log"
+)
 RUNTIME_CAPTURE_BASE_COMMAND = (
     f"python3 {RUNTIME_CAPTURE_SCRIPT} "
     f"--launcher-package {APP_PACKAGE} "

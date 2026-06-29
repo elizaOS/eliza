@@ -21,7 +21,9 @@ def test_sanitize_host_local_paths_preserves_repo_relative_context() -> None:
 
     assert "/home/" not in sanitized
     assert "/tmp/" not in sanitized
-    assert "packages/research/chip/verify/cocotb/integration/Makefile.opensbi-cva6-boot" in sanitized
+    assert (
+        "packages/research/chip/verify/cocotb/integration/Makefile.opensbi-cva6-boot" in sanitized
+    )
     assert "packages/research/chip/external/cva6/cva6/core/raw_checker.sv:50:41:" in sanitized
     assert "<host-tmp>/sim.log" in sanitized
 

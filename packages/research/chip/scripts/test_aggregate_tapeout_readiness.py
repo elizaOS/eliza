@@ -975,7 +975,9 @@ class BuildReportTests(unittest.TestCase):
             )
             self.assertEqual(
                 report["next_runtime_capture_action"]["validation_commands"],
-                ["python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"],
+                [
+                    "python3 packages/research/chip/scripts/check_phone_runtime_readiness_contract.py"
+                ],
             )
         finally:
             if original is None:
@@ -3162,7 +3164,9 @@ class E1PhoneMechanicalCadEvidenceInventoryTests(unittest.TestCase):
 
     def test_mechanical_resolvers_accept_chip_and_repo_relative_paths(self) -> None:
         chip_relative = "mechanical/e1-phone/review/board-step-readiness.json"
-        repo_relative = "packages/research/chip/mechanical/e1-phone/review/board-step-readiness.json"
+        repo_relative = (
+            "packages/research/chip/mechanical/e1-phone/review/board-step-readiness.json"
+        )
 
         self.assertEqual(
             release_contract.resolve_repo_path(chip_relative),

@@ -75,7 +75,9 @@ STAGE_RISCV64_AGENT_RUNTIME_COMMAND = (
 )
 CAPTURE_TRANSCRIPT_PLACEHOLDER = "/path/to/generated-ap-serial.log"
 AGENT_TRANSCRIPT_PLACEHOLDER = "/path/to/agent-health.log"
-RECHECK_COMMAND = "python3 packages/research/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
+RECHECK_COMMAND = (
+    "python3 packages/research/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
+)
 
 CHIP_BOOT_EVIDENCE_IDS = {
     "generated-eliza-ap-boot",
