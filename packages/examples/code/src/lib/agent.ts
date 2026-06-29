@@ -60,7 +60,19 @@ The current working directory is dynamically provided.`,
 /**
  * Initialize the Eliza runtime with coding capabilities
  */
-export async function initializeAgent(): Promise<AgentRuntime> {
+export interface InitializeAgentOptions {
+  /**
+   * Load `@elizaos/plugin-agent-orchestrator` (default true). Set false when
+   * eliza-code itself runs AS a coding sub-agent (e.g. the ACP server) so it
+   * cannot recursively spawn its own sub-agents.
+   */
+  includeOrchestrator?: boolean;
+}
+
+export async function initializeAgent(
+  options: InitializeAgentOptions = {},
+): Promise<AgentRuntime> {
+  const includeOrchestrator = options.includeOrchestrator !== false;
   const provider = resolveModelProvider(process.env);
   if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -106,7 +118,8 @@ export async function initializeAgent(): Promise<AgentRuntime> {
     goalsPlugin,
     shellPlugin,
     codingToolsPlugin,
-    agentOrchestratorPlugin,
+    // Recursion guard: omit the orchestrator when running as a sub-agent.
+    ...(includeOrchestrator ? [agentOrchestratorPlugin] : []),
   ];
 
   const runtime = new AgentRuntime({
