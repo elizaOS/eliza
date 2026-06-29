@@ -3,6 +3,7 @@
  */
 
 import {
+  apiKeysRepository,
   type NewOrganization,
   type Organization,
   organizationsRepository,
@@ -10,6 +11,7 @@ import {
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
 
 /**
  * Service for organization operations with caching support.
@@ -72,7 +74,30 @@ export class OrganizationsService {
     const result = await organizationsRepository.update(id, data);
     // Invalidate cache after update
     await this.invalidateCache(id);
+    // Deactivating an org must drop the IAC fast-path entries for all of its keys
+    // immediately. Gated on the deactivation write (not every cache invalidation,
+    // which also fires on routine balance changes) to avoid needless fan-out.
+    if (data.is_active === false) {
+      await this.invalidateInferenceAuthCacheForOrg(id);
+    }
     return result;
+  }
+
+  /**
+   * Best-effort: drop every cached IAC entry for an org's active API keys after a
+   * blocking org-state change (deactivation / delete). A failure here must never
+   * break the org write, so it only logs.
+   */
+  private async invalidateInferenceAuthCacheForOrg(organizationId: string): Promise<void> {
+    try {
+      const keyHashes = await apiKeysRepository.findActiveKeyHashesByOrganizationId(organizationId);
+      await invalidateInferenceAuthContextsByKeyHashes(keyHashes);
+    } catch (error) {
+      logger.warn("[OrganizationsService] Failed to invalidate IAC auth cache for org", {
+        organizationId,
+        error,
+      });
+    }
   }
 
   async updateCreditBalance(
@@ -86,6 +111,9 @@ export class OrganizationsService {
   }
 
   async delete(id: string): Promise<void> {
+    // Resolve the org's key hashes BEFORE the delete cascades them away, then
+    // drop their IAC fast-path entries so they cannot keep being served.
+    await this.invalidateInferenceAuthCacheForOrg(id);
     await organizationsRepository.delete(id);
     // Invalidate cache after delete
     await this.invalidateCache(id);

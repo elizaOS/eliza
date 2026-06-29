@@ -3,6 +3,7 @@
  */
 
 import {
+  apiKeysRepository,
   type NewUser,
   organizationsRepository,
   type User,
@@ -13,6 +14,7 @@ import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
 
 function getErrorDetails(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) {
@@ -52,7 +54,33 @@ export class UsersService {
       promises.push(cache.del(CacheKeys.user.byWalletAddressWithOrg(walletAddress)));
     }
     await Promise.all(promises);
+
+    // A deactivated user must stop fast-pathing inference immediately. The IAC
+    // cache keys on the API-key hash (not the user id) and is skipped on a hit,
+    // so explicitly drop every cached IAC entry for this user's active keys
+    // rather than waiting out the IAC TTL. Best-effort: never break the write.
+    if (user.is_active === false) {
+      await this.invalidateInferenceAuthCacheForUser(user.id);
+    }
+
     logger.debug("[UsersService] Invalidated cache for user:", user.id);
+  }
+
+  /**
+   * Best-effort: drop every cached IAC entry for a user's active API keys after a
+   * blocking auth-state change (deactivation / delete). A failure here must never
+   * break the originating write, so it only logs.
+   */
+  private async invalidateInferenceAuthCacheForUser(userId: string): Promise<void> {
+    try {
+      const keyHashes = await apiKeysRepository.findActiveKeyHashesByUserId(userId);
+      await invalidateInferenceAuthContextsByKeyHashes(keyHashes);
+    } catch (error) {
+      logger.warn("[UsersService] Failed to invalidate IAC auth cache for user", {
+        userId,
+        error,
+      });
+    }
   }
 
   async getById(id: string): Promise<User | undefined> {
@@ -290,6 +318,12 @@ export class UsersService {
     const organizationId = user.organization_id;
 
     await this.invalidateCache(user);
+    // Deleting a user is a blocking transition just like deactivation, but the
+    // `user` record here is still active (is_active === true), so invalidateCache's
+    // gate does NOT fire. Resolve this user's key hashes BEFORE the row (and its
+    // cascade-deleted keys) are gone, then drop their IAC fast-path entries
+    // unconditionally so a deleted user's keys cannot keep being served until TTL.
+    await this.invalidateInferenceAuthCacheForUser(id);
     await usersRepository.delete(id);
 
     // Check if this was the last user in the organization

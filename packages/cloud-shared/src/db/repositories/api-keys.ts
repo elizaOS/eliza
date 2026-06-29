@@ -103,6 +103,35 @@ export class ApiKeysRepository {
     });
   }
 
+  /**
+   * Returns the `key_hash` of every active key owned by a user.
+   *
+   * Used by user-level auth-state changes (ban/suspend/deactivate) to fan-out
+   * IAC cache invalidation so a blocked user stops fast-pathing inference
+   * immediately rather than waiting out the IAC TTL.
+   */
+  async findActiveKeyHashesByUserId(userId: string): Promise<string[]> {
+    const rows = await dbRead.query.apiKeys.findMany({
+      where: and(eq(apiKeys.user_id, userId), eq(apiKeys.is_active, true)),
+      columns: { key_hash: true },
+    });
+    return rows.map((row) => row.key_hash);
+  }
+
+  /**
+   * Returns the `key_hash` of every active key in an organization.
+   *
+   * Used by org-level deactivation to fan-out IAC cache invalidation for all
+   * of the org's keys at once.
+   */
+  async findActiveKeyHashesByOrganizationId(organizationId: string): Promise<string[]> {
+    const rows = await dbRead.query.apiKeys.findMany({
+      where: and(eq(apiKeys.organization_id, organizationId), eq(apiKeys.is_active, true)),
+      columns: { key_hash: true },
+    });
+    return rows.map((row) => row.key_hash);
+  }
+
   // ============================================================================
   // WRITE OPERATIONS (use primary)
   // ============================================================================

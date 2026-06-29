@@ -351,7 +351,7 @@ export const CacheTTL = {
     signups: 300, // 5 minutes - live query
   },
   inference: {
-    authContext: 60, // 1 minute - worst-case revoked/banned exposure ~= TTL + KV lag
+    authContext: 60, // 1 minute - TTL is a backstop only; revoke/ban/suspend/deactivate invalidate the entry explicitly (api-keys.ts + admin.ts/users.ts/organizations.ts)
     orgBalance: 15, // 15 seconds - optimistic-billing gate hint, kept tight to bound drift
   },
 } as const;

@@ -125,8 +125,21 @@ export async function invalidateInferenceAuthContextByKeyHash(keyHash: string): 
 }
 
 /**
- * Fan-out invalidation for every supplied key hash (used at ban / deactivate,
- * where the caller resolves the user's key hashes from the DB). Best-effort.
+ * Fan-out invalidation for every supplied key hash. The caller resolves the
+ * affected key hashes from the DB and passes them here.
+ *
+ * Wired at every user-level auth-state-change site (where invalidation cannot be
+ * keyed by a single presented key):
+ *   - `AdminService.updateUserModerationStatus` / `AdminService.banUser`
+ *     (ban / suspend via moderation) — `admin.ts`.
+ *   - `UsersService.invalidateCache` when a user is deactivated
+ *     (`is_active === false`) — `users.ts`.
+ *   - `OrganizationsService.update` / `OrganizationsService.delete` on org
+ *     deactivation — `organizations.ts`.
+ *
+ * (Single-key revoke/update/delete uses `invalidateInferenceAuthContextByKeyHash`
+ * from `api-keys.ts` instead.) Best-effort: callers wrap this in try/catch so a
+ * cache-invalidation failure never breaks the ban/deactivate write.
  */
 export async function invalidateInferenceAuthContextsByKeyHashes(
   keyHashes: readonly string[],

@@ -334,6 +334,9 @@ class AdminService {
 
     const now = new Date();
 
+    let resultingStatus: ModerationStatus;
+    let resultingTotalViolations: number;
+
     if (existing) {
       const newTotalViolations = existing.totalViolations + 1;
       const newWarningCount =
@@ -363,16 +366,8 @@ class AdminService {
         })
         .where(eq(userModerationStatus.userId, userId));
 
-      // Inference hot path: when a user crosses into "blocking" (banned, or
-      // >=5 violations — matching shouldBlockUser), drop their cached IAC identity
-      // immediately. Otherwise a freshly-banned user with a warm cache entry keeps
-      // authenticating until the 60s authContext TTL. Mirrors develop's wiring.
-      const wasBlocking = existing.status === "banned" || existing.totalViolations >= 5;
-      const nowBlocking = newStatus === "banned" || newTotalViolations >= 5;
-      if (nowBlocking && !wasBlocking) {
-        const keys = await apiKeysRepository.listByUser(userId);
-        await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
-      }
+      resultingStatus = newStatus;
+      resultingTotalViolations = newTotalViolations;
     } else {
       await dbWrite.insert(userModerationStatus).values({
         userId,
@@ -383,6 +378,40 @@ class AdminService {
         lastViolationAt: now,
         lastWarningAt: action === "warned" ? now : null,
       });
+
+      resultingStatus = "clean";
+      resultingTotalViolations = 1;
+    }
+
+    // The IAC inference fast-path caches a fully-authorized identity per key hash
+    // and skips re-checking moderation on a cache hit. If this write moved the
+    // user into a blocking state, drop their cached IAC entries now so they stop
+    // being served immediately rather than after the IAC TTL.
+    //
+    // The blocking decision is derived from the values we JUST WROTE (mirrors
+    // shouldBlockUser: banned || totalViolations >= 5) rather than a fresh
+    // read-replica lookup. That avoids two hazards of a post-write
+    // `shouldBlockUser` read: (1) under replica lag a threshold-crossing
+    // accumulation could read stale not-blocked and skip invalidation, and
+    // (2) a transient read failure after the write committed could throw out of
+    // this method and make the moderation write appear to fail.
+    const nowBlocking = resultingStatus === "banned" || resultingTotalViolations >= 5;
+    if (nowBlocking) {
+      await this.invalidateInferenceAuthCacheForUser(userId);
+    }
+  }
+
+  /**
+   * Best-effort: drop every cached IAC entry for a user's active API keys after a
+   * blocking auth-state change (ban / suspend via moderation). A failure here must
+   * never break the moderation write, so it only logs.
+   */
+  private async invalidateInferenceAuthCacheForUser(userId: string): Promise<void> {
+    try {
+      const keyHashes = await apiKeysRepository.findActiveKeyHashesByUserId(userId);
+      await invalidateInferenceAuthContextsByKeyHashes(keyHashes);
+    } catch (error) {
+      logger.warn("[Admin] Failed to invalidate IAC auth cache for user", { userId, error });
     }
   }
 
@@ -487,10 +516,9 @@ class AdminService {
       });
     }
 
-    // Inference hot path: a ban makes shouldBlockUser true — drop the user's
-    // cached IAC identity immediately (mirrors develop's banUser wiring).
-    const bannedKeys = await apiKeysRepository.listByUser(userId);
-    await invalidateInferenceAuthContextsByKeyHashes(bannedKeys.map((k) => k.key_hash));
+    // A ban is always a blocking state — drop the user's cached IAC entries so
+    // the inference fast-path stops serving them immediately.
+    await this.invalidateInferenceAuthCacheForUser(userId);
 
     logger.warn("[Admin] User banned", { userId, adminUserId, reason });
   }
