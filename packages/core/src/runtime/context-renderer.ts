@@ -142,7 +142,8 @@ function renderProviderContent(event: ContextProviderEvent): string {
 	// which `segmentBlock` then renders as `provider:<name>:\n<content>`. Do NOT
 	// also bake the provider name into the content body — that produced a
 	// duplicated `provider: <name>` line at the top of every provider block.
-	return event.text?.trim() ?? "";
+	const text = event.text?.trim();
+	return text === undefined ? "" : text;
 }
 
 function toChatRole(role: string | undefined): ChatMessageRole {
