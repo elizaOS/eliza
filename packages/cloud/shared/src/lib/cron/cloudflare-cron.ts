@@ -26,6 +26,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
   "0 0 * * *": ["/api/cron/container-billing", "/api/cron/release-pending-earnings"],
   "0 1 * * *": ["/api/cron/compute-metrics"],
   "0 2 * * *": ["/api/cron/cleanup-webhook-events"],
+  "0 3 * * *": ["/api/cron/domain-renewals"],
   "0 * * * *": ["/api/cron/agent-billing"],
   "*/5 * * * *": [
     "/api/cron/social-automation",
@@ -48,6 +49,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/auto-top-up",
     "/api/cron/agent-budgets",
     "/api/v1/cron/refresh-model-catalog",
+    "/api/cron/domain-health",
   ],
   "* * * * *": [
     "/api/v1/cron/deployment-monitor",

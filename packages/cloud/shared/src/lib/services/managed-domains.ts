@@ -12,7 +12,7 @@
  * work, not wrapping a one-line insert.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import {
   type DomainRegistrantInfo,
@@ -242,6 +242,71 @@ export async function listVerifiedAppOrigins(appId: string): Promise<string[]> {
   return rows.map((row) => `https://${row.domain.toLowerCase().trim()}`);
 }
 
+/**
+ * Cloudflare-registered domains whose registry expiry falls within `windowDays`
+ * and that are still set to auto-renew. The renewal cron debits the org and
+ * keeps the registration alive for each of these (idempotent per period).
+ */
+export async function listCloudflareRenewalsDue(
+  now: Date,
+  windowDays: number,
+): Promise<ManagedDomain[]> {
+  const cutoff = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
+  return await dbRead.query.managedDomains.findMany({
+    where: and(
+      eq(managedDomains.registrar, "cloudflare"),
+      eq(managedDomains.status, "active"),
+      eq(managedDomains.autoRenew, true),
+      isNotNull(managedDomains.expiresAt),
+      lte(managedDomains.expiresAt, cutoff),
+    ),
+  });
+}
+
+/**
+ * Cloudflare-registered, active, verified domains that are not yet confirmed
+ * live. The health-check cron probes each domain's origin and flips `isLive`.
+ */
+export async function listCloudflareNeedingHealthCheck(limit: number): Promise<ManagedDomain[]> {
+  return await dbRead.query.managedDomains.findMany({
+    where: and(
+      eq(managedDomains.registrar, "cloudflare"),
+      eq(managedDomains.status, "active"),
+      eq(managedDomains.verified, true),
+      eq(managedDomains.isLive, false),
+    ),
+    limit,
+  });
+}
+
+/**
+ * Advance a domain's registry expiry after a successful renewal and keep it
+ * active. Mirrors syncStatus' updatedAt bump.
+ */
+export async function recordRenewal(domainId: string, newExpiresAt: Date): Promise<ManagedDomain> {
+  const [updated] = await dbWrite
+    .update(managedDomains)
+    .set({ expiresAt: newExpiresAt, status: "active", updatedAt: new Date() })
+    .where(eq(managedDomains.id, domainId))
+    .returning();
+  if (!updated) throw new Error(`managed_domains update returned no rows for id ${domainId}`);
+  return updated;
+}
+
+/**
+ * Toggle a domain's auto-renew flag (lapse policy: a declined renewal debit
+ * disables auto-renew so Cloudflare stops renewing it on our account).
+ */
+export async function setAutoRenew(domainId: string, autoRenew: boolean): Promise<ManagedDomain> {
+  const [updated] = await dbWrite
+    .update(managedDomains)
+    .set({ autoRenew, updatedAt: new Date() })
+    .where(eq(managedDomains.id, domainId))
+    .returning();
+  if (!updated) throw new Error(`managed_domains update returned no rows for id ${domainId}`);
+  return updated;
+}
+
 export interface InsertExternalDomainInput {
   organizationId: string;
   domain: string;
@@ -349,4 +414,8 @@ export const managedDomainsService = {
   listForOrganization,
   listForApp,
   listVerifiedAppOrigins,
+  listCloudflareRenewalsDue,
+  listCloudflareNeedingHealthCheck,
+  recordRenewal,
+  setAutoRenew,
 };

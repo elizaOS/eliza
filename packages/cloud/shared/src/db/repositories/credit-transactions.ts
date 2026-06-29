@@ -134,6 +134,36 @@ export class CreditTransactionsRepository {
     return Number(row?.debits ?? 0) > Number(row?.refunds ?? 0);
   }
 
+  /**
+   * Returns true if the org has already been successfully charged for renewing
+   * `domain` for the given `renewalPeriod` (a `domain_renewal` debit for that
+   * exact period that was not refunded). The renewal cron checks this BEFORE
+   * debiting so a re-run within the renewal window cannot double-charge a
+   * domain for the same period (idempotent per (domain, period)).
+   *
+   * WHY dbWrite (primary): the cron debits immediately after this check.
+   */
+  async hasUnrefundedDomainRenewal(
+    organizationId: string,
+    domain: string,
+    renewalPeriod: string,
+  ): Promise<boolean> {
+    const [row] = await dbWrite
+      .select({
+        debits: sql<number>`count(*) filter (where ${creditTransactions.metadata}->>'type' = 'domain_renewal')`,
+        refunds: sql<number>`count(*) filter (where ${creditTransactions.metadata}->>'type' = 'domain_renewal_refund')`,
+      })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.organization_id, organizationId),
+          sql`${creditTransactions.metadata}->>'domain' = ${domain}`,
+          sql`${creditTransactions.metadata}->>'renewalPeriod' = ${renewalPeriod}`,
+        ),
+      );
+    return Number(row?.debits ?? 0) > Number(row?.refunds ?? 0);
+  }
+
   // ============================================================================
   // WRITE OPERATIONS (use primary)
   // ============================================================================
