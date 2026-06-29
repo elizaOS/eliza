@@ -1,14 +1,13 @@
 import crypto from "node:crypto";
 import {
   type AgentRuntime,
-  bm25Scores,
+  BM25,
   ChannelType,
   composePrompt,
   createMessageMemory,
   type Memory,
   ModelType,
   memoryContextQaTemplate,
-  normalizeBm25Scores,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -104,16 +103,19 @@ async function ensureMemoryConnection(
 }
 
 /**
- * Rank a candidate set against `query` with Okapi BM25 (the same scorer the
- * DocumentService keyword path uses), returning each item with a [0,1]
- * max-normalized relevance score in input order.
+ * Rank a candidate set against `query` with Okapi BM25 + Porter2 stemming,
+ * returning each item with a [0,1] max-normalized relevance score in input order.
  *
- * BM25 is corpus-aware — IDF down-weights filler/stop words and TF saturation +
- * length normalization rank genuinely-relevant text first. The previous
- * `scoreMemoryText` was a pairwise substring/term-presence count with no IDF, so
- * a doc that merely contained a common query word ("the") tied with a real hit;
- * across a large store that collapsed to recency-ordered near-noise. Ranking the
- * whole candidate set together is what makes the IDF meaningful.
+ * Corpus-aware IDF down-weights filler/stop words and TF saturation + length
+ * normalization rank genuinely-relevant text first; the previous `scoreMemoryText`
+ * was a pairwise substring count with no IDF, so a doc that merely contained a
+ * common query word ("the") tied with a real hit. We use the `search.ts` BM25
+ * (not the documents `bm25Scores`) specifically for its **Porter2 stemming** —
+ * short typed chat queries are usually base forms ("configure") while stored
+ * messages carry inflected forms ("configuring"/"configured"/"configuration"),
+ * and stemming is the standard keyword answer to that mismatch. It also brings
+ * stop-word removal and proper Unicode/accent/CJK normalization (the documents
+ * tokenizer strips non-ASCII, silently dropping accented + non-Latin text).
  */
 export function rankByKeyword<T>(
   query: string,
@@ -121,9 +123,20 @@ export function rankByKeyword<T>(
   getText: (item: T) => string,
 ): Array<{ item: T; score: number }> {
   if (items.length === 0) return [];
-  const docs = items.map((item, i) => ({ id: String(i), text: getText(item) }));
-  const scores = normalizeBm25Scores(bm25Scores(query, docs));
-  return items.map((item, i) => ({ item, score: scores[i]?.score ?? 0 }));
+  // Single `content` field per doc so only the text is indexed; items are
+  // tracked by array index (the BM25 result `index`).
+  const bm25 = new BM25(
+    items.map((item) => ({ content: getText(item) })),
+    { stemming: true },
+  );
+  const results = bm25.search(query, items.length);
+  if (results.length === 0) return items.map((item) => ({ item, score: 0 }));
+  const maxScore = results[0]?.score ?? 0;
+  const scoreByIndex = new Map(results.map((r) => [r.index, r.score]));
+  return items.map((item, i) => ({
+    item,
+    score: maxScore > 0 ? (scoreByIndex.get(i) ?? 0) / maxScore : 0,
+  }));
 }
 
 /**
