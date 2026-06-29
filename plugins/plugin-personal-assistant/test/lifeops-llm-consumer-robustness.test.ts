@@ -20,10 +20,9 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LifeOpsServiceBase } from "../src/lifeops/service-mixin-core.js";
-import { withReminders } from "../src/lifeops/service-mixin-reminders.js";
+import { LifeOpsService } from "../src/lifeops/service.js";
 
-const ReminderService = withReminders(LifeOpsServiceBase);
+const ReminderService = LifeOpsService;
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
@@ -50,7 +49,10 @@ function userMessage(text: string): Memory {
  * case decide what the model returns or whether it throws.
  */
 function runtimeWithModel(
-  useModel: (modelType: unknown, params: { prompt?: string }) => Promise<unknown>,
+  useModel: (
+    modelType: unknown,
+    params: { prompt?: string },
+  ) => Promise<unknown>,
 ): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-000000000204" as UUID,
@@ -175,7 +177,9 @@ describe("composeNarrative (BRIEF) — throwing / malformed model", () => {
       runtime,
       userMessage("give me my morning brief"),
       undefined,
-      { parameters: { subaction: "compose_morning" } } as unknown as HandlerOptions,
+      {
+        parameters: { subaction: "compose_morning" },
+      } as unknown as HandlerOptions,
       async () => undefined,
     );
   }

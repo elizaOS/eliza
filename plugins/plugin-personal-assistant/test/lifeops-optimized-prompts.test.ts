@@ -1,9 +1,8 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { LifeOpsServiceBase } from "../src/lifeops/service-mixin-core.js";
-import { withReminders } from "../src/lifeops/service-mixin-reminders.js";
+import { LifeOpsService } from "../src/lifeops/service.js";
 
-const ReminderService = withReminders(LifeOpsServiceBase);
+const ReminderService = LifeOpsService;
 
 function userMessage(text: string): Memory {
   return {
