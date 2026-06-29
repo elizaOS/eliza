@@ -71,13 +71,17 @@ export function registerClientChatSendHandler(
   if (typeof runtime.registerSendHandler !== "function") {
     return;
   }
-  const deliver = (source: string) =>
+  const deliver =
+    (source: string) =>
     async (
       _rt: IAgentRuntime,
       target: { roomId?: unknown },
       content: { text?: string } & Record<string, unknown>,
     ): Promise<void> => {
-      const conv = resolveConversation(state, target.roomId as UUID | undefined);
+      const conv = resolveConversation(
+        state,
+        target.roomId as UUID | undefined,
+      );
       if (!conv) {
         // No conversation exists to deliver into. Throw so the caller records a
         // delivery failure (e.g. escalation falls through to the next channel)
@@ -124,7 +128,11 @@ export function registerClientChatSendHandler(
   // source: agent_message_api") and the sub-agent's result silently never
   // reaches the user — the chat just shows a "something glitched" failure even
   // though the work completed. Deliver these into the same conversation surface.
-  for (const source of ["agent_message_api", "acpx_sub_agent", "orchestrator"]) {
+  for (const source of [
+    "agent_message_api",
+    "acpx_sub_agent",
+    "orchestrator",
+  ]) {
     runtime.registerSendHandler(source, deliver(source));
   }
 }
