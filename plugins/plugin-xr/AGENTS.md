@@ -11,6 +11,26 @@ transcript through the standard message pipeline. Voice responses are generated
 via the TEXT_TO_SPEECH model and sent back as binary audio frames. The plugin
 is opt-in — register `xrPlugin` in your character's plugins array.
 
+## WEBXR_STATUS — read this before treating "XR" as spatial
+
+The **"XR modality" is currently flat 2D DOM**, not an immersive 3D scene. The
+shared spatial renderer (`@elizaos/ui/spatial`) renders GUI and XR from one
+React tree where the only XR delta is cell sizing / touch-target scale
+(`packages/ui/src/spatial/primitives.tsx` — `fontSize * (modality === "xr" ? 1.25 : 1)`
+plus slightly larger button/field padding; see `packages/ui/src/spatial/dom.tsx`).
+There is **no** immersive `requestSession` render loop, 3D panel placement,
+depth, follow-modes, or controller hit-testing in app code yet. The
+`xr-view-host.ts` route serves a flat `<div id="xr-shell">` page.
+
+What IS real: the WebSocket streaming protocol (`protocol.ts`), the 2D view-host
+route, and a **deterministic, headless IWER test harness** under `simulator/`
+(`navigator.xr` polyfill on an emulated Quest 3) that can start a session, set
+head/controller/hand poses, aim a controller ray at a tagged element, compute
+the hit, fire select/squeeze, and capture screenshot + per-frame pose/hit JSON.
+The harness defines the contract a future spatial renderer must satisfy — see
+`simulator/e2e/harness.spec.ts`. Do not describe XR as spatially rendered until
+that renderer lands (tracked in #9968).
+
 ## Plugin surface
 
 **Service**
