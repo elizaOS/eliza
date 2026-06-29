@@ -7,11 +7,9 @@ import {
   type Organization,
   organizationsRepository,
 } from "../../db/repositories";
-import { apiKeysRepository } from "../../db/repositories/api-keys";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
-import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
 
 /**
  * Service for organization operations with caching support.
@@ -51,11 +49,6 @@ export class OrganizationsService {
     await cache.del(cacheKey);
     // Also invalidate the old balance-only cache key for backwards compat
     await cache.del(CacheKeys.eliza.orgBalance(id));
-    // Inference hot path (#9981 review): drop the IAC entries for every key in
-    // this org so an org-deactivate (is_active=false) can't keep any of its
-    // principals authing from a warm single-read entry until the 60s TTL.
-    const iacKeys = await apiKeysRepository.listByOrganization(id);
-    await invalidateInferenceAuthContextsByKeyHashes(iacKeys.map((k) => k.key_hash));
     logger.debug("[OrganizationsService] Invalidated cache for org:", id);
   }
 

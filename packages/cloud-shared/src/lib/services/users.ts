@@ -9,12 +9,10 @@ import {
   type UserWithOrganization,
   usersRepository,
 } from "../../db/repositories";
-import { apiKeysRepository } from "../../db/repositories/api-keys";
 import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
-import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
 
 function getErrorDetails(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) {
@@ -54,11 +52,6 @@ export class UsersService {
       promises.push(cache.del(CacheKeys.user.byWalletAddressWithOrg(walletAddress)));
     }
     await Promise.all(promises);
-    // Inference hot path (#9981 review): also drop the user's cached IAC identity
-    // so a deactivated (is_active=false) or otherwise-changed user can't keep
-    // authing from a warm single-read entry until the 60s authContext TTL.
-    const iacKeys = await apiKeysRepository.listByUser(user.id);
-    await invalidateInferenceAuthContextsByKeyHashes(iacKeys.map((k) => k.key_hash));
     logger.debug("[UsersService] Invalidated cache for user:", user.id);
   }
 
