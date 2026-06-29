@@ -218,8 +218,6 @@
     "**/*.cy.ts",
     "**/scripts/**",
     "examples/code/**",
-    "examples/avatar/**",
-    "examples/vrm/**",
     "examples/supabase/**",
     "examples/polymarket/**",
     "examples/react/**",
