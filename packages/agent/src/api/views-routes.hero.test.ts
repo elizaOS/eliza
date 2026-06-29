@@ -129,7 +129,7 @@ describe("GET /api/views/:id/hero", () => {
   });
 
   it("marks every builtin view as having a real hero image", () => {
-    const builtinViews = listViews({ developerMode: true }).filter(
+    const builtinViews = listViews({ includeAllKinds: true }).filter(
       (view) => view.pluginName === "@elizaos/builtin",
     );
 
