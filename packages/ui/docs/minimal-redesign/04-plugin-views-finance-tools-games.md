@@ -40,7 +40,7 @@ Per-view UX + code + state inventory of elizaOS **plugin** views (under `plugins
 - **Flatten every "wall of bordered boxes"** into borderless icon+color lists — the repo already ships the template (`*SpatialView.tsx`). Targets: orchestrator's 8 sections, tasks-panel's 6 DetailLists, screenshare's 7 metric tiles, model-tester's 8 cards, smartglasses' 6 panels, finances' 3 cards.
 - **Flip wallet + finances to a light surface** (match polymarket, the only one already light).
 - **Delete dead/stub UI:** `StewardVaultOverview.tsx`.
-- **Extract the triplicated game hero chrome once** (or delete in favor of `GameOperatorShell`); kill double-HUD + triple status badges; shrink the 34vh banner to a thin status-dot bar.
+- **Extract the triplicated game hero chrome once** (or delete in favor of the shared operator shell); kill double-HUD + triple status badges; shrink the 34vh banner to a thin status-dot bar.
 - **Move human-in-the-loop approvals (Steward) INTO chat** — it's a yes/no agent prompt by nature.
 - **Drop all manual refresh buttons** — polling already exists everywhere; refresh via chat.
 - **Fix brand color drift** (`#ff5800`→`#ff8a24`; XR indigo→orange, lighten bg).
