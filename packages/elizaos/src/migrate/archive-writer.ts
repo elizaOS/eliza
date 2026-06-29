@@ -34,7 +34,7 @@ export interface AssembledPayload {
 
 /**
  * Build the export payload (DB-shaped records + characterConfig) from the
- * migrated character + memories. Pure: no crypto, no FS — easy to unit-test.
+ * migrated character + memories. Pure: no crypto, no FS - easy to unit-test.
  */
 export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
   const now = Date.now();
@@ -57,7 +57,7 @@ export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
     name: `${input.sourceSlug} memory`,
     agentId: input.agentId,
     source: "openclaw-migration",
-    // ChannelType.SELF — the agent's own memory room.
+    // ChannelType.SELF - the agent's own memory room.
     type: "SELF",
     worldId,
   };
@@ -101,11 +101,7 @@ export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
     components: [],
     rooms: [room],
     participants: [
-      {
-        entityId: String(input.entityId),
-        roomId: String(input.roomId),
-        userState: null,
-      },
+      { entityId: String(input.entityId), roomId: String(input.roomId), userState: null },
     ],
     relationships: [],
     worlds: [world],

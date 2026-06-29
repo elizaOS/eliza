@@ -1,5 +1,5 @@
 /**
- * `elizaos migrate-agent` — migrate a file-based OCPlatform agent onto Eliza.
+ * `elizaos migrate-agent` - migrate a file-based OCPlatform agent onto Eliza.
  *
  * Reads an OpenClaw agent home (SOUL/IDENTITY/USER/AGENTS/TOOLS + memory/),
  * maps it to an Eliza Character + recency-tiered memories, and emits either:
@@ -35,8 +35,19 @@ export interface MigrateAgentOptions {
   json?: boolean;
 }
 
+/**
+ * In --json mode stdout must be PURE machine-parseable JSON, so all human-
+ * facing chrome (intro/outro/notes/logs) routes to stderr instead of clack's
+ * stdout writers. `quiet` is set true when opts.json is on.
+ */
+let quiet = false;
+
 function fail(msg: string): never {
-  clack.cancel(msg);
+  if (quiet) {
+    process.stderr.write(`${msg}\n`);
+  } else {
+    clack.cancel(msg);
+  }
   process.exit(1);
 }
 
@@ -55,11 +66,13 @@ function printPlan(plan: MigratePlan, slug: string): void {
       `  LONGTERM:      ${c.LONGTERM}`,
       `  SELF:          ${c.SELF}`,
       `  older marker:  ${c.MARKER}`,
+      `  dedup dropped: ${plan.summary.duplicatesDropped}`,
+      `  clipped:       ${plan.summary.clipped} (truncated at maxChunkLen)`,
       "",
       `daily logs seen: ${plan.summary.dailyLogsTotal}`,
       `named memory:    ${plan.summary.namedMemoryTotal}`,
       `USER.md present: ${plan.summary.hasUser}`,
-      `secrets dir:     ${plan.summary.hasSecretsDir} (not read — firewalled)`,
+      `secrets dir:     ${plan.summary.hasSecretsDir} (not read - firewalled)`,
     ].join("\n"),
     "Migration plan",
   );
@@ -70,7 +83,9 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   const agentId = opts.agentId?.trim();
   if (!from) fail("--from <openclaw-home> is required (e.g. ~/.moltbot).");
   if (!agentId) fail("--agent-id <slug> is required (e.g. sol).");
-  if (!fs.existsSync(from)) fail(`Home not found: ${from}`);
+  if (!fs.existsSync(from!)) fail(`Home not found: ${from}`);
+
+  quiet = Boolean(opts.json);
 
   const firewall = opts.noFirewall ? false : (opts.firewall ?? true);
   const memoryDays = opts.memoryDays ? Number(opts.memoryDays) : 14;
@@ -78,15 +93,21 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
     fail("--memory-days must be a non-negative number.");
   }
 
-  clack.intro(pc.cyan(`migrate-agent: ${agentId}`));
+  if (!quiet) clack.intro(pc.cyan(`migrate-agent: ${agentId}`));
 
   const plan = buildMigrationPlan({
-    from,
-    agentId,
+    from: from!,
+    agentId: agentId!,
     memoryDays,
     firewall,
     currentContext: opts.currentContext,
   });
+
+  // Surface any reader warnings (sqlite-not-ported, empty-home, etc). These
+  // always go to stderr so --json stdout stays clean.
+  for (const w of plan.summary.warnings ?? []) {
+    process.stderr.write(`warning: ${w}\n`);
+  }
 
   if (opts.json) {
     process.stdout.write(
@@ -104,10 +125,10 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
     return;
   }
 
-  printPlan(plan, agentId);
+  printPlan(plan, agentId!);
 
   if (opts.dryRun) {
-    clack.outro(pc.dim("dry-run: nothing written."));
+    if (!quiet) clack.outro(pc.dim("dry-run: nothing written."));
     return;
   }
 
@@ -148,7 +169,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
         ),
       );
     }
-    const buf = await archiveFromPlan(plan, agentId, password);
+    const buf = await archiveFromPlan(plan, agentId!, password!);
     fs.mkdirSync(path.dirname(path.resolve(opts.out)), { recursive: true });
     fs.writeFileSync(opts.out, buf);
     clack.log.success(`archive → ${opts.out} (${buf.length} bytes)`);
@@ -163,5 +184,5 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
     );
   }
 
-  clack.outro(pc.green("migrate-agent done."));
+  if (!quiet) clack.outro(pc.green("migrate-agent done."));
 }
