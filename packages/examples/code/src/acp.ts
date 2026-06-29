@@ -60,11 +60,19 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       process.env.SHELL_ALLOWED_DIRECTORY ??= cwd;
     }
     runtimePromise = (async () => {
-      // Recursion guard: no orchestrator inside a sub-agent.
-      const runtime = await initializeAgent({ includeOrchestrator: false });
-      getAgentClient().setRuntime(runtime);
+      // Resolve the session identity FIRST and mark its user as the runtime OWNER
+      // — the coding tools are role-gated (FILE=ADMIN, SHELL=OWNER), so without
+      // this the sub-agent runs as GUEST and every tool is denied ("I don't have
+      // permission… role (GUEST)"). A spawned coding sub-agent IS the operator in
+      // its sandbox, so it gets full rights. Must be set before initializeAgent so
+      // the role resolver sees the owner at boot.
       identity = ensureSessionIdentity();
-      log("runtime initialized");
+      process.env.ELIZA_ADMIN_ENTITY_ID ??= identity.userId;
+      // Headless coding sub-agent: only sql + provider + shell + coding-tools.
+      // codingOnly drops mcp/goals AND the orchestrator (recursion guard).
+      const runtime = await initializeAgent({ codingOnly: true });
+      getAgentClient().setRuntime(runtime);
+      log("runtime initialized", { owner: identity.userId });
       return runtime;
     })();
   }
@@ -150,12 +158,14 @@ const _connection = new AgentSideConnection(
       const text = promptToText(params.prompt);
       if (!text) return { stopReason: "end_turn" };
       log("prompt", { sessionId: params.sessionId, chars: text.length });
-      await getAgentClient().sendMessage({
+      let streamed = "";
+      const response = await getAgentClient().sendMessage({
         room,
         text,
         identity,
         source: "acp",
         onDelta: (delta: string) => {
+          streamed += delta;
           void conn
             .sessionUpdate({
               sessionId: params.sessionId,
@@ -167,6 +177,20 @@ const _connection = new AgentSideConnection(
             .catch((err) => log("sessionUpdate failed", { err: String(err) }));
         },
       });
+      // If nothing streamed via onDelta but sendMessage returned the full reply,
+      // emit it as a single chunk so the client/orchestrator sees the result.
+      if (!streamed.trim() && response.trim()) {
+        await conn
+          .sessionUpdate({
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: response },
+            },
+          })
+          .catch((err) => log("final sessionUpdate failed", { err: String(err) }));
+      }
+      log("prompt done", { streamed: streamed.length, response: response.length });
       return { stopReason: "end_turn" };
     },
     async cancel() {

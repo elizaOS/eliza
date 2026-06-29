@@ -16,11 +16,13 @@ const elizaCodeCharacter: Character = {
   system: `${CODE_ASSISTANT_SYSTEM_PROMPT}
 
 You are a direct coding agent. You have tools to READ, WRITE, and EDIT files directly.
-You also have tools to executing SHELL commands.
-When the user asks for code changes, use the provided tools to implement them immediately.
+You also have tools to execute SHELL commands.
+When the user asks for code changes, CALL the provided tools to implement them
+immediately — do NOT just describe what you would do. Take the action: emit the
+tool call (FILE/WRITE/EDIT/SHELL), don't narrate "I'll create the file" and stop.
 You do NOT need to create sub-agents or delegate tasks. You are the worker.
-Always explain what you are about to do before doing it.
-After making changes, verify them if possible (e.g. run a test).
+After making changes, verify them if possible (e.g. run a test), then give a one
+line summary of what you did.
 The current working directory is dynamically provided.`,
 
   topics: [
@@ -67,6 +69,13 @@ export interface InitializeAgentOptions {
    * cannot recursively spawn its own sub-agents.
    */
   includeOrchestrator?: boolean;
+  /**
+   * Load only the plugins a headless coding sub-agent needs: sql + provider +
+   * shell + coding-tools. Drops mcp, goals, and the orchestrator. (default false)
+   * Used by the ACP server variant to avoid goal/mcp surface a sub-agent doesn't
+   * use.
+   */
+  codingOnly?: boolean;
 }
 
 export async function initializeAgent(
@@ -95,32 +104,40 @@ export async function initializeAgent(
     process.env.SHELL_ALLOWED_DIRECTORY = process.cwd();
   }
 
+  const codingOnly = options.codingOnly === true;
+
   const [
     { plugin: sqlPlugin },
-    { default: mcpPlugin },
-    { default: goalsPlugin },
     { shellPlugin },
     { default: codingToolsPlugin },
-    { agentOrchestratorPlugin },
   ] = await Promise.all([
     import("@elizaos/plugin-sql"),
-    import("@elizaos/plugin-mcp"),
-    import("@elizaos/plugin-goals"),
     import("@elizaos/plugin-shell"),
     import("@elizaos/plugin-coding-tools"),
-    import("@elizaos/plugin-agent-orchestrator"),
   ]);
 
   const plugins: Plugin[] = [
     sqlPlugin,
     providerPlugin,
-    mcpPlugin,
-    goalsPlugin,
     shellPlugin,
     codingToolsPlugin,
-    // Recursion guard: omit the orchestrator when running as a sub-agent.
-    ...(includeOrchestrator ? [agentOrchestratorPlugin] : []),
   ];
+
+  // The full agent also loads mcp + goals + (optionally) the orchestrator. A
+  // headless coding sub-agent (codingOnly) skips them — it just reads/writes/runs.
+  if (!codingOnly) {
+    const [{ default: mcpPlugin }, { default: goalsPlugin }] = await Promise.all([
+      import("@elizaos/plugin-mcp"),
+      import("@elizaos/plugin-goals"),
+    ]);
+    plugins.push(mcpPlugin, goalsPlugin);
+    if (includeOrchestrator) {
+      const { agentOrchestratorPlugin } = await import(
+        "@elizaos/plugin-agent-orchestrator"
+      );
+      plugins.push(agentOrchestratorPlugin);
+    }
+  }
 
   const runtime = new AgentRuntime({
     character: elizaCodeCharacter,
