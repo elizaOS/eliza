@@ -1,10 +1,5 @@
-import type {
-  ChatMessage,
-  ChatMessageContentPart,
-  GenerateTextParams,
-  JSONSchema,
-  ToolDefinition,
-} from "@elizaos/core";
+import type { ChatMessage, GenerateTextParams, JSONSchema, ToolDefinition } from "@elizaos/core";
+import { contentToText } from "./prompt-flatten";
 
 /**
  * Clean-routing ACTION_PLANNER for the SAFE/CLI inference route.
@@ -53,18 +48,6 @@ const PLANNER_STAGE_MARKER = "planner_stage:";
 
 /** Roles whose content is steering/grammar, not conversation. */
 const STEERING_ROLES = new Set<string>(["system", "developer"]);
-
-function contentToText(content: ChatMessage["content"]): string {
-  if (content == null) return "";
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((part: ChatMessageContentPart) =>
-      part.type === "text" && typeof part.text === "string" ? part.text : ""
-    )
-    .filter(Boolean)
-    .join("\n");
-}
 
 /** Render a tool's parameter schema as a terse `name: type` hint list. */
 function renderParamHints(schema: JSONSchema | undefined): string {
