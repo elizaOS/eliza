@@ -131,7 +131,10 @@ describe("Solana browser signing routes", () => {
     expect(response.headers["Access-Control-Allow-Credentials"]).toBeUndefined();
   });
 
-  it("keeps Solana signing routes behind the central plugin auth gate", () => {
+  it("gates every Solana signing route behind the browser signing token", async () => {
+    // public: true for the cross-origin browser signing surface, so the central
+    // session gate does not protect them — their WALLET_BROWSER_SIGN_TOKEN check
+    // must. Assert each is closed (503) before any backend work without a token.
     const signingRouteNames = [
       "wallet-solana-sign-transaction",
       "wallet-solana-sign-all-transactions",
@@ -140,7 +143,14 @@ describe("Solana browser signing routes", () => {
     ];
 
     for (const routeName of signingRouteNames) {
-      expect(route(routeName).public).not.toBe(true);
+      const response = res();
+      await route(routeName).handler(
+        req({ authorization: "Bearer caller-token", body: {} }),
+        response,
+        runtime(null),
+      );
+      expect(response.statusCode).toBe(503);
+      expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
     }
   });
 
