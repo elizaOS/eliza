@@ -8,7 +8,7 @@
  *
  * An OpenClaw home looks like:
  *   <home>/SOUL.md IDENTITY.md AGENTS.md USER.md TOOLS.md   (persona + ops)
- *   <home>/MEMORY.md HB_SIGNAL.md                            (curated memory + hb)
+ *   <home>/MEMORY.md                                         (curated memory)
  *   <home>/<agent>-awareness.md                              (live open-threads)
  *   <home>/memory/YYYY-MM-DD.md                              (daily logs)
  *   <home>/memory/<named>.md                                 (journals, playbooks, etc)
@@ -49,8 +49,6 @@ export interface OcAgentSource {
   tools?: string;
   /** MEMORY.md — curated long-term memory. */
   curatedMemory?: string;
-  /** HEARTBEAT.md — heartbeat checklist. */
-  hbSignal?: string;
   /** <agent>-awareness.md — live open-threads / relationship state. */
   awareness?: string;
   /** memory/YYYY-MM-DD.md — daily logs, sorted newest-first. */
@@ -160,7 +158,6 @@ export function readOcAgentHome(home: string, agentId: string): OcAgentSource {
     user: readIfPresent(path.join(resolvedHome, "USER.md")),
     tools: readIfPresent(path.join(resolvedHome, "TOOLS.md")),
     curatedMemory: readIfPresent(path.join(resolvedHome, "MEMORY.md")),
-    hbSignal: readIfPresent(path.join(resolvedHome, "HEARTBEAT.md")),
     awareness: findAwareness(memoryDir, agentId),
     dailyLogs,
     namedMemory,

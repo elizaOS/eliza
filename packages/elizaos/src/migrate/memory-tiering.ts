@@ -31,6 +31,17 @@ export interface TieringOptions {
   minChunkLen?: number;
   /** Max chars per memory (longer chunks are clipped). Default 6000. */
   maxChunkLen?: number;
+  /**
+   * When true (the posture `buildMigrationPlan` uses for a PORTABLE archive),
+   * the personal memory corpus is EXCLUDED: daily logs, `<agent>-awareness.md`,
+   * curated `MEMORY.md`, and the agent's own SELF journals all describe the
+   * owner / private life and must never leak off the owner's machine. Only a
+   * marker noting the exclusion is seeded. The sovereign-local path passes
+   * `false` to seed the full corpus on the owner's own machine. Default `false`
+   * (callers opt in — the firewall posture is decided one level up, from the
+   * same flag the character mapper firewalls USER.md with).
+   */
+  firewall?: boolean;
 }
 
 export interface TieringResult {
@@ -90,6 +101,7 @@ export function tierMemories(
   src: OcAgentSource,
   opts: TieringOptions,
 ): TieringResult {
+  const firewall = opts.firewall ?? false;
   const minLen = opts.minChunkLen ?? 20;
   const memories: Memory[] = [];
   const counts: Record<MemoryTier, number> = {
@@ -100,6 +112,26 @@ export function tierMemories(
   };
   const now = Date.now();
   const cutoff = now - opts.memoryDays * DAY_MS;
+
+  // ---- FIREWALL: a portable archive carries the persona, NOT the personal corpus ----
+  // Daily logs, <agent>-awareness.md, curated MEMORY.md, and SELF journals all
+  // describe the owner / private life. With the firewall on we seed NONE of them
+  // — only a marker — so a shared archive cannot leak personal context. The
+  // sovereign-local path passes firewall=false to seed the full corpus.
+  if (firewall) {
+    memories.push(
+      mkMemory(
+        "Personal memory (daily logs, journals, awareness, and curated long-term " +
+          "memory) was firewalled out of this portable archive for privacy. Re-seed " +
+          "it from a sovereign-local export on the owner's own machine if you need it.",
+        "MARKER",
+        opts,
+        now,
+      ),
+    );
+    counts.MARKER++;
+    return { memories, counts };
+  }
 
   // ---- T1 CURRENT: awareness (highest signal) + last-N-day daily logs ----
   if (src.awareness?.trim()) {
