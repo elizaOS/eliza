@@ -318,7 +318,10 @@ export interface Projected {
 
 /** Transform a world point into the camera's view space (camera at origin, −Z fwd). */
 export function worldToView(point: Vec3, camera: Camera): Vec3 {
-  return rotateVec3(quatConjugate(camera.orientation), sub(point, camera.position));
+  return rotateVec3(
+    quatConjugate(camera.orientation),
+    sub(point, camera.position),
+  );
 }
 
 /** Perspective-project a world point to screen-space CSS px. */

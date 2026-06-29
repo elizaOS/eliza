@@ -38,19 +38,18 @@ import { SpatialSurface } from "./dom.tsx";
 import {
   billboardOrientation,
   type Camera,
-  deviceRay,
   nearestPanelHit,
   type PanelPlane,
   panelLocalToWorld,
-  projectToScreen,
   panelScreenSize,
+  projectToScreen,
   type Quat,
   quatIdentity,
   quatLookAt,
   type Ray,
   rotateVec3,
-  vec3,
   type Vec3,
+  vec3,
 } from "./xr-scene-math.ts";
 
 /** A device pose (headset or controller) in world space. */
@@ -218,7 +217,10 @@ export function XRSpatialScene({
       };
     }
 
-    function worldPoseOf(p: PanelRuntime): { position: Vec3; orientation: Quat } {
+    function worldPoseOf(p: PanelRuntime): {
+      position: Vec3;
+      orientation: Quat;
+    } {
       const cam = headRef.current;
       const position = p.followOffset
         ? {
@@ -259,7 +261,9 @@ export function XRSpatialScene({
           wrap.style.top = `${proj.y - size.height / 2}px`;
           wrap.style.width = `${size.width}px`;
           wrap.style.height = `${size.height}px`;
-          wrap.style.zIndex = String(Math.max(0, Math.round(100000 - size.depth * 1000)));
+          wrap.style.zIndex = String(
+            Math.max(0, Math.round(100000 - size.depth * 1000)),
+          );
           inner.style.width = `${innerW}px`;
           inner.style.height = `${innerH}px`;
           inner.style.transform = `scale(${s})`;
@@ -274,7 +278,12 @@ export function XRSpatialScene({
           orientation,
           width: p.width,
           height: p.height,
-          screenRect: { left: r.left, top: r.top, width: r.width, height: r.height },
+          screenRect: {
+            left: r.left,
+            top: r.top,
+            width: r.width,
+            height: r.height,
+          },
           depth: size.depth,
           visible: proj.visible,
         });
@@ -304,7 +313,11 @@ export function XRSpatialScene({
       return out;
     }
 
-    function elementIdAt(panelId: string, u: number, v: number): {
+    function elementIdAt(
+      panelId: string,
+      u: number,
+      v: number,
+    ): {
       elementId: string | null;
       screen: { x: number; y: number };
     } {
@@ -327,7 +340,11 @@ export function XRSpatialScene({
       const best = nearestPanelHit(ray, planes);
       if (!best) return null;
       const entry = entries[best.index];
-      const { elementId, screen } = elementIdAt(entry.id, best.hit.u, best.hit.v);
+      const { elementId, screen } = elementIdAt(
+        entry.id,
+        best.hit.u,
+        best.hit.v,
+      );
       return {
         panelId: entry.id,
         elementId,
@@ -422,6 +439,8 @@ export function XRSpatialScene({
 
     window.__elizaXRScene = api;
 
+    // Live follow loop (browser only — jsdom/SSR render the placement once).
+    const hasRaf = typeof requestAnimationFrame === "function";
     let raf = 0;
     const tick = () => {
       pullPoses();
@@ -429,10 +448,10 @@ export function XRSpatialScene({
       raf = requestAnimationFrame(tick);
     };
     layout();
-    raf = requestAnimationFrame(tick);
+    if (hasRaf) raf = requestAnimationFrame(tick);
 
     return () => {
-      cancelAnimationFrame(raf);
+      if (hasRaf) cancelAnimationFrame(raf);
       if (window.__elizaXRScene === api) delete window.__elizaXRScene;
     };
   }, [fovY, pixelsPerMeter, onAction]);

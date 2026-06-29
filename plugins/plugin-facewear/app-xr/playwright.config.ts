@@ -23,10 +23,11 @@ export default defineConfig({
     video: recording ? "on" : "retain-on-failure",
   },
   webServer: {
-    command: "node e2e/view-server.mjs",
+    // Serves the REAL view-host route output (no mock markup). Bun runs the .ts route.
+    command: "bun e2e/route-server.ts",
     port: 31337,
     reuseExistingServer: !process.env.CI,
-    timeout: 10000,
+    timeout: 15000,
   },
   projects: [
     {

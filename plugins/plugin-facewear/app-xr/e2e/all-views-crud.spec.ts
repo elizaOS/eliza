@@ -36,9 +36,10 @@ test.describe("XR view CRUD — registered views", () => {
 
       expect(response?.status()).toBe(200);
 
-      // Shell must render and be fully painted before trace frames are captured.
+      // Shell is server-rendered by the real route — present immediately. (We do
+      // NOT wait for networkidle: the real host page async-imports React/the view
+      // bundle from the agent origin, which isn't booted in this route-only e2e.)
       await expect(page.locator("#xr-shell")).toBeVisible();
-      await page.waitForLoadState("networkidle");
 
       // View id must be in the HTML
       const html = await page.content();

@@ -251,19 +251,26 @@ jobs:
           no-vision-deps: "true"
 
       # The XR emulator simulator is a nested (non-workspace) package with its
-      # own lockfile; install + build its IWER bundle before the Playwright run.
-      - name: Install + build XR emulator
+      # own lockfile; install + build the IWER emulator AND the 3D scene fixture
+      # bundle before the Playwright run.
+      - name: Install + build XR emulator + scene bundle
         run: |
           cd plugins/plugin-xr/simulator
           bun install
-          bun run build
+          bun run build:all
           bun run typecheck
 
       - name: Install Playwright Chromium
         run: cd plugins/plugin-xr/simulator && bunx playwright install --with-deps chromium
 
-      - name: Run XR harness e2e (pose → ray → hit → press → capture)
+      - name: Run XR harness e2e (flat + 3D scene → ray → hit → press → drag → capture)
         run: bun run --cwd plugins/plugin-xr/simulator test:e2e:record
+
+      - name: Run facewear app-xr e2e (real view-host route + IWER emulator)
+        run: |
+          cd plugins/plugin-facewear/app-xr
+          bun install
+          bun run test:e2e
 
       - name: Upload XR capture artifacts
         if: always()
@@ -273,6 +280,7 @@ jobs:
           path: |
             plugins/plugin-xr/simulator/e2e-artifacts/
             plugins/plugin-xr/simulator/test-results/
+            plugins/plugin-facewear/app-xr/test-results/
           if-no-files-found: ignore
 
   plugin-tests:

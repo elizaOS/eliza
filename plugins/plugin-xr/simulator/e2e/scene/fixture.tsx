@@ -7,11 +7,11 @@
  * emulator (navigator.xr polyfill) before this loads.
  */
 
-import { createRoot } from "react-dom/client";
-import { useState } from "react";
 import type { SpatialAction } from "@spatial/context.ts";
 import { GALLERY } from "@spatial/gallery.tsx";
 import { type XRPanelSpec, XRSpatialScene } from "@spatial/xr-scene.tsx";
+import { useState } from "react";
+import { createRoot } from "react-dom/client";
 
 const GALLERY_BY_ID = new Map(GALLERY.map((g) => [g.id, g]));
 const ALL_IDS = GALLERY.map((g) => g.id);

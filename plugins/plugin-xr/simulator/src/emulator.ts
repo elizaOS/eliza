@@ -135,7 +135,9 @@ const squeezeLog: InputEventRecord[] = [];
 /** Controllers we've given a default hand position (so we don't re-place them). */
 const controllerPlaced = new Set<Handedness>();
 
-function handednessOf(source: XRInputSource | undefined): Handedness | "unknown" {
+function handednessOf(
+  source: XRInputSource | undefined,
+): Handedness | "unknown" {
   if (source?.handedness === "left" || source?.handedness === "right") {
     return source.handedness;
   }
@@ -238,7 +240,10 @@ function controllerRay(handedness: Handedness): DeviceRay | null {
 
 /** The headset's world-space ray. */
 function headRay(): DeviceRay {
-  return { origin: vec3(xrDevice.position), direction: forward(quat(xrDevice.quaternion)) };
+  return {
+    origin: vec3(xrDevice.position),
+    direction: forward(quat(xrDevice.quaternion)),
+  };
 }
 
 /** Resolve a CSS selector to an agent/element id the scene can address. */
@@ -354,7 +359,8 @@ const api: XREmulatorAPI = {
     const c = controller(handedness);
     if (!c) return;
     c.connected = true;
-    if (pose.position) c.position.set(pose.position.x, pose.position.y, pose.position.z);
+    if (pose.position)
+      c.position.set(pose.position.x, pose.position.y, pose.position.z);
     if (pose.orientation) {
       c.quaternion.set(
         pose.orientation.x,
@@ -391,7 +397,10 @@ const api: XREmulatorAPI = {
     const el = document.querySelector(selector);
     if (!el) return false;
     const rect = el.getBoundingClientRect();
-    const q = quatFromCenter(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    const q = quatFromCenter(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
     this.setControllerPose(handedness, { orientation: q });
     return true;
   },
@@ -435,8 +444,16 @@ const api: XREmulatorAPI = {
       const world = s?.worldPositionOf(id) ?? undefined;
       elements.push({
         elementId: id,
-        rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-        center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+        rect: {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+        center: {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        },
         ...(world ? { world } : {}),
       });
     }
@@ -449,7 +466,12 @@ const api: XREmulatorAPI = {
       const addSceneRay = (source: "headset" | Handedness, ray: DeviceRay) => {
         const hit = s.hitTest(ray);
         const reticle = hit ? hit.screen : project(ray.direction);
-        rays.push({ source, origin: ray.origin, direction: ray.direction, reticle });
+        rays.push({
+          source,
+          origin: ray.origin,
+          direction: ray.direction,
+          reticle,
+        });
         hits.push({
           source,
           elementId: hit?.elementId ?? null,
@@ -464,7 +486,11 @@ const api: XREmulatorAPI = {
       }
     } else {
       // ── Flat mode: pinhole-project the device forward ray to a screen reticle.
-      const addRay = (source: "headset" | Handedness, q: Quat, origin: Vec3) => {
+      const addRay = (
+        source: "headset" | Handedness,
+        q: Quat,
+        origin: Vec3,
+      ) => {
         const direction = forward(q);
         const reticle = project(direction);
         rays.push({ source, origin, direction, reticle });
@@ -474,7 +500,8 @@ const api: XREmulatorAPI = {
       addRay("headset", quat(xrDevice.quaternion), vec3(xrDevice.position));
       for (const handedness of ["left", "right"] as Handedness[]) {
         const c = controller(handedness);
-        if (c?.connected) addRay(handedness, quat(c.quaternion), vec3(c.position));
+        if (c?.connected)
+          addRay(handedness, quat(c.quaternion), vec3(c.position));
       }
     }
 
@@ -482,7 +509,10 @@ const api: XREmulatorAPI = {
       t: performance.now() - installedAt,
       sessionActive: activeSession !== null,
       mode: s ? "scene" : "flat",
-      headset: { position: vec3(xrDevice.position), orientation: quat(xrDevice.quaternion) },
+      headset: {
+        position: vec3(xrDevice.position),
+        orientation: quat(xrDevice.quaternion),
+      },
       controllers: {
         left: controller("left")?.connected
           ? {
@@ -498,8 +528,12 @@ const api: XREmulatorAPI = {
           : undefined,
       },
       hands: {
-        left: xrDevice.hands?.left?.connected ? xrDevice.hands.left.poseId : undefined,
-        right: xrDevice.hands?.right?.connected ? xrDevice.hands.right.poseId : undefined,
+        left: xrDevice.hands?.left?.connected
+          ? xrDevice.hands.left.poseId
+          : undefined,
+        right: xrDevice.hands?.right?.connected
+          ? xrDevice.hands.right.poseId
+          : undefined,
       },
       elements,
       rays,
@@ -555,16 +589,12 @@ const api: XREmulatorAPI = {
     // Force-close the WebSocket so the reconnect logic kicks in
     // The app exposes the socket via __xrTestHooks
     if (window.__xrTestHooks) {
-      (
-        window as { __xrForceDisconnect?: () => void }
-      ).__xrForceDisconnect?.();
+      (window as { __xrForceDisconnect?: () => void }).__xrForceDisconnect?.();
     }
   },
 
   simulateReconnect() {
-    (
-      window as { __xrForceReconnect?: () => void }
-    ).__xrForceReconnect?.();
+    (window as { __xrForceReconnect?: () => void }).__xrForceReconnect?.();
   },
 };
 

@@ -173,11 +173,18 @@ export interface XRSceneBridge {
     v: number;
     screen: { x: number; y: number };
   } | null;
-  getPanels(): Array<{ id: string; position: Vec3; depth: number; visible: boolean }>;
+  getPanels(): Array<{
+    id: string;
+    position: Vec3;
+    depth: number;
+    visible: boolean;
+  }>;
   worldPositionOf(elementId: string): Vec3 | null;
   aimFor(from: Vec3, elementId: string): Quat | null;
   dragPanel(panelId: string, delta: Vec3): Vec3 | null;
-  pressRay(ray: DeviceRay): { panelId: string; elementId: string | null } | null;
+  pressRay(
+    ray: DeviceRay,
+  ): { panelId: string; elementId: string | null } | null;
   sync(): void;
 }
 

@@ -20,8 +20,8 @@ import {
   rayPlaneHit,
   rotateVec3,
   screenToRay,
-  vec3,
   type Viewport,
+  vec3,
 } from "../xr-scene-math.ts";
 
 const VIEWPORT: Viewport = { width: 1280, height: 720 };
@@ -102,7 +102,12 @@ describe("projectToScreen ↔ screenToRay are exact inverses", () => {
     const cam = camera({
       orientation: quatFromAxisAngle(vec3(0, 1, 0), 0.4),
     });
-    const ray = screenToRay(VIEWPORT.width / 2, VIEWPORT.height / 2, cam, VIEWPORT);
+    const ray = screenToRay(
+      VIEWPORT.width / 2,
+      VIEWPORT.height / 2,
+      cam,
+      VIEWPORT,
+    );
     expectVecClose(ray.direction, forwardOf(cam.orientation));
   });
 
@@ -121,7 +126,10 @@ describe("rayPlaneHit", () => {
   };
 
   it("a forward ray from the eye hits the panel centre (u=v=0)", () => {
-    const ray = deviceRay(vec3(0, 1.5, 0), quatLookAt(vec3(0, 1.5, 0), panel.position));
+    const ray = deviceRay(
+      vec3(0, 1.5, 0),
+      quatLookAt(vec3(0, 1.5, 0), panel.position),
+    );
     const hit = rayPlaneHit(ray, panel);
     expect(hit).not.toBeNull();
     expect(hit!.inside).toBe(true);

@@ -70,7 +70,9 @@ async function bootScene(xrPage: {
 }
 
 test.describe("XR spatial scene — real 3D placement + hit-test", () => {
-  test("every gallery view mounts as a visible 3D panel", async ({ xrPage }) => {
+  test("every gallery view mounts as a visible 3D panel", async ({
+    xrPage,
+  }) => {
     await bootScene(xrPage);
     const ids: string[] = await xrPage.page.evaluate(
       () => window.__xrSceneFixture.galleryIds,
@@ -126,13 +128,17 @@ test.describe("XR spatial scene — real 3D placement + hit-test", () => {
       const telemetry = await xrPage.getElementTelemetry();
       expect(telemetry.mode).toBe("scene");
       const hit = telemetry.hits.find((h) => h.source === "right");
-      expect(hit?.elementId, `hit ${id}/${target.agentId}`).toBe(target.agentId);
+      expect(hit?.elementId, `hit ${id}/${target.agentId}`).toBe(
+        target.agentId,
+      );
       // The hit carries a real world-space intersection point + owning panel.
       expect(hit?.world).toBeDefined();
       expect(hit?.panelId).toBe(id);
 
       if (target.isButton) {
-        await xrPage.page.evaluate(() => window.__xrSceneFixture.clearActions());
+        await xrPage.page.evaluate(() =>
+          window.__xrSceneFixture.clearActions(),
+        );
         await xrPage.pressSelect("right");
         const actions = await fixtureActions(xrPage.page);
         expect(
@@ -155,10 +161,12 @@ test.describe("XR spatial scene — real 3D placement + hit-test", () => {
     await setPanels(xrPage.page, ["settings", "wallet"]);
 
     // Aim at the settings panel, then grab-drag it +0.6 m along world +X.
-    expect(await xrPage.aimControllerAt("right", '[data-agent-id="save"]')).toBe(
-      true,
+    expect(
+      await xrPage.aimControllerAt("right", '[data-agent-id="save"]'),
+    ).toBe(true);
+    const before = (await scenePanels(xrPage.page)).find(
+      (p) => p.id === "settings",
     );
-    const before = (await scenePanels(xrPage.page)).find((p) => p.id === "settings");
     expect(before).toBeDefined();
 
     await xrPage.page.evaluate(() => window.__xrSceneFixture.clearActions());
@@ -166,12 +174,19 @@ test.describe("XR spatial scene — real 3D placement + hit-test", () => {
     expect(moved).not.toBeNull();
     expect(moved!.x).toBeCloseTo(before!.position.x + 0.6, 5);
 
-    const after = (await scenePanels(xrPage.page)).find((p) => p.id === "settings");
+    const after = (await scenePanels(xrPage.page)).find(
+      (p) => p.id === "settings",
+    );
     expect(after!.position.x).toBeCloseTo(before!.position.x + 0.6, 5);
 
     const actions = await fixtureActions(xrPage.page);
-    const move = actions.find((a) => a.type === "move" && a.agentId === "settings");
-    expect(move, "a move action was dispatched for the dragged panel").toBeTruthy();
+    const move = actions.find(
+      (a) => a.type === "move" && a.agentId === "settings",
+    );
+    expect(
+      move,
+      "a move action was dispatched for the dragged panel",
+    ).toBeTruthy();
     expect(move!.position?.x).toBeCloseTo(before!.position.x + 0.6, 5);
   });
 
