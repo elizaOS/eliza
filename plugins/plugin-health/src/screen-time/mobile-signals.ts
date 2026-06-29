@@ -85,6 +85,80 @@ export function androidUsageRowsFromSignals(
   return [...byPackage.values()];
 }
 
+function coarseCategoryTotalSeconds(
+  category: Record<string, unknown> | null,
+): number {
+  if (!category) return 0;
+  if (typeof category.totalSeconds === "number") {
+    return positiveNumber(category.totalSeconds);
+  }
+  const ms = positiveNumber(category.totalMs);
+  return ms > 0 ? Math.floor(ms / 1000) : 0;
+}
+
+/**
+ * iOS coarse screen-time ingestion (issue #9970). Apple's DeviceActivity /
+ * FamilyControls model exposes only coarse, in-extension-rendered *category*
+ * summaries to the host — never raw per-app export (`rawUsageExportAvailable`
+ * is permanently false). When Screen Time authorization is approved and the
+ * device reports coarse summaries, ingest those category totals into the same
+ * screen-time read path as Android, gated on
+ * `metadata.screenTime.authorization.status === "approved"` and
+ * `coarseSummaryAvailable === true`.
+ *
+ * The reader is inert until a native iOS producer emits
+ * `metadata.screenTime.categories`; the contract mirrors the host-side coarse
+ * model (a category identifier + its total active time). Raw per-app export is
+ * never read — if a signal ever set `rawUsageExportAvailable: true` it is
+ * skipped, since that violates the platform constraint.
+ */
+export function iosCoarseUsageRowsFromSignals(
+  signals: Array<{ metadata: Record<string, unknown> }>,
+  sinceMs: number,
+  untilMs: number,
+): ScreenTimeAggregateRow[] {
+  if (untilMs - sinceMs > DAY_MS) {
+    return [];
+  }
+
+  const byCategory = new Map<string, ScreenTimeAggregateRow>();
+  for (const signal of signals) {
+    const screenTime = asRecord(signal.metadata.screenTime);
+    if (!screenTime) continue;
+    // Raw per-app export is a permanent Apple constraint — never ingest it.
+    if (screenTime.rawUsageExportAvailable === true) continue;
+    if (screenTime.coarseSummaryAvailable !== true) continue;
+    const authorization = asRecord(screenTime.authorization);
+    if (authorization?.status !== "approved") continue;
+
+    for (const rawCategory of asArray(screenTime.categories)) {
+      const category = asRecord(rawCategory);
+      const identifier =
+        typeof category?.identifier === "string"
+          ? category.identifier.trim()
+          : "";
+      const totalSeconds = coarseCategoryTotalSeconds(category);
+      if (!identifier || totalSeconds <= 0) continue;
+      const displayName =
+        typeof category?.displayName === "string" && category.displayName.trim()
+          ? category.displayName.trim()
+          : identifier;
+      const key = `ios.category.${identifier}`;
+      const existing = byCategory.get(key);
+      if (existing && existing.totalSeconds >= totalSeconds) continue;
+      byCategory.set(key, {
+        source: "app",
+        identifier: key,
+        displayName,
+        totalSeconds,
+        sessionCount: 1,
+        metadata: { platform: "ios", kind: "category", categoryId: identifier },
+      });
+    }
+  }
+  return [...byCategory.values()];
+}
+
 export function mobileScreenTimeDataSourceFromSignals(
   signals: ScreenTimeMobileSignal[],
   platform: "android" | "ios",
