@@ -70,10 +70,13 @@ describe("app-deploy-guidance", () => {
         "build a monetized web app that charges $3 per use",
         cfg,
       );
+      expect(out).toContain("Publishing web apps (agent-home)");
+      expect(out).toContain("also register it with Eliza Cloud");
       expect(out).toContain("build-monetized-app");
       // The old monetized-vs-static branching (edad template, cloud.json,
       // "Do NOT use Eliza Cloud for this one") is gone — the note is now a
       // single structural capability description the model applies by judgment.
+      expect(out).not.toContain("App Deployment (Eliza Cloud)");
       expect(out).not.toContain("packages/examples/cloud/edad");
       expect(out).not.toContain("cloud.json");
       expect(out).not.toContain("Do NOT use Eliza Cloud for this one");
@@ -87,6 +90,8 @@ describe("app-deploy-guidance", () => {
         cfg,
       );
       expect(out).toContain("Publishing web apps (agent-home)");
+      expect(out).toContain("Otherwise do not involve Eliza Cloud");
+      expect(out).not.toContain("App Deployment (Eliza Cloud)");
     });
   });
 
