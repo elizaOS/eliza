@@ -846,11 +846,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// adapter pushes down as ILIKE.
 		const textContains = params.textContains?.trim().toLowerCase();
 		if (textContains) {
-			all = all.filter((memory) =>
-				String(memory.content.text ?? "")
-					.toLowerCase()
-					.includes(textContains),
-			);
+			all = all.filter((memory) => {
+				const text = memory.content.text;
+				return (
+					typeof text === "string" && text.toLowerCase().includes(textContains)
+				);
+			});
 		}
 
 		// Match plugin-sql ordering: newest first, then id desc as tiebreaker.
@@ -905,11 +906,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// adapter pushes down as ILIKE.
 		const textContains = params.textContains?.trim().toLowerCase();
 		if (textContains) {
-			all = all.filter((memory) =>
-				String(memory.content.text ?? "")
-					.toLowerCase()
-					.includes(textContains),
-			);
+			all = all.filter((memory) => {
+				const text = memory.content.text;
+				return (
+					typeof text === "string" && text.toLowerCase().includes(textContains)
+				);
+			});
 		}
 
 		// Match plugin-sql ordering: newest first so LIMIT/OFFSET window the
