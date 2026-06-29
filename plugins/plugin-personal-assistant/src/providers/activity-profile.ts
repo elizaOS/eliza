@@ -27,6 +27,9 @@ import {
 const MAX_PROFILE_TASKS = 25;
 const ACTIVITY_USAGE_TOP_APPS = 3;
 
+type ActivityProviderValues = NonNullable<ProviderResult["values"]>;
+type ActivityProviderData = NonNullable<ProviderResult["data"]>;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -138,7 +141,7 @@ export const activityProfileProvider: Provider = {
     const timezone = resolveDefaultTimeZone();
     const now = new Date();
     const bucket = resolveCurrentBucket(timezone, now);
-    const baseValues = {
+    const baseValues: ActivityProviderValues = {
       userIsActive: false,
       userPrimaryPlatform: null,
       userLastSeenPlatform: null,
@@ -171,8 +174,8 @@ export const activityProfileProvider: Provider = {
       }>,
       userTodayAppUsageTotalMs: 0,
     };
-    let values: Record<string, unknown> = { ...baseValues };
-    let data: Record<string, unknown> = {};
+    let values: ActivityProviderValues = { ...baseValues };
+    let data: ActivityProviderData = {};
     const parts: string[] = [];
     let profileLoaded = false;
 
