@@ -31,18 +31,13 @@
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  type ReactNode,
-  Suspense,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type ReactNode, Suspense, useEffect, useMemo, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 import {
   cloudTokenSecsRemaining,
   refreshCloudStewardSession,
 } from "../../api/client-cloud";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout";
 import { getBootConfig } from "../../config/boot-config";
 import { decodeJwtPayload } from "../lib/jwt";
 import { queryClient } from "../lib/query-client";
@@ -190,8 +185,12 @@ function NativeStewardAuthProvider({
 
 /**
  * Cloud providers for the native Applications mount — the shared cloud
- * `QueryClient` + cloud i18n, the same pair `CloudRouterShell` wraps its web
- * routes in. Steward auth is provided separately (native context, no runtime).
+ * `QueryClient` + cloud i18n (the same pair `CloudRouterShell` wraps its web
+ * routes in), plus the `PageHeaderProvider` the dashboard layout
+ * (`DashboardRoutePage` → `useSetPageHeader`) requires. On web each dashboard
+ * surface gets that header context from its own route wrapper; the native
+ * studio is that wrapper here, so it provides one for both the list and detail.
+ * Steward auth is provided separately (native context, no `@stwd/*` runtime).
  */
 function NativeCloudProviders({
   children,
@@ -201,7 +200,9 @@ function NativeCloudProviders({
   return (
     <QueryClientProvider client={queryClient}>
       <CloudI18nProvider initialLang={resolveInitialCloudLang()}>
-        <NativeStewardAuthProvider>{children}</NativeStewardAuthProvider>
+        <NativeStewardAuthProvider>
+          <PageHeaderProvider>{children}</PageHeaderProvider>
+        </NativeStewardAuthProvider>
       </CloudI18nProvider>
     </QueryClientProvider>
   );
