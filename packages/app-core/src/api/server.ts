@@ -144,7 +144,6 @@ import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
 import { handleFirstRunRoute } from "./first-run-routes";
-import { handleFirstRunTtsRoute } from "./first-run-tts-route";
 import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import {
@@ -773,15 +772,6 @@ async function handleCompatRouteInner(
       "@elizaos/plugin-elizacloud"
     );
     return handleCloudTtsPreviewRoute(req, res);
-  }
-
-  // Onboarding voice: serve the pre-generated OmniVoice presets for the fixed
-  // first-run lines (committed WAVs) before any agent exists. The client falls
-  // back to browser speechSynthesis if this route fails, so onboarding never
-  // goes silent.
-  if (method === "POST" && url.pathname === "/api/tts/first-run/speak") {
-    if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    return handleFirstRunTtsRoute(req, res);
   }
 
   if (method === "POST" && url.pathname === "/api/tts/elevenlabs") {

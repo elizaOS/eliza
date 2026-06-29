@@ -466,6 +466,15 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
   );
 
   // ── runFirstRunChatHandoff ──────────────────────────────────────
+  // DEAD PATH (#9952): this is the legacy duplicate of the provisioning logic
+  // now owned by the headless `first-run/first-run-finish.ts` use case driven by
+  // the in-chat conductor. Its only callers — `handleFirstRunFinish` /
+  // `handleCloudFirstRunFinish` — are the old onboarding-step entry points and
+  // are never invoked now that the full-screen wizard is gone, so there is no
+  // double-POST. It is left in place because its many `deps` (firstRunRpcKeys,
+  // wallet/computer-use setters, …) are shared with the surviving step-machine
+  // callbacks; excising it cleanly is a separate FirstRunCallbacksDeps refactor.
+  // TODO(#9952 follow-up): delete this + handleFirstRunFinish/handleCloudFirstRunFinish.
 
   const runFirstRunChatHandoff = useCallback(
     async (options?: FirstRunNextOptions) => {
