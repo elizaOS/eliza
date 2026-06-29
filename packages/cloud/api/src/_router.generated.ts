@@ -405,6 +405,7 @@ import _route_v1_eliza_agents_p_agentId_backups_route from "../v1/eliza/agents/[
 import _route_v1_eliza_agents_p_agentId_bridge_route from "../v1/eliza/agents/[agentId]/bridge/route";
 import _route_v1_eliza_agents_p_agentId_discord_oauth_route from "../v1/eliza/agents/[agentId]/discord/oauth/route";
 import _route_v1_eliza_agents_p_agentId_discord_route from "../v1/eliza/agents/[agentId]/discord/route";
+import _route_v1_eliza_agents_p_agentId_downgrade_route from "../v1/eliza/agents/[agentId]/downgrade/route";
 import _route_v1_eliza_agents_p_agentId_environment_route from "../v1/eliza/agents/[agentId]/environment/route";
 import _route_v1_eliza_agents_p_agentId_github_link_route from "../v1/eliza/agents/[agentId]/github/link/route";
 import _route_v1_eliza_agents_p_agentId_github_oauth_route from "../v1/eliza/agents/[agentId]/github/oauth/route";
@@ -1633,6 +1634,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route(
     "/api/v1/eliza/agents/:agentId/discord",
     _route_v1_eliza_agents_p_agentId_discord_route,
+  );
+  app.route(
+    "/api/v1/eliza/agents/:agentId/downgrade",
+    _route_v1_eliza_agents_p_agentId_downgrade_route,
   );
   app.route(
     "/api/v1/eliza/agents/:agentId/environment",
