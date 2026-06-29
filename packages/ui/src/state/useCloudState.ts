@@ -486,15 +486,27 @@ export function useCloudState({
         closePrePoppedWindow();
         try {
           await launchStewardLogin();
-          await pollCloudCredits();
+          // Gate the connected state + success toast on an ACTUAL authed status
+          // call. `launchStewardLogin` short-circuits on a stored token; if that
+          // token is stale/revoked the status poll reports disconnected, so
+          // declaring "connected" + toasting here would be a false success that
+          // 401s the agent picker in a loop. Only celebrate a verified session;
+          // otherwise surface the re-auth path the login UI already renders.
+          const connected = await pollCloudCredits();
           await loadWalletConfig().catch(() => undefined);
-          setElizaCloudConnected(true);
-          setElizaCloudLoginError(null);
-          setActionNotice(
-            "Logged in to Eliza Cloud successfully.",
-            "success",
-            6000,
-          );
+          if (connected) {
+            setElizaCloudConnected(true);
+            setElizaCloudLoginError(null);
+            setActionNotice(
+              "Logged in to Eliza Cloud successfully.",
+              "success",
+              6000,
+            );
+          } else {
+            setElizaCloudLoginError(
+              "Could not verify your Eliza Cloud session. Please sign in again.",
+            );
+          }
         } catch (err) {
           setElizaCloudLoginError(
             err instanceof Error ? err.message : "Eliza Cloud login failed",
