@@ -30,8 +30,8 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
-import * as languageModelActual from "@/lib/providers/language-model";
 import * as pricingActual from "@/lib/pricing";
+import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
 import * as fastPathActual from "@/lib/services/inference-billing-fast-path";
@@ -135,7 +135,10 @@ mock.module("@/lib/services/ai-billing", () => ({
 
 mock.module("@/lib/services/usage", () => ({
   ...usageActual,
-  usageService: { ...usageActual.usageService, create: async () => ({ id: "u" }) },
+  usageService: {
+    ...usageActual.usageService,
+    create: async () => ({ id: "u" }),
+  },
 }));
 
 // Embedder: succeeds so the route reaches AND passes the billing decision and
@@ -210,7 +213,10 @@ describe("POST /api/v1/embeddings optimistic-billing route decision (#9899/#1010
 
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
     const { ctx, scheduled } = makeExecutionCtx();
-    const res = await post({ model: "text-embedding-3-small", input: "hi" }, ctx);
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+    );
     await Promise.all(scheduled);
     expect(res.status).toBe(200);
     expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);

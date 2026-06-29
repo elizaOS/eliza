@@ -3994,6 +3994,18 @@
       ]
     },
     {
+      "name": "SETUP_XR_RUNTIME",
+      "description": "Check whether a desktop OpenXR runtime (Monado/SteamVR/WMR) is installed for WebXR, and show how to install one if not.",
+      "parameters": [],
+      "similes": [
+        "INSTALL_OPENXR",
+        "SETUP_VR_RUNTIME",
+        "SETUP_AR_RUNTIME",
+        "CHECK_VR_RUNTIME",
+        "FIX_WEBXR"
+      ]
+    },
+    {
       "name": "SHELL",
       "description": "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. Omit cwd unless the user supplied an exact directory or the session was explicitly moved; do not invent cwd from remembered repo paths. For questions about the currently running agent/runtime/source, use the default session cwd and inspect current process/service evidence before reporting git metadata. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. For crypto spot prices, prefer neutral no-key APIs such as CoinGecko simple price or Coinbase spot before exchange-gated APIs; do not start with legacy Coindesk or Binance when the same value can be fetched elsewhere. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
       "parameters": [
