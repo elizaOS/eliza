@@ -37,6 +37,51 @@ export interface VerdictFinding {
   hoverViolations: string[];
   overlayPresent: boolean;
   borderRadiusViolations: string[];
+  /**
+   * Count of rendered border/divider elements (a visible border on any side,
+   * plus `<hr>` / `role="separator"`). The "Her"-minimal axis (#9950): a cramped,
+   * divider-heavy view should not pass `good`. Optional so existing callers and
+   * unit fixtures need not set it; when present it is normalized by viewport area
+   * and checked against {@link MINIMALISM_DENSITY_CEILING}.
+   */
+  borderDividerCount?: number;
+  /** Rendered viewport area in px² (innerWidth × innerHeight), the density basis. */
+  viewportArea?: number;
+}
+
+/**
+ * Soft "Her"-minimal ceiling: border/divider elements per 1,000,000 px² of
+ * viewport. A density (area-normalized), not a raw per-view count, so one ceiling
+ * holds across the portrait / landscape / desktop matrix. Seeded generously so it
+ * only trips genuinely divider-dense screens today; ratchet down as the aesthetic
+ * pass lands (#9950). A breach is a SOFT `needs-eyeball`, never a hard fail — it
+ * records the regression without destabilizing the green baseline (same posture
+ * as the off-token border-radius signal).
+ */
+export const MINIMALISM_DENSITY_CEILING = 45;
+
+/**
+ * Border/divider density per 1,000,000 px², or null when the finding carries no
+ * minimalism measurement (the fields are optional). Pure.
+ */
+export function minimalismDensity(finding: VerdictFinding): number | null {
+  if (
+    finding.borderDividerCount === undefined ||
+    finding.viewportArea === undefined ||
+    finding.viewportArea <= 0
+  ) {
+    return null;
+  }
+  return (finding.borderDividerCount / finding.viewportArea) * 1_000_000;
+}
+
+/** True when a view's divider density exceeds the minimal-aesthetic ceiling. */
+export function exceedsMinimalismBudget(
+  finding: VerdictFinding,
+  ceiling: number = MINIMALISM_DENSITY_CEILING,
+): boolean {
+  const density = minimalismDensity(finding);
+  return density !== null && density > ceiling;
 }
 
 /** Parse the `TAB_PATHS` map out of the navigation index source. */
@@ -169,10 +214,13 @@ export function computeVerdict(finding: VerdictFinding): AestheticVerdict {
   ) {
     return "needs-work";
   }
-  // Off-scale border-radius is a soft signal (#8796 AC3 only asks the harness to
-  // FLAG non-token radius): a non-blocking `needs-eyeball` records it without
-  // destabilizing the green baseline.
-  if (finding.borderRadiusViolations.length > 0) {
+  // Off-scale border-radius (#8796) and divider-density over the "Her"-minimal
+  // ceiling (#9950) are both SOFT signals: a non-blocking `needs-eyeball` records
+  // them without destabilizing the green baseline.
+  if (
+    finding.borderRadiusViolations.length > 0 ||
+    exceedsMinimalismBudget(finding)
+  ) {
     return "needs-eyeball";
   }
   return "good";

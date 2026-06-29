@@ -80,6 +80,9 @@ jobs:
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
       PGLITE_WASM_MODE: node
+      # The TUI e2e capture test writes its .cast / viewport / scrollback
+      # artifacts here during `test:server`; the upload step below attaches them.
+      TUI_EVIDENCE_DIR: ${{ github.workspace }}/.github/issue-evidence/9969-tui-e2e
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -150,6 +153,19 @@ jobs:
       - name: Real-PTY TUI smoke
         run: bun run --cwd packages/agent test:tui-pty
 
+      # The TUI e2e capture test (packages/agent/test/tui-e2e/tui-capture.test.ts)
+      # records each session as an asciicast .cast plus viewport/scrollback
+      # snapshots into TUI_EVIDENCE_DIR. Attach them so a reviewer can replay the
+      # terminal session (`asciinema play session.cast`) — the screen/output/video
+      # capture for the TUI surface (#9944).
+      - name: Upload TUI e2e capture artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tui-e2e-artifacts
+          path: .github/issue-evidence/9969-tui-e2e/
+          if-no-files-found: ignore
+
   client-tests:
     name: Client Tests
     needs: changes
@@ -194,6 +210,56 @@ jobs:
 
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
+
+  xr-harness-e2e:
+    name: XR harness e2e
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # The XR emulator simulator is a nested (non-workspace) package with its
+      # own lockfile; install + build its IWER bundle before the Playwright run.
+      - name: Install + build XR emulator
+        run: |
+          cd plugins/plugin-xr/simulator
+          bun install
+          bun run build
+          bun run typecheck
+
+      - name: Install Playwright Chromium
+        run: cd plugins/plugin-xr/simulator && bunx playwright install --with-deps chromium
+
+      - name: Run XR harness e2e (pose → ray → hit → press → capture)
+        run: bun run --cwd plugins/plugin-xr/simulator test:e2e:record
+
+      - name: Upload XR capture artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: xr-harness-artifacts
+          path: |
+            plugins/plugin-xr/simulator/e2e-artifacts/
+            plugins/plugin-xr/simulator/test-results/
+          if-no-files-found: ignore
 
   plugin-tests:
     name: Plugin Tests
@@ -921,6 +987,7 @@ jobs:
       - changes
       - server-tests
       - client-tests
+      - xr-harness-e2e
       - plugin-tests
       - desktop-contract
       - zero-key-e2e
@@ -937,6 +1004,7 @@ jobs:
           echo "changes:          ${{ needs.changes.result }}"
           echo "server-tests:     ${{ needs.server-tests.result }}"
           echo "client-tests:     ${{ needs.client-tests.result }}"
+          echo "xr-harness-e2e:   ${{ needs.xr-harness-e2e.result }}"
           echo "plugin-tests:     ${{ needs.plugin-tests.result }}"
           echo "desktop-contract: ${{ needs.desktop-contract.result }}"
           echo "zero-key-e2e:     ${{ needs.zero-key-e2e.result }}"
@@ -950,6 +1018,7 @@ jobs:
             "changes:${{ needs.changes.result }}" \
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
+            "xr-harness-e2e:${{ needs.xr-harness-e2e.result }}" \
             "plugin-tests:${{ needs.plugin-tests.result }}" \
             "desktop-contract:${{ needs.desktop-contract.result }}" \
             "zero-key-e2e:${{ needs.zero-key-e2e.result }}" \

@@ -1,7 +1,7 @@
 /**
  * Real-browser screenshot e2e for the iOS-style HomeScreen — no app server.
  * Bundles home-screen-fixture.tsx with esbuild (stubbing the data sources), loads
- * it in headless chromium, and asserts the Home/Springboard consolidation +
+ * it in headless chromium, and asserts the Home/Launcher consolidation +
  * captures mobile + desktop screenshots plus a mobile interaction recording.
  *
  * Run: bun run --cwd packages/ui test:home-screen-e2e
@@ -215,10 +215,10 @@ async function longPressHold(page, tileTestId) {
 async function waitForSurfacePageSettled(p, pageName) {
   await p.waitForFunction((expectedPage) => {
     const surface = document.querySelector(
-      '[data-testid="home-springboard-surface"]',
+      '[data-testid="home-launcher-surface"]',
     );
     const rail = document.querySelector(
-      '[data-testid="home-springboard-rail"]',
+      '[data-testid="home-launcher-rail"]',
     );
     if (!(surface instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
       return false;
@@ -227,7 +227,7 @@ async function waitForSurfacePageSettled(p, pageName) {
     const surfaceRect = surface.getBoundingClientRect();
     const railRect = rail.getBoundingClientRect();
     const expectedLeft =
-      expectedPage === "springboard"
+      expectedPage === "launcher"
         ? surfaceRect.left - surfaceRect.width
         : surfaceRect.left;
     const railSettled = Math.abs(railRect.left - expectedLeft) < 1;
@@ -256,11 +256,11 @@ try {
   // (CLS budget + no flicker flash) via the meta-tested summarizeStability.
   await mobile.addInitScript(LAYOUT_SHIFT_OBSERVER_INIT);
   await mobile.goto(`${url}?native`);
-  await mobile.waitForSelector('[data-testid="home-springboard-surface"]');
+  await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
   await mobile.waitForTimeout(600);
   assert(
-    (await mobile.getByTestId("home-springboard-surface").getAttribute(
+    (await mobile.getByTestId("home-launcher-surface").getAttribute(
       "data-page",
     )) === "home",
     "combined surface starts on Home",
@@ -316,7 +316,7 @@ try {
       );
     }
   }
-  // No general quick-access tiles anymore — Springboard is the adjacent
+  // No general quick-access tiles anymore — Launcher is the adjacent
   // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
   // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
   for (const id of ["messages", "phone", "contacts", "camera"]) {
@@ -348,19 +348,19 @@ try {
     `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
   );
 
-  await swipeLeft(mobile.getByTestId("home-springboard-home-page"));
-  await waitForSurfacePageSettled(mobile, "springboard");
+  await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
+  await waitForSurfacePageSettled(mobile, "launcher");
   assert(
-    await mobile.getByTestId("springboard-tile-settings").isVisible(),
-    "Settings renders inside Springboard favorites",
+    await mobile.getByTestId("launcher-tile-settings").isVisible(),
+    "Settings renders inside Launcher favorites",
   );
   assert(
-    (await mobile.getByTestId("springboard-tile-chat").count()) === 0,
-    "Chat self-link is absent from Springboard",
+    (await mobile.getByTestId("launcher-tile-chat").count()) === 0,
+    "Chat self-link is absent from Launcher",
   );
   assert(
-    (await mobile.getByTestId("springboard-tile-views").count()) === 0,
-    "Views self-link is absent from Springboard",
+    (await mobile.getByTestId("launcher-tile-views").count()) === 0,
+    "Views self-link is absent from Launcher",
   );
 
   // ── Real image icons — the favorites carry a hero image, so each renders an
@@ -368,7 +368,7 @@ try {
   // SVG at /api/views/:id/hero, resolved through the runtime API base so it
   // loads on native (file://) shells too.
   for (const id of ["settings", "activity", "files", "tasks"]) {
-    const img = mobile.getByTestId(`springboard-image-${id}`);
+    const img = mobile.getByTestId(`launcher-image-${id}`);
     assert(
       (await img.count()) === 1 && (await img.isVisible()),
       `favorite "${id}" renders a real image icon (hero <img>, not a glyph)`,
@@ -380,20 +380,20 @@ try {
     );
   }
 
-  await snap(mobile, "mobile-springboard");
+  await snap(mobile, "mobile-launcher");
 
   // ── NO page indicator — the dots were removed (they collided with the chat
   // composer). Navigation is swipe-only. Neither the rail indicator nor the
-  // inner Springboard dot strip may render.
+  // inner Launcher dot strip may render.
   assert(
     (await mobile
-      .locator('[data-testid="home-springboard-indicator"]')
+      .locator('[data-testid="home-launcher-indicator"]')
       .count()) === 0,
     "the page indicator is removed (no colliding dots)",
   );
   assert(
     (await mobile.locator('[aria-label^="Page "]').count()) === 0,
-    "the inner Springboard dot strip is absent too",
+    "the inner Launcher dot strip is absent too",
   );
 
   // ── Real per-view images — every tile shows a branded hero IMAGE (generated
@@ -401,7 +401,7 @@ try {
   // may sit underneath the image as a decode fallback, but no tile may be glyph
   // only. Each view's hero is deterministic per id, so the srcs are distinct.
   const imageSrcs = await mobile.$$eval(
-    '[data-testid^="springboard-image-"]',
+    '[data-testid^="launcher-image-"]',
     (imgs) =>
       Array.from(
         new Set(imgs.map((i) => i.getAttribute("src") ?? "")),
@@ -409,7 +409,7 @@ try {
   );
   assert(
     imageSrcs.length >= 5,
-    `springboard tiles render varied hero images, not one placeholder (${imageSrcs.length} distinct)`,
+    `launcher tiles render varied hero images, not one placeholder (${imageSrcs.length} distinct)`,
   );
   assert(
     imageSrcs.every(
@@ -419,7 +419,7 @@ try {
   );
   const visualCount = await mobile.locator("[data-view-visual]").count();
   const imageCount = await mobile
-    .locator('[data-view-visual] [data-testid^="springboard-image-"]')
+    .locator('[data-view-visual] [data-testid^="launcher-image-"]')
     .count();
   assert(
     imageCount === visualCount,
@@ -427,51 +427,51 @@ try {
   );
 
   // ── A swipe that starts ON a tile never ghost-fires edit mode (#3) ───────
-  await longPressPan(mobile, "springboard-tile-app0");
+  await longPressPan(mobile, "launcher-tile-app0");
   assert(
-    (await mobile.getByTestId("springboard-fav-app0").count()) === 0,
+    (await mobile.getByTestId("launcher-fav-app0").count()) === 0,
     "a pan/swipe that starts on a tile does NOT enter edit mode",
   );
 
   // ── Long-press → edit → swipe back → HOME, with edit mode RESET (#3) ──────
   // There is no Edit button: a STATIONARY long-press on a tile is the sole entry
   // into edit mode (per-tile pin badges appear).
-  await longPressHold(mobile, "springboard-tile-app0");
+  await longPressHold(mobile, "launcher-tile-app0");
   await mobile.waitForTimeout(150);
   assert(
-    (await mobile.getByTestId("springboard-fav-app0").count()) === 1,
+    (await mobile.getByTestId("launcher-fav-app0").count()) === 1,
     "a stationary long-press enters edit mode (pin badges shown, no Edit button)",
   );
-  await snap(mobile, "mobile-springboard-edit");
-  await swipeRight(mobile.getByTestId("home-springboard-springboard-page"));
+  await snap(mobile, "mobile-launcher-edit");
+  await swipeRight(mobile.getByTestId("home-launcher-launcher-page"));
   await waitForSurfacePageSettled(mobile, "home");
   assert(
     (await mobile
-      .getByTestId("home-springboard-surface")
+      .getByTestId("home-launcher-surface")
       .getAttribute("data-page")) === "home",
     "swipe-back FROM edit mode returns HOME (never stranded in jiggle mode)",
   );
   // Re-open: a clean launch view, NOT stale edit mode.
-  await swipeLeft(mobile.getByTestId("home-springboard-home-page"));
-  await waitForSurfacePageSettled(mobile, "springboard");
+  await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
+  await waitForSurfacePageSettled(mobile, "launcher");
   assert(
-    (await mobile.getByTestId("springboard-fav-app0").count()) === 0,
-    "re-opening the springboard is a clean launch view (edit mode auto-reset)",
+    (await mobile.getByTestId("launcher-fav-app0").count()) === 0,
+    "re-opening the launcher is a clean launch view (edit mode auto-reset)",
   );
 
   // ── Swipe to page 2 (no dots — paging is swipe-only now) ─────────────────
   // page 1 holds app0–app19; app20 lives on page 2.
   assert(
-    (await mobile.getByTestId("springboard-tile-app20").count()) === 0,
+    (await mobile.getByTestId("launcher-tile-app20").count()) === 0,
     "page-2 tile (app20) is not on page 1",
   );
-  await swipeLeft(mobile.getByTestId("home-springboard-springboard-page"));
+  await swipeLeft(mobile.getByTestId("home-launcher-launcher-page"));
   await mobile.waitForTimeout(450);
   assert(
-    await mobile.getByTestId("springboard-tile-app20").isVisible(),
-    "swiping the springboard pages forward to page 2 (app20 visible)",
+    await mobile.getByTestId("launcher-tile-app20").isVisible(),
+    "swiping the launcher pages forward to page 2 (app20 visible)",
   );
-  await snap(mobile, "mobile-springboard-page2");
+  await snap(mobile, "mobile-launcher-page2");
 
   // The home is a clean, action-driven dashboard: no Edit chrome, no "Pinned"
   // label (edit-dashboard is an agent action, not a button).
@@ -497,7 +497,7 @@ try {
   });
   desktop.on("pageerror", (e) => sink.errors.push(String(e)));
   await desktop.goto(url);
-  await desktop.waitForSelector('[data-testid="home-springboard-surface"]');
+  await desktop.waitForSelector('[data-testid="home-launcher-surface"]');
   await desktop.waitForSelector('[data-testid="home-screen"]');
   await desktop.waitForTimeout(500);
   // Off-AOSP: no pinned tiles at all — the tile grid is omitted entirely.
@@ -510,9 +510,9 @@ try {
     "phone tile hidden when native disabled",
   );
   await snap(desktop, "desktop-home");
-  await swipeLeft(desktop.getByTestId("home-springboard-home-page"));
-  await waitForSurfacePageSettled(desktop, "springboard");
-  await snap(desktop, "desktop-springboard");
+  await swipeLeft(desktop.getByTestId("home-launcher-home-page"));
+  await waitForSurfacePageSettled(desktop, "launcher");
+  await snap(desktop, "desktop-launcher");
   await desktop.close();
 } finally {
   await browser.close();

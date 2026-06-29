@@ -12,14 +12,14 @@ import {
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 // #9143 follow-up — Settings now uses the TRANSPARENT app shell so the unified
-// AppBackground (the springboard wallpaper) shows through, including the
+// AppBackground (the launcher wallpaper) shows through, including the
 // status-bar safe area. Previously Settings painted an opaque `bg-bg` box that
 // left a seam at the top safe area. This spec proves:
 //   (a) the safe-area seam is gone — the Settings shell ancestor carries no
 //       opaque `bg-bg`, so the fixed wallpaper is continuous to the top, and
 //   (b) Settings is captured over BOTH the default shader background AND a busy
 //       photo wallpaper, at desktop + mobile, for human readability review,
-//   (c) a springboard-over-the-same-photo reference is captured so the Settings
+//   (c) a launcher-over-the-same-photo reference is captured so the Settings
 //       look can be compared to the home look the user wants to match.
 
 const SCREENSHOT_DIR = path.join(
@@ -28,7 +28,7 @@ const SCREENSHOT_DIR = path.join(
   "settings-background",
 );
 
-// A handful of launcher views so the springboard is non-empty (the home
+// A handful of launcher views so the launcher is non-empty (the home
 // WidgetHost / catalog only renders content when the catalog has visible
 // views — see ViewCatalog.tsx's empty-state branch).
 const VIEW_FIXTURES = [
@@ -243,7 +243,7 @@ async function installSettingsBackgroundRoutes(page: Page): Promise<void> {
     await fulfillJson(route, { plugins: [] });
   });
 
-  // Views catalog — populate the springboard so the home surface mounts.
+  // Views catalog — populate the launcher so the home surface mounts.
   await page.route("**/api/views**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/views/search") {
@@ -533,17 +533,17 @@ test.describe("settings shares the unified app background (#9143)", () => {
     // wallpaper (full viewport, incl. the safe area) so flat text stays legible
     // while the wallpaper still reads through. Assert it WHILE on Settings —
     // the scrim is gated to `isSettingsPage`, so it is (correctly) absent on the
-    // sparse springboard captured below.
+    // sparse launcher captured below.
     await expect(page.getByTestId("app-background-scrim")).toBeAttached();
 
     await page.setViewportSize(MOBILE_VIEWPORT);
     await expect(page.getByTestId("settings-shell")).toBeVisible();
     await screenshot(page, "mobile-image");
 
-    // -- 3) Springboard reference over the SAME photo -------------------------
-    // The user wants Settings to match the springboard look; capture the home
-    // springboard over the identical wallpaper so the two can be compared.
-    // Depending on nav history the springboard renders either the ViewCatalog
+    // -- 3) Launcher reference over the SAME photo -------------------------
+    // The user wants Settings to match the launcher look; capture the home
+    // launcher over the identical wallpaper so the two can be compared.
+    // Depending on nav history the launcher renders either the ViewCatalog
     // ("Views" heading) or the iOS-style home-screen tile grid — accept either,
     // then confirm the image wallpaper is attached (painting) behind it.
     await page.setViewportSize(DESKTOP_VIEWPORT);
@@ -561,7 +561,7 @@ test.describe("settings shares the unified app background (#9143)", () => {
     await expect(page.getByTestId("app-background-image")).toBeAttached({
       timeout: 15_000,
     });
-    await screenshot(page, "springboard-image-desktop");
+    await screenshot(page, "launcher-image-desktop");
 
     // -- Assertions: what the #9143 fix DOES guarantee ------------------------
     // The committed fix makes the routed shell transparent and the unified
@@ -583,7 +583,7 @@ test.describe("settings shares the unified app background (#9143)", () => {
     // The full fix also made `AppWorkspaceChrome` (wrapping Settings via
     // TabContentView) transparent, so NO ancestor between settings-shell and the
     // App root paints an opaque `bg-bg` — the wallpaper is continuous, edge to
-    // edge, matching the springboard.
+    // edge, matching the launcher.
     console.log(
       "SETTINGS_REMAINING_OPAQUE_LAYER>",
       JSON.stringify({
@@ -598,7 +598,7 @@ test.describe("settings shares the unified app background (#9143)", () => {
       ).toBeNull();
     }
 
-    // Sparse views (the springboard) get NO scrim — the scrim is gated to
+    // Sparse views (the launcher) get NO scrim — the scrim is gated to
     // `isSettingsPage`, so on `/views` it must be absent. This confirms the
     // readability scrim is scoped to text-dense Settings, not painted globally.
     await expect(page.getByTestId("app-background-scrim")).toHaveCount(0);

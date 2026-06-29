@@ -1222,7 +1222,10 @@ export async function fetchRetweetersPage(
   topCursor?: string;
 }> {
   const client = await auth.getV2Client();
-  const options: Partial<TweetRetweetedOrLikedByV2Params> = {
+  const options: Omit<
+    Partial<TweetRetweetedOrLikedByV2Params>,
+    "asPaginator"
+  > = {
     max_results: count,
     "user.fields": ["description", "id", "name", "username"],
     ...(cursor ? { pagination_token: cursor } : {}),

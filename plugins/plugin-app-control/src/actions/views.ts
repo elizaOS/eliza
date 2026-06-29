@@ -2108,6 +2108,19 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				schema: { type: "string" },
 			},
 			{
+				name: "subview",
+				description:
+					"Sub-section to deep-link within the target view (show/open). For the Settings view this is a section token or id (e.g. 'voice', 'model', 'connectors', 'ai-model'); resolved to a canonical section the renderer focuses.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "section",
+				description: "Alias for `subview`.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
 				name: "views",
 				description:
 					"Multiple view ids/names for split or tile mode, e.g. ['notes','calendar'].",

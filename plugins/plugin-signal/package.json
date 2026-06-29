@@ -64,9 +64,9 @@
     "dev": "bun --hot build.ts",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run",
-    "typecheck": "echo \"Typecheck skipped for release\"",
-    "lint": "echo \"Lint skipped for release\"",
-    "lint:check": "bun run lint",
+    "typecheck": "tsgo --noEmit",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },

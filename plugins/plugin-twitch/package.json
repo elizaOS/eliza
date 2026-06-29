@@ -44,11 +44,11 @@
   "scripts": {
     "build": "bun run build.ts",
     "test": "bun test",
-    "lint": "echo \"Lint skipped for release\"",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "echo \"Typecheck skipped for release\""
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@twurple/auth": "^8.0.0",

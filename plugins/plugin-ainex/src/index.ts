@@ -39,9 +39,7 @@ export const ainexPlugin: Plugin = {
   autoEnable: {
     shouldEnable: (env, config) => {
       if (env?.ELIZA_AINEX_BRIDGE_URL) return true;
-      const features = config?.features as
-        | Record<string, unknown>
-        | undefined;
+      const features = config?.features as Record<string, unknown> | undefined;
       const ainex = features?.ainex;
       if (ainex === true) return true;
       if (

@@ -12,10 +12,12 @@
   "scripts": {
     "build": "vite build",
     "build:watch": "vite build --watch",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:record": "E2E_RECORD=1 playwright test"
   },
   "dependencies": {
-    "iwer": "^2.1.1",
+    "iwer": "^2.2.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

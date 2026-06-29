@@ -63,8 +63,8 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit -p tsconfig.json --rootDir ../..",
-    "lint": "echo \"Lint skipped\"",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "check": "bun run typecheck && bun run test"
   },
   "publishConfig": {

@@ -4,7 +4,7 @@
  * A minimal, wordless shell around the shared Appearance settings background
  * controls. The view stays transparent so the live wallpaper shows behind the
  * controls and updates the instant a choice is made — the same background Home,
- * Springboard, Settings, and this route share.
+ * Launcher, Settings, and this route share.
  */
 
 import { BackgroundSettingsControls } from "../settings/BackgroundSettingsControls";

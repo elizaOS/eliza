@@ -227,11 +227,11 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "ElizaOS dialer, SMS, and contact book",
   },
   {
-    label: "Springboard",
+    label: "Launcher",
     tabs: ["views", "apps", ...APPS_TOOL_TABS],
     icon: LayoutGrid,
     description:
-      "The Springboard launcher — agent views, games, integrations, and app tools",
+      "The Launcher — agent views, games, integrations, and app tools",
   },
   {
     label: "Character",
@@ -426,7 +426,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "chat";
   }
 
-  // /views — legacy launcher alias; renders the combined Home/Springboard.
+  // /views — legacy launcher alias; renders the combined Home/Launcher.
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
   }
@@ -530,9 +530,9 @@ export function titleForTab(tab: Tab): string {
     case "companion":
       return "Companion";
     case "apps":
-      return "Springboard";
+      return "Launcher";
     case "views":
-      return "Springboard";
+      return "Launcher";
     case "character":
       return "Character";
     case "character-select":

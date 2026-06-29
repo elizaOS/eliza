@@ -2,7 +2,7 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SPRINGBOARD_DOCK_LIMIT } from "../state/springboard-layout";
+import { LAUNCHER_DOCK_LIMIT } from "../state/launcher-layout";
 import type { ViewRegistryEntry } from "./useAvailableViews";
 import { useDesktopTabs } from "./useDesktopTabs";
 
@@ -159,7 +159,7 @@ describe("useDesktopTabs", () => {
   it("caps pinned tabs at the iOS-style dock limit, evicting the oldest pinned", () => {
     const { result } = renderHook(() => useDesktopTabs());
 
-    // Pin six views in order; the dock caps at SPRINGBOARD_DOCK_LIMIT (4), so the
+    // Pin six views in order; the dock caps at LAUNCHER_DOCK_LIMIT (4), so the
     // two oldest pinned (a, b) get unpinned — never the one just pinned.
     act(() => {
       for (const id of ["a", "b", "c", "d", "e", "f"]) {
@@ -170,7 +170,7 @@ describe("useDesktopTabs", () => {
     const pinned = result.current.tabs
       .filter((t) => t.pinned)
       .map((t) => t.viewId);
-    expect(pinned).toHaveLength(SPRINGBOARD_DOCK_LIMIT);
+    expect(pinned).toHaveLength(LAUNCHER_DOCK_LIMIT);
     expect(pinned).toEqual(["c", "d", "e", "f"]);
     // Evicted tabs stay open (just unpinned), so they leave the dock, not the app.
     expect(result.current.tabs.map((t) => t.viewId)).toEqual([
@@ -203,7 +203,7 @@ describe("useDesktopTabs", () => {
     const pinned = result.current.tabs
       .filter((t) => t.pinned)
       .map((t) => t.viewId);
-    expect(pinned).toHaveLength(SPRINGBOARD_DOCK_LIMIT);
+    expect(pinned).toHaveLength(LAUNCHER_DOCK_LIMIT);
     expect(pinned).toEqual(["b", "c", "d", "e"]);
   });
 

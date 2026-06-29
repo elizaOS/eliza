@@ -29,7 +29,7 @@ function NotificationRow({
 
 /**
  * Frontpage Notifications widget (#9143). A "default" home-slot widget showing
- * the most recent agent notifications, so the Springboard home surfaces real
+ * the most recent agent notifications, so the Launcher home surfaces real
  * activity out of the box rather than only launcher icons. Reads the shared
  * notification store directly (no per-widget polling).
  */

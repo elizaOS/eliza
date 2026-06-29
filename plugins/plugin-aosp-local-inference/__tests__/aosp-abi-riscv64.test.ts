@@ -44,9 +44,9 @@ describe("AOSP fused-lib ABI mapping", () => {
     // ia32 / mips etc. are never going to ship a libelizainference.so in this
     // repo; surface the failure loudly rather than silently mapping to a wrong
     // directory.
-    expect(() => resolveAospAbiDir("ia32" as NodeJS.Architecture, ROOT)).toThrow(
-      /Unsupported process\.arch/,
-    );
+    expect(() =>
+      resolveAospAbiDir("ia32" as NodeJS.Architecture, ROOT),
+    ).toThrow(/Unsupported process\.arch/);
   });
 });
 

@@ -30,6 +30,7 @@ import { useAppSelectorShallow } from "../state";
 import { useNotifications } from "../state/notifications/notification-store";
 import { useEnabledViewKinds } from "../state/useViewKinds";
 import { useHomeAttentionSignals } from "./home-attention-store";
+import { isHomeWidgetSunset, useHomeDismissals } from "./home-dismissal-store";
 import {
   type HomeWidgetSignal,
   homeSignalsFromEvents,
@@ -203,6 +204,10 @@ export function WidgetHost({
   // (hooks can't be conditional) but only consumed for the `home` slot below.
   const { notifications } = useNotifications();
   const selfAttention = useHomeAttentionSignals();
+  // Persisted show-once-then-retire lifecycle (#9959): a sunset-able home widget
+  // (FTU welcome, nudges) is filtered out once the user has acted on / dismissed
+  // it, or it has been shown its allotted sessions.
+  const dismissals = useHomeDismissals();
   const now = useNow();
 
   const serverDeclarations = useMemo<PluginWidgetDeclaration[]>(() => {
@@ -260,7 +265,15 @@ export function WidgetHost({
   // widget unchanged.
   const ranked = useMemo(() => {
     if (slot !== "home") return resolved;
-    const renderable = resolved.filter((entry) => !entry.defaultWidgetSink);
+    const renderable = resolved.filter(
+      (entry) =>
+        !entry.defaultWidgetSink &&
+        !isHomeWidgetSunset(
+          homeWidgetKey(entry.declaration),
+          entry.declaration.sunset,
+          dismissals,
+        ),
+    );
     const declarations = renderable.map((entry) => entry.declaration);
     const signals: HomeWidgetSignal[] = [
       ...homeSignalsFromEvents(events ?? [], declarations),
@@ -277,7 +290,15 @@ export function WidgetHost({
       const entry = byKey.get(homeWidgetKey(ranked.declaration));
       return entry ? [entry] : [];
     });
-  }, [slot, resolved, events, notificationSignalInputs, selfAttention, now]);
+  }, [
+    slot,
+    resolved,
+    events,
+    notificationSignalInputs,
+    selfAttention,
+    dismissals,
+    now,
+  ]);
 
   // `ranked` is recomputed on every `now` tick (decay math depends on `now`),
   // but the rendered *set and order* only change at discrete thresholds. Keep

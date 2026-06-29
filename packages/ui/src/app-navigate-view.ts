@@ -7,6 +7,8 @@ export type NavigateViewDetail = {
   viewLabel?: string;
   viewType?: "gui" | "tui" | "xr";
   action?: string;
+  /** Sub-section to deep-link within the target view (e.g. a Settings section id). */
+  subview?: string;
   views?: string[];
   layout?: string;
   placement?: string;

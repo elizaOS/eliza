@@ -46,7 +46,7 @@ loadable plugin, e.g. `notifications`/`messages`).
 
 ## The `home` / frontpage surface (#9143)
 
-The Home/Springboard surface mounts `<WidgetHost slot="home" layout="grid" …>`
+The Home/Launcher surface mounts `<WidgetHost slot="home" layout="grid" …>`
 on the home page next to the launcher. Ships with shared **default widgets** any
 install gets out of the box — **Notifications**, **Messages**, and the
 orchestrator **Activity** + **Apps** — so the frontpage shows real activity, not

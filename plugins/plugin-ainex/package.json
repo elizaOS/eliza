@@ -73,7 +73,8 @@
   "scripts": {
     "build": "bun run build.ts",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
-    "lint": "echo \"Lint skipped for release\"",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run"
   },

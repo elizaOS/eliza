@@ -52,9 +52,9 @@ describe("AOSP TEXT_TO_SPEECH handler", () => {
     const handler = makeAospTextToSpeechHandler({
       omnivoice: async () => wav,
     });
-    await expect(handler({} as never, { text: "Hello from Android." }))
-      .resolves
-      .toEqual(wav);
+    await expect(
+      handler({} as never, { text: "Hello from Android." }),
+    ).resolves.toEqual(wav);
   });
 
   it("propagates abort-style failures from the OmniVoice FFI binding", async () => {
@@ -63,9 +63,9 @@ describe("AOSP TEXT_TO_SPEECH handler", () => {
         throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
       },
     });
-    await expect(
-      handler({} as never, { text: "cancel me" }),
-    ).rejects.toThrow(/aborted/);
+    await expect(handler({} as never, { text: "cancel me" })).rejects.toThrow(
+      /aborted/,
+    );
   });
 
   it("propagates a missing-FFI failure without falling back", async () => {
@@ -74,9 +74,9 @@ describe("AOSP TEXT_TO_SPEECH handler", () => {
         throw new Error("fused OmniVoice TEXT_TO_SPEECH is not available");
       },
     });
-    await expect(
-      handler({} as never, "hello"),
-    ).rejects.toThrow(/fused OmniVoice TEXT_TO_SPEECH is not available/);
+    await expect(handler({} as never, "hello")).rejects.toThrow(
+      /fused OmniVoice TEXT_TO_SPEECH is not available/,
+    );
   });
 
   it("only pre-warms when explicitly enabled", async () => {

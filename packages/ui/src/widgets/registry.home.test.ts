@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveWidgetsForSlot } from "./registry";
 
-// #9143 — plugins opt a widget onto the Home/Springboard surface by
+// #9143 — plugins opt a widget onto the Home/Launcher surface by
 // declaring the new `home` slot; the bundled agent-orchestrator Activity widget
 // opts in (reusing its registered component) so the frontpage isn't empty.
 const enabledOrchestrator = [

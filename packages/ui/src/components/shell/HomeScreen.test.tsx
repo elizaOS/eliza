@@ -51,7 +51,7 @@ describe("HomeScreen", () => {
     // The prioritized home widgets render through the unified WidgetHost.
     const host = screen.getByTestId("home-widget-host");
     expect(host.getAttribute("data-slot")).toBe("home");
-    // Off-AOSP: zero tiles — Springboard is the adjacent launcher now, and the
+    // Off-AOSP: zero tiles — Launcher is the adjacent launcher now, and the
     // tile grid is omitted entirely (not an empty section).
     expect(tileIds(container)).toEqual([]);
     expect(screen.queryByTestId("home-tiles")).toBeNull();

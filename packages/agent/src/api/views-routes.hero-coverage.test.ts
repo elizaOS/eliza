@@ -15,9 +15,9 @@ import {
   type ViewsRouteContext,
 } from "./views-routes.ts";
 
-// Springboard "every view has an image" guarantee, asserted at the API layer.
+// Launcher "every view has an image" guarantee, asserted at the API layer.
 //
-// The Springboard renders a tile image for every registered view by hitting
+// The Launcher renders a tile image for every registered view by hitting
 // GET /api/views/:id/hero. The server-side contract is that this route NEVER
 // 404s for a registered view and ALWAYS returns a non-empty image response —
 // either a packaged hero file (e.g. the builtin PNGs) or the deterministic

@@ -212,8 +212,17 @@ be able to confirm it works **without reading the code**. Full standard:
     `bun run --cwd packages/app audit:app`.
   - **Per-platform capture** (screenshot + recording + logs) for native/mobile/
     desktop changes — `bun run --cwd packages/app capture:ios-sim` /
-    `capture:android-emu`, electrobun `GET /api/dev/cursor-screenshot`. Full
-    surface→command matrix in `PR_EVIDENCE.md`.
+    `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`,
+    electrobun `GET /api/dev/cursor-screenshot`. Full surface→command matrix in
+    `PR_EVIDENCE.md`.
+  - **Always build + deploy the latest before capturing.** Capture helpers
+    screenshot whatever is **already installed/running** — they do not build.
+    Before any on-device/simulator/desktop capture, rebuild and redeploy the
+    current tree (mobile: `build:android` / `build:ios` cap sync **and
+    reinstall** — a Capacitor app bakes the web bundle into the APK/IPA at build
+    time, so restarting the old app never picks up a renderer change). Confirm
+    the running build is yours (`versionName` / a known on-screen change) — a
+    screenshot of a stale install proves nothing.
   - **Audio + narrated walkthrough** for voice/transcript/TTS/STT changes.
   - Artifacts land in `.github/issue-evidence/<issue#>-<slug>.<ext>` (see that
     dir's `README.md`). Each evidence type is attached **or** explicitly marked

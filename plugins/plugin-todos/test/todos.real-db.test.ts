@@ -21,9 +21,9 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/test/helpers/real-runtime.ts";
+import todosPlugin from "../src/index.ts";
 import { currentTodosProvider } from "../src/providers/current-todos.ts";
 import { TodosService } from "../src/service.ts";
-import todosPlugin from "../src/index.ts";
 
 // Stable per-user (entityId) UUID; agentId comes from the runtime.
 const ENTITY_ID = "11111111-1111-4111-8111-111111111111" as UUID;
@@ -162,10 +162,16 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
         { content: "Brand new", status: "pending" },
       ],
     });
-    expect(after.map((t) => t.content).sort()).toEqual(["Brand new", "Keep me"]);
+    expect(after.map((t) => t.content).sort()).toEqual([
+      "Brand new",
+      "Keep me",
+    ]);
 
     // Re-read from the DB: exactly two rows, "Drop me" is gone, "Keep me" done.
-    const remaining = await service.list({ entityId, agentId: runtime.agentId });
+    const remaining = await service.list({
+      entityId,
+      agentId: runtime.agentId,
+    });
     expect(remaining).toHaveLength(2);
     expect(remaining.map((t) => t.content).sort()).toEqual([
       "Brand new",

@@ -9,6 +9,10 @@ node_modules
 /e2e-recordings/
 # Voice trajectory video capture (binary webm — regenerate via record-voice-trajectories.mjs)
 packages/ui/src/components/shell/__e2e__/output-voice-recording/
+# Tutorial spotlight e2e output (screenshots + webm — regenerate via test:tutorial-e2e)
+packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
+# FTU welcome e2e output (screenshots + webm — regenerate via test:ftu-home-e2e)
+packages/ui/src/components/chat/widgets/__e2e__/output-ftu/
 
 .next/
 **/.next/**

@@ -20,6 +20,7 @@ import {
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
+import { runShouldRespondInjectionGate } from "../features/trust/should-respond-risk-gate";
 import {
 	emitInferenceTiming,
 	INFERENCE_MARKS,
@@ -10203,6 +10204,34 @@ export class DefaultMessageService implements IMessageService {
 					"v5 message handling",
 				);
 				_usedV5Runtime = true;
+			}
+		}
+
+		// #9949: role-keyed injection / social-engineering verify gate. The
+		// deterministic RiskFactors were stamped during the
+		// parallel_with_should_respond phase; here — and only when we are about
+		// to respond — escalate a borderline USER/GUEST message to a single
+		// TEXT_LARGE adjudication. OWNER/ADMIN bypass; benign traffic short-circuits
+		// before any model call. A blocked verdict suppresses the response.
+		if (shouldRespondToMessage) {
+			const injectionGate = await runShouldRespondInjectionGate({
+				runtime,
+				message,
+				resolveSenderRole: () => resolveStage1SenderRole(runtime, message),
+			});
+			if (injectionGate.blocked) {
+				shouldRespondToMessage = false;
+				terminalDecision = null;
+				strategyResult = null;
+				runtime.logger.warn(
+					{
+						src: "service:message",
+						agentId: runtime.agentId,
+						reason: injectionGate.reason,
+						score: injectionGate.score,
+					},
+					"[ShouldRespondRiskGate] suppressing response: injection/social-engineering verify blocked",
+				);
 			}
 		}
 

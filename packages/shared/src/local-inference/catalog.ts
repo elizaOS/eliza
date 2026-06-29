@@ -136,7 +136,17 @@ export function isDefaultEligibleId(id: string): boolean {
  */
 export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
   Partial<Record<Eliza1TierId, "published" | "pending">>
-> = {};
+> = {
+  // 2026-06-28: the HuggingFace `elizaos/eliza-1` 9b / 27b / 27b-256k text
+  // GGUFs still report `general.architecture = qwen35` (Qwen3.5 / "Qwen3.6
+  // 27B") — the Gemma-4 cutover only landed for the 2b and 4b tiers. Mark the
+  // un-cut tiers `pending` so first-run never recommends a non-Gemma model as
+  // the default Eliza-1; flip back to published once the Gemma-4 fine-tunes are
+  // staged + pass the text-architecture provenance gate (text-provenance.ts).
+  "eliza-1-9b": "pending",
+  "eliza-1-27b": "pending",
+  "eliza-1-27b-256k": "pending",
+};
 
 export function eliza1TierPublishStatus(
   id: Eliza1TierId | string,

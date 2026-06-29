@@ -8,19 +8,19 @@ import {
   installHomeWidgetFetchMock,
   seedHomeWidgetNotifications,
 } from "../../widgets/__fixtures__/home-widget-mock-data";
-import { Springboard } from "../pages/Springboard";
+import { Launcher } from "../pages/Launcher";
+import { HomeLauncherSurface } from "./HomeLauncherSurface";
 import { HomeScreen } from "./HomeScreen";
-import { HomeSpringboardSurface } from "./HomeSpringboardSurface";
-import type { HomeSpringboardPage } from "./home-springboard-events";
+import type { HomeLauncherPage } from "./home-launcher-events";
 
 // The consolidated /chat home (#9143): the REAL HomeScreen mounting the REAL
-// unified home-slot WidgetHost, paired with the Springboard launcher as the two
-// pages of HomeSpringboardSurface. The per-plugin home widgets (calendar /
+// unified home-slot WidgetHost, paired with the Launcher as the two
+// pages of HomeLauncherSurface. The per-plugin home widgets (calendar /
 // goals / finances / health / relationships / inbox) + notifications are the
 // genuine widget components, fed by the shared injected mock data only — no
 // stubbing of WidgetHost or the widgets themselves. The launcher page renders
-// the presentational <Springboard> with a representative tile set (its
-// data-fetching <SpringboardSurface> wrapper needs a live /api/views layer the
+// the presentational <Launcher> with a representative tile set (its
+// data-fetching <LauncherSurface> wrapper needs a live /api/views layer the
 // catalog doesn't have).
 
 function viewEntry(id: string, label: string, icon: string): ViewEntry {
@@ -37,7 +37,7 @@ function viewEntry(id: string, label: string, icon: string): ViewEntry {
   } as ViewEntry;
 }
 
-const SPRINGBOARD_TILES: ViewEntry[] = [
+const LAUNCHER_TILES: ViewEntry[] = [
   viewEntry("character", "Character", "UserRound"),
   viewEntry("automations", "Automations", "Clock"),
   viewEntry("wallet", "Wallet", "Wallet"),
@@ -77,7 +77,7 @@ function HomeDashboard({
   initialPage = "home",
   seed = true,
 }: {
-  initialPage?: HomeSpringboardPage;
+  initialPage?: HomeLauncherPage;
   seed?: boolean;
 }) {
   return (
@@ -90,12 +90,10 @@ function HomeDashboard({
       <HomeWidgetData seed={seed}>
         <div className="absolute inset-0 overflow-hidden bg-[#0a0d16]">
           <ShaderBackground />
-          <HomeSpringboardSurface
+          <HomeLauncherSurface
             initialPage={initialPage}
             home={<HomeScreen onOpenTile={() => {}} showNativeOsTiles />}
-            springboard={
-              <Springboard entries={SPRINGBOARD_TILES} onLaunch={() => {}} />
-            }
+            launcher={<Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} />}
           />
         </div>
       </HomeWidgetData>
@@ -128,9 +126,9 @@ export const HomeWithWidgets: Story = {
   args: { initialPage: "home", seed: true },
 };
 
-/** The adjacent Springboard launcher page of the same consolidated surface. */
-export const SpringboardPage: Story = {
-  args: { initialPage: "springboard", seed: true },
+/** The adjacent Launcher page of the same consolidated surface. */
+export const LauncherPage: Story = {
+  args: { initialPage: "launcher", seed: true },
 };
 
 /** No attention-worthy data: every widget self-hides, leaving the clean home. */

@@ -165,7 +165,7 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
 
     const bindings: FaceEmbedBindings = {
       open(ggufPath) {
-        const cstr = Buffer.from(ggufPath + "\0", "utf-8");
+        const cstr = Buffer.from(`${ggufPath}\0`, "utf-8");
         const handleSlot = new BigUint64Array(1);
         const rc = lib.symbols.face_embed_open(
           ptr(cstr) as never,

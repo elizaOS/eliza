@@ -246,4 +246,52 @@ describe("SettingsView", () => {
       window.matchMedia = original;
     }
   });
+
+  // ── #9945: orientation-aware two-pane selection ───────────────────────────
+
+  /** Mock matchMedia so each query resolves by the supplied predicate. */
+  function mockMatchMedia(matches: (query: string) => boolean) {
+    const original = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: matches(query),
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+    return () => {
+      window.matchMedia = original;
+    };
+  }
+
+  it("uses the two-pane layout for a landscape phone (narrow width, landscape)", () => {
+    // Landscape phone: NOT min-width:1024, but it IS min-width:768 + landscape.
+    // A plain width-only check would wrongly drop it into the hub.
+    const restore = mockMatchMedia(
+      (query) => query === "(min-width: 768px) and (orientation: landscape)",
+    );
+    try {
+      render(<SettingsView />);
+      // Two-pane auto-selects the first section's body (no tap needed).
+      expect(screen.getByTestId("stub-identity")).toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
+
+  it("uses the single-column hub for a portrait tablet (narrow width, portrait)", () => {
+    // Portrait tablet: neither min-width:1024 nor the landscape combo matches.
+    const restore = mockMatchMedia(() => false);
+    try {
+      render(<SettingsView />);
+      // Hub shows the nav rows but does not auto-render a section body.
+      expect(screen.queryByTestId("stub-identity")).toBeNull();
+      expect(screen.getByText("Basics")).toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
 });

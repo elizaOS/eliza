@@ -96,7 +96,7 @@ best-effort route sweep:
    tcp:31337 -> host:31337`.
 4. The spec navigates the installed app to `/?reset`, taps through Remote
    onboarding, posts first-run to the real host agent, and asserts
-   `home-springboard-surface[data-page="home"]` plus the chat composer.
+   `home-launcher-surface[data-page="home"]` plus the chat composer.
 
 Artifacts are written under
 `packages/app/test-results/android-onboarding-to-home/`:

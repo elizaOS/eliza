@@ -237,19 +237,19 @@ test.describe("walkthrough capture smoke", () => {
     await captureState(page, testInfo, "walkthrough-04-chat-full-detent.png");
 
     await openAppPath(page, "/views");
-    await expect(page.getByTestId("springboard")).toBeVisible({
+    await expect(page.getByTestId("launcher")).toBeVisible({
       timeout: 60_000,
     });
     await expect(
-      page.locator('[data-testid^="springboard-tile-"]').first(),
+      page.locator('[data-testid^="launcher-tile-"]').first(),
     ).toBeVisible();
-    await captureState(page, testInfo, "walkthrough-05-springboard.png");
+    await captureState(page, testInfo, "walkthrough-05-launcher.png");
 
     const firstTile = page
-      .locator('[data-testid^="springboard-tile-"]')
+      .locator('[data-testid^="launcher-tile-"]')
       .first();
     const tileId = await firstTile.getAttribute("data-testid");
-    const viewId = (tileId ?? "").replace("springboard-tile-", "");
+    const viewId = (tileId ?? "").replace("launcher-tile-", "");
     await firstTile.locator("button").first().click();
     await expect
       .poll(() => new URL(page.url()).hash + new URL(page.url()).pathname)
