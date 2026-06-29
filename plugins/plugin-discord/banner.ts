@@ -5,10 +5,121 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
+import { listEnabledDiscordAccounts } from "./accounts";
+import { getDiscordSettings } from "./environment";
 import {
 	type DiscordPermissionValues,
 	getPermissionValues,
 } from "./permissions";
+
+/** Per-account reply-config overrides used by the suppression diagnostic. */
+type AccountReplyOverrides = {
+	autoReply?: boolean;
+	shouldIgnoreDirectMessages?: boolean;
+};
+
+/**
+ * Inspect the effective Discord reply configuration and, if it will suppress
+ * ALL auto-replies, emit a single startup warning naming the specific active
+ * reason(s) and the exact env var(s) an operator must flip to re-enable replies.
+ *
+ * Diagnostics only: this reads resolved settings and logs. It never mutates
+ * configuration or reply behavior. The reply gate it mirrors lives in
+ * `MessageManager.handleMessage` (messages.ts): a reply is suppressed when
+ * `!autoReply || lifeOpsPassiveConnectorsEnabled(runtime)`. DM ignore is a
+ * narrower gate (DMs only) surfaced here because it silently drops DM replies.
+ *
+ * Multi-account aware: per-account configs can override `autoReply` /
+ * `shouldIgnoreDirectMessages` (mirrors `resolveDiscordSettingsForAccount` in
+ * service.ts: `config.X ?? base.X`). The warning fires only when EVERY enabled
+ * account is globally suppressed, so a single reply-enabled account is never
+ * misreported as silent.
+ *
+ * @param runtime - The agent runtime used to resolve settings and log.
+ */
+export function warnIfRepliesSuppressed(runtime: IAgentRuntime): void {
+	// Skip the diagnostic when no enabled account has a token: index.ts still
+	// runs the banner in that path, but the bot can never connect, so a
+	// "Discord is connected but will NOT reply" warning would be misleading.
+	// listEnabledDiscordAccounts is the same connection gate the service uses
+	// (env DISCORD_API_TOKEN/DISCORD_BOT_TOKENS, character.settings.discord, and
+	// per-account tokens all flow through it), so this covers every supported
+	// credential path. The existing missing-token warning in index.ts owns the
+	// no-credentials case.
+	const accounts = listEnabledDiscordAccounts(runtime);
+	if (accounts.length === 0) {
+		return;
+	}
+
+	const base = getDiscordSettings(runtime);
+	// Passive mode is a runtime-global gate (not per-account); when on it
+	// suppresses replies for every account.
+	const passiveEnabled = lifeOpsPassiveConnectorsEnabled(runtime);
+
+	// Resolve each enabled account's effective reply settings, mirroring
+	// resolveDiscordSettingsForAccount's `config.X ?? base.X` precedence.
+	let anyAutoReplyOff = false;
+	let anyDmIgnored = false;
+	let allGloballySuppressed = true;
+
+	for (const account of accounts) {
+		const config = (account.config ?? {}) as AccountReplyOverrides;
+		const effectiveAutoReply = config.autoReply ?? base.autoReply;
+		const effectiveIgnoreDms =
+			config.shouldIgnoreDirectMessages ?? base.shouldIgnoreDirectMessages;
+
+		if (!effectiveAutoReply) {
+			anyAutoReplyOff = true;
+		}
+		if (effectiveIgnoreDms) {
+			anyDmIgnored = true;
+		}
+		// An account replies somewhere unless passive mode is on or its
+		// effective autoReply is off.
+		if (!passiveEnabled && effectiveAutoReply) {
+			allGloballySuppressed = false;
+		}
+	}
+
+	// Only warn when EVERY enabled account is globally suppressed. A lone
+	// DM-ignore setting is intentional config, not a silent total failure, and
+	// one reply-enabled account means the bot is not silent overall.
+	if (!allGloballySuppressed) {
+		return;
+	}
+
+	const reasons: string[] = [];
+	if (passiveEnabled) {
+		reasons.push(
+			"passive-connectors mode is ON (inbound persisted, replies suppressed); " +
+				"set ELIZA_LIFEOPS_PASSIVE_CONNECTORS=false " +
+				"(or LIFEOPS_PASSIVE_CONNECTORS=false) to allow replies",
+		);
+	}
+	if (anyAutoReplyOff) {
+		reasons.push(
+			"autoReply is OFF; set DISCORD_AUTO_REPLY=true " +
+				"(or character.settings.discord.autoReply=true, or the per-account " +
+				"autoReply) to allow replies",
+		);
+	}
+	// Narrower suppressor: only silences DM replies. Surfaced alongside the
+	// global reason(s) since the operator likely wants DMs working too.
+	if (anyDmIgnored) {
+		reasons.push(
+			"direct messages are IGNORED (affects DM replies only); set " +
+				"DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES=false to reply in DMs",
+		);
+	}
+
+	runtime.logger.warn(
+		{ src: "plugin:discord", agentId: runtime.agentId },
+		`Discord is connected but will NOT auto-reply to any messages. Active reason(s): ${reasons
+			.map((r, i) => `(${i + 1}) ${r}`)
+			.join("; ")}.`,
+	);
+}
 
 const ANSI = {
 	reset: "\x1b[0m",
@@ -266,6 +377,10 @@ export function printBanner(options: BannerOptions): void {
 	lines.push("");
 
 	runtime.logger.info(lines.join("\n"));
+
+	// Diagnostics: if the effective config will suppress all auto-replies, warn
+	// the operator with the exact reason(s) instead of failing silently.
+	warnIfRepliesSuppressed(runtime);
 }
 
 /**
