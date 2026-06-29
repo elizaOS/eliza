@@ -96,8 +96,37 @@ function promptToText(prompt: unknown): string {
   return parts.join("\n").trim();
 }
 
-// Per-session room state.
-const sessions = new Map<string, ChatRoom>();
+// Per-session state: the chat room, the workspace cwd, and whether the
+// orchestrator's scaffolded operating manual has been injected yet.
+interface AcpSession {
+  room: ChatRoom;
+  cwd?: string;
+  manualInjected: boolean;
+}
+const sessions = new Map<string, AcpSession>();
+
+/**
+ * Read the operating manual the orchestrator scaffolds into a spawned sub-agent's
+ * workspace (`AGENTS.md` / `CLAUDE.md` — "what Eliza is, you are a non-interactive
+ * coding sub-agent, the relay contract"). claude/codex/opencode auto-read these
+ * from their cwd; eliza-code runs from the monorepo for dep resolution, so it must
+ * read them explicitly from the build workspace and inject them so the sub-agent
+ * gets the same orientation as the other backends.
+ */
+async function readWorkspaceManual(cwd?: string): Promise<string> {
+  if (!cwd) return "";
+  const { readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
+    try {
+      const text = await readFile(join(cwd, name), "utf8");
+      if (text.trim()) return text.trim();
+    } catch {
+      // not present — try the next, then fall through to empty
+    }
+  }
+  return "";
+}
 
 // stdout = the ACP JSON-RPC output; stdin = the input. (ndJsonStream(output, input).)
 const output = new WritableStream<Uint8Array>({
@@ -146,17 +175,29 @@ const _connection = new AgentSideConnection(
         taskIds: [],
         elizaRoomId: getMainRoomElizaId(session),
       };
-      sessions.set(id, room);
+      sessions.set(id, { room, cwd: params.cwd, manualInjected: false });
       log("session created", { id, cwd: params.cwd });
       return { sessionId: id };
     },
     async prompt(params: { sessionId: string; prompt: unknown }) {
-      const room = sessions.get(params.sessionId);
-      if (!room || !identity) {
+      const session = sessions.get(params.sessionId);
+      if (!session || !identity) {
         throw new Error(`[eliza-code-acp] unknown session ${params.sessionId}`);
       }
-      const text = promptToText(params.prompt);
+      const { room } = session;
+      let text = promptToText(params.prompt);
       if (!text) return { stopReason: "end_turn" };
+      // Inject the orchestrator's scaffolded operating manual on the first prompt
+      // of the session so eliza-code gets the same "you are a non-interactive Eliza
+      // coding sub-agent + relay contract" orientation as claude/codex/opencode.
+      if (!session.manualInjected) {
+        session.manualInjected = true;
+        const manual = await readWorkspaceManual(session.cwd);
+        if (manual) {
+          text = `${manual}\n\n---\n\nTask:\n${text}`;
+          log("injected workspace operating manual", { chars: manual.length });
+        }
+      }
       log("prompt", { sessionId: params.sessionId, chars: text.length });
       let streamed = "";
       const response = await getAgentClient().sendMessage({
