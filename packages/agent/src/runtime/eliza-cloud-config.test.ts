@@ -178,6 +178,50 @@ describe("provisioned cloud container topology (#9887)", () => {
     ).toBe(true);
   });
 
+  it("fills missing model pins from config.env when cloud routing already exists", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_SMALL_MODEL: "small-from-config-env",
+          ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL: "response-from-config-env",
+        },
+      },
+    } as ElizaConfig;
+
+    const changed = ensureProvisionedCloudContainerConfig(config);
+
+    expect(changed).toBe(true);
+    expect(config.serviceRouting?.llmText).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+      smallModel: "small-from-config-env",
+      responseHandlerModel: "response-from-config-env",
+    });
+
+    applyCloudConfigToEnv(config);
+    expect(process.env.ELIZAOS_CLOUD_SMALL_MODEL).toBe("small-from-config-env");
+    expect(process.env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL).toBe(
+      "response-from-config-env",
+    );
+  });
+
   it("forces cloud inference env from repaired managed-container topology", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
 

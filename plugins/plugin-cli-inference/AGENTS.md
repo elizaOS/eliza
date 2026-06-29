@@ -126,7 +126,7 @@ plugins/plugin-cli-inference/
   index.ts                  Plugin entry — gates + registers large-tier handlers; init double-activation guard
   index.node.ts             Node re-export
   index.browser.ts          Browser stub (node-only plugin; empty models)
-  auto-enable.ts            shouldEnable = ELIZA_CHAT_VIA_CLI is claude|codex
+  auto-enable.ts            shouldEnable = ELIZA_CHAT_VIA_CLI is claude|claude-sdk|codex
   src/
     claude-cli.ts           ClaudeCli — spawns `claude --print`; __setSpawnForTests seam
     codex-cli-exec.ts       CodexCli — spawns `codex exec --json`; JSONL last-assistant parse

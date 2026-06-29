@@ -1142,6 +1142,50 @@ function isProvisionedCloudContainer(env: NodeJS.ProcessEnv = process.env) {
   return env.ELIZA_CLOUD_PROVISIONED === "1";
 }
 
+const CLOUD_ROUTING_MODEL_ENV: ReadonlyArray<[string, string]> = [
+  ["ELIZAOS_CLOUD_NANO_MODEL", "nanoModel"],
+  ["ELIZAOS_CLOUD_SMALL_MODEL", "smallModel"],
+  ["ELIZAOS_CLOUD_MEDIUM_MODEL", "mediumModel"],
+  ["ELIZAOS_CLOUD_LARGE_MODEL", "largeModel"],
+  ["ELIZAOS_CLOUD_MEGA_MODEL", "megaModel"],
+  ["ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL", "responseHandlerModel"],
+  ["ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL", "shouldRespondModel"],
+  ["ELIZAOS_CLOUD_ACTION_PLANNER_MODEL", "actionPlannerModel"],
+  ["ELIZAOS_CLOUD_PLANNER_MODEL", "plannerModel"],
+  ["ELIZAOS_CLOUD_RESPONSE_MODEL", "responseModel"],
+  ["ELIZAOS_CLOUD_MEDIA_DESCRIPTION_MODEL", "mediaDescriptionModel"],
+];
+
+function mergeMissingCloudRoutingModelPins(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  const existingRouting = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  );
+  const llmText = existingRouting?.llmText as
+    | Record<string, unknown>
+    | undefined;
+  if (!llmText) return false;
+
+  const patch: Record<string, string> = {};
+  for (const [envKey, routingField] of CLOUD_ROUTING_MODEL_ENV) {
+    if (trimEnvString(llmText[routingField])) continue;
+    const value = readEffectiveEnvValue(config, envKey, env);
+    if (value) patch[routingField] = value;
+  }
+  if (Object.keys(patch).length === 0) return false;
+
+  config.serviceRouting = {
+    ...(existingRouting ?? {}),
+    llmText: {
+      ...llmText,
+      ...patch,
+    },
+  };
+  return true;
+}
+
 /** @internal Exported for regression coverage. */
 export function ensureProvisionedCloudContainerConfig(
   config: ElizaConfig,
@@ -1257,6 +1301,8 @@ export function ensureProvisionedCloudContainerConfig(
       ...(existingRouting ?? {}),
       ...cloudRouting,
     };
+    changed = true;
+  } else if (mergeMissingCloudRoutingModelPins(config, env)) {
     changed = true;
   }
 
@@ -3543,6 +3589,11 @@ export async function startEliza(
     applySandboxConnectorOwnership(process.env, config);
   }
   ensureProvisionedCloudContainerConfig(config);
+  // 2b. Propagate cloud config into process.env before boot prefetches. A
+  // provisioned container may start with only ELIZA_CLOUD_PROVISIONED in the
+  // real env and cloud credentials in config.env.
+  applyCloudConfigToEnv(config);
+
   // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
   // network, up to a 3s timeout each) without blocking. They only write
   // DISCORD_APPLICATION_ID and GITHUB_TOKEN respectively — env vars that no
@@ -3559,9 +3610,6 @@ export async function startEliza(
   const cloudGithubTokenPromise = autoFetchCloudGithubToken(
     config.cloud?.agentId?.trim(),
   );
-
-  // 2b. Propagate cloud config into process.env for ElizaCloud plugin
-  applyCloudConfigToEnv(config);
 
   // 2c. Propagate x402 config into process.env
   applyX402ConfigToEnv(config);

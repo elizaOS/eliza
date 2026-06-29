@@ -69,7 +69,9 @@ describe("onRequest /embed CSP policy", () => {
   it("allows only discord framing for ?platform=discord", async () => {
     const response = await runRequest("/embed?platform=discord");
     const csp = response.headers.get("Content-Security-Policy");
-    expect(csp).toBe("frame-ancestors https://discord.com https://*.discord.com");
+    expect(csp).toBe(
+      "frame-ancestors https://discord.com https://*.discord.com",
+    );
     expect(csp).not.toContain("telegram");
     expect(response.headers.get("X-Frame-Options")).toBeNull();
   });

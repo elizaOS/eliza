@@ -183,11 +183,13 @@ function AuthorizeAuthenticatedContent({
         );
       }
 
-      window.location.href = buildAppAuthorizeCompletionRedirect({
-        code,
-        redirectUri,
-        state,
-      });
+      window.location.assign(
+        buildAppAuthorizeCompletionRedirect({
+          code,
+          redirectUri,
+          state,
+        }),
+      );
     } catch (err) {
       const message =
         err instanceof Error
@@ -203,10 +205,12 @@ function AuthorizeAuthenticatedContent({
       router.push("/");
       return;
     }
-    window.location.href = buildAppAuthorizeCancelRedirect({
-      redirectUri,
-      state,
-    });
+    window.location.assign(
+      buildAppAuthorizeCancelRedirect({
+        redirectUri,
+        state,
+      }),
+    );
   }, [redirectUri, state, router]);
 
   // Render.
@@ -363,13 +367,7 @@ function SignedInActions({
       <BrandButton onClick={onAuthorize} className="w-full">
         Authorize {appName}
       </BrandButton>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="text-sm text-white/50 transition-colors hover:text-white"
-      >
-        Cancel
-      </button>
+      <InlineCancelButton onCancel={onCancel} />
     </div>
   );
 }
@@ -396,13 +394,19 @@ function SignedOutActions({
           <p className="text-sm text-white/60">Loading sign-in options...</p>
         </div>
       )}
-      <button
-        type="button"
-        onClick={onCancel}
-        className="text-sm text-white/50 transition-colors hover:text-white"
-      >
-        Cancel
-      </button>
+      <InlineCancelButton onCancel={onCancel} />
     </div>
+  );
+}
+
+function InlineCancelButton({ onCancel }: { onCancel: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onCancel}
+      className="min-h-10 cursor-pointer rounded-sm px-3 text-sm text-white/50 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5800]/60"
+    >
+      Cancel
+    </button>
   );
 }

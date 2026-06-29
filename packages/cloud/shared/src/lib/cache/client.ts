@@ -784,16 +784,9 @@ export class CacheClient {
     let cursor: string | number = "0";
     let totalDeleted = 0;
     let iterations = 0;
+    let hitMaxIterations = false;
 
     do {
-      if (iterations >= maxIterations) {
-        logger.warn(
-          `[Cache] DEL_PATTERN reached max iterations (${maxIterations}) for pattern ${pattern}. ` +
-            `Deleted ${totalDeleted} keys so far. Pattern may match too many keys. Consider narrowing the pattern.`,
-        );
-        break;
-      }
-
       const result: [string | number, string[]] = await redis.scan(cursor, {
         match: this.pk(pattern),
         count: batchSize,
@@ -815,14 +808,24 @@ export class CacheClient {
         );
       }
 
+      hitMaxIterations = cursor !== "0" && iterations >= maxIterations;
+      if (hitMaxIterations) {
+        break;
+      }
+
       if (cursor !== "0") {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
-    } while (cursor !== "0" && iterations < maxIterations);
+    } while (cursor !== "0");
 
     const duration = Date.now() - start;
 
-    if (totalDeleted === 0) {
+    if (hitMaxIterations) {
+      logger.warn(
+        `[Cache] DEL_PATTERN reached max iterations (${maxIterations}) for pattern ${pattern}. ` +
+          `Deleted ${totalDeleted} keys so far. Pattern may match too many keys. Consider narrowing the pattern.`,
+      );
+    } else if (totalDeleted === 0) {
       logger.debug(`[Cache] DEL_PATTERN: ${pattern} (no keys found)`);
     } else {
       logger.info(

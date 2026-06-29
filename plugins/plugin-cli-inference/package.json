@@ -75,7 +75,7 @@
     "pluginParameters": {
       "ELIZA_CHAT_VIA_CLI": {
         "type": "string",
-        "description": "Enable the SAFE/CLOUD CLI inference route. Set to 'claude' or 'codex' to spawn that CLI for large-tier inference. Unset = plugin inert.",
+        "description": "Enable the SAFE/CLOUD inference route. Set to 'claude', 'claude-sdk', or 'codex' for large-tier inference. Unset = plugin inert.",
         "required": false,
         "sensitive": false
       },
@@ -84,6 +84,25 @@
         "description": "Model id passed to `claude --model`. Defaults to claude-opus-4-7.",
         "required": false,
         "default": "claude-opus-4-7",
+        "sensitive": false
+      },
+      "ELIZA_CLI_CLAUDE_PLANNER_MODEL": {
+        "type": "string",
+        "description": "Claude SDK planner/small-tier model. Falls back to ELIZA_CLI_CLAUDE_MODEL.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CLI_CLAUDE_BIN": {
+        "type": "string",
+        "description": "Path to the Claude Code executable used by the Claude Agent SDK backend.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CLI_SDK_RESTART_AFTER_TURNS": {
+        "type": "number",
+        "description": "Restart each warm Claude SDK session after this many turns. Defaults to 20.",
+        "required": false,
+        "default": 20,
         "sensitive": false
       },
       "ELIZA_CLI_CODEX_MODEL": {

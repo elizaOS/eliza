@@ -182,7 +182,10 @@ function writeRiskFactors(message: Memory, factors: RiskFactors): void {
 			: {};
 	message.content.metadata = {
 		...existing,
-		[METADATA_KEY]: factors as unknown as ContentValue,
+		// `RiskFactors` is a flat JSON object (numbers + a string array), so a
+		// fresh spread is structurally a `{ [key: string]: ContentValue }` member
+		// without any cast.
+		[METADATA_KEY]: { ...factors },
 	} as { [key: string]: ContentValue };
 }
 
@@ -264,7 +267,7 @@ export function registerCoreShouldRespondRiskHook(
 
 export type InjectionVerdict = "allow" | "block";
 
-const VERDICT_RE = /verdict\s*[:\-]\s*(allow|block)/i;
+const VERDICT_RE = /verdict\s*[:-]\s*(allow|block)/i;
 
 /**
  * One `TEXT_LARGE` adjudication for a borderline message. Fails closed (block)
@@ -308,7 +311,7 @@ export async function adjudicateInjectionRisk(
 		}
 		const verdict: InjectionVerdict =
 			match[1].toLowerCase() === "block" ? "block" : "allow";
-		const reasonMatch = responseText.match(/reason\s*[:\-]\s*(.+)/i);
+		const reasonMatch = responseText.match(/reason\s*[:-]\s*(.+)/i);
 		return {
 			verdict,
 			reason:

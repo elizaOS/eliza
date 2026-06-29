@@ -8,7 +8,9 @@
     "tsconfig.json",
     "tsconfig.base.json",
     "tsconfig.dist-paths.json",
-    "tsconfig.build.template.json"
+    "tsconfig.build.template.json",
+    "plugins/tsconfig.build.shared.json",
+    "packages/feed/packages/tsconfig.base.json"
   ],
   "tasks": {
     "build": {

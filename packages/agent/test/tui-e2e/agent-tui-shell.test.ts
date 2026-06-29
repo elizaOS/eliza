@@ -143,6 +143,14 @@ describe("agent terminal tui — whole-app e2e (real terminal grid)", () => {
     await type(terminal, "hello from the terminal");
     await drive(terminal, [KEYS.ENTER]);
 
+    const conversationCall = findCall(calls, (c) =>
+      c.url.endsWith("/api/conversations"),
+    );
+    expect(conversationCall?.body).toMatchObject({
+      title: "Terminal session",
+      metadata: { source: "terminal-tui" },
+    });
+
     const chatCall = findCall(calls, (c) =>
       c.url.endsWith("/api/conversations/conv-terminal/messages"),
     );
