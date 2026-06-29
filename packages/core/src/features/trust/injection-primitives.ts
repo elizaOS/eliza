@@ -10,10 +10,11 @@
 
 /** Regexes for direct prompt-injection phrasing (multi-language + obfuscation). */
 export const INJECTION_PATTERNS: readonly RegExp[] = [
-	/ignore\s+(all\s+)?previous\s+(instructions|commands)/i,
-	/disregard\s+(all\s+)?prior\s+(commands|instructions)/i,
+	/ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|commands?|prompts?)/i,
+	/disregard\s+(all\s+)?(previous|prior|above)/i,
+	/forget\s+(everything|all|your)\s+(instructions?|rules?|guidelines?)/i,
 	/new\s+instructions?:/i,
-	/system\s+override/i,
+	/system\s*:?\s*(prompt|override|command)/i,
 	/admin\s+access/i,
 	/grant\s+me\s+(admin|owner|all)/i,
 	/you\s+are\s+now/i,
@@ -54,6 +55,24 @@ export const INJECTION_KEYWORDS: readonly string[] = [
 	"escalate privileges",
 	"you are now",
 	"pretend you are",
+];
+
+/**
+ * Dangerous-command and forged chat-template indicators that appear in
+ * untrusted EXTERNAL content (email / webhook / web). These are a distinct
+ * concept from the prompt-injection PHRASING above: they flag destructive
+ * commands and counterfeit role/system delimiters rather than instruction
+ * overrides. They are intentionally kept out of `INJECTION_PATTERNS` so the
+ * should-respond risk gate does not escalate ordinary developer chat that
+ * merely mentions e.g. `rm -rf`. Consumed by the external-content monitor.
+ */
+export const EXTERNAL_CONTENT_RISK_PATTERNS: readonly RegExp[] = [
+	/\bexec\b.*command\s*=/i,
+	/elevated\s*=\s*true/i,
+	/rm\s+-rf/i,
+	/delete\s+all\s+(emails?|files?|data)/i,
+	/<\/?system>/i,
+	/\]\s*\n\s*\[?(system|assistant|user)\]?:/i,
 ];
 
 /** Keyword banks for social-engineering pressure tactics. */
@@ -153,8 +172,7 @@ export function containsObfuscatedKeyword(
 		.filter(Boolean);
 	return tokens.some(
 		(token) =>
-			token === normalizedKeyword ||
-			reverseString(token) === normalizedKeyword,
+			token === normalizedKeyword || reverseString(token) === normalizedKeyword,
 	);
 }
 
@@ -162,5 +180,7 @@ export function detectObfuscatedKeywordMatches(
 	message: string,
 	keywords: readonly string[],
 ): string[] {
-	return keywords.filter((keyword) => containsObfuscatedKeyword(message, keyword));
+	return keywords.filter((keyword) =>
+		containsObfuscatedKeyword(message, keyword),
+	);
 }
