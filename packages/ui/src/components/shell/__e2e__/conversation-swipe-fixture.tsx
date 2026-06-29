@@ -164,24 +164,41 @@ function Harness(): React.JSX.Element {
     selectConversation,
   ]);
 
-  const controller = {
+  const controller: ShellController = {
     phase: "summoned",
     messages: threadFor(activeId),
     canSend: true,
     responding: false,
     turnStatus: null,
     recording: false,
+    waveformMode: "idle",
+    analyser: null,
+    open: () => {},
+    close: () => {},
+    isOpen: true,
     handsFree: false,
+    transcriptionMode: false,
     transcript: "",
     speaking: false,
     agentVoiceMuted: false,
     needsAudioUnlock: false,
-    modelStatus: { kind: "ready" },
+    modelStatus: {
+      kind: "ready",
+      blocksSend: false,
+      percent: null,
+      etaMs: null,
+      modelName: null,
+      errors: [],
+    },
+    captureVision: () => {},
+    visionCapturing: false,
     conversationNav,
     conversationLoading: false,
     send: () => {},
     toggleRecording: () => {},
     toggleHandsFree: () => {},
+    toggleTranscriptionMode: () => {},
+    stopTranscriptionAndMic: () => {},
     setDictationSink: () => {},
     setTranscriptSessionSink: () => {},
     setComposerHasDraft: () => {},
@@ -194,7 +211,7 @@ function Harness(): React.JSX.Element {
     navigateToViews: () => {},
     clearConversation: () => {},
     stop: () => {},
-  } as unknown as ShellController;
+  };
 
   return (
     <div
