@@ -1,6 +1,7 @@
 [
   "packages/agent/src/api/media-runtime.ts::/api/media/:filename",
   "packages/agent/src/services/remote-plugin-adapter.ts::(no-path)",
+  "packages/agent/src/services/remote-plugin-bridge.ts::(no-path)",
   "packages/core/src/capabilities/index.ts::/fixture/route",
   "packages/core/src/features/oauth/plugin.ts::/api/oauth/callback",
   "packages/core/src/features/secrets/setup/config.ts::(no-path)",
