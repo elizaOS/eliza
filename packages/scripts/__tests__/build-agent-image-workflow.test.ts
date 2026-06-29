@@ -53,7 +53,9 @@ describe("build-agent-image workflow", () => {
     expect(runBlock).toContain("node packages/scripts/run-turbo.mjs run build");
     expect(runBlock).toContain("--concurrency=8");
     expect(runBlock).not.toMatch(
-      /\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?build\b/,
+      // Reject a bare package-manager `build` (the shell loop we migrated off),
+      // but allow legitimately-named scripts like `build:foo` (the `:` guard).
+      /\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?build(?![\w:])/,
     );
     expect(runBlock).not.toMatch(/\bfor\s+\w+\s+in\s+(?:packages|plugins)\b/);
     expect(runBlock).not.toMatch(/\bwhile\s+read\b/);
@@ -102,7 +104,9 @@ describe("build-agent-image workflow", () => {
       "packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
     );
     expect(runBlock).not.toMatch(
-      /\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?build\b/,
+      // Reject a bare package-manager `build` (the shell loop we migrated off),
+      // but allow legitimately-named scripts like `build:foo` (the `:` guard).
+      /\b(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?build(?![\w:])/,
     );
   });
 });

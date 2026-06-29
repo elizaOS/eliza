@@ -1,12 +1,22 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { publicRouteKey, scanPublicRoutes } from "./public-route-audit.ts";
 
 const BASELINE_PATH = join(
   import.meta.dirname,
   "public-route-audit.baseline.json",
 );
+
+// The git-unavailable test writes an untracked `public: true` fixture under
+// SCAN_ROOTS. If a prior run crashed before its `finally` cleanup, that file
+// would survive and `ls-files --others` would inject it into the baseline-match
+// scan below (which runs first), false-failing with a spurious "added" route.
+// Clear any leftover before the suite so a crashed run can't poison this one.
+const FIXTURE_DIR = join(import.meta.dirname, "__tmp-public-route-audit");
+beforeAll(() => {
+  rmSync(FIXTURE_DIR, { recursive: true, force: true });
+});
 
 /**
  * Security gate (#9948): a `public: true` route bypasses the central auth gate,
@@ -51,7 +61,7 @@ describe("public:true route allowlist (#9948)", () => {
   });
 
   it("fails closed to a full scan when git change detection is unavailable", async () => {
-    const fixtureDir = join(import.meta.dirname, "__tmp-public-route-audit");
+    const fixtureDir = FIXTURE_DIR;
     const fixturePath = join(fixtureDir, "new-public-route.ts");
     mkdirSync(fixtureDir, { recursive: true });
     writeFileSync(

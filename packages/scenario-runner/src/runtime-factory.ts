@@ -520,12 +520,17 @@ export async function createScenarioRuntime(
   // it only adds endpoints; non-api scenarios are unaffected. Its sole
   // dependency (@elizaos/plugin-google) is already registered above.
   const routesModule = (await import(
-    "@elizaos/plugin-personal-assistant"
+    "@elizaos/plugin-personal-assistant/public"
   )) as Record<string, unknown>;
-  const lifeOpsRoutesPlugin = routesModule.personalAssistantRoutesPlugin;
-  if (lifeOpsRoutesPlugin) {
-    await runtime.registerPlugin(lifeOpsRoutesPlugin as never);
+  const lifeOpsRoutesPlugin = extractPlugin(routesModule, [
+    "personalAssistantRoutesPlugin",
+  ]);
+  if (!lifeOpsRoutesPlugin) {
+    throw new Error(
+      "[scenario-runner] @elizaos/plugin-personal-assistant did not export personalAssistantRoutesPlugin",
+    );
   }
+  await runtime.registerPlugin(lifeOpsRoutesPlugin);
 
   for (const extra of options?.extraPlugins ?? []) {
     await runtime.registerPlugin(extra);
