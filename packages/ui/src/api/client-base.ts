@@ -1559,18 +1559,29 @@ export class ElizaClient {
     while (true) {
       let done = false;
       let value: Uint8Array | undefined;
+      let idleTimedOut = false;
       try {
         const readPromise = reader.read();
         const timeoutPromise = new Promise<never>((_, reject) => {
-          const id = setTimeout(
-            () => reject(new Error("SSE idle timeout — no data for 60s")),
-            SSE_IDLE_TIMEOUT_MS,
-          );
+          const id = setTimeout(() => {
+            idleTimedOut = true;
+            reject(new Error("SSE idle timeout — no data for 60s"));
+          }, SSE_IDLE_TIMEOUT_MS);
           // Clear timeout if the read resolves first
           void readPromise.finally(() => clearTimeout(id));
         });
         ({ done, value } = await Promise.race([readPromise, timeoutPromise]));
       } catch {
+        // Only the 60s idle timeout sets `idleTimedOut`; a user abort or a
+        // mid-stream network drop rejects the read without it. Stamp the stall
+        // as a transient provider issue so the consumer carries `failureKind`
+        // onto the turn and the renderer shows a Retry affordance instead of a
+        // bare, ambiguous "interrupted" badge that locks the partial text.
+        // User-stop / network-drop stay failureKind-less (genuine interrupt).
+        if (idleTimedOut) {
+          streamState.doneFailureKind =
+            streamState.doneFailureKind ?? "provider_issue";
+        }
         void reader.cancel("elizaos-sse-idle-timeout").catch(() => {});
         break;
       }
