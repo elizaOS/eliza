@@ -1,12 +1,22 @@
 /**
- * Agent MCP billing invariants for monetized agents.
+ * Agent A2A billing invariants for monetized agents — companion to
+ * agent-mcp-billing.test.ts.
  *
- * The route must reserve the marked-up estimate up front and must not credit
- * creator earnings unless final reconciliation confirms the consumer charge was
- * collected.
+ * Regression for #10266: the A2A chat path settles the consumer org with
+ * reservation.reconcile(actualTotal), THEN records creator earnings in the same
+ * try. recordCreatorEarnings can throw on a transient DB error; the pre-fix code
+ * let it reach the outer catch, which ran the NON-idempotent reconcile(0) —
+ * double-refunding the WHOLE reservation (free inference + a net credit grant)
+ * and returning a -32000 error. The fix swallows the earnings error so reconcile
+ * fires exactly once and the already-correct settlement response is returned.
+ *
+ * `handleChat` is module-private, so we drive it through the exported Hono app's
+ * POST handler (method "chat"), mounted under `/agents/:id/a2a` so the `:id`
+ * param resolves (mirrors app-charge-public-route.test.ts).
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Hono } from "hono";
 // `mock.module` is process-global: spread the real auth module so this file's
 // partial mock (only `requireUserOrApiKeyWithOrg`) does not drop the other auth
 // exports (e.g. `requireUserOrApiKey`) for later test files in the same run.
@@ -47,6 +57,7 @@ mock.module("@/lib/services/agent-monetization", () => ({
 }));
 
 const reserve = mock();
+const charactersGetById = mock();
 class InsufficientCreditsError extends Error {
   constructor(
     public readonly required: number,
@@ -62,12 +73,13 @@ mock.module("@/lib/services/credits", () => ({
 }));
 
 mock.module("@/lib/services/characters/characters", () => ({
-  charactersService: { getById: mock() },
+  charactersService: { getById: charactersGetById },
 }));
 
+const requireUserOrApiKeyWithOrg = mock();
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   ...workersHonoAuthActual,
-  requireUserOrApiKeyWithOrg: mock(),
+  requireUserOrApiKeyWithOrg,
 }));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
@@ -83,20 +95,15 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const { handleToolCall } = await import("../agents/[id]/mcp/route");
+const { default: a2aRoute } = await import("../agents/[id]/a2a/route");
+
+const app = new Hono();
+app.route("/agents/:id/a2a", a2aRoute);
 
 function textStream(text: string) {
   return (async function* stream() {
     yield text;
   })();
-}
-
-function makeContext() {
-  return {
-    env: {},
-    json: (body: unknown, status?: number) =>
-      Response.json(body, { status: status ?? 200 }),
-  };
 }
 
 function makeCharacter() {
@@ -105,10 +112,14 @@ function makeCharacter() {
     name: "Markup Agent",
     user_id: "owner-1",
     organization_id: "creator-org",
+    is_public: true,
+    a2a_enabled: true,
     monetization_enabled: true,
     inference_markup_percentage: "500",
     system: null,
     bio: "Helpful.",
+    category: null,
+    tags: [],
     settings: {},
   };
 }
@@ -131,16 +142,24 @@ function makeReservation(reconcileResult: {
   return reconcile;
 }
 
-async function callChat() {
-  return handleToolCall(
-    makeContext() as never,
-    makeCharacter(),
+function callChat() {
+  return app.request(
+    "/agents/agent-1/a2a",
     {
-      name: "chat",
-      arguments: { message: "hello", model: "gpt-5-mini" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "chat",
+        params: {
+          model: "gpt-5-mini",
+          messages: [{ role: "user", content: "hello" }],
+        },
+        id: "rpc-1",
+      }),
     },
-    "rpc-1",
-    { id: USER_ID, organization_id: ORG_ID },
+    // Worker Bindings (c.env): the route reads ANTHROPIC_COT_* off it.
+    {},
   );
 }
 
@@ -152,7 +171,14 @@ beforeEach(() => {
   getProviderFromModel.mockClear();
   recordCreatorEarnings.mockReset();
   reserve.mockReset();
+  charactersGetById.mockReset();
+  requireUserOrApiKeyWithOrg.mockReset();
 
+  charactersGetById.mockResolvedValue(makeCharacter());
+  requireUserOrApiKeyWithOrg.mockResolvedValue({
+    id: USER_ID,
+    organization_id: ORG_ID,
+  });
   estimateRequestCost.mockResolvedValue(0.01);
   calculateCost.mockResolvedValue({ totalCost: 0.01 });
   streamText.mockResolvedValue({
@@ -166,25 +192,17 @@ beforeEach(() => {
   recordCreatorEarnings.mockResolvedValue(undefined);
 });
 
-describe("Agent MCP billing", () => {
-  test("reserves the marked-up estimate before invoking the model", async () => {
+describe("Agent A2A billing", () => {
+  test("settles once and records creator earnings on the happy path", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
 
     const response = await callChat();
+    const body = (await response.json()) as {
+      result?: { content: string };
+      error?: { code: number };
+    };
 
     expect(response.status).toBe(200);
-    expect(reserve).toHaveBeenCalledTimes(1);
-    const reserveParams = reserve.mock.calls[0]?.[0] as { amount: number };
-    expect(reserveParams).toMatchObject({
-      organizationId: ORG_ID,
-      userId: USER_ID,
-      description: "Agent MCP: Markup Agent (gpt-5-mini)",
-    });
-    expect(reserveParams.amount).toBeCloseTo(0.06, 12);
-    expect(streamText).toHaveBeenCalledTimes(1);
-    expect(reserve.mock.invocationCallOrder[0]).toBeLessThan(
-      streamText.mock.invocationCallOrder[0],
-    );
     expect(reconcile).toHaveBeenCalledTimes(1);
     expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
     expect(recordCreatorEarnings).toHaveBeenCalledWith(
@@ -192,38 +210,14 @@ describe("Agent MCP billing", () => {
         agentId: "agent-1",
         earnings: 0.05,
         consumerOrgId: ORG_ID,
-        protocol: "mcp",
+        protocol: "a2a",
       }),
     );
-    expect(reconcile.mock.invocationCallOrder[0]).toBeLessThan(
-      recordCreatorEarnings.mock.invocationCallOrder[0],
-    );
+    expect(body.error).toBeUndefined();
+    expect(body.result?.content).toBe("hello from model");
   });
 
-  test("does not record creator earnings when final overage is uncollected", async () => {
-    makeReservation({ adjustmentType: "uncollected_overage" });
-    calculateCost.mockResolvedValue({ totalCost: 0.02 });
-
-    const response = await callChat();
-    const body = (await response.json()) as {
-      error?: { code: number; message: string };
-    };
-
-    expect(response.status).toBe(200);
-    expect(body.error).toEqual({
-      code: -32003,
-      message: "Insufficient credits for final usage cost",
-    });
-    expect(recordCreatorEarnings).not.toHaveBeenCalled();
-  });
-
-  // Regression for #10266: a post-settlement earnings failure must NOT trigger a
-  // second reconcile. The consumer is settled with reconcile(actualTotal); if
-  // recordCreatorEarnings throws, the pre-fix code let it reach the outer catch,
-  // which ran the NON-idempotent reconcile(0) — double-refunding the WHOLE
-  // reservation (free inference + a net credit grant) and returning an error.
-  // The fix swallows the earnings error so reconcile fires exactly once and the
-  // already-correct settlement response is returned.
+  // Regression for #10266 (A2A side).
   test("post-settlement earnings failure does not double-refund the reservation", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
     recordCreatorEarnings.mockRejectedValue(
@@ -232,21 +226,21 @@ describe("Agent MCP billing", () => {
 
     const response = await callChat();
     const body = (await response.json()) as {
-      result?: { content: Array<{ type: string; text: string }> };
+      result?: { content: string };
       error?: { code: number; message: string };
     };
 
     expect(response.status).toBe(200);
 
-    // The reservation is reconciled EXACTLY ONCE, with the real settled total
-    // (not the double-refund reconcile(0) from the outer catch).
+    // Reconciled EXACTLY ONCE with the real settled total — never the outer
+    // catch's double-refund reconcile(0).
     expect(reconcile).toHaveBeenCalledTimes(1);
     expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
 
-    // The earnings step was attempted (and failed) — but the request still
-    // returns the successful settlement, never the -32000 outer-catch error.
+    // Earnings attempted (and failed) but the request still returns the
+    // successful settlement, not the -32000 outer-catch error.
     expect(recordCreatorEarnings).toHaveBeenCalledTimes(1);
     expect(body.error).toBeUndefined();
-    expect(body.result?.content?.[0]?.text).toBe("hello from model");
+    expect(body.result?.content).toBe("hello from model");
   });
 });
