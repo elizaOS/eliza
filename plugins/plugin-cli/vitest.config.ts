@@ -22,7 +22,6 @@ export default defineConfig({
 		fileParallelism: false,
 		maxWorkers: 1,
 		setupFiles: ["./__tests__/core-test-mock.ts"],
-		passWithNoTests: true,
 		sequence: {
 			concurrent: false,
 		},

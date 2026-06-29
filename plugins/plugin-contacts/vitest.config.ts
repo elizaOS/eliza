@@ -77,7 +77,6 @@ export default defineConfig({
   },
   test: {
     include: ["test/**/*.test.ts", "src/**/*.test.ts", "src/**/*.test.tsx"],
-    passWithNoTests: true,
     environment: "node",
   },
 });

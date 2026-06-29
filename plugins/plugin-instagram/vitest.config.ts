@@ -11,7 +11,6 @@ export default defineConfig({
   plugins: [providerSdkShimPlugin()],
   test: {
     include: ["__tests__/**/*.test.ts", "src/**/__tests__/**/*.test.ts", "src/**/*.test.ts"],
-    passWithNoTests: true,
     environment: "node",
   },
 });

@@ -63,7 +63,6 @@ export default defineConfig({
   },
   test: {
     include: ["test/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
-    passWithNoTests: true,
     environment: "node",
   },
 });

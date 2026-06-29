@@ -10,7 +10,6 @@ export default defineConfig({
     testTimeout: 15_000,
     hookTimeout: 5_000,
     pool: "threads",
-    passWithNoTests: true,
   },
   resolve: {
     alias: {
