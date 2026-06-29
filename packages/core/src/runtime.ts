@@ -2237,6 +2237,14 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 		registerCoreIncomingMessageSecurityHook(this);
 
+		// #9949: stamp deterministic injection RiskFactors during the
+		// parallel-with-should-respond phase so the role-keyed verify gate in the
+		// message service can escalate borderline USER/GUEST messages.
+		const { registerCoreShouldRespondRiskHook } = await import(
+			"./features/trust/should-respond-risk-gate.js"
+		);
+		registerCoreShouldRespondRiskHook(this);
+
 		// Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
 		const skipMigrations = options?.skipMigrations ?? false;
 		if (skipMigrations) {

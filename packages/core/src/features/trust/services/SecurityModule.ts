@@ -16,6 +16,15 @@ import {
 	type ThreatAssessment,
 } from "../types/security.ts";
 
+import {
+	AUTHORITY_KEYWORDS,
+	detectObfuscatedKeywordMatches,
+	INJECTION_KEYWORDS,
+	INJECTION_PATTERNS,
+	INTIMIDATION_KEYWORDS,
+	normalizeForScan,
+	URGENCY_KEYWORDS,
+} from "../injection-primitives.ts";
 import { TrustEvidenceType } from "../types/trust.ts";
 import { getDb } from "./db.ts";
 import { getRecentIncidents, insertSecurityIncident } from "./SecurityStore.ts";
@@ -44,7 +53,6 @@ export class SecurityModule {
 	private behavioralProfiles: Map<UUID, BehavioralProfile> = new Map();
 	private messageHistory: Map<UUID, Message[]> = new Map();
 	private actionHistory: Map<UUID, Action[]> = new Map();
-	private keywordPatternCache = new Map<string, RegExp>();
 
 	/**
 	 * Cap on the number of distinct entities retained in the per-entity
@@ -76,90 +84,9 @@ export class SecurityModule {
 		}
 	}
 
-	// Patterns for prompt injection detection
-	private readonly INJECTION_PATTERNS = [
-		/ignore\s+(all\s+)?previous\s+(instructions|commands)/i,
-		/disregard\s+(all\s+)?prior\s+(commands|instructions)/i,
-		/new\s+instructions?:/i,
-		/system\s+override/i,
-		/admin\s+access/i,
-		/grant\s+me\s+(admin|owner|all)/i,
-		/you\s+are\s+now/i,
-		/act\s+as\s+if/i,
-		/pretend\s+(to\s+be|you\s+are)/i,
-		/bypass\s+security/i,
-		/give\s+me\s+all\s+permissions/i,
-		/make\s+me\s+(an\s+)?(admin|owner)/i,
-		/this\s+is\s+a\s+system\s+command/i,
-		/execute\s+privileged/i,
-		// Multi-language injection patterns
-		/ignora\s+(todas?\s+)?las?\s+instrucciones?\s+anteriores?/i, // Spanish
-		/ignorez?\s+(toutes?\s+)?les?\s+instructions?\s+pr[eé]c[eé]dentes?/i, // French
-		/ignoriere?\s+(alle\s+)?vorherigen?\s+Anweisungen/i, // German
-		/忽略之前的指令/, // Chinese
-		/前の指示を無視/, // Japanese
-		/이전\s*지시를?\s*무시/, // Korean
-		// Obfuscation / encoding evasion patterns
-		/aXdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw/i, // Base64 "ignore previous instructions"
-		/ig\s*no\s*re\s+pre\s*vi\s*ous/i, // Token-split evasion
-		/d[1i]sr[e3]g[a4]rd\s+(all\s+)?pr[1i][o0]r/i, // Leet-speak obfuscation
-	];
-
-	// Canonical prompt-injection phrases used for obfuscation-aware matching.
-	private readonly INJECTION_KEYWORDS = [
-		"ignore previous instructions",
-		"disregard prior instructions",
-		"ignore all previous instructions",
-		"system override",
-		"developer mode",
-		"jailbreak",
-		"bypass safety",
-		"bypass security",
-		"reveal system prompt",
-		"print system prompt",
-		"grant me admin",
-		"grant me root",
-		"escalate privileges",
-		"you are now",
-		"pretend you are",
-	];
-
-	// Keywords indicating social engineering
-	private readonly URGENCY_KEYWORDS = [
-		"urgent",
-		"immediately",
-		"right now",
-		"asap",
-		"emergency",
-		"critical",
-		"time sensitive",
-		"deadline",
-		"expires",
-	];
-
-	private readonly AUTHORITY_KEYWORDS = [
-		"boss",
-		"manager",
-		"admin",
-		"owner",
-		"supervisor",
-		"authorized",
-		"official",
-		"directive",
-		"ordered",
-	];
-
-	private readonly INTIMIDATION_KEYWORDS = [
-		"consequences",
-		"trouble",
-		"fired",
-		"banned",
-		"reported",
-		"legal action",
-		"lawsuit",
-		"police",
-		"authorities",
-	];
+	// INJECTION_PATTERNS / INJECTION_KEYWORDS and the URGENCY/AUTHORITY/
+	// INTIMIDATION social-engineering banks now live in `../injection-primitives`
+	// (the single source shared with the should-respond risk gate, issue #9949).
 
 	// Additional patterns for credential theft
 	private readonly CREDENTIAL_PATTERNS = [
@@ -243,12 +170,12 @@ export class SecurityModule {
 		message: string,
 		context: SecurityContext,
 	): Promise<SecurityCheck> {
-		const patternMatches = this.INJECTION_PATTERNS.filter((pattern) =>
+		const patternMatches = INJECTION_PATTERNS.filter((pattern) =>
 			pattern.test(message),
 		);
-		const obfuscatedMatches = this.detectObfuscatedKeywordMatches(
+		const obfuscatedMatches = detectObfuscatedKeywordMatches(
 			message,
-			this.INJECTION_KEYWORDS,
+			INJECTION_KEYWORDS,
 		);
 		const totalSignals = patternMatches.length + obfuscatedMatches.length;
 
@@ -558,11 +485,11 @@ export class SecurityModule {
 		text: string,
 	): SocialEngineeringFactors {
 		return {
-			urgency: this.calculateKeywordScore(text, this.URGENCY_KEYWORDS),
-			authority: this.calculateKeywordScore(text, this.AUTHORITY_KEYWORDS),
+			urgency: this.calculateKeywordScore(text, URGENCY_KEYWORDS),
+			authority: this.calculateKeywordScore(text, AUTHORITY_KEYWORDS),
 			intimidation: this.calculateKeywordScore(
 				text,
-				this.INTIMIDATION_KEYWORDS,
+				INTIMIDATION_KEYWORDS,
 			),
 			liking: this.detectFactorScore(text, "liking"),
 			reciprocity: this.detectFactorScore(text, "reciprocity"),
@@ -575,7 +502,10 @@ export class SecurityModule {
 	/**
 	 * Calculate keyword score
 	 */
-	private calculateKeywordScore(text: string, keywords: string[]): number {
+	private calculateKeywordScore(
+		text: string,
+		keywords: readonly string[],
+	): number {
 		const matches = keywords.filter((keyword) =>
 			text.includes(keyword.toLowerCase()),
 		);
@@ -699,66 +629,6 @@ export class SecurityModule {
 		).length;
 
 		return Math.min(suspiciousCount * 0.2, 1);
-	}
-
-	private normalizeForScan(input: string): string {
-		return input.toLowerCase().replace(/[^a-z0-9]/g, "");
-	}
-
-	private reverseString(input: string): string {
-		return input.split("").reverse().join("");
-	}
-
-	private getKeywordPattern(keyword: string): RegExp {
-		const normalizedKeyword = this.normalizeForScan(keyword);
-		const cached = this.keywordPatternCache.get(normalizedKeyword);
-		if (cached) {
-			return cached;
-		}
-		const pattern = new RegExp(
-			normalizedKeyword.split("").join("[\\s_\\-.:/\\\\]*"),
-			"i",
-		);
-		this.keywordPatternCache.set(normalizedKeyword, pattern);
-		return pattern;
-	}
-
-	private containsObfuscatedKeyword(message: string, keyword: string): boolean {
-		const normalizedKeyword = this.normalizeForScan(keyword);
-		if (!normalizedKeyword) return false;
-
-		const normalizedMessage = this.normalizeForScan(message);
-		const reversedKeyword = this.reverseString(normalizedKeyword);
-
-		if (
-			normalizedMessage.includes(normalizedKeyword) ||
-			normalizedMessage.includes(reversedKeyword)
-		) {
-			return true;
-		}
-
-		if (this.getKeywordPattern(keyword).test(message)) {
-			return true;
-		}
-
-		const tokens = message
-			.toLowerCase()
-			.split(/[^a-z0-9]+/)
-			.filter(Boolean);
-		return tokens.some(
-			(token) =>
-				token === normalizedKeyword ||
-				this.reverseString(token) === normalizedKeyword,
-		);
-	}
-
-	private detectObfuscatedKeywordMatches(
-		message: string,
-		keywords: string[],
-	): string[] {
-		return keywords.filter((keyword) =>
-			this.containsObfuscatedKeyword(message, keyword),
-		);
 	}
 
 	/**
@@ -894,17 +764,17 @@ export class SecurityModule {
 		const detectedPatterns = this.CREDENTIAL_PATTERNS.filter((pattern) =>
 			pattern.test(lower),
 		);
-		const obfuscatedSensitiveMatches = this.detectObfuscatedKeywordMatches(
+		const obfuscatedSensitiveMatches = detectObfuscatedKeywordMatches(
 			message,
 			this.SENSITIVE_KEYWORDS,
 		);
-		const obfuscatedInjectionMatches = this.detectObfuscatedKeywordMatches(
+		const obfuscatedInjectionMatches = detectObfuscatedKeywordMatches(
 			message,
-			this.INJECTION_KEYWORDS,
+			INJECTION_KEYWORDS,
 		);
 		const hasSensitiveSignals =
 			detectedPatterns.length > 0 || obfuscatedSensitiveMatches.length > 0;
-		const normalized = this.normalizeForScan(lower);
+		const normalized = normalizeForScan(lower);
 		const isRequestingFromOthers =
 			/(?:send|give|share|post|dm|message|provide|tell|show|reveal|disclose|paste|export|dump|leak|forward|hand[_\s-]?over|need|require)\b/i.test(
 				lower,
