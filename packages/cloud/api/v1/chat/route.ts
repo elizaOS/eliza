@@ -522,11 +522,15 @@ app.post("/", async (c) => {
       // double-refund if onFinish/onAbort also fire.
       onError: async ({ error }: { error: unknown }) => {
         await settleReservation?.(0);
-        logger.error("chat-api", "Stream provider error — reservation refunded", {
-          userId: user.id,
-          model: selectedModel,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.error(
+          "chat-api",
+          "Stream provider error — reservation refunded",
+          {
+            userId: user.id,
+            model: selectedModel,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       },
     });
 
