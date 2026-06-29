@@ -1,5 +1,9 @@
 import { Hono } from "hono";
 import { appsRepository } from "@/db/repositories/apps";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { isAllowedOrigin } from "@/lib/security/origin-validation";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
@@ -83,6 +87,11 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
 }
 
 const __hono_app = new Hono<AppEnv>();
+// This route is on the unauthenticated public allowlist and does up to two DB
+// reads per call (findPublicInfoById + getAllowedOrigins on ?redirect_uri).
+// Hold it to the same 60/min/IP as its public siblings (charges) instead of
+// only the loose 600/min global backstop — defense-in-depth vs DB-load/probing.
+__hono_app.use("*", rateLimit(RateLimitPresets.STANDARD));
 __hono_app.options("/", async () => __hono_OPTIONS());
 __hono_app.get("/", async (c) =>
   __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
