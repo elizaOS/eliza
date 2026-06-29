@@ -17,15 +17,18 @@
  *     that places the authored {@link ImmersivePanel} panels as quads at their world
  *     poses using the session's own view/projection matrices. This is the
  *     `XRWebGLLayer` path the deterministic CSS {@link XRSpatialScene} renderer
- *     deliberately leaves to the native compositor; the panel poses + math come
- *     straight from `xr-scene-math`. (Panel *content* is a solid tone quad today;
- *     DOM-to-texture compositing is the documented next step.)
+ *     deliberately leaves to the native compositor; panel position/orientation use
+ *     the shared {@link Vec3}/{@link Quat} conventions from `xr-scene-math`,
+ *     expanded to a column-major WebGL model matrix locally. (Panel *content* is a
+ *     solid tone quad today; DOM-to-texture compositing is the documented next step.)
  *
  * No DOM, no React — pure runtime glue so it unit-tests against the IWER emulator
  * exactly like the rest of the harness.
  */
 
 import type { Quat, Vec3 } from "./xr-scene-math.ts";
+// `webxr-polyfill` is untyped; its constructor is declared ambiently in
+// ./webxr-polyfill.types.ts, which types the dynamic import below.
 
 /** What the active WebXR runtime can do, after {@link ensureWebXR}. */
 export interface WebXRCapability {
@@ -87,11 +90,8 @@ export async function ensureWebXR(): Promise<WebXRCapability> {
   }
   // Missing — install the polyfill once.
   try {
-    const mod = await import("webxr-polyfill");
-    const Polyfill = (mod.default ?? (mod as unknown)) as new (
-      opts?: unknown,
-    ) => unknown;
-    new Polyfill({ allowCardboardOnDesktop: false });
+    const { default: WebXRPolyfill } = await import("webxr-polyfill");
+    new WebXRPolyfill({ allowCardboardOnDesktop: false });
     polyfillInstalled = true;
   } catch {
     return {
@@ -211,30 +211,37 @@ export async function enterImmersiveScene(
   const onXRFrame: XRFrameRequestCallback = (_t, frame) => {
     if (state.ended) return;
     session.requestAnimationFrame(onXRFrame);
-    const pose = frame.getViewerPose(refSpace);
-    if (!pose) return;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    let drawn = 0;
-    for (const view of pose.views) {
-      const vp = layer.getViewport(view);
-      if (!vp) continue;
-      gl.viewport(vp.x, vp.y, vp.width, vp.height);
-      const viewMat = view.transform.inverse.matrix; // world → eye
-      for (const panel of opts.panels) {
-        const model = panelModelMatrix(panel);
-        const mvp = mat4Mul(view.projectionMatrix, mat4Mul(viewMat, model));
-        // Cull panels behind the eye (clip w ≤ 0).
-        if (mvp[15] <= 0) continue;
-        gl.uniformMatrix4fv(mvpLoc, false, mvp);
-        gl.uniform3fv(colorLoc, panel.color);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-        drawn++;
+    try {
+      const pose = frame.getViewerPose(refSpace);
+      if (!pose) return;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      let drawn = 0;
+      for (const view of pose.views) {
+        const vp = layer.getViewport(view);
+        if (!vp) continue;
+        gl.viewport(vp.x, vp.y, vp.width, vp.height);
+        const viewMat = view.transform.inverse.matrix; // world → eye
+        for (const panel of opts.panels) {
+          const model = panelModelMatrix(panel);
+          const mvp = mat4Mul(view.projectionMatrix, mat4Mul(viewMat, model));
+          // Cull panels behind the eye (clip w ≤ 0).
+          if (mvp[15] <= 0) continue;
+          gl.uniformMatrix4fv(mvpLoc, false, mvp);
+          gl.uniform3fv(colorLoc, panel.color);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          drawn++;
+        }
       }
+      state.frames++;
+      opts.onFrame?.({ frame, views: pose.views.length, panelsDrawn: drawn });
+    } catch (err) {
+      // Surface the render error once and stop the loop rather than spamming it
+      // every frame; the already-scheduled callback early-returns on `ended`.
+      state.ended = true;
+      opts.onError?.(err);
     }
-    state.frames++;
-    opts.onFrame?.({ frame, views: pose.views.length, panelsDrawn: drawn });
   };
   session.requestAnimationFrame(onXRFrame);
 
@@ -247,9 +254,15 @@ export async function enterImmersiveScene(
       state.ended = true;
       try {
         await session.end();
-      } catch {
-        // session may already be ending
+      } catch (err) {
+        // session may already be ending — surface it, don't swallow silently.
+        opts.onError?.(err);
       }
+      // Release the GL objects this scene allocated on the caller-owned canvas
+      // (the program + its shaders and the quad buffer); the context itself is
+      // the caller's to keep or drop.
+      gl.deleteBuffer(quad);
+      gl.deleteProgram(program);
     },
   };
 }
@@ -329,23 +342,23 @@ function compileShader(
 function buildQuadProgram(gl: WebGLRenderingContext): WebGLProgram {
   const prog = gl.createProgram();
   if (!prog) throw new Error("[webxr] createProgram failed");
-  gl.attachShader(
-    prog,
-    compileShader(
-      gl,
-      gl.VERTEX_SHADER,
-      "attribute vec2 p; uniform mat4 mvp; void main(){ gl_Position = mvp * vec4(p, 0.0, 1.0); }",
-    ),
+  const vs = compileShader(
+    gl,
+    gl.VERTEX_SHADER,
+    "attribute vec2 p; uniform mat4 mvp; void main(){ gl_Position = mvp * vec4(p, 0.0, 1.0); }",
   );
-  gl.attachShader(
-    prog,
-    compileShader(
-      gl,
-      gl.FRAGMENT_SHADER,
-      "precision mediump float; uniform vec3 uColor; void main(){ gl_FragColor = vec4(uColor, 1.0); }",
-    ),
+  const fs = compileShader(
+    gl,
+    gl.FRAGMENT_SHADER,
+    "precision mediump float; uniform vec3 uColor; void main(){ gl_FragColor = vec4(uColor, 1.0); }",
   );
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
   gl.linkProgram(prog);
+  // The linked program retains its shaders; flag them for deletion so they are
+  // freed together with the program (no orphaned shader objects left behind).
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
     throw new Error(`[webxr] link: ${gl.getProgramInfoLog(prog)}`);
   }

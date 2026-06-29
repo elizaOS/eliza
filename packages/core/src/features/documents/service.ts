@@ -1605,9 +1605,11 @@ export class DocumentService extends Service {
 	 * `useModel(TEXT_EMBEDDING, { text: memory.content.text })`) — so batched and
 	 * serial fragments receive byte-for-byte identical embedding input.
 	 *
-	 * Any batch failure (no batch model registered, the model call throwing, or a
-	 * returned vector count that does not match the fragment count) falls back to
-	 * the existing serial per-fragment path so no fragment is left unembedded.
+	 * Any batch failure (no batch model registered, the model call throwing, a
+	 * returned vector count that does not match the fragment count, or an empty
+	 * vector for any fragment) falls back to the existing serial per-fragment path
+	 * so no fragment is left unembedded — and none is persisted with an empty
+	 * embedding.
 	 *
 	 * @param fragments fragments to embed + persist, processed in array order.
 	 * @param options.continueOnError when true, a single fragment's persist
@@ -1642,6 +1644,17 @@ export class DocumentService extends Service {
 					`TEXT_EMBEDDING_BATCH returned ${
 						Array.isArray(vectors) ? vectors.length : "a non-array"
 					} vectors for ${fragments.length} fragments`,
+				);
+			}
+			// An empty inner vector is a failed generation, not a real embedding;
+			// persisting it would silently mark the fragment "embedded" with no
+			// vector (a recall gap) — the same case services/embedding.ts refuses in
+			// persistEmbedding. Treat it as a batch failure and fall back to serial.
+			if (
+				vectors.some((vector) => !Array.isArray(vector) || vector.length === 0)
+			) {
+				throw new Error(
+					"TEXT_EMBEDDING_BATCH returned an empty vector for at least one fragment",
 				);
 			}
 		} catch (error) {

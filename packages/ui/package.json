@@ -379,8 +379,8 @@
     "vaul": "^1.1.2",
     "viem": "^2.48.8",
     "wagmi": "^3.6.15",
-    "ws": "^8.19.0",
-    "webxr-polyfill": "^2.0.3"
+    "webxr-polyfill": "^2.0.3",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@capacitor/haptics": "8.0.2",
