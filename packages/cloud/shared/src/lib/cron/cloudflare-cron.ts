@@ -58,7 +58,12 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // #9899 Tier-2 optimistic-billing backstop (no-op when the flag is off).
     "/api/cron/sweep-inference-charges",
   ],
-  "0 */6 * * *": ["/api/cron/cleanup-anonymous-sessions", "/api/v1/cron/agent-backups"],
+  "0 */6 * * *": [
+    "/api/cron/cleanup-anonymous-sessions",
+    "/api/v1/cron/agent-backups",
+    // #9939: reap shared bridge rows leaked by a failed/timed-out handoff.
+    "/api/v1/cron/reap-orphan-shared-bridges",
+  ],
 };
 
 interface ScheduledEvent {

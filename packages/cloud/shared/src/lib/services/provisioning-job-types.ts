@@ -21,6 +21,13 @@ export const JOB_TYPES = {
    */
   AGENT_UPGRADE: "agent_upgrade",
   /**
+   * Fleet-downgrade / rollback: blue/green swap an agent back onto its
+   * persisted `previous_image_digest`, restoring the `pre-upgrade` snapshot
+   * before cutover. The inverse of AGENT_UPGRADE — enqueued explicitly (an
+   * operator/owner rollback after a bad upgrade), never auto by the reconciler.
+   */
+  AGENT_DOWNGRADE: "agent_downgrade",
+  /**
    * Sleep: durably back the agent's full state up to object storage, then
    * stop AND remove the container so the compute slot is freed (the node
    * autoscaler reclaims a now-empty Hetzner box). Distinct from
@@ -109,6 +116,7 @@ export const AGENT_JOB_TYPES = [
   JOB_TYPES.AGENT_MESSAGE,
   JOB_TYPES.AGENT_SNAPSHOT,
   JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_DOWNGRADE,
   JOB_TYPES.AGENT_SLEEP,
   JOB_TYPES.AGENT_WAKE,
 ] as const satisfies readonly ProvisioningJobType[];
