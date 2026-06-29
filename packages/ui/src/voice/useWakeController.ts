@@ -8,12 +8,12 @@
  * pure module and are unit + fuzz tested there; this hook only owns the side
  * effects (capability probe, event subscription, confirm-window tick).
  *
- * Today the only native wake signal bridged to the UI is the Swabble plugin's
- * `wakeWord` event, so the live path is `swabble-fallback`. When a host bridges
- * the fused openWakeWord Stage-A / head-fire events it declares them via
- * `capabilities`, and the same controller drives the battery-efficient path with
- * no change here. The hook never invents a subscription for a detector that is
- * not actually present.
+ * Two native wake signals are bridged: the Swabble plugin's `wakeWord` event
+ * (Web-Speech fallback path) and the fused on-device openWakeWord runtime via
+ * {@link subscribeFusedWake} (head-fire / Stage-A candidate / Stage-B transcript
+ * stages). Both route through the same reducer dispatch, so the controller picks
+ * the cheapest available path per `capabilities` with no UI change. The hook
+ * never invents a subscription for a detector that is not actually present.
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
@@ -22,6 +22,11 @@ import {
   getSwabblePlugin,
   type SwabbleWakeWordEvent,
 } from "../bridge/native-plugins";
+import {
+  type FusedWakeEvent,
+  probeFusedWake,
+  subscribeFusedWake,
+} from "./fused-wake-bridge";
 import {
   DEFAULT_CONFIRM_WINDOW_MS,
   initialWakeControllerState,
@@ -68,6 +73,12 @@ export interface UseWakeControllerOptions {
   tickMs?: number;
   /** Clock (injectable for tests). Default Date.now. */
   now?: () => number;
+  /**
+   * Fused-wake subscription source (injectable for tests). Defaults to the
+   * renderer {@link subscribeFusedWake} bridge. Only consulted when the resolved
+   * capabilities declare `openWakeWord`.
+   */
+  fusedWakeSource?: (listener: (event: FusedWakeEvent) => void) => () => void;
 }
 
 export interface WakeControllerHandle {
@@ -96,19 +107,22 @@ export function useWakeController(
     nameMatch,
     tickMs = 500,
     now = Date.now,
+    fusedWakeSource = subscribeFusedWake,
   } = options;
 
-  // Probe Swabble once; the default capability set is Swabble-only because that
-  // is the only wake source the UI has bridged today.
+  // Probe the available wake sources once. The fused on-device path is preferred
+  // when the native host has bridged it (window.__ELIZA_FUSED_WAKE__); Swabble is
+  // the Web-Speech fallback. A host can still override `capabilities` explicitly.
   const swabblePresent = React.useMemo(() => probeSwabble(), []);
+  const fusedPresent = React.useMemo(() => probeFusedWake(), []);
   const capabilities = React.useMemo<WakeCapabilities>(
     () =>
       options.capabilities ?? {
-        openWakeWord: false,
-        asrConfirm: false,
+        openWakeWord: fusedPresent,
+        asrConfirm: fusedPresent,
         swabble: swabblePresent,
       },
-    [options.capabilities, swabblePresent],
+    [options.capabilities, fusedPresent, swabblePresent],
   );
 
   const config = React.useMemo<WakeControllerConfig>(
@@ -184,6 +198,35 @@ export function useWakeController(
       if (handle) void handle.remove();
     };
   }, [enabled, alwaysOn, capabilities.swabble, dispatch]);
+
+  const fusedSourceRef = React.useRef(fusedWakeSource);
+  fusedSourceRef.current = fusedWakeSource;
+
+  // Subscribe to the fused on-device wake path when the host declares it. Its
+  // head-fire / Stage-A candidate / Stage-B transcript stages route through the
+  // SAME reducer dispatch as Swabble, so the battery-efficient path drives chat
+  // identically — closing the "fused path built+tested but never bridged" gap.
+  React.useEffect(() => {
+    if (!enabled || alwaysOn || !capabilities.openWakeWord) return;
+    const unsubscribe = fusedSourceRef.current((event) => {
+      if (event.stage === "head-fired") {
+        dispatch({
+          type: "head-fired",
+          confidence: event.confidence,
+          now: nowRef.current(),
+        });
+      } else if (event.stage === "stage-a-candidate") {
+        dispatch({ type: "stage-a-candidate", now: nowRef.current() });
+      } else {
+        dispatch({
+          type: "stage-b-transcript",
+          transcript: event.transcript ?? "",
+          now: nowRef.current(),
+        });
+      }
+    });
+    return unsubscribe;
+  }, [enabled, alwaysOn, capabilities.openWakeWord, dispatch]);
 
   // Tick the Stage-B confirm-window timeout only while a candidate is armed.
   React.useEffect(() => {

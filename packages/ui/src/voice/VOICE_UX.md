@@ -171,10 +171,15 @@ the controller selects:
 | **Windows** (desktop) | fused openWakeWord (CPU/CUDA) | Whisper.cpp bridge | head fast-path → two-stage | ✅ frame-cheap |
 | **Web / browser** | — (no fused FFI) | — | Swabble fallback (Web Speech) | ⚠️ continuous ASR — fallback only |
 
-Today the only wake signal **bridged to the UI** is the Swabble `wakeWord` event,
-so the live UI path is `swabble-fallback`; `useWakeController` exposes the
-*selected* path and routes Swabble through the unified controller. When a host
-bridges the fused Stage-A / head-fire events it declares them via
-`capabilities`, and the same controller drives the battery-efficient path with no
-change to the UI. The controller never invents a subscription for a detector that
-is not actually present.
+Both wake signals are now **bridged to the UI**: the Swabble `wakeWord` event
+(Web-Speech fallback) and the fused on-device path via the
+`subscribeFusedWake` bridge (`fused-wake-bridge.ts`). The native host signals the
+fused runtime is live with `window.__ELIZA_FUSED_WAKE__ = true` and forwards each
+fused stage (head-fire / Stage-A candidate / Stage-B transcript) as an
+`eliza:fused-wake` event; `useWakeController` declares `openWakeWord` in its
+default capabilities and routes those stages through the same reducer dispatch as
+Swabble. The controller picks the *selected* (cheapest available) path and never
+invents a subscription for a detector that is not actually present — emission, not
+the capability flag, drives detection. The remaining native task is emitting
+those stages from `wake-word-ggml.ts` on each platform; the UI contract is
+complete and covered by `useWakeController.fused.test.tsx`.
