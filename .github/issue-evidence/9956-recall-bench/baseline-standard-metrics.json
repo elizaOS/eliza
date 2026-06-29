@@ -1,0 +1,359 @@
+{
+  "kpi": "recall-bench",
+  "recordedAt": "2026-06-29T17:39:09.886Z",
+  "git": {
+    "branch": "feat/9956-recall-bench",
+    "commit": "e3e5723f64",
+    "dirty": true
+  },
+  "schema": {
+    "version": "1.0.0",
+    "modeFields": [
+      "mode",
+      "measured",
+      "skipReason",
+      "numQueries",
+      "precisionAtK",
+      "recallAtK",
+      "mrr",
+      "ndcgAtK",
+      "hitRateAtK",
+      "latencyMsP50",
+      "latencyMsP95",
+      "recallAt5",
+      "ndcgAt10"
+    ],
+    "nullableScoreFields": [
+      "numQueries",
+      "mrr",
+      "latencyMsP50",
+      "latencyMsP95",
+      "recallAt5",
+      "ndcgAt10"
+    ],
+    "nullableKMapFields": [
+      "precisionAtK",
+      "recallAtK",
+      "ndcgAtK",
+      "hitRateAtK"
+    ],
+    "searchModes": [
+      "hybrid",
+      "vector",
+      "keyword",
+      "runtime-vector",
+      "keyword-chat-search"
+    ],
+    "kValues": [
+      1,
+      3,
+      5,
+      10
+    ],
+    "issue": "#9956"
+  },
+  "summary": {
+    "tier": "standard",
+    "seed": 42,
+    "docCount": 1040,
+    "queryCount": 200,
+    "ingestedFragments": 1040,
+    "embeddingModel": "deterministic-content-hash-384",
+    "measuredModes": 5,
+    "skippedModes": 0,
+    "keywordBaselineRecallAt5": 0.465833333333333,
+    "failOpenDeltaAt5": 0,
+    "bootError": null
+  },
+  "metrics": {
+    "overall_accuracy": 0.5533333333333325,
+    "total_tasks": 200
+  },
+  "modes": [
+    {
+      "mode": "hybrid",
+      "measured": true,
+      "numQueries": 200,
+      "precisionAtK": {
+        "1": 0.695,
+        "3": 0.6816666666666665,
+        "5": 0.664,
+        "10": 0.42149999999999965
+      },
+      "recallAtK": {
+        "1": 0.11583333333333347,
+        "3": 0.34083333333333327,
+        "5": 0.5533333333333325,
+        "10": 0.7025000000000001
+      },
+      "mrr": 0.7103333333333335,
+      "ndcgAtK": {
+        "1": 0.695,
+        "3": 0.6859216382193174,
+        "5": 0.672607079174579,
+        "10": 0.6930341823041012
+      },
+      "hitRateAtK": {
+        "1": 0.695,
+        "3": 0.71,
+        "5": 0.73,
+        "10": 0.75
+      },
+      "latencyMsP50": 6.29,
+      "latencyMsP95": 7.24,
+      "recallAt5": 0.5533333333333325,
+      "ndcgAt10": 0.6930341823041012
+    },
+    {
+      "mode": "vector",
+      "measured": true,
+      "numQueries": 200,
+      "precisionAtK": {
+        "1": 0.7,
+        "3": 0.6783333333333332,
+        "5": 0.6610000000000003,
+        "10": 0.42149999999999965
+      },
+      "recallAtK": {
+        "1": 0.11666666666666681,
+        "3": 0.3391666666666666,
+        "5": 0.5508333333333325,
+        "10": 0.7025000000000001
+      },
+      "mrr": 0.7136785714285715,
+      "ndcgAtK": {
+        "1": 0.7,
+        "3": 0.6835195904451706,
+        "5": 0.670140713670227,
+        "10": 0.6922092623195276
+      },
+      "hitRateAtK": {
+        "1": 0.7,
+        "3": 0.72,
+        "5": 0.74,
+        "10": 0.75
+      },
+      "latencyMsP50": 5.97,
+      "latencyMsP95": 6.46,
+      "recallAt5": 0.5508333333333325,
+      "ndcgAt10": 0.6922092623195276
+    },
+    {
+      "mode": "keyword",
+      "measured": true,
+      "numQueries": 200,
+      "precisionAtK": {
+        "1": 0.555,
+        "3": 0.5566666666666666,
+        "5": 0.559,
+        "10": 0.3500000000000002
+      },
+      "recallAtK": {
+        "1": 0.09249999999999997,
+        "3": 0.2783333333333333,
+        "5": 0.465833333333333,
+        "10": 0.5833333333333333
+      },
+      "mrr": 0.5723214285714285,
+      "ndcgAtK": {
+        "1": 0.555,
+        "3": 0.5552515585957396,
+        "5": 0.5572242006060553,
+        "10": 0.5706503356143648
+      },
+      "hitRateAtK": {
+        "1": 0.555,
+        "3": 0.59,
+        "5": 0.59,
+        "10": 0.625
+      },
+      "latencyMsP50": 51.37,
+      "latencyMsP95": 56.16,
+      "recallAt5": 0.465833333333333,
+      "ndcgAt10": 0.5706503356143648
+    },
+    {
+      "mode": "runtime-vector",
+      "measured": true,
+      "numQueries": 200,
+      "precisionAtK": {
+        "1": 0.945,
+        "3": 0.9433333333333332,
+        "5": 0.944,
+        "10": 0.5889999999999982
+      },
+      "recallAtK": {
+        "1": 0.15750000000000042,
+        "3": 0.4716666666666666,
+        "5": 0.7866666666666668,
+        "10": 0.9816666666666666
+      },
+      "mrr": 0.9639166666666668,
+      "ndcgAtK": {
+        "1": 0.945,
+        "3": 0.9441340159247155,
+        "5": 0.9445970793822598,
+        "10": 0.9656645592438938
+      },
+      "hitRateAtK": {
+        "1": 0.945,
+        "3": 0.975,
+        "5": 0.995,
+        "10": 1
+      },
+      "latencyMsP50": 5.57,
+      "latencyMsP95": 6.26,
+      "recallAt5": 0.7866666666666668,
+      "ndcgAt10": 0.9656645592438938
+    },
+    {
+      "mode": "keyword-chat-search",
+      "measured": true,
+      "numQueries": 200,
+      "precisionAtK": {
+        "1": 0.14,
+        "3": 0.24333333333333335,
+        "5": 0.33699999999999997,
+        "10": 0.35950000000000026
+      },
+      "recallAtK": {
+        "1": 0.02333333333333333,
+        "3": 0.12166666666666667,
+        "5": 0.2808333333333334,
+        "10": 0.5991666666666665
+      },
+      "mrr": 0.3019823232323234,
+      "ndcgAtK": {
+        "1": 0.14,
+        "3": 0.21888245732897585,
+        "5": 0.29033012249372986,
+        "10": 0.4481276452280749
+      },
+      "hitRateAtK": {
+        "1": 0.14,
+        "3": 0.39,
+        "5": 0.55,
+        "10": 0.715
+      },
+      "latencyMsP50": 1.54,
+      "latencyMsP95": 1.85,
+      "recallAt5": 0.2808333333333334,
+      "ndcgAt10": 0.4481276452280749
+    }
+  ],
+  "checks": [
+    {
+      "name": "hybrid.recallAt5",
+      "value": 0.5533333333333325,
+      "budget": 0.45,
+      "unit": "ratio",
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "name": "hybrid.ndcgAt10",
+      "value": 0.6930341823041012,
+      "budget": 0.55,
+      "unit": "ratio",
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "name": "hybrid.latencyMsP95",
+      "value": 7.24,
+      "budget": 200,
+      "unit": "ms",
+      "direction": "max",
+      "pass": true
+    },
+    {
+      "name": "vector.recallAt5",
+      "value": 0.5508333333333325,
+      "budget": 0.45,
+      "unit": "ratio",
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "name": "vector.ndcgAt10",
+      "value": 0.6922092623195276,
+      "budget": 0.55,
+      "unit": "ratio",
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "name": "vector.latencyMsP95",
+      "value": 6.46,
+      "budget": 200,
+      "unit": "ms",
+      "direction": "max",
+      "pass": true
+    },
+    {
+      "name": "keyword.recallAt5",
+      "value": 0.465833333333333,
+      "budget": 0.35,
+      "unit": "ratio",
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "name": "keyword.ndcgAt10",
+      "value": 0.5706503356143648,
+      "budget": 0.45,
+      "unit": "ratio",
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "name": "keyword.latencyMsP95",
+      "value": 56.16,
+      "budget": 300,
+      "unit": "ms",
+      "direction": "max",
+      "pass": true
+    },
+    {
+      "name": "runtime-vector.recallAt5",
+      "value": 0.7866666666666668,
+      "budget": 0.65,
+      "unit": "ratio",
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "name": "runtime-vector.ndcgAt10",
+      "value": 0.9656645592438938,
+      "budget": 0.85,
+      "unit": "ratio",
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "name": "runtime-vector.latencyMsP95",
+      "value": 6.26,
+      "budget": 200,
+      "unit": "ms",
+      "direction": "max",
+      "pass": true
+    },
+    {
+      "name": "selfCheck.minRecallAt5",
+      "value": 0.5533333333333325,
+      "budget": 0.3,
+      "unit": "ratio",
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "name": "failOpen.maxRecallDeltaAt5",
+      "value": 0,
+      "budget": 0.001,
+      "unit": "ratio",
+      "direction": "max",
+      "pass": true
+    }
+  ],
+  "pass": true
+}

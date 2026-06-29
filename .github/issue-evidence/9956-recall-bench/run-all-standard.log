@@ -1,0 +1,50 @@
+>>> recall-bench
+>>> recall-bench tier=standard seed=42 docs=1040 queries=200
+[recall-bench] ingested 1040 fragments
+[recall-bench] mode=hybrid               recall@5=55.3% ndcg@10=69.3% mrr=0.710 p95=7 ms
+[recall-bench] mode=vector               recall@5=55.1% ndcg@10=69.2% mrr=0.714 p95=6 ms
+[recall-bench] mode=keyword              recall@5=46.6% ndcg@10=57.1% mrr=0.572 p95=56 ms
+[recall-bench] mode=runtime-vector       recall@5=78.7% ndcg@10=96.6% mrr=0.964 p95=6 ms
+[recall-bench] mode=keyword-chat-search  recall@5=28.1% ndcg@10=44.8% mrr=0.302 p95=2 ms
+[recall-bench] running fail-open regression (throwing query embed)…
+[recall-bench] fail-open recall@5  hybrid=46.6% vector=46.6% keyword=46.6% -> delta=0.0000
+- PASS hybrid.recallAt5: 55.3% ≥ 45.0%
+- PASS hybrid.ndcgAt10: 69.3% ≥ 55.0%
+- PASS hybrid.latencyMsP95: 7 ms ≤ 200 ms
+- PASS vector.recallAt5: 55.1% ≥ 45.0%
+- PASS vector.ndcgAt10: 69.2% ≥ 55.0%
+- PASS vector.latencyMsP95: 6 ms ≤ 200 ms
+- PASS keyword.recallAt5: 46.6% ≥ 35.0%
+- PASS keyword.ndcgAt10: 57.1% ≥ 45.0%
+- PASS keyword.latencyMsP95: 56 ms ≤ 300 ms
+- PASS runtime-vector.recallAt5: 78.7% ≥ 65.0%
+- PASS runtime-vector.ndcgAt10: 96.6% ≥ 85.0%
+- PASS runtime-vector.latencyMsP95: 6 ms ≤ 200 ms
+- PASS selfCheck.minRecallAt5: 55.3% ≥ 30.0%
+- PASS failOpen.maxRecallDeltaAt5: 0.0% ≤ 0.1%
+result -> /private/tmp/eliza-recall-bench/packages/benchmarks/recall-bench/results/recall-bench/recall-bench_2026-06-29T17-39-09-886Z.json
+Status: **PASS**
+- measured: 5 modes, skipped: 0 modes
+- fail-open recall@5 delta: 0.0000 (keyword baseline recall@5: 46.6%)
+| mode | measured | recall@5 | ndcg@10 | mrr | p50 | p95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| hybrid | yes | 55.3% | 69.3% | 0.710 | 6 ms | 7 ms |
+| vector | yes | 55.1% | 69.2% | 0.714 | 6 ms | 6 ms |
+| keyword | yes | 46.6% | 57.1% | 0.572 | 51 ms | 56 ms |
+| runtime-vector | yes | 78.7% | 96.6% | 0.964 | 6 ms | 6 ms |
+| keyword-chat-search | yes | 28.1% | 44.8% | 0.302 | 2 ms | 2 ms |
+- PASS hybrid.recallAt5: 55.3% / ≥ 45.0%
+- PASS hybrid.ndcgAt10: 69.3% / ≥ 55.0%
+- PASS hybrid.latencyMsP95: 7 ms / ≤ 200 ms
+- PASS vector.recallAt5: 55.1% / ≥ 45.0%
+- PASS vector.ndcgAt10: 69.2% / ≥ 55.0%
+- PASS vector.latencyMsP95: 6 ms / ≤ 200 ms
+- PASS keyword.recallAt5: 46.6% / ≥ 35.0%
+- PASS keyword.ndcgAt10: 57.1% / ≥ 45.0%
+- PASS keyword.latencyMsP95: 56 ms / ≤ 300 ms
+- PASS runtime-vector.recallAt5: 78.7% / ≥ 65.0%
+- PASS runtime-vector.ndcgAt10: 96.6% / ≥ 85.0%
+- PASS runtime-vector.latencyMsP95: 6 ms / ≤ 200 ms
+- PASS selfCheck.minRecallAt5: 55.3% / ≥ 30.0%
+- PASS failOpen.maxRecallDeltaAt5: 0.0% / ≤ 0.1%
+dashboard -> /private/tmp/eliza-recall-bench/packages/benchmarks/recall-bench/results/summary/latest.md

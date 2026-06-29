@@ -1,0 +1,13 @@
+=== HEALTHY pipeline (embedding live) ===
+ Info       Starting Documents service for agent: 29db3376-962e-02a8-a097-3053ca507afa
+[evidence] sample semantic query: "explain the sidecar connectivity layer"
+[evidence] healthy hybrid returned 0 hits (relevant=0)
+[evidence] healthy keyword recall@5 baseline = 65.3%
+ Info       Documents service stopping for agent: RecallBench
+=== FORCED FAIL-OPEN (query embed throws -> keyword fallback) ===
+ Info       Starting Documents service for agent: 29db3376-962e-02a8-a097-3053ca507afa
+[evidence] failSwitch.failing = true (embedRecallQuery will fail open)
+[evidence] fail-open hybrid returned 20 hits
+[evidence] fail-open recall@5: hybrid=65.3% vector=65.3% keyword=65.3%
+[evidence] fail-open delta (hybrid-keyword)=0.000000  (vector-keyword)=0.000000
+ Info       Documents service stopping for agent: RecallBench
