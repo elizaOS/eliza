@@ -66,7 +66,7 @@ import {
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
-import { scoreMemoryText } from "./memory-routes.ts";
+import { rankByKeyword } from "./memory-routes.ts";
 import {
   buildUserMessages,
   getErrorMessage,
@@ -1465,38 +1465,39 @@ export async function handleConversationRoutes(
         limit,
         offset,
       });
-      const results = memories
-        .map((memory) => {
-          const roomId = memory.roomId;
-          const conversation = roomId
-            ? conversationsByRoomId.get(roomId)
-            : undefined;
-          if (!roomId || !conversation) return null;
-          const text = memory.content.text;
-          if (typeof text !== "string") return null;
-          const rawText = text.trim();
-          if (!rawText) return null;
-          if (!memory.id) return null;
-          const score = scoreMemoryText(rawText, query);
-          if (score <= 0) return null;
-          const role =
-            memory.entityId === runtime.agentId ? "assistant" : "user";
-          // A messages memory always carries a numeric createdAt; if it somehow
-          // does not, drop the row rather than inject epoch-0 into the DTO.
-          if (typeof memory.createdAt !== "number") return null;
-          const createdAt = memory.createdAt;
-          return {
+      // Collect valid candidates, then BM25-rank them together (corpus-aware IDF
+      // ranks real hits above messages that merely share a common word).
+      const candidates = memories.flatMap((memory) => {
+        const roomId = memory.roomId;
+        const conversation = roomId
+          ? conversationsByRoomId.get(roomId)
+          : undefined;
+        if (!roomId || !conversation) return [];
+        const text = (memory.content as { text?: unknown } | undefined)?.text;
+        if (typeof text !== "string") return [];
+        const rawText = text.trim();
+        if (!rawText || !memory.id) return [];
+        // A messages memory always carries a numeric createdAt; if it somehow
+        // does not, drop the row rather than inject epoch-0 into the DTO.
+        if (typeof memory.createdAt !== "number") return [];
+        return [
+          {
             messageId: memory.id,
             conversationId: conversation.id,
             roomId,
-            role,
+            role:
+              memory.entityId === runtime.agentId
+                ? "assistant"
+                : ("user" as const),
             text: rawText,
             snippet: buildMessageSearchSnippet(rawText, query),
-            createdAt,
-            score,
-          };
-        })
-        .filter((r): r is NonNullable<typeof r> => r !== null)
+            createdAt: memory.createdAt,
+          },
+        ];
+      });
+      const results = rankByKeyword(query, candidates, (c) => c.text)
+        .filter(({ score }) => score > 0)
+        .map(({ item, score }) => ({ ...item, score }))
         .sort((a, b) =>
           b.score !== a.score ? b.score - a.score : b.createdAt - a.createdAt,
         )

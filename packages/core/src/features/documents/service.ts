@@ -943,7 +943,10 @@ export class DocumentService extends Service {
 		const fragments = await this.runtime.searchMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			embedding,
-			query: queryText,
+			// Vector mode ranks purely by cosine: do NOT pass `query` (that triggers
+			// a runtime BM25 rerank that drops zero-keyword-overlap candidates — i.e.
+			// silently keyword-filters the semantic results this mode exists to
+			// return).
 			...filterScope,
 			limit: 20,
 			match_threshold: 0.1,
@@ -1043,11 +1046,13 @@ export class DocumentService extends Service {
 			);
 		}
 
-		// Fetch a larger candidate set so BM25 can re-rank meaningfully
+		// Fetch a larger PURE-VECTOR candidate set so the explicit BM25 blend below
+		// can re-rank meaningfully. Do NOT pass `query`: that triggers a runtime
+		// BM25 rerank that drops zero-overlap candidates *before* the blend, so the
+		// 0.6·vector + 0.4·bm25 combine never sees the semantic-only matches.
 		const candidates = await this.runtime.searchMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			embedding,
-			query: queryText,
 			...filterScope,
 			limit: 40,
 			match_threshold: 0.05,

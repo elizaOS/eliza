@@ -15,8 +15,14 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { scoreMemoryText } from "@elizaos/agent/api";
-import type { Memory, State, UUID } from "@elizaos/core";
+import { rankByKeyword } from "@elizaos/agent/api";
+import {
+  bm25Scores,
+  type Memory,
+  normalizeBm25Scores,
+  type State,
+  type UUID,
+} from "@elizaos/core";
 // The FACTS provider is internal to @elizaos/core (not on the public barrel);
 // a benchmark legitimately reaches into the same source tree to drive the real
 // keyword-recall path it measures. Resolved via the eliza-source condition.
@@ -25,6 +31,7 @@ import budgets from "./budgets.json" with { type: "json" };
 import {
   buildCorpus,
   buildFacts,
+  buildMorphologyCorpus,
   type Corpus,
   type CorpusTier,
 } from "./corpus.ts";
@@ -159,7 +166,7 @@ async function runSearchMemories(
       tableName: FRAGMENTS_TABLE,
       embedding,
       roomId: bench.agentId,
-      count: 20,
+      limit: 20,
     });
     latencies.push(performance.now() - t0);
     results.push({
@@ -177,7 +184,7 @@ async function runSearchMemories(
   };
 }
 
-/** The keyword chat-search scorer (`scoreMemoryText`) over the same corpus. */
+/** The keyword chat-search ranker (`rankByKeyword`, BM25) over the same corpus. */
 async function runKeywordChat(
   bench: BenchRuntime,
   corpus: Corpus,
@@ -196,11 +203,10 @@ async function runKeywordChat(
   const latencies: number[] = [];
   for (const q of corpus.queries) {
     const t0 = performance.now();
-    const ranked = fragments
-      .map((m) => ({ m, score: scoreMemoryText(m.content.text ?? "", q.text) }))
-      .filter((r) => r.score > 0)
+    const ranked = rankByKeyword(q.text, fragments, (m) => m.content.text ?? "")
+      .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
-      .map((r) => r.m);
+      .map(({ item }) => item);
     latencies.push(performance.now() - t0);
     results.push({
       retrieved: rankedDocIds(ranked, docIdByMemId),
@@ -208,7 +214,7 @@ async function runKeywordChat(
     });
   }
   return {
-    mode: "keyword-chat-scoreMemoryText",
+    mode: "keyword-chat-bm25",
     corpusSize: corpus.docs.length,
     ...summarizeRecall(results, K, latencies),
   };
@@ -268,6 +274,57 @@ async function runFactsProvider(
     mode: "facts-provider-keyword",
     corpusSize: facts.length,
     ...summarizeRecall(results, K, latencies),
+  };
+}
+
+/** Morphology slice (keyword-only, no runtime needed): proves Porter2 stemming
+ *  lifts keyword recall. Ranks the morphology corpus with the REAL production
+ *  ranker (`rankByKeyword`, stemmed) vs an unstemmed BM25 baseline (the documents
+ *  `bm25Scores`) — the recall LIFT is attributable purely to stemming, since each
+ *  query's `-ing` form is absent from every doc but shares its Porter stem. */
+function runMorphology(): {
+  stemmed: ModeReport;
+  unstemmed: ModeReport;
+  lift: number;
+} {
+  const corpus = buildMorphologyCorpus();
+  const docs = corpus.docs.map((d) => ({ id: d.id, text: d.text }));
+  const stemmedResults: QueryResult[] = [];
+  const unstemmedResults: QueryResult[] = [];
+  const stemLat: number[] = [];
+  const unstemLat: number[] = [];
+  for (const q of corpus.queries) {
+    const relevant = new Set(q.relevantDocIds);
+    let t0 = performance.now();
+    const stemRanked = rankByKeyword(q.text, corpus.docs, (d) => d.text)
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((r) => r.item.id);
+    stemLat.push(performance.now() - t0);
+    stemmedResults.push({ retrieved: stemRanked, relevant });
+
+    t0 = performance.now();
+    const unstemRanked = normalizeBm25Scores(bm25Scores(q.text, docs))
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.id);
+    unstemLat.push(performance.now() - t0);
+    unstemmedResults.push({ retrieved: unstemRanked, relevant });
+  }
+  const stemmed: ModeReport = {
+    mode: "keyword-morph-stemmed",
+    corpusSize: corpus.docs.length,
+    ...summarizeRecall(stemmedResults, K, stemLat),
+  };
+  const unstemmed: ModeReport = {
+    mode: "keyword-morph-unstemmed",
+    corpusSize: corpus.docs.length,
+    ...summarizeRecall(unstemmedResults, K, unstemLat),
+  };
+  return {
+    stemmed,
+    unstemmed,
+    lift: (stemmed.recallAtK ?? 0) - (unstemmed.recallAtK ?? 0),
   };
 }
 
@@ -363,6 +420,8 @@ async function main(): Promise<number> {
   const searchMem = await runSearchMemories(bench, corpus, docIdByMemId);
   const keywordChat = await runKeywordChat(bench, corpus, docIdByMemId);
   const factsProv = await runFactsProvider(bench, corpus);
+  // Keyword-only, runtime-independent: stemmed (production) vs unstemmed BM25.
+  const morph = runMorphology();
 
   // Fail-open: make the QUERY embedder throw → embedRecallQuery returns null →
   // _vectorSearch falls open to keyword. Re-run the vector mode and measure the
@@ -390,6 +449,8 @@ async function main(): Promise<number> {
     searchMem,
     keywordChat,
     factsProv,
+    morph.stemmed,
+    morph.unstemmed,
     failOpen,
   ];
   const checks = checkBudgets(modes);
@@ -403,6 +464,15 @@ async function main(): Promise<number> {
     budget: budgets.failOpen.minObservableRecallDrop,
     unit: "ratio",
     pass: failOpenObservable,
+  });
+
+  const stemmingObservable = morph.lift >= budgets.stemming.minRecallLift;
+  checks.push({
+    name: "stemming.minRecallLift",
+    value: morph.lift,
+    budget: budgets.stemming.minRecallLift,
+    unit: "ratio",
+    pass: stemmingObservable,
   });
 
   const report = {
@@ -422,6 +492,12 @@ async function main(): Promise<number> {
       failOpenRecallAt5: failOpen.recallAtK,
       recallDrop: failOpenDrop,
       observable: failOpenObservable,
+    },
+    stemming: {
+      stemmedRecallAt5: morph.stemmed.recallAtK,
+      unstemmedRecallAt5: morph.unstemmed.recallAtK,
+      recallLift: morph.lift,
+      observable: stemmingObservable,
     },
     // The single score the orchestrator extracts — hybrid is production default.
     metrics: {
@@ -445,6 +521,9 @@ async function main(): Promise<number> {
   }
   console.log(
     `[recall-bench] fail-open recall drop ${fmt(failOpenDrop)} (observable=${failOpenObservable})`,
+  );
+  console.log(
+    `[recall-bench] stemming recall lift ${fmt(morph.lift)} (observable=${stemmingObservable})`,
   );
   console.log(`[recall-bench] → ${outFile}`);
   console.log(

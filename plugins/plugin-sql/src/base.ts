@@ -2267,6 +2267,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     embedding: number[];
     match_threshold?: number;
     count?: number;
+    limit?: number;
     unique?: boolean;
     query?: string;
     roomId?: UUID;
@@ -2276,7 +2277,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }): Promise<Memory[]> {
     return await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,
-      count: params.count,
+      // `limit` is the IDatabaseAdapter contract param; honour it (with `count`
+      // as a legacy alias) instead of silently ignoring it and capping the
+      // candidate pool at the default 10.
+      count: params.count ?? params.limit,
       // Pass direct scope fields down
       roomId: params.roomId,
       worldId: params.worldId,
