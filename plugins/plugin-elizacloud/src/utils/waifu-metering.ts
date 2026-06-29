@@ -83,8 +83,14 @@ export function resolveWaifuMeteringConfig(
   runtime: IAgentRuntime
 ): WaifuMeteringConfig | null {
   const webhookUrl = resolveInferenceWebhookUrl(runtime);
+  // Prefer the ELIZA_CLOUD_* names; the WAIFU_* names are kept as deprecated
+  // legacy aliases for zero-downtime migration (drop once prod secrets are
+  // re-set under ELIZA_CLOUD_*).
   const secret =
-    readEnv(runtime, "WAIFU_WEBHOOK_SECRET") ?? readEnv(runtime, "WAIFU_INFERENCE_WEBHOOK_SECRET");
+    readEnv(runtime, "ELIZA_CLOUD_WEBHOOK_SECRET") ??
+    readEnv(runtime, "ELIZA_CLOUD_INFERENCE_WEBHOOK_SECRET") ??
+    readEnv(runtime, "WAIFU_WEBHOOK_SECRET") ??
+    readEnv(runtime, "WAIFU_INFERENCE_WEBHOOK_SECRET");
   const agentId = readEnv(runtime, "WAIFU_AGENT_ID") ?? readEnv(runtime, "WAIFU_CORE_AGENT_ID");
 
   if (!webhookUrl || !secret || !agentId) {
@@ -95,11 +101,15 @@ export function resolveWaifuMeteringConfig(
     webhookUrl,
     secret,
     agentId,
-    usdPer1kInput: readNumberEnv(runtime, "WAIFU_METER_USD_PER_1K_INPUT", DEFAULT_USD_PER_1K_INPUT),
+    usdPer1kInput: readNumberEnv(
+      runtime,
+      "ELIZA_CLOUD_METER_USD_PER_1K_INPUT",
+      readNumberEnv(runtime, "WAIFU_METER_USD_PER_1K_INPUT", DEFAULT_USD_PER_1K_INPUT)
+    ),
     usdPer1kOutput: readNumberEnv(
       runtime,
-      "WAIFU_METER_USD_PER_1K_OUTPUT",
-      DEFAULT_USD_PER_1K_OUTPUT
+      "ELIZA_CLOUD_METER_USD_PER_1K_OUTPUT",
+      readNumberEnv(runtime, "WAIFU_METER_USD_PER_1K_OUTPUT", DEFAULT_USD_PER_1K_OUTPUT)
     ),
   };
 }
@@ -116,10 +126,14 @@ export function resolveWaifuMeteringConfig(
  * disabled.
  */
 export function resolveInferenceWebhookUrl(runtime: IAgentRuntime): string | undefined {
-  const explicit = readEnv(runtime, "WAIFU_INFERENCE_WEBHOOK_URL");
+  const explicit =
+    readEnv(runtime, "ELIZA_CLOUD_INFERENCE_WEBHOOK_URL") ??
+    readEnv(runtime, "WAIFU_INFERENCE_WEBHOOK_URL");
   if (explicit) return explicit;
 
-  const creditsUrl = readEnv(runtime, "WAIFU_WEBHOOK_URL");
+  const creditsUrl =
+    readEnv(runtime, "ELIZA_CLOUD_WEBHOOK_URL") ??
+    readEnv(runtime, "WAIFU_WEBHOOK_URL");
   if (!creditsUrl) return undefined;
 
   // Only derive when the credits URL ends in a recognizable `/credits` segment.
