@@ -60,6 +60,7 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "../../state/app-store.ts";
+import { isLowMemoryDevice } from "../../state/bounded-view-lru";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
@@ -148,23 +149,15 @@ function emitBundleTelemetry(
   });
 }
 
-function resolveDeviceMemoryGb(): number | null {
-  if (typeof navigator === "undefined") return null;
-  const value = (navigator as { deviceMemory?: unknown }).deviceMemory;
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function getBundleCacheMaxEntries(): number {
-  const memoryGb = resolveDeviceMemoryGb();
-  if (memoryGb !== null && memoryGb <= 4) {
+  if (isLowMemoryDevice()) {
     return LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES;
   }
   return DEFAULT_BUNDLE_CACHE_MAX_ENTRIES;
 }
 
 function getBundleCacheTtlMs(): number {
-  const memoryGb = resolveDeviceMemoryGb();
-  if (memoryGb !== null && memoryGb <= 4) return LOW_MEMORY_BUNDLE_CACHE_TTL_MS;
+  if (isLowMemoryDevice()) return LOW_MEMORY_BUNDLE_CACHE_TTL_MS;
   return DEFAULT_BUNDLE_CACHE_TTL_MS;
 }
 

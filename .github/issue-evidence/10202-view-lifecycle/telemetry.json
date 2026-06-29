@@ -1,0 +1,420 @@
+{
+  "maxRetained": 3,
+  "memorySamples": [
+    4758563,
+    4906663,
+    5034463,
+    5056487,
+    5131979,
+    5149583,
+    5169071,
+    5188227,
+    5206799,
+    5245399,
+    5270475,
+    5275423,
+    5284719,
+    5291411,
+    5309207,
+    5315843,
+    5319379,
+    5336667,
+    5400095,
+    5401787,
+    5412247,
+    5422383,
+    5424779,
+    5426395
+  ],
+  "memorySummary": {
+    "sampleCount": 24,
+    "firstBytes": 4758563,
+    "lastBytes": 5426395,
+    "minBytes": 4758563,
+    "maxBytes": 5426395,
+    "meanBytes": 5239085.166666667,
+    "slopeBytesPerCycle": 22235.271304347825,
+    "growthRatio": 1.1403432086535368,
+    "netGrowthBytes": 667832,
+    "monotonicIncreaseRatio": 1
+  },
+  "memoryReport": {
+    "leaking": false,
+    "reasons": [],
+    "summary": {
+      "sampleCount": 24,
+      "firstBytes": 4758563,
+      "lastBytes": 5426395,
+      "minBytes": 4758563,
+      "maxBytes": 5426395,
+      "meanBytes": 5239085.166666667,
+      "slopeBytesPerCycle": 22235.271304347825,
+      "growthRatio": 1.1403432086535368,
+      "netGrowthBytes": 667832,
+      "monotonicIncreaseRatio": 1
+    }
+  },
+  "renderStormEvents": 1,
+  "finalTelemetry": [
+    {
+      "viewId": "gamma",
+      "phase": "active",
+      "reason": "show",
+      "renderCount": 1,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0,
+      "jsHeapUsedSize": 6520709,
+      "activeSubscriptions": 1,
+      "pendingTimers": 1,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166676,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "beta",
+      "phase": "inactive",
+      "reason": "hide",
+      "renderCount": 7,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 6522089,
+      "activeSubscriptions": 1,
+      "pendingTimers": 1,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166676,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "beta",
+      "phase": "paused",
+      "reason": "pause",
+      "renderCount": 7,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 6523253,
+      "activeSubscriptions": 1,
+      "pendingTimers": 1,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166676,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "delta",
+      "phase": "evicted",
+      "reason": "evict",
+      "renderCount": 11,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 6526333,
+      "activeSubscriptions": 1,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166676,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "delta",
+      "phase": "active",
+      "reason": "show",
+      "renderCount": 1,
+      "lastCommitMs": 0.10000002384185791,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 6774585,
+      "activeSubscriptions": 1,
+      "pendingTimers": 1,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166740,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "gamma",
+      "phase": "inactive",
+      "reason": "hide",
+      "renderCount": 3,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0,
+      "jsHeapUsedSize": 6775737,
+      "activeSubscriptions": 1,
+      "pendingTimers": 1,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166740,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "gamma",
+      "phase": "paused",
+      "reason": "pause",
+      "renderCount": 3,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0,
+      "jsHeapUsedSize": 6776673,
+      "activeSubscriptions": 1,
+      "pendingTimers": 1,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166740,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "alpha",
+      "phase": "evicted",
+      "reason": "evict",
+      "renderCount": 11,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 6779741,
+      "activeSubscriptions": 1,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166740,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "storm",
+      "phase": "active",
+      "reason": "show",
+      "renderCount": 1,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0,
+      "jsHeapUsedSize": 7036534,
+      "activeSubscriptions": 0,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166804,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "delta",
+      "phase": "inactive",
+      "reason": "hide",
+      "renderCount": 3,
+      "lastCommitMs": 0.10000002384185791,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 7037806,
+      "activeSubscriptions": 1,
+      "pendingTimers": 1,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166804,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "delta",
+      "phase": "paused",
+      "reason": "pause",
+      "renderCount": 3,
+      "lastCommitMs": 0.10000002384185791,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 7038742,
+      "activeSubscriptions": 1,
+      "pendingTimers": 1,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166804,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "beta",
+      "phase": "evicted",
+      "reason": "evict",
+      "renderCount": 11,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 7041798,
+      "activeSubscriptions": 1,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764166804,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "leaky",
+      "phase": "active",
+      "reason": "show",
+      "renderCount": 1,
+      "lastCommitMs": 0.09999996423721313,
+      "commitDurationP95Ms": 0.09999996423721313,
+      "jsHeapUsedSize": 8137483,
+      "activeSubscriptions": 1,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764167728,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "storm",
+      "phase": "inactive",
+      "reason": "hide",
+      "renderCount": 93,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 8146487,
+      "activeSubscriptions": 0,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764167728,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "storm",
+      "phase": "paused",
+      "reason": "pause",
+      "renderCount": 93,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 8155379,
+      "activeSubscriptions": 0,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764167728,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "gamma",
+      "phase": "evicted",
+      "reason": "evict",
+      "renderCount": 7,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.09999996423721313,
+      "jsHeapUsedSize": 8158195,
+      "activeSubscriptions": 1,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764167728,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "alpha",
+      "phase": "active",
+      "reason": "show",
+      "renderCount": 1,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0,
+      "jsHeapUsedSize": 8403183,
+      "activeSubscriptions": 1,
+      "pendingTimers": 1,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764167879,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "leaky",
+      "phase": "inactive",
+      "reason": "hide",
+      "renderCount": 3,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 8404123,
+      "activeSubscriptions": 1,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764167879,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "leaky",
+      "phase": "paused",
+      "reason": "pause",
+      "renderCount": 3,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 8405071,
+      "activeSubscriptions": 1,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764167879,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    },
+    {
+      "viewId": "delta",
+      "phase": "evicted",
+      "reason": "evict",
+      "renderCount": 7,
+      "lastCommitMs": 0,
+      "commitDurationP95Ms": 0.10000002384185791,
+      "jsHeapUsedSize": 8407887,
+      "activeSubscriptions": 1,
+      "pendingTimers": 0,
+      "heavyResources": {
+        "webgl": 0,
+        "audio": 0,
+        "video": 0
+      },
+      "at": 1782764167879,
+      "route": "/private/tmp/eliza-10202/packages/ui/src/components/views/__e2e__/output-view-lifecycle/view-lifecycle.html"
+    }
+  ]
+}

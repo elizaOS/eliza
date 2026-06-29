@@ -309,7 +309,10 @@ export {
 } from "./components/ui/tabs";
 export { Textarea } from "./components/ui/textarea";
 export { IconTooltip } from "./components/ui/tooltip-extended";
+export { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
 export { TerminalPluginView } from "./components/views/TerminalPluginView";
+export { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
+export { ViewTelemetryProfiler } from "./components/views/ViewTelemetryProfiler";
 export type {
   ActionConfirm,
   ActionDefinition,
@@ -507,11 +510,30 @@ export * from "./lib/utils";
 export { cn } from "./lib/utils";
 export type { Tab } from "./navigation/index";
 export * from "./navigation/index";
+export {
+  type ResourceCountersSnapshot,
+  snapshotResourceCounters,
+  totalLiveResources,
+  trackMedia,
+  trackSubscription,
+  trackTimer,
+} from "./perf/resource-counters";
+export {
+  type MemoryBudgetReport,
+  type MemorySampleSummary,
+  shouldReportMemoryGrowth,
+  summarizeMemorySamples,
+} from "./perf/view-memory-budget";
 export * from "./platform/index";
 export * from "./providers/index";
 export * from "./shell-params";
 export * from "./slots/task-coordinator-slots";
 export * from "./slots/task-coordinator-slots.helpers";
+export {
+  getKeepAliveMaxViews,
+  getKeepAliveTtlMs,
+  isLowMemoryDevice,
+} from "./state/bounded-view-lru";
 export type {
   ActionNotice,
   CompanionHalfFramerateMode,
@@ -534,6 +556,31 @@ export {
   VRM_COUNT,
 } from "./state/index";
 export type { UiTheme } from "./state/ui-preferences";
+export {
+  usePausableInterval,
+  usePauseAware,
+  useViewLifecycle,
+  type ViewLifecycleHandlers,
+  type ViewLifecycleState,
+} from "./state/useViewLifecycle";
+// View lifecycle / memory / crash-containment primitives (#10202).
+export {
+  PINNED_VIEW_IDS,
+  registerViewPolicy,
+  resolveViewLifecyclePolicy,
+  type ViewLifecycleController,
+  type ViewRenderSet,
+  viewLifecycleController,
+} from "./state/view-lifecycle";
+export {
+  useViewLifecycleSlot,
+  ViewLifecycleSlot,
+} from "./state/view-lifecycle-context";
+export type {
+  ViewLifecyclePhase,
+  ViewLifecyclePolicy,
+  ViewLifecycleTransition,
+} from "./state/view-lifecycle-types";
 export * from "./themes/index.js";
 export * from "./types/index";
 export type {
@@ -618,6 +665,13 @@ export {
 export { confirmDesktopAction } from "./utils/desktop-dialogs";
 export type { DesktopPowerState } from "./utils/desktop-workspace";
 export { openExternalUrl } from "./utils/openExternalUrl";
+export {
+  emitViewRuntimeTelemetry,
+  installViewRuntimeTelemetryRing,
+  readViewRuntimeTelemetry,
+  VIEW_RUNTIME_TELEMETRY_EVENT,
+  type ViewRuntimeTelemetryEvent,
+} from "./view-runtime-telemetry";
 export * from "./views/view-event-bus";
 export * from "./views/view-event-types";
 export * from "./voice";
