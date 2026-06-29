@@ -25,7 +25,7 @@ credentials), so every number is byte-reproducible run-to-run and on CI.
 | --- | --- |
 | `metrics-1k.json` | Committed before/after metrics JSON: per-`SearchMode` P@K/R@K/MRR/nDCG/HitRate + p50/p95 over the 1,000-doc corpus, `measured:true` only on a real run (`null`, never `0`, otherwise). Mirrors `packages/benchmarks/recall-bench/baseline-1k.json`. |
 | `run-1k.stdout.txt` | The real 1k run: per-mode recall/nDCG/p95 and `budgets PASS (16/16)`. |
-| `failopen-path.debug.log` | Backend `[CORE:DOCUMENTS:RECALL-EMBED]` structured logs (`LOG_LEVEL=debug`) showing `embedRecallQuery` returning null and `_vectorSearch` failing open to keyword — **once per query** in the forced fail-open slice. |
+| `failopen-path.debug.txt` | Backend `[CORE:DOCUMENTS:RECALL-EMBED]` structured logs (`LOG_LEVEL=debug`) showing `embedRecallQuery` returning null and `_vectorSearch` failing open to keyword — **once per query** in the forced fail-open slice. |
 
 ## Headline result (1k tier, deterministic)
 
@@ -48,7 +48,7 @@ at document scale (0.095), making the keyword-vs-semantic gap explicit.
 
 - **Real-runtime trajectory** — `run-1k.stdout.txt` + `metrics-1k.json`: the real
   `searchMemories`/`DocumentService` path over the 1k corpus (not a mock).
-- **Backend logs** — `failopen-path.debug.log`: structured `[CORE:DOCUMENTS:RECALL-EMBED]`
+- **Backend logs** — `failopen-path.debug.txt`: structured `[CORE:DOCUMENTS:RECALL-EMBED]`
   logs showing the path taken, including the forced fail-open run.
 - **Before/after metrics JSON** — `metrics-1k.json` + committed `budgets.json`.
 - **Screenshots / video / audio** — N/A: this is a benchmark/CI harness with no UI
