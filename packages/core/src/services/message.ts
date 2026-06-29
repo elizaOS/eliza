@@ -138,6 +138,10 @@ import {
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
+import {
+	adjudicateInjectionRisk,
+	readStampedInjectionRisk,
+} from "../security/should-respond-risk";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
@@ -10231,6 +10235,40 @@ export class DefaultMessageService implements IMessageService {
 			}
 			state = await composeResponseState(runtime, message);
 			state = attachAvailableContexts(state, runtime);
+		}
+
+		// #9949 — role-keyed prompt-injection / social-engineering gate. Only runs
+		// when should-respond already resolved to true and the deterministic hook
+		// flagged this message for verification (borderline+ risk for an untrusted
+		// sender, or an extreme score for a trusted one). Adjudication fails open,
+		// so it can suppress a reply but never break the pipeline. Disable with
+		// ELIZA_SHOULD_RESPOND_INJECTION_GATE=false.
+		if (
+			shouldRespondToMessage &&
+			runtime.getSetting("ELIZA_SHOULD_RESPOND_INJECTION_GATE") !== "false"
+		) {
+			const stampedRisk = readStampedInjectionRisk(message);
+			if (stampedRisk?.shouldVerifyInjection) {
+				const verdict = await adjudicateInjectionRisk(
+					runtime,
+					typeof message.content.text === "string" ? message.content.text : "",
+					stampedRisk.injectionRisk,
+				);
+				if (verdict.injection) {
+					runtime.logger.warn(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+							score: stampedRisk.injectionRisk.score,
+							reason: verdict.reason,
+						},
+						"Suppressing response: prompt-injection adjudication flagged this message",
+					);
+					shouldRespondToMessage = false;
+					terminalDecision = "IGNORE";
+				}
+			}
 		}
 
 		let responseContent: Content | null = null;

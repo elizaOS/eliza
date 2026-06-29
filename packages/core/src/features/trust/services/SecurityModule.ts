@@ -38,13 +38,128 @@ export interface SocialEngineeringFactors {
 	scarcity: number;
 }
 
+/**
+ * Canonical prompt-injection regexes — the single module-scope source of truth.
+ * Shared so other detectors (e.g. the should-respond risk extractor) scan with
+ * the exact same set instead of forking a parallel pattern list.
+ */
+export const INJECTION_PATTERNS: readonly RegExp[] = [
+	/ignore\s+(all\s+)?previous\s+(instructions|commands)/i,
+	/disregard\s+(all\s+)?prior\s+(commands|instructions)/i,
+	/new\s+instructions?:/i,
+	/system\s+override/i,
+	/admin\s+access/i,
+	/grant\s+me\s+(admin|owner|all)/i,
+	/you\s+are\s+now/i,
+	/act\s+as\s+if/i,
+	/pretend\s+(to\s+be|you\s+are)/i,
+	/bypass\s+security/i,
+	/give\s+me\s+all\s+permissions/i,
+	/make\s+me\s+(an\s+)?(admin|owner)/i,
+	/this\s+is\s+a\s+system\s+command/i,
+	/execute\s+privileged/i,
+	// Multi-language injection patterns
+	/ignora\s+(todas?\s+)?las?\s+instrucciones?\s+anteriores?/i, // Spanish
+	/ignorez?\s+(toutes?\s+)?les?\s+instructions?\s+pr[eé]c[eé]dentes?/i, // French
+	/ignoriere?\s+(alle\s+)?vorherigen?\s+Anweisungen/i, // German
+	/忽略之前的指令/, // Chinese
+	/前の指示を無視/, // Japanese
+	/이전\s*지시를?\s*무시/, // Korean
+	// Obfuscation / encoding evasion patterns
+	/aXdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw/i, // Base64 "ignore previous instructions"
+	/ig\s*no\s*re\s+pre\s*vi\s*ous/i, // Token-split evasion
+	/d[1i]sr[e3]g[a4]rd\s+(all\s+)?pr[1i][o0]r/i, // Leet-speak obfuscation
+];
+
+/** Canonical prompt-injection phrases used for obfuscation-aware matching. */
+export const INJECTION_KEYWORDS: readonly string[] = [
+	"ignore previous instructions",
+	"disregard prior instructions",
+	"ignore all previous instructions",
+	"system override",
+	"developer mode",
+	"jailbreak",
+	"bypass safety",
+	"bypass security",
+	"reveal system prompt",
+	"print system prompt",
+	"grant me admin",
+	"grant me root",
+	"escalate privileges",
+	"you are now",
+	"pretend you are",
+];
+
+/** Strip everything but lowercase letters/digits — collapses obfuscation. */
+export function normalizeForScan(input: string): string {
+	return input.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+export function reverseString(input: string): string {
+	return input.split("").reverse().join("");
+}
+
+const keywordPatternCache = new Map<string, RegExp>();
+
+/**
+ * Build (and cache) a regex that matches `keyword` even when separators are
+ * injected between letters (e.g. `i g n o r e`, `i-g-n-o-r-e`).
+ */
+export function getKeywordPattern(keyword: string): RegExp {
+	const normalizedKeyword = normalizeForScan(keyword);
+	const cached = keywordPatternCache.get(normalizedKeyword);
+	if (cached) {
+		return cached;
+	}
+	const pattern = new RegExp(
+		normalizedKeyword.split("").join("[\\s_\\-.:/\\\\]*"),
+		"i",
+	);
+	keywordPatternCache.set(normalizedKeyword, pattern);
+	return pattern;
+}
+
+/**
+ * True when `message` contains `keyword` allowing for normalization,
+ * reversal, letter-splitting, and token-level reversal obfuscation.
+ */
+export function containsObfuscatedKeyword(
+	message: string,
+	keyword: string,
+): boolean {
+	const normalizedKeyword = normalizeForScan(keyword);
+	if (!normalizedKeyword) return false;
+
+	const normalizedMessage = normalizeForScan(message);
+	const reversedKeyword = reverseString(normalizedKeyword);
+
+	if (
+		normalizedMessage.includes(normalizedKeyword) ||
+		normalizedMessage.includes(reversedKeyword)
+	) {
+		return true;
+	}
+
+	if (getKeywordPattern(keyword).test(message)) {
+		return true;
+	}
+
+	const tokens = message
+		.toLowerCase()
+		.split(/[^a-z0-9]+/)
+		.filter(Boolean);
+	return tokens.some(
+		(token) =>
+			token === normalizedKeyword || reverseString(token) === normalizedKeyword,
+	);
+}
+
 export class SecurityModule {
 	private runtime!: IAgentRuntime;
 	private trustEngine: TrustEngine | null = null;
 	private behavioralProfiles: Map<UUID, BehavioralProfile> = new Map();
 	private messageHistory: Map<UUID, Message[]> = new Map();
 	private actionHistory: Map<UUID, Action[]> = new Map();
-	private keywordPatternCache = new Map<string, RegExp>();
 
 	/**
 	 * Cap on the number of distinct entities retained in the per-entity
@@ -75,54 +190,6 @@ export class SecurityModule {
 			}
 		}
 	}
-
-	// Patterns for prompt injection detection
-	private readonly INJECTION_PATTERNS = [
-		/ignore\s+(all\s+)?previous\s+(instructions|commands)/i,
-		/disregard\s+(all\s+)?prior\s+(commands|instructions)/i,
-		/new\s+instructions?:/i,
-		/system\s+override/i,
-		/admin\s+access/i,
-		/grant\s+me\s+(admin|owner|all)/i,
-		/you\s+are\s+now/i,
-		/act\s+as\s+if/i,
-		/pretend\s+(to\s+be|you\s+are)/i,
-		/bypass\s+security/i,
-		/give\s+me\s+all\s+permissions/i,
-		/make\s+me\s+(an\s+)?(admin|owner)/i,
-		/this\s+is\s+a\s+system\s+command/i,
-		/execute\s+privileged/i,
-		// Multi-language injection patterns
-		/ignora\s+(todas?\s+)?las?\s+instrucciones?\s+anteriores?/i, // Spanish
-		/ignorez?\s+(toutes?\s+)?les?\s+instructions?\s+pr[eé]c[eé]dentes?/i, // French
-		/ignoriere?\s+(alle\s+)?vorherigen?\s+Anweisungen/i, // German
-		/忽略之前的指令/, // Chinese
-		/前の指示を無視/, // Japanese
-		/이전\s*지시를?\s*무시/, // Korean
-		// Obfuscation / encoding evasion patterns
-		/aXdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw/i, // Base64 "ignore previous instructions"
-		/ig\s*no\s*re\s+pre\s*vi\s*ous/i, // Token-split evasion
-		/d[1i]sr[e3]g[a4]rd\s+(all\s+)?pr[1i][o0]r/i, // Leet-speak obfuscation
-	];
-
-	// Canonical prompt-injection phrases used for obfuscation-aware matching.
-	private readonly INJECTION_KEYWORDS = [
-		"ignore previous instructions",
-		"disregard prior instructions",
-		"ignore all previous instructions",
-		"system override",
-		"developer mode",
-		"jailbreak",
-		"bypass safety",
-		"bypass security",
-		"reveal system prompt",
-		"print system prompt",
-		"grant me admin",
-		"grant me root",
-		"escalate privileges",
-		"you are now",
-		"pretend you are",
-	];
 
 	// Keywords indicating social engineering
 	private readonly URGENCY_KEYWORDS = [
@@ -243,12 +310,12 @@ export class SecurityModule {
 		message: string,
 		context: SecurityContext,
 	): Promise<SecurityCheck> {
-		const patternMatches = this.INJECTION_PATTERNS.filter((pattern) =>
+		const patternMatches = INJECTION_PATTERNS.filter((pattern) =>
 			pattern.test(message),
 		);
 		const obfuscatedMatches = this.detectObfuscatedKeywordMatches(
 			message,
-			this.INJECTION_KEYWORDS,
+			INJECTION_KEYWORDS,
 		);
 		const totalSignals = patternMatches.length + obfuscatedMatches.length;
 
@@ -702,59 +769,16 @@ export class SecurityModule {
 	}
 
 	private normalizeForScan(input: string): string {
-		return input.toLowerCase().replace(/[^a-z0-9]/g, "");
-	}
-
-	private reverseString(input: string): string {
-		return input.split("").reverse().join("");
-	}
-
-	private getKeywordPattern(keyword: string): RegExp {
-		const normalizedKeyword = this.normalizeForScan(keyword);
-		const cached = this.keywordPatternCache.get(normalizedKeyword);
-		if (cached) {
-			return cached;
-		}
-		const pattern = new RegExp(
-			normalizedKeyword.split("").join("[\\s_\\-.:/\\\\]*"),
-			"i",
-		);
-		this.keywordPatternCache.set(normalizedKeyword, pattern);
-		return pattern;
+		return normalizeForScan(input);
 	}
 
 	private containsObfuscatedKeyword(message: string, keyword: string): boolean {
-		const normalizedKeyword = this.normalizeForScan(keyword);
-		if (!normalizedKeyword) return false;
-
-		const normalizedMessage = this.normalizeForScan(message);
-		const reversedKeyword = this.reverseString(normalizedKeyword);
-
-		if (
-			normalizedMessage.includes(normalizedKeyword) ||
-			normalizedMessage.includes(reversedKeyword)
-		) {
-			return true;
-		}
-
-		if (this.getKeywordPattern(keyword).test(message)) {
-			return true;
-		}
-
-		const tokens = message
-			.toLowerCase()
-			.split(/[^a-z0-9]+/)
-			.filter(Boolean);
-		return tokens.some(
-			(token) =>
-				token === normalizedKeyword ||
-				this.reverseString(token) === normalizedKeyword,
-		);
+		return containsObfuscatedKeyword(message, keyword);
 	}
 
 	private detectObfuscatedKeywordMatches(
 		message: string,
-		keywords: string[],
+		keywords: readonly string[],
 	): string[] {
 		return keywords.filter((keyword) =>
 			this.containsObfuscatedKeyword(message, keyword),
@@ -900,7 +924,7 @@ export class SecurityModule {
 		);
 		const obfuscatedInjectionMatches = this.detectObfuscatedKeywordMatches(
 			message,
-			this.INJECTION_KEYWORDS,
+			INJECTION_KEYWORDS,
 		);
 		const hasSensitiveSignals =
 			detectedPatterns.length > 0 || obfuscatedSensitiveMatches.length > 0;

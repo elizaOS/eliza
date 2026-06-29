@@ -2237,6 +2237,11 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 		registerCoreIncomingMessageSecurityHook(this);
 
+		const { registerCoreShouldRespondRiskHook } = await import(
+			"./security/should-respond-risk.js"
+		);
+		registerCoreShouldRespondRiskHook(this);
+
 		// Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
 		const skipMigrations = options?.skipMigrations ?? false;
 		if (skipMigrations) {
