@@ -16,6 +16,15 @@
       "help": "Base URL for the Ollama API. The plugin will strip this to the domain part and append the necessary API paths.",
       "advanced": false
     },
+    "OLLAMA_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Base Url",
+      "help": "Compatibility auto-enable key for a running Ollama server.",
+      "advanced": false,
+      "autoEnableProvider": true
+    },
     "OLLAMA_SMALL_MODEL": {
       "type": "string",
       "required": false,

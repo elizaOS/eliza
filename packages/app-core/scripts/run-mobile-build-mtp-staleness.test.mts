@@ -10,7 +10,7 @@ import {
   mtpForceRebuildRequested,
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.mjs";
 
 // Far-future mtimes keep these tests independent of the checkout's own file
 // timestamps (the worktree stamps every file at checkout time, including the
@@ -19,7 +19,7 @@ const FUTURE_ARTIFACT = new Date("2031-01-01T00:00:00Z").getTime();
 const OLDER_SOURCE = new Date("2030-01-01T00:00:00Z").getTime();
 const NEWER_SOURCE = new Date("2032-01-01T00:00:00Z").getTime();
 
-const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",

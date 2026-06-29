@@ -55,6 +55,10 @@ const CURATED_DEFS_PATH = join(HERE, "curated-app-definitions.json");
 // Derived channel -> plugin-package map. agent + app-core statically import this
 // (browser-safe, no fs) instead of hand-maintaining duplicate CHANNEL_PLUGIN_MAPs.
 const CHANNEL_MAP_PATH = join(HERE, "channel-plugin-map.json");
+// Derived env-key -> provider plugin package map. The agent statically imports
+// this instead of hand-maintaining PROVIDER_PLUGIN_MAP. Entries opt in by
+// marking config fields with `autoEnableProvider: true`.
+const PROVIDER_MAP_PATH = join(HERE, "provider-plugin-map.json");
 
 interface CuratedAppDefinition {
   slug: string;
@@ -92,6 +96,29 @@ export function collectChannelPluginMap(
         );
       }
       map[channel] = e.npmName;
+    }
+  }
+  return Object.fromEntries(
+    Object.keys(map)
+      .sort()
+      .map((k) => [k, map[k]]),
+  );
+}
+
+export function collectProviderPluginMap(
+  entries: RegistryEntry[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const e of entries) {
+    if (!e.npmName) continue;
+    for (const [envKey, field] of Object.entries(e.config ?? {})) {
+      if (field.autoEnableProvider !== true) continue;
+      if (map[envKey] && map[envKey] !== e.npmName) {
+        throw new Error(
+          `[registry/generate] provider env key "${envKey}" claimed by both ${map[envKey]} and ${e.npmName}`,
+        );
+      }
+      map[envKey] = e.npmName;
     }
   }
   return Object.fromEntries(
@@ -170,12 +197,14 @@ export function generateFirstPartyRegistry(): {
   full: string;
   curated: string;
   channels: string;
+  providers: string;
 } {
   const entries = collectFirstPartyEntries();
   return {
     full: `${JSON.stringify({ entries }, null, 2)}\n`,
     curated: `${JSON.stringify(collectCuratedAppDefinitions(entries), null, 2)}\n`,
     channels: `${JSON.stringify(collectChannelPluginMap(entries), null, 2)}\n`,
+    providers: `${JSON.stringify(collectProviderPluginMap(entries), null, 2)}\n`,
   };
 }
 
@@ -186,6 +215,7 @@ function main(): void {
     [GENERATED_PATH, biomeFormatJson(next.full, GENERATED_PATH)],
     [CURATED_DEFS_PATH, biomeFormatJson(next.curated, CURATED_DEFS_PATH)],
     [CHANNEL_MAP_PATH, biomeFormatJson(next.channels, CHANNEL_MAP_PATH)],
+    [PROVIDER_MAP_PATH, biomeFormatJson(next.providers, PROVIDER_MAP_PATH)],
   ];
   if (check) {
     for (const [path, expected] of artifacts) {

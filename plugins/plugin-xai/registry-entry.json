@@ -13,7 +13,8 @@
       "sensitive": true,
       "label": "API Key",
       "help": "xAI API key for Grok model access.",
-      "advanced": false
+      "advanced": false,
+      "autoEnableProvider": true
     },
     "XAI_MODEL": {
       "type": "string",

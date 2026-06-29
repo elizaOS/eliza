@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
@@ -194,6 +194,29 @@ function inferExtension(outputFormat: string): string {
   return ".mp3";
 }
 
+function isSubpath(target: string, root: string): boolean {
+  const relative = path.relative(root, target);
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function removeEdgeTempDir(tempDir: string, tempRoot = tmpdir()): boolean {
+  let rootRealPath: string;
+  let tempRealPath: string;
+  try {
+    rootRealPath = realpathSync(tempRoot);
+    tempRealPath = realpathSync(tempDir);
+  } catch {
+    return false;
+  }
+
+  if (!isSubpath(tempRealPath, rootRealPath)) {
+    return false;
+  }
+
+  rmSync(tempRealPath, { recursive: true, force: true });
+  return true;
+}
+
 /**
  * Generate speech using Microsoft Edge TTS
  */
@@ -233,7 +256,7 @@ async function generateSpeech(settings: EdgeTTSSettings, params: EdgeTTSParams):
   } finally {
     // Cleanup temp directory
     try {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeEdgeTempDir(tempDir);
     } catch {
       // Ignore cleanup errors
     }
@@ -445,4 +468,5 @@ export const _test = {
   inferExtension,
   getEdgeTTSSettings,
   normalizeEdgeTTSParams,
+  removeEdgeTempDir,
 };

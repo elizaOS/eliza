@@ -157,6 +157,19 @@ describe("EVM browser signing routes", () => {
     expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
   });
 
+  it("keeps EVM signing routes behind the central plugin auth gate", () => {
+    const signingRouteNames = [
+      "wallet-evm-personal-sign",
+      "wallet-evm-sign-typed-data",
+      "wallet-evm-sign-transaction",
+      "wallet-evm-send-transaction",
+    ];
+
+    for (const routeName of signingRouteNames) {
+      expect(route(routeName).public).not.toBe(true);
+    }
+  });
+
   it("rejects malformed chain ids before resolving the backend", async () => {
     const response = res();
     await route("wallet-evm-sign-transaction").handler(

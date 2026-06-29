@@ -20,13 +20,15 @@
  * touching the sentinel.
  */
 
-import { isLocalCodeExecutionAllowed } from "@elizaos/core";
+import {
+  isLocalCodeExecutionAllowed,
+  registerAppRoutePluginLoader,
+} from "@elizaos/core";
 
-async function registerCodingAgentRoutePluginLoader(): Promise<void> {
+function registerCodingAgentRoutePluginLoader(): void {
   if (!isLocalCodeExecutionAllowed()) return;
-  const { registerAppRoutePluginLoader } = await import("@elizaos/core");
   registerAppRoutePluginLoader(
-    "@elizaos/plugin-agent-orchestrator",
+    "@elizaos/plugin-agent-orchestrator:routes",
     async () => {
       const { codingAgentRoutePlugin } = await import("./setup-routes.js");
       return codingAgentRoutePlugin;
@@ -37,16 +39,12 @@ async function registerCodingAgentRoutePluginLoader(): Promise<void> {
 // Fire registration. Stored on a const so a bundler that walks the
 // module ESM graph can see this as a value-producing top-level
 // statement rather than a discardable expression statement.
-const _codingAgentRouteRegistrationPromise =
-  registerCodingAgentRoutePluginLoader();
+registerCodingAgentRoutePluginLoader();
 
 /**
  * Sentinel re-exported by `src/index.ts` so bundlers that aggressively
  * tree-shake side-effect-only imports cannot drop this module. The
- * value is a Promise that resolves once the route loader has been
- * registered; callers that need to await registration completion (e.g.
- * tests) may chain on it, but the typical caller only needs the import
- * to fire.
+ * value is true once the module has evaluated. The registration itself is
+ * synchronous so app-core's loader snapshot cannot race the route registration.
  */
-export const codingAgentRouteRegistration: Promise<void> =
-  _codingAgentRouteRegistrationPromise;
+export const codingAgentRouteRegistration = true;

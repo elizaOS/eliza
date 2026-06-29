@@ -122,7 +122,8 @@
           "sensitive": true,
           "label": "Api Key",
           "help": "API key used to authenticate requests to Anthropic services",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "ANTHROPIC_SMALL_MODEL": {
           "type": "string",
@@ -992,6 +993,82 @@
       "subtype": "devtools"
     },
     {
+      "id": "cli-inference",
+      "name": "CLI Inference",
+      "description": "Node-only model provider that shells out to sanctioned local Claude or Codex CLIs.",
+      "npmName": "@elizaos/plugin-cli-inference",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": ["ai-provider", "llm", "cli", "claude", "codex"],
+      "config": {
+        "ELIZA_CHAT_VIA_CLI": {
+          "type": "select",
+          "required": false,
+          "sensitive": false,
+          "label": "CLI Backend",
+          "help": "Enable CLI-backed large-tier inference with claude or codex.",
+          "advanced": false,
+          "options": [
+            {
+              "value": "claude",
+              "label": "Claude"
+            },
+            {
+              "value": "codex",
+              "label": "Codex"
+            }
+          ],
+          "autoEnableProvider": true
+        },
+        "ELIZA_CLI_CLAUDE_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "claude-opus-4-7",
+          "label": "Claude CLI Model",
+          "help": "Model passed to claude --print.",
+          "advanced": true
+        },
+        "ELIZA_CLI_CODEX_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "gpt-5.5",
+          "label": "Codex CLI Model",
+          "help": "Model passed to codex exec.",
+          "advanced": true
+        },
+        "ELIZA_CLI_TIMEOUT_MS": {
+          "type": "number",
+          "required": false,
+          "sensitive": false,
+          "default": "120000",
+          "label": "Timeout",
+          "help": "Per-call CLI spawn timeout in milliseconds.",
+          "advanced": true,
+          "min": 0,
+          "unit": "ms"
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Terminal",
+        "group": "models",
+        "groupOrder": 20,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "kind": "plugin",
+      "subtype": "ai-provider"
+    },
+    {
       "id": "clipboard",
       "name": "Clipboard",
       "description": "File-based memory storage plugin for ElizaOS - persistent notes and clipboard",
@@ -1433,6 +1510,43 @@
         "target": "database",
         "capabilities": ["database", "sql", "viewer"]
       }
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "description": "DeepSeek model provider.",
+      "npmName": "@elizaos/plugin-deepseek",
+      "version": "2.0.0-beta.0",
+      "source": "store",
+      "tags": ["ai-provider", "llm", "deepseek"],
+      "config": {
+        "DEEPSEEK_API_KEY": {
+          "type": "secret",
+          "required": true,
+          "sensitive": true,
+          "label": "DeepSeek API Key",
+          "help": "API key for DeepSeek model requests.",
+          "advanced": false,
+          "autoEnableProvider": true
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Brain",
+        "group": "models",
+        "groupOrder": 30,
+        "actions": ["install", "configure"]
+      },
+      "resources": {
+        "homepage": "https://deepseek.com",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "kind": "plugin",
+      "subtype": "ai-provider"
     },
     {
       "id": "directives",
@@ -1957,7 +2071,8 @@
           "sensitive": true,
           "label": "Cloud Api Key",
           "help": "API key used to authenticate requests to ElizaOS Cloud API (format: eliza_xxxxx). Get it from https://www.elizacloud.ai/dashboard/api-keys",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "ELIZAOS_CLOUD_BASE_URL": {
           "type": "url",
@@ -2121,7 +2236,8 @@
           "default": "False",
           "label": "Cloud Enabled",
           "help": "Enable ElizaCloud container provisioning, device auth, bridge, and backup services. When false, only inference model handlers are active.",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "ELIZAOS_CLOUD_APP_VERSION": {
           "type": "string",
@@ -3258,7 +3374,26 @@
           "sensitive": true,
           "label": "Generative Ai Api Key",
           "help": "API key for Google Generative AI (Gemini) obtained from Google AI Studio.",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
+        },
+        "GOOGLE_API_KEY": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Google Api Key",
+          "help": "Compatibility auto-enable key for Google Generative AI.",
+          "advanced": false,
+          "autoEnableProvider": true
+        },
+        "GEMINI_API_KEY": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Gemini Api Key",
+          "help": "Compatibility auto-enable key for Gemini.",
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "GOOGLE_EMBEDDING_MODEL": {
           "type": "string",
@@ -3365,7 +3500,8 @@
           "sensitive": true,
           "label": "Api Key",
           "help": "Groq API key",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "GROQ_BASE_URL": {
           "type": "url",
@@ -4522,6 +4658,43 @@
       }
     },
     {
+      "id": "mistral",
+      "name": "Mistral",
+      "description": "Mistral AI model provider.",
+      "npmName": "@elizaos/plugin-mistral",
+      "version": "2.0.0-beta.0",
+      "source": "store",
+      "tags": ["ai-provider", "llm", "mistral"],
+      "config": {
+        "MISTRAL_API_KEY": {
+          "type": "secret",
+          "required": true,
+          "sensitive": true,
+          "label": "Mistral API Key",
+          "help": "API key for Mistral model requests.",
+          "advanced": false,
+          "autoEnableProvider": true
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Brain",
+        "group": "models",
+        "groupOrder": 31,
+        "actions": ["install", "configure"]
+      },
+      "resources": {
+        "homepage": "https://mistral.ai",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "kind": "plugin",
+      "subtype": "ai-provider"
+    },
+    {
       "id": "model-tester",
       "name": "Model Tester",
       "description": "Run end-to-end probes for Eliza-1 text, voice, transcription, VAD, and vision models.",
@@ -4913,7 +5086,8 @@
           "sensitive": true,
           "label": "API Key",
           "help": "API key used to authenticate requests to NEAR AI Cloud.",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "NEARAI_BASE_URL": {
           "type": "url",
@@ -5245,6 +5419,15 @@
           "help": "Base URL for the Ollama API. The plugin will strip this to the domain part and append the necessary API paths.",
           "advanced": false
         },
+        "OLLAMA_BASE_URL": {
+          "type": "url",
+          "required": false,
+          "sensitive": false,
+          "label": "Base Url",
+          "help": "Compatibility auto-enable key for a running Ollama server.",
+          "advanced": false,
+          "autoEnableProvider": true
+        },
         "OLLAMA_SMALL_MODEL": {
           "type": "string",
           "required": false,
@@ -5339,7 +5522,17 @@
           "sensitive": true,
           "label": "Api Key",
           "help": "API key used to authenticate requests to the OpenAI API.",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
+        },
+        "CEREBRAS_API_KEY": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Cerebras Api Key",
+          "help": "Compatibility API key for Cerebras-hosted OpenAI-compatible requests.",
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "OPENAI_BASE_URL": {
           "type": "url",
@@ -5529,7 +5722,8 @@
           "sensitive": true,
           "label": "Api Key",
           "help": "API key used by the OpenRouter plugin for authenticating requests.",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "OPENROUTER_IMAGE_MODEL": {
           "type": "string",
@@ -6903,6 +7097,43 @@
       "subtype": "devtools"
     },
     {
+      "id": "together",
+      "name": "Together AI",
+      "description": "Together AI model provider.",
+      "npmName": "@elizaos/plugin-together",
+      "version": "2.0.0-beta.0",
+      "source": "store",
+      "tags": ["ai-provider", "llm", "together"],
+      "config": {
+        "TOGETHER_API_KEY": {
+          "type": "secret",
+          "required": true,
+          "sensitive": true,
+          "label": "Together API Key",
+          "help": "API key for Together AI model requests.",
+          "advanced": false,
+          "autoEnableProvider": true
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Brain",
+        "group": "models",
+        "groupOrder": 32,
+        "actions": ["install", "configure"]
+      },
+      "resources": {
+        "homepage": "https://together.ai",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "kind": "plugin",
+      "subtype": "ai-provider"
+    },
+    {
       "id": "training",
       "name": "Fine Tuning",
       "description": "Collect training data, inspect trajectories, run Eliza harness evals, benchmark model tiers, and manage fine-tuned models.",
@@ -7484,7 +7715,8 @@
           "sensitive": true,
           "label": "Api Key",
           "help": "Alternate env var for AI Gateway API key.",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "VERCEL_OIDC_TOKEN": {
           "type": "secret",
@@ -7500,7 +7732,8 @@
           "sensitive": true,
           "label": "Gateway Api Key",
           "help": "API key for Vercel AI Gateway (OpenAI-compatible endpoints).",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "AI_GATEWAY_BASE_URL": {
           "type": "url",
@@ -8101,7 +8334,8 @@
           "sensitive": true,
           "label": "API Key",
           "help": "xAI API key for Grok model access.",
-          "advanced": false
+          "advanced": false,
+          "autoEnableProvider": true
         },
         "XAI_MODEL": {
           "type": "string",
@@ -8156,6 +8390,79 @@
         "homepage": "https://github.com/elizaos-plugins/plugin-xai#readme",
         "repository": "https://github.com/elizaos-plugins/plugin-xai",
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#xai-grok"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "kind": "plugin",
+      "subtype": "ai-provider"
+    },
+    {
+      "id": "zai",
+      "name": "z.ai",
+      "description": "z.ai model provider for text generation.",
+      "npmName": "@elizaos/plugin-zai",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": ["ai-provider", "llm", "zai", "z.ai", "glm"],
+      "config": {
+        "ZAI_API_KEY": {
+          "type": "secret",
+          "required": true,
+          "sensitive": true,
+          "label": "z.ai API Key",
+          "help": "Primary API key for z.ai model requests.",
+          "advanced": false,
+          "autoEnableProvider": true
+        },
+        "Z_AI_API_KEY": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Legacy z.ai API Key",
+          "help": "Legacy API key alias accepted when ZAI_API_KEY is absent.",
+          "advanced": true,
+          "autoEnableProvider": true
+        },
+        "ZAI_BASE_URL": {
+          "type": "url",
+          "required": false,
+          "sensitive": false,
+          "default": "https://api.z.ai/api/paas/v4",
+          "label": "z.ai Base URL",
+          "help": "Base URL for z.ai OpenAI-compatible API requests.",
+          "advanced": true
+        },
+        "ZAI_SMALL_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "glm-4.5-air",
+          "label": "Small Model",
+          "help": "Model identifier for TEXT_SMALL.",
+          "advanced": false
+        },
+        "ZAI_LARGE_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "glm-5.1",
+          "label": "Large Model",
+          "help": "Model identifier for TEXT_LARGE.",
+          "advanced": false
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Brain",
+        "group": "models",
+        "groupOrder": 10,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://z.ai",
+        "repository": "https://github.com/elizaOS/eliza"
       },
       "dependsOn": [],
       "channels": [],

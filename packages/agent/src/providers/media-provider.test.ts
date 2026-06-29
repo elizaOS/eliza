@@ -4,6 +4,7 @@ import {
   type AudioGenerationProvider,
   createAudioProvider,
   createVideoProvider,
+  createVisionProvider,
 } from "./media-provider";
 
 type FetchCall = {
@@ -293,5 +294,100 @@ describe("media video provider routing", () => {
       error: "No video returned from FAL",
     });
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("media vision provider input validation", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fails OpenAI vision analysis before fetch when no image is provided", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: "openai",
+        openai: { apiKey: "openai-key" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    await expect(provider.analyze({ prompt: "describe" })).resolves.toEqual({
+      success: false,
+      error: "[openai] imageUrl or imageBase64 is required",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails Google vision analysis before fetch when the image URL is blank", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: "google",
+        google: { apiKey: "google-key" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    await expect(
+      provider.analyze({ imageUrl: "   ", prompt: "describe" }),
+    ).resolves.toEqual({
+      success: false,
+      error: "[google] imageUrl or imageBase64 is required",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("trims xAI vision image URLs before sending the remote request", async () => {
+    const calls: FetchCall[] = [];
+    fakeMediaFetch(
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: "trimmed image",
+            },
+          },
+        ],
+      }),
+      calls,
+    );
+
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: "xai",
+        xai: { apiKey: "xai-key" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    await expect(
+      provider.analyze({
+        imageUrl: " https://example.com/image.png ",
+        prompt: "describe",
+      }),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { description: "trimmed image" },
+    });
+    expect(calls[0].body).toMatchObject({
+      messages: [
+        {
+          content: expect.arrayContaining([
+            {
+              image_url: { url: "https://example.com/image.png" },
+              type: "image_url",
+            },
+          ]),
+        },
+      ],
+    });
   });
 });

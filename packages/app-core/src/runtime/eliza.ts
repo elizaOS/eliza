@@ -96,6 +96,7 @@ import {
 } from "./startup-overlay.js";
 import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
 import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
+import { DEFAULT_TEXT_TO_SPEECH_PROVIDER } from "./tts-provider-registry.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
@@ -103,7 +104,6 @@ const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
 
 /** Swarm / PTY paths call TEXT_TO_SPEECH; Edge TTS supplies that model with no API key. */
 const AGENT_ORCHESTRATOR_PLUGIN = "agent-orchestrator";
-const EDGE_TTS_PLUGIN = "@elizaos/plugin-edge-tts";
 const require = createRequire(import.meta.url);
 const DIRECT_HELP_FLAGS = new Set(["-h", "--help", "help"]);
 const DIRECT_VERSION_FLAGS = new Set(["-v", "-V", "--version", "version"]);
@@ -221,9 +221,9 @@ export function collectPluginNames(
   if (
     result.has(AGENT_ORCHESTRATOR_PLUGIN) &&
     !isTextToSpeechEdgeTtsDisabled(config) &&
-    !result.has(EDGE_TTS_PLUGIN)
+    !result.has(DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName)
   ) {
-    result.add(EDGE_TTS_PLUGIN);
+    result.add(DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName);
   }
   syncBrandEnvAliases();
   return result;
@@ -446,11 +446,6 @@ async function loadAppRoutePluginFromSpecifier(
 export const __loadAppRoutePluginFromSpecifierForTest =
   loadAppRoutePluginFromSpecifier;
 
-const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
-const WALLET_ROUTE_PLUGIN_ID = "@elizaos/plugin-wallet:routes";
-const AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID =
-  "@elizaos/plugin-agent-orchestrator:routes";
-
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
     const routePlugin = app.launch.routePlugin;
@@ -531,51 +526,6 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   }
   for (const entry of listAppRoutePluginLoaders()) {
     byId.set(entry.id, entry);
-  }
-  // plugin-workflow is default-enabled and registers its rawPath route plugin
-  // (`/api/automations`, `/api/workflow/*`) only as a side effect of its
-  // `register-routes` import. That side effect runs inside the plugin's own
-  // module init, which is not guaranteed to have executed before this snapshot
-  // is taken on the post-ready boot tail — so the loader can be missing and the
-  // routes 404. Register it explicitly here (load-order independent), mirroring
-  // how every other rawPath route plugin is wired via the registry.
-  if (!byId.has(WORKFLOW_ROUTE_PLUGIN_ID)) {
-    byId.set(WORKFLOW_ROUTE_PLUGIN_ID, {
-      id: WORKFLOW_ROUTE_PLUGIN_ID,
-      load: () =>
-        loadAppRoutePluginFromSpecifier(
-          "@elizaos/plugin-workflow/plugin-routes",
-          "workflowRoutePlugin",
-        ),
-    });
-  }
-  // plugin-wallet has the same load-order hazard: its rawPath route plugin
-  // (`/api/wallet/market-overview`) registers only as a side effect of the
-  // `register-routes` import, which is not guaranteed to have run before this
-  // snapshot. Register it explicitly so the route is always mounted.
-  if (!byId.has(WALLET_ROUTE_PLUGIN_ID)) {
-    byId.set(WALLET_ROUTE_PLUGIN_ID, {
-      id: WALLET_ROUTE_PLUGIN_ID,
-      load: () =>
-        loadAppRoutePluginFromSpecifier(
-          "@elizaos/plugin-wallet/routes/plugin",
-          "walletRoutePlugin",
-        ),
-    });
-  }
-  // plugin-agent-orchestrator has the same load-order hazard for its
-  // `/api/coding-agents/*` and `/api/orchestrator/*` rawPath routes. The main
-  // plugin can be present while its route-loader side effect has not populated
-  // the registry snapshot yet, leaving the desktop widgets with 404 probes.
-  if (!byId.has(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID)) {
-    byId.set(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID, {
-      id: AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID,
-      load: () =>
-        loadAppRoutePluginFromSpecifier(
-          "@elizaos/plugin-agent-orchestrator/setup-routes",
-          "codingAgentRoutePlugin",
-        ),
-    });
   }
 
   const skip = getSkippedAppRoutePluginIds();

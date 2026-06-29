@@ -131,6 +131,19 @@ describe("Solana browser signing routes", () => {
     expect(response.headers["Access-Control-Allow-Credentials"]).toBeUndefined();
   });
 
+  it("keeps Solana signing routes behind the central plugin auth gate", () => {
+    const signingRouteNames = [
+      "wallet-solana-sign-transaction",
+      "wallet-solana-sign-all-transactions",
+      "wallet-solana-sign-message",
+      "wallet-solana-sign-and-send-transaction",
+    ];
+
+    for (const routeName of signingRouteNames) {
+      expect(route(routeName).public).not.toBe(true);
+    }
+  });
+
   it("validates message body shape before resolving wallet backend", async () => {
     const response = res();
     await route("wallet-solana-sign-message").handler(

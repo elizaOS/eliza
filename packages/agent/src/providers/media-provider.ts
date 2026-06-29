@@ -234,6 +234,34 @@ export interface VisionAnalysisOptions {
   maxTokens?: number;
 }
 
+type VisionImageInput =
+  | { type: "base64"; value: string }
+  | { type: "url"; value: string };
+
+function resolveVisionImageInput(
+  providerName: string,
+  options: VisionAnalysisOptions,
+): VisionImageInput | MediaProviderResult<VisionAnalysisResult> {
+  const imageBase64 = options.imageBase64?.trim();
+  if (imageBase64) {
+    return { type: "base64", value: imageBase64 };
+  }
+  const imageUrl = options.imageUrl?.trim();
+  if (imageUrl) {
+    return { type: "url", value: imageUrl };
+  }
+  return {
+    success: false,
+    error: `[${providerName}] imageUrl or imageBase64 is required`,
+  };
+}
+
+function isMediaProviderResult<T>(
+  value: VisionImageInput | MediaProviderResult<T>,
+): value is MediaProviderResult<T> {
+  return "success" in value;
+}
+
 // ============================================================================
 // Provider Interfaces
 // ============================================================================
@@ -747,15 +775,18 @@ export class OpenAIVisionProvider implements VisionAnalysisProvider {
   async analyze(
     options: VisionAnalysisOptions,
   ): Promise<MediaProviderResult<VisionAnalysisResult>> {
-    const imageContent = options.imageBase64
-      ? {
-          type: "image_url" as const,
-          image_url: { url: `data:image/jpeg;base64,${options.imageBase64}` },
-        }
-      : {
-          type: "image_url" as const,
-          image_url: { url: options.imageUrl ?? "" },
-        };
+    const imageInput = resolveVisionImageInput(this.name, options);
+    if (isMediaProviderResult(imageInput)) return imageInput;
+    const imageContent =
+      imageInput.type === "base64"
+        ? {
+            type: "image_url" as const,
+            image_url: { url: `data:image/jpeg;base64,${imageInput.value}` },
+          }
+        : {
+            type: "image_url" as const,
+            image_url: { url: imageInput.value },
+          };
 
     return withProviderErrorBoundary(this.name, async () => {
       const response = await fetchWithTimeout(
@@ -1000,9 +1031,14 @@ export class GoogleVisionProvider implements VisionAnalysisProvider {
   async analyze(
     options: VisionAnalysisOptions,
   ): Promise<MediaProviderResult<VisionAnalysisResult>> {
-    const imagePart = options.imageBase64
-      ? { inline_data: { mime_type: "image/jpeg", data: options.imageBase64 } }
-      : { file_data: { file_uri: options.imageUrl, mime_type: "image/jpeg" } };
+    const imageInput = resolveVisionImageInput(this.name, options);
+    if (isMediaProviderResult(imageInput)) return imageInput;
+    const imagePart =
+      imageInput.type === "base64"
+        ? { inline_data: { mime_type: "image/jpeg", data: imageInput.value } }
+        : {
+            file_data: { file_uri: imageInput.value, mime_type: "image/jpeg" },
+          };
 
     return withProviderErrorBoundary(this.name, async () => {
       const response = await fetchWithTimeout(
@@ -1131,15 +1167,18 @@ export class XAIVisionProvider implements VisionAnalysisProvider {
     options: VisionAnalysisOptions,
   ): Promise<MediaProviderResult<VisionAnalysisResult>> {
     // xAI uses OpenAI-compatible API format
-    const imageContent = options.imageBase64
-      ? {
-          type: "image_url" as const,
-          image_url: { url: `data:image/jpeg;base64,${options.imageBase64}` },
-        }
-      : {
-          type: "image_url" as const,
-          image_url: { url: options.imageUrl ?? "" },
-        };
+    const imageInput = resolveVisionImageInput(this.name, options);
+    if (isMediaProviderResult(imageInput)) return imageInput;
+    const imageContent =
+      imageInput.type === "base64"
+        ? {
+            type: "image_url" as const,
+            image_url: { url: `data:image/jpeg;base64,${imageInput.value}` },
+          }
+        : {
+            type: "image_url" as const,
+            image_url: { url: imageInput.value },
+          };
 
     return withProviderErrorBoundary(this.name, async () => {
       const response = await fetchWithTimeout(
@@ -1391,13 +1430,16 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
   async analyze(
     options: VisionAnalysisOptions,
   ): Promise<MediaProviderResult<VisionAnalysisResult>> {
-    const imageSource = options.imageBase64
-      ? {
-          type: "base64" as const,
-          media_type: "image/jpeg" as const,
-          data: options.imageBase64,
-        }
-      : { type: "url" as const, url: options.imageUrl ?? "" };
+    const imageInput = resolveVisionImageInput(this.name, options);
+    if (isMediaProviderResult(imageInput)) return imageInput;
+    const imageSource =
+      imageInput.type === "base64"
+        ? {
+            type: "base64" as const,
+            media_type: "image/jpeg" as const,
+            data: imageInput.value,
+          }
+        : { type: "url" as const, url: imageInput.value };
 
     return withProviderErrorBoundary(this.name, async () => {
       const response = await fetchWithTimeout(
