@@ -154,6 +154,12 @@ const { default: buyRoute } = await import("../v1/apps/[id]/domains/buy/route");
 const app = new Hono();
 app.route("/api/v1/apps/:id/domains/buy", buyRoute);
 
+type DomainBuyResponseBody = {
+  success?: boolean;
+  code?: string;
+  domain?: string;
+};
+
 function buy(domain = "example.com", appId = "app-1") {
   return app.request(`/api/v1/apps/${appId}/domains/buy`, {
     method: "POST",
@@ -225,7 +231,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     });
 
     const res = await buy();
-    const body = await res.json();
+    const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(402);
     expect(body.success).toBe(false);
@@ -245,7 +251,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     });
 
     const res = await buy();
-    const body = await res.json();
+    const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(402);
     expect(body.success).toBe(false);
@@ -263,7 +269,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     });
 
     const res = await buy();
-    const body = await res.json();
+    const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(402);
     expect(body.code).toBe("org_not_found");
@@ -280,7 +286,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     registerDomain.mockResolvedValue({ registrationId: "reg-1" });
 
     const res = await buy();
-    const body = await res.json();
+    const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
