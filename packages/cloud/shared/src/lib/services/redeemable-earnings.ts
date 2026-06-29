@@ -435,10 +435,7 @@ class RedeemableEarningsService {
       // Fail-closed money-out guard (computed under the row lock, on the
       // primary): never floor-and-pass when the caller requires the full
       // amount to be debitable.
-      if (
-        requireSufficientBalance &&
-        new Decimal(earnings.available_balance).lessThan(amount)
-      ) {
+      if (requireSufficientBalance && new Decimal(earnings.available_balance).lessThan(amount)) {
         return {
           earnings: null,
           ledgerEntryId: "",

@@ -83,12 +83,7 @@ export class WebhookEventsRepository {
   async deleteByEventId(eventId: string, provider: string): Promise<void> {
     await dbWrite
       .delete(webhookEvents)
-      .where(
-        and(
-          eq(webhookEvents.event_id, eventId),
-          eq(webhookEvents.provider, provider),
-        ),
-      );
+      .where(and(eq(webhookEvents.event_id, eventId), eq(webhookEvents.provider, provider)));
   }
 
   /**

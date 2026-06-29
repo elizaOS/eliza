@@ -1,3 +1,4 @@
+/// <reference types="webxr" />
 /// <reference path="./webxr-polyfill.types.ts" />
 
 /**
