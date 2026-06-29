@@ -31,13 +31,13 @@ import {
   SessionCwdService,
 } from "@elizaos/plugin-coding-tools";
 import { initializeAgent } from "./lib/agent.js";
-import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import {
   ensureSessionIdentity,
   getMainRoomElizaId,
   type SessionIdentity,
 } from "./lib/identity.js";
+import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
 import type { ChatRoom } from "./types.js";
 
 /** A `console.error` logger (stdout is the ACP JSON-RPC channel — never log there). */
