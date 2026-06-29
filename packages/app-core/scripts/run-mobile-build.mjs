@@ -70,7 +70,6 @@ import {
   resolvePlatformTemplateRoot as resolvePlatformTemplateRootImpl,
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
-import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
 import {
   androidUsesAppDirFor,
   MTP_FORK_SRC_CANDIDATES,
@@ -94,6 +93,7 @@ import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.m
 import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
 import {
   ensurePlistArrayStrings,
+  mergeIosInfoPlist,
   removePbxListEntries,
   replaceIosAppGroupPlaceholders,
   replaceOrInsertPlistString,
@@ -3649,55 +3649,6 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
 
 // ── Phase 4: iOS native overlay ─────────────────────────────────────────
 
-const IOS_PERMISSION_KEYS = [
-  [
-    "NSCameraUsageDescription",
-    "This app uses your camera to capture photos and video when you ask it to.",
-  ],
-  [
-    "NSMicrophoneUsageDescription",
-    "This app needs microphone access for voice wake, talk mode, and video capture.",
-  ],
-  [
-    "NSLocationWhenInUseUsageDescription",
-    "This app uses your location to provide location-aware responses when you allow it.",
-  ],
-  [
-    "NSLocationAlwaysAndWhenInUseUsageDescription",
-    "This app can share your location in the background so it stays up to date even when the app is not in use.",
-  ],
-  [
-    "NSPhotoLibraryUsageDescription",
-    "This app accesses your photo library to attach and share photos or videos.",
-  ],
-  [
-    "NSPhotoLibraryAddUsageDescription",
-    "This app saves captured photos and videos to your photo library.",
-  ],
-  [
-    "NSHealthShareUsageDescription",
-    "This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.",
-  ],
-  [
-    "NSHealthUpdateUsageDescription",
-    "This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.",
-  ],
-  [
-    "NSSpeechRecognitionUsageDescription",
-    "This app uses on-device speech recognition to listen for voice commands and wake words.",
-  ],
-  [
-    "NSLocalNetworkUsageDescription",
-    `This app discovers and connects to your ${APP.appName} gateway on the local network.`,
-  ],
-];
-
-const IOS_BONJOUR_SERVICES = [
-  "_eliza-gw._tcp",
-  "_elizaos-gw._tcp",
-  "_eliza._tcp",
-];
-
 function overlayIos() {
   const targetAppDir = path.join(appDir, "ios", "App", "App");
 
@@ -3706,15 +3657,6 @@ function overlayIos() {
   if (fs.existsSync(plistPath)) {
     let plist = fs.readFileSync(plistPath, "utf8");
     let dirty = false;
-    for (const [key, desc] of IOS_PERMISSION_KEYS) {
-      if (!plist.includes(key)) {
-        plist = plist.replace(
-          "</dict>",
-          `\t<key>${key}</key>\n\t<string>${desc}</string>\n</dict>`,
-        );
-        dirty = true;
-      }
-    }
     // UIBackgroundModes and BGTaskSchedulerPermittedIdentifiers are MERGED,
     // not force-set: the template Info.plist already declares the modes the
     // ElizaTasks plugin needs (`processing`, `remote-notification`) and the
@@ -3722,28 +3664,12 @@ function overlayIos() {
     // `ai.eliza.tasks.processing`). The overlay only guarantees the baseline
     // `fetch` mode is present and that the ElizaTasks identifiers survive a
     // regeneration where a downstream embedder forgot to copy them.
-    const nextPlist = ensurePlistUrlScheme(
-      ensurePlistArrayStrings(
-        ensurePlistArrayStrings(
-          ensurePlistArrayStrings(
-            replaceOrInsertPlistString(
-              plist,
-              "CFBundleDisplayName",
-              "$(ELIZA_DISPLAY_NAME)",
-            ),
-            "NSBonjourServices",
-            IOS_BONJOUR_SERVICES,
-          ),
-          "UIBackgroundModes",
-          ["fetch", "processing", "remote-notification"],
-        ),
-        "BGTaskSchedulerPermittedIdentifiers",
-        ["ai.eliza.tasks.refresh", "ai.eliza.tasks.processing"],
-      ),
-      APP.urlScheme,
-    );
-    if (nextPlist !== plist) {
-      plist = nextPlist;
+    const nextPlist = mergeIosInfoPlist(plist, {
+      appName: APP.appName,
+      urlScheme: APP.urlScheme,
+    });
+    if (nextPlist.changed) {
+      plist = nextPlist.content;
       dirty = true;
     }
     if (dirty) {
