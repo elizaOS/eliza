@@ -4,6 +4,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   readViewInteractions,
+  VIEW_INTERACTION_TELEMETRY_EVENT,
   type ViewInteractionEvent,
 } from "../view-telemetry";
 import { useConversationSwipeJank } from "./useConversationSwipeJank";
@@ -12,6 +13,7 @@ import { useConversationSwipeJank } from "./useConversationSwipeJank";
 // without waiting on the real display refresh.
 let rafQueue: Array<(t: number) => void> = [];
 let now = 0;
+let canceledFrames = 0;
 
 function flushFrame(deltaMs: number) {
   now += deltaMs;
@@ -30,12 +32,15 @@ function resetRing() {
 beforeEach(() => {
   rafQueue = [];
   now = 0;
+  canceledFrames = 0;
   resetRing();
   globalThis.requestAnimationFrame = ((cb: (t: number) => void) => {
     rafQueue.push(cb);
     return rafQueue.length;
   }) as typeof requestAnimationFrame;
-  globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
+  globalThis.cancelAnimationFrame = (() => {
+    canceledFrames += 1;
+  }) as typeof cancelAnimationFrame;
 });
 
 afterEach(() => {
@@ -130,5 +135,64 @@ describe("useConversationSwipeJank", () => {
     expect(events).toHaveLength(2);
     // Second gesture's window did not inherit the first gesture's janky frame.
     expect(events[1].frameBudget?.droppedFrames).toBe(0);
+  });
+
+  it("tags the emitted event with the committed swipe direction", () => {
+    const { result } = renderHook(() => useConversationSwipeJank());
+
+    act(() => result.current.begin());
+    act(() => flushFrame(0));
+    act(() => flushFrame(16));
+    act(() => result.current.end("next"));
+
+    expect(swipeJankEvents()[0].direction).toBe("next");
+  });
+
+  it("omits direction when a drag settled back without committing a swipe", () => {
+    const { result } = renderHook(() => useConversationSwipeJank());
+
+    act(() => result.current.begin());
+    act(() => flushFrame(0));
+    act(() => flushFrame(16));
+    // A cancelled drag (onDragX settle to 0) flushes with no direction.
+    act(() => result.current.end());
+
+    expect(swipeJankEvents()[0].direction).toBeUndefined();
+  });
+
+  it("dispatches the window CustomEvent with the full summary and direction", () => {
+    const { result } = renderHook(() => useConversationSwipeJank());
+    const seen: ViewInteractionEvent[] = [];
+    const handler = (e: Event) => {
+      seen.push((e as CustomEvent<ViewInteractionEvent>).detail);
+    };
+    window.addEventListener(VIEW_INTERACTION_TELEMETRY_EVENT, handler);
+
+    act(() => result.current.begin());
+    act(() => flushFrame(0));
+    act(() => flushFrame(120)); // dropped frame
+    act(() => result.current.end("prev"));
+
+    window.removeEventListener(VIEW_INTERACTION_TELEMETRY_EVENT, handler);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].action).toBe("conversation-swipe-jank");
+    expect(seen[0].direction).toBe("prev");
+    expect(seen[0].frameBudget?.worstFrameMs).toBeGreaterThanOrEqual(120);
+    expect(seen[0].frameBudget?.droppedFrames).toBeGreaterThanOrEqual(1);
+  });
+
+  it("stops an in-flight sampler when the overlay unmounts mid-gesture", () => {
+    const { result, unmount } = renderHook(() => useConversationSwipeJank());
+
+    act(() => result.current.begin());
+    act(() => flushFrame(0));
+    act(() => flushFrame(16));
+    expect(canceledFrames).toBe(0);
+
+    // Unmounting mid-gesture (end never called) must cancel the running rAF so
+    // no sampling loop dangles, and must not emit a telemetry event.
+    unmount();
+    expect(canceledFrames).toBeGreaterThan(0);
+    expect(swipeJankEvents()).toHaveLength(0);
   });
 });

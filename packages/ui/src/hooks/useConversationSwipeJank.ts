@@ -19,8 +19,12 @@ import { type FrameBudget, FrameBudgetSampler } from "./frame-budget";
 export interface ConversationSwipeJankHandle {
   /** Begin sampling — call when a swipe gesture starts driving the drag. */
   begin: () => void;
-  /** Flush the sampled window as a telemetry event and stop sampling. */
-  end: () => void;
+  /**
+   * Flush the sampled window as a telemetry event and stop sampling. Pass the
+   * committed swipe `direction` ("prev"/"next") so the emitted event attributes
+   * the jank to a navigation; omit it for a cancelled drag that settled back.
+   */
+  end: (direction?: "prev" | "next") => void;
 }
 
 /**
@@ -50,7 +54,7 @@ export function useConversationSwipeJank(
     sampler.start();
   }, [getSampler]);
 
-  const end = useCallback(() => {
+  const end = useCallback((direction?: "prev" | "next") => {
     const sampler = samplerRef.current;
     if (!sampler?.running) return;
     const summary = sampler.summary();
@@ -59,7 +63,7 @@ export function useConversationSwipeJank(
     // pointer with no rAF tick) yields an empty window — nothing meaningful to
     // report, so skip the event rather than emit a zeroed summary.
     if (summary.sampleCount === 0) return;
-    emitConversationSwipeJank(summary);
+    emitConversationSwipeJank(summary, direction);
   }, []);
 
   // Stop any in-flight sampler if the overlay unmounts mid-gesture.
