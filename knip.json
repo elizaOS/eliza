@@ -648,11 +648,12 @@
       "ignoreDependencies": [
         "@elizaos/core",
         "@elizaos/plugin-anthropic",
-        "@elizaos/plugin-eliza-classic",
+        "@elizaos/plugin-elizacloud",
         "@elizaos/plugin-google-genai",
         "@elizaos/plugin-groq",
         "@elizaos/plugin-localdb",
-        "@elizaos/plugin-openai"
+        "@elizaos/plugin-openai",
+        "@elizaos/plugin-openrouter"
       ]
     },
     "packages/examples/browser-extension/safari": {

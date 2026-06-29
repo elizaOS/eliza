@@ -32,7 +32,7 @@ Per-view UX + code + state inventory of elizaOS **plugin** views (under `plugins
 2. **`SmartglassesView.tsx` (1369 lines)** — 6 stacked bordered panels, ~18 buttons, a 14-row hardware-test gate grid, a Platform tab-strip wrapping 2 sentences of static copy, a 9-row Report table duplicating state shown elsewhere. A lab/QA console masquerading as a top-level navTab.
 3. **`StewardVaultOverview.tsx` (477 lines)** — fully built, never rendered. Delete or wire.
 4. **Wallet `InventoryView.tsx` (2578 lines, ~37 components)** — rail-vs-dashboard duplication (NFTs/LP/positions rendered twice), ~12-badge account header.
-5. **Game operator surfaces** — ~250 lines of triplicated hero chrome + double-HUD (bespoke hero on top of `GameOperatorShell` that already shows the same status/objective/location) + 34vh marketing banner pushing HUD below the fold.
+5. **Game operator surfaces** — ~250 lines of triplicated hero chrome + double-HUD (bespoke hero on top of the legacy shared operator shell that already showed the same status/objective/location) + 34vh marketing banner pushing HUD below the fold.
 6. **Shopify `ShopifySetupCard`** (`ShopifyAppView.tsx:111-261`) — ~150 inline-styled lines (hero, `<p>`, two described `SetupField`s with env-var `<code>`, capability pills) to say "set 2 env vars."
 7. **Vincent legacy card stack** — resolved in the current tree by replacing the old overlay/card implementation with one `VincentSpatialView` shared by GUI, XR, and TUI.
 
@@ -42,7 +42,7 @@ Per-view UX + code + state inventory of elizaOS **plugin** views (under `plugins
 - **Flatten every "wall of bordered boxes"** into borderless icon+color lists — the repo already ships the template (`*SpatialView.tsx`). Targets: orchestrator's 8 sections, tasks-panel's 6 DetailLists, screenshare's 7 metric tiles, model-tester's 8 cards, smartglasses' 6 panels, finances' 3 cards.
 - **Flip wallet + finances to a light surface** (match polymarket, the only one already light).
 - **Delete dead/stub UI:** `StewardVaultOverview.tsx`; keep Vincent's P&L data optional until the profile route returns real data.
-- **Extract the triplicated game hero chrome once** (or delete in favor of `GameOperatorShell`); kill double-HUD + triple status badges; shrink the 34vh banner to a thin status-dot bar.
+- **Extract the triplicated game hero chrome once** (or delete in favor of one shared operator shell); kill double-HUD + triple status badges; shrink the 34vh banner to a thin status-dot bar.
 - **Move human-in-the-loop approvals (Steward) INTO chat** — it's a yes/no agent prompt by nature.
 - **Drop all manual refresh buttons** — polling already exists everywhere; refresh via chat.
 - **Fix brand color drift** (`#ff5800`→`#ff8a24`; XR indigo→orange, lighten bg).
@@ -354,7 +354,7 @@ Spatial views are the lightest already (trajectory-logger, facewear both ship a 
 
 # Part E — Games (chrome/HUD only)
 
-**Architectural note (all 5):** the React views do NOT render the game canvas — the canvas is a fullscreen `<iframe>` served from each plugin's `routes.ts` (`GET /api/apps/<game>/viewer`) embedding a remote client. The iframe wrapper HTML is minimal and fine (`plugin-scape/src/routes.ts:218-272`). The reviewed `*OperatorSurface.tsx` files are the **operator/spectator dashboard chrome** beside the game — that's where all the slop lives. Two visual systems: scape/2004scape use shared token-aware game-surface primitives with a 34vh hero + 4-chip strip + many stacked cards; clawville/hyperscape/defense use a hand-rolled `HeroHeader`+`StatusStripCard`+`HeroFrame` trio copy-pasted ~250 lines into all three (only accent/emoji differ) + `GameOperatorShell`.
+**Architectural note (all 5):** the React views do NOT render the game canvas — the canvas is a fullscreen `<iframe>` served from each plugin's `routes.ts` (`GET /api/apps/<game>/viewer`) embedding a remote client. The iframe wrapper HTML is minimal and fine (`plugin-scape/src/routes.ts:218-272`). The reviewed `*OperatorSurface.tsx` files are the **operator/spectator dashboard chrome** beside the game — that's where all the slop lives. Two visual systems: scape/2004scape use shared token-aware game-surface primitives with a 34vh hero + 4-chip strip + many stacked cards; clawville/hyperscape/defense use a hand-rolled `HeroHeader`+`StatusStripCard`+`HeroFrame` trio copy-pasted ~250 lines into all three (only accent/emoji differ) plus the legacy shared operator shell.
 
 ## 1. plugin-scape — `scape` — `plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx` (~1040 lines)
 
@@ -381,13 +381,13 @@ Spatial views are the lightest already (trajectory-logger, facewear both ship a 
 ## 3. plugin-clawville — `clawville` — `plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx`
 
 - **Purpose:** Operator panel for ClawVille (sea-themed 3D agent game). ViewDecl `index.ts:41-82`.
-- **Real or stub?** **REAL.** `client.sendAppRunMessage`, live telemetry, optimistic event log, `GameOperatorShell`. Game = real iframe (clawville.world).
+- **Real or stub?** **REAL.** `client.sendAppRunMessage`, live telemetry, optimistic event log, legacy shared operator shell. Game = real iframe (clawville.world).
 - **States:** no-run "empty" (`:507-546`), live (`:561`); status→live/attention/idle (`:62-66`); sending-command in flight.
-- **Chrome/HUD:** hand-rolled `HeroHeader` (34vh + blur status chip + accent CTA `:185-273`) → 3 `StatusStripCard`s (Location/Relay/Goal) → `GameOperatorShell` (own title + statusLabel + objective + detailItems + actions + feed + composer); empty state adds a 🦀 waiting-zone (`:379-414`).
+- **Chrome/HUD:** hand-rolled `HeroHeader` (34vh + blur status chip + accent CTA `:185-273`) → 3 `StatusStripCard`s (Location/Relay/Goal) → legacy shared operator shell (own title + statusLabel + objective + detailItems + actions + feed + composer); empty state adds a 🦀 waiting-zone (`:379-414`).
 
   **Heaviest offending JSX** — the `HeroHeader` (`:196-272`, ~80 inline-styled lines, **byte-identical to hyperscape** except accent/emoji).
-- **Heaviness / slop critique:** **Double-HUD** — bespoke hero+strip AND `GameOperatorShell` (which has its own status/objective/location), so status/objective/location render **twice**. 34vh marketing banner eats a third of the panel before any operational info. ~250 lines duplicated verbatim across this + hyperscape. Emoji icons (🦀🏘💬⚡📍🎯) clash with the orange/blue/flat brand.
-- **Minimization recommendations:** Delete the bespoke `HeroHeader`/`StatusStripCard`/`HeroFrame`; let `GameOperatorShell` be the sole chrome. If a banner stays, shrink to a thin title bar + status dot. Extract the one shared shell (stop triplicating). Replace emoji with brand icons + orange/blue.
+- **Heaviness / slop critique:** **Double-HUD** — bespoke hero+strip AND the legacy shared operator shell (which had its own status/objective/location), so status/objective/location render **twice**. 34vh marketing banner eats a third of the panel before any operational info. ~250 lines duplicated verbatim across this + hyperscape. Emoji icons (🦀🏘💬⚡📍🎯) clash with the orange/blue/flat brand.
+- **Minimization recommendations:** Delete the bespoke `HeroHeader`/`StatusStripCard`/`HeroFrame` or fold it into one shared shell. If a banner stays, shrink to a thin title bar + status dot. Extract the one shared shell (stop triplicating). Replace emoji with brand icons + orange/blue.
 
 ## 4. plugin-hyperscape — `hyperscape` — `plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx`
 
@@ -402,8 +402,8 @@ Spatial views are the lightest already (trajectory-logger, facewear both ship a 
 
 ### Part E cross-cutting (highest leverage)
 
-1. **~250 lines of `HeroHeader`+`StatusStripCard`+`HeroFrame` copy-pasted byte-for-byte** across clawville/hyperscape (only accent + emoji differ) — extract once / fold into `GameOperatorShell`.
-2. **Double-HUD** (clawville) — bespoke hero+strip on top of `GameOperatorShell` which already shows status/objective/detail.
+1. **~250 lines of `HeroHeader`+`StatusStripCard`+`HeroFrame` copy-pasted byte-for-byte** across clawville/hyperscape (only accent + emoji differ) — extract once / fold into one shared operator shell.
+2. **Double-HUD** (clawville) — bespoke hero+strip on top of a shared shell that already shows status/objective/detail.
 3. **Triple status restatement** (scape/2004scape/hyperscape) — hero pill + 4-chip strip + `SurfaceBadge` row + often a Health card.
 4. **34vh marketing hero banner** pushes operational HUD below the fold — a thin title + status-dot bar is enough.
 5. **Card sprawl** surfaces connection/auth plumbing ("Viewer does not need app auth", "Waiting for the command bridge") as game HUD.

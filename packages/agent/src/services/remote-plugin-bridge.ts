@@ -44,12 +44,13 @@ import type {
 import {
   fromWireError,
   toWireError,
-} from "@elizaos/plugin-worker-runtime/error";
+} from "@elizaos/plugin-remote-manifest/worker-runtime/error";
 import * as z from "zod";
 
 /**
  * Schema for the announce/dynamic descriptor the worker emits via
- * {@link buildAnnounceDescriptor} (packages/plugin-worker-runtime/src/descriptor.ts).
+ * {@link buildAnnounceDescriptor}
+ * (packages/plugin-remote-manifest/src/worker-runtime/descriptor.ts).
  *
  * The descriptor is untrusted JSON crossing the host↔worker RPC boundary, so
  * it is parsed once at ingress instead of being blind-cast field by field.

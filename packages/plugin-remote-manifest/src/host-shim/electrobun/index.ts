@@ -16,11 +16,8 @@
  * ```
  */
 
-import {
-  installHostShim,
-  type PluginHostShim,
-} from "../index.js";
 import type { JsonValue } from "../../index.js";
+import { installHostShim, type PluginHostShim } from "../index.js";
 
 interface ElectrobunBridge {
   postMessage(message: unknown): void;

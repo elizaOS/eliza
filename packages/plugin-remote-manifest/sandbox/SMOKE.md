@@ -16,7 +16,7 @@ mkdir -p "${HOME}/.cache/eliza-sub-agent/${SESSION}" "/tmp/eliza-sub-agent-${SES
   -D "SESSION=${SESSION}" \
   -D "HOME=${HOME}" \
   -D "TMPDIR=/tmp/" \
-  -f packages/plugin-sub-agent-claude-code/sandbox/macos.sb \
+  -f packages/plugin-remote-manifest/sandbox/macos.sb \
   /bin/cat "${WORKSPACE}/README.md" >/dev/null && echo "ok: workspace read"
 
 # 2. /etc/passwd read MUST fail (sandbox violation).
@@ -25,7 +25,7 @@ mkdir -p "${HOME}/.cache/eliza-sub-agent/${SESSION}" "/tmp/eliza-sub-agent-${SES
   -D "SESSION=${SESSION}" \
   -D "HOME=${HOME}" \
   -D "TMPDIR=/tmp/" \
-  -f packages/plugin-sub-agent-claude-code/sandbox/macos.sb \
+  -f packages/plugin-remote-manifest/sandbox/macos.sb \
   /bin/cat /etc/passwd && echo "FAIL: /etc/passwd readable" || echo "ok: /etc/passwd denied"
 
 # 3. ~/.ssh read MUST fail.
@@ -34,7 +34,7 @@ mkdir -p "${HOME}/.cache/eliza-sub-agent/${SESSION}" "/tmp/eliza-sub-agent-${SES
   -D "SESSION=${SESSION}" \
   -D "HOME=${HOME}" \
   -D "TMPDIR=/tmp/" \
-  -f packages/plugin-sub-agent-claude-code/sandbox/macos.sb \
+  -f packages/plugin-remote-manifest/sandbox/macos.sb \
   /bin/ls "${HOME}/.ssh" && echo "FAIL: ~/.ssh readable" || echo "ok: ~/.ssh denied"
 ```
 
@@ -51,7 +51,7 @@ ok: ~/.ssh denied
 ```bash
 WORKSPACE="$(pwd)"
 SESSION="smoke-$(date +%s)"
-packages/plugin-sub-agent-claude-code/sandbox/linux-bwrap.sh \
+packages/plugin-remote-manifest/sandbox/linux-bwrap.sh \
   "${WORKSPACE}" "${SESSION}" -- /bin/cat /etc/passwd \
   && echo "FAIL: /etc/passwd readable" || echo "ok: /etc/passwd denied"
 ```

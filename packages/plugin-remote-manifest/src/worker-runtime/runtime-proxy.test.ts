@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { RemotePluginWorkerMessage } from "@elizaos/plugin-remote-manifest";
+import type { RemotePluginWorkerMessage } from "../index.js";
 import type { WorkerChannel } from "./envelope.js";
 import { buildRuntimeProxyApi, RuntimeProxy } from "./runtime-proxy.js";
 

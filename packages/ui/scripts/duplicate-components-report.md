@@ -1,6 +1,6 @@
 # Duplicate component candidates in @elizaos/ui
 
-Scanned **981** files, **565** component-like exports.
+Scanned **980** files, **564** component-like exports.
 
 Report JSON: `scripts/duplicate-components-report.json`
 
@@ -347,10 +347,9 @@ _(Showing top 40 by size; pass --verbose for all.)_
 - `AccountList` — src\components\accounts\AccountList.tsx
 - `AccountRequiredCard` — src\components\chat\AccountRequiredCard.tsx
 
-### `game*` × 3
+### `game*` × 2
 - `GameView` — src\components\apps\GameView.tsx
 - `GameViewOverlay` — src\components\apps\GameViewOverlay.tsx
-- `GameOperatorShell` — src\components\apps\surfaces\GameOperatorShell.tsx
 
 ### `form*` × 3
 - `FormRequest` — src\components\chat\widgets\form-request.tsx

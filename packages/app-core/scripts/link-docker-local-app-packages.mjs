@@ -37,10 +37,9 @@ const localPackages = [
   // boot crashes with "Cannot find package '@elizaos/registry' imported from
   // .../app-core/dist/registry/index.js". Foundational, so listed up here.
   "eliza/packages/registry",
-  // @elizaos/agent's remote-plugin-bridge imports the `./error` subpath of
-  // plugin-worker-runtime eagerly at boot. Without linking it here its
-  // node_modules entry is never established, so boot crashes with
-  // "Cannot find module .../@elizaos/plugin-worker-runtime/dist/error.js".
+  // Compatibility package for remote workers that still import
+  // @elizaos/plugin-worker-runtime. Keep it linked so those historical imports
+  // resolve inside local Docker app packages.
   "eliza/packages/plugin-worker-runtime",
   "eliza/plugins/plugin-companion",
   "eliza/plugins/plugin-elizamaker",

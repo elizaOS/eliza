@@ -164,6 +164,7 @@ describe("buildSandboxedCommand", () => {
     const wrapper = resolve(
       dirname(fileURLToPath(import.meta.url)),
       "..",
+      "..",
       "sandbox",
       "linux-bwrap.sh",
     );

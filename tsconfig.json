@@ -165,6 +165,9 @@
       "@elizaos/plugin-remote-manifest": [
         "./packages/plugin-remote-manifest/src/index.ts"
       ],
+      "@elizaos/plugin-remote-manifest/*": [
+        "./packages/plugin-remote-manifest/src/*"
+      ],
       "@elizaos/plugin-shell": ["./plugins/plugin-shell/index.ts"],
       "@elizaos/plugin-shopify": ["./plugins/plugin-shopify/src/index.ts"],
       "@elizaos/plugin-signal": ["./plugins/plugin-signal/src/index.ts"],
@@ -183,12 +186,6 @@
       "@elizaos/plugin-wechat": ["./plugins/plugin-wechat/src/index.ts"],
       "@elizaos/plugin-whatsapp": ["./plugins/plugin-whatsapp/src/index.ts"],
       "@elizaos/plugin-wifi": ["./plugins/plugin-wifi/src/index.ts"],
-      "@elizaos/plugin-worker-runtime": [
-        "./packages/plugin-worker-runtime/src/index.ts"
-      ],
-      "@elizaos/plugin-worker-runtime/*": [
-        "./packages/plugin-worker-runtime/src/*"
-      ],
       "@elizaos/plugin-workflow": ["./plugins/plugin-workflow/src/index.ts"],
       "@elizaos/plugin-x402": ["./plugins/plugin-x402/src/index.ts"],
       "@elizaos/security": ["./packages/security/src/index.ts"],

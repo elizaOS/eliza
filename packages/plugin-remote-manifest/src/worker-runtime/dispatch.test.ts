@@ -1,13 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import type {
-  RemotePluginWorkerMessage,
-  WorkerRpcMessage,
-  WorkerRpcResultMessage,
-} from "@elizaos/plugin-remote-manifest";
-import {
-  canonicalRpcBytes,
-  hexEncode,
-} from "@elizaos/plugin-remote-manifest/rpc-mac";
 import {
   AuditDispatcher,
   InMemorySink,
@@ -15,6 +6,12 @@ import {
   systemKey,
 } from "@elizaos/security";
 import fc from "fast-check";
+import type {
+  RemotePluginWorkerMessage,
+  WorkerRpcMessage,
+  WorkerRpcResultMessage,
+} from "../index.js";
+import { canonicalRpcBytes, hexEncode } from "../rpc-mac.js";
 import type { HandlerEntry, HandlerRegistry } from "./descriptor.js";
 import { createWorkerRpcDispatcher } from "./dispatch.js";
 

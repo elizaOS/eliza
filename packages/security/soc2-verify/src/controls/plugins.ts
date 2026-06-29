@@ -53,7 +53,7 @@ export const subagentEnvAllowlist: Check = {
   async run(ctx): Promise<CheckResult> {
     const path = join(
       ctx.elizaRoot,
-      "packages/plugin-sub-agent-claude-code/src/sub-agent-service.ts",
+      "packages/plugin-remote-manifest/src/sub-agent-claude-code/sub-agent-service.ts",
     );
     const src = readUtf8Safe(path);
     if (!src) {

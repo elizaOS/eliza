@@ -65,7 +65,7 @@ I'll synthesize the 12 domain audits into a master document. Let me produce the 
 - **SubAgentRouter** (terminal-event → synthetic memory, routing keys, round-trip cap) — `src/services/sub-agent-router.ts`
 - **OrchestratorTaskService** (durable task store + ACP bridge) — `src/services/orchestrator-task-service.ts`
 - **task-agent-routing / interruption-decider / sub-agent-inbox / coding-account-selection / spawn-trajectory** — same `src/services/` dir
-- **Separate sandboxed claude-CLI driver** (not ACP) — `packages/plugin-sub-agent-claude-code/src/sub-agent-service.ts`
+- **Separate sandboxed claude-CLI driver** (not ACP) — `packages/plugin-remote-manifest/src/sub-agent-claude-code/sub-agent-service.ts`
 - **SWE-bench trajectory benchmark harness + viewer** — `packages/benchmarks/orchestrator`
 
 ### C. Smithers engines

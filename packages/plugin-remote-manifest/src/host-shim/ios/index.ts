@@ -14,11 +14,8 @@
  *     { kind: "event",    event, data }
  */
 
-import {
-  installHostShim,
-  type PluginHostShim,
-} from "../index.js";
 import type { JsonValue } from "../../index.js";
+import { installHostShim, type PluginHostShim } from "../index.js";
 
 interface IosMessageHandler {
   postMessage(message: unknown): void;

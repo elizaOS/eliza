@@ -1,6 +1,8 @@
 # @elizaos/plugin-sub-agent-claude-code
 
-elizaOS plugin that drives the [Claude Code](https://github.com/anthropics/claude-code) CLI as a sub-agent inside an isolated subprocess.
+Compatibility package for the remote-mode Claude Code sub-agent plugin.
+
+The implementation now lives in `@elizaos/plugin-remote-manifest/sub-agent-claude-code`; this package keeps the historical `@elizaos/plugin-sub-agent-claude-code` imports working.
 
 ## What it does
 
@@ -16,12 +18,12 @@ Hardening covers SOC2 controls A-2, A-3, and O-8:
 - **Env filtering** — only an explicit allowlist of env keys is forwarded to the child process; a blocklist regex drops any credential-shaped keys.
 - **CWD validation** — the working directory is resolved via `realpath` and must be under a workspace root or `/tmp`; symlink escapes are rejected.
 - **Binary allowlisting** — the `claude` binary is resolved against a static whitelist of directories (`/usr/local/bin`, `/opt/homebrew/bin`, `~/.local/bin`, `~/.bun/bin`, etc.).
-- **OS sandboxing** — macOS uses `sandbox-exec` with a Seatbelt profile (`sandbox/macos.sb`); Linux uses `bwrap` via `sandbox/linux-bwrap.sh`. When neither helper is available the plugin logs a WARN and falls back to allowlist-only.
+- **OS sandboxing** — macOS uses `sandbox-exec` with a Seatbelt profile (`packages/plugin-remote-manifest/sandbox/macos.sb`); Linux uses `bwrap` via `packages/plugin-remote-manifest/sandbox/linux-bwrap.sh`. When neither helper is available the plugin logs a WARN and falls back to allowlist-only.
 - **Session transcripts** — each session's I/O is redacted and written to `~/.eliza/sub-agent-sessions/<sessionId>/transcript.log`; an audit event carrying the transcript hash is emitted on termination.
 
 ## Installation
 
-This package is `private: true` and intended for use as a workspace dependency within the elizaOS monorepo. It is loaded via `plugin-worker-runtime`'s remote-plugin mechanism:
+This package is `private: true` and intended for use as a workspace dependency within the elizaOS monorepo. It is a wrapper around the implementation in `@elizaos/plugin-remote-manifest/sub-agent-claude-code` and is loaded via the worker-runtime remote-plugin mechanism:
 
 ```ts
 import { plugin } from "@elizaos/plugin-sub-agent-claude-code";
@@ -75,7 +77,7 @@ await svc.terminate({ sessionId });
 
 ## Sandbox smoke tests
 
-See `sandbox/SMOKE.md` for manual verification steps confirming the macOS and Linux sandbox profiles block reads outside the workspace root.
+See `packages/plugin-remote-manifest/sandbox/SMOKE.md` for manual verification steps confirming the macOS and Linux sandbox profiles block reads outside the workspace root.
 
 ## Development
 
@@ -85,3 +87,5 @@ bun run --cwd packages/plugin-sub-agent-claude-code typecheck
 bun run --cwd packages/plugin-sub-agent-claude-code test
 bun run --cwd packages/plugin-sub-agent-claude-code lint
 ```
+
+Implementation changes belong in `packages/plugin-remote-manifest/src/sub-agent-claude-code/`; keep this package limited to compatibility re-exports unless the public compatibility surface itself changes.

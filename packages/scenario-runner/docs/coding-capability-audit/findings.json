@@ -344,7 +344,7 @@
       },
       {
         "component": "plugin-sub-agent-claude-code (sandboxed claude CLI driver, NOT ACP)",
-        "path": "packages/plugin-sub-agent-claude-code/src/sub-agent-service.ts",
+        "path": "packages/plugin-remote-manifest/src/sub-agent-claude-code/sub-agent-service.ts",
         "whatItDoes": "Separate plugin: wraps the claude CLI in an OS-sandboxed (sandbox-exec/bwrap) Bun subprocess with env allowlist/blocklist, cwd realpath validation, binary allowlisting, redacted session transcripts + audit hash. Has unit tests (sandbox, sub-agent-service, session-recorder, plugin). Not part of the ACP transport path.",
         "maturity": "partial"
       },
@@ -411,7 +411,7 @@
         "gaps": "Standalone bun scripts, not in CI/vitest; skip without creds; output is console text only, no saved trajectory/screenshot/video/timeline artifact; only codex + opencode (no claude/elizaos/pi-agent live build)."
       },
       {
-        "path": "packages/plugin-sub-agent-claude-code/src/*.test.ts (sandbox, sub-agent-service, session-recorder, plugin)",
+        "path": "packages/plugin-remote-manifest/src/sub-agent-claude-code/*.test.ts (sandbox, sub-agent-service, session-recorder, plugin)",
         "kind": "unit",
         "covers": "Env filtering, cwd/symlink validation, binary allowlist, OS sandbox fallback, redacted transcripts + audit hash for the claude-CLI driver.",
         "gaps": "Separate from ACP path; no live claude-CLI spawn test, no artifact evidence."
@@ -524,7 +524,7 @@
       "/Users/shawwalters/eliza/plugins/plugin-agent-orchestrator/src/__tests__/task-agent-live.e2e.test.ts",
       "/Users/shawwalters/eliza/packages/core/test/live/task-agent-live-smoke.ts",
       "/Users/shawwalters/eliza/plugins/plugin-agent-orchestrator/__tests__/unit/multi-account-spawn.test.ts",
-      "/Users/shawwalters/eliza/packages/plugin-sub-agent-claude-code/src/sub-agent-service.ts",
+      "/Users/shawwalters/eliza/packages/plugin-remote-manifest/src/sub-agent-claude-code/sub-agent-service.ts",
       "/Users/shawwalters/eliza/packages/sweagent/README.md",
       "/Users/shawwalters/eliza/packages/benchmarks/orchestrator/README.md"
     ]
@@ -1837,7 +1837,7 @@
   },
   {
     "domain": "Platform coverage for coding agents (cloud / desktop / AOSP / Debian / Google Play / iOS, plus remote-container delegation)",
-    "summary": "elizaOS has two real, distinct coding-execution substrates and a clean per-platform gate between them. (1) Local subprocess/PTY execution via @elizaos/plugin-agent-orchestrator, which spawns ACP coding agents (claude/codex/opencode/elizaos/pi-agent) and is gated at plugin-construction time by isLocalCodeExecutionAllowed() (direct build only) AND detectOrchestratorTerminalSupport() (shell + runtime-mode checks). (2) Remote-container execution via E2BRemoteCapabilityRouterService (providers: e2b, eliza-cloud, home) which routes fs/pty/git capabilities over HTTP to a hosted runner (packages/cloud/services/coding-remote-runner), with the cloud control plane provisioning coding containers (packages/cloud/api/v1/coding-containers + cloud-shared coding-containers service + agent-sandboxes repo). Platform reality: desktop (Electrobun, direct build) and cloud both run local execution with fs access; STORE builds (Mac App Store/MS Store/Flathub) are hard-blocked to a TASKS stub; iOS is blocked entirely (no shell) and is expected to delegate to remote containers via the same agent runtime; Android/AOSP direct builds can run local execution only with local-yolo mode + a staged /system/bin/sh, otherwise stub. IMPORTANT framing correction: plugin-host-shim-android/ios/electrobun, plugin-worker-runtime, and plugin-remote-manifest are NOT coding-agent infrastructure — they are the wire bridge for remote-mode plugin VIEW bundles / remote plugin execution; they live under packages/ (not plugins/) and are unrelated to running coding agents. Maturity is partial-to-solid in source and unit/integration tests, but there is essentially NO captured cross-platform evidence (no trajectory/screenshot/video/timeline of a coding agent actually creating/modifying code on AOSP/Debian/iOS/Play, nor of the iOS->remote-container delegation end-to-end).",
+    "summary": "elizaOS has two real, distinct coding-execution substrates and a clean per-platform gate between them. (1) Local subprocess/PTY execution via @elizaos/plugin-agent-orchestrator, which spawns ACP coding agents (claude/codex/opencode/elizaos/pi-agent) and is gated at plugin-construction time by isLocalCodeExecutionAllowed() (direct build only) AND detectOrchestratorTerminalSupport() (shell + runtime-mode checks). (2) Remote-container execution via E2BRemoteCapabilityRouterService (providers: e2b, eliza-cloud, home) which routes fs/pty/git capabilities over HTTP to a hosted runner (packages/cloud/services/coding-remote-runner), with the cloud control plane provisioning coding containers (packages/cloud/api/v1/coding-containers + cloud-shared coding-containers service + agent-sandboxes repo). Platform reality: desktop (Electrobun, direct build) and cloud both run local execution with fs access; STORE builds (Mac App Store/MS Store/Flathub) are hard-blocked to a TASKS stub; iOS is blocked entirely (no shell) and is expected to delegate to remote containers via the same agent runtime; Android/AOSP direct builds can run local execution only with local-yolo mode + a staged /system/bin/sh, otherwise stub. IMPORTANT framing correction: plugin-remote-manifest host-shim subpaths, plugin-worker-runtime, and plugin-remote-manifest are NOT coding-agent infrastructure — they are the wire bridge for remote-mode plugin VIEW bundles / remote plugin execution; they live under packages/ (not plugins/) and are unrelated to running coding agents. Maturity is partial-to-solid in source and unit/integration tests, but there is essentially NO captured cross-platform evidence (no trajectory/screenshot/video/timeline of a coding agent actually creating/modifying code on AOSP/Debian/iOS/Play, nor of the iOS->remote-container delegation end-to-end).",
     "maturity": "partial",
     "existing": [
       {
@@ -1908,7 +1908,7 @@
       },
       {
         "component": "Host-shim / worker-runtime / remote-manifest (plugin view + remote-plugin wire, NOT coding)",
-        "path": "/Users/shawwalters/eliza/packages/plugin-host-shim{,-android,-ios,-electrobun} + /Users/shawwalters/eliza/packages/plugin-worker-runtime + /Users/shawwalters/eliza/packages/plugin-remote-manifest",
+        "path": "/Users/shawwalters/eliza/packages/plugin-remote-manifest/src/host-shim{,/android,/ios,/electrobun} + /Users/shawwalters/eliza/packages/plugin-worker-runtime + /Users/shawwalters/eliza/packages/plugin-remote-manifest",
         "whatItDoes": "PluginHostShim is the cross-platform bridge for remote-mode plugin VIEW bundles (Electrobun/iOS WKWebView/Android WebView/web iframe). worker-runtime bootstraps remote plugin execution in a Worker; remote-manifest defines the wire types. Mislabeled in the task as coding infra — these are plugin-UI/remote-plugin infra.",
         "maturity": "solid"
       }
@@ -2069,8 +2069,8 @@
       "/Users/shawwalters/eliza/plugins/plugin-native-mobile-agent-bridge/src/index.ts",
       "/Users/shawwalters/eliza/packages/os/android/Makefile",
       "/Users/shawwalters/eliza/packages/os/linux/Justfile",
-      "/Users/shawwalters/eliza/packages/plugin-host-shim/src/index.ts",
-      "/Users/shawwalters/eliza/packages/plugin-worker-runtime/src/bootstrap.ts"
+      "/Users/shawwalters/eliza/packages/plugin-remote-manifest/src/host-shim/index.ts",
+      "/Users/shawwalters/eliza/packages/plugin-remote-manifest/src/worker-runtime/bootstrap.ts"
     ]
   },
   {

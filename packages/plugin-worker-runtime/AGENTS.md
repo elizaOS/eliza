@@ -1,31 +1,38 @@
 # @elizaos/plugin-worker-runtime
 
-Worker-side bootstrap for remote-mode elizaOS plugins: announces plugin surfaces over the wire, dispatches incoming `worker-rpc` invocations, and marshals runtime calls back to the host via `RuntimeProxy`.
+Compatibility package for the worker-side remote-plugin runtime. The implementation now lives in
+`@elizaos/plugin-remote-manifest/worker-runtime`; this package keeps the historical
+`@elizaos/plugin-worker-runtime` imports working.
 
 ## Purpose / role
 
-This package is the **in-worker half** of the remote-plugin execution model. A plugin author writes a normal elizaOS `Plugin` object, then calls `bootstrap(plugin)` inside a Bun Worker or subprocess. The bootstrap walks every surface (`actions`, `providers`, `services`, `models`, `events`, `evaluators`, `routes`), serialises all functions as `{ rpc: true, id }` refs in a JSON descriptor, sends that descriptor to the host, and then enters steady-state dispatch mode.
+This package is a thin wrapper around the **in-worker half** of the remote-plugin execution model in
+`packages/plugin-remote-manifest/src/worker-runtime/`. A plugin author writes a normal elizaOS
+`Plugin` object, then calls `bootstrap(plugin)` inside a Bun Worker or subprocess. The bootstrap
+walks every surface (`actions`, `providers`, `services`, `models`, `events`, `evaluators`, `routes`),
+serialises all functions as `{ rpc: true, id }` refs in a JSON descriptor, sends that descriptor to
+the host, and then enters steady-state dispatch mode.
 
-The complementary host-side runner lives in `packages/agent/src/services/remote-plugin-bridge.ts`. That file imports `@elizaos/plugin-worker-runtime/error` for error rehydration.
+The complementary host-side runner lives in `packages/agent/src/services/remote-plugin-bridge.ts`. That file imports `@elizaos/plugin-remote-manifest/worker-runtime/error` for error rehydration.
 
-The wire message types are defined in `@elizaos/plugin-remote-manifest`. Security primitives (HMAC verification, audit dispatch) come from `@elizaos/security`.
+The wire message types, worker runtime implementation, and consolidated exports are defined in
+`@elizaos/plugin-remote-manifest`. Security primitives (HMAC verification, audit dispatch) come from
+`@elizaos/security`.
 
 ## Layout
 
 ```
 src/
+  index.ts/runtime-proxy.ts/bootstrap.ts/... Compatibility re-exports from
+    `@elizaos/plugin-remote-manifest/worker-runtime*`
+
+packages/plugin-remote-manifest/src/worker-runtime/
   index.ts           Re-exports all public symbols; serves as the "." export
   bootstrap.ts       bootstrap() — the author-facing entrypoint
-  bootstrap.test.ts  Unit tests for bootstrap
   descriptor.ts      buildAnnounceDescriptor(), HandlerRegistry, WorkerPluginShape
-  descriptor.test.ts Unit tests for descriptor
   dispatch.ts        createWorkerRpcDispatcher() — routes worker-rpc to live handlers
-  dispatch.test.ts   Unit tests for the dispatcher
   envelope.ts        WorkerChannel contract + createWorkerChannel / createSubprocessChannel
-                       / createDefaultChannel / createRequestIdAllocator
-  envelope.test.ts   Unit tests for envelope/channel
   runtime-proxy.ts   RuntimeProxy class + buildRuntimeProxyApi() + SUPPORTED_RUNTIME_METHODS
-  runtime-proxy.test.ts Unit tests for runtime proxy
   error.ts           toWireError / fromWireError / WireError — error serialisation
 ```
 

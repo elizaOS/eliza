@@ -7,11 +7,8 @@
  * responses back as JSON via `globalThis.__elizaosAndroidDeliver(...)`.
  */
 
-import {
-  installHostShim,
-  type PluginHostShim,
-} from "../index.js";
 import type { JsonValue } from "../../index.js";
+import { installHostShim, type PluginHostShim } from "../index.js";
 
 interface AndroidBridge {
   postMessage(message: string): void;

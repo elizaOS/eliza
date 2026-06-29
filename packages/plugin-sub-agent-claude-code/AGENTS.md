@@ -1,33 +1,44 @@
 # @elizaos/plugin-sub-agent-claude-code
 
-Reference remote-mode sub-agent plugin: drives the Claude Code CLI inside an isolated Bun subprocess via `ClaudeCodeSubAgentService`.
+Compatibility package for the reference remote-mode Claude Code sub-agent. The implementation now
+lives in `@elizaos/plugin-remote-manifest/sub-agent-claude-code`; this package keeps the historical
+`@elizaos/plugin-sub-agent-claude-code` imports working.
 
 ## Purpose / role
 
-This plugin lets an Eliza agent spawn and communicate with the Claude Code CLI as a subprocess, with OS-level sandboxing (macOS `sandbox-exec`, Linux `bwrap`) and SOC2-aligned hardening for env filtering, cwd validation, and binary allowlisting. It implements the `plugin-worker-runtime` remote-plugin contract and is loaded via `runtime.installRemotePlugin(plugin, { source: { kind: "workspace", pkgName: "@elizaos/plugin-sub-agent-claude-code" } })`. The worker entry is `dist/worker.js`; the host entry (`dist/plugin.js`) exports the `Plugin` descriptor. For repo-wide conventions see the root `AGENTS.md`.
+This compatibility package lets an Eliza agent spawn and communicate with the Claude Code CLI as a
+subprocess, with OS-level sandboxing (macOS `sandbox-exec`, Linux `bwrap`) and SOC2-aligned
+hardening for env filtering, cwd validation, and binary allowlisting. It implements the consolidated
+`@elizaos/plugin-remote-manifest/worker-runtime` remote-plugin contract and is loaded via
+`runtime.installRemotePlugin(plugin, { source: { kind: "workspace", pkgName: "@elizaos/plugin-sub-agent-claude-code" } })`.
+The wrapper worker entry is `dist/worker.js`; the wrapper host entry (`dist/plugin.js`) re-exports
+the `Plugin` descriptor from `@elizaos/plugin-remote-manifest/sub-agent-claude-code`. For repo-wide
+conventions see the root `AGENTS.md`.
 
 ## Layout
 
 ```
 packages/plugin-sub-agent-claude-code/
   src/
-    plugin.ts            Plugin descriptor export (entry for host-side)
-    plugin.test.ts       Unit tests for plugin.ts
-    worker.ts            Worker entrypoint: calls bootstrap(plugin)
-    sub-agent-service.ts ClaudeCodeSubAgentService — session lifecycle, spawn, RPC
-    sub-agent-service.test.ts Unit tests for sub-agent-service.ts
-    sandbox.ts           OS sandboxing helpers (filterEnv, resolveSafeCwd, resolveSafeBinary, buildSandboxedCommand)
-    sandbox.test.ts      Unit tests for sandbox.ts helpers
-    session-recorder.ts  Per-session transcript writer + pruneOldSessions (SOC2 O-8)
-    session-recorder.test.ts Unit tests for session-recorder.ts
-  sandbox/
-    macos.sb             macOS sandbox-exec profile (Seatbelt)
-    linux-bwrap.sh       Linux bwrap wrapper script
-    SMOKE.md             Manual sandbox verification steps
+    plugin.ts / worker.ts / sub-agent-service.ts / sandbox.ts / session-recorder.ts
+                         Compatibility re-exports from
+                         `@elizaos/plugin-remote-manifest/sub-agent-claude-code*`
   dist/                  Build output (plugin.js, worker.js, *.d.ts)
   tsconfig.json
   tsconfig.build.json
   package.json
+
+packages/plugin-remote-manifest/src/sub-agent-claude-code/
+  plugin.ts              Plugin descriptor export
+  worker.ts              Worker entrypoint: calls bootstrap(plugin)
+  sub-agent-service.ts   ClaudeCodeSubAgentService — session lifecycle, spawn, RPC
+  sandbox.ts             OS sandboxing helpers
+  session-recorder.ts    Per-session transcript writer + pruneOldSessions (SOC2 O-8)
+
+packages/plugin-remote-manifest/sandbox/
+  macos.sb               macOS sandbox-exec profile (Seatbelt)
+  linux-bwrap.sh         Linux bwrap wrapper script
+  SMOKE.md               Manual sandbox verification steps
 ```
 
 ## Key exports / surface
@@ -86,10 +97,10 @@ bun run --cwd packages/plugin-sub-agent-claude-code clean
 3. The worker-runtime dispatch loop will route calls to it automatically.
 
 **Change sandbox permissions (macOS):**
-Edit `sandbox/macos.sb` (Seatbelt profile). Key parameters passed by `buildSandboxedCommand`: `WORKSPACE`, `SESSION`, `HOME`, `TMPDIR`. Run the smoke tests in `sandbox/SMOKE.md` after changes.
+Edit `packages/plugin-remote-manifest/sandbox/macos.sb` (Seatbelt profile). Key parameters passed by `buildSandboxedCommand`: `WORKSPACE`, `SESSION`, `HOME`, `TMPDIR`. Run the smoke tests in `packages/plugin-remote-manifest/sandbox/SMOKE.md` after changes.
 
 **Change sandbox permissions (Linux):**
-Edit `sandbox/linux-bwrap.sh`. The script receives `workspaceRoot` and `sessionId` as positional args before `--`.
+Edit `packages/plugin-remote-manifest/sandbox/linux-bwrap.sh`. The script receives `workspaceRoot` and `sessionId` as positional args before `--`.
 
 **Add a new whitelisted binary directory:**
 Add the absolute path to `BINARY_DIR_ALLOWLIST` in `src/sandbox.ts`.
