@@ -38,6 +38,8 @@
     "test:sim:auth:android": "node ../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs --platform android",
     "test:sim:auth:contract": "node ../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs --registration-only",
     "test:sim:auth:ios": "node ../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs --platform ios",
+    "capture:ios-sim": "node scripts/capture-ios-sim.mjs",
+    "capture:android-emu": "node scripts/capture-android-emu.mjs",
     "test:watch": "vitest --config vitest.config.ts",
     "plugin:build": "bun scripts/plugin-build.mjs",
     "build": "bun scripts/build.mjs",
