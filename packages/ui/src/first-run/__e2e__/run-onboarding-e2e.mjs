@@ -1,12 +1,8 @@
 /**
- * Real-browser flow + screenshot pass for the in-chat first-run flow (#9952) —
- * no app server. Bundles onboarding-fixture.tsx with esbuild (stubbing the
- * first-run controller + the app-store `setTab`), loads it in headless chromium,
- * drives BOTH the cloud and local paths through the real ChoiceWidget /
- * CredentialRequestWidget callbacks, and asserts the agent greets first, the
- * choices render as in-chat widgets, and `POST /api/first-run` fires exactly
- * once per path (with firstRunComplete persisted). Screenshots every state
- * (desktop + mobile) so copy/widgets can be reviewed.
+ * Real-browser flow + screenshot pass for CompactOnboarding. Bundles
+ * onboarding-fixture.tsx with esbuild, stubs the first-run controller, loads it
+ * in headless Chromium, drives the cloud/local/advanced paths, and asserts
+ * `POST /api/first-run` fires exactly once per terminal path.
  *
  * Run: bun run --cwd packages/ui test:onboarding-e2e
  */
@@ -28,8 +24,7 @@ function assert(cond, msg) {
   return cond;
 }
 
-// Stub the first-run controller (runtime/voice/cloud state) and the app-store
-// `setTab` selector with browser-pure stand-ins driven by URL params.
+// Stub the first-run controller with a browser-pure stand-in driven by URL params.
 const stubController = {
   name: "stub-first-run-controller",
   setup(b) {
@@ -38,16 +33,7 @@ const stubController = {
     }));
   },
 };
-const stubAppState = {
-  name: "stub-app-state",
-  setup(b) {
-    b.onResolve({ filter: /\.\.\/state$/ }, () => ({
-      path: join(here, "app-state.stub.ts"),
-    }));
-  },
-};
-
-// FirstRunChat → boot-config-store re-exports `syncBrandEnvToEliza` /
+// CompactOnboarding -> boot-config-store re-exports `syncBrandEnvToEliza` /
 // `syncElizaEnvToBrand` from `@elizaos/core`, whose Node entry pulls fs-extra and
 // the rest of the server graph (dead in the browser). Production Vite resolves
 // core's `browser` export condition; this raw-esbuild bundle does not, so satisfy
@@ -100,12 +86,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [
-    stubController,
-    stubAppState,
-    stubElizaPackages,
-    stubNodeBuiltins,
-  ],
+  plugins: [stubController, stubElizaPackages, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
@@ -132,9 +113,9 @@ function attachConsole(p) {
 
 // Visual states (param-driven page loads) for the contact sheet.
 const STATES = [
-  { q: "", name: "greet-runtime", desktop: true },
-  { q: "?nolocal", name: "greet-no-local-runtime", desktop: true },
-  { q: "?step=inference", name: "provider", desktop: true },
+  { q: "", name: "choose", desktop: true },
+  { q: "?nolocal", name: "choose-no-local-runtime", desktop: true },
+  { q: "?step=inference", name: "inference", desktop: true },
   { q: "?step=remote", name: "remote", desktop: true },
   { q: "?cloudlogin", name: "cloud-signin", desktop: true },
   { q: "?step=pick-agent", name: "pick-agent", desktop: true },
@@ -155,7 +136,7 @@ try {
       });
       attachConsole(p);
       await p.goto(`${url}${st.q}`);
-      await p.waitForSelector('[data-testid="first-run-chat"]', {
+      await p.waitForSelector('[data-testid="onboarding-toast"]', {
         timeout: 10_000,
       });
       await p.waitForTimeout(350);
@@ -164,7 +145,7 @@ try {
     }
   }
 
-  // ── Greeting + runtime choice render (agent greets first) ──────────────
+  // Default runtime choices: cloud + local visible, advanced collapsed.
   {
     const p = await browser.newPage({
       viewport: { width: 402, height: 874 },
@@ -172,29 +153,33 @@ try {
     });
     attachConsole(p);
     await p.goto(url);
-    await p.waitForSelector('[data-testid="first-run-chat"]');
+    await p.waitForSelector('[data-testid="onboarding-toast"]');
     await p.waitForTimeout(200);
-    const greeting = await p.getByTestId("first-run-greeting").textContent();
     assert(
-      (greeting ?? "").toLowerCase().includes("hey there"),
-      "agent greeting is the first surface",
+      await p.getByTestId("onboarding-option-cloud").isVisible(),
+      "cloud sign-in option card is visible",
     );
     assert(
-      await p.getByTestId("choice-cloud").isVisible(),
-      "cloud login is an in-chat ChoiceWidget option",
+      await p.getByTestId("onboarding-option-local").isVisible(),
+      "local runtime option card is visible",
     );
     assert(
-      await p.getByTestId("choice-local").isVisible(),
-      "local runtime is an in-chat ChoiceWidget option",
+      await p.getByTestId("onboarding-advanced-toggle").isVisible(),
+      "advanced disclosure toggle is visible",
     );
     assert(
-      await p.getByTestId("choice-remote").isVisible(),
-      "remote runtime is an in-chat ChoiceWidget option",
+      (await p.getByTestId("onboarding-option-remote").count()) === 0,
+      "remote self-hosted option is hidden until Advanced opens",
+    );
+    await p.getByTestId("onboarding-advanced-toggle").click();
+    assert(
+      await p.getByTestId("onboarding-option-remote").isVisible(),
+      "remote self-hosted option appears after Advanced opens",
     );
     await p.close();
   }
 
-  // ── CLOUD PATH: greet → choose cloud → submit once → complete ──────────
+  // CLOUD PATH: choose cloud -> submit once -> complete.
   {
     const p = await browser.newPage({
       viewport: { width: 402, height: 874 },
@@ -202,8 +187,8 @@ try {
     });
     attachConsole(p);
     await p.goto(url);
-    await p.waitForSelector('[data-testid="first-run-chat"]');
-    await p.getByTestId("choice-cloud").click();
+    await p.waitForSelector('[data-testid="onboarding-toast"]');
+    await p.getByTestId("onboarding-option-cloud").click();
     await p.waitForTimeout(200);
     const submits = await p.evaluate(() => window.__firstRunSubmits ?? 0);
     const complete = await p.evaluate(() => window.__firstRunComplete === true);
@@ -212,7 +197,7 @@ try {
     await p.close();
   }
 
-  // ── LOCAL PATH: greet → choose local → on-device default → complete ────
+  // LOCAL PATH: choose local -> choose on-device inference -> complete.
   {
     const p = await browser.newPage({
       viewport: { width: 402, height: 874 },
@@ -220,19 +205,18 @@ try {
     });
     attachConsole(p);
     await p.goto(url);
-    await p.waitForSelector('[data-testid="first-run-chat"]');
-    await p.getByTestId("choice-local").click();
+    await p.waitForSelector('[data-testid="onboarding-toast"]');
+    await p.getByTestId("onboarding-option-local").click();
     await p.waitForTimeout(150);
-    // The provider question appears; the on-device default is pre-offered.
     assert(
-      await p.getByTestId("choice-on-device").isVisible(),
-      "local path offers the on-device provider (default)",
+      await p.getByTestId("onboarding-inference-local").isVisible(),
+      "local path offers on-device inference",
     );
     assert(
-      await p.getByTestId("choice-elizacloud").isVisible(),
-      "local path offers Eliza Cloud inference too",
+      await p.getByTestId("onboarding-inference-cloud").isVisible(),
+      "local path offers Eliza Cloud inference",
     );
-    await p.getByTestId("choice-on-device").click();
+    await p.getByTestId("onboarding-inference-local").click();
     await p.waitForTimeout(200);
     const submits = await p.evaluate(() => window.__firstRunSubmits ?? 0);
     const complete = await p.evaluate(() => window.__firstRunComplete === true);
@@ -241,21 +225,21 @@ try {
     await p.close();
   }
 
-  // ── "OTHER" provider routes to Settings via the existing handoff ───────
+  // REMOTE PATH: Advanced -> connect my own agent -> remote form.
   {
     const p = await browser.newPage({
       viewport: { width: 402, height: 874 },
       deviceScaleFactor: 2,
     });
     attachConsole(p);
-    await p.goto(`${url}?step=inference`);
-    await p.waitForSelector('[data-testid="first-run-chat"]');
-    await p.getByTestId("choice-other").click();
-    await p.waitForTimeout(250);
-    const routedTab = await p.evaluate(() => window.__firstRunRoutedTab);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="onboarding-toast"]');
+    await p.getByTestId("onboarding-advanced-toggle").click();
+    await p.getByTestId("onboarding-option-remote").click();
+    await p.waitForTimeout(150);
     assert(
-      routedTab === "settings",
-      `"other" provider routes to Settings (got ${routedTab})`,
+      await p.getByTestId("onboarding-remote-connect").isVisible(),
+      "advanced remote path opens the connect form",
     );
     await p.close();
   }
