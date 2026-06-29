@@ -91,10 +91,6 @@
     "description": "Core Node.js plugin for elizaOS that provides essential services and actions for file operations.",
     "tags": ["pdf"]
   },
-  "roblox": {
-    "description": "Roblox app integration for agent-driven gameplay and interactive experiences.",
-    "tags": ["app", "games", "roblox", "interactive"]
-  },
   "s3-storage": {
     "description": "S3-compatible object storage plugin for saving files, media, and generated artifacts.",
     "tags": ["feature", "storage", "files", "s3"]

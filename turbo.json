@@ -6,7 +6,9 @@
     "bunfig.toml",
     "turbo.json",
     "tsconfig.json",
-    "tsconfig.base.json"
+    "tsconfig.base.json",
+    "tsconfig.dist-paths.json",
+    "tsconfig.build.template.json"
   ],
   "tasks": {
     "build": {
