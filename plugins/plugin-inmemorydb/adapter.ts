@@ -593,15 +593,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
     const direction = params.orderDirection ?? "desc";
     memories.sort((a, b) => {
-      const ta = a.createdAt ?? 0;
-      const tb = b.createdAt ?? 0;
+      const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
+      const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
+      const aId = typeof a.id === "string" ? a.id : "";
+      const bId = typeof b.id === "string" ? b.id : "";
       return direction === "asc"
-        ? String(a.id ?? "").localeCompare(String(b.id ?? ""))
-        : String(b.id ?? "").localeCompare(String(a.id ?? ""));
+        ? aId.localeCompare(bId)
+        : bId.localeCompare(aId);
     });
 
-    const offset = params.offset ?? 0;
+    const offset = typeof params.offset === "number" ? params.offset : 0;
     const limit = params.limit ?? params.count;
     if (offset > 0) memories = memories.slice(offset);
     if (limit !== undefined) memories = memories.slice(0, limit);

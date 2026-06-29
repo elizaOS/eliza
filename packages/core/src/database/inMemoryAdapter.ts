@@ -860,15 +860,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// `orderDirection: "asc"` flips it for around-message paging.
 		const direction = params.orderDirection ?? "desc";
 		all = all.slice().sort((a, b) => {
-			const ta = a.createdAt ?? 0;
-			const tb = b.createdAt ?? 0;
+			const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
+			const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
 			if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
+			const aId = typeof a.id === "string" ? a.id : "";
+			const bId = typeof b.id === "string" ? b.id : "";
 			return direction === "asc"
-				? String(a.id ?? "").localeCompare(String(b.id ?? ""))
-				: String(b.id ?? "").localeCompare(String(a.id ?? ""));
+				? aId.localeCompare(bId)
+				: bId.localeCompare(aId);
 		});
 
-		const offset = params.offset ?? 0;
+		const offset = typeof params.offset === "number" ? params.offset : 0;
 		return all.slice(
 			offset,
 			offset + (effectiveLimit === Infinity ? all.length : effectiveLimit),

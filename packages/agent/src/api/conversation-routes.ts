@@ -1285,7 +1285,8 @@ function clampMessageSearchLimit(value: string | null): number {
 }
 
 function normalizeMessageSearchQuery(value: string | null): string {
-  return (value ?? "").trim().replace(/\s+/g, " ");
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, " ");
 }
 
 /** A `…keyword…` excerpt around the first match, or a head-truncated fallback. */
@@ -1312,10 +1313,13 @@ export async function handleConversationRoutes(
   ctx: ConversationRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, readJsonBody, json, error, state } = ctx;
-  const requestUrl = new URL(
-    req.url ?? "",
-    `http://${req.headers.host ?? "localhost"}`,
-  );
+  const requestHref =
+    typeof req.url === "string" && req.url.length > 0 ? req.url : "/";
+  const requestHost =
+    typeof req.headers.host === "string" && req.headers.host.length > 0
+      ? req.headers.host
+      : "localhost";
+  const requestUrl = new URL(requestHref, `http://${requestHost}`);
 
   if (
     !pathname.startsWith("/api/conversations") ||
@@ -1385,22 +1389,25 @@ export async function handleConversationRoutes(
             ? conversationsByRoomId.get(roomId)
             : undefined;
           if (!roomId || !conversation) return null;
-          const rawText =
-            (memory.content as { text?: string } | undefined)?.text?.trim() ??
-            "";
+          const text = (memory.content as { text?: unknown } | undefined)?.text;
+          if (typeof text !== "string") return null;
+          const rawText = text.trim();
           if (!rawText) return null;
+          if (!memory.id) return null;
           const score = scoreMemoryText(rawText, query);
           if (score <= 0) return null;
           const role =
             memory.entityId === runtime.agentId ? "assistant" : "user";
+          const createdAt =
+            typeof memory.createdAt === "number" ? memory.createdAt : 0;
           return {
-            messageId: memory.id ?? "",
+            messageId: memory.id,
             conversationId: conversation.id,
             roomId,
             role,
             text: rawText,
             snippet: buildMessageSearchSnippet(rawText, query),
-            createdAt: memory.createdAt ?? 0,
+            createdAt,
             score,
           };
         })
