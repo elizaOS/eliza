@@ -256,7 +256,7 @@ export function ScreenshareSpatialView({
         agent="input-remote-token"
         onChange={(value) => onAction?.(`remote-token:${value}`)}
       />
-      <HStack gap={1}>
+      <HStack gap={1} wrap>
         <Button
           grow={1}
           variant={remoteReady ? "solid" : "outline"}
@@ -265,7 +265,7 @@ export function ScreenshareSpatialView({
           disabled={!remoteReady}
           onPress={dispatch("connect")}
         >
-          Connect to remote
+          Connect
         </Button>
         <Button
           variant="outline"
@@ -274,7 +274,7 @@ export function ScreenshareSpatialView({
           disabled={snapshot.loading}
           onPress={dispatch("refresh")}
         >
-          Refresh capabilities
+          Refresh
         </Button>
       </HStack>
     </Card>

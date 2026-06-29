@@ -123,7 +123,7 @@ describe("Springboard", () => {
   });
 
   it("shows page dots when there is more than one page", () => {
-    const many = Array.from({ length: 25 }, (_, i) =>
+    const many = Array.from({ length: 49 }, (_, i) =>
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
@@ -132,11 +132,11 @@ describe("Springboard", () => {
   });
 
   it("navigates pages via the page dots", () => {
-    const many = Array.from({ length: 25 }, (_, i) =>
+    const many = Array.from({ length: 49 }, (_, i) =>
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
-    // Page 1 shows the first page's views, not the overflow tile.
+    // Page 1 shows the first page's views, not the first item on page 2.
     expect(
       within(screen.getByTestId("springboard-page-0")).queryByTestId(
         "springboard-tile-v24",
@@ -150,7 +150,7 @@ describe("Springboard", () => {
 
   it("slides adjacent pages with the finger before committing a page swipe", () => {
     runAnimationFramesImmediately();
-    const many = Array.from({ length: 25 }, (_, i) =>
+    const many = Array.from({ length: 49 }, (_, i) =>
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
@@ -194,12 +194,12 @@ describe("Springboard", () => {
 
   it("rubber-bands at the last page edge instead of dead-stopping", () => {
     runAnimationFramesImmediately();
-    const many = Array.from({ length: 25 }, (_, i) =>
+    const many = Array.from({ length: 49 }, (_, i) =>
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Page 3" }));
     const pageWindow = screen.getByTestId("springboard-page-window");
     Object.defineProperty(pageWindow, "clientWidth", {
       configurable: true,
@@ -220,7 +220,7 @@ describe("Springboard", () => {
       clientY: 304,
     });
 
-    expect(rail.style.transform).toContain("-425px");
+    expect(rail.style.transform).toContain("-815px");
     expect(rail.style.transition).toBe("none");
 
     fireEvent.pointerUp(pageWindow, {
@@ -230,7 +230,7 @@ describe("Springboard", () => {
       clientY: 304,
     });
 
-    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
+    expect(rail.style.transform).toContain("translate3d(-780px,0,0)");
   });
 
   it("drops views that are no longer available on re-render", () => {

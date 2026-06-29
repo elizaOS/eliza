@@ -21,27 +21,16 @@ import {
   isViewVisible,
   type ViewKind,
 } from "@elizaos/core";
-import { generateViewHeroSvgFor } from "@elizaos/shared";
 import type { RegistryAppInfo } from "../api";
+import { viewIconDataUri } from "../components/views/view-icons.generated";
 import type { ViewModality } from "../platform/platform-guards";
 import type { ViewRegistryEntry } from "./useAvailableViews";
 
-/**
- * A deterministic, branded view hero generated CLIENT-SIDE as an inline data
- * URI. This is the SAME no-blue art the agent serves at `/api/views/:id/hero`,
- * but rendered with no network round-trip — so every launcher tile shows a real
- * image even offline / on cloud builds where that endpoint isn't reachable
- * (the "tiles show glyphs, not images" report). Real plugin heroes
- * (`heroImageUrl`) still win; this is the universal fallback.
- */
-function generatedViewHeroDataUri(source: {
-  id: string;
-  label: string;
-  icon?: string;
-}): string {
-  return `data:image/svg+xml,${encodeURIComponent(
-    generateViewHeroSvgFor(source),
-  )}`;
+function isShellReachableImageUrl(
+  value: string | null | undefined,
+): value is string {
+  if (!value) return false;
+  return /^(https?:\/\/|data:image\/|blob:)/i.test(value);
 }
 
 export type { ViewModality } from "../platform/platform-guards";
@@ -106,25 +95,25 @@ export interface InstalledAppLike {
 }
 
 export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
-  const hasHero = Boolean(view.hasHeroImage && view.heroImageUrl);
-  const generatedHero = generatedViewHeroDataUri({
-    id: view.id,
-    label: view.label,
-    icon: view.icon,
-  });
+  const heroUrl = isShellReachableImageUrl(view.heroImageUrl)
+    ? view.heroImageUrl
+    : undefined;
+  const hasHero = Boolean(view.hasHeroImage && heroUrl);
+  const bundledIcon = viewIconDataUri(view.id);
+  const fallbackIcon = viewIconDataUri("default") || bundledIcon;
   return {
     key: `view:${view.id}`,
     id: view.id,
     label: view.label,
     description: view.description,
     icon: view.icon,
-    heroUrl: hasHero ? view.heroImageUrl : undefined,
-    // Use a registry hero only when it is declared as real. Otherwise generate
-    // the branded fallback client-side so static/mobile shells avoid backend
-    // `/api/views/:id/hero` probes for icon-only views.
-    imageUrl: hasHero ? view.heroImageUrl : generatedHero,
-    fallbackImageUrl: generatedHero,
-    hasHero,
+    heroUrl: hasHero ? heroUrl : undefined,
+    // Use a registry hero only when it is declared as real and reachable from
+    // this shell. Otherwise use the bundled PNG icon baked into the JS bundle,
+    // never a root-relative `/api/views/:id/hero` probe that native shells 404.
+    imageUrl: hasHero ? heroUrl : bundledIcon,
+    fallbackImageUrl: fallbackIcon,
+    hasHero: hasHero || Boolean(bundledIcon),
     modality: view.viewType ?? "gui",
     modalities: [view.viewType ?? "gui"],
     state: "loaded",
@@ -140,23 +129,22 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
 }
 
 function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
-  const hasHero = Boolean(app.heroImage);
   const label = app.displayName || app.name;
-  const generatedHero = generatedViewHeroDataUri({
-    id: app.name,
-    label,
-    icon: app.icon ?? undefined,
-  });
+  const heroUrl = isShellReachableImageUrl(app.heroImage)
+    ? app.heroImage
+    : undefined;
+  const hasHero = Boolean(heroUrl);
+  const bundledIcon = viewIconDataUri(app.name);
   return {
     key: `app:${app.name}`,
     id: app.name,
     label,
     description: app.description,
     icon: app.icon ?? undefined,
-    heroUrl: app.heroImage ?? undefined,
-    imageUrl: app.heroImage ?? generatedHero,
-    fallbackImageUrl: generatedHero,
-    hasHero,
+    heroUrl,
+    imageUrl: heroUrl ?? bundledIcon,
+    fallbackImageUrl: bundledIcon,
+    hasHero: hasHero || Boolean(bundledIcon),
     category: app.category,
     // Catalog cards are a GUI install surface; the loaded view carries the real
     // modality once the plugin registers.

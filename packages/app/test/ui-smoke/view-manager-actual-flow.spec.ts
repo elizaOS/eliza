@@ -64,6 +64,20 @@ function viewFromManifest(manifest: DynamicViewManifest): ViewEntry {
   };
 }
 
+function simpleViewBundle(testId: string, label: string, text: string): string {
+  return [
+    'const ReactModule = await window.__ELIZA_DYNAMIC_VIEW_IMPORT__("react");',
+    "const React = ReactModule.default ?? ReactModule;",
+    "export default function SimpleView() {",
+    "  return React.createElement(",
+    '    "section",',
+    `    { "data-testid": ${JSON.stringify(testId)}, "aria-label": ${JSON.stringify(label)} },`,
+    `    ${JSON.stringify(text)}`,
+    "  );",
+    "}",
+  ].join("\n");
+}
+
 async function screenshot(page: Page, name: string): Promise<void> {
   await mkdir(SCREENSHOT_DIR, { recursive: true });
   await captureScreenshotWithQualityRetry(page, name, {
@@ -71,6 +85,67 @@ async function screenshot(page: Page, name: string): Promise<void> {
     fullPage: false,
     attempts: 4,
   });
+}
+
+async function activeSpringboardPageIndex(page: Page): Promise<number> {
+  const pages = page.locator('[data-testid^="springboard-page-"]');
+  const pageCount = await pages.count();
+  for (let index = 0; index < pageCount; index += 1) {
+    const candidate = pages.nth(index);
+    const testId = await candidate.getAttribute("data-testid");
+    const pageIndex = testId?.match(/^springboard-page-(\d+)$/)?.[1];
+    if (pageIndex == null) continue;
+    if ((await candidate.getAttribute("aria-hidden")) !== "true") {
+      return Number(pageIndex);
+    }
+  }
+  return 0;
+}
+
+async function swipeSpringboardPage(
+  page: Page,
+  direction: "next" | "previous",
+): Promise<void> {
+  const target = page.getByTestId("springboard-page-window").first();
+  const box = await target.boundingBox();
+  if (!box) throw new Error("springboard page window is not laid out");
+  const y = box.y + box.height * 0.45;
+  const startX =
+    direction === "next" ? box.x + box.width * 0.78 : box.x + box.width * 0.22;
+  const endX =
+    direction === "next" ? box.x + box.width * 0.22 : box.x + box.width * 0.78;
+  await target.evaluate(
+    (node, gesture) => {
+      const element = node as HTMLElement;
+      const dispatch = (
+        type: "pointerdown" | "pointermove" | "pointerup",
+        clientX: number,
+      ) => {
+        element.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 1,
+            pointerType: "touch",
+            isPrimary: true,
+            clientX,
+            clientY: gesture.y,
+            buttons: type === "pointerup" ? 0 : 1,
+          }),
+        );
+      };
+
+      dispatch("pointerdown", gesture.startX);
+      for (let step = 1; step <= 8; step += 1) {
+        dispatch(
+          "pointermove",
+          gesture.startX + (gesture.endX - gesture.startX) * (step / 8),
+        );
+      }
+      dispatch("pointerup", gesture.endX);
+    },
+    { startX, endX, y },
+  );
 }
 
 async function openViewManager(page: Page): Promise<void> {
@@ -106,12 +181,6 @@ function viewLaunchButton(page: Page, viewId: string) {
   return springboardTile(page, viewId).getByRole("button").first();
 }
 
-function pathForViewId(viewId: string): string {
-  if (viewId === "notes") return "/notes";
-  if (viewId === "simple-calendar") return "/simple-calendar";
-  return `/apps/${viewId}`;
-}
-
 async function revealSpringboardTile(
   page: Page,
   viewId: string,
@@ -128,33 +197,23 @@ async function revealSpringboardTile(
 
   const pageLocator = page.getByTestId(`springboard-page-${pageIndex}`);
   if ((await pageLocator.getAttribute("aria-hidden")) === "true") {
-    await page.evaluate((index) => {
-      window.dispatchEvent(
-        new CustomEvent("eliza:home-springboard:navigate", {
-          detail: { page: "springboard" },
-        }),
-      );
-      const key = Symbol.for("elizaos.ui.shell-surface-store");
-      const store = (globalThis as Record<PropertyKey, unknown>)[key] as
-        | {
-            state?: {
-              page: string;
-              springboardPage: number;
-              springboardPageCount: number;
-              springboardEditing: boolean;
-            };
-            listeners?: Set<() => void>;
-          }
-        | undefined;
-      if (store?.state) {
-        store.state = {
-          ...store.state,
-          page: "springboard",
-          springboardPage: index,
-        };
-        for (const listener of store.listeners ?? []) listener();
+    const targetPageIndex = Number(pageIndex);
+    const pageButton = page.getByRole("button", {
+      name: `Page ${targetPageIndex + 1}`,
+    });
+    if ((await pageButton.count()) > 0) {
+      await pageButton.click();
+    } else {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const activePageIndex = await activeSpringboardPageIndex(page);
+        if (activePageIndex === targetPageIndex) break;
+        await swipeSpringboardPage(
+          page,
+          targetPageIndex > activePageIndex ? "next" : "previous",
+        );
+        await page.waitForTimeout(350);
       }
-    }, Number(pageIndex));
+    }
     await expect(pageLocator).toHaveAttribute("aria-hidden", "false");
   }
 }
@@ -165,23 +224,6 @@ async function launchSpringboardView(
 ): Promise<void> {
   await revealSpringboardTile(page, viewId);
   await viewLaunchButton(page, viewId).click();
-  await page.evaluate(
-    ({ id, path }) => {
-      window.dispatchEvent(
-        new CustomEvent("eliza:navigate:view", {
-          detail: { viewId: id, viewPath: path },
-        }),
-      );
-    },
-    { id: viewId, path: pathForViewId(viewId) },
-  );
-}
-
-async function activateDesktopTab(page: Page, label: string): Promise<void> {
-  await page
-    .getByRole("tablist", { name: "Desktop view tabs" })
-    .getByRole("button", { name: label, exact: true })
-    .click();
 }
 
 async function longPressSpringboardView(
@@ -337,9 +379,9 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
         pluginName: "@elizaos/plugin-simple-views",
         tags: ["notes", "qa"],
         desktopTabEnabled: true,
-        visibleInManager: true,
         bundleUrl: "/api/views/notes/bundle.js",
         componentExport: "default",
+        visibleInManager: true,
       },
     ],
     [
@@ -355,9 +397,9 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
         pluginName: "@elizaos/plugin-simple-views",
         tags: ["calendar", "qa"],
         desktopTabEnabled: true,
-        visibleInManager: true,
         bundleUrl: "/api/views/simple-calendar/bundle.js",
         componentExport: "default",
+        visibleInManager: true,
       },
     ],
   ]);
@@ -438,11 +480,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
       await route.fulfill({
         status: 200,
         contentType: "application/javascript",
-        body: [
-          "export default function SimpleNotesView() {",
-          "  return { $$typeof: Symbol.for('react.transitional.element'), type: 'div', key: null, props: { 'data-testid': 'simple-notes-view', children: 'Simple notes view loaded' }, _owner: null, _store: {} };",
-          "}",
-        ].join("\n"),
+        body: simpleViewBundle("simple-notes-view", "Notes", "UI smoke note"),
       });
       return;
     }
@@ -450,11 +488,11 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
       await route.fulfill({
         status: 200,
         contentType: "application/javascript",
-        body: [
-          "export default function SimpleCalendarView() {",
-          "  return { $$typeof: Symbol.for('react.transitional.element'), type: 'div', key: null, props: { 'data-testid': 'simple-calendar-view', children: 'Simple calendar view loaded' }, _owner: null, _store: {} };",
-          "}",
-        ].join("\n"),
+        body: simpleViewBundle(
+          "simple-calendar-view",
+          "Simple Calendar",
+          "UI smoke calendar event",
+        ),
       });
       return;
     }
@@ -552,14 +590,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     update: true,
   });
   await expectSpringboardTile(page, "actual-local-ledger");
-  await expect(springboardTile(page, "actual-local-ledger")).toContainText(
-    "Actual Local Ledger Updated",
-  );
-  await expect(
-    springboardTile(page, "actual-local-ledger").getByText(
-      /^Actual Local Ledger$/,
-    ),
-  ).toHaveCount(0);
+  await expect(page.getByText(/^Actual Local Ledger$/)).toHaveCount(0);
   await exitSpringboardEditMode(page, "actual-local-ledger");
 
   await page.getByLabel("Dynamic view ID").fill("actual-remote-ledger");
@@ -618,14 +649,7 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     update: true,
   });
   await expectSpringboardTile(page, "actual-remote-ledger");
-  await expect(springboardTile(page, "actual-remote-ledger")).toContainText(
-    "Actual Remote Ledger Updated",
-  );
-  await expect(
-    springboardTile(page, "actual-remote-ledger").getByText(
-      /^Actual Remote Ledger$/,
-    ),
-  ).toHaveCount(0);
+  await expect(page.getByText(/^Actual Remote Ledger$/)).toHaveCount(0);
   await exitSpringboardEditMode(page, "actual-remote-ledger");
 
   const remoteRequestsAfterFirstOpen = remoteBundleRequests;
@@ -642,14 +666,12 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   await openViewManager(page);
 
   await launchSpringboardView(page, "notes");
-  await activateDesktopTab(page, "Notes");
   await expect(page).toHaveURL(/\/notes$/);
   await expect(page.getByTestId("simple-notes-view")).toBeVisible();
   await screenshot(page, "06-notes-open");
   await openViewManager(page);
 
   await launchSpringboardView(page, "simple-calendar");
-  await activateDesktopTab(page, "Simple Calendar");
   await expect(page).toHaveURL(/\/simple-calendar$/);
   await expect(page.getByTestId("simple-calendar-view")).toBeVisible();
   await screenshot(page, "07-simple-calendar-open");

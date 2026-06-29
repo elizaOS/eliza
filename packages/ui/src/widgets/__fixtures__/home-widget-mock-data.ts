@@ -95,25 +95,6 @@ function calendarFeed() {
   };
 }
 
-function googleAccounts() {
-  return {
-    provider: "google",
-    connectorId: "google",
-    defaultAccountId: "acct-google-calendar",
-    accounts: [
-      {
-        id: "acct-google-calendar",
-        provider: "google",
-        connectorId: "google",
-        label: "Calendar fixture",
-        status: "connected",
-        isDefault: true,
-        enabled: true,
-      },
-    ],
-  };
-}
-
 /** GoalsAttentionWidget reads /api/lifeops/goals; an at_risk goal floats up at
  *  escalation weight and renders an urgent row. */
 function goalsPayload() {
@@ -361,8 +342,19 @@ type RouteMatch = { test: (url: string) => boolean; body: () => unknown };
 function routeTable(): RouteMatch[] {
   const has = (needle: string) => (url: string) => url.includes(needle);
   return [
-    { test: has("/api/connectors/google/accounts"), body: googleAccounts },
     { test: has("/api/lifeops/calendar/feed"), body: calendarFeed },
+    {
+      test: has("/api/connectors/google/accounts"),
+      body: () => ({
+        accounts: [
+          {
+            id: "google-owner",
+            provider: "google",
+            status: "connected",
+          },
+        ],
+      }),
+    },
     { test: has("/api/lifeops/goals"), body: goalsPayload },
     { test: has("/api/lifeops/money/dashboard"), body: moneyDashboard },
     { test: has("/api/lifeops/money/recurring"), body: moneyRecurring },

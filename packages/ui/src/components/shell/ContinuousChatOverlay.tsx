@@ -3135,8 +3135,8 @@ export function ContinuousChatOverlay({
             aria-hidden="true"
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
-              // Border-only chat: no dark card, just a hairline border.
-              // Text contrast comes from the field behind it and the border.
+              // Border-only chat: no dark card, just a hairline edge over the
+              // ambient orange field or current view.
               fullBleed ? "border-0" : "border border-white/22",
               "bg-transparent",
             )}
