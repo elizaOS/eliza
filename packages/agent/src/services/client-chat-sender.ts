@@ -71,43 +71,60 @@ export function registerClientChatSendHandler(
   if (typeof runtime.registerSendHandler !== "function") {
     return;
   }
-  runtime.registerSendHandler("client_chat", async (_rt, target, content) => {
-    const conv = resolveConversation(state, target.roomId as UUID | undefined);
-    if (!conv) {
-      // No conversation exists to deliver into. Throw so the caller records a
-      // delivery failure (e.g. escalation falls through to the next channel)
-      // instead of treating a silently dropped message as a successful send.
-      throw new Error(
-        "client_chat send failed: no conversation available to deliver message",
-      );
-    }
+  const deliver = (source: string) =>
+    async (
+      _rt: IAgentRuntime,
+      target: { roomId?: unknown },
+      content: { text?: string } & Record<string, unknown>,
+    ): Promise<void> => {
+      const conv = resolveConversation(state, target.roomId as UUID | undefined);
+      if (!conv) {
+        // No conversation exists to deliver into. Throw so the caller records a
+        // delivery failure (e.g. escalation falls through to the next channel)
+        // instead of treating a silently dropped message as a successful send.
+        throw new Error(
+          `${source} send failed: no conversation available to deliver message`,
+        );
+      }
 
-    const messageId = crypto.randomUUID() as UUID;
+      const messageId = crypto.randomUUID() as UUID;
 
-    const agentMessage = createMessageMemory({
-      id: messageId,
-      entityId: runtime.agentId,
-      roomId: conv.roomId,
-      content: {
-        ...content,
-        text: content.text ?? "",
-        source: "client_chat",
-      },
-    });
-    await runtime.createMemory(agentMessage, "messages");
-
-    conv.updatedAt = new Date().toISOString();
-
-    state.broadcastWs?.({
-      type: "proactive-message",
-      conversationId: conv.id,
-      message: {
+      const agentMessage = createMessageMemory({
         id: messageId,
-        role: "assistant",
-        text: content.text ?? "",
-        timestamp: Date.now(),
-        source: "client_chat",
-      },
-    });
-  });
+        entityId: runtime.agentId,
+        roomId: conv.roomId,
+        content: {
+          ...content,
+          text: content.text ?? "",
+          source: "client_chat",
+        },
+      });
+      await runtime.createMemory(agentMessage, "messages");
+
+      conv.updatedAt = new Date().toISOString();
+
+      state.broadcastWs?.({
+        type: "proactive-message",
+        conversationId: conv.id,
+        message: {
+          id: messageId,
+          role: "assistant",
+          text: content.text ?? "",
+          timestamp: Date.now(),
+          source: "client_chat",
+        },
+      });
+    };
+
+  // Primary web/app chat source.
+  runtime.registerSendHandler("client_chat", deliver("client_chat"));
+  // Coding sub-agent relay sources: when the orchestrator relays a spawned
+  // agent's result back into the chat, the message arrives under one of these
+  // sources. Without a handler the relay fails ("No send handler registered for
+  // source: agent_message_api") and the sub-agent's result silently never
+  // reaches the user — the chat just shows a "something glitched" failure even
+  // though the work completed. Deliver these into the same conversation surface.
+  for (const source of ["agent_message_api", "acpx_sub_agent", "orchestrator"]) {
+    runtime.registerSendHandler(source, deliver(source));
+  }
 }

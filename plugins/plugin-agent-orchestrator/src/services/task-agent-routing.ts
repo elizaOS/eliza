@@ -147,15 +147,25 @@ function resolveDefaultSpawnWorkdir(runtime: IAgentRuntime | undefined): {
   workdir: string;
   isolate: boolean;
 } {
+  const getSetting = (key: string): string | undefined =>
+    typeof runtime?.getSetting === "function"
+      ? (runtime.getSetting(key) as string | undefined)
+      : undefined;
+  // Prefer the ACP-specific scratch root, then the general coding-workspace dir.
+  // Falling through to ELIZA_WORKSPACE_DIR / ELIZA_CODING_WORKSPACE means an
+  // operator who points the runtime at a coding workspace (the common case) gets
+  // spawns landing THERE instead of in the eliza runtime root (process.cwd(),
+  // e.g. /app) — which otherwise causes "build me X" tasks to grep the eliza repo
+  // in place instead of scaffolding fresh.
   const configured =
-    (typeof runtime?.getSetting === "function"
-      ? ((runtime.getSetting("ELIZA_ACP_WORKSPACE_ROOT") as
-          | string
-          | undefined) ??
-        (runtime.getSetting("ACPX_DEFAULT_CWD") as string | undefined))
-      : undefined) ??
+    getSetting("ELIZA_ACP_WORKSPACE_ROOT") ??
+    getSetting("ACPX_DEFAULT_CWD") ??
+    getSetting("ELIZA_WORKSPACE_DIR") ??
+    getSetting("ELIZA_CODING_WORKSPACE") ??
     readConfigEnvKey("ELIZA_ACP_WORKSPACE_ROOT") ??
-    readConfigEnvKey("ACPX_DEFAULT_CWD");
+    readConfigEnvKey("ACPX_DEFAULT_CWD") ??
+    readConfigEnvKey("ELIZA_WORKSPACE_DIR") ??
+    readConfigEnvKey("ELIZA_CODING_WORKSPACE");
   const trimmed = configured?.trim();
   // A configured workspace ROOT is a shared scratch area for ad-hoc spawned
   // tasks → isolate=true so each concurrent session gets its own subdir.
