@@ -514,6 +514,20 @@ app.post("/", async (c) => {
           model: selectedModel,
         });
       },
+      // A provider error during streaming (e.g. cerebras 429/5xx) fires onError
+      // — NOT onFinish or onAbort — so without this the upfront credit
+      // reservation is never reconciled and the paying user is billed ~1.5x the
+      // estimate for zero output. Mirrors v1/messages and v1/chat/completions.
+      // The settler is idempotent (first-call-wins), so this cannot
+      // double-refund if onFinish/onAbort also fire.
+      onError: async ({ error }: { error: unknown }) => {
+        await settleReservation?.(0);
+        logger.error("chat-api", "Stream provider error — reservation refunded", {
+          userId: user.id,
+          model: selectedModel,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
     });
 
     return result.toUIMessageStreamResponse();
