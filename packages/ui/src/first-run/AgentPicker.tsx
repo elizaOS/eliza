@@ -11,7 +11,7 @@ import type * as React from "react";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { StatusBadge } from "../components/ui/status-badge";
 import {
-  statusLabelForState,
+  agentLifecycleLabel,
   statusToneForState,
 } from "../components/ui/status-badge.helpers";
 
@@ -41,6 +41,19 @@ export interface AgentPickerProps {
 function isDeletingStatus(status: string): boolean {
   const normalized = status.trim().toLowerCase();
   return normalized === "deletion_pending" || normalized === "deleting";
+}
+
+/**
+ * Statuses that mean the agent failed to start — not selectable. Binding chat to
+ * a failed/error agent points the client at an unreachable base that 503s every
+ * message with no recovery (`error`/`failed` are NOT in the server's
+ * RESUMABLE_STATUSES, so nothing auto-recovers). The user recovers via the
+ * always-present "Create new" affordance instead of dead-ending in chat.
+ * Mirrors CloudAgentsSection's ERROR_STATES.
+ */
+function isFailedStatus(status: string): boolean {
+  const normalized = status.trim().toLowerCase();
+  return normalized === "error" || normalized === "failed";
 }
 
 function formatLastActive(agent: CloudCompatAgent): string | null {
@@ -137,8 +150,9 @@ export function AgentPicker({
               const isActive =
                 activeAgentId !== null && agent.agent_id === activeAgentId;
               const deleting = isDeletingStatus(agent.status);
+              const failed = isFailedStatus(agent.status);
               const isBinding = binding && bindingAgentId === agent.agent_id;
-              const disabled = binding || deleting || isActive;
+              const disabled = binding || deleting || failed || isActive;
               const label = agent.agent_name || agent.agent_id;
               const lastActive = formatLastActive(agent);
               return (
@@ -164,7 +178,7 @@ export function AgentPicker({
                         label={
                           deleting
                             ? "Deleting"
-                            : statusLabelForState(agent.status)
+                            : agentLifecycleLabel(agent.status)
                         }
                       />
                     </span>

@@ -62,8 +62,9 @@ describe("AgentPicker", () => {
     expect(screen.getByTestId("onboarding-agent-picker")).toBeTruthy();
     expect(screen.getByTestId("onboarding-agent-option-a1")).toBeTruthy();
     expect(screen.getByTestId("onboarding-agent-option-a2")).toBeTruthy();
-    // StatusBadge label is the title-cased status string.
-    expect(screen.getByText("Running")).toBeTruthy();
+    // StatusBadge shows friendly lifecycle copy (agentLifecycleLabel), so a
+    // "running" agent reads "Ready" rather than the raw DB enum.
+    expect(screen.getByText("Ready")).toBeTruthy();
     expect(screen.getByText("Stopped")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("onboarding-agent-option-a2"));
@@ -165,6 +166,32 @@ describe("AgentPicker", () => {
     );
     expect(row.disabled).toBe(true);
     fireEvent.click(row);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "error",
+    "failed",
+  ])("disables a %s agent row so chat can't bind to a dead base", (status) => {
+    const onPick = vi.fn();
+    render(
+      <AgentPicker
+        {...props({
+          agents: [agent({ agent_id: "a1", agent_name: "Alpha", status })],
+          onPick,
+        })}
+      />,
+    );
+
+    // Friendly lifecycle copy for a broken agent.
+    expect(screen.getByText("Failed to start")).toBeTruthy();
+    const row = screen.getByTestId<HTMLButtonElement>(
+      "onboarding-agent-option-a1",
+    );
+    expect(row.disabled).toBe(true);
+    fireEvent.click(row);
+    // The failed agent must never be selected into chat — the user recovers
+    // via the always-present "Create new" affordance instead.
     expect(onPick).not.toHaveBeenCalled();
   });
 
