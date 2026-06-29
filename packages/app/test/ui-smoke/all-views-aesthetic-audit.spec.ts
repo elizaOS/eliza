@@ -917,11 +917,16 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         await viewRoot
           .waitFor({ state: "visible", timeout: 15_000 })
           .catch(() => {});
-        const overlaySelector =
-          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay']";
         const overlayRequired =
           view.viewType !== "tui" &&
           !OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(view.slug);
+        const overlaySelector = [
+          "[data-continuous-chat-overlay]",
+          "[data-testid='continuous-chat-overlay']",
+          "[data-testid='chat-sheet']",
+          "[data-testid='chat-pill']",
+          "[data-testid='chat-composer-textarea']",
+        ].join(", ");
         const readPaint = async (): Promise<{
           readableChars: number;
           overlayPresent: boolean;
@@ -935,9 +940,20 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             .catch(() => 0);
           const overlayPresent = await page
             .locator(overlaySelector)
-            .first()
-            .count()
-            .then((c) => c > 0)
+            .evaluateAll((nodes) =>
+              nodes.some((node) => {
+                const el = node as HTMLElement;
+                const style = getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                return (
+                  style.display !== "none" &&
+                  style.visibility !== "hidden" &&
+                  Number(style.opacity || "1") !== 0 &&
+                  rect.width > 0 &&
+                  rect.height > 0
+                );
+              }),
+            )
             .catch(() => false);
           return { readableChars, overlayPresent };
         };
