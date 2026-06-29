@@ -53,7 +53,7 @@ interface WinOcrRaw {
  * `-ImagePath`. Kept as a string so the build doesn't have to copy an asset.
  */
 const WIN_OCR_PS1 =
-  String.raw`param([Parameter(Mandatory=$true)][string]$ImagePath)
+  `param([Parameter(Mandatory=$true)][string]$ImagePath)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {

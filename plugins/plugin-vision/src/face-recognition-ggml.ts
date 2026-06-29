@@ -131,7 +131,7 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
 
     const { dlopen, FFIType, ptr } = bunFFI;
 
-    let lib;
+    let lib: ReturnType<BunFFIModule["dlopen"]>;
     try {
       lib = dlopen(libPath, {
         face_embed_open: {

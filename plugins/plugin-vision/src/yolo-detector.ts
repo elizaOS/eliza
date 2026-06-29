@@ -320,7 +320,8 @@ export class YOLODetector {
     const sorted = [...detections].sort((a, b) => b.score - a.score);
     const kept: Detection[] = [];
     while (sorted.length) {
-      const top = sorted.shift()!;
+      const top = sorted.shift();
+      if (!top) break;
       kept.push(top);
       for (let i = sorted.length - 1; i >= 0; i--) {
         if (this.iou(top, sorted[i]) > this.cfg.nmsIouThreshold)

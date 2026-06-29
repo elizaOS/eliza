@@ -55,7 +55,6 @@ import {
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = [
   _bs_1_firstSentenceEndIndex,
   _bs_2_isAospEnabled,

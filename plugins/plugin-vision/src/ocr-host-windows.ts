@@ -51,14 +51,14 @@ let chain: Promise<unknown> = Promise.resolve();
 // type-load are amortized. Streams/bitmaps are disposed each iteration (a
 // long-lived session must not leak handles or keep temp PNGs locked).
 const OCR_SERVER_PS1 =
-  String.raw`$ErrorActionPreference = 'Stop'
+  `$ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
   $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
   $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation` +
   "`" +
-  String.raw`1'
+  `1'
 })[0]
 function Await($op, $resultType) {
   $m = $asTaskGeneric.MakeGenericMethod($resultType)

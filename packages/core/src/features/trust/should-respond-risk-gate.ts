@@ -58,7 +58,8 @@ const HIDDEN_CHAR_RE = new RegExp(
 		"\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F]",
 	"g",
 );
-const NON_ASCII_RE = /[^\u0000-\u007F]/g;
+const NON_ASCII_PATTERN = "[^\\x00-\\x7F]";
+const NON_ASCII_RE = new RegExp(NON_ASCII_PATTERN, "g");
 
 const SOCIAL_ENGINEERING_BANKS: ReadonlyArray<
 	readonly [string, readonly string[]]
@@ -98,7 +99,7 @@ export function extractRiskFactors(text: string): RiskFactors {
 		socialEngineeringClasses: [],
 		score: 0,
 	};
-	if (!text || !text.trim()) {
+	if (!text.trim()) {
 		return empty;
 	}
 

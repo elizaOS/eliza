@@ -18,17 +18,17 @@ import {
   DirtyTileDescriber,
 } from "./dirty-tile-describer";
 
+type Rgb = [number, number, number];
+type QuadrantColors = [Rgb, Rgb, Rgb, Rgb];
+
 /** A four-quadrant PNG so a >maxEdge frame tiles into a real grid. */
 async function makeQuadrantPng(
   edge: number,
-  colors: [number, number, number][],
+  colors: QuadrantColors,
 ): Promise<Buffer> {
   const half = Math.floor(edge / 2);
-  const tl = colors[0]!;
-  const tr = colors[1]!;
-  const bl = colors[2]!;
-  const br = colors[3]!;
-  const tile = async (c: [number, number, number]): Promise<Buffer> =>
+  const [tl, tr, bl, br] = colors;
+  const tile = async (c: Rgb): Promise<Buffer> =>
     sharp({
       create: {
         width: half,
@@ -139,7 +139,7 @@ describe("DirtyTileDescriber (M3)", () => {
   });
 
   it("skips the describe call for an unchanged frame (cache + counters prove the saving)", async () => {
-    const colors: [number, number, number][] = [
+    const colors: QuadrantColors = [
       [10, 20, 30],
       [40, 50, 60],
       [70, 80, 90],
@@ -171,14 +171,14 @@ describe("DirtyTileDescriber (M3)", () => {
   });
 
   it("re-describes only the changed tile, reusing the rest", async () => {
-    const base: [number, number, number][] = [
+    const base: QuadrantColors = [
       [10, 20, 30],
       [40, 50, 60],
       [70, 80, 90],
       [100, 110, 120],
     ];
     // Change only the bottom-right quadrant (tile-1-1) on the second frame.
-    const changed: [number, number, number][] = [
+    const changed: QuadrantColors = [
       [10, 20, 30],
       [40, 50, 60],
       [70, 80, 90],

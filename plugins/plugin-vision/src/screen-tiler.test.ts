@@ -8,6 +8,14 @@ import {
   tileScreenshot,
 } from "./screen-tiler";
 
+function expectPresent<T>(value: T | undefined, label: string): T {
+  expect(value).toBeDefined();
+  if (value === undefined) {
+    throw new Error(`Expected ${label} to be present`);
+  }
+  return value;
+}
+
 /**
  * Render a solid-color PNG of the requested dimensions. We don't care about
  * the pixels — only that sharp can decode/extract from the buffer — so a flat
@@ -42,7 +50,7 @@ describe("tileScreenshot — single-tile fast path", () => {
       { maxEdge: 1024, overlapFraction: 0.12 },
     );
     expect(tiles).toHaveLength(1);
-    const t = tiles[0]!;
+    const t = expectPresent(tiles[0], "single tile");
     expect(t.id).toBe("tile-0-0");
     expect(t.displayId).toBe("d-0");
     expect(t.sourceX).toBe(0);
@@ -82,7 +90,10 @@ describe("tileScreenshot — 2x2 grid", () => {
       expect(t.sourceY + t.sourceH).toBe(1500);
     }
     // First-tile origin is (0, 0).
-    const first = tiles.find((t) => t.id === "tile-0-0")!;
+    const first = expectPresent(
+      tiles.find((t) => t.id === "tile-0-0"),
+      "tile-0-0",
+    );
     expect(first.sourceX).toBe(0);
     expect(first.sourceY).toBe(0);
     // No tile exceeds maxEdge in either axis.
@@ -136,8 +147,14 @@ describe("tileScreenshot — overlap math", () => {
     // 2400 / 1280 → 2 cols, 1 row.
     const row0 = tiles.filter((t) => t.id.startsWith("tile-0-"));
     expect(row0).toHaveLength(2);
-    const a = row0.find((t) => t.id === "tile-0-0")!;
-    const b = row0.find((t) => t.id === "tile-0-1")!;
+    const a = expectPresent(
+      row0.find((t) => t.id === "tile-0-0"),
+      "tile-0-0",
+    );
+    const b = expectPresent(
+      row0.find((t) => t.id === "tile-0-1"),
+      "tile-0-1",
+    );
     const overlap = a.sourceX + a.sourceW - b.sourceX;
     expect(overlap).toBeGreaterThan(0);
     // Overlap should be in the ballpark of overlapFraction*maxEdge but not

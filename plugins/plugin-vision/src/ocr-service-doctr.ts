@@ -115,7 +115,11 @@ export class DoctrOCRService {
         "[DoctrOCR] native bindings failed to load after readiness check passed",
       );
     }
-    const charsetText = await bindings.charset(this.cfg.recPath!);
+    const recPath = this.cfg.recPath;
+    if (!recPath) {
+      throw new Error("[DoctrOCR] recognition model path missing");
+    }
+    const charsetText = await bindings.charset(recPath);
     this.charset = charsetText.split(/\r?\n/).filter(Boolean);
     this.initialized = true;
     logger.info(
@@ -145,12 +149,16 @@ export class DoctrOCRService {
       .raw()
       .toBuffer({ resolveWithObject: true });
 
+    const detPath = this.cfg.detPath;
+    if (!detPath) {
+      throw new Error("[DoctrOCR] detection model path missing");
+    }
     const detInput = this.toCHWFloat32(rgb, inSize, inSize);
     const {
       probMap,
       h: probH,
       w: probW,
-    } = await bindings.detect(this.cfg.detPath!, detInput, inSize, inSize);
+    } = await bindings.detect(detPath, detInput, inSize, inSize);
 
     const xScale = origW / inSize;
     const yScale = origH / inSize;
@@ -219,7 +227,9 @@ export class DoctrOCRService {
         let count = 0;
         const stack: Array<[number, number]> = [[x, y]];
         while (stack.length) {
-          const [cx, cy] = stack.pop()!;
+          const next = stack.pop();
+          if (!next) continue;
+          const [cx, cy] = next;
           if (cx < 0 || cx >= w || cy < 0 || cy >= h) continue;
           const cidx = cy * w + cx;
           if (visited[cidx]) continue;
@@ -295,9 +305,13 @@ export class DoctrOCRService {
       .raw()
       .toBuffer({ resolveWithObject: true });
 
+    const recPath = this.cfg.recPath;
+    if (!recPath) {
+      throw new Error("[DoctrOCR] recognition model path missing");
+    }
     const recInput = this.toCHWFloat32(rgb, targetW, targetH);
     const { logits, T, C } = await bindings.recognize(
-      this.cfg.recPath!,
+      recPath,
       recInput,
       targetH,
       targetW,
