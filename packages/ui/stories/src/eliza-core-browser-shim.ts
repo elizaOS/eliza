@@ -201,3 +201,61 @@ export function isStreamingDestinationConfigured(): boolean {
 export function isWechatConfigured(): boolean {
   return false;
 }
+
+// Role-gate primitives (browser-safe, pure) so role-gated stories such as
+// RoleGate.stories.tsx can render. Mirrors the canonical rank in
+// @elizaos/core (roles.ts CANONICAL_ROLE_RANK + runtime/context-gates).
+export type RoleGateRole =
+  | "OWNER"
+  | "ADMIN"
+  | "MEMBER"
+  | "USER"
+  | "GUEST"
+  | "NONE";
+
+const CANONICAL_ROLE_RANK: Record<string, number> = {
+  NONE: 0,
+  GUEST: 1,
+  USER: 2,
+  MEMBER: 2,
+  ADMIN: 3,
+  OWNER: 4,
+};
+
+function normalizeGateRole(role: RoleGateRole): RoleGateRole {
+  const n = String(role).trim().toUpperCase();
+  return (n === "USER" ? "MEMBER" : n) as RoleGateRole;
+}
+
+export function roleRank(role: RoleGateRole): number {
+  return CANONICAL_ROLE_RANK[String(normalizeGateRole(role))] ?? 0;
+}
+
+export function satisfiesRoleGate(
+  userRoles: readonly RoleGateRole[] | undefined,
+  gate:
+    | {
+        roles?: RoleGateRole[];
+        anyOf?: RoleGateRole[];
+        allOf?: RoleGateRole[];
+        noneOf?: RoleGateRole[];
+        minRole?: RoleGateRole;
+      }
+    | undefined,
+): boolean {
+  if (!gate) return true;
+  const normalized = new Set((userRoles ?? []).map(normalizeGateRole));
+  const highestRank = Math.max(0, ...[...normalized].map((r) => roleRank(r)));
+  for (const role of gate.noneOf ?? []) {
+    if (normalized.has(normalizeGateRole(role))) return false;
+  }
+  if (gate.minRole && highestRank < roleRank(gate.minRole)) return false;
+  const anyOf = gate.anyOf ?? gate.roles;
+  if (anyOf && !anyOf.some((r) => normalized.has(normalizeGateRole(r)))) {
+    return false;
+  }
+  for (const role of gate.allOf ?? []) {
+    if (!normalized.has(normalizeGateRole(role))) return false;
+  }
+  return true;
+}

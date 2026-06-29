@@ -22,7 +22,9 @@ import {
   isRateLimitError,
   logger,
   ModelType,
+  type RolesWorldMetadata,
   type RouteRequestContext,
+  recordOwnerGrant,
   runWithTrajectoryContext,
   stringToUuid,
   type UUID,
@@ -3036,13 +3038,10 @@ async function ensureCompatChatConnection(
       world.metadata.ownership = { ownerId: userId };
       needsUpdate = true;
     }
-    const metadataWithRoles = world.metadata as {
-      roles?: Record<string, string>;
-    };
-    const roles = metadataWithRoles.roles ?? {};
-    if (roles[userId] !== "OWNER") {
-      roles[userId] = "OWNER";
-      metadataWithRoles.roles = roles;
+    // Record the deployed-app owner as an explicit, auditable grant
+    // (roles[ownerId]="OWNER" + roleSources[ownerId]="owner") rather than an
+    // emergent inference — #9948.
+    if (recordOwnerGrant(world.metadata as RolesWorldMetadata, userId)) {
       needsUpdate = true;
     }
     if (needsUpdate) {
