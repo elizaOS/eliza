@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Directory-driven ui-smoke spec discovery for the keyless PR lane (issue #9943).
 //
-// The PR lane used to hand-name ~90 of the 106 ui-smoke specs across several
-// jobs, which left the rest silently off the PR path. This script makes the run
-// directory-driven instead: it globs every test/ui-smoke/*.spec.ts, subtracts
+// The PR lane used to hand-name most ui-smoke specs across several jobs, which
+// left the rest silently off the PR path. This script makes the run
+// directory-driven instead: it walks every test/ui-smoke/**/*.spec.ts, subtracts
 // the explicit, checked-in deny-list (.pr-deny-list.json), and emits the set of
 // specs that should run keyless. Any NEW spec is on the PR path by default; the
 // only way to exclude one is to record it in the deny-list with a category and a
@@ -46,11 +46,25 @@ const VALID_CATEGORIES = new Set([
   "keyless-debt",
 ]);
 
-/** All spec file basenames under test/ui-smoke, sorted. */
+/** All spec file paths under test/ui-smoke, relative to that directory, sorted. */
 function allSpecs() {
-  return readdirSync(UI_SMOKE_DIR)
-    .filter((name) => name.endsWith(".spec.ts"))
-    .sort();
+  const specs = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(".spec.ts")) {
+        specs.push(
+          path.relative(UI_SMOKE_DIR, fullPath).split(path.sep).join("/"),
+        );
+      }
+    }
+  };
+  walk(UI_SMOKE_DIR);
+  return specs.sort();
 }
 
 /** Parsed deny-list manifest. */
@@ -62,16 +76,16 @@ function loadDenyList() {
   return raw.specs;
 }
 
-/** Set of deny-listed spec basenames. */
+/** Set of deny-listed spec paths relative to test/ui-smoke. */
 function deniedSpecNames() {
   return new Set(loadDenyList().map((entry) => entry.spec));
 }
 
-/** Spec basenames hand-named in scenario-pr.yml (test/ui-smoke/<name>.spec.ts). */
+/** Spec paths hand-named in scenario-pr.yml (test/ui-smoke/<path>.spec.ts). */
 function namedInWorkflow() {
   const workflow = readFileSync(WORKFLOW_PATH, "utf8");
   return new Set(
-    [...workflow.matchAll(/test\/ui-smoke\/([a-z0-9-]+\.spec\.ts)/g)].map(
+    [...workflow.matchAll(/test\/ui-smoke\/([A-Za-z0-9_./-]+\.spec\.ts)/g)].map(
       (m) => m[1],
     ),
   );

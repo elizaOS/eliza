@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
  * that hole on the spec axis.
  *
  * The keyless PR lane (scenario-pr.yml) is DIRECTORY-DRIVEN (issue #9943): it
- * runs every test/ui-smoke/*.spec.ts EXCEPT the entries recorded in the
+ * runs every ui-smoke spec under test/ui-smoke, including nested specs, EXCEPT
+ * the entries recorded in the
  * checked-in deny-list (test/ui-smoke/.pr-deny-list.json). Most specs are
  * hand-named in slice jobs for parallelism; the `app-browser-auto-discovered`
  * job runs the remainder via scripts/ui-smoke-pr-specs.mjs --list-auto. The net
@@ -61,9 +62,23 @@ interface DenyEntry {
 const MAX_KEYLESS_DEBT = 3;
 
 function specFileNames(): string[] {
-  return readdirSync(UI_SMOKE_DIR)
-    .filter((name) => name.endsWith(".spec.ts"))
-    .sort();
+  const specs: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(".spec.ts")) {
+        specs.push(
+          path.relative(UI_SMOKE_DIR, fullPath).split(path.sep).join("/"),
+        );
+      }
+    }
+  };
+  walk(UI_SMOKE_DIR);
+  return specs.sort();
 }
 
 function denyList(): DenyEntry[] {
@@ -76,11 +91,11 @@ function denyList(): DenyEntry[] {
   return parsed.specs;
 }
 
-/** Spec basenames hand-named in scenario-pr.yml (test/ui-smoke/<name>.spec.ts). */
+/** Spec paths hand-named in scenario-pr.yml (test/ui-smoke/<path>.spec.ts). */
 function namedInWorkflow(): Set<string> {
   const workflow = readFileSync(KEYLESS_WORKFLOW, "utf8");
   return new Set(
-    [...workflow.matchAll(/test\/ui-smoke\/([a-z0-9-]+\.spec\.ts)/g)].map(
+    [...workflow.matchAll(/test\/ui-smoke\/([A-Za-z0-9_./-]+\.spec\.ts)/g)].map(
       (match) => match[1] ?? "",
     ),
   );
