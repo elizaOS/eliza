@@ -44,10 +44,10 @@ describe("LifeOps package boundaries", () => {
     const rendererEntrypoint = readPackageFile("src/ui.ts");
     const sleepRoutes = readPackageFile("src/routes/sleep-routes.ts");
     const sleepServiceMixin = readPackageFile(
-      "src/lifeops/service-mixin-sleep.ts",
+      "src/lifeops/domains/sleep-service.ts",
     );
     const screenTimeServiceMixin = readPackageFile(
-      "src/lifeops/service-mixin-screentime.ts",
+      "src/lifeops/domains/screentime-service.ts",
     );
 
     expect(healthAction).toContain('from "@elizaos/plugin-health"');
@@ -195,12 +195,14 @@ describe("LifeOps package boundaries", () => {
   });
 
   it("imports browser bridge readiness policy from plugin-browser", () => {
-    const statusMixin = readPackageFile("src/lifeops/service-mixin-status.ts");
+    const statusMixin = readPackageFile(
+      "src/lifeops/domains/status-service.ts",
+    );
     const screenTimeMixin = readPackageFile(
-      "src/lifeops/service-mixin-screentime.ts",
+      "src/lifeops/domains/screentime-service.ts",
     );
     const browserMixin = readPackageFile(
-      "src/lifeops/service-mixin-browser.ts",
+      "src/lifeops/domains/browser-service.ts",
     );
     const coreMixin = readPackageFile("src/lifeops/service-mixin-core.ts");
     const repository = readPackageFile("src/lifeops/repository.ts");

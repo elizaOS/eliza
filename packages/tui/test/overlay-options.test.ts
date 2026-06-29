@@ -2,7 +2,7 @@ import assert from "node:assert";
 import { describe, it } from "vitest";
 import type { Component } from "../src/tui.js";
 import { TUI } from "../src/tui.js";
-import { VirtualTerminal } from "./virtual-terminal.js";
+import { VirtualTerminal } from "../src/testing/virtual-terminal.js";
 
 class StaticOverlay implements Component {
   constructor(

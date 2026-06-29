@@ -136,16 +136,16 @@ describe("Springboard", () => {
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
-    // Page 1 shows the first page's views, not the 21st.
+    // Page 1 shows the first page's views, not the overflow tile.
     expect(
       within(screen.getByTestId("springboard-page-0")).queryByTestId(
-        "springboard-tile-v20",
+        "springboard-tile-v24",
       ),
     ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
     const secondPage = screen.getByTestId("springboard-page-1");
     expect(secondPage.getAttribute("aria-hidden")).toBe("false");
-    expect(within(secondPage).getByTestId("springboard-tile-v20")).toBeTruthy();
+    expect(within(secondPage).getByTestId("springboard-tile-v24")).toBeTruthy();
   });
 
   it("slides adjacent pages with the finger before committing a page swipe", () => {

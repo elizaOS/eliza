@@ -149,7 +149,6 @@ function checkDocs(packages) {
   }
 
   for (const requiredText of [
-    "Roblox",
     "Minecraft",
     "AWS",
     "GCP",

@@ -101,7 +101,7 @@ afterEach(() => {
 });
 
 describe("SpringboardSurface", () => {
-  it("shows Settings as a favorite and hides Home/Springboard self-links", () => {
+  it("shows launcher tiles and hides Home/Springboard self-links", () => {
     render(<SpringboardSurface />);
 
     expect(screen.getByTestId("springboard-tile-settings")).toBeTruthy();
@@ -160,6 +160,6 @@ describe("SpringboardSurface", () => {
       node.getAttribute("data-testid")?.replace("springboard-tile-", ""),
     );
 
-    expect(ids).toEqual(["phone", "notes", "weather"]);
+    expect(ids).toEqual(["phone", "settings", "notes", "weather"]);
   });
 });

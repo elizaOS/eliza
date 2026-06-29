@@ -120,7 +120,12 @@ function relationshipsEqual(
  * (client.getRelationshipsPeople / getRelationshipsCandidates), polling quietly
  * while the document is visible. Tapping the card opens the Relationships view.
  */
-export function RelationshipsAttentionWidget({ slot }: Partial<WidgetProps>) {
+const DEFAULT_SPAN = "col-span-2 row-span-1";
+
+export function RelationshipsAttentionWidget({
+  slot,
+  spanClassName = DEFAULT_SPAN,
+}: Partial<WidgetProps>) {
   const [data, setData] = useState<RelationshipsAttentionData>(EMPTY_DATA);
   const nav = useWidgetNavigation();
 
@@ -178,28 +183,32 @@ export function RelationshipsAttentionWidget({ slot }: Partial<WidgetProps>) {
   // otherwise the stalest contact to reach out to. Tapping opens Relationships.
   if (hasPendingMerge) {
     return (
-      <HomeWidgetCard
-        icon={<Users />}
-        label="People"
-        value="Confirm merge?"
-        badge={pendingCount}
-        tone="warn"
-        testId="chat-widget-relationships"
-        ariaLabel={`People: ${pendingCount} merge ${pendingCount === 1 ? "candidate" : "candidates"} to confirm. Open Relationships.`}
-        onActivate={() => nav.openView("/relationships", "relationships")}
-      />
+      <div className={spanClassName}>
+        <HomeWidgetCard
+          icon={<Users />}
+          label="People"
+          value="Confirm merge?"
+          badge={pendingCount}
+          tone="warn"
+          testId="chat-widget-relationships"
+          ariaLabel={`People: ${pendingCount} merge ${pendingCount === 1 ? "candidate" : "candidates"} to confirm. Open Relationships.`}
+          onActivate={() => nav.openView("/relationships", "relationships")}
+        />
+      </div>
     );
   }
   return (
-    <HomeWidgetCard
-      icon={<Users />}
-      label="Reach out"
-      value={stalest.displayName}
-      tone="default"
-      testId="chat-widget-relationships"
-      ariaLabel={`Reach out: you haven't talked to ${stalest.displayName} in a while. Open Relationships.`}
-      onActivate={() => nav.openView("/relationships", "relationships")}
-    />
+    <div className={spanClassName}>
+      <HomeWidgetCard
+        icon={<Users />}
+        label="Reach out"
+        value={stalest.displayName}
+        tone="default"
+        testId="chat-widget-relationships"
+        ariaLabel={`Reach out: you haven't talked to ${stalest.displayName} in a while. Open Relationships.`}
+        onActivate={() => nav.openView("/relationships", "relationships")}
+      />
+    </div>
   );
 }
 
