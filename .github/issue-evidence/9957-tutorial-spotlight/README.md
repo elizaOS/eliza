@@ -55,3 +55,22 @@ Unit coverage: `tutorial-steps.test.ts` — frame order incl. the two new frames
 no stale "Tutorial tile" copy, the new auto-advance predicates, and the
 per-frame nav-lock (each frame permits its own tabs + `navigateOnDone`, blocks an
 off-path tab).
+
+## 2026-06-29 verification sweep
+
+Re-ran on the clean `origin/develop` verification worktree:
+
+```bash
+bun run --cwd packages/ui test:tutorial-e2e
+bun run --cwd packages/app audit:app
+```
+
+Results:
+
+- Tutorial E2E passed and emitted 19 screenshots plus a walkthrough video.
+- App audit passed all 369 cases. Summary:
+  `broken=0 needs-work=0 minimalism-budget-failures=0`.
+- Manually inspected the desktop/mobile tutorial audit screenshots and the
+  `swipe-between-chats` E2E frame. The start state is readable, the bottom chat
+  affordance does not overlap content, and the spotlight dialog/target remain
+  visually coherent.
