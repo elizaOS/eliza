@@ -131,13 +131,6 @@ export {
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
 export {
-  ANDROID_OFFICIAL_CAPACITOR_PACKAGES,
-  IOS_COCOAPODS_OWNED_SPM_PLUGINS,
-  IOS_OFFICIAL_PODS,
-  MOBILE_CAPACITOR_PLUGIN_MANIFEST,
-  resolveIosCustomPods,
-} from "./mobile/ios-pods.mjs";
-export {
   ANDROID_APP_ACTION_CAPABILITIES,
   ANDROID_APP_ACTION_FORBIDDEN_MARKERS,
   ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS,
@@ -159,6 +152,13 @@ export {
   stripXmlComments,
   validateAndroidAppActionsXmlResource,
 } from "./mobile/android-manifest.mjs";
+export {
+  ANDROID_OFFICIAL_CAPACITOR_PACKAGES,
+  IOS_COCOAPODS_OWNED_SPM_PLUGINS,
+  IOS_OFFICIAL_PODS,
+  MOBILE_CAPACITOR_PLUGIN_MANIFEST,
+  resolveIosCustomPods,
+} from "./mobile/ios-pods.mjs";
 export {
   ANDROID_BUILD_TARGETS,
   resolveAndroidBuildTarget,
