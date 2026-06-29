@@ -7,6 +7,7 @@
 
 import { and, desc, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
+import { apiKeysRepository } from "../../db/repositories/api-keys";
 import {
   type AdminUser,
   adminUsers,
@@ -18,6 +19,7 @@ import {
 } from "../../db/schemas";
 import { shouldBlockDevnetBypass } from "../config/deployment-environment";
 import { logger } from "../utils/logger";
+import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
 
 // Default anvil wallet - admin in devnet only
 const ANVIL_DEFAULT_WALLET = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -360,6 +362,17 @@ class AdminService {
           updatedAt: now,
         })
         .where(eq(userModerationStatus.userId, userId));
+
+      // Inference hot path: when a user crosses into "blocking" (banned, or
+      // >=5 violations — matching shouldBlockUser), drop their cached IAC identity
+      // immediately. Otherwise a freshly-banned user with a warm cache entry keeps
+      // authenticating until the 60s authContext TTL. Mirrors develop's wiring.
+      const wasBlocking = existing.status === "banned" || existing.totalViolations >= 5;
+      const nowBlocking = newStatus === "banned" || newTotalViolations >= 5;
+      if (nowBlocking && !wasBlocking) {
+        const keys = await apiKeysRepository.listByUser(userId);
+        await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
+      }
     } else {
       await dbWrite.insert(userModerationStatus).values({
         userId,

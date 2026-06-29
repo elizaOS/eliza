@@ -85,6 +85,12 @@ export class ApiKeysRepository {
     });
   }
 
+  async listByUser(userId: string): Promise<ApiKey[]> {
+    return await dbRead.query.apiKeys.findMany({
+      where: eq(apiKeys.user_id, userId),
+    });
+  }
+
   async findByUserAndName(userId: string, name: string): Promise<ApiKey[]> {
     return await dbRead.query.apiKeys.findMany({
       where: and(eq(apiKeys.user_id, userId), eq(apiKeys.name, name)),
