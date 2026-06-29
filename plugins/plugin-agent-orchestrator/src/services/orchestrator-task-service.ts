@@ -33,6 +33,8 @@ import { AcpService } from "./acp-service.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
   accountMetaFromSessionMetadata,
+  assessCodingAccountReadiness,
+  type CodingAccountReadiness,
   getCodingAccountBridge,
   resolveCodingAccountStrategy,
 } from "./coding-account-selection.js";
@@ -2497,6 +2499,20 @@ export class OrchestratorTaskService extends Service {
     const availability = getCodingAccountBridge()?.describe() ?? {};
 
     return { strategy, availability, assignments };
+  }
+
+  /**
+   * Loud readiness gate for the multi-account orchestrator: asserts the pool
+   * has ≥1 healthy Codex AND ≥1 healthy Claude (≥2 each with `rotation`).
+   * Unlike the per-spawn `selectCodingAccount` — which silently single-account
+   * falls back so a thin pool never hard-fails a spawn — this is meant to fail
+   * loudly (a CI/ops check + a 503 route) so a misconfigured pool is caught.
+   */
+  getAccountReadiness(
+    opts: { rotation?: boolean } = {},
+  ): CodingAccountReadiness {
+    const availability = getCodingAccountBridge()?.describe() ?? {};
+    return assessCodingAccountReadiness(availability, opts);
   }
 
   /**
