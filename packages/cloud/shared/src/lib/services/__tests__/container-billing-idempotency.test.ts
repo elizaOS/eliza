@@ -16,7 +16,7 @@
  * executes. They self-skip if PGlite is unavailable.
  */
 
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -30,13 +30,14 @@ const USER_ID = "00000000-0000-0000-0000-0000000000b2";
 const CONTAINER_ID = "00000000-0000-0000-0000-0000000000c3";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
+let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let redeemableEarningsService: typeof import("../redeemable-earnings").redeemableEarningsService;
 let containerBillingRepository: typeof import("../../../db/repositories/container-billing").containerBillingRepository;
 let pgliteReady = true;
 
 beforeAll(async () => {
   try {
-    ({ dbWrite } = await import("../../../db/client"));
+    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ redeemableEarningsService } = await import("../redeemable-earnings"));
     ({ containerBillingRepository } = await import("../../../db/repositories/container-billing"));
 
@@ -139,6 +140,10 @@ beforeAll(async () => {
   }
 }, PGLITE_TIMEOUT);
 
+afterAll(async () => {
+  if (closeDb) await closeDb();
+});
+
 describe("computeContainerBillingPeriod", () => {
   test("normalizes to the UTC day regardless of time of day", () => {
     const { periodStart, periodEnd } = computeContainerBillingPeriod(
@@ -228,6 +233,86 @@ describe("convertToCredits idempotency", () => {
         `SELECT count(*)::int AS n FROM redeemable_earnings_ledger WHERE entry_type = 'credit_conversion';`,
       );
       expect((ledger.rows[0] as { n: number }).n).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("reduceEarnings money-out guard", () => {
+  test(
+    "requireSufficientBalance fails closed without writing when live balance is short",
+    async () => {
+      if (!pgliteReady) return;
+      await dbWrite.execute(`DELETE FROM redeemable_earnings_ledger;`);
+      await dbWrite.execute(`DELETE FROM redeemable_earnings;`);
+      await dbWrite.execute(
+        `INSERT INTO redeemable_earnings
+          (user_id, total_earned, available_balance, earned_from_creator_shares)
+         VALUES ('${USER_ID}', '5', '5', '5');`,
+      );
+
+      const result = await redeemableEarningsService.reduceEarnings({
+        userId: USER_ID,
+        amount: 8,
+        source: "creator_revenue_share",
+        sourceId: "stripe-connect:payout:guarded-short-balance",
+        description: "Stripe Connect fiat payout",
+        requireSufficientBalance: true,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Insufficient redeemable balance");
+      expect(result.newBalance).toBe(5);
+      expect(result.ledgerEntryId).toBe("");
+
+      const earnings = await dbWrite.execute(
+        `SELECT available_balance FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
+      );
+      const ledger = await dbWrite.execute(
+        `SELECT count(*)::int AS n FROM redeemable_earnings_ledger WHERE user_id = '${USER_ID}';`,
+      );
+      expect(
+        Number((earnings.rows[0] as { available_balance: string }).available_balance),
+      ).toBeCloseTo(5, 4);
+      expect((ledger.rows[0] as { n: number }).n).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "default reconciliation mode keeps legacy floor-to-zero behavior",
+    async () => {
+      if (!pgliteReady) return;
+      await dbWrite.execute(`DELETE FROM redeemable_earnings_ledger;`);
+      await dbWrite.execute(`DELETE FROM redeemable_earnings;`);
+      await dbWrite.execute(
+        `INSERT INTO redeemable_earnings
+          (user_id, total_earned, available_balance, earned_from_creator_shares)
+         VALUES ('${USER_ID}', '5', '5', '5');`,
+      );
+
+      const result = await redeemableEarningsService.reduceEarnings({
+        userId: USER_ID,
+        amount: 8,
+        source: "creator_revenue_share",
+        sourceId: "reconciliation:legacy-floor",
+        description: "Reconciliation adjustment",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.newBalance).toBe(0);
+      expect(result.ledgerEntryId).not.toBe("");
+
+      const earnings = await dbWrite.execute(
+        `SELECT available_balance FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
+      );
+      const ledger = await dbWrite.execute(
+        `SELECT count(*)::int AS n FROM redeemable_earnings_ledger WHERE user_id = '${USER_ID}' AND entry_type = 'adjustment';`,
+      );
+      expect(
+        Number((earnings.rows[0] as { available_balance: string }).available_balance),
+      ).toBeCloseTo(0, 4);
+      expect((ledger.rows[0] as { n: number }).n).toBe(1);
     },
     PGLITE_TIMEOUT,
   );
