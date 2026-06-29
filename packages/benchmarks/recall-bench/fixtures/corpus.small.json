@@ -1,0 +1,1322 @@
+{
+  "$schema": "recall-bench-corpus/v1",
+  "seed": 42,
+  "tier": "small",
+  "embeddingDim": 384,
+  "topics": [
+    {
+      "id": "kubernetes-networking",
+      "domain": "devops"
+    },
+    {
+      "id": "postgres-indexing",
+      "domain": "databases"
+    },
+    {
+      "id": "tcp-congestion",
+      "domain": "networking"
+    },
+    {
+      "id": "rust-ownership",
+      "domain": "programming-languages"
+    },
+    {
+      "id": "photosynthesis",
+      "domain": "biology"
+    },
+    {
+      "id": "monetary-policy",
+      "domain": "economics"
+    },
+    {
+      "id": "jet-propulsion",
+      "domain": "aerospace"
+    },
+    {
+      "id": "coffee-roasting",
+      "domain": "culinary"
+    }
+  ],
+  "documents": [
+    {
+      "docKey": "doc-00001",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-pod",
+      "filename": "k8s-pod-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The pod is the central concept here; understanding the pod is essential, and managing the pod affects overall behavior. It also relates to the kube-proxy. Several factors interact and must be balanced carefully. The section below covers the relevant details and trade-offs. Engineers and practitioners reference this material frequently. Document 1 elaborates the pod further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00002",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-pod",
+      "filename": "k8s-pod-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The pod is the central concept here; understanding the pod is essential, and managing the pod affects overall behavior. It also relates to the cni plugin. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 2 elaborates the pod further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00003",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-pod",
+      "filename": "k8s-pod-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The pod is the central concept here; understanding the pod is essential, and managing the pod affects overall behavior. It also relates to the cni plugin. Several factors interact and must be balanced carefully. The section below covers the relevant details and trade-offs. Document 3 elaborates the pod further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00004",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-pod",
+      "filename": "k8s-pod-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The pod is the central concept here; understanding the pod is essential, and managing the pod affects overall behavior. It also relates to the cluster ip. Understanding these concepts is essential for the field. The section below covers the relevant details and trade-offs. Document 4 elaborates the pod further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00005",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-clusterip",
+      "filename": "k8s-clusterip-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The cluster ip is the central concept here; understanding the cluster ip is essential, and managing the cluster ip affects overall behavior. It also relates to the kube-proxy. The following notes summarize the key considerations. Several factors interact and must be balanced carefully. Document 5 elaborates the cluster ip further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00006",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-clusterip",
+      "filename": "k8s-clusterip-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The cluster ip is the central concept here; understanding the cluster ip is essential, and managing the cluster ip affects overall behavior. It also relates to the pod. This document explains the topic in practical terms. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. Document 6 elaborates the cluster ip further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00007",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-clusterip",
+      "filename": "k8s-clusterip-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The cluster ip is the central concept here; understanding the cluster ip is essential, and managing the cluster ip affects overall behavior. It also relates to the pod. Understanding these concepts is essential for the field. This document explains the topic in practical terms. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. Document 7 elaborates the cluster ip further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00008",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-clusterip",
+      "filename": "k8s-clusterip-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The cluster ip is the central concept here; understanding the cluster ip is essential, and managing the cluster ip affects overall behavior. It also relates to the cni plugin. Engineers and practitioners reference this material frequently. The following notes summarize the key considerations. This document explains the topic in practical terms. This document explains the topic in practical terms. Document 8 elaborates the cluster ip further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00009",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-cni",
+      "filename": "k8s-cni-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The cni plugin is the central concept here; understanding the cni plugin is essential, and managing the cni plugin affects overall behavior. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Document 9 elaborates the cni plugin further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00010",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-cni",
+      "filename": "k8s-cni-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The cni plugin is the central concept here; understanding the cni plugin is essential, and managing the cni plugin affects overall behavior. It also relates to the cluster ip. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Engineers and practitioners reference this material frequently. Document 10 elaborates the cni plugin further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00011",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-cni",
+      "filename": "k8s-cni-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The cni plugin is the central concept here; understanding the cni plugin is essential, and managing the cni plugin affects overall behavior. It also relates to the cluster ip. Understanding these concepts is essential for the field. The section below covers the relevant details and trade-offs. Document 11 elaborates the cni plugin further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00012",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-cni",
+      "filename": "k8s-cni-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The cni plugin is the central concept here; understanding the cni plugin is essential, and managing the cni plugin affects overall behavior. It also relates to the kube-proxy. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. The following notes summarize the key considerations. Several factors interact and must be balanced carefully. Document 12 elaborates the cni plugin further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00013",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-kubeproxy",
+      "filename": "k8s-kubeproxy-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The kube-proxy is the central concept here; understanding the kube-proxy is essential, and managing the kube-proxy affects overall behavior. It also relates to the pod. This document explains the topic in practical terms. The following notes summarize the key considerations. Document 13 elaborates the kube-proxy further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00014",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-kubeproxy",
+      "filename": "k8s-kubeproxy-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The kube-proxy is the central concept here; understanding the kube-proxy is essential, and managing the kube-proxy affects overall behavior. It also relates to the cni plugin. Several factors interact and must be balanced carefully. This document explains the topic in practical terms. The section below covers the relevant details and trade-offs. Document 14 elaborates the kube-proxy further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00015",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-kubeproxy",
+      "filename": "k8s-kubeproxy-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The kube-proxy is the central concept here; understanding the kube-proxy is essential, and managing the kube-proxy affects overall behavior. It also relates to the service mesh. The section below covers the relevant details and trade-offs. Engineers and practitioners reference this material frequently. Document 15 elaborates the kube-proxy further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00016",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-kubeproxy",
+      "filename": "k8s-kubeproxy-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The kube-proxy is the central concept here; understanding the kube-proxy is essential, and managing the kube-proxy affects overall behavior. It also relates to the cni plugin. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 16 elaborates the kube-proxy further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00017",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-mesh",
+      "filename": "k8s-mesh-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The service mesh is the central concept here; understanding the service mesh is essential, and managing the service mesh affects overall behavior. It also relates to the cni plugin. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Document 17 elaborates the service mesh further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00018",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-mesh",
+      "filename": "k8s-mesh-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The service mesh is the central concept here; understanding the service mesh is essential, and managing the service mesh affects overall behavior. It also relates to the kube-proxy. The following notes summarize the key considerations. Several factors interact and must be balanced carefully. Document 18 elaborates the service mesh further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00019",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-mesh",
+      "filename": "k8s-mesh-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The service mesh is the central concept here; understanding the service mesh is essential, and managing the service mesh affects overall behavior. It also relates to the kube-proxy. Several factors interact and must be balanced carefully. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Document 19 elaborates the service mesh further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00020",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-mesh",
+      "filename": "k8s-mesh-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: kubernetes networking in the domain of devops. The service mesh is the central concept here; understanding the service mesh is essential, and managing the service mesh affects overall behavior. It also relates to the pod. Engineers and practitioners reference this material frequently. The section below covers the relevant details and trade-offs. Several factors interact and must be balanced carefully. This document explains the topic in practical terms. Document 20 elaborates the service mesh further within kubernetes-networking."
+    },
+    {
+      "docKey": "doc-00021",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-btree",
+      "filename": "pg-btree-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The btree index is the central concept here; understanding the btree index is essential, and managing the btree index affects overall behavior. It also relates to the query planner. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. The section below covers the relevant details and trade-offs. Document 21 elaborates the btree index further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00022",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-btree",
+      "filename": "pg-btree-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The btree index is the central concept here; understanding the btree index is essential, and managing the btree index affects overall behavior. It also relates to the tablespace. The following notes summarize the key considerations. This document explains the topic in practical terms. Document 22 elaborates the btree index further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00023",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-btree",
+      "filename": "pg-btree-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The btree index is the central concept here; understanding the btree index is essential, and managing the btree index affects overall behavior. It also relates to the tablespace. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 23 elaborates the btree index further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00024",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-btree",
+      "filename": "pg-btree-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The btree index is the central concept here; understanding the btree index is essential, and managing the btree index affects overall behavior. It also relates to the vacuum. The following notes summarize the key considerations. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. The following notes summarize the key considerations. Document 24 elaborates the btree index further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00025",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-vacuum",
+      "filename": "pg-vacuum-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The vacuum is the central concept here; understanding the vacuum is essential, and managing the vacuum affects overall behavior. It also relates to the btree index. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. Document 25 elaborates the vacuum further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00026",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-vacuum",
+      "filename": "pg-vacuum-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The vacuum is the central concept here; understanding the vacuum is essential, and managing the vacuum affects overall behavior. It also relates to the tablespace. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. The section below covers the relevant details and trade-offs. Document 26 elaborates the vacuum further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00027",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-vacuum",
+      "filename": "pg-vacuum-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The vacuum is the central concept here; understanding the vacuum is essential, and managing the vacuum affects overall behavior. It also relates to the tablespace. Engineers and practitioners reference this material frequently. The following notes summarize the key considerations. Document 27 elaborates the vacuum further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00028",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-vacuum",
+      "filename": "pg-vacuum-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The vacuum is the central concept here; understanding the vacuum is essential, and managing the vacuum affects overall behavior. It also relates to the btree index. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Document 28 elaborates the vacuum further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00029",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-planner",
+      "filename": "pg-planner-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The query planner is the central concept here; understanding the query planner is essential, and managing the query planner affects overall behavior. It also relates to the wal. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Document 29 elaborates the query planner further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00030",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-planner",
+      "filename": "pg-planner-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The query planner is the central concept here; understanding the query planner is essential, and managing the query planner affects overall behavior. It also relates to the vacuum. The following notes summarize the key considerations. The following notes summarize the key considerations. The section below covers the relevant details and trade-offs. Document 30 elaborates the query planner further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00031",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-planner",
+      "filename": "pg-planner-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The query planner is the central concept here; understanding the query planner is essential, and managing the query planner affects overall behavior. It also relates to the vacuum. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. The following notes summarize the key considerations. Document 31 elaborates the query planner further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00032",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-planner",
+      "filename": "pg-planner-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The query planner is the central concept here; understanding the query planner is essential, and managing the query planner affects overall behavior. It also relates to the tablespace. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Engineers and practitioners reference this material frequently. Document 32 elaborates the query planner further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00033",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-tablespace",
+      "filename": "pg-tablespace-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The tablespace is the central concept here; understanding the tablespace is essential, and managing the tablespace affects overall behavior. It also relates to the vacuum. The section below covers the relevant details and trade-offs. Engineers and practitioners reference this material frequently. Document 33 elaborates the tablespace further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00034",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-tablespace",
+      "filename": "pg-tablespace-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The tablespace is the central concept here; understanding the tablespace is essential, and managing the tablespace affects overall behavior. It also relates to the btree index. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. Document 34 elaborates the tablespace further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00035",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-tablespace",
+      "filename": "pg-tablespace-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The tablespace is the central concept here; understanding the tablespace is essential, and managing the tablespace affects overall behavior. It also relates to the query planner. The following notes summarize the key considerations. The following notes summarize the key considerations. Document 35 elaborates the tablespace further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00036",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-tablespace",
+      "filename": "pg-tablespace-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The tablespace is the central concept here; understanding the tablespace is essential, and managing the tablespace affects overall behavior. The section below covers the relevant details and trade-offs. The following notes summarize the key considerations. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Document 36 elaborates the tablespace further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00037",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-wal",
+      "filename": "pg-wal-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The wal is the central concept here; understanding the wal is essential, and managing the wal affects overall behavior. It also relates to the query planner. Several factors interact and must be balanced carefully. The following notes summarize the key considerations. This document explains the topic in practical terms. Understanding these concepts is essential for the field. Document 37 elaborates the wal further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00038",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-wal",
+      "filename": "pg-wal-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The wal is the central concept here; understanding the wal is essential, and managing the wal affects overall behavior. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Document 38 elaborates the wal further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00039",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-wal",
+      "filename": "pg-wal-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The wal is the central concept here; understanding the wal is essential, and managing the wal affects overall behavior. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. The section below covers the relevant details and trade-offs. Document 39 elaborates the wal further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00040",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-wal",
+      "filename": "pg-wal-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: postgres indexing in the domain of databases. The wal is the central concept here; understanding the wal is essential, and managing the wal affects overall behavior. It also relates to the btree index. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Document 40 elaborates the wal further within postgres-indexing."
+    },
+    {
+      "docKey": "doc-00041",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-slowstart",
+      "filename": "tcp-slowstart-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The slow start is the central concept here; understanding the slow start is essential, and managing the slow start affects overall behavior. It also relates to the rtt estimate. Several factors interact and must be balanced carefully. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 41 elaborates the slow start further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00042",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-slowstart",
+      "filename": "tcp-slowstart-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The slow start is the central concept here; understanding the slow start is essential, and managing the slow start affects overall behavior. It also relates to the sack. The following notes summarize the key considerations. The following notes summarize the key considerations. Several factors interact and must be balanced carefully. Document 42 elaborates the slow start further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00043",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-slowstart",
+      "filename": "tcp-slowstart-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The slow start is the central concept here; understanding the slow start is essential, and managing the slow start affects overall behavior. It also relates to the rtt estimate. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Document 43 elaborates the slow start further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00044",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-slowstart",
+      "filename": "tcp-slowstart-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The slow start is the central concept here; understanding the slow start is essential, and managing the slow start affects overall behavior. It also relates to the sack. The following notes summarize the key considerations. This document explains the topic in practical terms. Document 44 elaborates the slow start further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00045",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-cwnd",
+      "filename": "tcp-cwnd-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The cwnd is the central concept here; understanding the cwnd is essential, and managing the cwnd affects overall behavior. It also relates to the slow start. The section below covers the relevant details and trade-offs. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. Document 45 elaborates the cwnd further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00046",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-cwnd",
+      "filename": "tcp-cwnd-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The cwnd is the central concept here; understanding the cwnd is essential, and managing the cwnd affects overall behavior. It also relates to the retransmission. This document explains the topic in practical terms. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. This document explains the topic in practical terms. Document 46 elaborates the cwnd further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00047",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-cwnd",
+      "filename": "tcp-cwnd-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The cwnd is the central concept here; understanding the cwnd is essential, and managing the cwnd affects overall behavior. Understanding these concepts is essential for the field. The section below covers the relevant details and trade-offs. The section below covers the relevant details and trade-offs. Document 47 elaborates the cwnd further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00048",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-cwnd",
+      "filename": "tcp-cwnd-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The cwnd is the central concept here; understanding the cwnd is essential, and managing the cwnd affects overall behavior. It also relates to the rtt estimate. Understanding these concepts is essential for the field. Understanding these concepts is essential for the field. Document 48 elaborates the cwnd further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00049",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-retransmit",
+      "filename": "tcp-retransmit-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The retransmission is the central concept here; understanding the retransmission is essential, and managing the retransmission affects overall behavior. The following notes summarize the key considerations. The following notes summarize the key considerations. Engineers and practitioners reference this material frequently. Document 49 elaborates the retransmission further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00050",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-retransmit",
+      "filename": "tcp-retransmit-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The retransmission is the central concept here; understanding the retransmission is essential, and managing the retransmission affects overall behavior. It also relates to the cwnd. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Document 50 elaborates the retransmission further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00051",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-retransmit",
+      "filename": "tcp-retransmit-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The retransmission is the central concept here; understanding the retransmission is essential, and managing the retransmission affects overall behavior. Understanding these concepts is essential for the field. The following notes summarize the key considerations. This document explains the topic in practical terms. Document 51 elaborates the retransmission further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00052",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-retransmit",
+      "filename": "tcp-retransmit-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The retransmission is the central concept here; understanding the retransmission is essential, and managing the retransmission affects overall behavior. It also relates to the slow start. Several factors interact and must be balanced carefully. This document explains the topic in practical terms. Document 52 elaborates the retransmission further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00053",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-rtt",
+      "filename": "tcp-rtt-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The rtt estimate is the central concept here; understanding the rtt estimate is essential, and managing the rtt estimate affects overall behavior. It also relates to the sack. Understanding these concepts is essential for the field. This document explains the topic in practical terms. The section below covers the relevant details and trade-offs. Document 53 elaborates the rtt estimate further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00054",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-rtt",
+      "filename": "tcp-rtt-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The rtt estimate is the central concept here; understanding the rtt estimate is essential, and managing the rtt estimate affects overall behavior. It also relates to the slow start. Engineers and practitioners reference this material frequently. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. Document 54 elaborates the rtt estimate further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00055",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-rtt",
+      "filename": "tcp-rtt-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The rtt estimate is the central concept here; understanding the rtt estimate is essential, and managing the rtt estimate affects overall behavior. It also relates to the slow start. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. Document 55 elaborates the rtt estimate further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00056",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-rtt",
+      "filename": "tcp-rtt-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The rtt estimate is the central concept here; understanding the rtt estimate is essential, and managing the rtt estimate affects overall behavior. It also relates to the sack. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. This document explains the topic in practical terms. Document 56 elaborates the rtt estimate further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00057",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-sack",
+      "filename": "tcp-sack-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The sack is the central concept here; understanding the sack is essential, and managing the sack affects overall behavior. It also relates to the slow start. The section below covers the relevant details and trade-offs. The section below covers the relevant details and trade-offs. Document 57 elaborates the sack further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00058",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-sack",
+      "filename": "tcp-sack-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The sack is the central concept here; understanding the sack is essential, and managing the sack affects overall behavior. It also relates to the retransmission. This document explains the topic in practical terms. The following notes summarize the key considerations. The following notes summarize the key considerations. Engineers and practitioners reference this material frequently. Document 58 elaborates the sack further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00059",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-sack",
+      "filename": "tcp-sack-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The sack is the central concept here; understanding the sack is essential, and managing the sack affects overall behavior. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. Document 59 elaborates the sack further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00060",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-sack",
+      "filename": "tcp-sack-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: tcp congestion in the domain of networking. The sack is the central concept here; understanding the sack is essential, and managing the sack affects overall behavior. It also relates to the cwnd. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. The section below covers the relevant details and trade-offs. Document 60 elaborates the sack further within tcp-congestion."
+    },
+    {
+      "docKey": "doc-00061",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-borrow",
+      "filename": "rust-borrow-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The borrow checker is the central concept here; understanding the borrow checker is essential, and managing the borrow checker affects overall behavior. It also relates to the move semantics. Engineers and practitioners reference this material frequently. The following notes summarize the key considerations. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. Document 61 elaborates the borrow checker further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00062",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-borrow",
+      "filename": "rust-borrow-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The borrow checker is the central concept here; understanding the borrow checker is essential, and managing the borrow checker affects overall behavior. It also relates to the trait bound. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. Document 62 elaborates the borrow checker further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00063",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-borrow",
+      "filename": "rust-borrow-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The borrow checker is the central concept here; understanding the borrow checker is essential, and managing the borrow checker affects overall behavior. It also relates to the trait bound. Understanding these concepts is essential for the field. The section below covers the relevant details and trade-offs. Document 63 elaborates the borrow checker further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00064",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-borrow",
+      "filename": "rust-borrow-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The borrow checker is the central concept here; understanding the borrow checker is essential, and managing the borrow checker affects overall behavior. It also relates to the drop. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. Document 64 elaborates the borrow checker further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00065",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-lifetime",
+      "filename": "rust-lifetime-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The lifetime is the central concept here; understanding the lifetime is essential, and managing the lifetime affects overall behavior. It also relates to the move semantics. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Document 65 elaborates the lifetime further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00066",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-lifetime",
+      "filename": "rust-lifetime-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The lifetime is the central concept here; understanding the lifetime is essential, and managing the lifetime affects overall behavior. It also relates to the drop. This document explains the topic in practical terms. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. The following notes summarize the key considerations. Document 66 elaborates the lifetime further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00067",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-lifetime",
+      "filename": "rust-lifetime-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The lifetime is the central concept here; understanding the lifetime is essential, and managing the lifetime affects overall behavior. The section below covers the relevant details and trade-offs. The section below covers the relevant details and trade-offs. The section below covers the relevant details and trade-offs. Document 67 elaborates the lifetime further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00068",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-lifetime",
+      "filename": "rust-lifetime-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The lifetime is the central concept here; understanding the lifetime is essential, and managing the lifetime affects overall behavior. It also relates to the borrow checker. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. The following notes summarize the key considerations. This document explains the topic in practical terms. Document 68 elaborates the lifetime further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00069",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-move",
+      "filename": "rust-move-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The move semantics is the central concept here; understanding the move semantics is essential, and managing the move semantics affects overall behavior. The section below covers the relevant details and trade-offs. The following notes summarize the key considerations. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Document 69 elaborates the move semantics further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00070",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-move",
+      "filename": "rust-move-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The move semantics is the central concept here; understanding the move semantics is essential, and managing the move semantics affects overall behavior. It also relates to the trait bound. This document explains the topic in practical terms. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. Document 70 elaborates the move semantics further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00071",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-move",
+      "filename": "rust-move-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The move semantics is the central concept here; understanding the move semantics is essential, and managing the move semantics affects overall behavior. It also relates to the borrow checker. The section below covers the relevant details and trade-offs. Several factors interact and must be balanced carefully. The section below covers the relevant details and trade-offs. Document 71 elaborates the move semantics further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00072",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-move",
+      "filename": "rust-move-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The move semantics is the central concept here; understanding the move semantics is essential, and managing the move semantics affects overall behavior. It also relates to the borrow checker. Engineers and practitioners reference this material frequently. The section below covers the relevant details and trade-offs. Document 72 elaborates the move semantics further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00073",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-trait",
+      "filename": "rust-trait-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The trait bound is the central concept here; understanding the trait bound is essential, and managing the trait bound affects overall behavior. It also relates to the lifetime. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. The following notes summarize the key considerations. Document 73 elaborates the trait bound further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00074",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-trait",
+      "filename": "rust-trait-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The trait bound is the central concept here; understanding the trait bound is essential, and managing the trait bound affects overall behavior. It also relates to the borrow checker. Engineers and practitioners reference this material frequently. The following notes summarize the key considerations. Engineers and practitioners reference this material frequently. Document 74 elaborates the trait bound further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00075",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-trait",
+      "filename": "rust-trait-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The trait bound is the central concept here; understanding the trait bound is essential, and managing the trait bound affects overall behavior. It also relates to the lifetime. Understanding these concepts is essential for the field. The following notes summarize the key considerations. Understanding these concepts is essential for the field. This document explains the topic in practical terms. Document 75 elaborates the trait bound further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00076",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-trait",
+      "filename": "rust-trait-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The trait bound is the central concept here; understanding the trait bound is essential, and managing the trait bound affects overall behavior. Several factors interact and must be balanced carefully. This document explains the topic in practical terms. This document explains the topic in practical terms. This document explains the topic in practical terms. Document 76 elaborates the trait bound further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00077",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-drop",
+      "filename": "rust-drop-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The drop is the central concept here; understanding the drop is essential, and managing the drop affects overall behavior. It also relates to the lifetime. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. Document 77 elaborates the drop further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00078",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-drop",
+      "filename": "rust-drop-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The drop is the central concept here; understanding the drop is essential, and managing the drop affects overall behavior. It also relates to the move semantics. The following notes summarize the key considerations. Understanding these concepts is essential for the field. This document explains the topic in practical terms. The section below covers the relevant details and trade-offs. Document 78 elaborates the drop further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00079",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-drop",
+      "filename": "rust-drop-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The drop is the central concept here; understanding the drop is essential, and managing the drop affects overall behavior. It also relates to the trait bound. Engineers and practitioners reference this material frequently. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. Document 79 elaborates the drop further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00080",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-drop",
+      "filename": "rust-drop-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: rust ownership in the domain of programming-languages. The drop is the central concept here; understanding the drop is essential, and managing the drop affects overall behavior. It also relates to the borrow checker. The section below covers the relevant details and trade-offs. The following notes summarize the key considerations. Document 80 elaborates the drop further within rust-ownership."
+    },
+    {
+      "docKey": "doc-00081",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-chloroplast",
+      "filename": "bio-chloroplast-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The chloroplast is the central concept here; understanding the chloroplast is essential, and managing the chloroplast affects overall behavior. It also relates to the thylakoid. The following notes summarize the key considerations. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. Document 81 elaborates the chloroplast further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00082",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-chloroplast",
+      "filename": "bio-chloroplast-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The chloroplast is the central concept here; understanding the chloroplast is essential, and managing the chloroplast affects overall behavior. It also relates to the stomata. Engineers and practitioners reference this material frequently. The section below covers the relevant details and trade-offs. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. Document 82 elaborates the chloroplast further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00083",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-chloroplast",
+      "filename": "bio-chloroplast-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The chloroplast is the central concept here; understanding the chloroplast is essential, and managing the chloroplast affects overall behavior. It also relates to the rubisco. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. Document 83 elaborates the chloroplast further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00084",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-chloroplast",
+      "filename": "bio-chloroplast-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The chloroplast is the central concept here; understanding the chloroplast is essential, and managing the chloroplast affects overall behavior. It also relates to the stomata. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Document 84 elaborates the chloroplast further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00085",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-calvin",
+      "filename": "bio-calvin-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The calvin cycle is the central concept here; understanding the calvin cycle is essential, and managing the calvin cycle affects overall behavior. It also relates to the chloroplast. The section below covers the relevant details and trade-offs. The section below covers the relevant details and trade-offs. Document 85 elaborates the calvin cycle further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00086",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-calvin",
+      "filename": "bio-calvin-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The calvin cycle is the central concept here; understanding the calvin cycle is essential, and managing the calvin cycle affects overall behavior. The following notes summarize the key considerations. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Understanding these concepts is essential for the field. Document 86 elaborates the calvin cycle further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00087",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-calvin",
+      "filename": "bio-calvin-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The calvin cycle is the central concept here; understanding the calvin cycle is essential, and managing the calvin cycle affects overall behavior. It also relates to the chloroplast. This document explains the topic in practical terms. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. Document 87 elaborates the calvin cycle further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00088",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-calvin",
+      "filename": "bio-calvin-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The calvin cycle is the central concept here; understanding the calvin cycle is essential, and managing the calvin cycle affects overall behavior. It also relates to the stomata. Understanding these concepts is essential for the field. The following notes summarize the key considerations. The section below covers the relevant details and trade-offs. Document 88 elaborates the calvin cycle further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00089",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-stomata",
+      "filename": "bio-stomata-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The stomata is the central concept here; understanding the stomata is essential, and managing the stomata affects overall behavior. It also relates to the chloroplast. The section below covers the relevant details and trade-offs. The following notes summarize the key considerations. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Document 89 elaborates the stomata further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00090",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-stomata",
+      "filename": "bio-stomata-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The stomata is the central concept here; understanding the stomata is essential, and managing the stomata affects overall behavior. It also relates to the rubisco. The following notes summarize the key considerations. Engineers and practitioners reference this material frequently. The following notes summarize the key considerations. Document 90 elaborates the stomata further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00091",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-stomata",
+      "filename": "bio-stomata-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The stomata is the central concept here; understanding the stomata is essential, and managing the stomata affects overall behavior. It also relates to the chloroplast. The following notes summarize the key considerations. The following notes summarize the key considerations. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Document 91 elaborates the stomata further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00092",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-stomata",
+      "filename": "bio-stomata-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The stomata is the central concept here; understanding the stomata is essential, and managing the stomata affects overall behavior. It also relates to the chloroplast. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. The section below covers the relevant details and trade-offs. Document 92 elaborates the stomata further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00093",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-rubisco",
+      "filename": "bio-rubisco-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The rubisco is the central concept here; understanding the rubisco is essential, and managing the rubisco affects overall behavior. This document explains the topic in practical terms. Understanding these concepts is essential for the field. Understanding these concepts is essential for the field. The following notes summarize the key considerations. Document 93 elaborates the rubisco further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00094",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-rubisco",
+      "filename": "bio-rubisco-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The rubisco is the central concept here; understanding the rubisco is essential, and managing the rubisco affects overall behavior. It also relates to the stomata. The following notes summarize the key considerations. Understanding these concepts is essential for the field. This document explains the topic in practical terms. Document 94 elaborates the rubisco further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00095",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-rubisco",
+      "filename": "bio-rubisco-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The rubisco is the central concept here; understanding the rubisco is essential, and managing the rubisco affects overall behavior. The section below covers the relevant details and trade-offs. Engineers and practitioners reference this material frequently. Document 95 elaborates the rubisco further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00096",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-rubisco",
+      "filename": "bio-rubisco-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The rubisco is the central concept here; understanding the rubisco is essential, and managing the rubisco affects overall behavior. It also relates to the calvin cycle. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 96 elaborates the rubisco further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00097",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-thylakoid",
+      "filename": "bio-thylakoid-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The thylakoid is the central concept here; understanding the thylakoid is essential, and managing the thylakoid affects overall behavior. It also relates to the stomata. Understanding these concepts is essential for the field. The following notes summarize the key considerations. Document 97 elaborates the thylakoid further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00098",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-thylakoid",
+      "filename": "bio-thylakoid-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The thylakoid is the central concept here; understanding the thylakoid is essential, and managing the thylakoid affects overall behavior. It also relates to the stomata. The section below covers the relevant details and trade-offs. This document explains the topic in practical terms. The section below covers the relevant details and trade-offs. Document 98 elaborates the thylakoid further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00099",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-thylakoid",
+      "filename": "bio-thylakoid-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The thylakoid is the central concept here; understanding the thylakoid is essential, and managing the thylakoid affects overall behavior. It also relates to the stomata. The section below covers the relevant details and trade-offs. The following notes summarize the key considerations. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Document 99 elaborates the thylakoid further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00100",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-thylakoid",
+      "filename": "bio-thylakoid-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: photosynthesis in the domain of biology. The thylakoid is the central concept here; understanding the thylakoid is essential, and managing the thylakoid affects overall behavior. It also relates to the chloroplast. The following notes summarize the key considerations. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. Document 100 elaborates the thylakoid further within photosynthesis."
+    },
+    {
+      "docKey": "doc-00101",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-rate",
+      "filename": "econ-rate-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The interest rate is the central concept here; understanding the interest rate is essential, and managing the interest rate affects overall behavior. It also relates to the inflation target. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. Document 101 elaborates the interest rate further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00102",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-rate",
+      "filename": "econ-rate-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The interest rate is the central concept here; understanding the interest rate is essential, and managing the interest rate affects overall behavior. It also relates to the liquidity. The section below covers the relevant details and trade-offs. This document explains the topic in practical terms. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Document 102 elaborates the interest rate further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00103",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-rate",
+      "filename": "econ-rate-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The interest rate is the central concept here; understanding the interest rate is essential, and managing the interest rate affects overall behavior. Several factors interact and must be balanced carefully. The section below covers the relevant details and trade-offs. The section below covers the relevant details and trade-offs. Document 103 elaborates the interest rate further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00104",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-rate",
+      "filename": "econ-rate-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The interest rate is the central concept here; understanding the interest rate is essential, and managing the interest rate affects overall behavior. It also relates to the open market. The following notes summarize the key considerations. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Document 104 elaborates the interest rate further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00105",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-omo",
+      "filename": "econ-omo-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The open market is the central concept here; understanding the open market is essential, and managing the open market affects overall behavior. It also relates to the interest rate. The section below covers the relevant details and trade-offs. This document explains the topic in practical terms. This document explains the topic in practical terms. Document 105 elaborates the open market further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00106",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-omo",
+      "filename": "econ-omo-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The open market is the central concept here; understanding the open market is essential, and managing the open market affects overall behavior. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 106 elaborates the open market further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00107",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-omo",
+      "filename": "econ-omo-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The open market is the central concept here; understanding the open market is essential, and managing the open market affects overall behavior. It also relates to the reserve ratio. The section below covers the relevant details and trade-offs. This document explains the topic in practical terms. The section below covers the relevant details and trade-offs. Several factors interact and must be balanced carefully. Document 107 elaborates the open market further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00108",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-omo",
+      "filename": "econ-omo-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The open market is the central concept here; understanding the open market is essential, and managing the open market affects overall behavior. Several factors interact and must be balanced carefully. The following notes summarize the key considerations. The following notes summarize the key considerations. Document 108 elaborates the open market further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00109",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-reserve",
+      "filename": "econ-reserve-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The reserve ratio is the central concept here; understanding the reserve ratio is essential, and managing the reserve ratio affects overall behavior. It also relates to the liquidity. Engineers and practitioners reference this material frequently. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Document 109 elaborates the reserve ratio further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00110",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-reserve",
+      "filename": "econ-reserve-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The reserve ratio is the central concept here; understanding the reserve ratio is essential, and managing the reserve ratio affects overall behavior. It also relates to the liquidity. Understanding these concepts is essential for the field. This document explains the topic in practical terms. Document 110 elaborates the reserve ratio further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00111",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-reserve",
+      "filename": "econ-reserve-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The reserve ratio is the central concept here; understanding the reserve ratio is essential, and managing the reserve ratio affects overall behavior. It also relates to the inflation target. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. The following notes summarize the key considerations. Document 111 elaborates the reserve ratio further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00112",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-reserve",
+      "filename": "econ-reserve-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The reserve ratio is the central concept here; understanding the reserve ratio is essential, and managing the reserve ratio affects overall behavior. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. Document 112 elaborates the reserve ratio further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00113",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-target",
+      "filename": "econ-target-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The inflation target is the central concept here; understanding the inflation target is essential, and managing the inflation target affects overall behavior. Understanding these concepts is essential for the field. Understanding these concepts is essential for the field. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 113 elaborates the inflation target further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00114",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-target",
+      "filename": "econ-target-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The inflation target is the central concept here; understanding the inflation target is essential, and managing the inflation target affects overall behavior. This document explains the topic in practical terms. This document explains the topic in practical terms. Document 114 elaborates the inflation target further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00115",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-target",
+      "filename": "econ-target-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The inflation target is the central concept here; understanding the inflation target is essential, and managing the inflation target affects overall behavior. It also relates to the liquidity. This document explains the topic in practical terms. Understanding these concepts is essential for the field. Document 115 elaborates the inflation target further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00116",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-target",
+      "filename": "econ-target-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The inflation target is the central concept here; understanding the inflation target is essential, and managing the inflation target affects overall behavior. It also relates to the interest rate. Understanding these concepts is essential for the field. This document explains the topic in practical terms. The following notes summarize the key considerations. The section below covers the relevant details and trade-offs. Document 116 elaborates the inflation target further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00117",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-liquidity",
+      "filename": "econ-liquidity-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The liquidity is the central concept here; understanding the liquidity is essential, and managing the liquidity affects overall behavior. It also relates to the open market. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. Document 117 elaborates the liquidity further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00118",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-liquidity",
+      "filename": "econ-liquidity-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The liquidity is the central concept here; understanding the liquidity is essential, and managing the liquidity affects overall behavior. It also relates to the interest rate. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Document 118 elaborates the liquidity further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00119",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-liquidity",
+      "filename": "econ-liquidity-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The liquidity is the central concept here; understanding the liquidity is essential, and managing the liquidity affects overall behavior. It also relates to the reserve ratio. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Engineers and practitioners reference this material frequently. Document 119 elaborates the liquidity further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00120",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-liquidity",
+      "filename": "econ-liquidity-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: monetary policy in the domain of economics. The liquidity is the central concept here; understanding the liquidity is essential, and managing the liquidity affects overall behavior. It also relates to the interest rate. The section below covers the relevant details and trade-offs. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. Document 120 elaborates the liquidity further within monetary-policy."
+    },
+    {
+      "docKey": "doc-00121",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-turbofan",
+      "filename": "aero-turbofan-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The turbofan is the central concept here; understanding the turbofan is essential, and managing the turbofan affects overall behavior. It also relates to the afterburner. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 121 elaborates the turbofan further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00122",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-turbofan",
+      "filename": "aero-turbofan-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The turbofan is the central concept here; understanding the turbofan is essential, and managing the turbofan affects overall behavior. It also relates to the nozzle. The following notes summarize the key considerations. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 122 elaborates the turbofan further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00123",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-turbofan",
+      "filename": "aero-turbofan-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The turbofan is the central concept here; understanding the turbofan is essential, and managing the turbofan affects overall behavior. It also relates to the bypass ratio. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. Document 123 elaborates the turbofan further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00124",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-turbofan",
+      "filename": "aero-turbofan-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The turbofan is the central concept here; understanding the turbofan is essential, and managing the turbofan affects overall behavior. It also relates to the afterburner. This document explains the topic in practical terms. Understanding these concepts is essential for the field. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 124 elaborates the turbofan further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00125",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-bypass",
+      "filename": "aero-bypass-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The bypass ratio is the central concept here; understanding the bypass ratio is essential, and managing the bypass ratio affects overall behavior. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Document 125 elaborates the bypass ratio further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00126",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-bypass",
+      "filename": "aero-bypass-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The bypass ratio is the central concept here; understanding the bypass ratio is essential, and managing the bypass ratio affects overall behavior. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. Document 126 elaborates the bypass ratio further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00127",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-bypass",
+      "filename": "aero-bypass-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The bypass ratio is the central concept here; understanding the bypass ratio is essential, and managing the bypass ratio affects overall behavior. It also relates to the compressor stage. Understanding these concepts is essential for the field. The following notes summarize the key considerations. Document 127 elaborates the bypass ratio further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00128",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-bypass",
+      "filename": "aero-bypass-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The bypass ratio is the central concept here; understanding the bypass ratio is essential, and managing the bypass ratio affects overall behavior. It also relates to the afterburner. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 128 elaborates the bypass ratio further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00129",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-afterburner",
+      "filename": "aero-afterburner-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The afterburner is the central concept here; understanding the afterburner is essential, and managing the afterburner affects overall behavior. It also relates to the compressor stage. Several factors interact and must be balanced carefully. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 129 elaborates the afterburner further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00130",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-afterburner",
+      "filename": "aero-afterburner-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The afterburner is the central concept here; understanding the afterburner is essential, and managing the afterburner affects overall behavior. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Understanding these concepts is essential for the field. Document 130 elaborates the afterburner further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00131",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-afterburner",
+      "filename": "aero-afterburner-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The afterburner is the central concept here; understanding the afterburner is essential, and managing the afterburner affects overall behavior. It also relates to the compressor stage. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. The section below covers the relevant details and trade-offs. Document 131 elaborates the afterburner further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00132",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-afterburner",
+      "filename": "aero-afterburner-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The afterburner is the central concept here; understanding the afterburner is essential, and managing the afterburner affects overall behavior. It also relates to the bypass ratio. This document explains the topic in practical terms. This document explains the topic in practical terms. Document 132 elaborates the afterburner further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00133",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-compressor",
+      "filename": "aero-compressor-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The compressor stage is the central concept here; understanding the compressor stage is essential, and managing the compressor stage affects overall behavior. This document explains the topic in practical terms. The following notes summarize the key considerations. Document 133 elaborates the compressor stage further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00134",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-compressor",
+      "filename": "aero-compressor-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The compressor stage is the central concept here; understanding the compressor stage is essential, and managing the compressor stage affects overall behavior. The section below covers the relevant details and trade-offs. Engineers and practitioners reference this material frequently. Document 134 elaborates the compressor stage further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00135",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-compressor",
+      "filename": "aero-compressor-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The compressor stage is the central concept here; understanding the compressor stage is essential, and managing the compressor stage affects overall behavior. It also relates to the bypass ratio. The following notes summarize the key considerations. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Document 135 elaborates the compressor stage further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00136",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-compressor",
+      "filename": "aero-compressor-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The compressor stage is the central concept here; understanding the compressor stage is essential, and managing the compressor stage affects overall behavior. It also relates to the afterburner. This document explains the topic in practical terms. Engineers and practitioners reference this material frequently. The following notes summarize the key considerations. Several factors interact and must be balanced carefully. Document 136 elaborates the compressor stage further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00137",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-nozzle",
+      "filename": "aero-nozzle-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The nozzle is the central concept here; understanding the nozzle is essential, and managing the nozzle affects overall behavior. The following notes summarize the key considerations. Engineers and practitioners reference this material frequently. Understanding these concepts is essential for the field. Understanding these concepts is essential for the field. Document 137 elaborates the nozzle further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00138",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-nozzle",
+      "filename": "aero-nozzle-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The nozzle is the central concept here; understanding the nozzle is essential, and managing the nozzle affects overall behavior. It also relates to the compressor stage. The following notes summarize the key considerations. The following notes summarize the key considerations. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Document 138 elaborates the nozzle further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00139",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-nozzle",
+      "filename": "aero-nozzle-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The nozzle is the central concept here; understanding the nozzle is essential, and managing the nozzle affects overall behavior. It also relates to the afterburner. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Document 139 elaborates the nozzle further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00140",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-nozzle",
+      "filename": "aero-nozzle-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: jet propulsion in the domain of aerospace. The nozzle is the central concept here; understanding the nozzle is essential, and managing the nozzle affects overall behavior. It also relates to the turbofan. Understanding these concepts is essential for the field. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 140 elaborates the nozzle further within jet-propulsion."
+    },
+    {
+      "docKey": "doc-00141",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-crack",
+      "filename": "coffee-crack-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The first crack is the central concept here; understanding the first crack is essential, and managing the first crack affects overall behavior. It also relates to the degassing. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. This document explains the topic in practical terms. Document 141 elaborates the first crack further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00142",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-crack",
+      "filename": "coffee-crack-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The first crack is the central concept here; understanding the first crack is essential, and managing the first crack affects overall behavior. It also relates to the maillard. The following notes summarize the key considerations. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. The following notes summarize the key considerations. Document 142 elaborates the first crack further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00143",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-crack",
+      "filename": "coffee-crack-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The first crack is the central concept here; understanding the first crack is essential, and managing the first crack affects overall behavior. It also relates to the maillard. The following notes summarize the key considerations. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 143 elaborates the first crack further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00144",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-crack",
+      "filename": "coffee-crack-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The first crack is the central concept here; understanding the first crack is essential, and managing the first crack affects overall behavior. It also relates to the bean density. Understanding these concepts is essential for the field. The following notes summarize the key considerations. Document 144 elaborates the first crack further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00145",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-maillard",
+      "filename": "coffee-maillard-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The maillard is the central concept here; understanding the maillard is essential, and managing the maillard affects overall behavior. It also relates to the degassing. Understanding these concepts is essential for the field. The following notes summarize the key considerations. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. Document 145 elaborates the maillard further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00146",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-maillard",
+      "filename": "coffee-maillard-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The maillard is the central concept here; understanding the maillard is essential, and managing the maillard affects overall behavior. It also relates to the degassing. This document explains the topic in practical terms. This document explains the topic in practical terms. Document 146 elaborates the maillard further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00147",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-maillard",
+      "filename": "coffee-maillard-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The maillard is the central concept here; understanding the maillard is essential, and managing the maillard affects overall behavior. It also relates to the first crack. The section below covers the relevant details and trade-offs. Understanding these concepts is essential for the field. The following notes summarize the key considerations. Document 147 elaborates the maillard further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00148",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-maillard",
+      "filename": "coffee-maillard-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The maillard is the central concept here; understanding the maillard is essential, and managing the maillard affects overall behavior. The section below covers the relevant details and trade-offs. The following notes summarize the key considerations. The following notes summarize the key considerations. The section below covers the relevant details and trade-offs. Document 148 elaborates the maillard further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00149",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-degas",
+      "filename": "coffee-degas-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The degassing is the central concept here; understanding the degassing is essential, and managing the degassing affects overall behavior. It also relates to the maillard. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Document 149 elaborates the degassing further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00150",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-degas",
+      "filename": "coffee-degas-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The degassing is the central concept here; understanding the degassing is essential, and managing the degassing affects overall behavior. It also relates to the maillard. Several factors interact and must be balanced carefully. This document explains the topic in practical terms. Document 150 elaborates the degassing further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00151",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-degas",
+      "filename": "coffee-degas-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The degassing is the central concept here; understanding the degassing is essential, and managing the degassing affects overall behavior. It also relates to the roast curve. This document explains the topic in practical terms. Understanding these concepts is essential for the field. Several factors interact and must be balanced carefully. Document 151 elaborates the degassing further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00152",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-degas",
+      "filename": "coffee-degas-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The degassing is the central concept here; understanding the degassing is essential, and managing the degassing affects overall behavior. It also relates to the first crack. Engineers and practitioners reference this material frequently. Several factors interact and must be balanced carefully. The following notes summarize the key considerations. The following notes summarize the key considerations. Document 152 elaborates the degassing further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00153",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-curve",
+      "filename": "coffee-curve-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The roast curve is the central concept here; understanding the roast curve is essential, and managing the roast curve affects overall behavior. It also relates to the first crack. This document explains the topic in practical terms. The following notes summarize the key considerations. The following notes summarize the key considerations. Document 153 elaborates the roast curve further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00154",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-curve",
+      "filename": "coffee-curve-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The roast curve is the central concept here; understanding the roast curve is essential, and managing the roast curve affects overall behavior. It also relates to the degassing. Several factors interact and must be balanced carefully. The section below covers the relevant details and trade-offs. Document 154 elaborates the roast curve further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00155",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-curve",
+      "filename": "coffee-curve-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The roast curve is the central concept here; understanding the roast curve is essential, and managing the roast curve affects overall behavior. It also relates to the maillard. Engineers and practitioners reference this material frequently. The section below covers the relevant details and trade-offs. Document 155 elaborates the roast curve further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00156",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-curve",
+      "filename": "coffee-curve-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The roast curve is the central concept here; understanding the roast curve is essential, and managing the roast curve affects overall behavior. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. The section below covers the relevant details and trade-offs. Document 156 elaborates the roast curve further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00157",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-density",
+      "filename": "coffee-density-000.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The bean density is the central concept here; understanding the bean density is essential, and managing the bean density affects overall behavior. It also relates to the degassing. Engineers and practitioners reference this material frequently. This document explains the topic in practical terms. Several factors interact and must be balanced carefully. Several factors interact and must be balanced carefully. Document 157 elaborates the bean density further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00158",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-density",
+      "filename": "coffee-density-001.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The bean density is the central concept here; understanding the bean density is essential, and managing the bean density affects overall behavior. This document explains the topic in practical terms. This document explains the topic in practical terms. Document 158 elaborates the bean density further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00159",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-density",
+      "filename": "coffee-density-002.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The bean density is the central concept here; understanding the bean density is essential, and managing the bean density affects overall behavior. Understanding these concepts is essential for the field. This document explains the topic in practical terms. Understanding these concepts is essential for the field. The section below covers the relevant details and trade-offs. Document 159 elaborates the bean density further within coffee-roasting."
+    },
+    {
+      "docKey": "doc-00160",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-density",
+      "filename": "coffee-density-003.txt",
+      "contentType": "text/plain",
+      "content": "Topic overview: coffee roasting in the domain of culinary. The bean density is the central concept here; understanding the bean density is essential, and managing the bean density affects overall behavior. It also relates to the roast curve. Several factors interact and must be balanced carefully. Engineers and practitioners reference this material frequently. Document 160 elaborates the bean density further within coffee-roasting."
+    }
+  ]
+}

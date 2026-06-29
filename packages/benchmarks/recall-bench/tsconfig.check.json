@@ -1,0 +1,23 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "customConditions": ["eliza-source"],
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node", "bun"]
+  },
+  "include": [
+    "ir-metrics.ts",
+    "ir-metrics.test.ts",
+    "corpus-gen.ts",
+    "recall-harness.ts",
+    "recall-kpi.ts",
+    "recall-eval.test.ts",
+    "metric-schema.test.ts"
+  ]
+}

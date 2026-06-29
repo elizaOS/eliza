@@ -1,0 +1,1133 @@
+{
+  "$schema": "recall-bench-queries/v1",
+  "seed": 42,
+  "tier": "small",
+  "kValues": [
+    1,
+    3,
+    5,
+    10
+  ],
+  "queries": [
+    {
+      "queryId": "q-00001",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-pod",
+      "queryType": "exact",
+      "queryText": "what about the pod in devops",
+      "relevantDocKeys": [
+        "doc-00001",
+        "doc-00002",
+        "doc-00003",
+        "doc-00004"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00002",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-clusterip",
+      "queryType": "exact",
+      "queryText": "what about the cluster ip in devops",
+      "relevantDocKeys": [
+        "doc-00005",
+        "doc-00006",
+        "doc-00007",
+        "doc-00008"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00003",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-cni",
+      "queryType": "exact",
+      "queryText": "what about the cni plugin in devops",
+      "relevantDocKeys": [
+        "doc-00009",
+        "doc-00010",
+        "doc-00011",
+        "doc-00012"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00004",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-kubeproxy",
+      "queryType": "exact",
+      "queryText": "what about the kube-proxy in devops",
+      "relevantDocKeys": [
+        "doc-00013",
+        "doc-00014",
+        "doc-00015",
+        "doc-00016"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00005",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-mesh",
+      "queryType": "paraphrase",
+      "queryText": "explain the sidecar connectivity layer",
+      "relevantDocKeys": [
+        "doc-00017",
+        "doc-00018",
+        "doc-00019",
+        "doc-00020"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00006",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-btree",
+      "queryType": "paraphrase",
+      "queryText": "explain the balanced lookup tree structure",
+      "relevantDocKeys": [
+        "doc-00021",
+        "doc-00022",
+        "doc-00023",
+        "doc-00024"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00007",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-vacuum",
+      "queryType": "paraphrase",
+      "queryText": "explain the dead tuple reclamation",
+      "relevantDocKeys": [
+        "doc-00025",
+        "doc-00026",
+        "doc-00027",
+        "doc-00028"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00008",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-planner",
+      "queryType": "partial",
+      "queryText": "how to best handle the query planner in practice",
+      "relevantDocKeys": [
+        "doc-00029",
+        "doc-00030",
+        "doc-00031",
+        "doc-00032"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00009",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-tablespace",
+      "queryType": "partial",
+      "queryText": "how to best handle the tablespace in practice",
+      "relevantDocKeys": [
+        "doc-00033",
+        "doc-00034",
+        "doc-00035",
+        "doc-00036"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00010",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-wal",
+      "queryType": "cross-domain",
+      "queryText": "wal compared with calvin cycle considerations",
+      "relevantDocKeys": [
+        "doc-00037",
+        "doc-00038",
+        "doc-00039",
+        "doc-00040"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00011",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-slowstart",
+      "queryType": "exact",
+      "queryText": "what about the slow start in networking",
+      "relevantDocKeys": [
+        "doc-00041",
+        "doc-00042",
+        "doc-00043",
+        "doc-00044"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00012",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-cwnd",
+      "queryType": "exact",
+      "queryText": "what about the cwnd in networking",
+      "relevantDocKeys": [
+        "doc-00045",
+        "doc-00046",
+        "doc-00047",
+        "doc-00048"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00013",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-retransmit",
+      "queryType": "exact",
+      "queryText": "what about the retransmission in networking",
+      "relevantDocKeys": [
+        "doc-00049",
+        "doc-00050",
+        "doc-00051",
+        "doc-00052"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00014",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-rtt",
+      "queryType": "exact",
+      "queryText": "what about the rtt estimate in networking",
+      "relevantDocKeys": [
+        "doc-00053",
+        "doc-00054",
+        "doc-00055",
+        "doc-00056"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00015",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-sack",
+      "queryType": "paraphrase",
+      "queryText": "explain the selective acknowledgement",
+      "relevantDocKeys": [
+        "doc-00057",
+        "doc-00058",
+        "doc-00059",
+        "doc-00060"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00016",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-borrow",
+      "queryType": "paraphrase",
+      "queryText": "explain the compile time reference validator",
+      "relevantDocKeys": [
+        "doc-00061",
+        "doc-00062",
+        "doc-00063",
+        "doc-00064"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00017",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-lifetime",
+      "queryType": "paraphrase",
+      "queryText": "explain the reference validity scope",
+      "relevantDocKeys": [
+        "doc-00065",
+        "doc-00066",
+        "doc-00067",
+        "doc-00068"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00018",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-move",
+      "queryType": "partial",
+      "queryText": "how to best handle the move semantics in practice",
+      "relevantDocKeys": [
+        "doc-00069",
+        "doc-00070",
+        "doc-00071",
+        "doc-00072"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00019",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-trait",
+      "queryType": "partial",
+      "queryText": "how to best handle the trait bound in practice",
+      "relevantDocKeys": [
+        "doc-00073",
+        "doc-00074",
+        "doc-00075",
+        "doc-00076"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00020",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-drop",
+      "queryType": "cross-domain",
+      "queryText": "drop compared with cluster ip considerations",
+      "relevantDocKeys": [
+        "doc-00077",
+        "doc-00078",
+        "doc-00079",
+        "doc-00080"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00021",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-chloroplast",
+      "queryType": "exact",
+      "queryText": "what about the chloroplast in biology",
+      "relevantDocKeys": [
+        "doc-00081",
+        "doc-00082",
+        "doc-00083",
+        "doc-00084"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00022",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-calvin",
+      "queryType": "exact",
+      "queryText": "what about the calvin cycle in biology",
+      "relevantDocKeys": [
+        "doc-00085",
+        "doc-00086",
+        "doc-00087",
+        "doc-00088"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00023",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-stomata",
+      "queryType": "exact",
+      "queryText": "what about the stomata in biology",
+      "relevantDocKeys": [
+        "doc-00089",
+        "doc-00090",
+        "doc-00091",
+        "doc-00092"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00024",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-rubisco",
+      "queryType": "exact",
+      "queryText": "what about the rubisco in biology",
+      "relevantDocKeys": [
+        "doc-00093",
+        "doc-00094",
+        "doc-00095",
+        "doc-00096"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00025",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-thylakoid",
+      "queryType": "paraphrase",
+      "queryText": "explain the stacked membrane sac",
+      "relevantDocKeys": [
+        "doc-00097",
+        "doc-00098",
+        "doc-00099",
+        "doc-00100"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00026",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-rate",
+      "queryType": "paraphrase",
+      "queryText": "explain the borrowing cost level",
+      "relevantDocKeys": [
+        "doc-00101",
+        "doc-00102",
+        "doc-00103",
+        "doc-00104"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00027",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-omo",
+      "queryType": "paraphrase",
+      "queryText": "explain the bond buying operations",
+      "relevantDocKeys": [
+        "doc-00105",
+        "doc-00106",
+        "doc-00107",
+        "doc-00108"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00028",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-reserve",
+      "queryType": "partial",
+      "queryText": "how to best handle the reserve ratio in practice",
+      "relevantDocKeys": [
+        "doc-00109",
+        "doc-00110",
+        "doc-00111",
+        "doc-00112"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00029",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-target",
+      "queryType": "partial",
+      "queryText": "how to best handle the inflation target in practice",
+      "relevantDocKeys": [
+        "doc-00113",
+        "doc-00114",
+        "doc-00115",
+        "doc-00116"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00030",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-liquidity",
+      "queryType": "cross-domain",
+      "queryText": "liquidity compared with bean density considerations",
+      "relevantDocKeys": [
+        "doc-00117",
+        "doc-00118",
+        "doc-00119",
+        "doc-00120"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00031",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-turbofan",
+      "queryType": "exact",
+      "queryText": "what about the turbofan in aerospace",
+      "relevantDocKeys": [
+        "doc-00121",
+        "doc-00122",
+        "doc-00123",
+        "doc-00124"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00032",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-bypass",
+      "queryType": "exact",
+      "queryText": "what about the bypass ratio in aerospace",
+      "relevantDocKeys": [
+        "doc-00125",
+        "doc-00126",
+        "doc-00127",
+        "doc-00128"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00033",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-afterburner",
+      "queryType": "exact",
+      "queryText": "what about the afterburner in aerospace",
+      "relevantDocKeys": [
+        "doc-00129",
+        "doc-00130",
+        "doc-00131",
+        "doc-00132"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00034",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-compressor",
+      "queryType": "exact",
+      "queryText": "what about the compressor stage in aerospace",
+      "relevantDocKeys": [
+        "doc-00133",
+        "doc-00134",
+        "doc-00135",
+        "doc-00136"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00035",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-nozzle",
+      "queryType": "paraphrase",
+      "queryText": "explain the exhaust acceleration outlet",
+      "relevantDocKeys": [
+        "doc-00137",
+        "doc-00138",
+        "doc-00139",
+        "doc-00140"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00036",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-crack",
+      "queryType": "paraphrase",
+      "queryText": "explain the initial popping stage",
+      "relevantDocKeys": [
+        "doc-00141",
+        "doc-00142",
+        "doc-00143",
+        "doc-00144"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00037",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-maillard",
+      "queryType": "paraphrase",
+      "queryText": "explain the browning flavor reaction",
+      "relevantDocKeys": [
+        "doc-00145",
+        "doc-00146",
+        "doc-00147",
+        "doc-00148"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00038",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-degas",
+      "queryType": "partial",
+      "queryText": "how to best handle the degassing in practice",
+      "relevantDocKeys": [
+        "doc-00149",
+        "doc-00150",
+        "doc-00151",
+        "doc-00152"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00039",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-curve",
+      "queryType": "partial",
+      "queryText": "how to best handle the roast curve in practice",
+      "relevantDocKeys": [
+        "doc-00153",
+        "doc-00154",
+        "doc-00155",
+        "doc-00156"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00040",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-density",
+      "queryType": "cross-domain",
+      "queryText": "bean density compared with lifetime considerations",
+      "relevantDocKeys": [
+        "doc-00157",
+        "doc-00158",
+        "doc-00159",
+        "doc-00160"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00041",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-pod",
+      "queryType": "exact",
+      "queryText": "what about the pod in devops",
+      "relevantDocKeys": [
+        "doc-00001",
+        "doc-00002",
+        "doc-00003",
+        "doc-00004"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00042",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-clusterip",
+      "queryType": "exact",
+      "queryText": "what about the cluster ip in devops",
+      "relevantDocKeys": [
+        "doc-00005",
+        "doc-00006",
+        "doc-00007",
+        "doc-00008"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00043",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-cni",
+      "queryType": "exact",
+      "queryText": "what about the cni plugin in devops",
+      "relevantDocKeys": [
+        "doc-00009",
+        "doc-00010",
+        "doc-00011",
+        "doc-00012"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00044",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-kubeproxy",
+      "queryType": "exact",
+      "queryText": "what about the kube-proxy in devops",
+      "relevantDocKeys": [
+        "doc-00013",
+        "doc-00014",
+        "doc-00015",
+        "doc-00016"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00045",
+      "topicId": "kubernetes-networking",
+      "conceptId": "k8s-mesh",
+      "queryType": "paraphrase",
+      "queryText": "explain the sidecar connectivity layer",
+      "relevantDocKeys": [
+        "doc-00017",
+        "doc-00018",
+        "doc-00019",
+        "doc-00020"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00046",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-btree",
+      "queryType": "paraphrase",
+      "queryText": "explain the balanced lookup tree structure",
+      "relevantDocKeys": [
+        "doc-00021",
+        "doc-00022",
+        "doc-00023",
+        "doc-00024"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00047",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-vacuum",
+      "queryType": "paraphrase",
+      "queryText": "explain the dead tuple reclamation",
+      "relevantDocKeys": [
+        "doc-00025",
+        "doc-00026",
+        "doc-00027",
+        "doc-00028"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00048",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-planner",
+      "queryType": "partial",
+      "queryText": "how to best handle the query planner in practice",
+      "relevantDocKeys": [
+        "doc-00029",
+        "doc-00030",
+        "doc-00031",
+        "doc-00032"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00049",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-tablespace",
+      "queryType": "partial",
+      "queryText": "how to best handle the tablespace in practice",
+      "relevantDocKeys": [
+        "doc-00033",
+        "doc-00034",
+        "doc-00035",
+        "doc-00036"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00050",
+      "topicId": "postgres-indexing",
+      "conceptId": "pg-wal",
+      "queryType": "cross-domain",
+      "queryText": "wal compared with service mesh considerations",
+      "relevantDocKeys": [
+        "doc-00037",
+        "doc-00038",
+        "doc-00039",
+        "doc-00040"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00051",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-slowstart",
+      "queryType": "exact",
+      "queryText": "what about the slow start in networking",
+      "relevantDocKeys": [
+        "doc-00041",
+        "doc-00042",
+        "doc-00043",
+        "doc-00044"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00052",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-cwnd",
+      "queryType": "exact",
+      "queryText": "what about the cwnd in networking",
+      "relevantDocKeys": [
+        "doc-00045",
+        "doc-00046",
+        "doc-00047",
+        "doc-00048"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00053",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-retransmit",
+      "queryType": "exact",
+      "queryText": "what about the retransmission in networking",
+      "relevantDocKeys": [
+        "doc-00049",
+        "doc-00050",
+        "doc-00051",
+        "doc-00052"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00054",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-rtt",
+      "queryType": "exact",
+      "queryText": "what about the rtt estimate in networking",
+      "relevantDocKeys": [
+        "doc-00053",
+        "doc-00054",
+        "doc-00055",
+        "doc-00056"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00055",
+      "topicId": "tcp-congestion",
+      "conceptId": "tcp-sack",
+      "queryType": "paraphrase",
+      "queryText": "explain the selective acknowledgement",
+      "relevantDocKeys": [
+        "doc-00057",
+        "doc-00058",
+        "doc-00059",
+        "doc-00060"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00056",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-borrow",
+      "queryType": "paraphrase",
+      "queryText": "explain the compile time reference validator",
+      "relevantDocKeys": [
+        "doc-00061",
+        "doc-00062",
+        "doc-00063",
+        "doc-00064"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00057",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-lifetime",
+      "queryType": "paraphrase",
+      "queryText": "explain the reference validity scope",
+      "relevantDocKeys": [
+        "doc-00065",
+        "doc-00066",
+        "doc-00067",
+        "doc-00068"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00058",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-move",
+      "queryType": "partial",
+      "queryText": "how to best handle the move semantics in practice",
+      "relevantDocKeys": [
+        "doc-00069",
+        "doc-00070",
+        "doc-00071",
+        "doc-00072"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00059",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-trait",
+      "queryType": "partial",
+      "queryText": "how to best handle the trait bound in practice",
+      "relevantDocKeys": [
+        "doc-00073",
+        "doc-00074",
+        "doc-00075",
+        "doc-00076"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00060",
+      "topicId": "rust-ownership",
+      "conceptId": "rust-drop",
+      "queryType": "cross-domain",
+      "queryText": "drop compared with service mesh considerations",
+      "relevantDocKeys": [
+        "doc-00077",
+        "doc-00078",
+        "doc-00079",
+        "doc-00080"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00061",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-chloroplast",
+      "queryType": "exact",
+      "queryText": "what about the chloroplast in biology",
+      "relevantDocKeys": [
+        "doc-00081",
+        "doc-00082",
+        "doc-00083",
+        "doc-00084"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00062",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-calvin",
+      "queryType": "exact",
+      "queryText": "what about the calvin cycle in biology",
+      "relevantDocKeys": [
+        "doc-00085",
+        "doc-00086",
+        "doc-00087",
+        "doc-00088"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00063",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-stomata",
+      "queryType": "exact",
+      "queryText": "what about the stomata in biology",
+      "relevantDocKeys": [
+        "doc-00089",
+        "doc-00090",
+        "doc-00091",
+        "doc-00092"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00064",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-rubisco",
+      "queryType": "exact",
+      "queryText": "what about the rubisco in biology",
+      "relevantDocKeys": [
+        "doc-00093",
+        "doc-00094",
+        "doc-00095",
+        "doc-00096"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00065",
+      "topicId": "photosynthesis",
+      "conceptId": "bio-thylakoid",
+      "queryType": "paraphrase",
+      "queryText": "explain the stacked membrane sac",
+      "relevantDocKeys": [
+        "doc-00097",
+        "doc-00098",
+        "doc-00099",
+        "doc-00100"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00066",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-rate",
+      "queryType": "paraphrase",
+      "queryText": "explain the borrowing cost level",
+      "relevantDocKeys": [
+        "doc-00101",
+        "doc-00102",
+        "doc-00103",
+        "doc-00104"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00067",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-omo",
+      "queryType": "paraphrase",
+      "queryText": "explain the bond buying operations",
+      "relevantDocKeys": [
+        "doc-00105",
+        "doc-00106",
+        "doc-00107",
+        "doc-00108"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00068",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-reserve",
+      "queryType": "partial",
+      "queryText": "how to best handle the reserve ratio in practice",
+      "relevantDocKeys": [
+        "doc-00109",
+        "doc-00110",
+        "doc-00111",
+        "doc-00112"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00069",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-target",
+      "queryType": "partial",
+      "queryText": "how to best handle the inflation target in practice",
+      "relevantDocKeys": [
+        "doc-00113",
+        "doc-00114",
+        "doc-00115",
+        "doc-00116"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00070",
+      "topicId": "monetary-policy",
+      "conceptId": "econ-liquidity",
+      "queryType": "cross-domain",
+      "queryText": "liquidity compared with sack considerations",
+      "relevantDocKeys": [
+        "doc-00117",
+        "doc-00118",
+        "doc-00119",
+        "doc-00120"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00071",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-turbofan",
+      "queryType": "exact",
+      "queryText": "what about the turbofan in aerospace",
+      "relevantDocKeys": [
+        "doc-00121",
+        "doc-00122",
+        "doc-00123",
+        "doc-00124"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00072",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-bypass",
+      "queryType": "exact",
+      "queryText": "what about the bypass ratio in aerospace",
+      "relevantDocKeys": [
+        "doc-00125",
+        "doc-00126",
+        "doc-00127",
+        "doc-00128"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00073",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-afterburner",
+      "queryType": "exact",
+      "queryText": "what about the afterburner in aerospace",
+      "relevantDocKeys": [
+        "doc-00129",
+        "doc-00130",
+        "doc-00131",
+        "doc-00132"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00074",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-compressor",
+      "queryType": "exact",
+      "queryText": "what about the compressor stage in aerospace",
+      "relevantDocKeys": [
+        "doc-00133",
+        "doc-00134",
+        "doc-00135",
+        "doc-00136"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00075",
+      "topicId": "jet-propulsion",
+      "conceptId": "aero-nozzle",
+      "queryType": "paraphrase",
+      "queryText": "explain the exhaust acceleration outlet",
+      "relevantDocKeys": [
+        "doc-00137",
+        "doc-00138",
+        "doc-00139",
+        "doc-00140"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00076",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-crack",
+      "queryType": "paraphrase",
+      "queryText": "explain the initial popping stage",
+      "relevantDocKeys": [
+        "doc-00141",
+        "doc-00142",
+        "doc-00143",
+        "doc-00144"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00077",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-maillard",
+      "queryType": "paraphrase",
+      "queryText": "explain the browning flavor reaction",
+      "relevantDocKeys": [
+        "doc-00145",
+        "doc-00146",
+        "doc-00147",
+        "doc-00148"
+      ],
+      "semantic": true
+    },
+    {
+      "queryId": "q-00078",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-degas",
+      "queryType": "partial",
+      "queryText": "how to best handle the degassing in practice",
+      "relevantDocKeys": [
+        "doc-00149",
+        "doc-00150",
+        "doc-00151",
+        "doc-00152"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00079",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-curve",
+      "queryType": "partial",
+      "queryText": "how to best handle the roast curve in practice",
+      "relevantDocKeys": [
+        "doc-00153",
+        "doc-00154",
+        "doc-00155",
+        "doc-00156"
+      ],
+      "semantic": false
+    },
+    {
+      "queryId": "q-00080",
+      "topicId": "coffee-roasting",
+      "conceptId": "coffee-density",
+      "queryType": "cross-domain",
+      "queryText": "bean density compared with compressor stage considerations",
+      "relevantDocKeys": [
+        "doc-00157",
+        "doc-00158",
+        "doc-00159",
+        "doc-00160"
+      ],
+      "semantic": false
+    }
+  ]
+}

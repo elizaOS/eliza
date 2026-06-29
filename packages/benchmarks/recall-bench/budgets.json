@@ -1,0 +1,15 @@
+{
+  "_comment": "Recall-benchmark budgets for the recall-bench harness (#9956). The harness drives the REAL @elizaos/core recall pipeline over a deterministic templated corpus and compares MEASURED rows against these budgets, exiting non-zero when a hard budget is crossed. recallAt5 / ndcgAt10 are quality FLOORS (>=); latencyMsP95 is a CEILING (<=). A skipped (unmeasured) row never fails a budget. Vector and hybrid clear a HIGHER recall floor than keyword (the embedding path's semantic recall earns its keep — measured standard-tier baseline: hybrid/vector recall@5=0.55 vs keyword=0.47; runtime-vector pure cosine recall@5=0.79). selfCheck.minRecallAt5 is the floor the deterministic concept-hash self-check (hybrid mode) must hit to prove the pipeline retrieves at all; it can never satisfy a real per-mode quality gate. failOpen.maxRecallDeltaAt5 is the maximum allowed |hybrid/vector recall@5 - keyword recall@5| when the query embed is forced to throw: the fail-open path MUST collapse hybrid+vector to the keyword baseline, so the delta must be ~0. Floors/ceilings were set from the standard-tier baseline (.github/issue-evidence/9956-recall-bench/) with margin; ratchet them as the recall pipeline improves.",
+  "modes": {
+    "hybrid": { "recallAt5": 0.45, "ndcgAt10": 0.55, "latencyMsP95": 200 },
+    "vector": { "recallAt5": 0.45, "ndcgAt10": 0.55, "latencyMsP95": 200 },
+    "keyword": { "recallAt5": 0.35, "ndcgAt10": 0.45, "latencyMsP95": 300 },
+    "runtime-vector": { "recallAt5": 0.65, "ndcgAt10": 0.85, "latencyMsP95": 200 }
+  },
+  "selfCheck": {
+    "minRecallAt5": 0.30
+  },
+  "failOpen": {
+    "maxRecallDeltaAt5": 0.001
+  }
+}
