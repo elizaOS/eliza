@@ -5,7 +5,7 @@
  * fixed file→field mapping proven in the Sol migration:
  *   SOUL.md      → system (+ bio seed)
  *   IDENTITY.md  → bio + adjectives + style.all
- *   USER.md      → knowledge (about the human) — FIREWALLED
+ *   USER.md      → knowledge (about the human) - FIREWALLED
  *   AGENTS.md    → appended behavioral notes in system
  *   playbooks    → style.chat
  *   TOOLS.md     → intentionally NOT mapped to persona (it's infra/keys)
@@ -15,12 +15,12 @@
  * the emitted character afterward.
  */
 
+import type { MigratedCharacter as Character } from "./types.js";
 import {
   isPlaybookMemory,
   isSelfMemory,
   type OcAgentSource,
-} from "./openclaw-reader.js";
-import type { MigratedCharacter as Character } from "./types.js";
+} from "./ocplatform-reader.js";
 
 export interface CharacterMapOptions {
   /**
@@ -66,7 +66,7 @@ export function mapToCharacter(
   }
   if (opts.currentContext?.trim()) {
     systemParts.push(
-      `[CURRENT CONTEXT — keep this live, it overrides static bio facts]\n${opts.currentContext.trim()}`,
+      `[CURRENT CONTEXT - keep this live, it overrides static bio facts]\n${opts.currentContext.trim()}`,
     );
   }
   const system = systemParts.join(SYS_SEP);
@@ -80,14 +80,14 @@ export function mapToCharacter(
   // ---- style.chat: the talk playbooks (HOW to talk) ----
   const chatStyle = derivePlaybookStyle(src);
 
-  // ---- knowledge: USER.md (about the human) — FIREWALLED ----
+  // ---- knowledge: USER.md (about the human) - FIREWALLED ----
   const knowledge: Character["knowledge"] = [];
   if (!opts.firewall && src.user?.trim()) {
     knowledge.push({
       // DocumentSourceItem: inline text knowledge about the human.
       case: "text",
       value: { text: stripFrontHeading(src.user).trim() },
-    });
+    } as unknown as NonNullable<Character["knowledge"]>[number]);
   }
 
   const character: Character = {
@@ -100,10 +100,7 @@ export function mapToCharacter(
     settings: {
       // Record the migration provenance + firewall posture in metadata.
       ...(opts.firewall
-        ? {
-            firewall_note:
-              "USER/personal knowledge excluded (firewalled) from this character.",
-          }
+        ? { firewall_note: "USER/personal knowledge excluded (firewalled) from this character." }
         : {}),
     } as Character["settings"],
   };
@@ -111,13 +108,62 @@ export function mapToCharacter(
   return character;
 }
 
-/** Derive a display name: IDENTITY "Name:" line → agentId capitalized. */
+/**
+ * Derive a display name, in priority order:
+ *   1. IDENTITY.md "Name:" line (flat .moltbot homes)
+ *   2. SOUL.md leading "# H1" heading (leaner .hermes homes have no IDENTITY,
+ *      so the persona name lives in the SOUL title, e.g. "# nyx"). We skip
+ *      generic boilerplate headings like "SOUL" / "SOUL.md".
+ *   3. agentId, capitalized (last resort).
+ */
 function deriveName(src: OcAgentSource): string {
-  const fromIdentity = src.identity?.match(
-    /^\s*[-*]?\s*\*{0,2}Name\*{0,2}:\s*(.+)$/im,
-  );
+  const fromIdentity = src.identity?.match(/^\s*[-*]?\s*\*{0,2}Name\*{0,2}:\s*(.+)$/im);
   if (fromIdentity?.[1]) return fromIdentity[1].replace(/\*/g, "").trim();
-  return src.agentId.charAt(0).toUpperCase() + src.agentId.slice(1);
+
+  // Only a LEADING H1 is treated as the persona title: the first non-empty,
+  // non-comment line of SOUL must be the heading. This avoids naming the agent
+  // after a later section like "# Voice" or "# Rules" when SOUL opens with prose.
+  const fromSoulHeading = leadingSoulHeading(src.soul);
+  if (fromSoulHeading) {
+    const h = fromSoulHeading.replace(/\*/g, "").trim();
+    const lower = h.toLowerCase();
+    const boilerplate =
+      lower === "soul" ||
+      lower === "soul.md" ||
+      lower.startsWith("soul.md") ||
+      lower.startsWith("who you are") ||
+      lower.startsWith("who u are");
+    // Use the first word of the heading as the name when it's a single token
+    // (e.g. "# nyx"); keep short multi-word titles verbatim, else fall through.
+    if (!boilerplate && h.length > 0 && h.length <= 40) {
+      const firstWord = h.split(/\s+/)[0];
+      return /^[A-Za-z][\w-]*$/.test(firstWord) && h.split(/\s+/).length <= 4
+        ? (h.split(/\s+/).length === 1 ? cap(firstWord) : h)
+        : cap(firstWord);
+    }
+  }
+  return cap(src.agentId);
+}
+
+/**
+ * Return the text of the SOUL document's LEADING H1 (the title), or undefined
+ * if the first meaningful line is not an H1. HTML comments and blank lines are
+ * allowed before the heading; any other prose means there is no leading title.
+ */
+function leadingSoulHeading(soul: string | undefined): string | undefined {
+  if (!soul) return undefined;
+  for (let line of soul.split("\n")) {
+    line = line.trim();
+    if (line.length === 0) continue;
+    if (line.startsWith("<!--")) continue; // skip leading HTML comments
+    const m = line.match(/^#\s+(.+?)\s*$/);
+    return m?.[1];
+  }
+  return undefined;
+}
+
+function cap(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
 /**
@@ -143,7 +189,7 @@ function deriveBio(src: OcAgentSource, name: string): string[] {
       if (out.length >= 4) break;
     }
   }
-  if (out.length === 0) out.push(`${name} — an AI agent migrated onto Eliza.`);
+  if (out.length === 0) out.push(`${name} - an AI agent migrated onto Eliza.`);
   return out;
 }
 
