@@ -100,6 +100,71 @@ describe("provisioned cloud container topology (#9887)", () => {
     });
   });
 
+  it("repairs topology from config.env when container env has only the provisioned marker", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    const config: ElizaConfig = {
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_API_KEY: "cloud-test",
+          ELIZAOS_CLOUD_BASE_URL: "https://cloud.example/api",
+          ELIZA_CLOUD_AGENT_ID: "agent-test",
+          ELIZAOS_CLOUD_SMALL_MODEL: "small-from-config-env",
+        },
+      },
+    } as ElizaConfig;
+
+    const changed = ensureProvisionedCloudContainerConfig(config);
+    const topology = resolveElizaCloudTopology(
+      config as Record<string, unknown>,
+    );
+
+    expect(changed).toBe(true);
+    expect(config.cloud).toMatchObject({
+      enabled: true,
+      apiKey: "cloud-test",
+      baseUrl: "https://cloud.example/api",
+      agentId: "agent-test",
+    });
+    expect(config.deploymentTarget).toEqual({
+      runtime: "cloud",
+      provider: "elizacloud",
+    });
+    expect(topology.runtime).toBe("cloud");
+    expect(topology.services.inference).toBe(true);
+    expect(config.serviceRouting?.llmText).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+      smallModel: "small-from-config-env",
+    });
+  });
+
+  it("uses a real config.env cloud key when config.cloud carries the redacted placeholder", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "[REDACTED]",
+        agentId: "agent-test",
+      },
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_API_KEY: "cloud-test",
+        },
+      },
+    } as ElizaConfig;
+
+    const changed = ensureProvisionedCloudContainerConfig(config);
+
+    expect(changed).toBe(true);
+    expect(config.cloud?.apiKey).toBe("cloud-test");
+    expect(
+      resolveElizaCloudTopology(config as Record<string, unknown>).services
+        .inference,
+    ).toBe(true);
+  });
+
   it("forces cloud inference env from repaired managed-container topology", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
 
