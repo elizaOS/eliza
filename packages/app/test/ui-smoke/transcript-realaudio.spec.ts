@@ -148,10 +148,18 @@ const KNOWLEDGE_DOC = {
 };
 
 /** Tracks the meaningful network proofs the tests assert on. */
+interface TranscriptCreateProof {
+  audioBase64Length: number;
+  audioContentType: string | null;
+  createdAtType: string;
+  segmentCount: number;
+  segmentTexts: string[];
+}
+
 interface TranscriptProbes {
   asrPostCount: number;
   asrMaxCapturedBytes: number;
-  createBodies: Array<{ audioBase64Length: number; segmentCount: number }>;
+  createBodies: TranscriptCreateProof[];
   updateCount: number;
   deleteCount: number;
 }
@@ -327,13 +335,26 @@ async function installTranscriptBackendMocks(
     if (method === "POST") {
       const reqBody = route.request().postDataJSON() as {
         audioBase64?: string;
+        audioContentType?: string;
+        createdAt?: unknown;
         segments?: unknown[];
       };
+      const segments = Array.isArray(reqBody?.segments) ? reqBody.segments : [];
       probes.createBodies.push({
         audioBase64Length: reqBody?.audioBase64?.length ?? 0,
-        segmentCount: Array.isArray(reqBody?.segments)
-          ? reqBody.segments.length
-          : 0,
+        audioContentType:
+          typeof reqBody?.audioContentType === "string"
+            ? reqBody.audioContentType
+            : null,
+        createdAtType: typeof reqBody?.createdAt,
+        segmentCount: segments.length,
+        segmentTexts: segments
+          .map((segment) =>
+            segment && typeof segment === "object" && "text" in segment
+              ? (segment as { text?: unknown }).text
+              : null,
+          )
+          .filter((text): text is string => typeof text === "string"),
       });
       await route.fulfill({
         status: 201,
@@ -540,6 +561,43 @@ async function finalizeTranscriptionViaSlash(page: Page): Promise<void> {
   );
 }
 
+async function dispatchTranscriptionAgentAction(
+  page: Page,
+  command: "start" | "stop",
+): Promise<void> {
+  await page.evaluate((nextCommand) => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:voice-control", {
+        detail: { command: nextCommand },
+      }),
+    );
+  }, command);
+}
+
+async function startTranscriptionViaAgentAction(page: Page): Promise<void> {
+  await dispatchTranscriptionAgentAction(page, "start");
+  // The agent-action bridge flips the shell controller directly; unlike the
+  // slash-command path it may not expand the sheet far enough to render the
+  // visible badge, so the mic control state is the durable proof.
+  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
+    "aria-label",
+    "stop transcription",
+    { timeout: 15_000 },
+  );
+}
+
+async function finalizeTranscriptionViaAgentAction(page: Page): Promise<void> {
+  await dispatchTranscriptionAgentAction(page, "stop");
+  await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
+    "aria-label",
+    "end conversation",
+    { timeout: 15_000 },
+  );
+}
+
 /**
  * Turn voice fully OFF and wait for the chat thread to settle. While voice is on,
  * the hands-free re-listen loop continuously reopens the mic + streams interim
@@ -682,6 +740,82 @@ async function captureTranscriptToAttachment(
   await expect(page.getByTestId("transcript-attachment").first()).toBeVisible({
     timeout: 20_000,
   });
+}
+
+async function prepareTranscriptTestPage(
+  page: Page,
+  probes: TranscriptProbes,
+): Promise<void> {
+  await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+  await installDefaultAppRoutes(page);
+  await installTranscriptBackendMocks(page, probes);
+}
+
+type TranscriptionControlPath = "slash" | "agent-action";
+
+function normalizeCreateProofForParity(proof: TranscriptCreateProof): {
+  audioContentType: string | null;
+  createdAtType: string;
+  hasCapturedAudio: boolean;
+  segmentCount: number;
+  segmentTexts: string[];
+} {
+  return {
+    audioContentType: proof.audioContentType,
+    createdAtType: proof.createdAtType,
+    hasCapturedAudio: proof.audioBase64Length > 1000,
+    segmentCount: proof.segmentCount,
+    segmentTexts: proof.segmentTexts,
+  };
+}
+
+async function captureTranscriptRecordViaControlPath(
+  page: Page,
+  probes: TranscriptProbes,
+  controlPath: TranscriptionControlPath,
+): Promise<TranscriptCreateProof> {
+  const asr = trackAsrPosts(page);
+
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    timeout: 60_000,
+  });
+
+  const mic = page.getByTestId("chat-composer-mic");
+  await expect(mic).toBeVisible({ timeout: 30_000 });
+  await mic.click();
+  await expect(mic).toHaveAttribute("aria-label", "end conversation", {
+    timeout: 15_000,
+  });
+
+  if (controlPath === "agent-action") {
+    await startTranscriptionViaAgentAction(page);
+  } else {
+    await startTranscriptionViaSlash(page);
+  }
+
+  await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
+
+  if (controlPath === "agent-action") {
+    await finalizeTranscriptionViaAgentAction(page);
+  } else {
+    await finalizeTranscriptionViaSlash(page);
+  }
+
+  await expect
+    .poll(
+      () => probes.createBodies.find((b) => b.audioBase64Length > 1000) ?? null,
+      { timeout: 30_000 },
+    )
+    .not.toBeNull();
+
+  await expect(page.getByText(/^Transcript .*\.md$/).first()).toBeVisible({
+    timeout: 15_000,
+  });
+
+  const proof = probes.createBodies.find((b) => b.audioBase64Length > 1000);
+  if (!proof) throw new Error("expected transcript create proof");
+  return proof;
 }
 
 test.beforeEach(async ({ page }) => {
@@ -1004,4 +1138,42 @@ test("VIEWER: open-in-transcripts navigates to the Transcripts view", async ({
   await expect(page.getByTestId(`transcript-row-${TRANSCRIPT_ID}`)).toBeVisible(
     { timeout: 15_000 },
   );
+});
+
+test("AGENT ACTION parity: START/STOP_TRANSCRIPTION creates the same transcript record as the slash path", async ({
+  browser,
+}) => {
+  const slashPage = await browser.newPage();
+  const agentActionPage = await browser.newPage();
+  try {
+    const slashProbes = freshProbes();
+    await prepareTranscriptTestPage(slashPage, slashProbes);
+    const slashProof = await captureTranscriptRecordViaControlPath(
+      slashPage,
+      slashProbes,
+      "slash",
+    );
+
+    const agentActionProbes = freshProbes();
+    await prepareTranscriptTestPage(agentActionPage, agentActionProbes);
+    const agentActionProof = await captureTranscriptRecordViaControlPath(
+      agentActionPage,
+      agentActionProbes,
+      "agent-action",
+    );
+
+    expect(normalizeCreateProofForParity(agentActionProof)).toEqual(
+      normalizeCreateProofForParity(slashProof),
+    );
+    expect(normalizeCreateProofForParity(agentActionProof)).toEqual({
+      audioContentType: "audio/wav",
+      createdAtType: "number",
+      hasCapturedAudio: true,
+      segmentCount: 1,
+      segmentTexts: [TRANSCRIPT_TEXT],
+    });
+  } finally {
+    await agentActionPage.close();
+    await slashPage.close();
+  }
 });
