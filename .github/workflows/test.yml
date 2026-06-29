@@ -264,6 +264,20 @@ jobs:
       - name: XR sim Playwright coverage
         run: bun run --cwd packages/ui test:xr-sim
 
+      # Tutorial spotlight e2e (#9957): per-frame themed-accent color + glow
+      # framing + Z_TUTORIAL + nav-lock assertions under dark/light/gold, in
+      # headless chromium. Previously ran in no workflow.
+      - name: Tutorial spotlight e2e (#9957)
+        run: bun run --cwd packages/ui test:tutorial-e2e
+
+      - name: Upload tutorial e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tutorial-e2e-artifacts
+          path: packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
+          if-no-files-found: ignore
+
   xr-harness-e2e:
     name: XR harness e2e
     needs: changes
