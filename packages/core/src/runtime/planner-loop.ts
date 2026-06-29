@@ -176,12 +176,26 @@ export async function runPlannerLoop(
 		const raw = Number(process.env.ELIZA_CODING_MAX_TOOL_CALLS);
 		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 80;
 	})();
+	// Weak coding models (e.g. Cerebras glm-4.7) sometimes answer a trivial build
+	// with a terminal REPLY ("Creating the app now…") instead of calling FILE.
+	// The action-first gate below re-prompts that, but the chat default of 3
+	// misses gives up too soon to convert a stubborn narrator — give coding
+	// builds more attempts to actually act. Overridable via
+	// ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES.
+	const codingMaxRequiredToolMisses = ((): number => {
+		const raw = Number(process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES);
+		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 8;
+	})();
 	const config = ((): ChainingLoopConfig => {
 		const merged = mergeChainingLoopConfig(params.config);
 		return codingMode
 			? {
 					...merged,
 					maxToolCalls: Math.max(merged.maxToolCalls, codingMaxToolCalls),
+					maxRequiredToolMisses: Math.max(
+						merged.maxRequiredToolMisses,
+						codingMaxRequiredToolMisses,
+					),
 				}
 			: merged;
 	})();
@@ -198,8 +212,14 @@ export async function runPlannerLoop(
 	let unavailableToolCallRetries = 0;
 	let silentFailedFinishRecoveries = 0;
 	let repeatedNonTerminalToolCalls = 0;
+	// In coding mode the agent's whole job is to DO work via FILE/SHELL, so a
+	// terminal REPLY before any non-terminal tool has run is almost always the
+	// "Creating the app now…" narration that leaves nothing on disk. Force the
+	// gate on (when real coding tools are exposed) so such a turn is re-prompted
+	// into actually acting instead of being accepted as the final answer. A
+	// genuinely blocking question still surfaces after the miss budget.
 	const requireNonTerminalToolCall =
-		params.requireNonTerminalToolCall === true &&
+		(params.requireNonTerminalToolCall === true || codingMode) &&
 		hasExposedNonTerminalTool(params.tools);
 
 	// Cumulative gross prompt-token counter, summed across every planner
