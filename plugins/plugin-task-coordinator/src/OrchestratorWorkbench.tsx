@@ -24,7 +24,6 @@ import {
   type CodingAgentTaskSessionRecord,
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
-  type CodingAgentTaskTimelineItem,
   type CodingAgentTaskUsageSummary,
   client,
   DiffReviewPanel,
@@ -46,26 +45,17 @@ import {
   ChevronDown,
   ChevronsUp,
   ChevronUp,
-  Circle,
-  CircleAlert,
-  CircleCheck,
-  CircleDashed,
-  CirclePlay,
   CircleStop,
-  CircleX,
   Copy,
   Gauge,
   GitFork,
   Layers,
-  type LucideIcon,
-  OctagonX,
   PanelRightOpen,
   Pause,
   Play,
   RotateCcw,
   Trash2,
   UserPlus,
-  UserRound,
   X,
 } from "lucide-react";
 import {
@@ -80,11 +70,7 @@ import {
   useState,
 } from "react";
 import { OrchestratorAccountHealthPanel } from "./OrchestratorAccountHealthPanel";
-import {
-  paramPriority,
-  TASK_LIST_LIMIT,
-  type TaskPriority,
-} from "./orchestrator-params";
+import { paramPriority, type TaskPriority } from "./orchestrator-params";
 import {
   type ConversationBlock,
   ConversationBlockView,
@@ -95,24 +81,13 @@ import {
   FILTER_OPTIONS,
   fallbackTranslate,
   labelPriority,
-  labelSender,
-  labelSessionStatus,
   labelStatus,
-  PLAN_STEP_ICON,
-  PLAN_STEP_TONE,
   PlanStepGlyph,
   PRIORITY_ICON,
   resolveSenderName,
-  SENDER_LABEL_KEY,
-  SESSION_PULSE,
-  SESSION_TONE,
   SessionGlyph,
-  STATUS_ICON,
-  STATUS_LABEL_KEY,
-  STATUS_TONE,
   type StatusFilter,
   StatusGlyph,
-  type TaskStatus,
   TERMINAL_TASK_STATUSES,
   type Translate,
   VerificationGlyph,
@@ -125,6 +100,7 @@ import {
   TaskSearchInput,
   TaskStatusChip,
 } from "./TaskCardList";
+import { useOrchestratorData } from "./use-orchestrator-data";
 import {
   formatClockTime,
   formatCompactNumber,
@@ -144,56 +120,6 @@ type DetailDrawerSelection =
       eventIds: string[];
       messageIds: string[];
     };
-
-const TIMELINE_PAGE_LIMIT = 50;
-const POLL_INTERVAL_MS = 5_000;
-/** While a task has a working agent, poll its room fast so the conversation,
- * tool calls, and tokens stream in near-live instead of lurching every 5s. */
-const ACTIVE_POLL_INTERVAL_MS = 1_500;
-
-function getClientErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
-/**
- * True when the connected agent simply doesn't serve the orchestrator backend
- * (a 404 on its routes) — e.g. a local on-device agent without
- * agent-orchestrator. This is NOT a failure: the workbench runs against
- * whatever agent the client points at, so a cloud or desktop agent that has the
- * backend just works. We surface a calm "connect a cloud/desktop agent" hint
- * instead of a red error in that case.
- */
-function isOrchestratorBackendAbsent(error: unknown): boolean {
-  const status = (error as { status?: unknown } | null)?.status;
-  if (status === 404) return true;
-  const msg = error instanceof Error ? error.message.toLowerCase() : "";
-  return msg === "not found" || msg.includes("404");
-}
-
-/** Merge timeline records by id and return them ascending by timestamp. */
-function mergeById<T extends { id: string; timestamp: number }>(
-  previous: T[],
-  incoming: T[],
-): T[] {
-  if (incoming.length === 0) return previous;
-  const byId = new Map<string, T>();
-  for (const item of previous) byId.set(item.id, item);
-  for (const item of incoming) byId.set(item.id, item);
-  return [...byId.values()].sort((a, b) => a.timestamp - b.timestamp);
-}
-
-function splitTimelineItems(items: CodingAgentTaskTimelineItem[]): {
-  messages: CodingAgentTaskMessageRecord[];
-  events: CodingAgentTaskEventRecord[];
-} {
-  const messages: CodingAgentTaskMessageRecord[] = [];
-  const events: CodingAgentTaskEventRecord[] = [];
-  for (const item of items) {
-    if (item.kind === "message") messages.push(item.message);
-    else events.push(item.event);
-  }
-  return { messages, events };
-}
 
 interface NormalizedPlan {
   summary: string | null;
@@ -2782,19 +2708,9 @@ export function OrchestratorWorkbench() {
       ? agentStatus.agentName
       : undefined;
 
-  const [status, setStatus] = useState<CodingAgentOrchestratorStatus | null>(
-    null,
-  );
-  const [tasks, setTasks] = useState<CodingAgentTaskThread[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(
     readInitialTaskId,
   );
-  const [detail, setDetail] = useState<CodingAgentTaskThreadDetail | null>(
-    null,
-  );
-  const [messages, setMessages] = useState<CodingAgentTaskMessageRecord[]>([]);
-  const [events, setEvents] = useState<CodingAgentTaskEventRecord[]>([]);
-  const [timelineCursor, setTimelineCursor] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showArchived, setShowArchived] = useState(false);
@@ -2803,19 +2719,36 @@ export function OrchestratorWorkbench() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [detailDrawer, setDetailDrawer] =
     useState<DetailDrawerSelection | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [mutating, setMutating] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  // The connected agent doesn't serve the orchestrator backend (local on-device
-  // agent without it) — shown as a calm hint, not a red error.
-  const [backendAbsent, setBackendAbsent] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const isMobile = useIsMobile();
   const deferredSearch = useDeferredValue(search.trim());
-  const detailReqRef = useRef(0);
   const selectedIdRef = useRef<string | null>(selectedId);
   selectedIdRef.current = selectedId;
+
+  // The live-data layer (status/tasks/detail/timeline + fetch / poll / SSE /
+  // mutation) lives in useOrchestratorData; this component owns the UI state
+  // (selection, filters, drawers) and feeds it in.
+  const {
+    status,
+    tasks,
+    detail,
+    messages,
+    events,
+    timelineCursor,
+    loading,
+    mutating,
+    loadError,
+    backendAbsent,
+    actionError,
+    runMutation,
+    loadOlderTimeline,
+  } = useOrchestratorData({
+    selectedId,
+    showArchived,
+    statusFilter,
+    deferredSearch,
+    t,
+  });
 
   // The conversation sticks to the newest entry, but only while the reader is
   // already near the bottom — scrolling up to read history is never yanked by
@@ -2828,201 +2761,17 @@ export function OrchestratorWorkbench() {
       el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
 
-  const fetchTasksAndStatus = useCallback(
-    async (silent: boolean) => {
-      if (!silent) setLoading(true);
-      try {
-        const [nextStatus, nextTasks] = await Promise.all([
-          client.getOrchestratorStatus(),
-          client.listCodingAgentTaskThreads({
-            includeArchived: showArchived,
-            status: statusFilter === "all" ? undefined : statusFilter,
-            search: deferredSearch || undefined,
-            limit: TASK_LIST_LIMIT,
-          }),
-        ]);
-        setStatus(nextStatus);
-        setTasks(nextTasks);
-        setLoadError(null);
-        setBackendAbsent(false);
-      } catch (error) {
-        if (!silent) {
-          if (isOrchestratorBackendAbsent(error)) {
-            // Not a failure — this agent just doesn't run the orchestrator
-            // backend. Connect a cloud or desktop agent and it works.
-            setBackendAbsent(true);
-            setLoadError(null);
-          } else {
-            setBackendAbsent(false);
-            setLoadError(
-              getClientErrorMessage(
-                error,
-                t("orchestrator.loadFailed", {
-                  defaultValue: "Failed to load orchestrator state.",
-                }),
-              ),
-            );
-          }
-        }
-      } finally {
-        if (!silent) setLoading(false);
-      }
-    },
-    [deferredSearch, showArchived, statusFilter, t],
-  );
-
-  const fetchDetail = useCallback(async (id: string, reset: boolean) => {
-    const token = ++detailReqRef.current;
-    const [nextDetail, timelinePage] = await Promise.all([
-      client.getCodingAgentTaskThread(id),
-      client.listOrchestratorTaskTimeline(id, { limit: TIMELINE_PAGE_LIMIT }),
-    ]);
-    // Discard if a newer fetch superseded this one, or if the selection moved on
-    // while in flight — otherwise a non-reset poll/refresh could merge one task's
-    // transcript into another task's room (cross-task contamination).
-    if (token !== detailReqRef.current || id !== selectedIdRef.current) return;
-    const timeline = splitTimelineItems(timelinePage.items);
-    setDetail(nextDetail);
-    if (reset) {
-      setMessages(mergeById([], timeline.messages));
-      setEvents(mergeById([], timeline.events));
-      setTimelineCursor(timelinePage.nextCursor);
-    } else {
-      setMessages((prev) => mergeById(prev, timeline.messages));
-      setEvents((prev) => mergeById(prev, timeline.events));
-      setTimelineCursor((prev) => prev ?? timelinePage.nextCursor);
-    }
-  }, []);
-
+  // Reset transient per-task UI (mobile inspector drawer, add-agent form, the
+  // detail drawer) and re-pin to bottom whenever the selection changes, so a
+  // freshly opened task starts clean. The room itself is loaded by the data
+  // layer (useOrchestratorData) reacting to the same selectedId.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on selection change
   useEffect(() => {
-    void fetchTasksAndStatus(false);
-    const timer = window.setInterval(
-      () => void fetchTasksAndStatus(true),
-      POLL_INTERVAL_MS,
-    );
-    return () => window.clearInterval(timer);
-  }, [fetchTasksAndStatus]);
-
-  const detailPollMs =
-    detail !== null &&
-    (detail.activeSessionCount > 0 ||
-      detail.status === "active" ||
-      detail.status === "validating")
-      ? ACTIVE_POLL_INTERVAL_MS
-      : POLL_INTERVAL_MS;
-
-  useEffect(() => {
-    // Reset transient per-task UI (mobile inspector drawer, add-agent form)
-    // and load the room whenever the selection changes, so a freshly opened
-    // task starts clean and scrolled to its latest activity.
     setInspectorOpen(false);
     setAddAgentOpen(false);
     setDetailDrawer(null);
     stickToBottomRef.current = true;
-    if (!selectedId) {
-      setDetail(null);
-      setMessages([]);
-      setEvents([]);
-      setTimelineCursor(null);
-      return;
-    }
-    void fetchDetail(selectedId, true).catch((err: unknown) => {
-      console.error("[OrchestratorWorkbench] fetchDetail (initial)", { err });
-    });
-  }, [selectedId, fetchDetail]);
-
-  useEffect(() => {
-    // Reconcile poll — the safety net. The SSE stream below drives near-live
-    // updates; this only covers a dropped/absent stream (reconnect fallback).
-    if (!selectedId) return;
-    const timer = window.setInterval(
-      () =>
-        void fetchDetail(selectedId, false).catch((err: unknown) => {
-          console.error("[OrchestratorWorkbench] fetchDetail (poll)", { err });
-        }),
-      detailPollMs,
-    );
-    return () => window.clearInterval(timer);
-  }, [selectedId, detailPollMs, fetchDetail]);
-
-  // Coalesce a burst of change pings into one tail refetch per ~150ms window,
-  // so live token streaming doesn't trigger a fetch storm.
-  const refetchTimerRef = useRef<number | null>(null);
-  const scheduleRefetch = useCallback(() => {
-    if (refetchTimerRef.current != null) return;
-    refetchTimerRef.current = window.setTimeout(() => {
-      refetchTimerRef.current = null;
-      const current = selectedIdRef.current;
-      if (current)
-        void fetchDetail(current, false).catch((err: unknown) => {
-          console.error("[OrchestratorWorkbench] fetchDetail (debounced)", {
-            err,
-          });
-        });
-    }, 150);
-  }, [fetchDetail]);
-
-  useEffect(() => {
-    // Live push: subscribe to the task's SSE stream; each "change" ping
-    // schedules a debounced tail refetch, so messages/tool-calls/status appear
-    // ~instantly instead of on the poll boundary.
-    if (!selectedId) return;
-    const unsubscribe = client.streamOrchestratorTask(
-      selectedId,
-      scheduleRefetch,
-    );
-    return () => {
-      unsubscribe();
-      if (refetchTimerRef.current != null) {
-        window.clearTimeout(refetchTimerRef.current);
-        refetchTimerRef.current = null;
-      }
-    };
-  }, [selectedId, scheduleRefetch]);
-
-  const runMutation = useCallback(
-    async (fn: () => Promise<unknown>) => {
-      setMutating(true);
-      setActionError(null);
-      try {
-        await fn();
-        await fetchTasksAndStatus(true);
-        const current = selectedIdRef.current;
-        if (current)
-          await fetchDetail(current, false).catch((err: unknown) => {
-            console.error("[OrchestratorWorkbench] fetchDetail (mutation)", {
-              err,
-            });
-          });
-      } catch (error) {
-        setActionError(
-          getClientErrorMessage(
-            error,
-            t("orchestrator.actionFailed", { defaultValue: "Action failed." }),
-          ),
-        );
-      } finally {
-        setMutating(false);
-      }
-    },
-    [fetchTasksAndStatus, fetchDetail, t],
-  );
-
-  const loadOlderTimeline = useCallback(async () => {
-    const current = selectedIdRef.current;
-    if (!current || !timelineCursor) return;
-    const page = await client.listOrchestratorTaskTimeline(current, {
-      cursor: timelineCursor,
-      limit: TIMELINE_PAGE_LIMIT,
-    });
-    // The selection may have moved on during the await — don't merge task A's
-    // history into task B (mirrors the fetchDetail guard).
-    if (current !== selectedIdRef.current) return;
-    const timeline = splitTimelineItems(page.items);
-    setMessages((prev) => mergeById(prev, timeline.messages));
-    setEvents((prev) => mergeById(prev, timeline.events));
-    setTimelineCursor(page.nextCursor);
-  }, [timelineCursor]);
+  }, [selectedId]);
 
   // Stop every still-running coding agent on the open task — the prominent
   // in-conversation interrupt (parity with Claude Code / Codex / opencode),
