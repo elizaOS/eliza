@@ -33,6 +33,12 @@ export class UnscopedFixtureRepo {
     return await dbRead.query.apps.findFirst({ where: and(...conditions) });
   }
 
+  async findByNestedSpreadConditions(id: string): Promise<unknown> {
+    const idConditions = [eq(apps.id, id)];
+    const conditions = [...idConditions];
+    return await dbRead.query.apps.findFirst({ where: and(...conditions) });
+  }
+
   async findScopedSpreadWithSameLocalName(orgId: string, id: string): Promise<unknown> {
     const conditions = [eq(apps.id, id), eq(apps.organization_id, orgId)];
     return await dbRead.query.apps.findFirst({ where: and(...conditions) });

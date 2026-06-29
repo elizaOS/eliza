@@ -17,12 +17,13 @@ const fixture = (name: string): string =>
 describe("tenant-scope gate (#9853 P1.6)", () => {
   test("flags a pk-only read against a tenant data-plane table", () => {
     const violations = findUnscopedTenantReads([fixture("unscoped.ts")]);
-    expect(violations).toHaveLength(5);
+    expect(violations).toHaveLength(6);
     expect(violations.map((v) => v.method).sort()).toEqual([
       "findById",
       "findByIdWrappedInAnd",
       "findByIdWrappedInOr",
       "findByIds",
+      "findByNestedSpreadConditions",
       "findBySpreadConditions",
     ]);
     for (const violation of violations) {
