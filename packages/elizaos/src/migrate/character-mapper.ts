@@ -110,8 +110,8 @@ export function mapToCharacter(
 
 /** Derive a display name: IDENTITY "Name:" line → agentId capitalized. */
 function deriveName(src: OcAgentSource): string {
-  const fromIdentity = src.identity?.match(/^\s*[-*]?\s*\*?\*?Name\*?\*?:\s*(.+)$/im);
-  if (fromIdentity?.[1]) return fromIdentity[1].trim().replace(/\*/g, "");
+  const fromIdentity = src.identity?.match(/^\s*[-*]?\s*\*{0,2}Name\*{0,2}:\s*(.+)$/im);
+  if (fromIdentity?.[1]) return fromIdentity[1].replace(/\*/g, "").trim();
   return src.agentId.charAt(0).toUpperCase() + src.agentId.slice(1);
 }
 
