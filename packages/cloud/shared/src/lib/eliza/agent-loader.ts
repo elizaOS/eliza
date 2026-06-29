@@ -6,6 +6,7 @@ import {
   type Provider,
   parseCharacter,
 } from "@elizaos/core";
+import { cloudAppsPlugin } from "@elizaos/plugin-cloud-apps";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { charactersService } from "../services/characters/characters";
 import type { ElizaCharacter } from "../types/eliza-character";
@@ -20,6 +21,22 @@ import {
 import { cloudModelProviderPlugin } from "./cloud-model-provider";
 import { buildElevenLabsSettings, getElizaCloudApiUrl } from "./config";
 import mcpPlugin from "./plugin-mcp";
+
+/**
+ * Feature flag for the Eliza Cloud Apps read-core on the cloud-hosted path.
+ *
+ * `cloudAppsPlugin` runs as a FULL plugin (its LIST_CLOUD_APPS / GET_APP actions
+ * + CLOUD_APPS provider) on EVERY dedicated prod agent when enabled, so it stays
+ * OFF by default until staged + proven. Enable per-agent via the character
+ * setting `CLOUD_APPS_PLUGIN_ENABLED` or process-wide via the
+ * `CLOUD_APPS_PLUGIN_ENABLED` env var (both accept `true`). The
+ * local/native + Discord/Telegram path enables it separately via CORE_PLUGINS.
+ */
+function isCloudAppsPluginEnabled(characterSettings: Record<string, unknown>): boolean {
+  const fromSetting = characterSettings.CLOUD_APPS_PLUGIN_ENABLED;
+  if (fromSetting === true || fromSetting === "true") return true;
+  return process.env.CLOUD_APPS_PLUGIN_ENABLED === "true";
+}
 
 // Plugin cache - preloaded at module init to eliminate dynamic import latency
 let _documentsPlugin: Plugin | null = null;
@@ -218,6 +235,16 @@ export class AgentLoader {
     options?: { hasDocuments?: boolean },
   ): Promise<Plugin[]> {
     const plugins: Plugin[] = [cloudModelProviderPlugin];
+
+    // Eliza Cloud Apps read-core (#10218 apps launch). Added as a FULL plugin
+    // (NOT via AVAILABLE_PLUGINS, which strips to models-only) so its actions +
+    // provider reach cloud-hosted agents. Gated OFF by default — see
+    // isCloudAppsPluginEnabled — because it loads on every dedicated prod agent.
+    if (isCloudAppsPluginEnabled(characterSettings)) {
+      plugins.push(asPlugin(cloudAppsPlugin));
+      logger.info("[AgentLoader] Cloud Apps plugin enabled (read-core)");
+    }
+
     const conditionalPlugins = getConditionalPlugins(characterSettings);
     const modePlugins = isValidAgentMode(agentMode)
       ? AGENT_MODE_PLUGINS[agentMode]
