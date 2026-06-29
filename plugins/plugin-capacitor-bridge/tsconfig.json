@@ -46,6 +46,12 @@
 			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
+			"@elizaos/ui/agent-surface/types": [
+				"../../packages/ui/src/agent-surface/types.ts"
+			],
+			"@elizaos/ui/views/view-interact-protocol": [
+				"../../packages/ui/src/views/view-interact-protocol.ts"
+			],
 			"@elizaos/vault": ["../../packages/vault/src/index.ts"],
 			"@elizaos/plugin-agent-skills": [
 				"../../plugins/plugin-agent-skills/src/index.ts"

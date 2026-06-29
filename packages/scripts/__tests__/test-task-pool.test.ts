@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import {
   isParallelSafeTask,
@@ -259,5 +260,56 @@ describe("taskBelongsToShard", () => {
       expect(count).toBeGreaterThan(120);
       expect(count).toBeLessThan(280);
     }
+  });
+});
+
+describe("CI plugin sharding contract", () => {
+  const rootPackageJson = JSON.parse(
+    readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+  );
+  const testWorkflow = readFileSync(
+    new URL("../../../.github/workflows/test.yml", import.meta.url),
+    "utf8",
+  );
+  const qualityWorkflow = readFileSync(
+    new URL("../../../.github/workflows/quality.yml", import.meta.url),
+    "utf8",
+  );
+
+  test("root test:plugins uses the shard-aware cross-package runner", () => {
+    const script = rootPackageJson.scripts["test:plugins"];
+    expect(script).toContain("run-all-tests.mjs");
+    expect(script).toContain("TEST_PACKAGE_FILTER='\\(plugins/'");
+    expect(script).toContain("TEST_SCRIPT_FILTER='^test$'");
+    expect(script).toContain("--only=test");
+    expect(script).toContain("--no-cloud");
+    expect(script).toContain("--concurrency=3");
+  });
+
+  test("Tests workflow shards plugin tests and keeps a stable aggregate check", () => {
+    expect(testWorkflow).toMatch(
+      /plugin-tests:\s+name:\s+Plugin Tests \(\$\{\{ matrix\.shard \}\}\/4\)[\s\S]*?strategy:[\s\S]*?fail-fast:\s+false[\s\S]*?matrix:[\s\S]*?shard:\s+\[1,\s*2,\s*3,\s*4\]/,
+    );
+    expect(testWorkflow).toMatch(
+      /TEST_SHARD:\s+\$\{\{ matrix\.shard \}\}\/4/,
+    );
+    expect(testWorkflow).toMatch(
+      /plugin-tests-status:\s+name:\s+Plugin Tests[\s\S]*?needs:[\s\S]*?-\s+plugin-tests/,
+    );
+    expect(testWorkflow).toMatch(
+      /test-status:[\s\S]*?needs:[\s\S]*?-\s+plugin-tests-status/,
+    );
+  });
+
+  test("Quality workflow gates develop PRs with static scans and lint", () => {
+    expect(qualityWorkflow).toMatch(
+      /develop-static-gate:[\s\S]*?Prompt secret scan[\s\S]*?check:secrets[\s\S]*?UI determinism self-test[\s\S]*?audit:ui-determinism:self-test[\s\S]*?UI determinism gate[\s\S]*?audit:ui-determinism/,
+    );
+    expect(qualityWorkflow).toMatch(
+      /develop-lint-gate:[\s\S]*?install-command: bun install[\s\S]*?Run lint[\s\S]*?bun run lint/,
+    );
+    expect(qualityWorkflow).not.toMatch(
+      /develop-static-gate:[\s\S]*?Run lint[\s\S]*?bun run lint[\s\S]*?develop-lint-gate:/,
+    );
   });
 });
