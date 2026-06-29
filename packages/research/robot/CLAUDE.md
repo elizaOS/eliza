@@ -123,7 +123,7 @@ bun run --cwd packages/research/robot robot:bridge:mujoco   # MuJoCo backend, po
 bun run --cwd packages/research/robot robot:demo            # voice + sim demo
 
 # TS surface
-bun run --cwd packages/research/robot build         # tsdown — emit dist/
+bun run --cwd packages/research/robot build         # build.ts: Bun.build + tsc d.ts emit → dist/
 bun run --cwd packages/research/robot typecheck     # tsgo --noEmit
 bun run --cwd packages/research/robot lint          # biome check --write
 bun run --cwd packages/research/robot test          # vitest run + pytest shim
