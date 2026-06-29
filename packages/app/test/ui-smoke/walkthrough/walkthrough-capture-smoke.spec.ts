@@ -186,14 +186,14 @@ test.describe("walkthrough capture smoke", () => {
     await installWalkthroughConversationStore(page);
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const onboarding = page.getByTestId("onboarding-toast");
+    const onboarding = page.getByTestId("first-run-chat");
     await expect(onboarding).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("How should Eliza run?")).toBeVisible({
+    await expect(page.getByTestId("first-run-greeting")).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByTestId("onboarding-option-cloud")).toBeVisible();
-    await expect(page.getByTestId("onboarding-option-remote")).toBeVisible();
-    await expect(page.getByTestId("onboarding-option-local")).toBeVisible();
+    await expect(page.getByTestId("choice-cloud")).toBeVisible();
+    await expect(page.getByTestId("choice-remote")).toBeVisible();
+    await expect(page.getByTestId("choice-local")).toBeVisible();
     await captureState(page, testInfo, "walkthrough-01-onboarding.png");
 
     firstRun.setComplete(true);
@@ -245,9 +245,7 @@ test.describe("walkthrough capture smoke", () => {
     ).toBeVisible();
     await captureState(page, testInfo, "walkthrough-05-launcher.png");
 
-    const firstTile = page
-      .locator('[data-testid^="launcher-tile-"]')
-      .first();
+    const firstTile = page.locator('[data-testid^="launcher-tile-"]').first();
     const tileId = await firstTile.getAttribute("data-testid");
     const viewId = (tileId ?? "").replace("launcher-tile-", "");
     await firstTile.locator("button").first().click();

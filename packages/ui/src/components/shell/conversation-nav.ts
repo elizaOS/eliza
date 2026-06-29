@@ -43,6 +43,12 @@ export function resolveAdjacentConversationId(
  * adjacent conversation by id. When the active conversation isn't in the list
  * (not-found), neither direction is navigable. Extracted as a pure function so
  * the index-walk is unit-testable without rendering the AppContext-bound hook.
+ *
+ * Invariant: a new conversation PREPENDS at index 0 and becomes active, so right
+ * after creating one the index-0 swipe toward a newer chat (`goPrev`) is a
+ * boundary no-op (`hasPrev` is false). The conversation-swipe interleaving e2e
+ * (`run-conversation-swipe-e2e.mjs`) drives + asserts exactly this against the
+ * real overlay.
  */
 export function buildConversationNav(
   conversations: readonly Pick<Conversation, "id">[] | null | undefined,

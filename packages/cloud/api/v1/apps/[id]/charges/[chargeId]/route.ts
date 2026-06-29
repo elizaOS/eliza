@@ -34,9 +34,33 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Charge request not found" }, 404);
     }
 
+    // Payer-facing PUBLIC projection. This route is on the unauthenticated
+    // allowlist, so we must NOT return the raw `charge` — its `metadata` carries
+    // internal data (creator org/user UUIDs, the creator's callback_url, and the
+    // agent/room/channel routing ids), and `payerUserId`/`payerOrganizationId`/
+    // `providerPaymentId` are internal identifiers. Whitelist only what a payment
+    // page needs. The full charge (incl. metadata) stays on the org-scoped
+    // authenticated `GET /charges` list.
+    const publicCharge = {
+      id: charge.id,
+      appId: charge.appId,
+      amountUsd: charge.amountUsd,
+      description: charge.description,
+      providers: charge.providers,
+      paymentContext: charge.paymentContext,
+      paymentUrl: charge.paymentUrl,
+      status: charge.status,
+      paidAt: charge.paidAt,
+      paidProvider: charge.paidProvider,
+      expiresAt: charge.expiresAt,
+      createdAt: charge.createdAt,
+      successUrl: charge.successUrl,
+      cancelUrl: charge.cancelUrl,
+    };
+
     return c.json({
       success: true,
-      charge,
+      charge: publicCharge,
       app: {
         id: targetApp.id,
         name: targetApp.name,

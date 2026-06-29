@@ -22,3 +22,33 @@ Driver/shell: PowerShell + WinRT. Date: 2026-06-25.
 
 ## Net
 The Windows **capture → coord-OCR → describe** CUA×Vision pipeline is **device-verified working** on Windows (read path). The robustness gap is the PowerShell-spawn timeout tuning for Defender-heavy hosts (#1), not the capability.
+
+---
+
+## 2026-06-29 — robustness + input tail closed (the remaining Windows item)
+
+Re-verified on the same Windows 11 Pro build box (interactive session, primary display 1728×1052) with a reproducible harness: `bun run --cwd plugins/plugin-computeruse capture:windows-desktop-evidence`. Manifest `windows-desktop-validation.json` validates **9/9 `status: passed`** with `--require-complete`.
+
+| Check | Result |
+|---|---|
+| capabilityProbe | ✅ win32; screenshot/computerUse/windowList/browser/terminal/fileSystem/clipboard all available |
+| screenshotCapture | ✅ real 1728×1052 PNG (~845 KB), dims match display |
+| **mouseKeyboardInput** | ✅ **non-disruptive** — launched a controlled Notepad, `mouse_move → click → key_combo ctrl+a → type`, marker read back via select-all/copy. Drives a freshly-launched window, not the user's apps; terminated when done. |
+| **windowListFocus** | ✅ **`listWindows()` returns the populated set (3 windows), not 0** — the finding-#2 condition is resolved. `switchWindow` focuses a usable window by id. |
+| browserAutomation | ✅ headless Chromium (Edge/Chrome) open → DOM → clickables → screenshot → close (`browser-evidence.png`) |
+| clipboardRoundTrip | ✅ Set-Clipboard/Get-Clipboard round-trip (trailing-newline normalized) |
+| terminalSafety | ✅ harmless command runs; `Remove-Item -Recurse 'C:\'` blocked before exec; 1s timeout kills a 5s sleep |
+| approvalMode | ✅ smart_approve queues destructive write; full_control allows; off denies |
+| windowsHardeningRegression | ✅ WinForms `Add-Type` ordering; degenerate 0×0 region rejected; UNC blocked + safe local path allowed; links the read-path capture |
+
+### Finding-#2 (`listWindows() == 0`) — root-caused as a code regression, fixed
+The #10100 hardening that routed every `windows-list.ts` PowerShell spawn through the `psSpawnTimeoutMs()` floor and raised `listWindows()`'s budget 10s→15s was **silently reverted** by the #10107 warm-host refactor: that refactor re-routed window ops through `runWindowsPowerShell`/`runPsHost` but dropped the `psSpawnTimeoutMs` import and the 15s base, so the `ELIZA_COMPUTERUSE_PS_TIMEOUT_MS` escape hatch no longer reached any window op and the enumeration budget was back to 10s. Reapplied the floor centrally in `runWindowsPowerShell` (covers all window ops + the cold one-shot fallback) and on the two raw `execSync` enumeration/screen-size sites, and restored the 15s `listWindows()` base. A new static guard (`windows-spawn-timeout-floor.test.ts`) fails loudly if a future refactor drops the floor again.
+
+Live confirmation:
+- warm-host path: `listWindows()` → 3 windows in ~649 ms.
+- cold one-shot fallback (`COMPUTERUSE_PS_HOST=0`): `listWindows()` → 3 windows in ~505 ms (survives under the 15s budget instead of ETIMEDOUT→`[]`).
+
+### Input note
+Input drives via the **legacy PowerShell/user32 driver** here (`@nut-tree-fork/nut-js` native bindings are not installed on this box; the service falls back automatically). The Session-0/non-interactive gotcha (`docs/TEST_LANES_COMPUTERUSE_VISION.md`) still applies to service-session hosts.
+
+Artifacts in this dir: `windows-desktop-validation.json` (+ `manifest.json`), `report.json`, `screenshot-primary.png`, `browser-evidence.png`, `CAPTURE_README.md`.

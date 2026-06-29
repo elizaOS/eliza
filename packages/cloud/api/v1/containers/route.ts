@@ -51,6 +51,7 @@ import {
   type ContainerSummary,
   HetznerClientError,
 } from "@/lib/services/containers/hetzner-client/types";
+import { findReservedEnvKeys } from "@/lib/services/reserved-env-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -238,6 +239,29 @@ app.post("/", async (c) => {
       );
     }
     const body = parsed.data;
+
+    // SECURITY (#9853): reject caller-supplied reserved/managed env keys so an
+    // org cannot shadow the platform-injected DB DSN, cloud API token, or
+    // metered-identity keys on this container. The app-deploy route strips the
+    // same denylist; this route previously forwarded environmentVars raw.
+    if (body.environmentVars) {
+      const reserved = findReservedEnvKeys(Object.keys(body.environmentVars));
+      if (reserved.length > 0) {
+        logger.warn("[Containers API] reserved env keys rejected", {
+          organizationId: user.organization_id,
+          reserved,
+        });
+        return c.json(
+          {
+            success: false,
+            code: "RESERVED_ENV_KEYS",
+            error: `environmentVars may not set platform-reserved keys: ${reserved.join(", ")}`,
+          },
+          400,
+        );
+      }
+    }
+
     const projectName = body.projectName ?? slugify(body.name);
 
     // Idempotency: if a non-terminal container already exists for this

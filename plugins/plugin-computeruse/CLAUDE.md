@@ -179,6 +179,9 @@ bun run --cwd plugins/plugin-computeruse validate:macos-desktop-evidence
                                                      # validate macOS desktop evidence manifest
 bun run --cwd plugins/plugin-computeruse validate:linux-desktop-evidence
                                                      # validate Linux desktop evidence manifest
+bun run --cwd plugins/plugin-computeruse capture:windows-desktop-evidence
+                                                     # capture Windows desktop evidence artifacts for issue #9581
+                                                     # (non-disruptive: drives a controlled Notepad window, not the user's apps)
 bun run --cwd plugins/plugin-computeruse validate:windows-desktop-evidence
                                                      # validate Windows desktop evidence manifest
 ```

@@ -7,11 +7,11 @@ import {
 } from "./helpers";
 
 // Every other ui-smoke spec seeds `eliza:first-run-complete = "1"`, so the
-// onboarding surface (StartupScreen → CompactOnboarding, "Choose how to run
-// your agent") never gets render-telemetry coverage. That surface is exactly
-// where the agent-start render loop froze onboarding, so this spec lands on it
-// with the guard armed and drives the runtime selection that preceded the
-// freeze.
+// first-run surface (StartupScreen → FirstRunChat, the seeded "hey there! I'm
+// Eliza" greeting + in-chat runtime/provider ChoiceWidgets) never gets
+// render-telemetry coverage. That surface is exactly where the agent-start
+// render loop froze onboarding, so this spec lands on it with the guard armed
+// and drives the runtime selection that preceded the freeze.
 
 async function fulfillJson(
   route: Route,
@@ -25,9 +25,9 @@ async function fulfillJson(
   });
 }
 
-// A full-capability host (real API base) so the onboarding offers all three
+// A full-capability host (real API base) so the first-run flow offers all three
 // runtimes — without it the surface falls back to cloud-only and the Remote
-// card is correctly disabled.
+// option is correctly hidden.
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
@@ -61,7 +61,7 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
   });
 }
 
-test("first-run onboarding renders without a render loop and lets the runtime be chosen", async ({
+test("first-run flow renders without a render loop and lets the runtime be chosen", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -73,56 +73,50 @@ test("first-run onboarding renders without a render loop and lets the runtime be
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  // The onboarding card renders inside the orange first-run background. The
-  // outer container testid is stable across the redesign.
-  const onboarding = page.getByTestId("onboarding-toast");
-  await expect(onboarding).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("How should Eliza run?")).toBeVisible({
+  // The in-chat first-run flow renders inside the orange first-run background:
+  // the agent greets first, then asks the runtime question as ChoiceWidgets.
+  const firstRun = page.getByTestId("first-run-chat");
+  await expect(firstRun).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("first-run-greeting")).toBeVisible({
     timeout: 15_000,
   });
+  await expect(
+    page.getByText("run your agent locally", { exact: false }),
+  ).toBeVisible({ timeout: 15_000 });
 
-  // The redesigned onboarding offers three runtime option cards. Cloud is the
-  // recommended resting choice; Remote opens an inline connect form; Local
-  // starts an on-device runtime. All three are always rendered (Remote is only
-  // disabled on cloud-only hosts, never removed).
-  const cloud = page.getByTestId("onboarding-option-cloud");
-  const remote = page.getByTestId("onboarding-option-remote");
-  const local = page.getByTestId("onboarding-option-local");
+  // The runtime question offers three in-chat ChoiceWidget options. Cloud is
+  // the recommended resting choice; Remote opens an inline connect form; Local
+  // advances to the provider sub-choice. (Remote is hidden on cloud-only hosts.)
+  const cloud = page.getByTestId("choice-cloud");
+  const remote = page.getByTestId("choice-remote");
+  const local = page.getByTestId("choice-local");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
   await expect(remote).toBeVisible();
   await expect(local).toBeVisible();
 
   // Drive the Remote → Back round-trip a few times. Each pass re-renders the
-  // onboarding selector — the same churn path that previously froze
+  // first-run selector — the same churn path that previously froze
   // onboarding — without committing a runtime and leaving the surface.
   for (let i = 0; i < 4; i++) {
     await remote.click();
-    const remoteConnect = page.getByTestId("onboarding-remote-connect");
-    await expect(remoteConnect).toBeVisible({ timeout: 10_000 });
     // The remote step exposes the agent URL + access-token fields.
-    const apiBase = page.locator("#onboarding-remote-address");
-    await expect(apiBase).toBeVisible();
+    const apiBase = page.getByTestId("first-run-remote-address");
+    await expect(apiBase).toBeVisible({ timeout: 10_000 });
     await apiBase.fill("https://agent.example.com");
-    await page.locator("#onboarding-remote-password").fill("");
-    await expect(remoteConnect).toBeEnabled();
-    await page.getByRole("button", { name: "Back" }).click();
+    await page.getByTestId("first-run-remote-token").fill("");
+    await expect(page.getByTestId("choice-connect")).toBeVisible();
+    await page.getByTestId("choice-back").click();
     await expect(cloud).toBeVisible({ timeout: 10_000 });
   }
 
-  // Local advances to the inference sub-choice (cloud vs on-device), then Back
-  // returns to the runtime cards — the same re-render churn, on the newer step.
+  // Local advances to the provider sub-choice (Eliza Cloud vs on-device), the
+  // same re-render churn on the newer step.
   await local.click();
-  const inferenceCloud = page.getByTestId("onboarding-inference-cloud");
-  const inferenceLocal = page.getByTestId("onboarding-inference-local");
-  await expect(inferenceCloud).toBeVisible({ timeout: 10_000 });
-  await expect(inferenceLocal).toBeVisible();
-  await page.getByRole("button", { name: "Back" }).click();
-  await expect(cloud).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("choice-elizacloud")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("choice-on-device")).toBeVisible();
 
-  // Cloud remains the always-offered resting choice after the churn.
-  await expect(cloud).toBeVisible({ timeout: 15_000 });
-  await expect(cloud).toBeEnabled({ timeout: 15_000 });
-
-  await expectNoRenderTelemetryErrors(page, "first-run onboarding");
-  await expect(onboarding).toBeVisible();
+  await expectNoRenderTelemetryErrors(page, "first-run flow");
+  await expect(firstRun).toBeVisible();
 });

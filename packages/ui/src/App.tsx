@@ -77,7 +77,6 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
-import { CompactOnboarding } from "./first-run/CompactOnboarding";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -367,7 +366,6 @@ function useIsPopout(): boolean {
  */
 type ShellMode =
   | "chat-overlay"
-  | "onboarding-overlay"
   | "tray-popover"
   | "voice-selftest"
   | "voice-workbench"
@@ -392,7 +390,6 @@ function readShellMode(): ShellMode {
     window.ELIZAOS_SHELL_MODE ??
     "";
   if (raw === "chat-overlay") return "chat-overlay";
-  if (raw === "onboarding-overlay") return "onboarding-overlay";
   if (raw === "tray-popover") return "tray-popover";
   if (raw === "voice-selftest") return "voice-selftest";
   if (raw === "voice-workbench") return "voice-workbench";
@@ -439,24 +436,6 @@ function TrayPopoverShell() {
       className="fixed inset-0 overflow-y-auto bg-transparent p-3"
     >
       <WidgetHost slot="home" layout="stack" />
-    </div>
-  );
-}
-
-/**
- * First-run onboarding overlay surface. Renders ONLY the floating
- * CompactOnboarding card over a transparent, click-through background — no app
- * chrome. The native overlay window is `transparent` + `passthrough`, so the
- * empty (pointer-events-none) region lets clicks fall through to the desktop
- * behind while the card stays interactive.
- */
-function OnboardingOverlayShell() {
-  return (
-    <div
-      data-testid="onboarding-overlay-shell"
-      className="pointer-events-none fixed inset-0 bg-transparent"
-    >
-      <CompactOnboarding />
     </div>
   );
 }
@@ -2139,20 +2118,6 @@ export function App() {
     return (
       <BugReportProvider value={bugReport}>
         <TrayPopoverShell />
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
-
-  // First-run onboarding overlay window — render JUST the floating onboarding
-  // card over a transparent, click-through background, no app chrome or
-  // startup gate.
-  if (shellMode === "onboarding-overlay") {
-    return (
-      <BugReportProvider value={bugReport}>
-        <ShellControllerProvider>
-          <OnboardingOverlayShell />
-        </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
     );

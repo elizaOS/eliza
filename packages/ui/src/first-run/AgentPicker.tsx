@@ -69,12 +69,10 @@ function formatLastActive(agent: CloudCompatAgent): string | null {
 }
 
 /**
- * Presentational agent picker shown on the dark onboarding overlay after cloud
+ * Presentational agent picker shown in the in-chat first-run flow after cloud
  * sign-in when the user already has cloud agents. All fetch/bind/provision logic
  * lives in the first-run controller — this component only renders props and
- * forwards the user's choice. Visual language mirrors CompactOnboarding's
- * white / white→[#FF5800] pills and rounded-2xl option rows (NOT the light
- * SettingsRow cards, which clash with the overlay).
+ * forwards the user's choice.
  */
 export function AgentPicker({
   agents,

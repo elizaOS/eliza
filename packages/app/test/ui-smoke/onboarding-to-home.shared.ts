@@ -534,20 +534,20 @@ export async function completeOnboardingToHome(
   page: Page,
   click: (locator: Locator) => Promise<void>,
 ): Promise<{ onboarding: Locator; surface: Locator }> {
-  // 1) Onboarding surface renders.
-  const onboarding = page.getByTestId("onboarding-toast");
+  // 1) In-chat first-run surface renders (agent greets first).
+  const onboarding = page.getByTestId("first-run-chat");
   await expect(onboarding).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("How should Eliza run?")).toBeVisible({
+  await expect(page.getByTestId("first-run-greeting")).toBeVisible({
     timeout: 15_000,
   });
 
   // 2) Local → on-device inference.
-  const local = page.getByTestId("onboarding-option-local");
+  const local = page.getByTestId("choice-local");
   await expect(local).toBeVisible({ timeout: 15_000 });
   await expect(local).toBeEnabled({ timeout: 15_000 });
   await click(local);
 
-  const inferenceLocal = page.getByTestId("onboarding-inference-local");
+  const inferenceLocal = page.getByTestId("choice-on-device");
   await expect(inferenceLocal).toBeVisible({ timeout: 15_000 });
   await click(inferenceLocal);
 
@@ -566,7 +566,9 @@ export async function completeOnboardingToHome(
     ).toBeVisible({ timeout: 30_000 });
   }
   await expect(host.getByTestId(FINANCES_TESTID)).toContainText("Overdrawn");
-  await expect(host.getByTestId(GOALS_TESTID)).toContainText("Ship the release");
+  await expect(host.getByTestId(GOALS_TESTID)).toContainText(
+    "Ship the release",
+  );
   await expect(host.getByTestId(NOTIFICATIONS_TESTID)).toContainText(
     "Payment failed",
   );
@@ -671,17 +673,15 @@ export async function swipeLeftToLauncher(
   const launcherPage = page.getByTestId("home-launcher-launcher-page");
   await expect(launcherPage).toBeVisible();
   // A real launcher tile is visible on the launcher.
-  await expect(
-    launcherPage.getByTestId("launcher-tile-settings"),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(launcherPage.getByTestId("launcher-tile-settings")).toBeVisible({
+    timeout: 15_000,
+  });
 
   // The rail slides over 300ms; wait until nothing in the rail subtree is still
   // animating so a shot shows the settled launcher.
   await page.waitForFunction(
     () => {
-      const rail = document.querySelector(
-        '[data-testid="home-launcher-rail"]',
-      );
+      const rail = document.querySelector('[data-testid="home-launcher-rail"]');
       if (!rail) return false;
       return !(rail as HTMLElement)
         .getAnimations({ subtree: true })

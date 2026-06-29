@@ -1500,6 +1500,10 @@ waifu.fun/
 
 # chat-ux gesture e2e generated artifacts (video + screenshots)
 /packages/ui/src/components/shell/__e2e__/output-chatux/
+# conversation-swipe interleaving e2e artifacts (video + screenshots)
+/packages/ui/src/components/shell/__e2e__/output-conversation-swipe/
+# chat overlay perf-gate artifacts (final screenshot)
+/packages/ui/src/components/shell/__e2e__/output-perf-gate/
 railway.json
 .railwayignore
 .dockerignore

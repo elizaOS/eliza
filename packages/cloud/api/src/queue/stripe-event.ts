@@ -37,6 +37,7 @@ import { organizationsRepository } from "@/db/repositories/organizations";
 import { usersRepository } from "@/db/repositories/users";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import type { DrainResult } from "@/lib/queue/redis-queue";
+import { safeFetch } from "@/lib/security/safe-fetch";
 import { appChargeCallbacksService } from "@/lib/services/app-charge-callbacks";
 import { appChargeSettlementService } from "@/lib/services/app-charge-settlement";
 import { appCreditsService } from "@/lib/services/app-credits";
@@ -187,7 +188,16 @@ async function handleCheckoutSessionCompleted(
     );
   }
 
-  if (isAppPurchase && !isDuplicate) {
+  // App purchases ALWAYS go through processPurchase — NOT gated on the org-credit
+  // `isDuplicate`. processPurchase is internally idempotent (its own app-earnings
+  // dedup via appEarningsRepository.findTransactionByPaymentIntent + addCredits'
+  // ON CONFLICT(stripe_payment_intent_id)), so this is safe on true duplicates
+  // AND lets a retry after a PARTIAL failure — org credit committed but creator
+  // earnings not yet written — re-enter and record the missing earnings. Gating
+  // on the org-credit dedup skipped that re-entry, permanently losing the
+  // creator's purchase-share earnings (org-credit and creator-earnings are
+  // written non-atomically; the org credit alone flips isDuplicate to true).
+  if (isAppPurchase) {
     logger.info(
       `[Stripe Queue] Processing app-specific credit purchase for app ${appId}`,
     );
@@ -479,7 +489,9 @@ async function notifyWaifuCreditsToppedUp(params: {
     .digest("hex")}`;
 
   try {
-    const response = await fetch(webhookUrl, {
+    // SECURITY (#9853): webhookUrl is DB-stored per-agent config — IP-pin it so
+    // a malicious receiver URL can't pivot into internal/metadata networks.
+    const response = await safeFetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

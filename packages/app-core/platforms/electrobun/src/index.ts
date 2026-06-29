@@ -44,7 +44,6 @@ import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import {
   shouldCreateDesktopTray,
   shouldEnableTrayPopover,
-  shouldStartOnboardingOverlay,
   shouldStartTrayFirst,
 } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
@@ -90,16 +89,6 @@ import {
 import { getPermissionManager } from "./native/permissions";
 import { getRemotePluginHost } from "./native/remote-plugin-host";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
-import {
-  submitOnboardingFirstRun,
-  waitForApiReady,
-  waitForOnboardingNotificationChoice,
-} from "./native-onboarding";
-import {
-  closeOnboardingOverlayWindow,
-  createOnboardingOverlayWindow,
-  getOnboardingOverlayWindow,
-} from "./onboarding-overlay-window";
 import { getPersistedDeployment } from "./persisted-deployment";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
@@ -1311,62 +1300,6 @@ async function ensureBackgroundWindow(): Promise<void> {
   showBackgroundRunNoticeOnce();
 }
 
-/**
- * Create — or focus, if already open — the transparent onboarding overlay
- * window and wire its API base. Shared by the first-run boot branch and the
- * dock-reopen path so the overlay (not the dashboard) is always the surface
- * shown while onboarding is the active first-run mode.
- */
-async function openOnboardingOverlayWindow(): Promise<BrowserWindow> {
-  const existing = getOnboardingOverlayWindow();
-  if (existing) {
-    try {
-      existing.focus();
-    } catch {
-      // focus may be unavailable on this platform
-    }
-    return existing;
-  }
-  const { rpc } = createDesktopRpc("onboarding-overlay");
-  const rendererUrl = await resolveRendererUrlForCurrentRuntime();
-  let preload = "";
-  try {
-    preload = readResolvedPreloadScript(import.meta.dir);
-  } catch {
-    // Dev fallback — an unbuilt preload should not block the overlay.
-  }
-  const win = createOnboardingOverlayWindow({ rendererUrl, preload, rpc });
-  win.webview.on("dom-ready", () => {
-    injectApiBase(win);
-  });
-
-  // When the overlay closes (renderer calls window.close() after the first-run
-  // API completes), transition to the main dashboard window. Without this the
-  // overlay disappears but no dashboard appears.
-  win.on("close", () => {
-    logger.info(
-      "[Main] Onboarding overlay closed — creating main dashboard window",
-    );
-    void (async () => {
-      try {
-        const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
-          createDesktopRpc("main");
-        attachMainWindow(
-          await createMainWindow(mainRpc),
-          mainRpc,
-          mainSendToWebview,
-        );
-      } catch (err) {
-        logger.error(
-          `[Main] Failed to create dashboard after overlay close: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    })();
-  });
-
-  return win;
-}
-
 /** Restore or recreate the main window (called on dock icon click). */
 async function restoreWindow(): Promise<void> {
   if (currentWindow) {
@@ -1378,15 +1311,6 @@ async function restoreWindow(): Promise<void> {
     }
     // Re-reveal the Dock icon for an already-open window (tray-first only).
     getDesktopManager().markMainWindowShown();
-    return;
-  }
-  // Onboarding-overlay mode: the correct first-run surface is the transparent
-  // overlay card, NOT the opaque dashboard. Re-show (or recreate) the overlay
-  // instead of building a main window. Once onboarding completes and a
-  // dashboard is attached, `currentWindow` is set and the branch above wins.
-  if (shouldStartOnboardingOverlay()) {
-    await openOnboardingOverlayWindow();
-    logger.info("[Main] Reopened onboarding overlay (dock reopen)");
     return;
   }
   if (backgroundWindowPromise) {
@@ -2570,92 +2494,9 @@ async function main(): Promise<void> {
   // Create window first — on Windows (CEF) the UI message loop must be
   // running before any synchronous FFI calls like setApplicationMenu().
   // Calling setupApplicationMenu() before createMainWindow() deadlocks.
-  const onboardingOverlay = shouldStartOnboardingOverlay();
   const trayFirst = shouldStartTrayFirst();
   let mainWin: BrowserWindow | null = null;
-  if (onboardingOverlay) {
-    // First-run onboarding (macOS, opt-in): post a native macOS notification
-    // with action buttons ("Local On-Device", "Local Cloud AI", "Eliza Cloud").
-    // The user's choice is polled via FFI. Once selected, we wait for the
-    // embedded API server to be ready, POST the first-run config, then open
-    // the dashboard. Falls back to the overlay window on FFI failure.
-    logger.info("[Main] Onboarding — posting native macOS notification");
-    recordStartupPhase("creating_window", { pid: process.pid });
-
-    // Run notification flow async — don't block the event loop.
-    // Once the user picks and the API is ready, we create the dashboard.
-    void (async () => {
-      try {
-        const choice = await waitForOnboardingNotificationChoice();
-        if (!choice) {
-          // FFI failed or unsupported — fall back to overlay window.
-          logger.warn(
-            "[Main] Native notification unavailable — falling back to overlay",
-          );
-          await openOnboardingOverlayWindow();
-          return;
-        }
-
-        // Wait for the embedded API server to be ready before submitting.
-        // The agent manager may not have started yet, so poll until
-        // resolveLoopbackApiBase() returns a valid URL.
-        let apiBase: string | null = null;
-        const apiBaseDeadline = Date.now() + 120_000;
-        while (Date.now() < apiBaseDeadline) {
-          apiBase = resolveLoopbackApiBase();
-          if (apiBase) break;
-          await new Promise((r) => setTimeout(r, 2000));
-        }
-        if (!apiBase) {
-          logger.error(
-            "[Main] Cannot resolve API base after 120s — falling back to overlay",
-          );
-          await openOnboardingOverlayWindow();
-          return;
-        }
-
-        logger.info(
-          `[Main] Notification choice received — waiting for API at ${apiBase}`,
-        );
-        const apiReady = await waitForApiReady(apiBase, 120_000);
-        if (!apiReady) {
-          logger.error(
-            "[Main] API server not ready after 120s — falling back to overlay",
-          );
-          await openOnboardingOverlayWindow();
-          return;
-        }
-
-        // Submit first-run config to the API.
-        const submitted = await submitOnboardingFirstRun(apiBase, choice);
-        if (!submitted) {
-          logger.error(
-            "[Main] First-run submission failed — falling back to overlay",
-          );
-          await openOnboardingOverlayWindow();
-          return;
-        }
-
-        // First-run complete — close the overlay and let its close handler
-        // create the dashboard (single handoff point). The win.on("close")
-        // handler wired in openOnboardingOverlayWindow() transitions to the
-        // main dashboard window, so we just need to trigger it.
-        logger.info(
-          "[Main] First-run complete — closing overlay to transition to dashboard",
-        );
-        closeOnboardingOverlayWindow();
-      } catch (err) {
-        logger.error(
-          `[Main] Native onboarding failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        await openOnboardingOverlayWindow();
-      }
-    })();
-
-    recordStartupPhase("window_ready", {
-      pid: process.pid,
-    });
-  } else if (trayFirst) {
+  if (trayFirst) {
     // Tray-first (macOS, opt-in): no window at launch. The tray icon is the
     // only surface; the main window is created lazily via restoreWindow() /
     // DesktopManager.showWindow() on tray "Show Window", Dock reopen, or a

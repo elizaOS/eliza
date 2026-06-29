@@ -19,6 +19,25 @@ export interface DeepLinkHandlerContext {
   trustPolicy: UrlTrustPolicy;
   dispatchShareTarget: (payload: ShareTargetPayload) => void;
   dispatchDeepLinkCallback: (url: string) => void;
+  /**
+   * Universal/App-Link hosts (e.g. `eliza.app`) whose `https://<host>/<path>`
+   * links route into the same hash routes as the custom `<scheme>://` links.
+   * iOS associated-domains + Android `assetlinks.json` make the OS hand these
+   * to the installed app; this is the in-app routing half. Subdomains match.
+   */
+  appLinkHosts?: string[];
+}
+
+/** True for an `https://<trusted-host>/<path>` universal/App link. */
+export function isTrustedAppLink(
+  parsed: URL,
+  appLinkHosts: string[] | undefined,
+): boolean {
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.host.toLowerCase();
+  return (appLinkHosts ?? []).some(
+    (h) => host === h.toLowerCase() || host.endsWith(`.${h.toLowerCase()}`),
+  );
 }
 
 export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
@@ -34,8 +53,14 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
       return;
     }
 
-    if (parsed.protocol !== `${ctx.urlScheme}:`) return;
-    const path = getDeepLinkPath(parsed);
+    const isCustomScheme = parsed.protocol === `${ctx.urlScheme}:`;
+    const isAppLink = isTrustedAppLink(parsed, ctx.appLinkHosts);
+    if (!isCustomScheme && !isAppLink) return;
+    // A universal link's path is its URL pathname; a custom-scheme link encodes
+    // it as host(+pathname). Both feed the same route switch below.
+    const path = isAppLink
+      ? parsed.pathname.replace(/^\/+|\/+$/g, "")
+      : getDeepLinkPath(parsed);
 
     if (/^settings\/connectors\/[a-z0-9-]+$/i.test(path)) {
       window.location.hash = "#connectors";

@@ -101,7 +101,6 @@ import {
 import {
   isChatOverlayWindowShell,
   isDetachedWindowShell,
-  isOnboardingOverlayWindowShell,
   isStandaloneWindowShell,
   resolveWindowShellRoute,
   shouldInstallMainWindowFirstRunPatches,
@@ -134,6 +133,7 @@ import {
 } from "./app-config";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { isTrustedAppLink } from "./deep-link-handler";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 import {
   apiBaseToDeviceBridgeUrl,
@@ -944,17 +944,17 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
 
   try {
     let remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
-      "#onboarding-remote-address",
+      '[data-testid="first-run-remote-address"]',
       { timeoutMs: 2_000, visible: true },
     ).catch(() => null);
     if (!remoteAddress) {
       const remoteOption = await waitForIosOnboardingElement<HTMLButtonElement>(
-        '[data-testid="onboarding-option-remote"]',
+        '[data-testid="choice-remote"]',
         { visible: true },
       );
       remoteOption.click();
       remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
-        "#onboarding-remote-address",
+        '[data-testid="first-run-remote-address"]',
         { visible: true },
       );
     }
@@ -963,13 +963,11 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     remoteAddress.blur();
 
     const remoteConnect = await waitForIosOnboardingButtonEnabled(
-      '[data-testid="onboarding-remote-connect"]',
+      '[data-testid="choice-connect"]',
     );
     remoteConnect.click();
 
-    await waitForIosOnboardingSelectorHidden(
-      '[data-testid="onboarding-toast"]',
-    );
+    await waitForIosOnboardingSelectorHidden('[data-testid="first-run-chat"]');
 
     const home = await waitForIosOnboardingElement<HTMLElement>(
       '[data-testid="home-launcher-surface"][data-page="home"]',
@@ -1791,6 +1789,11 @@ async function initializeNetworkListener(): Promise<void> {
   }
 }
 
+// Universal/App-Link hosts whose `https://<host>/<path>` links route into the
+// app (paired with the iOS associated-domains entitlement + the Android/web
+// `assetlinks.json` + `apple-app-site-association` served from eliza.app).
+const APP_LINK_HOSTS = ["eliza.app"];
+
 function handleDeepLink(url: string): void {
   if (routeFirstRunDeepLink(url, APP_URL_SCHEME)) {
     return;
@@ -1803,8 +1806,14 @@ function handleDeepLink(url: string): void {
     return;
   }
 
-  if (parsed.protocol !== `${APP_URL_SCHEME}:`) return;
-  const path = getDeepLinkPath(parsed);
+  // Accept both the custom `<scheme>://` links and `https://eliza.app/<path>`
+  // universal/App links (iOS associated-domains + Android assetlinks hand these
+  // to the installed app); both route into the same hash routes below.
+  const isAppLink = isTrustedAppLink(parsed, APP_LINK_HOSTS);
+  if (parsed.protocol !== `${APP_URL_SCHEME}:` && !isAppLink) return;
+  const path = isAppLink
+    ? parsed.pathname.replace(/^\/+|\/+$/g, "")
+    : getDeepLinkPath(parsed);
 
   // eliza://settings/connectors/<provider> — open Settings → Connectors.
   // The new Connectors section renders one inline expansion per connector;
@@ -1997,20 +2006,6 @@ function setupPlatformStyles(): void {
   const chatOverlayShell = isChatOverlayWindowShell(windowShellRoute);
   root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
   document.body.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
-
-  // First-run onboarding overlay: same transparent-surface treatment as the
-  // chat overlay so the native transparent/passthrough window shows the desktop
-  // through everything except the floating onboarding card.
-  const onboardingOverlayShell =
-    isOnboardingOverlayWindowShell(windowShellRoute);
-  root.classList.toggle(
-    "eliza-onboarding-overlay-shell",
-    onboardingOverlayShell,
-  );
-  document.body.classList.toggle(
-    "eliza-onboarding-overlay-shell",
-    onboardingOverlayShell,
-  );
 
   // Record the resolved window shell mode once at boot. Detached/overlay
   // windows route on `?shellMode=`; logging it makes a mis-routed surface
@@ -2783,12 +2778,11 @@ async function main(): Promise<void> {
   injectWaifuChatAccessToken();
 
   // The iOS full-Bun backend smoke is a headless QA gate that must run BEFORE
-  // any window-shell / popout routing. First-run renders onboarding through a
-  // non-"main" window-shell route, whose branch returns before the main boot
-  // path — so the smoke (previously only wired into the main path) was
-  // structurally unreachable whenever onboarding was showing, and its request
-  // flag silently no-op'd. Run it (and the iOS local-agent bridges it needs)
-  // up front; when requested it takes over the WebView and returns.
+  // any window-shell / popout routing — some shell routes return before the
+  // main boot path, so wiring the smoke only into the main path left it
+  // structurally unreachable on those routes and its request flag silently
+  // no-op'd. Run it (and the iOS local-agent bridges it needs) up front; when
+  // requested it takes over the WebView and returns.
   if (isIOS) {
     await initializeStorageBridge();
     initializeCapacitorBridge();
