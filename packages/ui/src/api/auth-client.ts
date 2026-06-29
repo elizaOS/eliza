@@ -42,6 +42,13 @@ export interface AuthAccessInfo {
   mode: "local" | "session" | "remote" | "bearer";
   passwordConfigured: boolean;
   ownerConfigured: boolean;
+  /**
+   * Server-resolved boundary role (#9948). The `/api/auth/me` route computes
+   * this from the same trust + token signals as `resolveBoundaryRole`, so the
+   * UI's `useRole`/`RoleGate` can gate on the authoritative tier instead of
+   * inferring from `mode`. Optional for back-compat with older backends.
+   */
+  role?: "OWNER" | "ADMIN" | "USER" | "GUEST";
 }
 
 // ── Success / failure discriminated unions ────────────────────────────────────

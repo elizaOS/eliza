@@ -24,4 +24,33 @@ describe("deriveShellRole", () => {
     expect(deriveShellRole({ phase: "unauthenticated" })).toBe("GUEST");
     expect(deriveShellRole({ phase: "server_unavailable" })).toBe("GUEST");
   });
+  it("prefers the server-authoritative access.role when present (#9948)", () => {
+    expect(
+      deriveShellRole({
+        phase: "authenticated",
+        access: { mode: "session", role: "ADMIN" },
+      }),
+    ).toBe("ADMIN");
+    expect(
+      deriveShellRole({
+        phase: "authenticated",
+        access: { mode: "local", role: "USER" },
+      }),
+    ).toBe("USER");
+    expect(
+      deriveShellRole({
+        phase: "authenticated",
+        access: { mode: "bearer", role: "OWNER" },
+      }),
+    ).toBe("OWNER");
+  });
+
+  it("ignores an unknown server role and falls back to the mode interim", () => {
+    expect(
+      deriveShellRole({
+        phase: "authenticated",
+        access: { mode: "local", role: "wizard" },
+      }),
+    ).toBe("OWNER");
+  });
 });

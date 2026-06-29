@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { RoleName } from "@elizaos/core";
 import type {
   PostAuthPairResponse,
   RouteRequestContext,
@@ -60,6 +61,8 @@ export async function handleAuthRoutes(
             mode: localAccess ? "local" : "remote",
             passwordConfigured: Boolean(getConfiguredApiToken()),
             ownerConfigured: false,
+            // #9948: server-authoritative boundary role. Unauthenticated → GUEST.
+            role: "GUEST" as RoleName,
           },
         },
         401,
@@ -82,6 +85,10 @@ export async function handleAuthRoutes(
         mode: localAccess ? "local" : "bearer",
         passwordConfigured: !localAccess && Boolean(getConfiguredApiToken()),
         ownerConfigured: false,
+        // #9948: an authorized caller (trusted loopback owner or a valid API
+        // token) is the OWNER principal — the same tier resolveBoundaryRole
+        // computes at the app-core boundary. The UI consumes this via useRole.
+        role: "OWNER" as RoleName,
       },
     });
     return true;

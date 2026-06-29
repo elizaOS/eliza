@@ -16,17 +16,24 @@ import { RoleProvider } from "../hooks/useRole.tsx";
 
 type AuthStatusLike = {
   phase: string;
-  access?: { mode?: string };
+  access?: { mode?: string; role?: string };
 };
 
+const CANONICAL_ROLES = new Set(["OWNER", "ADMIN", "USER", "GUEST"]);
+
 /**
- * Pure mapping from auth status → canonical role. Local/loopback access is the
- * deployed-app owner (matching the server boundary); an authenticated remote /
- * session caller is treated as USER until the server surfaces its real role;
- * anything else is GUEST (fail low — never leak gated UI).
+ * Pure mapping from auth status → canonical role. Prefers the server-authoritative
+ * `access.role` from `/api/auth/me` (#9948); falls back to the mode-based
+ * interim for older backends that don't surface a role (local/loopback access is
+ * the deployed-app owner, an authenticated remote/session caller is USER).
+ * Anything unauthenticated is GUEST (fail low — never leak gated UI).
  */
 export function deriveShellRole(state: AuthStatusLike): RoleGateRole {
   if (state.phase !== "authenticated") return "GUEST";
+  const serverRole = state.access?.role;
+  if (typeof serverRole === "string" && CANONICAL_ROLES.has(serverRole)) {
+    return serverRole as RoleGateRole;
+  }
   if (state.access?.mode === "local") return "OWNER";
   return "USER";
 }
