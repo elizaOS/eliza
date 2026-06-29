@@ -27,7 +27,13 @@
  *     PGlite database with `fileParallelism: false`).
  *   - Any lane other than `pr` (i.e. the post-merge real-API lane) runs fully
  *     serial: real providers + the shared database make concurrency unsafe.
+ *
+ * It also owns the deterministic `TEST_SHARD=N/M` membership logic so CI
+ * matrices can split the package set across runner boxes (an orthogonal,
+ * cross-machine form of the same parallelism).
  */
+
+import crypto from "node:crypto";
 
 /**
  * Packages whose `test` script must not run concurrently with others, even in
@@ -140,4 +146,54 @@ export function normalizeConcurrency(value) {
     return 1;
   }
   return Math.trunc(parsed);
+}
+
+/**
+ * Parse a `TEST_SHARD` spec ("N/M", 1-indexed) into `{ index, total }`, or
+ * `null` when absent or malformed. Pure (no warnings) so callers decide how to
+ * surface an invalid spec.
+ *
+ * @param {string | undefined | null} spec
+ * @returns {{ index: number, total: number } | null}
+ */
+export function parseShardSpec(spec) {
+  if (!spec) {
+    return null;
+  }
+  const parts = String(spec).split("/");
+  if (parts.length !== 2) {
+    return null;
+  }
+  const index = Number.parseInt(parts[0], 10);
+  const total = Number.parseInt(parts[1], 10);
+  if (
+    !Number.isInteger(index) ||
+    !Number.isInteger(total) ||
+    total <= 0 ||
+    index < 1 ||
+    index > total
+  ) {
+    return null;
+  }
+  return { index, total };
+}
+
+/**
+ * Stable shard membership: SHA-1 of the task key (the task's relative package
+ * dir) → bucket → assign to shard N (1-indexed) of M. Hashing the relative dir
+ * rather than the full label keeps a package's `test` and `test:e2e` tasks in
+ * the same shard, amortising Postgres + mock startup across the package's full
+ * task set. Returns true when there is no shard config (run everything).
+ *
+ * @param {string} taskKey
+ * @param {{ index: number, total: number } | null} shardCfg
+ * @returns {boolean}
+ */
+export function taskBelongsToShard(taskKey, shardCfg) {
+  if (!shardCfg) {
+    return true;
+  }
+  const hash = crypto.createHash("sha1").update(taskKey).digest("hex");
+  const bucket = Number.parseInt(hash.slice(0, 8), 16) % shardCfg.total;
+  return bucket === shardCfg.index - 1;
 }

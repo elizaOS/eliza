@@ -68,15 +68,16 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   normalizeConcurrency,
+  parseShardSpec,
   partitionTasks,
   runPool,
+  taskBelongsToShard,
 } from "./lib/test-task-pool.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -220,27 +221,13 @@ const concurrency = normalizeConcurrency(
   concurrencyFlag ?? process.env.TEST_CONCURRENCY,
 );
 
-// Parse TEST_SHARD into { index, total } or null
-let shardConfig = null;
-if (TEST_SHARD) {
-  const parts = TEST_SHARD.split("/");
-  if (parts.length === 2) {
-    const index = parseInt(parts[0], 10);
-    const total = parseInt(parts[1], 10);
-    if (
-      !isNaN(index) &&
-      !isNaN(total) &&
-      total > 0 &&
-      index >= 1 &&
-      index <= total
-    ) {
-      shardConfig = { index, total };
-    } else {
-      console.warn(
-        `[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`,
-      );
-    }
-  }
+// Parse TEST_SHARD into { index, total } or null (parseShardSpec is pure; warn
+// here when a non-empty spec is malformed).
+const shardConfig = parseShardSpec(TEST_SHARD);
+if (TEST_SHARD && !shardConfig) {
+  console.warn(
+    `[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -794,20 +781,6 @@ function buildForwardedScriptArgs(scriptName, scripts) {
     "--exclude",
     normalizeRepoPath(value),
   ]);
-}
-
-/**
- * Stable shard membership: SHA-1 of the task's relative package dir → bucket
- * → assign to shard N (1-indexed) of M. Hashing the relative dir (rather than
- * the full label) keeps a package's `test` and `test:e2e` tasks in the same
- * shard, which keeps Postgres + mock startup costs amortised across the
- * package's full task set.
- */
-function taskBelongsToShard(taskKey, shardCfg) {
-  if (!shardCfg) return true;
-  const hash = crypto.createHash("sha1").update(taskKey).digest("hex");
-  const bucket = parseInt(hash.slice(0, 8), 16) % shardCfg.total;
-  return bucket === shardCfg.index - 1;
 }
 
 // ---------------------------------------------------------------------------

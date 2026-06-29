@@ -3,9 +3,11 @@ import { describe, expect, test } from "bun:test";
 import {
   isParallelSafeTask,
   normalizeConcurrency,
+  parseShardSpec,
   partitionTasks,
   runPool,
   SERIALIZE_PACKAGES,
+  taskBelongsToShard,
 } from "../lib/test-task-pool.mjs";
 
 describe("isParallelSafeTask", () => {
@@ -168,5 +170,94 @@ describe("normalizeConcurrency", () => {
     expect(normalizeConcurrency("4")).toBe(4);
     expect(normalizeConcurrency(8)).toBe(8);
     expect(normalizeConcurrency("3.9")).toBe(3);
+  });
+});
+
+describe("parseShardSpec", () => {
+  test("parses a valid N/M spec", () => {
+    expect(parseShardSpec("2/4")).toEqual({ index: 2, total: 4 });
+    expect(parseShardSpec("1/1")).toEqual({ index: 1, total: 1 });
+    expect(parseShardSpec("4/4")).toEqual({ index: 4, total: 4 });
+  });
+
+  test("returns null for absent specs", () => {
+    expect(parseShardSpec("")).toBeNull();
+    expect(parseShardSpec(undefined)).toBeNull();
+    expect(parseShardSpec(null)).toBeNull();
+  });
+
+  test("returns null for malformed or out-of-range specs", () => {
+    for (const bad of [
+      "3", // missing /M
+      "a/b", // non-numeric
+      "0/4", // index < 1
+      "5/4", // index > total
+      "2/0", // total <= 0
+      "-1/4", // negative index
+      "1/2/3", // too many parts
+      "/4", // empty index
+      "2/", // empty total
+    ]) {
+      expect(parseShardSpec(bad)).toBeNull();
+    }
+  });
+});
+
+describe("taskBelongsToShard", () => {
+  test("everything belongs when there is no shard config", () => {
+    expect(taskBelongsToShard("packages/core", null)).toBe(true);
+  });
+
+  test("membership is deterministic for the same key + config", () => {
+    const cfg = { index: 2, total: 5 };
+    const a = taskBelongsToShard("packages/app-core", cfg);
+    const b = taskBelongsToShard("packages/app-core", cfg);
+    expect(a).toBe(b);
+  });
+
+  test("a single shard (M=1) owns every task", () => {
+    const cfg = { index: 1, total: 1 };
+    for (const key of [
+      "packages/core",
+      "plugins/plugin-openai",
+      "packages/ui",
+    ]) {
+      expect(taskBelongsToShard(key, cfg)).toBe(true);
+    }
+  });
+
+  test("every task lands in exactly one shard, across many M (partition invariant)", () => {
+    const keys = Array.from({ length: 300 }, (_, i) => `packages/pkg-${i}`);
+    for (const total of [2, 3, 4, 5, 8, 13]) {
+      for (const key of keys) {
+        const owners = [];
+        for (let index = 1; index <= total; index++) {
+          if (taskBelongsToShard(key, { index, total })) {
+            owners.push(index);
+          }
+        }
+        // Each key is claimed by precisely one shard — no gaps, no overlaps.
+        expect(owners).toHaveLength(1);
+      }
+    }
+  });
+
+  test("shards are reasonably balanced (no shard is wildly over/under-loaded)", () => {
+    const total = 4;
+    const keys = Array.from({ length: 800 }, (_, i) => `plugins/plugin-${i}`);
+    const counts = new Array(total).fill(0);
+    for (const key of keys) {
+      for (let index = 1; index <= total; index++) {
+        if (taskBelongsToShard(key, { index, total })) {
+          counts[index - 1]++;
+        }
+      }
+    }
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(keys.length);
+    // Even split would be 200/shard; allow generous slack for hash variance.
+    for (const count of counts) {
+      expect(count).toBeGreaterThan(120);
+      expect(count).toBeLessThan(280);
+    }
   });
 });
