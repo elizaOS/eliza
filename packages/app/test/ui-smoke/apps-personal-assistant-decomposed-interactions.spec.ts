@@ -133,3 +133,76 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   await orgs.click();
   await expect.poll(() => orgs.getAttribute("aria-pressed")).not.toBe(before);
 });
+
+/**
+ * Drive a REAL two-finger pinch via CDP `Input.dispatchTouchEvent` (genuine
+ * multi-touch input, not desktop mouse) — #9943 item 6 "pinch case". `scale > 1`
+ * spreads the fingers apart (pinch-out → zoom in). Touch input is enabled at the
+ * CDP level so the view keeps its desktop layout; only the gesture is touch.
+ */
+async function touchPinch(
+  page: import("@playwright/test").Page,
+  selector: string,
+  scale: number,
+  steps = 16,
+) {
+  const box = await page.locator(selector).first().boundingBox();
+  if (!box) throw new Error(`no bounding box for ${selector}`);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const startGap = Math.min(60, box.width / 4);
+  const points = (gap: number) => [
+    { x: cx - gap, y: cy, id: 0 },
+    { x: cx + gap, y: cy, id: 1 },
+  ];
+  const client = await page.context().newCDPSession(page);
+  try {
+    await client.send("Emulation.setTouchEmulationEnabled", {
+      enabled: true,
+      maxTouchPoints: 2,
+    });
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: points(startGap),
+    });
+    for (let i = 1; i <= steps; i += 1) {
+      const gap = startGap * (1 + (scale - 1) * (i / steps));
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: points(gap),
+      });
+    }
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await client.detach();
+  }
+}
+
+test("relationships graph: two-finger pinch-out zooms in under REAL touch (not mouse)", async ({
+  page,
+}) => {
+  // Same mocked graph data as the test above (beforeEach). Go straight for the
+  // pinch surface ([data-graph-container]) — the RelationshipsGraphPanel viewer.
+  await openAppPath(page, "/relationships");
+  const container = page.locator("[data-graph-container]");
+  await expect(container).toBeVisible({ timeout: 60_000 });
+
+  const graphSvg = container.locator("svg").first();
+  await expect(graphSvg).toBeVisible({ timeout: 15_000 });
+  const widthOf = () =>
+    graphSvg.evaluate((el) => {
+      const styled = Number.parseFloat((el as SVGElement).style.width);
+      return Number.isFinite(styled)
+        ? styled
+        : el.getBoundingClientRect().width;
+    });
+  const before = await widthOf();
+
+  // Spread two fingers apart → the graph zooms in → its rendered width grows.
+  await touchPinch(page, "[data-graph-container]", 2);
+
+  await expect.poll(widthOf, { timeout: 10_000 }).toBeGreaterThan(before);
+});
