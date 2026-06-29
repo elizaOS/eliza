@@ -447,14 +447,14 @@ function resolveBunExecutable() {
   return resolveExecutable("bun");
 }
 
-function resolveAndroidSdkRoot() {
+function resolveAndroidSdkRoot(env = process.env) {
   return firstExisting([
-    process.env.ANDROID_SDK_ROOT,
-    process.env.ANDROID_HOME,
+    env.ANDROID_SDK_ROOT,
+    env.ANDROID_HOME,
     path.join(os.homedir(), "Library", "Android", "sdk"),
     path.join(os.homedir(), "Android", "Sdk"),
     path.join(
-      process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+      env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
       "Android",
       "Sdk",
     ),
@@ -501,9 +501,9 @@ function javaMajorVersion(javaHome) {
 // JAVA_HOME juggling. JAVA_HOME is honored ONLY when it actually is >= 21;
 // otherwise we fall through to the well-known JDK 21 install paths and finally
 // scan /usr/lib/jvm. (AGP 9 + the Android toolchain require 21.)
-function resolveJavaHome() {
+function resolveJavaHome(env = process.env) {
   const candidates = [
-    process.env.JAVA_HOME,
+    env.JAVA_HOME,
     "/opt/homebrew/opt/openjdk@21",
     "/usr/local/opt/openjdk@21",
     "/usr/lib/jvm/temurin-21-jdk-amd64",
@@ -521,7 +521,7 @@ function resolveJavaHome() {
     }
   }
   if (process.platform === "win32") {
-    const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+    const programFiles = env.ProgramFiles || "C:\\Program Files";
     for (const vendor of ["Eclipse Adoptium", "Microsoft", "Java", "Zulu"]) {
       const vendorRoot = path.join(programFiles, vendor);
       if (!fs.existsSync(vendorRoot)) continue;
@@ -6924,13 +6924,140 @@ function stripAndroidForSmsGateway() {
   );
 }
 
-async function buildAndroid() {
+const ANDROID_AAR_METADATA_TASKS = Object.freeze({
+  debug: ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
+  release: ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",
+});
+
+const ANDROID_CLOUD_GRADLE_FLAGS = Object.freeze([
+  "-PelizaCloudBuild=true",
+  "-PelizaStripAgentAssets=true",
+]);
+const ANDROID_AOSP_GRADLE_FLAG = "-PelizaAospBuild=true";
+
+function freezeAndroidBuildTarget(target) {
+  return Object.freeze({
+    ...target,
+    env: Object.freeze({ ...(target.env ?? {}) }),
+    overlayOptions: target.overlayOptions
+      ? Object.freeze({ ...target.overlayOptions })
+      : undefined,
+    cleartextPolicy: Object.freeze({ ...target.cleartextPolicy }),
+    agentRuntime: target.agentRuntime
+      ? Object.freeze({ ...target.agentRuntime })
+      : undefined,
+    gradle: Object.freeze({
+      ...target.gradle,
+      flags: Object.freeze([...(target.gradle.flags ?? [])]),
+    }),
+  });
+}
+
+export const ANDROID_BUILD_TARGETS = Object.freeze({
+  android: freezeAndroidBuildTarget({
+    target: "android",
+    webTarget: "android",
+    buildMobileAgentBundle: true,
+    preflight: enforceAndroidSideloadBuildPolicy,
+    overlayOptions: { includeAospRoleLaunchers: false },
+    cleartextPolicy: { allowCleartext: true, label: "sideload" },
+    agentRuntime: { bunChannel: "stable" },
+    gradle: {
+      metadataVariant: "debug",
+      finalTask: ":app:assembleDebug",
+      includeWebsiteBlockerUnitTest: true,
+      includeAospFlagFromEnv: true,
+      passFlagsToMetadata: false,
+    },
+    artifactAudit: ({ javaHome }) => auditAndroidSideloadArtifact({ javaHome }),
+  }),
+  "android-cloud": freezeAndroidBuildTarget({
+    target: "android-cloud",
+    webTarget: "android-cloud",
+    env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
+    overlayOptions: { includeAospRoleLaunchers: false },
+    cleartextPolicy: { allowCleartext: false, label: "cloud" },
+    stripSource: stripAndroidForCloud,
+    auditSource: auditAndroidCloudSource,
+    gradle: {
+      flags: ANDROID_CLOUD_GRADLE_FLAGS,
+      metadataVariant: "release",
+      finalTask: ":app:bundleRelease",
+      passFlagsToMetadata: true,
+    },
+    artifactAudit: ({ javaHome }) => auditAndroidCloudArtifact({ javaHome }),
+    postBuild: ({ artifact }) =>
+      console.log(`[mobile-build] android-cloud release AAB: ${artifact}`),
+  }),
+  "android-cloud-debug": freezeAndroidBuildTarget({
+    target: "android-cloud-debug",
+    webTarget: "android-cloud-debug",
+    env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
+    overlayOptions: { includeAospRoleLaunchers: false },
+    cleartextPolicy: { allowCleartext: false, label: "cloud-debug" },
+    stripSource: stripAndroidForCloud,
+    auditSource: auditAndroidCloudSource,
+    gradle: {
+      flags: ANDROID_CLOUD_GRADLE_FLAGS,
+      metadataVariant: "debug",
+      finalTask: ":app:assembleDebug",
+      includeWebsiteBlockerUnitTest: true,
+      passFlagsToMetadata: true,
+    },
+    artifactAudit: ({ javaHome }) =>
+      auditAndroidCloudArtifact({ debug: true, javaHome }),
+  }),
+  "android-sms-gateway": freezeAndroidBuildTarget({
+    target: "android-sms-gateway",
+    webTarget: "android-cloud-debug",
+    env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
+    includeSmsGatewayEnvDefaults: true,
+    afterToolchainResolved: requireAndroidSmsGatewaySecret,
+    cleartextPolicy: { allowCleartext: false, label: "sms-gateway" },
+    stripSource: stripAndroidForSmsGateway,
+    auditSource: auditAndroidSmsGatewaySource,
+    gradle: {
+      flags: ANDROID_CLOUD_GRADLE_FLAGS,
+      metadataVariant: "debug",
+      finalTask: ":app:assembleDebug",
+      passFlagsToMetadata: true,
+    },
+    artifactAudit: ({ androidSdkRoot, javaHome }) =>
+      auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
+    postBuild: ({ artifact }) => {
+      preserveAndroidSmsGatewayArtifact(artifact);
+      console.log(`[mobile-build] android-sms-gateway debug APK: ${artifact}`);
+    },
+  }),
+  "android-system": freezeAndroidBuildTarget({
+    target: "android-system",
+    webTarget: "android-system",
+    buildMobileAgentBundle: true,
+    overlayOptions: { includeAospRoleLaunchers: true },
+    cleartextPolicy: { allowCleartext: true, label: "AOSP" },
+    agentRuntime: {
+      bunChannel: "canary",
+      objective: true,
+    },
+    auditSource: auditAndroidSystemSource,
+    gradle: {
+      flags: [ANDROID_AOSP_GRADLE_FLAG],
+      metadataVariant: "release",
+      finalTask: ":app:assembleRelease",
+      passFlagsToMetadata: false,
+    },
+    artifactAudit: ({ javaHome }) => auditAndroidSystemArtifact({ javaHome }),
+    postBuild: stageAndroidSystemApk,
+  }),
+});
+
+function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
   // Hard refusal: the default `android` target is sideload-only and will be
   // rejected by Play. If CI or a contributor signals Play-Store intent via
   // env vars, fail loudly and point them at the right target.
   const playStoreFlagged =
-    process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store";
+    env.ELIZA_PLAY_STORE_BUILD === "1" ||
+    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store";
   if (playStoreFlagged) {
     console.error(
       "[mobile-build] Refusing target `android` under ELIZA_PLAY_STORE_BUILD / " +
@@ -6943,14 +7070,6 @@ async function buildAndroid() {
     process.exit(2);
   }
 
-  const sdk = resolveAndroidSdkRoot();
-  const jdk = resolveJavaHome();
-  if (!sdk)
-    throw new Error(
-      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
-    );
-  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-
   console.warn(
     "[mobile-build] WARNING: target `android` produces an APK that embeds " +
       "the on-device agent runtime (libeliza_bun.so disguise) and requests " +
@@ -6959,9 +7078,129 @@ async function buildAndroid() {
       "`build:android:cloud` for a Play-Store-compliant thin client, or " +
       "`build:android:system` for the AOSP privileged platform-signed APK.",
   );
+}
 
-  await buildWeb("android");
-  await buildMobileAgentBundle();
+function requireAndroidSmsGatewaySecret({ env = process.env } = {}) {
+  if (!env.ELIZA_ANDROID_SMS_GATEWAY_SECRET) {
+    throw new Error(
+      "ELIZA_ANDROID_SMS_GATEWAY_SECRET is required for android-sms-gateway.",
+    );
+  }
+}
+
+function resolveAndroidBuildTargetKey(targetName, { debug = false } = {}) {
+  return targetName === "android-cloud" && debug
+    ? "android-cloud-debug"
+    : targetName;
+}
+
+export function resolveAndroidBuildTarget(targetName, options = {}) {
+  const targetKey = resolveAndroidBuildTargetKey(targetName, options);
+  const target = ANDROID_BUILD_TARGETS[targetKey];
+  if (!target) {
+    throw new Error(
+      `[mobile-build] Unknown Android build target: ${targetName}`,
+    );
+  }
+  return target;
+}
+
+export function resolveAndroidGradleCommands(
+  targetName,
+  { debug = false, env = process.env, settingsGradle = "" } = {},
+) {
+  const target = resolveAndroidBuildTarget(targetName, { debug });
+  const flags = [...(target.gradle.flags ?? [])];
+  const buildFlags = [...flags];
+  if (
+    target.gradle.includeAospFlagFromEnv &&
+    (env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
+      env.ELIZA_GRADLE_AOSP_BUILD === "1")
+  ) {
+    buildFlags.unshift(ANDROID_AOSP_GRADLE_FLAG);
+  }
+  const buildArgs = [...buildFlags];
+  if (
+    target.gradle.includeWebsiteBlockerUnitTest &&
+    settingsGradle.includes(":elizaos-capacitor-websiteblocker")
+  ) {
+    buildArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
+  }
+  buildArgs.push(target.gradle.finalTask);
+
+  const metadataTask =
+    ANDROID_AAR_METADATA_TASKS[target.gradle.metadataVariant];
+  if (!metadataTask) {
+    throw new Error(
+      `[mobile-build] Unknown Android AAR metadata variant for ${target.target}: ${target.gradle.metadataVariant}`,
+    );
+  }
+  return {
+    buildArgs,
+    metadataArgs: [
+      ...(target.gradle.passFlagsToMetadata ? flags : []),
+      metadataTask,
+    ],
+  };
+}
+
+function resolveAndroidSmsGatewayEnvDefaults(env) {
+  return {
+    ELIZA_ANDROID_SMS_GATEWAY_ENABLED:
+      env.ELIZA_ANDROID_SMS_GATEWAY_ENABLED ?? "true",
+    ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL:
+      env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ??
+      "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
+    ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER:
+      env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510",
+    ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL:
+      env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
+      "Eliza Cloud Gateway (+14159611510)",
+  };
+}
+
+function createAndroidBuildEnv(target, { androidSdkRoot, env, javaHome }) {
+  return {
+    ...env,
+    ...target.env,
+    ...(target.includeSmsGatewayEnvDefaults
+      ? resolveAndroidSmsGatewayEnvDefaults(env)
+      : {}),
+    ANDROID_HOME: androidSdkRoot,
+    ANDROID_SDK_ROOT: androidSdkRoot,
+    JAVA_HOME: javaHome,
+    PATH: prependPath(env, [
+      path.join(javaHome, "bin"),
+      path.join(androidSdkRoot, "platform-tools"),
+    ]),
+  };
+}
+
+function readAndroidSettingsGradle() {
+  return fs.readFileSync(
+    path.join(androidDir, "capacitor.settings.gradle"),
+    "utf8",
+  );
+}
+
+export async function runAndroidBuild(
+  targetName,
+  { debug = false, env = process.env } = {},
+) {
+  const target = resolveAndroidBuildTarget(targetName, { debug });
+  target.preflight?.({ env });
+
+  const sdk = resolveAndroidSdkRoot(env);
+  const jdk = resolveJavaHome(env);
+  if (!sdk)
+    throw new Error(
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
+    );
+  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+  target.afterToolchainResolved?.({ env });
+
+  await buildWeb(target.webTarget);
+  if (target.buildMobileAgentBundle) await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
   ensureBunRuntimeRegistered();
@@ -6969,60 +7208,49 @@ async function buildAndroid() {
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
-  overlayAndroid({ includeAospRoleLaunchers: false });
+  overlayAndroid(target.overlayOptions);
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  writeAndroidCleartextPolicy({
-    allowCleartext: true,
-    label: "sideload",
-  });
-  await stageAndroidAgentRuntime({
-    androidDir,
-    spikeDir: androidAgentSpikeDir,
-    bunChannel: "stable",
-  });
-
-  const env = {
-    ...process.env,
-    ANDROID_HOME: sdk,
-    ANDROID_SDK_ROOT: sdk,
-    JAVA_HOME: jdk,
-    PATH: prependPath(process.env, [
-      path.join(jdk, "bin"),
-      path.join(sdk, "platform-tools"),
-    ]),
-  };
-
-  // Mirror the AOSP gradle property forwarding from buildAndroidSystem so
-  // a developer iterating with `bun run build:android` under ELIZA_AOSP_BUILD=1
-  // gets BuildConfig.AOSP_BUILD=true in the debug APK as well.
-  const settingsGradle = fs.readFileSync(
-    path.join(androidDir, "capacitor.settings.gradle"),
-    "utf8",
-  );
-  const gradleArgs = [];
-  if (settingsGradle.includes(":elizaos-capacitor-websiteblocker")) {
-    gradleArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
+  writeAndroidCleartextPolicy(target.cleartextPolicy);
+  if (target.agentRuntime) {
+    await stageAndroidAgentRuntime({
+      androidDir,
+      spikeDir: androidAgentSpikeDir,
+      ...target.agentRuntime,
+    });
   }
-  gradleArgs.push(":app:assembleDebug");
-  if (
-    process.env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
-    process.env.ELIZA_GRADLE_AOSP_BUILD === "1"
-  ) {
-    gradleArgs.unshift("-PelizaAospBuild=true");
-  }
-  await run(
-    "./gradlew",
-    [":capacitor-cordova-android-plugins:writeDebugAarMetadata"],
+  target.stripSource?.();
+  target.auditSource?.("pre-gradle");
+
+  const buildEnv = createAndroidBuildEnv(target, {
+    androidSdkRoot: sdk,
+    env,
+    javaHome: jdk,
+  });
+  const { buildArgs, metadataArgs } = resolveAndroidGradleCommands(
+    target.target,
     {
-      cwd: androidDir,
       env,
+      settingsGradle: readAndroidSettingsGradle(),
     },
   );
-  await run("./gradlew", gradleArgs, {
+  await run("./gradlew", metadataArgs, {
     cwd: androidDir,
-    env,
+    env: buildEnv,
   });
-  auditAndroidSideloadArtifact({ javaHome: jdk });
+  await run("./gradlew", buildArgs, {
+    cwd: androidDir,
+    env: buildEnv,
+  });
+  target.auditSource?.("post-gradle");
+  const artifact = target.artifactAudit({
+    androidSdkRoot: sdk,
+    javaHome: jdk,
+  });
+  target.postBuild?.({ artifact, androidSdkRoot: sdk, javaHome: jdk });
+}
+
+async function buildAndroid() {
+  await runAndroidBuild("android");
 }
 
 /**
@@ -7380,171 +7608,11 @@ function preserveAndroidSmsGatewayArtifact(artifact) {
 }
 
 async function buildAndroidCloud({ debug = false } = {}) {
-  const sdk = resolveAndroidSdkRoot();
-  const jdk = resolveJavaHome();
-  if (!sdk)
-    throw new Error(
-      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
-    );
-  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-
-  await buildWeb(debug ? "android-cloud-debug" : "android-cloud");
-  await ensurePlatform("android");
-  await runCapacitor(["sync", "android"]);
-  ensureBunRuntimeRegistered();
-  mirrorCapacitorWebPayloadIntoAndroidDir();
-
-  patchAndroidGradle();
-  await generateAndroidBrandAssets();
-  overlayAndroid({ includeAospRoleLaunchers: false });
-  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  writeAndroidCleartextPolicy({
-    allowCleartext: false,
-    label: debug ? "cloud-debug" : "cloud",
-  });
-  // The cloud target is a thin Capacitor client backed by Eliza Cloud.
-  // It must NOT embed the on-device agent runtime, NOT declare default
-  // role activities (dialer, SMS, browser, contacts, camera, calendar,
-  // clock, assistant, in-call), NOT register a BootReceiver, and NOT
-  // request system-only permissions (MANAGE_APP_OPS_MODES,
-  // PACKAGE_USAGE_STATS) or sensitive runtime permissions
-  // (READ/SEND/RECEIVE_SMS, CALL_PHONE, ACCESS_BACKGROUND_LOCATION).
-  // overlayAndroid() injects all of these unconditionally; we strip them
-  // here as a post-overlay pass so the merge logic remains a single
-  // source of truth across all three Android targets.
-  stripAndroidForCloud();
-  auditAndroidCloudSource("pre-gradle");
-
-  const env = {
-    ...process.env,
-    ELIZA_ANDROID_CLOUD_BUILD: "1",
-    ANDROID_HOME: sdk,
-    ANDROID_SDK_ROOT: sdk,
-    JAVA_HOME: jdk,
-    PATH: prependPath(process.env, [
-      path.join(jdk, "bin"),
-      path.join(sdk, "platform-tools"),
-    ]),
-  };
-
-  // The Play-Store target intentionally builds without `-PelizaAospBuild`,
-  // so BuildConfig.AOSP_BUILD = false at runtime. It does pass the cloud
-  // flags, which make injected Gradle hooks skip MTP/native restaging and
-  // strip any merged assets/agent tree that an older generated project kept.
-  const settingsGradle = fs.readFileSync(
-    path.join(androidDir, "capacitor.settings.gradle"),
-    "utf8",
-  );
-  const cloudGradleFlags = [
-    "-PelizaCloudBuild=true",
-    "-PelizaStripAgentAssets=true",
-  ];
-  const gradleArgs = [...cloudGradleFlags];
-  if (debug && settingsGradle.includes(":elizaos-capacitor-websiteblocker")) {
-    gradleArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
-  }
-  gradleArgs.push(debug ? ":app:assembleDebug" : ":app:bundleRelease");
-  await run(
-    "./gradlew",
-    [
-      ...cloudGradleFlags,
-      debug
-        ? ":capacitor-cordova-android-plugins:writeDebugAarMetadata"
-        : ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",
-    ],
-    {
-      cwd: androidDir,
-      env,
-    },
-  );
-  await run("./gradlew", gradleArgs, {
-    cwd: androidDir,
-    env,
-  });
-  auditAndroidCloudSource("post-gradle");
-  const artifact = auditAndroidCloudArtifact({ debug, javaHome: jdk });
-  if (!debug)
-    console.log(`[mobile-build] android-cloud release AAB: ${artifact}`);
+  await runAndroidBuild("android-cloud", { debug });
 }
 
 async function buildAndroidSmsGateway() {
-  const sdk = resolveAndroidSdkRoot();
-  const jdk = resolveJavaHome();
-  if (!sdk)
-    throw new Error(
-      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
-    );
-  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-  if (!process.env.ELIZA_ANDROID_SMS_GATEWAY_SECRET) {
-    throw new Error(
-      "ELIZA_ANDROID_SMS_GATEWAY_SECRET is required for android-sms-gateway.",
-    );
-  }
-
-  await buildWeb("android-cloud-debug");
-  await ensurePlatform("android");
-  await runCapacitor(["sync", "android"]);
-  ensureBunRuntimeRegistered();
-  mirrorCapacitorWebPayloadIntoAndroidDir();
-
-  patchAndroidGradle();
-  await generateAndroidBrandAssets();
-  overlayAndroid();
-  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  writeAndroidCleartextPolicy({
-    allowCleartext: false,
-    label: "sms-gateway",
-  });
-  stripAndroidForSmsGateway();
-  auditAndroidSmsGatewaySource("pre-gradle");
-
-  const env = {
-    ...process.env,
-    ELIZA_ANDROID_CLOUD_BUILD: "1",
-    ELIZA_ANDROID_SMS_GATEWAY_ENABLED:
-      process.env.ELIZA_ANDROID_SMS_GATEWAY_ENABLED ?? "true",
-    ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL:
-      process.env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ??
-      "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
-    ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER:
-      process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510",
-    ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL:
-      process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
-      "Eliza Cloud Gateway (+14159611510)",
-    ANDROID_HOME: sdk,
-    ANDROID_SDK_ROOT: sdk,
-    JAVA_HOME: jdk,
-    PATH: prependPath(process.env, [
-      path.join(jdk, "bin"),
-      path.join(sdk, "platform-tools"),
-    ]),
-  };
-  const gradleFlags = [
-    "-PelizaCloudBuild=true",
-    "-PelizaStripAgentAssets=true",
-  ];
-  await run(
-    "./gradlew",
-    [
-      ...gradleFlags,
-      ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
-    ],
-    {
-      cwd: androidDir,
-      env,
-    },
-  );
-  await run("./gradlew", [...gradleFlags, ":app:assembleDebug"], {
-    cwd: androidDir,
-    env,
-  });
-  auditAndroidSmsGatewaySource("post-gradle");
-  const artifact = auditAndroidSmsGatewayArtifact({
-    androidSdkRoot: sdk,
-    javaHome: jdk,
-  });
-  preserveAndroidSmsGatewayArtifact(artifact);
-  console.log(`[mobile-build] android-sms-gateway debug APK: ${artifact}`);
+  await runAndroidBuild("android-sms-gateway");
 }
 
 function findAndroidSystemApk() {
@@ -7670,67 +7738,7 @@ function stageAndroidSystemApk() {
 }
 
 async function buildAndroidSystem() {
-  const sdk = resolveAndroidSdkRoot();
-  const jdk = resolveJavaHome();
-  if (!sdk)
-    throw new Error(
-      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
-    );
-  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-
-  await buildWeb("android-system");
-  await buildMobileAgentBundle();
-  await ensurePlatform("android");
-  await runCapacitor(["sync", "android"]);
-  ensureBunRuntimeRegistered();
-  mirrorCapacitorWebPayloadIntoAndroidDir();
-
-  patchAndroidGradle();
-  await generateAndroidBrandAssets();
-  overlayAndroid({ includeAospRoleLaunchers: true });
-  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  writeAndroidCleartextPolicy({
-    allowCleartext: true,
-    label: "AOSP",
-  });
-  await stageAndroidAgentRuntime({
-    androidDir,
-    spikeDir: androidAgentSpikeDir,
-    bunChannel: "canary",
-    // Objective AOSP/chip image: riscv64 bun stays fail-closed (it ships it).
-    objective: true,
-  });
-  auditAndroidSystemSource("pre-gradle");
-
-  const env = {
-    ...process.env,
-    ANDROID_HOME: sdk,
-    ANDROID_SDK_ROOT: sdk,
-    JAVA_HOME: jdk,
-    PATH: prependPath(process.env, [
-      path.join(jdk, "bin"),
-      path.join(sdk, "platform-tools"),
-    ]),
-  };
-
-  // This target always produces the privileged AOSP APK, so bake the local
-  // agent flag into BuildConfig and preserve assets/agent. The regular
-  // Capacitor target leaves this property unset and strips those assets.
-  const gradleArgs = ["-PelizaAospBuild=true", ":app:assembleRelease"];
-  await run(
-    "./gradlew",
-    [":capacitor-cordova-android-plugins:writeReleaseAarMetadata"],
-    {
-      cwd: androidDir,
-      env,
-    },
-  );
-  await run("./gradlew", gradleArgs, {
-    cwd: androidDir,
-    env,
-  });
-  auditAndroidSystemArtifact({ javaHome: jdk });
-  stageAndroidSystemApk();
+  await runAndroidBuild("android-system");
 }
 
 function setDefaultProcessEnv(key, value) {
