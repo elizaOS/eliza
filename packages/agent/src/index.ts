@@ -388,3 +388,4 @@ export * from "./triggers/types.ts";
 // `types/index.js` aggregates `agent-skills`, `config-like`, and `trajectory`.
 export * from "./types/index.ts";
 export * from "./version-resolver.ts";
+export * from "./services/agent-export.ts";
