@@ -6455,12 +6455,35 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannedTextRaw,
 			deliveredMediaUrls,
 		);
+		// Some action turns intentionally finish without planner prose. For async
+		// work (for example spawning a coding task), still return a non-empty
+		// synchronous acknowledgement so HTTP/connector callers don't render a blank
+		// "(no response)" while the real work continues in the background. Respect
+		// explicit suppressPlannerReply terminal actions (IGNORE/STOP-style flows),
+		// which are deliberately silent.
+		const suppressesPlannerReply = actionResults.some(
+			(result) =>
+				(result.data as { suppressPlannerReply?: unknown } | undefined)
+					?.suppressPlannerReply === true,
+		);
+		const ranNonSilentAction =
+			actionResults.length > 0 && !suppressesPlannerReply;
+		const stageOneAck =
+			typeof messageHandler.plan.reply === "string"
+				? messageHandler.plan.reply.trim()
+				: "";
+		const ackFallback =
+			!plannedText && !earlyReplySent && !suppressesPlannerReply
+				? stageOneAck ||
+					(ranNonSilentAction ? "on it, working on that now." : "")
+				: "";
+		const effectiveReplyText = plannedText || ackFallback;
 		const plannedTextRepeatsEarlyReply =
 			earlyReplySent &&
-			normalizeVisibleTextForDuplicateCheck(plannedText) ===
+			normalizeVisibleTextForDuplicateCheck(effectiveReplyText) ===
 				normalizeVisibleTextForDuplicateCheck(earlyReplyText);
 		const shouldSendPlannedText =
-			Boolean(plannedText) && !plannedTextRepeatsEarlyReply;
+			Boolean(effectiveReplyText) && !plannedTextRepeatsEarlyReply;
 
 		return {
 			kind: "planned_reply",
@@ -6469,7 +6492,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				? createV5ReplyStrategyResult({
 						...args,
 						state: finalPlannerState,
-						text: plannedText,
+						text: effectiveReplyText,
 						thought:
 							plannerResult.evaluator?.thought ??
 							plannerResult.trajectory.steps.at(-1)?.thought ??
