@@ -38,6 +38,7 @@ interface ViewEntry {
 
 interface AgentTerminalTuiOptions {
   apiBaseUrl?: string;
+  apiToken?: string;
   terminal?: Terminal;
   fetchImpl?: typeof fetch;
   onExit?: () => void;
@@ -86,17 +87,25 @@ export function buildTuiAuthHeaders(
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function resolveApiToken(optionToken?: string): string | undefined {
+  return optionToken?.trim() || resolveTuiApiToken() || undefined;
+}
+
 async function readJson<T>(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
+  apiToken: string | undefined,
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const authHeaders = apiToken
+    ? { Authorization: `Bearer ${apiToken}` }
+    : undefined;
   const response = await fetchImpl(new URL(path, apiBaseUrl), {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...buildTuiAuthHeaders(),
+      ...authHeaders,
       ...init?.headers,
     },
   });
@@ -139,6 +148,7 @@ class AgentTerminalView implements Component {
   constructor(
     private readonly tui: TUI,
     private readonly apiBaseUrl: string,
+    private readonly apiToken: string | undefined,
     private readonly fetchImpl: typeof fetch,
     private readonly onExit?: () => void,
   ) {
@@ -168,6 +178,7 @@ class AgentTerminalView implements Component {
       const data = await readJson<CommandsCatalogResponse>(
         this.fetchImpl,
         this.apiBaseUrl,
+        this.apiToken,
         "/api/commands?surface=tui",
       );
       this.commands = data.commands ?? [];
@@ -189,6 +200,7 @@ class AgentTerminalView implements Component {
       const data = await readJson<{ views?: ViewEntry[] }>(
         this.fetchImpl,
         this.apiBaseUrl,
+        this.apiToken,
         "/api/views?viewType=tui",
       );
       this.views = (data.views ?? []).filter((view) => view.viewType === "tui");
@@ -435,6 +447,7 @@ class AgentTerminalView implements Component {
       await readJson<{ ok?: boolean }>(
         this.fetchImpl,
         this.apiBaseUrl,
+        this.apiToken,
         `/api/views/${encodeURIComponent(view.id)}/navigate?viewType=tui`,
         { method: "POST", body: JSON.stringify({ viewType: "tui" }) },
       );
@@ -467,6 +480,7 @@ class AgentTerminalView implements Component {
       await readJson<{ ok?: boolean }>(
         this.fetchImpl,
         this.apiBaseUrl,
+        this.apiToken,
         `/api/views/${encodeURIComponent(view.id)}/activate?viewType=tui`,
         {
           method: "POST",
@@ -525,10 +539,10 @@ class AgentTerminalView implements Component {
     if (this.conversationId) return this.conversationId;
     const data = await readJson<{
       conversation?: { id?: string };
-    }>(this.fetchImpl, this.apiBaseUrl, "/api/conversations", {
+    }>(this.fetchImpl, this.apiBaseUrl, this.apiToken, "/api/conversations", {
       method: "POST",
       body: JSON.stringify({
-        title: "Terminal session",
+        title: "Terminal TUI",
         metadata: { source: "terminal-tui" },
       }),
     });
@@ -585,6 +599,7 @@ class AgentTerminalView implements Component {
       await readJson(
         this.fetchImpl,
         this.apiBaseUrl,
+        this.apiToken,
         `/api/conversations/${conversationId}/messages`,
         {
           method: "POST",
@@ -626,6 +641,7 @@ export function startAgentTerminalTui(
   const view = new AgentTerminalView(
     tui,
     options.apiBaseUrl ?? resolveDefaultApiBaseUrl(),
+    resolveApiToken(options.apiToken),
     options.fetchImpl ?? fetch,
     () => handle.stop(),
   );

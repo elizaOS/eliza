@@ -98,7 +98,7 @@ export function extractRiskFactors(text: string): RiskFactors {
 		socialEngineeringClasses: [],
 		score: 0,
 	};
-	if (!text || !text.trim()) {
+	if (!text?.trim()) {
 		return empty;
 	}
 

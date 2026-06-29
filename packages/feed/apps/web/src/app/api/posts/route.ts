@@ -792,10 +792,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
         if (originalActor) {
           originalAuthorName = originalActor.name;
-          originalAuthorProfileImageUrl = originalActor.profileImageUrl!;
+          originalAuthorProfileImageUrl = originalActor.profileImageUrl ?? null;
         } else if (originalOrg) {
           originalAuthorName = originalOrg.name;
-          originalAuthorProfileImageUrl = originalOrg.imageUrl!;
+          originalAuthorProfileImageUrl = originalOrg.imageUrl ?? null;
         } else if (originalUser) {
           originalAuthorName = originalUser.displayName!;
           originalAuthorUsername = originalUser.username!;

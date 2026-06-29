@@ -53,7 +53,7 @@ export const embedFrameAncestors = (platform: string | null): string =>
     ? EMBED_FRAME_ANCESTORS[platform]
     : EMBED_FRAME_ANCESTORS_DENY;
 
-const isEmbedPath = (pathname: string): boolean =>
+export const isEmbedPath = (pathname: string): boolean =>
   pathname === "/embed" || pathname.startsWith("/embed/");
 
 export const onRequest = async (

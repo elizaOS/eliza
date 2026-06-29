@@ -153,6 +153,9 @@ jobs:
       - name: Real-PTY TUI smoke
         run: bun run --cwd packages/agent test:tui-pty
 
+      - name: Terminal TUI smoke
+        run: bun run test:tui-smoke
+
       # The TUI e2e capture test (packages/agent/test/tui-e2e/tui-capture.test.ts)
       # records each session as an asciicast .cast plus viewport/scrollback
       # snapshots into TUI_EVIDENCE_DIR. Attach them so a reviewer can replay the
@@ -207,6 +210,9 @@ jobs:
 
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
+
+      - name: XR simulation harness
+        run: bunx playwright test --config packages/ui/stories/xr/xr-sim.config.ts
 
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui

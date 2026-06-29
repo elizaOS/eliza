@@ -10,8 +10,7 @@
  * `UPDATE_PUBLIC_ROUTE_BASELINE=1`).
  */
 
-import type { Dirent } from "node:fs";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 

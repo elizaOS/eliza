@@ -1,16 +1,14 @@
 /**
  * OAuth/connector auth-success callback page (public). Shows a connection-
- * successful card and routes the user back into Cloud. Ported from
+ * successful card and auto-closes the popup. Ported from
  * `@elizaos/cloud-frontend/src/pages/auth/success/page.tsx`.
  */
 
 import { CheckCircle } from "lucide-react";
+import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
-
-const CLOUD_LANDING_PATH = "/join";
 
 const platformNames: Record<string, string> = {
   google: "Google",
@@ -47,6 +45,15 @@ export default function AuthSuccessPage() {
     ? platformNames[platform.toLowerCase()] || capitalize(platform)
     : null;
 
+  useEffect(() => {
+    if (!window.opener || window.opener.closed) return;
+    const timer = setTimeout(() => {
+      window.close();
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-black p-4">
       <div className="absolute inset-0 bg-black" />
@@ -80,16 +87,11 @@ export default function AuthSuccessPage() {
             </p>
           </div>
 
-          <Button
-            asChild
-            className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
-          >
-            <a href={CLOUD_LANDING_PATH}>
-              {t("cloud.authSuccess.openCloud", {
-                defaultValue: "Open Eliza Cloud",
-              })}
-            </a>
-          </Button>
+          <p className="text-xs text-neutral-600">
+            {t("cloud.authSuccess.returnToApp", {
+              defaultValue: "Return to the app to continue.",
+            })}
+          </p>
         </div>
       </div>
     </div>

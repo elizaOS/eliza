@@ -20,6 +20,7 @@
 
 import type {
   Action,
+  ActionResult,
   IAgentRuntime,
   Memory,
   Plugin,
@@ -179,6 +180,18 @@ function isWorkerActionCallbackEnvelope(
 ): message is RemotePluginWorkerMessage & WorkerActionCallbackEnvelope {
   const candidate = message as { type?: unknown };
   return candidate.type === "worker-action-callback";
+}
+
+function isRemoteActionResult(
+  value: JsonValue,
+): value is JsonObject & { success: boolean } {
+  if (value === null || typeof value !== "object" || !("success" in value)) {
+    return false;
+  }
+  return (
+    typeof (value as { success?: unknown }).success === "boolean" &&
+    !Array.isArray(value)
+  );
 }
 
 export class RemotePluginBridge {
@@ -558,7 +571,9 @@ export class RemotePluginBridge {
             ...(callbackId ? { callbackId } : {}),
           },
         );
-        return result as unknown as ReturnType<Action["handler"]>;
+        return isRemoteActionResult(result)
+          ? (result as ActionResult)
+          : undefined;
       } finally {
         if (callbackId) {
           this.state.actionCallbacks.delete(callbackId);

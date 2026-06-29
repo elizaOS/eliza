@@ -46,6 +46,7 @@ import {
   clearCompatRuntimeRestart,
   getConfiguredCompatAgentName,
 } from "./compat-route-shared";
+import { handleEmbedAuthRoute } from "./embed-auth-route";
 import { sendJson as sendJsonResponse } from "./response";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
@@ -745,6 +746,7 @@ async function handleCompatRouteInner(
   // sibling compat handlers, so mounting it does not widen the unauth surface.
   if (await handleSensitiveRequestRoutes(req, res, state)) return true;
   if (await handleBackgroundTasksRoute(req, res, state)) return true;
+  if (await handleEmbedAuthRoute(req, res, state)) return true;
   // Internal wake route called by Capacitor BackgroundRunner JSContexts on
   // iOS/Android. Bearer-authed via the device secret; not part of the
   // cookie session pipeline.

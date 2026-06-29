@@ -6,6 +6,7 @@ import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
 import {
   type AppManagerLike,
+  type AppsRouteActorRole,
   type AppsRouteContext,
   type FavoriteAppsStore,
   handleAppsRoutes,
@@ -80,6 +81,7 @@ async function callRoute(args: {
   appManager?: AppManagerLike;
   favoriteApps?: FavoriteAppsStore;
   getPluginManager?: AppsRouteContext["getPluginManager"];
+  actorRole?: AppsRouteActorRole | null;
 }): Promise<{
   handled: boolean;
   res: CapturedResponse;
@@ -97,6 +99,7 @@ async function callRoute(args: {
     url,
     appManager,
     favoriteApps: args.favoriteApps,
+    actorRole: args.actorRole,
     runtime: null,
     getPluginManager:
       args.getPluginManager ??
@@ -215,6 +218,7 @@ describe("handleAppsRoutes", () => {
       method: "POST",
       pathname: "/api/apps/launch",
       appManager,
+      actorRole: "OWNER",
       body: { name: "", __proto__: { polluted: true } },
     });
 
@@ -225,6 +229,50 @@ describe("handleAppsRoutes", () => {
     });
     expect(appManager.launch).not.toHaveBeenCalled();
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it.each([
+    undefined,
+    null,
+    "USER",
+    "GUEST",
+  ] as const)("denies %s actor before invoking appManager.launch", async (actorRole) => {
+    const appManager = createAppManager();
+
+    const result = await callRoute({
+      method: "POST",
+      pathname: "/api/apps/launch",
+      appManager,
+      actorRole,
+      body: { name: "@elizaos/plugin-demo" },
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(403);
+    expect(result.res.body).toEqual({
+      error: "App launch requires OWNER or ADMIN role",
+    });
+    expect(appManager.launch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "OWNER",
+    "ADMIN",
+  ] as const)("allows %s actor to launch apps", async (actorRole) => {
+    const appManager = createAppManager();
+
+    const result = await callRoute({
+      method: "POST",
+      pathname: "/api/apps/launch",
+      appManager,
+      actorRole,
+      body: { name: "@elizaos/plugin-demo" },
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(200);
+    expect(result.res.body).toEqual({ success: true });
+    expect(appManager.launch).toHaveBeenCalledTimes(1);
   });
 
   it("reuses the app hero registry lookup across adjacent image requests", async () => {

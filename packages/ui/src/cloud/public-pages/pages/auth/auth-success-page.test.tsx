@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const searchParamsRef = vi.hoisted(() => ({
-  current: new URLSearchParams("platform=github"),
+  current: new URLSearchParams("github_connected=1"),
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -13,11 +13,7 @@ vi.mock("react-router-dom", () => ({
 
 vi.mock("../../../shell/CloudI18nProvider", () => ({
   useCloudT:
-    () =>
-    (
-      _key: string,
-      opts?: { defaultValue?: string; platform?: string },
-    ): string =>
+    () => (_key: string, opts?: { defaultValue?: string; platform?: string }) =>
       (opts?.defaultValue ?? _key).replace(
         "{{platform}}",
         opts?.platform ?? "",
@@ -28,32 +24,36 @@ vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
 
 import AuthSuccessPage from "./auth-success-page";
 
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  delete (window as { opener?: unknown }).opener;
+});
+
 describe("AuthSuccessPage", () => {
-  beforeEach(() => {
-    searchParamsRef.current = new URLSearchParams("platform=github");
-  });
-
-  afterEach(() => {
-    cleanup();
-    vi.restoreAllMocks();
-  });
-
-  it("shows the connected platform and routes back to Cloud without trying to close the tab", () => {
+  it("does not call window.close or show close instructions without an opener", () => {
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
 
     render(<AuthSuccessPage />);
 
-    expect(screen.getByText("GitHub Connected")).toBeTruthy();
-    expect(
-      screen.getByText("Your GitHub account has been connected successfully."),
-    ).toBeTruthy();
-    expect(screen.queryByText(/say/i)).toBeNull();
-    expect(screen.queryByText("You can close this window.")).toBeNull();
-    expect(
-      screen
-        .getByRole("link", { name: "Open Eliza Cloud" })
-        .getAttribute("href"),
-    ).toBe("/join");
     expect(closeSpy).not.toHaveBeenCalled();
+    expect(screen.getByText("GitHub Connected")).toBeTruthy();
+    expect(screen.getByText("Return to the app to continue.")).toBeTruthy();
+    expect(screen.queryByText("You can close this window.")).toBeNull();
+  });
+
+  it("auto-closes only when the page has a live opener", () => {
+    vi.useFakeTimers();
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
+    Object.defineProperty(window, "opener", {
+      value: { closed: false },
+      configurable: true,
+    });
+
+    render(<AuthSuccessPage />);
+    vi.advanceTimersByTime(2000);
+
+    expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 });
