@@ -91,6 +91,13 @@ import {
   stageAndroidAgentRuntime,
 } from "./lib/stage-android-agent.mjs";
 import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
+import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
+import {
+  ensurePlistArrayStrings,
+  removePbxListEntries,
+  replaceIosAppGroupPlaceholders,
+  replaceOrInsertPlistString,
+} from "./mobile/ios-plist.mjs";
 import { resolveAndroidBuildTarget } from "./mobile/targets/android.mjs";
 
 export {
@@ -554,66 +561,8 @@ function escapeJavaString(value) {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function escapeXmlText(value) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 function escapeXcodeBuildSetting(value) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-function replaceOrInsertPlistString(content, key, value) {
-  const escapedValue = escapeXmlText(value);
-  const keyRe = escapeRegExp(key);
-  const existingRe = new RegExp(
-    `(<key>${keyRe}</key>\\s*<string>)[^<]*(</string>)`,
-  );
-  if (existingRe.test(content)) {
-    return content.replace(existingRe, `$1${escapedValue}$2`);
-  }
-  return content.replace(
-    "</dict>",
-    `\t<key>${key}</key>\n\t<string>${escapedValue}</string>\n</dict>`,
-  );
-}
-
-function ensurePlistArrayStrings(content, key, values) {
-  const escapedValues = values.map(escapeXmlText);
-  const keyRe = escapeRegExp(key);
-  const arrayRe = new RegExp(
-    `(<key>${keyRe}</key>\\s*<array>)([\\s\\S]*?)(\\s*</array>)`,
-  );
-  const match = content.match(arrayRe);
-  if (!match) {
-    const body = escapedValues
-      .map((value) => `\t\t<string>${value}</string>`)
-      .join("\n");
-    return insertBeforeRootPlistDictClose(
-      content,
-      `\t<key>${key}</key>\n\t<array>\n${body}\n\t</array>\n</dict>`,
-    );
-  }
-  let body = match[2];
-  for (const value of escapedValues) {
-    if (!body.includes(`<string>${value}</string>`)) {
-      body += `\n\t\t<string>${value}</string>`;
-    }
-  }
-  return content.replace(arrayRe, `$1${body}$3`);
-}
-
-function insertBeforeRootPlistDictClose(content, insertion) {
-  const rootClose = "\n</dict>\n</plist>";
-  const index = content.lastIndexOf(rootClose);
-  if (index >= 0) {
-    return `${content.slice(0, index)}\n${insertion}${content.slice(index + "\n</dict>".length)}`;
-  }
-  const fallbackIndex = content.lastIndexOf("</dict>");
-  if (fallbackIndex < 0) return content;
-  return `${content.slice(0, fallbackIndex)}${insertion}${content.slice(fallbackIndex + "</dict>".length)}`;
 }
 
 /**
@@ -727,13 +676,6 @@ function replaceInFile(filePath, replacements) {
   return true;
 }
 
-function replaceIosAppGroupPlaceholders(content, appGroup) {
-  return content.replace(
-    /(^|[^A-Za-z0-9_.-])group\.(ai\.elizaos\.app|app\.eliza|com\.elizaai\.eliza)(?![A-Za-z0-9_.-])/g,
-    `$1${appGroup}`,
-  );
-}
-
 function replaceIosAppGroupPlaceholdersInFile(filePath, appGroup) {
   if (!fs.existsSync(filePath)) return false;
   const content = fs.readFileSync(filePath, "utf8");
@@ -759,17 +701,6 @@ function writeIosPersonalTeamEntitlements(filePath) {
   }
   fs.writeFileSync(filePath, IOS_PERSONAL_TEAM_ENTITLEMENTS, "utf8");
   return true;
-}
-
-function removePbxListEntries(content, ids) {
-  let next = content;
-  for (const id of ids) {
-    next = next.replace(
-      new RegExp(`\\n\\t+${escapeRegExp(id)} /\\* [^\\n]+ \\*/,`, "g"),
-      "",
-    );
-  }
-  return next;
 }
 
 function stripIosPrivilegedExtensionTargets({
@@ -2595,10 +2526,6 @@ function appendMissingAndroidManifestBlock(xml, marker, block) {
 function appendMissingApplicationBlock(xml, marker, block) {
   if (xml.includes(marker)) return xml;
   return xml.replace("</application>", `${block}\n    </application>`);
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function removeApplicationComponentBlock(xml, componentName) {
