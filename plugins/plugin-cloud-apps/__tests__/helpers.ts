@@ -11,6 +11,8 @@ import { mock } from "bun:test";
 import type {
   AppDeployStatusResponse,
   AppDto,
+  AppEarningsResponse,
+  AppMonetizationResponse,
   AppResponse,
   CreateAppInput,
   CreateAppResponse,
@@ -18,6 +20,11 @@ import type {
   DeployAppInput,
   DeployAppResponse,
   ListAppsResponse,
+  RegenerateAppApiKeyResponse,
+  UpdateAppInput,
+  UpdateAppMonetizationInput,
+  WithdrawAppEarningsRequest,
+  WithdrawAppEarningsResponse,
 } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 
@@ -30,6 +37,22 @@ type DeployAppFn = (
 ) => Promise<DeployAppResponse>;
 type GetAppDeployStatusFn = (id: string) => Promise<AppDeployStatusResponse>;
 type DeleteAppFn = (id: string) => Promise<DeleteAppResponse>;
+type UpdateAppFn = (id: string, patch: UpdateAppInput) => Promise<AppResponse>;
+type UpdateMonetizationFn = (
+  id: string,
+  settings: UpdateAppMonetizationInput,
+) => Promise<AppMonetizationResponse>;
+type GetAppEarningsFn = (
+  id: string,
+  options?: { days?: number },
+) => Promise<AppEarningsResponse>;
+type WithdrawAppEarningsFn = (
+  id: string,
+  request: WithdrawAppEarningsRequest,
+) => Promise<WithdrawAppEarningsResponse>;
+type RegenerateAppApiKeyFn = (
+  id: string,
+) => Promise<RegenerateAppApiKeyResponse>;
 
 interface SdkState {
   listApps: ListAppsFn;
@@ -38,6 +61,11 @@ interface SdkState {
   deployApp: DeployAppFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
+  updateApp: UpdateAppFn;
+  updateMonetization: UpdateMonetizationFn;
+  getAppEarnings: GetAppEarningsFn;
+  withdrawAppEarnings: WithdrawAppEarningsFn;
+  regenerateAppApiKey: RegenerateAppApiKeyFn;
 }
 
 function defaultState(): SdkState {
@@ -68,6 +96,15 @@ function defaultState(): SdkState {
         startedAt: null,
       }),
     deleteApp: () => Promise.resolve({ success: true, message: "deleted" }),
+    updateApp: () =>
+      Promise.resolve({ success: true, app: undefined as unknown as AppDto }),
+    updateMonetization: () =>
+      Promise.resolve({ success: true, monetization: null }),
+    getAppEarnings: () => Promise.resolve({ success: true }),
+    withdrawAppEarnings: () =>
+      Promise.resolve({ success: true, message: "withdrawn", newBalance: 0 }),
+    regenerateAppApiKey: () =>
+      Promise.resolve({ success: true, apiKey: "eliza_app_rotated" }),
   };
 }
 
@@ -90,6 +127,21 @@ export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
 }
 export function setDeleteApp(fn: DeleteAppFn): void {
   state.deleteApp = fn;
+}
+export function setUpdateApp(fn: UpdateAppFn): void {
+  state.updateApp = fn;
+}
+export function setUpdateMonetization(fn: UpdateMonetizationFn): void {
+  state.updateMonetization = fn;
+}
+export function setGetAppEarnings(fn: GetAppEarningsFn): void {
+  state.getAppEarnings = fn;
+}
+export function setWithdrawAppEarnings(fn: WithdrawAppEarningsFn): void {
+  state.withdrawAppEarnings = fn;
+}
+export function setRegenerateAppApiKey(fn: RegenerateAppApiKeyFn): void {
+  state.regenerateAppApiKey = fn;
 }
 
 /** Restore default (empty / no-op) behavior between tests. */
@@ -116,6 +168,30 @@ export class FakeElizaCloudClient {
   }
   deleteApp(id: string): Promise<DeleteAppResponse> {
     return state.deleteApp(id);
+  }
+  updateApp(id: string, patch: UpdateAppInput): Promise<AppResponse> {
+    return state.updateApp(id, patch);
+  }
+  updateMonetization(
+    id: string,
+    settings: UpdateAppMonetizationInput,
+  ): Promise<AppMonetizationResponse> {
+    return state.updateMonetization(id, settings);
+  }
+  getAppEarnings(
+    id: string,
+    options?: { days?: number },
+  ): Promise<AppEarningsResponse> {
+    return state.getAppEarnings(id, options);
+  }
+  withdrawAppEarnings(
+    id: string,
+    request: WithdrawAppEarningsRequest,
+  ): Promise<WithdrawAppEarningsResponse> {
+    return state.withdrawAppEarnings(id, request);
+  }
+  regenerateAppApiKey(id: string): Promise<RegenerateAppApiKeyResponse> {
+    return state.regenerateAppApiKey(id);
   }
 }
 
