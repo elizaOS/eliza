@@ -64,6 +64,10 @@ export async function probeReachable(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    // SSRF note: `url` is NOT user-controlled — the deploy gate derives it from
+    // `app.production_url`, read back from the authenticated Cloud row via
+    // `getApp` (Cloud-authoritative first-party origin), never from message text.
+    // So a raw bounded GET is acceptable here without the core network SSRF guard.
     const res = await fetchImpl(url, {
       method: "GET",
       signal: controller.signal,
