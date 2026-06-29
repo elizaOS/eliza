@@ -51,6 +51,7 @@
 		"audit:apple-store-sandbox": "node ./scripts/audit-apple-store-sandbox.mjs && node ./scripts/lib/apple-entitlement-audit.mjs",
 		"entitlements:audit": "node ./scripts/lib/apple-entitlement-audit.mjs",
 		"test:apple-entitlements": "node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/lib/apple-entitlement-audit.test.mjs",
+		"verify:android-native-plugins": "node scripts/verify-android-native-plugins.mjs",
 		"codesign:mas": "node ./scripts/codesign-mas.mjs",
 		"codesign:mas:dry-run": "node ./scripts/codesign-mas.mjs --dry-run",
 		"sms-gateway:audit": "node ./scripts/check-sms-gateway-completion-audit.mjs",
