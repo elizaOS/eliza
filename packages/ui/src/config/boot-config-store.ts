@@ -312,6 +312,13 @@ export interface AppBootConfig {
   envAliases?: readonly (readonly [string, string])[];
   /** Client middleware flags — replaces the post-construction patches. */
   clientMiddleware?: ClientMiddleware;
+  /**
+   * Chat-centric first-run (#9952, Phase 1). When true, a fresh profile lands
+   * directly on the homescreen with the real floating chat auto-opened and the
+   * onboarding greeting + runtime choice seeded into it, instead of the legacy
+   * full-screen FirstRunChat. Default false (legacy path unchanged).
+   */
+  inChatOnboarding?: boolean;
 }
 
 // ---------------------------------------------------------------------------

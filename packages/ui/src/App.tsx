@@ -102,6 +102,7 @@ import {
 } from "./state";
 import { goHome } from "./state/shell-surface-store";
 import { isShellPaintable } from "./state/startup-coordinator";
+import { isInChatOnboardingEnabled } from "./first-run/in-chat-onboarding";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -1689,7 +1690,10 @@ export function App() {
   // pre-shell phases (session restore, backend polling, first-run, pairing,
   // error) keep the full-screen StartupScreen. Runtime-dependent effects and
   // overlay apps below stay gated on `isCoordinatorReady` and defer safely.
-  const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
+  const isShellPaintableNow =
+    isShellPaintable(startupCoordinator.phase) ||
+    (isInChatOnboardingEnabled() &&
+      startupCoordinator.phase === "first-run-required");
 
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
     skip: !isShellPaintableNow || isPopout,

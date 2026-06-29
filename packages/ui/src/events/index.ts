@@ -77,6 +77,14 @@ export function dispatchVoiceControl(detail: VoiceControlEventDetail): void {
   window.dispatchEvent(new CustomEvent(VOICE_CONTROL_EVENT, { detail }));
 }
 
+/**
+ * In-chat onboarding (Phase 1): the first-run conductor asks the floating chat
+ * (ContinuousChatOverlay) to open so the seeded greeting + runtime choice are
+ * visible. UI-only, no payload — the overlay listens and opens its sheet.
+ */
+export const OPEN_IN_CHAT_ONBOARDING_EVENT =
+  "eliza:open-in-chat-onboarding" as const;
+
 // ── Shared → dedicated cloud-agent handoff ───────────────────────────────
 /**
  * First-run provisions a personal cloud agent and lands the user in chat on the

@@ -41,6 +41,7 @@ import type { SlashCommandController } from "../../chat/useSlashCommandControlle
 import {
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
+  OPEN_IN_CHAT_ONBOARDING_EVENT,
   TUTORIAL_CHAT_CONTROL_EVENT,
   type TutorialChatControlDetail,
 } from "../../events";
@@ -2374,6 +2375,18 @@ export function ContinuousChatOverlay({
     window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
     return () =>
       window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
+  }, [goToDetent]);
+
+  // Chat-centric first-run (#9952, Phase 1): the onboarding conductor seeds the
+  // greeting + runtime choice into the transcript, then dispatches this event so
+  // the floating chat opens to reveal them. The conductor is the parent; this
+  // deep child's effect runs first, so the listener is attached before dispatch.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onOpen = () => goToDetent("half");
+    window.addEventListener(OPEN_IN_CHAT_ONBOARDING_EVENT, onOpen);
+    return () =>
+      window.removeEventListener(OPEN_IN_CHAT_ONBOARDING_EVENT, onOpen);
   }, [goToDetent]);
 
   React.useEffect(() => {

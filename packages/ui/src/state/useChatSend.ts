@@ -27,6 +27,7 @@ import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
 } from "../events";
+import { consumeFirstRunChoice } from "../first-run/in-chat-onboarding";
 import { getWindowNavigationPath, type Tab } from "../navigation";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
@@ -1386,6 +1387,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      // In-chat onboarding (Phase 1): a first-run runtime choice pick is handled
+      // locally (no-op when onboarding is inactive — no interceptor registered).
+      if (consumeFirstRunChoice(trimmed)) return;
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;

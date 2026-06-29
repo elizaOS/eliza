@@ -22,6 +22,8 @@ import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
 } from "../first-run/mobile-runtime-mode";
+import { isInChatOnboardingEnabled } from "../first-run/in-chat-onboarding";
+import { useInChatOnboarding } from "../first-run/useInChatOnboarding";
 import {
   activeServerKindToFirstRunRuntimeTarget,
   type FirstRunRuntimeTarget,
@@ -1711,6 +1713,17 @@ function AppProviderInner({
   coordinatorRetryRef.current = startupCoordinator.retry;
   coordinatorResetRef.current = startupCoordinator.reset;
   coordinatorFirstRunCompleteRef.current = startupCoordinator.firstRunComplete;
+
+  // Chat-centric first-run (#9952, Phase 1): when the flag is ON and a fresh
+  // profile is still in the `first-run-required` phase, seed the onboarding
+  // greeting + runtime choice into the live transcript and open the floating
+  // chat. Flag OFF → no-op (legacy full-screen first-run path unchanged).
+  useInChatOnboarding(
+    isInChatOnboardingEnabled() &&
+      startupCoordinator.phase === "first-run-required" &&
+      !firstRunComplete,
+    setConversationMessages,
+  );
 
   // Memoize the coordinator handle so that unrelated re-renders (e.g. chatInput
   // keystrokes) don't produce a new object reference and bust the value useMemo below.

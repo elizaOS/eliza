@@ -3,6 +3,7 @@ import { client } from "../api";
 import type { StartupShellView } from "../components/shell/startup-shell-types";
 import { CONNECT_EVENT } from "../events";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
+import { isInChatOnboardingEnabled } from "../first-run/in-chat-onboarding";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
 import { applyLaunchConnection } from "../platform";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
@@ -245,9 +246,14 @@ export function useStartupShellController(): StartupShellController {
     phase === "first-run-required" &&
     (showBootstrap ||
       (firstRunCloudProvisionedContainer && needsBootstrapSession()));
+  // Chat-centric first-run (Phase 1): when the flag is ON we do NOT produce the
+  // full-screen first-run startup view — the live shell paints and onboarding is
+  // seeded into the real floating chat instead. Flag OFF keeps the legacy path.
+  const inChatOnboardingActive = isInChatOnboardingEnabled();
   const showFirstRun =
-    (phase === "first-run-required" && !bootstrapRequired) ||
-    (phase === "ready" && !firstRunComplete);
+    !inChatOnboardingActive &&
+    ((phase === "first-run-required" && !bootstrapRequired) ||
+      (phase === "ready" && !firstRunComplete));
 
   let view: StartupShellView;
   if (startupErrorState) {
