@@ -188,6 +188,22 @@ function parsePackJson(output) {
   }
 }
 
+function npmInvocation(args) {
+  if (process.platform === "win32") {
+    const npmCliPath = join(
+      dirname(process.execPath),
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    );
+    if (existsSync(npmCliPath)) {
+      return { command: process.execPath, args: [npmCliPath, ...args] };
+    }
+  }
+  return { command: "npm", args };
+}
+
 if (allPublicDistPackages) {
   for (const packageDir of discoverPublicPackageDirs()) {
     if (!packageDirs.includes(packageDir)) {
@@ -243,7 +259,8 @@ for (const info of packageInfos) {
     continue;
   }
 
-  const output = execFileSync("npm", ["pack", "--dry-run", "--json"], {
+  const npm = npmInvocation(["pack", "--dry-run", "--json"]);
+  const output = execFileSync(npm.command, npm.args, {
     cwd: absoluteDir,
     encoding: "utf8",
     env: {
