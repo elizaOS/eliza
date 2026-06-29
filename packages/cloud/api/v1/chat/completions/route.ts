@@ -1630,7 +1630,11 @@ async function handleStreamingRequest(
         // client sees a cut stream that looks like a normal (empty) completion
         // and does not back off. Emit a terminal OpenAI-shaped error chunk +
         // [DONE] so the client can distinguish failure (and rate-limit-back-off)
-        // from success. Error path only — the success path above is untouched.
+        // from success. This catch can run even when the SDK never invokes (or
+        // does not await) onError, so settle the reservation here too. The
+        // settler is idempotent, so this cannot double-refund if onError already
+        // won the race.
+        await settleReservation(0);
         const status =
           getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error);
         try {

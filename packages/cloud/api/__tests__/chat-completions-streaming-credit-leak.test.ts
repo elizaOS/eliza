@@ -190,6 +190,29 @@ describe("streaming chat — provider error releases the credit reservation", ()
       expect(errorChunk.error.code).toBe(statusCode);
     });
   }
+
+  test("fullStream error releases the reservation even when SDK onError is absent", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    expect(ledger.balance).toBe(100 - 0.015);
+
+    const err = makeApiCallError(503);
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield { type: "error", error: err };
+      })(),
+    });
+
+    const res = await callStreaming(settle);
+    const body = await res.text();
+
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(body).toContain('"error"');
+    expect(body).toContain('"type":"rate_limit_error"');
+    expect(body).toContain('"code":503');
+    expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
+  });
 });
 
 describe("streaming chat — success settles once, no double-refund", () => {
