@@ -75,9 +75,18 @@ jobs:
           - name: messaging
             runs-on: ubuntu-24.04
             globs: "packages/test/scenarios/messaging.*/**/*.scenario.ts"
-          - name: messaging-apple
-            runs-on: [self-hosted, eliza-e2e-macos]
-            globs: "packages/test/scenarios/messaging.imessage/**/*.scenario.ts packages/test/scenarios/messaging.signal/**/*.scenario.ts"
+          # NOTE: the two apple-ecosystem shards (messaging-apple,
+          # selfcontrol-activity) require a self-hosted macOS runner labeled
+          # `eliza-e2e-macos`, which is NOT currently registered on this repo. with
+          # the shards present, those matrix legs hang queued forever (no runner can
+          # claim them) and never expire cleanly. they are commented out until the
+          # runner is registered (Settings -> Actions -> Runners). to re-enable:
+          # register the macOS runner, then uncomment the two shards below. the
+          # imessage/signal/selfcontrol/activity scenarios need macOS, so do NOT
+          # just point them at ubuntu (they would fail rather than skip).
+          # - name: messaging-apple
+          #   runs-on: [self-hosted, eliza-e2e-macos]
+          #   globs: "packages/test/scenarios/messaging.imessage/**/*.scenario.ts packages/test/scenarios/messaging.signal/**/*.scenario.ts"
           - name: todos-reminders
             runs-on: ubuntu-24.04
             globs: "packages/test/scenarios/todos/**/*.scenario.ts packages/test/scenarios/reminders/**/*.scenario.ts"
@@ -87,9 +96,10 @@ jobs:
           - name: relationships
             runs-on: ubuntu-24.04
             globs: "packages/test/scenarios/relationships/**/*.scenario.ts"
-          - name: selfcontrol-activity
-            runs-on: [self-hosted, eliza-e2e-macos]
-            globs: "packages/test/scenarios/selfcontrol/**/*.scenario.ts packages/test/scenarios/activity/**/*.scenario.ts"
+          # - name: selfcontrol-activity  (apple shard, see note above; re-enable
+          #   with the macOS runner)
+          #   runs-on: [self-hosted, eliza-e2e-macos]
+          #   globs: "packages/test/scenarios/selfcontrol/**/*.scenario.ts packages/test/scenarios/activity/**/*.scenario.ts"
           - name: browser-social
             runs-on: ubuntu-24.04
             globs: "packages/test/scenarios/browser.*/**/*.scenario.ts packages/test/scenarios/social.*/**/*.scenario.ts"
