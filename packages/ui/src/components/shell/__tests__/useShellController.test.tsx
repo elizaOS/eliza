@@ -294,9 +294,10 @@ describe("useShellController — conversation loading watchdog", () => {
     const { result } = renderHook(() => useShellController());
     const staleNav = result.current.conversationNav;
 
-    act(() => {
+    await act(async () => {
       staleNav.goNext();
       staleNav.goPrev();
+      await vi.advanceTimersByTimeAsync(0);
     });
 
     expect(
