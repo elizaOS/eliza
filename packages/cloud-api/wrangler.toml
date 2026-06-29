@@ -447,7 +447,7 @@ REDIS_RATE_LIMITING = "false"
 # miss/unavailable the resolver falls back to the authoritative slow path
 # (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
 # failed cache read.
-INFERENCE_HOT_PATH_CACHE = "false"
+INFERENCE_HOT_PATH_CACHE = "true"
 # Tier-2 optimistic off-path billing (#9899). OFF here = the synchronous credit
 # reserve runs exactly as before (no behavior change). When "true" (also requires
 # INFERENCE_HOT_PATH_CACHE + a writable KV backstop), an org whose balance clears
