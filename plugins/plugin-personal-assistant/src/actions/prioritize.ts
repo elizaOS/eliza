@@ -76,26 +76,313 @@ export interface PrioritizeRankedItem extends PrioritizeRankableItem {
   readonly reasoning: string;
 }
 
+export interface PrioritizeLoaderArgs {
+  runtime: IAgentRuntime;
+  message: Memory;
+}
+
 /**
- * Per-subject loader hooks. Default loaders return empty lists so tests can
- * inject per-subject inputs without standing up the full service graph.
+ * Per-subject loader hooks. Defaults read the production stores and degrade to
+ * empty lists when an optional store is not installed.
  */
 export interface PrioritizeLoaders {
-  loadTodos: (args: {
-    runtime: IAgentRuntime;
-  }) => Promise<readonly PrioritizeRankableItem[]>;
-  loadThreads: (args: {
-    runtime: IAgentRuntime;
-  }) => Promise<readonly PrioritizeRankableItem[]>;
-  loadDecisions: (args: {
-    runtime: IAgentRuntime;
-  }) => Promise<readonly PrioritizeRankableItem[]>;
+  loadTodos: (
+    args: PrioritizeLoaderArgs,
+  ) => Promise<readonly PrioritizeRankableItem[]>;
+  loadThreads: (
+    args: PrioritizeLoaderArgs,
+  ) => Promise<readonly PrioritizeRankableItem[]>;
+  loadDecisions: (
+    args: PrioritizeLoaderArgs,
+  ) => Promise<readonly PrioritizeRankableItem[]>;
+}
+
+const MAX_PRIORITIZE_SOURCE_ITEMS = 50;
+const TODOS_SERVICE_TYPE = "todos";
+
+type PrioritizeTodoStatus = "pending" | "in_progress";
+
+interface PrioritizeTodoRecord {
+  readonly id?: unknown;
+  readonly content?: unknown;
+  readonly activeForm?: unknown;
+  readonly status?: unknown;
+  readonly metadata?: unknown;
+  readonly createdAt?: unknown;
+  readonly updatedAt?: unknown;
+}
+
+interface PrioritizeTodosService {
+  list(filter: {
+    entityId: string;
+    agentId?: string;
+    status?: PrioritizeTodoStatus[];
+    includeCompleted?: boolean;
+    limit?: number;
+  }): Promise<readonly PrioritizeTodoRecord[]>;
+}
+
+interface ApprovalRequestLike {
+  readonly id: string;
+  readonly createdAt: Date;
+  readonly state: string;
+  readonly requestedBy: string;
+  readonly subjectUserId: string;
+  readonly action: string;
+  readonly payload: unknown;
+  readonly channel: string;
+  readonly reason: string;
+  readonly expiresAt: Date;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function ownerEntityIdFromMessage(message: Memory): string | null {
+  return nonEmptyString(message.entityId);
+}
+
+function runtimeAgentId(runtime: IAgentRuntime): string | null {
+  return nonEmptyString(runtime.agentId);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
+  return nonEmptyString(record[key]);
+}
+
+function readFirstString(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): string | null {
+  for (const key of keys) {
+    const value = readString(record, key);
+    if (value) return value;
+  }
+  return null;
+}
+
+function isoish(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  return null;
+}
+
+function metadata(
+  entries: readonly (readonly [string, unknown])[],
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of entries) {
+    if (value !== undefined && value !== null && value !== "") {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getRuntimeService(
+  runtime: IAgentRuntime,
+  serviceName: string,
+): unknown {
+  const getService = (runtime as { getService?: (name: string) => unknown })
+    .getService;
+  if (typeof getService !== "function") return null;
+  return getService.call(runtime, serviceName);
+}
+
+function isTodosService(value: unknown): value is PrioritizeTodosService {
+  return isRecord(value) && typeof value.list === "function";
+}
+
+function mapTodoToRankable(
+  todo: PrioritizeTodoRecord,
+): PrioritizeRankableItem | null {
+  const id = nonEmptyString(todo.id);
+  const content = nonEmptyString(todo.content);
+  const title = nonEmptyString(todo.activeForm) ?? content;
+  if (!id || !title) return null;
+  const todoMetadata = isRecord(todo.metadata) ? todo.metadata : {};
+  const dueAt = readFirstString(todoMetadata, [
+    "dueAt",
+    "deadline",
+    "scheduledFor",
+    "scheduledAt",
+  ]);
+  return {
+    id,
+    title,
+    ...(content && content !== title ? { summary: content } : {}),
+    ...(dueAt ? { dueAt } : {}),
+    metadata: metadata([
+      ["source", "todos"],
+      ["status", nonEmptyString(todo.status)],
+      ["createdAt", isoish(todo.createdAt)],
+      ["updatedAt", isoish(todo.updatedAt)],
+      ["priority", todoMetadata.priority],
+    ]),
+  };
+}
+
+async function loadTodosFromRuntime({
+  runtime,
+  message,
+}: PrioritizeLoaderArgs): Promise<readonly PrioritizeRankableItem[]> {
+  const entityId = ownerEntityIdFromMessage(message);
+  const agentId = runtimeAgentId(runtime);
+  if (!entityId || !agentId) return [];
+  const service = getRuntimeService(runtime, TODOS_SERVICE_TYPE);
+  if (!isTodosService(service)) return [];
+  try {
+    const todos = await service.list({
+      entityId,
+      agentId,
+      status: ["pending", "in_progress"],
+      includeCompleted: false,
+      limit: MAX_PRIORITIZE_SOURCE_ITEMS,
+    });
+    return todos
+      .slice(0, MAX_PRIORITIZE_SOURCE_ITEMS)
+      .map(mapTodoToRankable)
+      .filter((item): item is PrioritizeRankableItem => item !== null);
+  } catch (error) {
+    logger.warn(`[PRIORITIZE] rank_todos load failed: ${errorDetail(error)}`);
+    return [];
+  }
+}
+
+async function loadThreadsFromRuntime({
+  runtime,
+  message,
+}: PrioritizeLoaderArgs): Promise<readonly PrioritizeRankableItem[]> {
+  const ownerEntityId = ownerEntityIdFromMessage(message);
+  if (!ownerEntityId) return [];
+  try {
+    const { createWorkThreadStore } = await import(
+      "../lifeops/work-threads/index.js"
+    );
+    const threads = await createWorkThreadStore(runtime).list({
+      statuses: ["active", "waiting", "paused"],
+      ownerEntityId,
+      limit: MAX_PRIORITIZE_SOURCE_ITEMS,
+    });
+    return threads.slice(0, MAX_PRIORITIZE_SOURCE_ITEMS).map((thread) => ({
+      id: thread.id,
+      title: thread.title,
+      summary: thread.currentPlanSummary ?? thread.summary,
+      metadata: metadata([
+        ["source", "work_threads"],
+        ["status", thread.status],
+        ["connector", thread.primarySourceRef.connector],
+        ["channelName", thread.primarySourceRef.channelName],
+        ["lastActivityAt", thread.lastActivityAt],
+        ["currentScheduledTaskId", thread.currentScheduledTaskId],
+        ["approvalId", thread.approvalId],
+      ]),
+    }));
+  } catch (error) {
+    logger.warn(`[PRIORITIZE] rank_threads load failed: ${errorDetail(error)}`);
+    return [];
+  }
+}
+
+function approvalPayloadTitle(request: ApprovalRequestLike): string {
+  const payload = isRecord(request.payload) ? request.payload : {};
+  switch (request.action) {
+    case "send_message":
+      return `Send message to ${readString(payload, "recipient") ?? "recipient"}`;
+    case "send_email":
+      return `Send email: ${readString(payload, "subject") ?? "untitled"}`;
+    case "schedule_event":
+      return `Schedule event: ${readString(payload, "title") ?? "untitled"}`;
+    case "modify_event":
+      return `Modify calendar event ${readString(payload, "eventId") ?? request.id}`;
+    case "cancel_event":
+      return `Cancel calendar event ${readString(payload, "eventId") ?? request.id}`;
+    case "book_travel":
+      return `Book ${readString(payload, "kind") ?? "travel"} via ${readString(payload, "provider") ?? "provider"}`;
+    case "make_call":
+      return `Make call to ${readString(payload, "to") ?? "recipient"}`;
+    case "sign_document":
+      return `Sign document: ${readString(payload, "documentName") ?? "document"}`;
+    case "execute_workflow":
+      return `Execute workflow ${readString(payload, "workflowId") ?? request.id}`;
+    case "spend_money":
+      return `Spend money with ${readString(payload, "vendor") ?? "vendor"}`;
+    default:
+      return `Approve ${request.action}`;
+  }
+}
+
+async function loadDecisionsFromRuntime({
+  runtime,
+  message,
+}: PrioritizeLoaderArgs): Promise<readonly PrioritizeRankableItem[]> {
+  const subjectUserId = ownerEntityIdFromMessage(message);
+  const agentId = runtimeAgentId(runtime);
+  if (!subjectUserId || !agentId) return [];
+  try {
+    const { createApprovalQueue } = await import(
+      "../lifeops/approval-queue.js"
+    );
+    const requests = await createApprovalQueue(runtime, { agentId }).list({
+      subjectUserId,
+      state: "pending",
+      action: null,
+      limit: MAX_PRIORITIZE_SOURCE_ITEMS,
+    });
+    return requests
+      .slice(0, MAX_PRIORITIZE_SOURCE_ITEMS)
+      .map((request): PrioritizeRankableItem => {
+        const approval = request as ApprovalRequestLike;
+        return {
+          id: approval.id,
+          title: approvalPayloadTitle(approval),
+          summary: approval.reason,
+          dueAt: approval.expiresAt.toISOString(),
+          metadata: metadata([
+            ["source", "approval_queue"],
+            ["action", approval.action],
+            ["channel", approval.channel],
+            ["state", approval.state],
+            ["requestedBy", approval.requestedBy],
+            ["createdAt", approval.createdAt.toISOString()],
+            ["expiresAt", approval.expiresAt.toISOString()],
+          ]),
+        };
+      });
+  } catch (error) {
+    logger.warn(
+      `[PRIORITIZE] rank_decisions load failed: ${errorDetail(error)}`,
+    );
+    return [];
+  }
 }
 
 const defaultLoaders: PrioritizeLoaders = {
-  loadTodos: async () => [],
-  loadThreads: async () => [],
-  loadDecisions: async () => [],
+  loadTodos: loadTodosFromRuntime,
+  loadThreads: loadThreadsFromRuntime,
+  loadDecisions: loadDecisionsFromRuntime,
 };
 
 let activeLoaders: PrioritizeLoaders = defaultLoaders;
@@ -154,14 +441,15 @@ function resolveSubaction(
 async function loadItemsForSubaction(
   subaction: Subaction,
   runtime: IAgentRuntime,
+  message: Memory,
 ): Promise<readonly PrioritizeRankableItem[]> {
   switch (subaction) {
     case "rank_todos":
-      return activeLoaders.loadTodos({ runtime });
+      return activeLoaders.loadTodos({ runtime, message });
     case "rank_threads":
-      return activeLoaders.loadThreads({ runtime });
+      return activeLoaders.loadThreads({ runtime, message });
     case "rank_decisions":
-      return activeLoaders.loadDecisions({ runtime });
+      return activeLoaders.loadDecisions({ runtime, message });
   }
 }
 
@@ -356,7 +644,7 @@ export const prioritizeAction: Action & {
         ? Math.floor(params.topN)
         : 5;
 
-    const items = await loadItemsForSubaction(subaction, runtime);
+    const items = await loadItemsForSubaction(subaction, runtime, message);
     if (items.length === 0) {
       const text = `No open ${subject} to rank.`;
       logger.info(`[PRIORITIZE] ${subaction} empty topN=${topN}`);
