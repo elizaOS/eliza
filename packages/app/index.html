@@ -84,7 +84,7 @@
           return suffix.charAt(0) === '?' ? `/${suffix}` : suffix || '/';
         }
         try {
-          const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://eliza.app');
+          const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://app.elizacloud.ai');
           if (
             isNativeCapacitorAgentHost() &&
             url.protocol === 'http:' &&

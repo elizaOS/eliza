@@ -219,7 +219,7 @@ function Model() {
       chatTextureRef.current = chatTexture;
       avatarImgRef.current = avatarImg;
 
-      scene.traverse((child) => {
+      scene.traverse((child: THREE.Object3D) => {
         if (!(child instanceof THREE.Mesh)) return;
         const name = child.name.toLowerCase();
 

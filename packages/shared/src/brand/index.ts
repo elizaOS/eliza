@@ -16,9 +16,10 @@
  * of hardcoding strings so a domain change is a one-line edit.
  */
 export const EXTERNAL_URLS = {
+  marketing: "https://eliza.app",
   app: "https://app.elizacloud.ai",
   cloud: "https://elizacloud.ai",
-  os: "https://elizaos.ai",
+  os: "https://os.elizacloud.ai",
   docs: "https://docs.elizaos.ai",
   github: "https://github.com/elizaOS/eliza",
   discord: "https://discord.gg/eliza",

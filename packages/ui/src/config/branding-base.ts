@@ -1,4 +1,5 @@
 import type { ThemeDefinition } from "@elizaos/shared";
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 
 /**
  * Custom provider that apps can inject into the first-run setup.
@@ -72,8 +73,8 @@ export const DEFAULT_BRANDING: BrandingConfig = {
   appName: DEFAULT_APP_DISPLAY_NAME,
   orgName: "elizaos",
   repoName: "eliza",
-  docsUrl: "https://docs.elizaos.ai",
-  appUrl: "https://app.elizacloud.ai",
+  docsUrl: EXTERNAL_URLS.docs,
+  appUrl: EXTERNAL_URLS.app,
   bugReportUrl:
     "https://github.com/elizaos/eliza/issues/new?template=bug_report.yml",
   hashtag: "#ElizaAgent",

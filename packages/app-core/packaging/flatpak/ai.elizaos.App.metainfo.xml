@@ -27,10 +27,10 @@
     </ul>
   </description>
 
-  <url type="homepage">https://app.elizaos.ai</url>
+  <url type="homepage">https://app.elizacloud.ai</url>
   <url type="bugtracker">https://github.com/elizaos/elizaos-app/issues</url>
   <url type="vcs-browser">https://github.com/elizaos/elizaos-app</url>
-  <url type="help">https://docs.app.elizaos.ai</url>
+  <url type="help">https://docs.elizaos.ai</url>
 
   <provides>
     <binary>elizaos-app</binary>

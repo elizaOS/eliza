@@ -10,6 +10,7 @@
  * To create a new app, copy this file and change the values below.
  */
 import type { AppConfig } from "@elizaos/app-core";
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 
 interface AppWebConfig {
   shortName: string;
@@ -51,8 +52,8 @@ const config = {
     appName: "Eliza",
     orgName: "elizaos",
     repoName: "eliza",
-    docsUrl: "https://docs.elizaos.ai",
-    appUrl: "https://app.elizacloud.ai",
+    docsUrl: EXTERNAL_URLS.docs,
+    appUrl: EXTERNAL_URLS.app,
     bugReportUrl: "https://github.com/elizaOS/eliza/issues/new",
     hashtag: "#elizaOS",
     fileExtension: ".eliza-agent",

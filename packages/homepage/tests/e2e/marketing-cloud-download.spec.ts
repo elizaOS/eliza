@@ -1,3 +1,4 @@
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import {
   type APIRequestContext,
   expect,
@@ -13,8 +14,8 @@ function escapeRegExp(value: string): string {
 async function expectCloudPath(locator: Locator) {
   const href = await locator.getAttribute("href");
   expect(href).toBeTruthy();
-  const url = new URL(href ?? "", "https://www.elizacloud.ai");
-  expect(["elizacloud.ai", "www.elizacloud.ai"]).toContain(url.hostname);
+  const url = new URL(href ?? "", EXTERNAL_URLS.cloud);
+  expect(url.origin).toBe(EXTERNAL_URLS.cloud);
   expect(url.pathname).toMatch(/^\/login\/?$/);
   expect(url.searchParams.get("intent")).toBe("launch");
 }
@@ -22,8 +23,8 @@ async function expectCloudPath(locator: Locator) {
 async function expectWebAppPath(locator: Locator) {
   const href = await locator.getAttribute("href");
   expect(href).toBeTruthy();
-  const url = new URL(href ?? "", "https://app.elizacloud.ai");
-  expect(url.hostname).toBe("app.elizacloud.ai");
+  const url = new URL(href ?? "", EXTERNAL_URLS.app);
+  expect(url.origin).toBe(EXTERNAL_URLS.app);
   expect(url.pathname).toMatch(/^\/?$/);
 }
 
@@ -151,7 +152,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /^Install elizaOS$/ }).first(),
-  ).toHaveAttribute("href", /^https:\/\/elizaos\.ai\/?$/);
+  ).toHaveAttribute("href", EXTERNAL_URLS.os);
   await expect(
     page.getByRole("heading", { name: /^Run in Cloud\.$/ }),
   ).toBeVisible();
@@ -199,14 +200,13 @@ test("homepage live marketing links resolve for cloud, os, release, and download
 
   const appLinks = [...uniqueHrefs.keys()].filter((href) => {
     const url = new URL(href);
-    return url.hostname === "app.elizacloud.ai";
+    return url.origin === EXTERNAL_URLS.app;
   });
-  expect(appLinks).toHaveLength(1);
-  expect(new URL(appLinks[0]).pathname).toMatch(/^\/?$/);
+  expect(appLinks).toEqual([`${EXTERNAL_URLS.app}/`]);
 
   const cloudLinks = [...uniqueHrefs.keys()].filter((href) => {
     const url = new URL(href);
-    return ["elizacloud.ai", "www.elizacloud.ai"].includes(url.hostname);
+    return url.origin === EXTERNAL_URLS.cloud;
   });
   expect(cloudLinks).toHaveLength(1);
   expect(new URL(cloudLinks[0]).pathname).toMatch(/^\/login\/?$/);
@@ -228,7 +228,7 @@ test("homepage live marketing links resolve for cloud, os, release, and download
   const expectedNonCloudTargets = Array.from(
     new Set(
       [
-        "https://elizaos.ai/",
+        `${EXTERNAL_URLS.os}/`,
         releaseData.release.url,
         releaseData.release.checksum?.url,
         ...downloadTargets,
