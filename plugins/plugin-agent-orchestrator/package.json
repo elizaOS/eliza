@@ -155,7 +155,7 @@
         "type": "string",
         "description": "Native ACP command used for ElizaOS coding-agent sessions when ELIZA_ACP_TRANSPORT=native.",
         "required": false,
-        "default": "elizaos",
+        "default": "eliza-code-acp",
         "sensitive": false
       },
       "ELIZA_PI_AGENT_ACP_COMMAND": {

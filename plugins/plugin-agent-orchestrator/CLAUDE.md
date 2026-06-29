@@ -254,7 +254,7 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `opencode` |
 | `ELIZA_DEFAULT_AGENT_TYPE` | `elizaos` | Compatibility alias for `ELIZA_ACP_DEFAULT_AGENT` |
 | `ELIZA_AGENT_SELECTION_STRATEGY` | `fixed` | Adapter selection policy: `fixed` or `dynamic` |
-| `ELIZA_ELIZAOS_ACP_COMMAND` | `elizaos` | Native elizaOS ACP command |
+| `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @zed-industries/codex-acp@0.14.0` | Native Codex ACP command |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
