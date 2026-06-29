@@ -3,24 +3,18 @@ import { ChannelType as DiscordChannelType } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mirror the debouncer mock shape from discord-events-config.test.ts so we can
-// assert whether DM/channel messages were enqueued vs dispatched directly.
+// assert whether channel messages were enqueued vs. DMs dispatched directly.
+// The message-debouncer was removed (DMs no longer batch), so only the channel
+// debouncer is mocked here.
 const debouncerState = vi.hoisted(() => {
-	const messageEnqueue = vi.fn();
 	const channelEnqueue = vi.fn();
 	return {
-		messageEnqueue,
 		channelEnqueue,
 		createChannelDebouncer: vi.fn(() => ({
 			destroy: vi.fn(),
 			enqueue: channelEnqueue,
 			flushAll: vi.fn(),
 			markResponded: vi.fn(),
-			pendingCount: vi.fn(() => 0),
-		})),
-		createMessageDebouncer: vi.fn(() => ({
-			destroy: vi.fn(),
-			enqueue: messageEnqueue,
-			flushAll: vi.fn(),
 			pendingCount: vi.fn(() => 0),
 		})),
 	};
@@ -31,7 +25,6 @@ vi.mock("../debouncer", async (importOriginal) => {
 	return {
 		...actual,
 		createChannelDebouncer: debouncerState.createChannelDebouncer,
-		createMessageDebouncer: debouncerState.createMessageDebouncer,
 	};
 });
 
@@ -51,6 +44,7 @@ function makeService() {
 		buildMemoryFromMessage: vi.fn(),
 		character: {},
 		client,
+		channelDebouncer: undefined,
 		discordSettings: {
 			shouldIgnoreBotMessages: true,
 			shouldRespondOnlyToMentions: false,
@@ -62,7 +56,6 @@ function makeService() {
 		handleReactionAdd: vi.fn(),
 		handleReactionRemove: vi.fn(),
 		isChannelAllowed: vi.fn(() => true),
-		messageDebouncer: undefined,
 		messageManager: { handleMessage: vi.fn() },
 		resolveDiscordEntityId: vi.fn(),
 		runtime: {
@@ -78,16 +71,21 @@ function makeService() {
 	};
 }
 
-function makeMessage(channelType: DiscordChannelType, channelId: string) {
+function makeMessage(
+	channelType: DiscordChannelType,
+	channelId: string,
+	id = `msg-${channelId}`,
+) {
 	return {
-		id: `msg-${channelId}`,
+		id,
 		content: "hello",
 		author: { id: "user-1", bot: false, username: "alice" },
 		channel: { id: channelId, type: channelType },
 	};
 }
 
-// Let the async messageCreate handler settle (it awaits handleMessage).
+// Let the async messageCreate handler settle (it awaits handleMessage). One
+// macrotask tick drains the pending microtasks queued by the promise chain.
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 describe("setupDiscordEventListeners — DM dispatch", () => {
@@ -95,11 +93,10 @@ describe("setupDiscordEventListeners — DM dispatch", () => {
 		vi.clearAllMocks();
 	});
 
-	it("dispatches DMs directly to handleMessage, bypassing the message-debouncer", async () => {
+	it("dispatches DMs directly to handleMessage, bypassing the channel debouncer", async () => {
 		const service = makeService();
-		// The message-debouncer is wired by setup; the DM path must still bypass it.
-		const { messageDebouncer } = setupDiscordEventListeners(service as never);
-		service.messageDebouncer = messageDebouncer as never;
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
 
 		service.client.emit(
 			"messageCreate",
@@ -108,14 +105,13 @@ describe("setupDiscordEventListeners — DM dispatch", () => {
 		await tick();
 
 		expect(service.messageManager.handleMessage).toHaveBeenCalledTimes(1);
-		expect(debouncerState.messageEnqueue).not.toHaveBeenCalled();
 		expect(debouncerState.channelEnqueue).not.toHaveBeenCalled();
 	});
 
-	it("dispatches group DMs directly to handleMessage, bypassing the message-debouncer", async () => {
+	it("dispatches group DMs directly to handleMessage, bypassing the channel debouncer", async () => {
 		const service = makeService();
-		const { messageDebouncer } = setupDiscordEventListeners(service as never);
-		service.messageDebouncer = messageDebouncer as never;
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
 
 		service.client.emit(
 			"messageCreate",
@@ -124,16 +120,12 @@ describe("setupDiscordEventListeners — DM dispatch", () => {
 		await tick();
 
 		expect(service.messageManager.handleMessage).toHaveBeenCalledTimes(1);
-		expect(debouncerState.messageEnqueue).not.toHaveBeenCalled();
 		expect(debouncerState.channelEnqueue).not.toHaveBeenCalled();
 	});
 
 	it("still routes guild-channel messages through the channel debouncer/enqueue path", async () => {
 		const service = makeService();
-		const { messageDebouncer, channelDebouncer } = setupDiscordEventListeners(
-			service as never,
-		);
-		service.messageDebouncer = messageDebouncer as never;
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
 		service.channelDebouncer = channelDebouncer as never;
 
 		service.client.emit(
@@ -144,6 +136,78 @@ describe("setupDiscordEventListeners — DM dispatch", () => {
 
 		expect(debouncerState.channelEnqueue).toHaveBeenCalledTimes(1);
 		expect(service.messageManager.handleMessage).not.toHaveBeenCalled();
-		expect(debouncerState.messageEnqueue).not.toHaveBeenCalled();
+	});
+
+	it("serializes rapid DMs in the same channel: the second awaits the first, neither dropped", async () => {
+		const service = makeService();
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
+
+		// Record the order handleMessage is entered. The first call hangs on a
+		// gate so we can prove the second message cannot start until the first
+		// resolves (strict per-channel serialization, one at a time).
+		const entered: string[] = [];
+		let releaseFirst: () => void = () => {};
+		const firstGate = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		service.messageManager.handleMessage = vi.fn((message: { id: string }) => {
+			entered.push(message.id);
+			return entered.length === 1 ? firstGate : Promise.resolve();
+		}) as never;
+
+		// Two DMs in the SAME DM channel, emitted back-to-back (the gateway fires
+		// messageCreate synchronously in order; the listener is not awaited).
+		service.client.emit(
+			"messageCreate",
+			makeMessage(DiscordChannelType.DM, "dm-serial", "dm-msg-1"),
+		);
+		service.client.emit(
+			"messageCreate",
+			makeMessage(DiscordChannelType.DM, "dm-serial", "dm-msg-2"),
+		);
+		await tick();
+
+		// Only the first DM is in flight; the second is queued behind it and must
+		// NOT have started while the first is still running.
+		expect(service.messageManager.handleMessage).toHaveBeenCalledTimes(1);
+		expect(entered).toEqual(["dm-msg-1"]);
+
+		// Releasing the first lets the queue advance to the second, in order.
+		releaseFirst();
+		await tick();
+		await tick();
+
+		expect(service.messageManager.handleMessage).toHaveBeenCalledTimes(2);
+		expect(entered).toEqual(["dm-msg-1", "dm-msg-2"]);
+	});
+
+	it("a failed DM turn does not stall the queue or drop the next DM", async () => {
+		const service = makeService();
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
+
+		const entered: string[] = [];
+		service.messageManager.handleMessage = vi.fn((message: { id: string }) => {
+			entered.push(message.id);
+			// First turn rejects; the per-channel queue must still run the second.
+			return entered.length === 1
+				? Promise.reject(new Error("boom"))
+				: Promise.resolve();
+		}) as never;
+
+		service.client.emit(
+			"messageCreate",
+			makeMessage(DiscordChannelType.DM, "dm-fail", "fail-1"),
+		);
+		service.client.emit(
+			"messageCreate",
+			makeMessage(DiscordChannelType.DM, "dm-fail", "fail-2"),
+		);
+		await tick();
+		await tick();
+
+		expect(service.messageManager.handleMessage).toHaveBeenCalledTimes(2);
+		expect(entered).toEqual(["fail-1", "fail-2"]);
 	});
 });
