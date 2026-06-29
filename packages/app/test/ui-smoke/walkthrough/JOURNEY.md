@@ -1,12 +1,32 @@
 # Full Walkthrough Journey
 
-Issue: #9298
+Issue: #9298 (spec built in #10198 / #10204)
 
-This document is the source of truth for the full app walkthrough spec. The
-future `full-walkthrough.spec.ts` should drive these states in order, capture a
-screenshot for each state, and assert the DOM, route, console, and network
-conditions listed here. Existing smoke tests cover many of these flows in
-isolation; the walkthrough joins them into one continuous journey.
+This document is the source of truth for the full app walkthrough spec. That
+spec now exists: **`full-walkthrough.spec.ts`** drives these states in order,
+captures a `NN-<step>.png` screenshot for each state, and asserts the DOM,
+route, console, and network conditions listed here. Existing smoke tests cover
+many of these flows in isolation; the walkthrough joins them into one continuous
+journey.
+
+> **Built (#10198 / #10204).** The asked-for narrative — cold launch →
+> onboarding → tutorial → help → settings → wallet → real chat → view-switch →
+> settings-edit → dashboard — is the **Extended Journey** table at the bottom of
+> this file (25 steps), which supersedes the original 22-state table (kept for
+> history). Drive + capture + review + record it with one command:
+>
+> ```bash
+> bun run --cwd packages/app test:e2e:walkthrough          # keyless mock lane
+> bun run --cwd packages/app test:e2e:walkthrough:live     # real backend + model
+> bun run --cwd packages/app test:e2e:walkthrough:ios      # iOS sim leg + capture
+> bun run --cwd packages/app test:e2e:walkthrough:android  # Android emu/device leg
+> ```
+>
+> Per-step vision verdicts: [`WALKTHROUGH_VERDICTS.md`](./WALKTHROUGH_VERDICTS.md).
+> Platform matrix + prereqs + skip reasons: [`DEVICE_MATRIX.md`](./DEVICE_MATRIX.md).
+> Generated artifacts (screenshots, logs, trajectory, stitched recording) land
+> gitignored under `reports/walkthrough/<runId>/` and
+> `e2e-recordings/app/walkthrough/<runId>/`.
 
 ## Harness Baseline
 
@@ -21,7 +41,12 @@ isolation; the walkthrough joins them into one continuous journey.
   - Composer: `[data-testid="chat-composer-textarea"]`
   - Send: `[data-testid="chat-composer-action"]`
   - Chat thread lines: `[data-testid="thread-line"]`
-  - Onboarding shell: `[data-testid="onboarding-toast"]`
+  - First-run chat (current in-chat onboarding, replaced the old
+    `onboarding-toast`): `[data-testid="first-run-chat"]` +
+    `[data-testid="first-run-greeting"]`; runtime choices
+    `[data-choice-scope="first-run-runtime"] [data-testid="choice-cloud|local|remote"]`
+  - Tutorial: `/tutorial` route → `[data-testid="tutorial-launcher"]` →
+    `[data-testid="tutorial-start"]` → `[data-testid="tutorial-card"]`
   - Launcher: `[data-testid="launcher"]`
   - Launcher tiles: `[data-testid^="launcher-tile-"]`
   - Character editor: `[data-testid="character-editor-view"]`
@@ -102,3 +127,48 @@ and named in the final evidence.
   why a step is desktop-only.
 - The final PR includes contact sheet/video links and marks every `PR_EVIDENCE`
   row as attached or N/A with a reason.
+
+## Extended Journey (the spec that ships)
+
+`full-walkthrough.spec.ts` drives the rows below in order, at the desktop
+(1440×1000) **and** mobile (390×844) viewports. Each row maps 1:1 to a captured
+`NN-<step>.png` and a `NN-<step>.json` manifest (URL, viewport, DOM markers,
+per-step console/network diagnostics, the assertions that passed). This table
+extends the original 22 states with the asked-for **tutorial / help / settings /
+wallet / settings-edit** rows so no captured state is accepted "on sight."
+
+Lanes: the **mock** lane (default, keyless) page-mocks the conversation store so
+chat is deterministic; the **live** lane (`--live`,
+`ELIZA_UI_SMOKE_LIVE_STACK=1`) installs no conversation mock, so step 08 drives
+the real backend agent + model and writes the trajectory to
+`reports/walkthrough/<runId>/<viewport>/trajectory/chat-step.json`. Rows marked
+**live-persist** assert real persistence (`PUT /api/character` / `PUT /api/config`
++ reload read-back) only in the live lane; the mock lane still captures them.
+
+| Step | Action | Expected state | Required assertions | Capture |
+| --- | --- | --- | --- | --- |
+| 01 | Cold app launch | `/` loads with first-run incomplete; the in-chat first-run greeting renders over the startup background. | No page error / no `console.error` / no 5xx; `first-run-chat` + `first-run-greeting` visible ≤20s. | `01-cold-launch.png` |
+| 02 | Onboarding runtime choice | The in-chat first-run asks how to run Eliza with the runtime choices. | Runtime question text visible; `[data-choice-scope="first-run-runtime"]` `choice-cloud` / `choice-local` / `choice-remote` all visible. | `02-onboarding-runtime.png` |
+| 03 | Choose runtime → ready | Clicking the local choice advances first-run (provider step), then resolves to a ready agent. | `choice-local` clicked; first-run flips complete; `continuous-chat-overlay` + `chat-composer-textarea` reachable. | `03-provisioning-ready.png` |
+| 04 | Interactive tutorial | The `/tutorial` launcher starts the tour spotlight. | `tutorial-launcher` → `tutorial-start` → `tutorial-card`; "Meet Eliza" text visible; tour dismissed via `tutorial-skip`. | `04-tutorial.png` |
+| 05 | Help search | The Help view searches the KB. | `help-view` visible; search "change the model" → `help-entry-change-model` references "AI Model". | `05-help.png` |
+| 06 | Open settings | The Settings shell opens. | `settings-shell` visible; "Models & Providers" section opened. | `06-settings-open.png` |
+| 07 | Wallet view | The Wallet view renders. | `wallet-shell` (or Wallet heading) visible at `/wallet`. | `07-wallet.png` |
+| 08 | Chat a conversation | A real round-trip: user line + assistant reply. | user `thread-line` visible; assistant `thread-line` visible & non-empty; **live**: reply from the real model (trajectory captured). | `08-chat-round-trip.png` |
+| 09 | Maximize chat | Overlay expands to full detent. | desktop: `chat-sheet` `data-detent=full` + `data-maximized=true`; mobile: overlay `data-open=true` (no separate maximize). | `09-chat-full-detent.png` |
+| 10 | Navigate to character editor | Chat-driven navigation reaches `/character`. | URL `/character`; `character-editor-view` visible. | `10-chat-navigate-character.png` |
+| 11 | Edit character personality | Personality panel opens; About Me edited. | field filled; **live-persist**: `PUT /api/character` + reload read-back matches. | `11-character-edit.png` |
+| 12 | Start a new chat | Fresh conversation; composer empty. | new conversation created; composer value empty for the new thread. | `12-new-chat.png` |
+| 13 | Return home from chat | Home/dashboard shows, chat collapsed. | `widget-host-home` / `home-launcher-surface` visible; overlay not `data-open=true`. | `13-home-from-chat.png` |
+| 14 | Restore the conversation | Reopening chat restores the prior thread. | `continuous-chat-overlay` visible; prior `thread-line` restored. | `14-restore-chat.png` |
+| 15 | Copy a message | A message exposes selectable/copyable text. | `data-chat-selectable="true"` (or message text) captured. | `15-copy-message.png` |
+| 16 | Paste large text → attachment | Large paste collapses to a `pasted-text.md` chip. | clipboard paste event dispatched; `pasted-text.md` chip visible; composer value stays short. | `16-paste-large.png` |
+| 17 | Clear the draft | Draft cleared, no pending chip. | composer value empty. | `17-clear-draft.png` |
+| 18 | Collapse chat to the pill | Overlay collapses to rest while composer stays reachable. | overlay no longer `data-open=true` (or composer reachable at rest). | `18-chat-pill.png` |
+| 19 | Re-open chat to full | Overlay expands back to open. | overlay `data-open=true`. | `19-chat-full-again.png` |
+| 20 | Focus the composer | Clicking the composer focuses it. | `document.activeElement` is the composer textarea. | `20-input-focused.png` |
+| 21 | Open the view launcher | Launcher grid shows. | `launcher` visible; ≥1 `launcher-tile-*`. | `21-launcher.png` |
+| 22 | Launch a view | A tile launches a real view. | first tile clicked; URL leaves `/views`. | `22-launch-view.png` |
+| 23 | Open chat over the view | Focusing the composer opens chat over the launched view without remounting it. | composer reachable over the view; `continuous-chat-overlay` present; route still on the view. | `23-chat-over-view.png` |
+| 24 | Edit a setting (persist + read-back) | A settings toggle changes and persists. | Capabilities → `capability-wallet` `aria-checked` flips; **live-persist**: `PUT /api/config` + reload read-back. | `24-settings-edit.png` |
+| 25 | Back to dashboard | App returns home; no diagnostics accumulated. | home surface visible; gate (page/console errors + 5xx) clean over the whole journey. | `25-dashboard-rest.png` |
