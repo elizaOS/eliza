@@ -7,10 +7,10 @@ name: Tests
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [develop]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
-    branches: [main, develop]
+    branches: [develop]
   workflow_dispatch:
   schedule:
     # Nightly live smoke for container-backed remote capability plugins.

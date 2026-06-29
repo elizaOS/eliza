@@ -4,6 +4,25 @@ This changelog tracks meaningful CI policy and workflow-architecture changes.
 It is intentionally scoped to `.github/workflows` so product/package changelogs
 do not have to carry CI-only history.
 
+## 2026-06-29
+
+### Changed
+
+- Split automatic branch ownership between `ci.yaml` and `test.yml`:
+  `ci.yaml` remains the main-branch gate, while `test.yml` now runs
+  automatically on develop plus manual/scheduled invocations.
+
+  Why: both workflows were auto-running overlapping build/test work on `main`.
+  The zero-key PR gate for main remains covered by `scenario-pr.yml`, and
+  develop keeps the broader `Tests` orchestrator.
+
+### Added
+
+- Added `packages/scripts/ci-workflow-dedup-contract.mjs`.
+
+  Why: this locks the branch-trigger split and verifies nightly/release keep the
+  Turbo remote-cache environment required by #10096.
+
 ## 2026-06-14
 
 ### Added
