@@ -6,9 +6,13 @@
 // smoke (tui-smoke-binary) spawns the CLI but `tui-smoke` uses a no-op
 // SmokeTerminal, so it never touches ProcessTerminal either. This test spawns
 // the packaged CLI's interactive `tui` command under a real pseudo-terminal
-// (@lydell/node-pty), asserts the rendered first frame + the boot marker reach
-// the TTY, drives a resize, and confirms a clean exit — the only layer that
-// exercises ProcessTerminal end to end.
+// (@lydell/node-pty) and exercises the layer only a real TTY reaches:
+//   1. the rendered first frame + boot marker reach the TTY,
+//   2. a resize keeps the renderer alive,
+//   3. typed bytes round-trip real stdin -> StdinBuffer -> composer -> render
+//      (raw mode is on, so the echo is the app rendering input, not the TTY), and
+//   4. a Ctrl+C keystroke (not an OS signal) drives a clean exit (code 0) —
+//      the keyboard-driven SIGINT-via-keystroke -> terminal-restore -> exit path.
 //
 // Gated on `RUN_TUI_PTY=1` (set by the CI step) so the broad PR lane stays fast
 // and free of a real-PTY/bun-subprocess dependency: without the flag the suite
@@ -19,7 +23,12 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 // tui-pty.test.ts -> tui-e2e -> test -> agent
-const agentRoot = path.resolve(fileURLToPath(import.meta.url), "..", "..", "..");
+const agentRoot = path.resolve(
+  fileURLToPath(import.meta.url),
+  "..",
+  "..",
+  "..",
+);
 const binEntry = path.join(agentRoot, "src", "bin.ts");
 
 const wantPty = process.env.RUN_TUI_PTY === "1";
@@ -49,7 +58,7 @@ describe.skipIf(!runReal)("agent terminal tui — real PTY", () => {
     child = null;
   });
 
-  it("boots ProcessTerminal under a real PTY, renders a frame, emits the marker, and resizes", async () => {
+  it("boots ProcessTerminal under a real PTY, renders a frame, emits the marker, resizes, echoes typed input, and exits cleanly on Ctrl+C", async () => {
     if (!pty) throw new Error("node-pty unavailable");
     // A deliberately-dead backend: the shell still renders its frame + marker;
     // this exercises the terminal layer, not the API round-trip.
@@ -65,6 +74,9 @@ describe.skipIf(!runReal)("agent terminal tui — real PTY", () => {
     child.onData((data) => {
       output += data;
     });
+    const exited = new Promise<number>((resolve) => {
+      child?.onExit(({ exitCode }) => resolve(exitCode));
+    });
 
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline && !output.includes("elizaos-tui-ready")) {
@@ -79,10 +91,31 @@ describe.skipIf(!runReal)("agent terminal tui — real PTY", () => {
     await delay(500);
     expect(output.length).toBeGreaterThanOrEqual(beforeResize);
 
-    const exited = new Promise<number>((resolve) => {
-      child?.onExit(({ exitCode }) => resolve(exitCode));
-    });
-    child.kill();
-    await Promise.race([exited, delay(3_000)]);
+    // Typed bytes must round-trip through real stdin -> StdinBuffer -> composer
+    // -> render. Raw mode is on, so the TTY does not echo; the probe string only
+    // appears because the app rendered the composer. This is the only end-to-end
+    // exercise of the real-TTY keystroke path.
+    const probe = "echoprobe";
+    const beforeType = output.length;
+    child.write(probe);
+    const typeDeadline = Date.now() + 5_000;
+    while (
+      Date.now() < typeDeadline &&
+      !output.slice(beforeType).includes(probe)
+    ) {
+      await delay(100);
+    }
+    expect(output.slice(beforeType)).toContain(probe);
+
+    // Ctrl+C is delivered as a keystroke (0x03), not an OS signal: the shell
+    // routes it through handleInput regardless of focus, restores the terminal,
+    // and exits 0. Asserting the exit code (not a raced child.kill()) proves the
+    // keyboard-driven clean-exit path actually fires.
+    child.write("\x03");
+    const exitCode = await Promise.race([
+      exited,
+      delay(5_000).then(() => -1 as const),
+    ]);
+    expect(exitCode).toBe(0);
   });
 });
