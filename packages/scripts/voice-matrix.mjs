@@ -65,7 +65,7 @@ const CELLS = [
   {
     id: "web.fake-mic.transcript-roundtrip",
     title:
-      "Web fake-device transcript capture -> record -> player -> chat attachment",
+      "Web fake-device transcript capture -> record -> player -> chat attachment + agent-action parity",
     platform: "web",
     dimensions: {
       transcriptionState: "on",
@@ -74,7 +74,7 @@ const CELLS = [
       noiseRejection: "quiet",
       voices: "owner",
     },
-    class: "transcripts-roundtrip",
+    class: "transcripts-roundtrip-agent-action-parity",
     command: [
       "bun",
       "run",

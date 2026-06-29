@@ -1,7 +1,7 @@
 {
   "schema": "eliza_voice_live_matrix_v1",
   "issue": 9958,
-  "generatedAt": "2026-06-29T20:52:25.406Z",
+  "generatedAt": "2026-06-29T21:45:41.259Z",
   "mode": "probe",
   "dimensions": {
     "platform": [
@@ -89,7 +89,7 @@
     },
     {
       "id": "web.fake-mic.transcript-roundtrip",
-      "title": "Web fake-device transcript capture -> record -> player -> chat attachment",
+      "title": "Web fake-device transcript capture -> record -> player -> chat attachment + agent-action parity",
       "platform": "web",
       "dimensions": {
         "transcriptionState": "on",
@@ -98,7 +98,7 @@
         "noiseRejection": "quiet",
         "voices": "owner"
       },
-      "class": "transcripts-roundtrip",
+      "class": "transcripts-roundtrip-agent-action-parity",
       "command": [
         "bun",
         "run",
