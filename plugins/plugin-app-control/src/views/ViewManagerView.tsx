@@ -18,6 +18,7 @@
  * and externalized from this bundle.
  */
 
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useCallback, useEffect, useState } from "react";
 import {
 	type ViewManagerSnapshot,
@@ -28,6 +29,9 @@ import {
 	requestViewNavigation,
 	type ViewEntry,
 } from "./viewManagerData";
+
+const CONTROL_BTN =
+	"inline-flex items-center justify-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-strong transition-colors hover:bg-bg-hover hover:text-txt disabled:pointer-events-none disabled:opacity-50";
 
 export function ViewManagerView() {
 	const [views, setViews] = useState<ViewEntry[]>([]);
@@ -54,9 +58,38 @@ export function ViewManagerView() {
 		void requestViewNavigation(view);
 	}, []);
 
+	const refreshControl = useAgentElement<HTMLButtonElement>({
+		id: "views-manager-refresh",
+		role: "button",
+		label: "Refresh views",
+		group: "views-manager",
+		description: "Reload the registered views list",
+		status: loading ? "active" : "inactive",
+		onActivate: () => {
+			void fetchViews();
+		},
+	});
+
 	const snapshot: ViewManagerSnapshot = { views, loading, error };
 
-	return <ViewManagerSpatialView snapshot={snapshot} onOpenView={openView} />;
+	return (
+		<div className="flex flex-col gap-2">
+			<div className="flex justify-end">
+				<button
+					type="button"
+					ref={refreshControl.ref}
+					{...refreshControl.agentProps}
+					onClick={() => void fetchViews()}
+					disabled={loading}
+					aria-label="Refresh views"
+					className={CONTROL_BTN}
+				>
+					{loading ? "Refreshing…" : "Refresh"}
+				</button>
+			</div>
+			<ViewManagerSpatialView snapshot={snapshot} onOpenView={openView} />
+		</div>
+	);
 }
 
 export default ViewManagerView;

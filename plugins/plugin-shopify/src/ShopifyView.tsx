@@ -11,13 +11,47 @@
  * `register-terminal-view.tsx`).
  */
 
-import { useCallback, useState } from "react";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { type CSSProperties, useCallback, useState } from "react";
 import {
   type ShopifySnapshot,
   ShopifySpatialView,
   type ShopifyTab,
 } from "./components/ShopifySpatialView.tsx";
 import { useShopifyDashboard } from "./useShopifyDashboard.ts";
+
+const AGENT_TOOLBAR_STYLE: CSSProperties = {
+  display: "flex",
+  gap: "0.5rem",
+  alignItems: "center",
+  flexWrap: "wrap",
+  padding: "0.4rem 0.5rem",
+};
+
+const AGENT_BUTTON_STYLE: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0.4rem 0.85rem",
+  borderRadius: "0.4rem",
+  border: "1px solid var(--primary, #d2691e)",
+  background: "var(--primary, #d2691e)",
+  color: "var(--primary-foreground, #fff)",
+  fontWeight: 600,
+  fontSize: "0.85rem",
+  cursor: "pointer",
+};
+
+const AGENT_INPUT_STYLE: CSSProperties = {
+  flex: "1 1 auto",
+  minWidth: 0,
+  padding: "0.4rem 0.6rem",
+  borderRadius: "0.4rem",
+  border: "1px solid var(--border, rgba(128,128,128,0.35))",
+  background: "transparent",
+  color: "inherit",
+  fontSize: "0.85rem",
+};
 
 export function ShopifyView() {
   const [activeTab, setActiveTab] = useState<ShopifyTab>("overview");
@@ -151,6 +185,34 @@ export function ShopifyView() {
     inventoryError ??
     customersError;
 
+  // The spatial primitives below carry only inert `data-agent-*` markers, so the
+  // GUI/XR wrapper registers the store's primary controls with the live
+  // agent-surface registry here, reusing the same dashboard handlers.
+  const refreshControl = useAgentElement<HTMLButtonElement>({
+    id: "shopify-refresh",
+    role: "button",
+    label: "Refresh Shopify",
+    group: "shopify",
+    description:
+      "Reload the Shopify store status, products, orders, inventory, and customers",
+    status: loading ? "loading" : undefined,
+    onActivate: () => {
+      refresh();
+    },
+  });
+  const productSearchControl = useAgentElement<HTMLInputElement>({
+    id: "shopify-product-search",
+    role: "text-input",
+    label: "Search products",
+    group: "shopify",
+    description: "Filter the Shopify product catalog by title or SKU",
+    getValue: () => productSearch,
+    onFill: (value) => {
+      setProductsPage(1);
+      setProductSearch(value);
+    },
+  });
+
   const snapshot: ShopifySnapshot = {
     status,
     tab: activeTab,
@@ -171,5 +233,42 @@ export function ShopifyView() {
     error,
   };
 
-  return <ShopifySpatialView snapshot={snapshot} onAction={onAction} />;
+  return (
+    <>
+      <div
+        role="toolbar"
+        aria-label="Shopify controls"
+        style={AGENT_TOOLBAR_STYLE}
+      >
+        <button
+          ref={refreshControl.ref}
+          {...refreshControl.agentProps}
+          type="button"
+          onClick={() => refresh()}
+          disabled={loading}
+          style={{
+            ...AGENT_BUTTON_STYLE,
+            opacity: loading ? 0.6 : 1,
+            cursor: loading ? "not-allowed" : "pointer",
+          }}
+        >
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
+        <input
+          ref={productSearchControl.ref}
+          {...productSearchControl.agentProps}
+          type="search"
+          aria-label="Search products"
+          placeholder="Search products"
+          value={productSearch}
+          onChange={(event) => {
+            setProductsPage(1);
+            setProductSearch(event.target.value);
+          }}
+          style={AGENT_INPUT_STYLE}
+        />
+      </div>
+      <ShopifySpatialView snapshot={snapshot} onAction={onAction} />
+    </>
+  );
 }

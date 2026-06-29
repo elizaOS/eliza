@@ -11,6 +11,7 @@
  */
 
 import { client, selectLatestRunForApp, useAppSelector } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -27,6 +28,9 @@ import {
 } from "./ScreenshareSpatialView.tsx";
 
 const APP_NAME = "@elizaos/plugin-screenshare";
+
+const CONTROL_BTN =
+  "inline-flex items-center justify-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-strong transition-colors hover:bg-bg-hover hover:text-txt disabled:pointer-events-none disabled:opacity-50";
 
 /** Short clock time, or null when the underlying timestamp is absent. */
 function formatTime(value: string | null): string | null {
@@ -275,6 +279,28 @@ export function ScreenshareView() {
     ],
   );
 
+  const isActive = hostSession?.status === "active";
+
+  const sessionToggle = useAgentElement<HTMLButtonElement>({
+    id: "screenshare-session-toggle",
+    role: "button",
+    label: isActive ? "Stop host session" : "Start host session",
+    group: "screenshare-operator",
+    description: "Start or stop the local screen-share host session",
+    status: isActive ? "active" : "inactive",
+    onActivate: () => onAction(isActive ? "stop" : "start"),
+  });
+
+  const refreshControl = useAgentElement<HTMLButtonElement>({
+    id: "screenshare-refresh",
+    role: "button",
+    label: "Refresh capabilities",
+    group: "screenshare-operator",
+    description: "Reload the screen-share capability snapshot",
+    status: loading ? "active" : "inactive",
+    onActivate: () => onAction("refresh"),
+  });
+
   const snapshot: ScreenshareSnapshot = {
     platform: capabilities?.platform ?? hostSession?.platform ?? "desktop",
     session: hostSession
@@ -312,5 +338,33 @@ export function ScreenshareView() {
     error,
   };
 
-  return <ScreenshareSpatialView snapshot={snapshot} onAction={onAction} />;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          ref={sessionToggle.ref}
+          {...sessionToggle.agentProps}
+          onClick={() => onAction(isActive ? "stop" : "start")}
+          disabled={busy === "start" || busy === "stop"}
+          aria-pressed={isActive}
+          className={`${CONTROL_BTN}${isActive ? " border-accent/50 text-accent" : ""}`}
+        >
+          {isActive ? "Stop host session" : "Start host session"}
+        </button>
+        <button
+          type="button"
+          ref={refreshControl.ref}
+          {...refreshControl.agentProps}
+          onClick={() => onAction("refresh")}
+          disabled={loading}
+          aria-label="Refresh capabilities"
+          className={CONTROL_BTN}
+        >
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+      <ScreenshareSpatialView snapshot={snapshot} onAction={onAction} />
+    </div>
+  );
 }
