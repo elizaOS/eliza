@@ -49,6 +49,7 @@ import {
   getLatestAppDeployment,
   regenerateAppApiKey,
 } from "../lib/apps";
+import { openExternalUrlOnNative } from "../lib/native-cloud-nav";
 
 interface AppOverviewProps {
   app: App;
@@ -673,6 +674,13 @@ function InfoRow({
           href={href}
           target={href.startsWith("mailto:") ? undefined : "_blank"}
           rel={href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
+          onClick={(e) => {
+            // Native studio: a WebView target="_blank" is dropped/hijacks the
+            // WebView — open external links in the system browser. No-op on web.
+            if (openExternalUrlOnNative(href)) {
+              e.preventDefault();
+            }
+          }}
           className="text-sm text-white hover:opacity-75 transition-opacity flex items-center gap-1 mt-0.5"
         >
           {icon}
