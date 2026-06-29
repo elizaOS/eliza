@@ -182,7 +182,10 @@ function writeRiskFactors(message: Memory, factors: RiskFactors): void {
 			: {};
 	message.content.metadata = {
 		...existing,
-		[METADATA_KEY]: factors as unknown as ContentValue,
+		// `RiskFactors` is a flat JSON object (numbers + a string array), so a
+		// fresh spread is structurally a `{ [key: string]: ContentValue }` member
+		// without any cast.
+		[METADATA_KEY]: { ...factors },
 	} as { [key: string]: ContentValue };
 }
 

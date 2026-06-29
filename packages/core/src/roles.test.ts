@@ -7,6 +7,7 @@ import {
 	matchEntityToConnectorAdminWhitelist,
 	normalizeRole,
 	ROLE_RANK,
+	recordOwnerGrant,
 } from "./roles.ts";
 import {
 	roleRank as gateRoleRank,
@@ -141,5 +142,39 @@ describe("role gate rejects unknown tiers (#9948)", () => {
 			satisfiesRoleGate(["SUPERUSER" as never], { minRole: "GUEST" }),
 		).toBe(false);
 		expect(satisfiesRoleGate(["OWNER"], { minRole: "GUEST" })).toBe(true);
+	});
+});
+
+describe("recordOwnerGrant (#9948 explicit auditable owner grant)", () => {
+	it("records OWNER role AND the 'owner' grant source", () => {
+		const metadata: {
+			roles?: Record<string, string>;
+			roleSources?: Record<string, string>;
+		} = {};
+		const changed = recordOwnerGrant(metadata as never, "owner-1");
+		expect(changed).toBe(true);
+		expect(metadata.roles?.["owner-1"]).toBe("OWNER");
+		// The audit trail — what made this entity OWNER — is now queryable.
+		expect(metadata.roleSources?.["owner-1"]).toBe("owner");
+	});
+
+	it("is idempotent (no change on a second call)", () => {
+		const metadata: {
+			roles?: Record<string, string>;
+			roleSources?: Record<string, string>;
+		} = {};
+		recordOwnerGrant(metadata as never, "owner-1");
+		expect(recordOwnerGrant(metadata as never, "owner-1")).toBe(false);
+	});
+
+	it("upgrades a bare roles entry that lacks a recorded source", () => {
+		// The previous emergent path wrote roles[id]="OWNER" with NO source.
+		const metadata = { roles: { "owner-1": "OWNER" } } as never;
+		expect(recordOwnerGrant(metadata, "owner-1")).toBe(true);
+		expect(
+			(metadata as { roleSources?: Record<string, string> }).roleSources?.[
+				"owner-1"
+			],
+		).toBe("owner");
 	});
 });

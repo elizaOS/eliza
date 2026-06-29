@@ -20,6 +20,7 @@ export * from "./useLinkedSidebarSelection";
 export * from "./useMediaQuery";
 export * from "./useModalState";
 export * from "./useRenderGuard";
+export * from "./useRole.tsx";
 export * from "./useRuntimeMode";
 export * from "./useSignalPairing";
 export * from "./useTimeout";
