@@ -79,6 +79,7 @@ import {
   type RedemptionBalanceResponse,
   type RedemptionQuoteResponse,
   type RedemptionStatusResponse,
+  type RegenerateAppApiKeyResponse,
   type RegisterGatewayRelaySessionResponse,
   type ResponsesCreateRequest,
   type ResponsesCreateResponse,
@@ -795,6 +796,19 @@ export class ElizaCloudClient {
     return this.routes.deleteApiV1AppsById<DeleteAppResponse>({
       pathParams: { id: appId },
     });
+  }
+
+  /**
+   * `POST /api/v1/apps/:id/regenerate-api-key` — rotate the app's API key.
+   *
+   * SECURITY-SENSITIVE: the previous key is invalidated immediately and the new
+   * plaintext key is returned ONCE in the response (`apiKey`). Surface it to the
+   * user a single time and never log or persist it.
+   */
+  regenerateAppApiKey(appId: string): Promise<RegenerateAppApiKeyResponse> {
+    return this.routes.postApiV1AppsByIdRegenerateApiKey<RegenerateAppApiKeyResponse>(
+      { pathParams: { id: appId } },
+    );
   }
 
   /**
