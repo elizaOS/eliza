@@ -30,5 +30,5 @@ The PR #10064 `XRSpatialScene` renders the XR modality with **CSS transforms** �
 ## Remaining to ship desktop-immersive
 
 1. **OpenXR runtime** end-user dependency on Linux/Windows (Monado / SteamVR). Document in the desktop install.
-2. **Electrobun WebKit `permission-request` grant** for `webkit_xr_permission_request` (an upstream Electrobun framework change — `upstreams/electrobun` is not checked out in this tree).
+2. **Electrobun WebKit `permission-request` grant** — ✅ **done in our fork** (`elizaOS/electrobun#1`): the Linux WebView now grants `WEBKIT_IS_XR_PERMISSION_REQUEST` so an immersive session starts (previously it fell through to a generic modal / denial). Lands in this repo via the `upstreams/electrobun` submodule bump once that PR merges.
 3. **DOM→texture panel content** in `enterImmersiveScene` (today: solid tone quads).
