@@ -55,7 +55,7 @@ known to be present; it turns `pending` or `skip` into a failing exit.
 | Cell | Existing runner | Evidence |
 | --- | --- | --- |
 | `web.fake-mic.roundtrip` | `packages/app` Playwright `voice-realaudio.spec.ts` with Chromium fake audio capture | real browser getUserMedia/WAV encode/client ASR post, local-inference Web Audio TTS start, START_TRANSCRIPTION barge-in disconnect, and second real WAV drain |
-| `web.fake-mic.transcript-roundtrip` | `packages/app` Playwright `transcript-realaudio.spec.ts` | capture -> transcript record -> player -> chat attachment, plus voice-control bridge START/STOP parity with the slash/button path |
+| `web.fake-mic.transcript-roundtrip` | `packages/app` Playwright `transcript-realaudio.spec.ts` | capture -> transcript record -> player -> chat attachment, plus agent-action START/STOP parity with the slash/button path |
 | `web.workbench.respond-no-respond` | headful workbench Playwright scenario | chime-in should-respond/should-not-respond UI behavior |
 | `linux.fused-acoustic.workbench-real` | `plugins/plugin-local-inference voice:workbench --real` | fused ASR, diarization, VAD, Kokoro TTS, noisy and multi-speaker workbench report |
 | `linux.fused-acoustic.barge-in` | `plugins/plugin-local-inference voice:bargein-bench` | cancellation/latency harness for barge-in |
