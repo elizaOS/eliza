@@ -90,6 +90,8 @@ import {
   RUNTIME_PROVENANCE_FILENAME,
   stageAndroidAgentRuntime,
 } from "./lib/stage-android-agent.mjs";
+import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
+import { resolveAndroidBuildTarget } from "./mobile/targets/android.mjs";
 
 export {
   androidUsesAppDirFor,
@@ -98,6 +100,10 @@ export {
   mtpForceRebuildRequested,
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
+export {
+  ANDROID_BUILD_TARGETS,
+  resolveAndroidBuildTarget,
+} from "./mobile/targets/android.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -6924,133 +6930,6 @@ function stripAndroidForSmsGateway() {
   );
 }
 
-const ANDROID_AAR_METADATA_TASKS = Object.freeze({
-  debug: ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
-  release: ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",
-});
-
-const ANDROID_CLOUD_GRADLE_FLAGS = Object.freeze([
-  "-PelizaCloudBuild=true",
-  "-PelizaStripAgentAssets=true",
-]);
-const ANDROID_AOSP_GRADLE_FLAG = "-PelizaAospBuild=true";
-
-function freezeAndroidBuildTarget(target) {
-  return Object.freeze({
-    ...target,
-    env: Object.freeze({ ...(target.env ?? {}) }),
-    overlayOptions: target.overlayOptions
-      ? Object.freeze({ ...target.overlayOptions })
-      : undefined,
-    cleartextPolicy: Object.freeze({ ...target.cleartextPolicy }),
-    agentRuntime: target.agentRuntime
-      ? Object.freeze({ ...target.agentRuntime })
-      : undefined,
-    gradle: Object.freeze({
-      ...target.gradle,
-      flags: Object.freeze([...(target.gradle.flags ?? [])]),
-    }),
-  });
-}
-
-export const ANDROID_BUILD_TARGETS = Object.freeze({
-  android: freezeAndroidBuildTarget({
-    target: "android",
-    webTarget: "android",
-    buildMobileAgentBundle: true,
-    preflight: enforceAndroidSideloadBuildPolicy,
-    overlayOptions: { includeAospRoleLaunchers: false },
-    cleartextPolicy: { allowCleartext: true, label: "sideload" },
-    agentRuntime: { bunChannel: "stable" },
-    gradle: {
-      metadataVariant: "debug",
-      finalTask: ":app:assembleDebug",
-      includeWebsiteBlockerUnitTest: true,
-      includeAospFlagFromEnv: true,
-      passFlagsToMetadata: false,
-    },
-    artifactAudit: ({ javaHome }) => auditAndroidSideloadArtifact({ javaHome }),
-  }),
-  "android-cloud": freezeAndroidBuildTarget({
-    target: "android-cloud",
-    webTarget: "android-cloud",
-    env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
-    overlayOptions: { includeAospRoleLaunchers: false },
-    cleartextPolicy: { allowCleartext: false, label: "cloud" },
-    stripSource: stripAndroidForCloud,
-    auditSource: auditAndroidCloudSource,
-    gradle: {
-      flags: ANDROID_CLOUD_GRADLE_FLAGS,
-      metadataVariant: "release",
-      finalTask: ":app:bundleRelease",
-      passFlagsToMetadata: true,
-    },
-    artifactAudit: ({ javaHome }) => auditAndroidCloudArtifact({ javaHome }),
-    postBuild: ({ artifact }) =>
-      console.log(`[mobile-build] android-cloud release AAB: ${artifact}`),
-  }),
-  "android-cloud-debug": freezeAndroidBuildTarget({
-    target: "android-cloud-debug",
-    webTarget: "android-cloud-debug",
-    env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
-    overlayOptions: { includeAospRoleLaunchers: false },
-    cleartextPolicy: { allowCleartext: false, label: "cloud-debug" },
-    stripSource: stripAndroidForCloud,
-    auditSource: auditAndroidCloudSource,
-    gradle: {
-      flags: ANDROID_CLOUD_GRADLE_FLAGS,
-      metadataVariant: "debug",
-      finalTask: ":app:assembleDebug",
-      includeWebsiteBlockerUnitTest: true,
-      passFlagsToMetadata: true,
-    },
-    artifactAudit: ({ javaHome }) =>
-      auditAndroidCloudArtifact({ debug: true, javaHome }),
-  }),
-  "android-sms-gateway": freezeAndroidBuildTarget({
-    target: "android-sms-gateway",
-    webTarget: "android-cloud-debug",
-    env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
-    includeSmsGatewayEnvDefaults: true,
-    afterToolchainResolved: requireAndroidSmsGatewaySecret,
-    cleartextPolicy: { allowCleartext: false, label: "sms-gateway" },
-    stripSource: stripAndroidForSmsGateway,
-    auditSource: auditAndroidSmsGatewaySource,
-    gradle: {
-      flags: ANDROID_CLOUD_GRADLE_FLAGS,
-      metadataVariant: "debug",
-      finalTask: ":app:assembleDebug",
-      passFlagsToMetadata: true,
-    },
-    artifactAudit: ({ androidSdkRoot, javaHome }) =>
-      auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
-    postBuild: ({ artifact }) => {
-      preserveAndroidSmsGatewayArtifact(artifact);
-      console.log(`[mobile-build] android-sms-gateway debug APK: ${artifact}`);
-    },
-  }),
-  "android-system": freezeAndroidBuildTarget({
-    target: "android-system",
-    webTarget: "android-system",
-    buildMobileAgentBundle: true,
-    overlayOptions: { includeAospRoleLaunchers: true },
-    cleartextPolicy: { allowCleartext: true, label: "AOSP" },
-    agentRuntime: {
-      bunChannel: "canary",
-      objective: true,
-    },
-    auditSource: auditAndroidSystemSource,
-    gradle: {
-      flags: [ANDROID_AOSP_GRADLE_FLAG],
-      metadataVariant: "release",
-      finalTask: ":app:assembleRelease",
-      passFlagsToMetadata: false,
-    },
-    artifactAudit: ({ javaHome }) => auditAndroidSystemArtifact({ javaHome }),
-    postBuild: stageAndroidSystemApk,
-  }),
-});
-
 function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
   // Hard refusal: the default `android` target is sideload-only and will be
   // rejected by Play. If CI or a contributor signals Play-Store intent via
@@ -7088,21 +6967,55 @@ function requireAndroidSmsGatewaySecret({ env = process.env } = {}) {
   }
 }
 
-function resolveAndroidBuildTargetKey(targetName, { debug = false } = {}) {
-  return targetName === "android-cloud" && debug
-    ? "android-cloud-debug"
-    : targetName;
-}
+const ANDROID_PREFLIGHTS = Object.freeze({
+  sideload: enforceAndroidSideloadBuildPolicy,
+});
 
-export function resolveAndroidBuildTarget(targetName, options = {}) {
-  const targetKey = resolveAndroidBuildTargetKey(targetName, options);
-  const target = ANDROID_BUILD_TARGETS[targetKey];
-  if (!target) {
+const ANDROID_AFTER_TOOLCHAIN = Object.freeze({
+  smsGatewaySecret: requireAndroidSmsGatewaySecret,
+});
+
+const ANDROID_SOURCE_STRIPS = Object.freeze({
+  cloud: stripAndroidForCloud,
+  smsGateway: stripAndroidForSmsGateway,
+});
+
+const ANDROID_SOURCE_AUDITS = Object.freeze({
+  cloud: auditAndroidCloudSource,
+  smsGateway: auditAndroidSmsGatewaySource,
+  system: auditAndroidSystemSource,
+});
+
+const ANDROID_ARTIFACT_AUDITS = Object.freeze({
+  sideload: ({ javaHome }) => auditAndroidSideloadArtifact({ javaHome }),
+  cloud: ({ javaHome }) => auditAndroidCloudArtifact({ javaHome }),
+  cloudDebug: ({ javaHome }) =>
+    auditAndroidCloudArtifact({ debug: true, javaHome }),
+  smsGateway: ({ androidSdkRoot, javaHome }) =>
+    auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
+  system: ({ javaHome }) => auditAndroidSystemArtifact({ javaHome }),
+});
+
+const ANDROID_POST_BUILDS = Object.freeze({
+  logCloudRelease: ({ artifact }) =>
+    console.log(`[mobile-build] android-cloud release AAB: ${artifact}`),
+  preserveSmsGateway: ({ artifact }) => {
+    preserveAndroidSmsGatewayArtifact(artifact);
+    console.log(`[mobile-build] android-sms-gateway debug APK: ${artifact}`);
+  },
+  stageSystemApk: stageAndroidSystemApk,
+});
+
+function runAndroidTargetPhase(target, registry, keyField, ...args) {
+  const key = target[keyField];
+  if (!key) return undefined;
+  const fn = registry[key];
+  if (!fn) {
     throw new Error(
-      `[mobile-build] Unknown Android build target: ${targetName}`,
+      `[mobile-build] Android target ${target.target} references unknown ${keyField}: ${key}`,
     );
   }
-  return target;
+  return fn(...args);
 }
 
 export function resolveAndroidGradleCommands(
@@ -7110,38 +7023,10 @@ export function resolveAndroidGradleCommands(
   { debug = false, env = process.env, settingsGradle = "" } = {},
 ) {
   const target = resolveAndroidBuildTarget(targetName, { debug });
-  const flags = [...(target.gradle.flags ?? [])];
-  const buildFlags = [...flags];
-  if (
-    target.gradle.includeAospFlagFromEnv &&
-    (env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
-      env.ELIZA_GRADLE_AOSP_BUILD === "1")
-  ) {
-    buildFlags.unshift(ANDROID_AOSP_GRADLE_FLAG);
-  }
-  const buildArgs = [...buildFlags];
-  if (
-    target.gradle.includeWebsiteBlockerUnitTest &&
-    settingsGradle.includes(":elizaos-capacitor-websiteblocker")
-  ) {
-    buildArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
-  }
-  buildArgs.push(target.gradle.finalTask);
-
-  const metadataTask =
-    ANDROID_AAR_METADATA_TASKS[target.gradle.metadataVariant];
-  if (!metadataTask) {
-    throw new Error(
-      `[mobile-build] Unknown Android AAR metadata variant for ${target.target}: ${target.gradle.metadataVariant}`,
-    );
-  }
-  return {
-    buildArgs,
-    metadataArgs: [
-      ...(target.gradle.passFlagsToMetadata ? flags : []),
-      metadataTask,
-    ],
-  };
+  return resolveAndroidGradleCommandsForTarget(target, {
+    env,
+    settingsGradle,
+  });
 }
 
 function resolveAndroidSmsGatewayEnvDefaults(env) {
@@ -7188,7 +7073,7 @@ export async function runAndroidBuild(
   { debug = false, env = process.env } = {},
 ) {
   const target = resolveAndroidBuildTarget(targetName, { debug });
-  target.preflight?.({ env });
+  runAndroidTargetPhase(target, ANDROID_PREFLIGHTS, "preflightKey", { env });
 
   const sdk = resolveAndroidSdkRoot(env);
   const jdk = resolveJavaHome(env);
@@ -7197,7 +7082,12 @@ export async function runAndroidBuild(
       "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
     );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-  target.afterToolchainResolved?.({ env });
+  runAndroidTargetPhase(
+    target,
+    ANDROID_AFTER_TOOLCHAIN,
+    "afterToolchainResolvedKey",
+    { env },
+  );
 
   await buildWeb(target.webTarget);
   if (target.buildMobileAgentBundle) await buildMobileAgentBundle();
@@ -7218,8 +7108,13 @@ export async function runAndroidBuild(
       ...target.agentRuntime,
     });
   }
-  target.stripSource?.();
-  target.auditSource?.("pre-gradle");
+  runAndroidTargetPhase(target, ANDROID_SOURCE_STRIPS, "stripSourceKey");
+  runAndroidTargetPhase(
+    target,
+    ANDROID_SOURCE_AUDITS,
+    "auditSourceKey",
+    "pre-gradle",
+  );
 
   const buildEnv = createAndroidBuildEnv(target, {
     androidSdkRoot: sdk,
@@ -7241,12 +7136,26 @@ export async function runAndroidBuild(
     cwd: androidDir,
     env: buildEnv,
   });
-  target.auditSource?.("post-gradle");
-  const artifact = target.artifactAudit({
+  runAndroidTargetPhase(
+    target,
+    ANDROID_SOURCE_AUDITS,
+    "auditSourceKey",
+    "post-gradle",
+  );
+  const artifact = runAndroidTargetPhase(
+    target,
+    ANDROID_ARTIFACT_AUDITS,
+    "artifactAuditKey",
+    {
+      androidSdkRoot: sdk,
+      javaHome: jdk,
+    },
+  );
+  runAndroidTargetPhase(target, ANDROID_POST_BUILDS, "postBuildKey", {
+    artifact,
     androidSdkRoot: sdk,
     javaHome: jdk,
   });
-  target.postBuild?.({ artifact, androidSdkRoot: sdk, javaHome: jdk });
 }
 
 async function buildAndroid() {
