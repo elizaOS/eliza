@@ -398,7 +398,9 @@ describe("AcpService", () => {
     expect(spawned.agentType).toBe("elizaos");
     expect(spawnMock).not.toHaveBeenCalled();
     expect(nativeClientMock.instances).toHaveLength(1);
-    expect(nativeClientMock.instances[0]?.opts.command).toBe("elizaos");
+    // The "elizaos" agent type resolves to the eliza-code ACP server binary
+    // (the elizaos CLI has no ACP mode); the spawn command is eliza-code-acp.
+    expect(nativeClientMock.instances[0]?.opts.command).toBe("eliza-code-acp");
   });
 
   it("supports pi-agent as a configured native default", async () => {
