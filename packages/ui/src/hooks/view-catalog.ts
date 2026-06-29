@@ -23,6 +23,7 @@ import {
 } from "@elizaos/core";
 import type { RegistryAppInfo } from "../api";
 import { viewIconDataUri } from "../components/views/view-icons.generated";
+import { resolveViewIconId } from "../components/views/view-icon-aliases";
 import type { ViewModality } from "../platform/platform-guards";
 import type { ViewRegistryEntry } from "./useAvailableViews";
 
@@ -99,7 +100,7 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     ? view.heroImageUrl
     : undefined;
   const hasHero = Boolean(view.hasHeroImage && heroUrl);
-  const bundledIcon = viewIconDataUri(view.id);
+  const bundledIcon = viewIconDataUri(resolveViewIconId(view.id));
   const fallbackIcon = viewIconDataUri("default") || bundledIcon;
   return {
     key: `view:${view.id}`,
@@ -134,7 +135,7 @@ function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
     ? app.heroImage
     : undefined;
   const hasHero = Boolean(heroUrl);
-  const bundledIcon = viewIconDataUri(app.name);
+  const bundledIcon = viewIconDataUri(resolveViewIconId(app.name));
   return {
     key: `app:${app.name}`,
     id: app.name,
