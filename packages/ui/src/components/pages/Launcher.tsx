@@ -1,11 +1,11 @@
 /**
- * Springboard — iOS-like app/view launcher.
+ * Launcher — iOS-like app/view launcher.
  *
  * Renders every available view as a names-only icon on swipeable pages plus a
  * pinned favorites dock. Tap launches; long-press enters edit mode where icons
  * can be reordered (drag), favorited into the dock, and — for manageable
  * (dynamic developer) views — edited or deleted. Page order is persisted via
- * the pure `springboard-layout` model. Favorites are
+ * the pure `launcher-layout` model. Favorites are
  * controlled-optional: when `onToggleFavorite` is supplied the dock reflects the
  * caller's `favoriteIds`; otherwise favorites are kept locally. Fully
  * token-themed (light/dark + overrides) and renders no background of its own —
@@ -19,18 +19,18 @@ import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import {
+  LAUNCHER_DOCK_LIMIT,
+  type LauncherLayout,
   moveIcon,
-  readSpringboardLayout,
+  readLauncherLayout,
   reconcileLayout,
-  SPRINGBOARD_DOCK_LIMIT,
-  type SpringboardLayout,
   toggleFavorite,
-  writeSpringboardLayout,
-} from "../../state/springboard-layout";
+  writeLauncherLayout,
+} from "../../state/launcher-layout";
 import { emitViewInteraction } from "../../view-telemetry";
 import { ViewTileImage } from "../views/ViewTileImage";
 
-export interface SpringboardProps {
+export interface LauncherProps {
   entries: ViewEntry[];
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
@@ -44,7 +44,7 @@ export interface SpringboardProps {
   onDeleteView?: (id: string) => void;
   /**
    * Controlled active page index. When provided the page is owned by the caller
-   * (the shell-surface store, via SpringboardSurface); when omitted it is local
+   * (the shell-surface store, via LauncherSurface); when omitted it is local
    * state so the component stays usable standalone (stories / isolated tests).
    */
   page?: number;
@@ -128,7 +128,7 @@ const IconTile = memo(function IconTile({
   return (
     <div
       className="flex flex-col items-center gap-1.5 select-none"
-      data-testid={`springboard-tile-${entry.id}`}
+      data-testid={`launcher-tile-${entry.id}`}
     >
       <div className="relative">
         <button
@@ -172,15 +172,15 @@ const IconTile = memo(function IconTile({
         >
           <ViewTileImage
             entry={entry}
-            source="springboard"
+            source="launcher"
             containerClassName="grid h-full w-full place-items-center"
             glyphClassName="h-7 w-7"
-            imageTestId={`springboard-image-${entry.id}`}
+            imageTestId={`launcher-image-${entry.id}`}
           />
         </button>
         {badge ? (
           <span
-            data-testid={`springboard-kind-${entry.id}`}
+            data-testid={`launcher-kind-${entry.id}`}
             title={badge.title}
             className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full border border-black/20 bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900 shadow-sm"
           >
@@ -193,7 +193,7 @@ const IconTile = memo(function IconTile({
             aria-label={
               favorited ? `Unpin ${entry.label}` : `Pin ${entry.label}`
             }
-            data-testid={`springboard-fav-${entry.id}`}
+            data-testid={`launcher-fav-${entry.id}`}
             onClick={(e) => {
               e.stopPropagation();
               onToggleFavorite(entry.id);
@@ -215,7 +215,7 @@ const IconTile = memo(function IconTile({
               <button
                 type="button"
                 aria-label={`Edit ${entry.label}`}
-                data-testid={`springboard-edit-${entry.id}`}
+                data-testid={`launcher-edit-${entry.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onEdit(entry.id);
@@ -229,7 +229,7 @@ const IconTile = memo(function IconTile({
               <button
                 type="button"
                 aria-label={`Delete ${entry.label}`}
-                data-testid={`springboard-delete-${entry.id}`}
+                data-testid={`launcher-delete-${entry.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(entry.id);
@@ -249,7 +249,7 @@ const IconTile = memo(function IconTile({
   );
 });
 
-export function Springboard({
+export function Launcher({
   entries,
   loading = false,
   onLaunch,
@@ -266,7 +266,7 @@ export function Springboard({
   onEditingChange,
   showPageDots = true,
   className,
-}: SpringboardProps) {
+}: LauncherProps) {
   const availableIds = useMemo(() => entries.map((e) => e.id), [entries]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
 
@@ -276,8 +276,8 @@ export function Springboard({
     [controlled, favoriteIds],
   );
 
-  const [layout, setLayout] = useState<SpringboardLayout>(() => {
-    const stored = readSpringboardLayout();
+  const [layout, setLayout] = useState<LauncherLayout>(() => {
+    const stored = readLauncherLayout();
     return reconcileLayout(
       { favorites: favorites ?? stored.favorites, pages: stored.pages },
       entries.map((e) => e.id),
@@ -285,9 +285,9 @@ export function Springboard({
   });
 
   // Active page index + edit mode are CONTROLLED when the caller (the
-  // shell-surface store, via SpringboardSurface) supplies them, and local
+  // shell-surface store, via LauncherSurface) supplies them, and local
   // otherwise — so the app has one source of truth (the store enforces the
-  // "leaving the springboard clears edit mode + page" invariant) while the
+  // "leaving the launcher clears edit mode + page" invariant) while the
   // component stays usable standalone (stories / isolated tests).
   const pageControlled = pageProp !== undefined;
   const [localPage, setLocalPage] = useState(0);
@@ -330,16 +330,16 @@ export function Springboard({
     setLocalPage((p) => (p > pageCount - 1 ? pageCount - 1 : p));
   }, [layout.pages.length, pageControlled]);
 
-  const commit = useCallback((next: SpringboardLayout) => {
+  const commit = useCallback((next: LauncherLayout) => {
     setLayout(next);
-    writeSpringboardLayout(next);
+    writeLauncherLayout(next);
   }, []);
 
   const toggleFav = useCallback(
     (id: string) => {
       const wasFavorited = (favorites ?? layout.favorites).includes(id);
       emitViewInteraction({
-        source: "springboard",
+        source: "launcher",
         action: wasFavorited ? "unfavorite" : "favorite",
         viewId: id,
       });
@@ -355,7 +355,7 @@ export function Springboard({
   const handleLaunch = useCallback(
     (entry: ViewEntry) => {
       emitViewInteraction({
-        source: "springboard",
+        source: "launcher",
         action: "launch",
         viewId: entry.id,
       });
@@ -366,7 +366,7 @@ export function Springboard({
 
   const toggleEditMode = useCallback(() => {
     emitViewInteraction({
-      source: "springboard",
+      source: "launcher",
       action: editing ? "edit-mode-exit" : "edit-mode-enter",
     });
     setEditingState(!editing);
@@ -383,12 +383,12 @@ export function Springboard({
     onPageCountChange?.(pages.length);
   }, [pages.length, onPageCountChange]);
   const clampedPage = Math.min(activePage, pages.length - 1);
-  // Cap the rendered dock at SPRINGBOARD_DOCK_LIMIT in BOTH modes. The
+  // Cap the rendered dock at LAUNCHER_DOCK_LIMIT in BOTH modes. The
   // uncontrolled path already enforces it via toggleFavorite; controlled
   // (desktop-tab) favorites are capped at the pinning source too, but clamp
   // here as defense so the dock can never overflow regardless of caller.
   const favoriteIdList = useMemo(
-    () => (favorites ?? layout.favorites).slice(0, SPRINGBOARD_DOCK_LIMIT),
+    () => (favorites ?? layout.favorites).slice(0, LAUNCHER_DOCK_LIMIT),
     [favorites, layout.favorites],
   );
   const favoriteEntries = useMemo(
@@ -409,7 +409,7 @@ export function Springboard({
         next = moveIcon(next, id, pageIndex, index);
       });
       emitViewInteraction({
-        source: "springboard",
+        source: "launcher",
         action: "reorder",
         count: pageIndex,
       });
@@ -452,7 +452,7 @@ export function Springboard({
     onPageChange: (nextPage) => {
       setActivePage(nextPage);
       emitViewInteraction({
-        source: "springboard",
+        source: "launcher",
         action: "page-swipe",
         count: nextPage,
       });
@@ -462,14 +462,14 @@ export function Springboard({
   return (
     <div
       className={cn("flex min-h-0 flex-1 flex-col", className)}
-      data-testid="springboard"
+      data-testid="launcher"
     >
-      {/* Favorites bar — pinned to the TOP of the springboard (not an iOS-style
+      {/* Favorites bar — pinned to the TOP of the launcher (not an iOS-style
           bottom dock). There is no Edit button: long-press any icon toggles
           edit mode (reorder / pin / unpin), and a right-flick leaves it. */}
       {favoriteEntries.length > 0 ? (
         <div
-          data-testid="springboard-dock"
+          data-testid="launcher-dock"
           className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
         >
           {favoriteEntries.map((entry) => (
@@ -485,7 +485,7 @@ export function Springboard({
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
           ref={pager.viewportRef}
-          data-testid="springboard-page-window"
+          data-testid="launcher-page-window"
           className="relative flex min-h-0 flex-1 overflow-hidden touch-pan-y"
           onPointerDown={pager.handlers.onPointerDown}
           onPointerMove={pager.handlers.onPointerMove}
@@ -495,7 +495,7 @@ export function Springboard({
         >
           <div
             ref={pager.railRef}
-            data-testid="springboard-page-rail"
+            data-testid="launcher-page-rail"
             className="flex h-full min-h-0 w-full motion-reduce:transition-none"
           >
             {loading && entries.length === 0 ? (
@@ -518,8 +518,8 @@ export function Springboard({
                 return (
                   <div
                     // biome-ignore lint/suspicious/noArrayIndexKey: page index is the persisted page identity.
-                    key={`springboard-page-${pageIndex}`}
-                    data-testid={`springboard-page-${pageIndex}`}
+                    key={`launcher-page-${pageIndex}`}
+                    data-testid={`launcher-page-${pageIndex}`}
                     aria-hidden={!active}
                     inert={!active || undefined}
                     className={cn(
@@ -573,7 +573,7 @@ export function Springboard({
         </div>
 
         {/* Page dots — rendered only for STANDALONE usage. When nested in the
-            home/springboard rail, `showPageDots` is false and the rail owns the
+            home/launcher rail, `showPageDots` is false and the rail owns the
             single unified indicator, so two dot strips never stack (#4). */}
         {showPageDots && pages.length > 1 ? (
           <div className="flex items-center justify-center gap-2 pb-3">

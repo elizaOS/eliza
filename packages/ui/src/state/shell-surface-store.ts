@@ -1,26 +1,26 @@
 import * as React from "react";
 import {
-  HOME_SPRINGBOARD_NAV_EVENT,
-  type HomeSpringboardNavigationDetail,
-  type HomeSpringboardPage,
-} from "../components/shell/home-springboard-events";
+  HOME_LAUNCHER_NAV_EVENT,
+  type HomeLauncherNavigationDetail,
+  type HomeLauncherPage,
+} from "../components/shell/home-launcher-events";
 
 /**
- * Shell-surface store — the SINGLE source of truth for the home/springboard
+ * Shell-surface store — the SINGLE source of truth for the home/launcher
  * launcher's navigation state.
  *
  * Before this store there were four uncoordinated navigation state machines
- * (the route `tab`, HomeSpringboardSurface's local `page`, the Springboard's
+ * (the route `tab`, HomeLauncherSurface's local `page`, the Launcher's
  * local `page` + `editing`, and the chat overlay's `mode`). Because no single
  * thing owned "which launcher screen am I on", a horizontal swipe was claimed by
- * two machines, two page-indicators rendered at once, and the springboard's
+ * two machines, two page-indicators rendered at once, and the launcher's
  * `editing` flag survived navigation — leaving the user stranded in jiggle mode
  * with no way back. This store collapses the launcher's navigation (machines 2
  * and 3) into one model that every surface DERIVES from.
  *
  * The non-negotiable invariant lives here, not in a component: leaving the
- * springboard (page !== "springboard") ALWAYS resets the transient sub-state
- * (`springboardEditing` → false, `springboardPage` → 0). That makes the
+ * launcher (page !== "launcher") ALWAYS resets the transient sub-state
+ * (`launcherEditing` → false, `launcherPage` → 0). That makes the
  * "swipe-back lands in edit mode / re-entering is still jiggling" class of bug
  * structurally impossible regardless of how the user left the surface.
  *
@@ -29,24 +29,24 @@ import {
  * useSyncExternalStore, mirroring `view-chat-binding.ts`.
  */
 
-export type ShellSurfacePage = HomeSpringboardPage;
+export type ShellSurfacePage = HomeLauncherPage;
 
 export interface ShellSurfaceState {
   /** Which half of the launcher rail is showing. */
   readonly page: ShellSurfacePage;
-  /** Active page index within the springboard's icon grid (0-based). */
-  readonly springboardPage: number;
-  /** Total springboard icon-grid pages, reported by the springboard surface. */
-  readonly springboardPageCount: number;
-  /** Whether the springboard is in edit/jiggle mode. */
-  readonly springboardEditing: boolean;
+  /** Active page index within the launcher's icon grid (0-based). */
+  readonly launcherPage: number;
+  /** Total launcher icon-grid pages, reported by the launcher surface. */
+  readonly launcherPageCount: number;
+  /** Whether the launcher is in edit/jiggle mode. */
+  readonly launcherEditing: boolean;
 }
 
 const INITIAL_STATE: ShellSurfaceState = {
   page: "home",
-  springboardPage: 0,
-  springboardPageCount: 1,
-  springboardEditing: false,
+  launcherPage: 0,
+  launcherPageCount: 1,
+  launcherEditing: false,
 };
 
 interface SurfaceStore {
@@ -58,37 +58,37 @@ interface SurfaceStore {
 /**
  * Enforce the cross-field invariants on every transition so no caller can
  * produce an inconsistent surface state:
- *  - off the springboard ⇒ never editing, always page 0;
+ *  - off the launcher ⇒ never editing, always page 0;
  *  - the active page is always clamped into [0, pageCount).
  */
 function normalize(next: ShellSurfaceState): ShellSurfaceState {
-  const pageCount = Math.max(1, Math.floor(next.springboardPageCount));
-  if (next.page !== "springboard") {
+  const pageCount = Math.max(1, Math.floor(next.launcherPageCount));
+  if (next.page !== "launcher") {
     return {
       page: next.page,
-      springboardPage: 0,
-      springboardPageCount: pageCount,
-      springboardEditing: false,
+      launcherPage: 0,
+      launcherPageCount: pageCount,
+      launcherEditing: false,
     };
   }
-  const springboardPage = Math.min(
-    Math.max(0, Math.floor(next.springboardPage)),
+  const launcherPage = Math.min(
+    Math.max(0, Math.floor(next.launcherPage)),
     pageCount - 1,
   );
   return {
-    page: "springboard",
-    springboardPage,
-    springboardPageCount: pageCount,
-    springboardEditing: next.springboardEditing,
+    page: "launcher",
+    launcherPage,
+    launcherPageCount: pageCount,
+    launcherEditing: next.launcherEditing,
   };
 }
 
 function statesEqual(a: ShellSurfaceState, b: ShellSurfaceState): boolean {
   return (
     a.page === b.page &&
-    a.springboardPage === b.springboardPage &&
-    a.springboardPageCount === b.springboardPageCount &&
-    a.springboardEditing === b.springboardEditing
+    a.launcherPage === b.launcherPage &&
+    a.launcherPageCount === b.launcherPageCount &&
+    a.launcherEditing === b.launcherEditing
   );
 }
 
@@ -110,14 +110,14 @@ function store(): SurfaceStore {
 }
 
 function ensureWindowBridge(s: SurfaceStore): void {
-  // Bridge the legacy `eliza:home-springboard:navigate` window event into the
+  // Bridge the legacy `eliza:home-launcher:navigate` window event into the
   // store so existing dispatchers (useShellController.navigateHome /
-  // navigateToSpringboard) keep driving the same single source of truth. The
+  // navigateToLauncher) keep driving the same single source of truth. The
   // store never re-dispatches the event, so there is no feedback loop.
   if (typeof window !== "undefined") {
     if (s.bridgedWindow === window) return;
-    window.addEventListener(HOME_SPRINGBOARD_NAV_EVENT, (event: Event) => {
-      const detail = (event as CustomEvent<HomeSpringboardNavigationDetail>)
+    window.addEventListener(HOME_LAUNCHER_NAV_EVENT, (event: Event) => {
+      const detail = (event as CustomEvent<HomeLauncherNavigationDetail>)
         .detail;
       commit(s, { ...s.state, page: detail?.page ?? "home" });
     });
@@ -143,37 +143,37 @@ export function goHome(): void {
   update({ page: "home" });
 }
 
-export function goSpringboard(): void {
-  update({ page: "springboard" });
+export function goLauncher(): void {
+  update({ page: "launcher" });
 }
 
 export function setShellSurfacePage(page: ShellSurfacePage): void {
   update({ page });
 }
 
-export function setSpringboardPage(index: number): void {
-  update({ springboardPage: index });
+export function setLauncherPage(index: number): void {
+  update({ launcherPage: index });
 }
 
-export function setSpringboardPageCount(count: number): void {
-  update({ springboardPageCount: count });
+export function setLauncherPageCount(count: number): void {
+  update({ launcherPageCount: count });
 }
 
-export function setSpringboardEditing(editing: boolean): void {
-  update({ springboardEditing: editing });
+export function setLauncherEditing(editing: boolean): void {
+  update({ launcherEditing: editing });
 }
 
-export function enterSpringboardEdit(): void {
-  update({ springboardEditing: true });
+export function enterLauncherEdit(): void {
+  update({ launcherEditing: true });
 }
 
-export function exitSpringboardEdit(): void {
-  update({ springboardEditing: false });
+export function exitLauncherEdit(): void {
+  update({ launcherEditing: false });
 }
 
-export function toggleSpringboardEdit(): void {
+export function toggleLauncherEdit(): void {
   const s = store();
-  update({ springboardEditing: !s.state.springboardEditing });
+  update({ launcherEditing: !s.state.launcherEditing });
 }
 
 /** Read the surface state imperatively (tests / non-React callers). */

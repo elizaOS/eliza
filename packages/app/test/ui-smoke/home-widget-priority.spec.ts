@@ -10,10 +10,10 @@ import {
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-// #9143 — the home springboard mounts <WidgetHost slot="home"> and ranks the
+// #9143 — the home launcher mounts <WidgetHost slot="home"> and ranks the
 // per-plugin home widgets by importance: a stable base order plus live
 // activity/notification signals plus each widget's self-published attention.
-// This spec boots the app to the Views springboard with the lifeops/health/
+// This spec boots the app to the Views launcher with the lifeops/health/
 // relationships plugins enabled+active, seeds ATTENTION-worthy data into every
 // widget's data source (overdrawn balance, at-risk goal, imminent calendar
 // event, irregular sleep, a pending relationships merge, an urgent
@@ -27,7 +27,7 @@ const SCREENSHOT_DIR = path.join(
   "home-widget-priority",
 );
 
-// A handful of launcher views so the springboard is non-empty (the home
+// A handful of launcher views so the launcher is non-empty (the home
 // WidgetHost only renders when the catalog has visible views — see
 // ViewCatalog.tsx's `totalVisible === 0` empty-state branch).
 const VIEW_FIXTURES = [
@@ -443,7 +443,7 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
     await fulfillJson(route, { plugins: PLUGIN_SNAPSHOT });
   });
 
-  // Views catalog — populate the springboard so the home WidgetHost mounts.
+  // Views catalog — populate the launcher so the home WidgetHost mounts.
   await page.route("**/api/views**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/views/search") {
@@ -685,7 +685,7 @@ test.describe("home widget priority (#9143)", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("ranks attention-worthy home widgets first on the springboard", async ({
+  test("ranks attention-worthy home widgets first on the launcher", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
@@ -694,7 +694,7 @@ test.describe("home widget priority (#9143)", () => {
     await installHomeWidgetRoutes(page);
 
     // The /chat home (HomeScreen) mounts the unified <WidgetHost slot="home">
-    // (#9143). Views was consolidated into the Springboard, and the home-widget
+    // (#9143). Views was consolidated into the Launcher, and the home-widget
     // surface now lives on the home page behind the floating chat overlay.
     await openAppPath(page, "/chat");
 
@@ -762,35 +762,35 @@ test.describe("home widget priority (#9143)", () => {
     }
     await screenshot(page, "mobile");
 
-    // Springboard capture — the home (widgets) and the springboard (launcher
-    // tiles) are the two pages of HomeSpringboardSurface, sharing one ambient
-    // wallpaper after the Views→Springboard consolidation. Flip to the
-    // springboard page via its navigation event (the same one the in-app edge
+    // Launcher capture — the home (widgets) and the launcher (launcher
+    // tiles) are the two pages of HomeLauncherSurface, sharing one ambient
+    // wallpaper after the Views→Launcher consolidation. Flip to the
+    // launcher page via its navigation event (the same one the in-app edge
     // swipe dispatches) and screenshot the launcher to capture the consolidated
-    // home↔springboard pair on the same surface.
-    const surface = page.getByTestId("home-springboard-surface");
-    const springboardPage = page.getByTestId(
-      "home-springboard-springboard-page",
+    // home↔launcher pair on the same surface.
+    const surface = page.getByTestId("home-launcher-surface");
+    const launcherPage = page.getByTestId(
+      "home-launcher-launcher-page",
     );
     await page.evaluate(() => {
       window.dispatchEvent(
-        new CustomEvent("eliza:home-springboard:navigate", {
-          detail: { page: "springboard" },
+        new CustomEvent("eliza:home-launcher:navigate", {
+          detail: { page: "launcher" },
         }),
       );
     });
-    await expect(surface).toHaveAttribute("data-page", "springboard", {
+    await expect(surface).toHaveAttribute("data-page", "launcher", {
       timeout: 10_000,
     });
-    await expect(springboardPage).toBeVisible();
-    // The rail slides over 300ms (translate3d) and the springboard tiles play
+    await expect(launcherPage).toBeVisible();
+    // The rail slides over 300ms (translate3d) and the launcher tiles play
     // their own entrance; wait until nothing in the rail subtree is still
     // animating so the shot shows the settled launcher rather than a mid-slide
-    // frame straddling home + springboard.
+    // frame straddling home + launcher.
     await page.waitForFunction(
       () => {
         const rail = document.querySelector(
-          '[data-testid="home-springboard-rail"]',
+          '[data-testid="home-launcher-rail"]',
         );
         if (!rail) return false;
         return !(rail as HTMLElement)
@@ -800,6 +800,6 @@ test.describe("home widget priority (#9143)", () => {
       undefined,
       { timeout: 5_000 },
     );
-    await screenshot(page, "springboard");
+    await screenshot(page, "launcher");
   });
 });

@@ -1,5 +1,5 @@
 /**
- * useViewCatalog — data source for the unified Springboard launcher.
+ * useViewCatalog — data source for the unified Launcher.
  *
  * Merges three sources into one {@link ViewEntry} list:
  *  - loaded views (`GET /api/views`, via {@link useAvailableViews}),

@@ -106,7 +106,7 @@ test.describe
 
         await expect(onboarding).toBeHidden({ timeout: 90_000 });
 
-        const surface = page.getByTestId("home-springboard-surface");
+        const surface = page.getByTestId("home-launcher-surface");
         await expect(surface).toBeVisible({ timeout: 60_000 });
         await expect(surface).toHaveAttribute("data-page", "home");
         await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({

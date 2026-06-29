@@ -31,13 +31,13 @@ function builtinView(
     available: true,
     pluginName: "@elizaos/builtin",
     builtin: true,
-    // Non-system views must be manager-visible to appear in the springboard
+    // Non-system views must be manager-visible to appear in the launcher
     // grid (system ids like settings/files/tasks are exempt from that gate).
     visibleInManager,
     viewKind: "release",
     // A real hero image (the agent serves a branded SVG at /api/views/:id/hero
     // on device). Provided as an inline data-URI here so the file:// e2e renders
-    // the actual <img> tile path — proving the springboard shows real image
+    // the actual <img> tile path — proving the launcher shows real image
     // icons, not the glyph fallback.
     ...(heroImageUrl
       ? { hasHeroImage: true, heroImageUrl }
@@ -59,9 +59,9 @@ function heroDataUri(hue: number): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-// A roster big enough to fill TWO springboard pages (page size 20). The four
+// A roster big enough to fill TWO launcher pages (page size 20). The four
 // dock favorites (settings/activity/files/tasks) pin to the dock; the rest pack
-// into the page grid, so the springboard has 2 pages — which is what makes the
+// into the page grid, so the launcher has 2 pages — which is what makes the
 // doubled-dots regression observable (a single page never rendered inner dots),
 // and gives the icon-distinctness check real, varied glyphs to compare.
 const GRID_ICONS = [
@@ -77,12 +77,12 @@ export function useRoutableViews() {
   );
   return {
     views: [
-      // chat/views are filtered out of the springboard (self-links) — kept so
+      // chat/views are filtered out of the launcher (self-links) — kept so
       // the e2e can assert their ABSENCE.
       builtinView("chat", "Chat", "/chat"),
       builtinView("views", "Views", "/views"),
       // Dock favorites — real branded hero IMAGES (the agent serves these on
-      // device); rendered as <img> tiles, proving the springboard shows real
+      // device); rendered as <img> tiles, proving the launcher shows real
       // image icons, not the glyph fallback (task: real image icons).
       builtinView("settings", "Settings", "/settings", "Settings", false, heroDataUri(28)),
       builtinView("activity", "Activity", "/activity", "Activity", true, heroDataUri(150)),

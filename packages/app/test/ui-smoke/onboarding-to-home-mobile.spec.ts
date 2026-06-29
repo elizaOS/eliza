@@ -12,14 +12,14 @@ import {
   installHomeRoutes,
   makeScreenshotter,
   settleHomeEntrance,
-  swipeLeftToSpringboard,
+  swipeLeftToLauncher,
 } from "./onboarding-to-home.shared";
 
 // Mobile-viewport counterpart of onboarding-to-home.spec.ts. Same keyless flow —
 // fresh device → real Local/on-device onboarding → completeFirstRun("chat") →
-// home with seeded widgets → swipe-left → springboard — but driven through a
+// home with seeded widgets → swipe-left → launcher — but driven through a
 // Pixel-class Chromium context with `hasTouch: true, isMobile: true` and a touch
-// viewport, so the onboarding cards are TAPPED and the springboard reveal is a
+// viewport, so the onboarding cards are TAPPED and the launcher reveal is a
 // touch flick at the exact WebView viewport size that ships on Capacitor
 // iOS/Android. This is the desktop-Chromium-with-mobile-emulation lane; the
 // real installed Capacitor WebView lane lives in
@@ -39,7 +39,7 @@ const SCREENSHOT_DIR = path.join(
 );
 const screenshot = makeScreenshotter(SCREENSHOT_DIR);
 
-test.describe("onboarding → home → springboard (mobile viewport)", () => {
+test.describe("onboarding → home → launcher (mobile viewport)", () => {
   test.beforeEach(({ page }) => {
     installPageDiagnosticsGuard(page);
   });
@@ -48,7 +48,7 @@ test.describe("onboarding → home → springboard (mobile viewport)", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("first-run → home → swipe-left → springboard with touch", async ({
+  test("first-run → home → swipe-left → launcher with touch", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
@@ -81,8 +81,8 @@ test.describe("onboarding → home → springboard (mobile viewport)", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "home");
 
-    // A real left-flick over the home page pans the rail to the springboard.
-    await swipeLeftToSpringboard(page, surface);
-    await screenshot(page, "springboard");
+    // A real left-flick over the home page pans the rail to the launcher.
+    await swipeLeftToLauncher(page, surface);
+    await screenshot(page, "launcher");
   });
 });

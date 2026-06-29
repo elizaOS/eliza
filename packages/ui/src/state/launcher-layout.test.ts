@@ -3,19 +3,19 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   defaultLayout,
   emptyLayout,
+  LAUNCHER_DOCK_LIMIT,
+  LAUNCHER_PAGE_SIZE,
+  LAUNCHER_STORAGE_KEY,
+  type LauncherLayout,
   moveIcon,
   placedIds,
-  readSpringboardLayout,
+  readLauncherLayout,
   reconcileLayout,
-  SPRINGBOARD_DOCK_LIMIT,
-  SPRINGBOARD_PAGE_SIZE,
-  SPRINGBOARD_STORAGE_KEY,
-  type SpringboardLayout,
   toggleFavorite,
-  writeSpringboardLayout,
-} from "./springboard-layout.js";
+  writeLauncherLayout,
+} from "./launcher-layout.js";
 
-describe("springboard-layout reconcile", () => {
+describe("launcher-layout reconcile", () => {
   it("packs new available ids into pages of the given size", () => {
     const out = reconcileLayout(emptyLayout(), ["a", "b", "c"], 2);
     expect(out.pages).toEqual([["a", "b"], ["c"]]);
@@ -23,7 +23,7 @@ describe("springboard-layout reconcile", () => {
   });
 
   it("uses a 4×6 = 24-tile default page size", () => {
-    expect(SPRINGBOARD_PAGE_SIZE).toBe(24);
+    expect(LAUNCHER_PAGE_SIZE).toBe(24);
   });
 
   it("splits views into pages of 24 by default (4 columns × 6 rows)", () => {
@@ -82,7 +82,7 @@ describe("springboard-layout reconcile", () => {
   });
 });
 
-describe("springboard-layout favorites", () => {
+describe("launcher-layout favorites", () => {
   it("toggles an id into and out of the dock", () => {
     const added = toggleFavorite(emptyLayout(), "a");
     expect(added.favorites).toEqual(["a"]);
@@ -95,12 +95,12 @@ describe("springboard-layout favorites", () => {
     for (const id of ["a", "b", "c", "d", "e"]) {
       layout = toggleFavorite(layout, id);
     }
-    expect(layout.favorites).toHaveLength(SPRINGBOARD_DOCK_LIMIT);
+    expect(layout.favorites).toHaveLength(LAUNCHER_DOCK_LIMIT);
     expect(layout.favorites).toEqual(["b", "c", "d", "e"]);
   });
 });
 
-describe("springboard-layout moveIcon", () => {
+describe("launcher-layout moveIcon", () => {
   it("moves an icon to a new page/index without duplicating it", () => {
     const layout = { favorites: [], pages: [["a", "b", "c"]] };
     const out = moveIcon(layout, "a", 0, 2, 4);
@@ -116,7 +116,7 @@ describe("springboard-layout moveIcon", () => {
   });
 
   it("marks the layout manual so the drag order is preserved", () => {
-    const layout: SpringboardLayout = {
+    const layout: LauncherLayout = {
       favorites: [],
       pages: [["a", "b", "c"]],
     };
@@ -152,28 +152,48 @@ describe("springboard-layout moveIcon", () => {
   });
 });
 
-describe("springboard-layout persistence", () => {
+describe("launcher-layout persistence", () => {
   beforeEach(() => window.localStorage.clear());
 
   it("round-trips through localStorage", () => {
     const layout = { favorites: ["a"], pages: [["b", "c"]] };
-    writeSpringboardLayout(layout);
-    expect(readSpringboardLayout()).toEqual(layout);
+    writeLauncherLayout(layout);
+    expect(readLauncherLayout()).toEqual(layout);
   });
 
   it("returns an empty layout on malformed storage", () => {
-    window.localStorage.setItem(SPRINGBOARD_STORAGE_KEY, "{not json");
-    expect(readSpringboardLayout()).toEqual(emptyLayout());
+    window.localStorage.setItem(LAUNCHER_STORAGE_KEY, "{not json");
+    expect(readLauncherLayout()).toEqual(emptyLayout());
+  });
+
+  it("migrates a pre-rename 'springboard' layout forward (#9951)", () => {
+    const legacy = {
+      favorites: ["a"],
+      pages: [["b", "c"], ["d"]],
+      manual: true,
+    };
+    window.localStorage.setItem(
+      "elizaos.views.springboard",
+      JSON.stringify(legacy),
+    );
+
+    // First read migrates: the saved page order / favorites / manual flag survive.
+    expect(readLauncherLayout()).toEqual(legacy);
+    // …and the layout is now persisted under the new key, old key cleared.
+    expect(window.localStorage.getItem("elizaos.views.launcher")).toBe(
+      JSON.stringify(legacy),
+    );
+    expect(window.localStorage.getItem("elizaos.views.springboard")).toBeNull();
   });
 });
 
-describe("springboard-layout default dock (#9144)", () => {
+describe("launcher-layout default dock (#9144)", () => {
   beforeEach(() => window.localStorage.clear());
 
   it("seeds an empty layout on first run — the favorites dock was removed", () => {
-    expect(readSpringboardLayout()).toEqual(defaultLayout());
-    expect(readSpringboardLayout().favorites).toEqual([]);
-    expect(readSpringboardLayout().pages).toEqual([]);
+    expect(readLauncherLayout()).toEqual(defaultLayout());
+    expect(readLauncherLayout().favorites).toEqual([]);
+    expect(readLauncherLayout().pages).toEqual([]);
   });
 
   it("first-run default seeds no favorites", () => {

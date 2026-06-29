@@ -1,42 +1,49 @@
 /**
- * Springboard layout — persisted icon arrangement for the iOS-like launcher.
+ * Launcher layout — persisted icon arrangement for the iOS-like launcher.
  *
- * The catalog renders as a paged home-screen ("springboard"): one or more
+ * The catalog renders as a paged home-screen ("launcher"): one or more
  * swipeable pages of uniform view icons. This module owns the pure, persisted
  * layout model (which icon sits on which page, in what order). The
  * rendering/gesture layer consumes these helpers; all reconciliation logic lives
  * here so it is unit testable without a DOM.
  *
  * The `favorites` field and `toggleFavorite`/`moveIcon` favorite-eviction are
- * retained as pure model plumbing (and `SPRINGBOARD_DOCK_LIMIT` is still the
- * desktop-tab pin cap in `useDesktopTabs`), but the Springboard no longer
+ * retained as pure model plumbing (and `LAUNCHER_DOCK_LIMIT` is still the
+ * desktop-tab pin cap in `useDesktopTabs`), but the Launcher no longer
  * renders a favorites dock — every tile is identical, so `defaultLayout` seeds
  * no favorites and all available views flow onto the pages.
  *
  * Mirrors the persistence style of `view-recents.ts`.
  */
 
-export const SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
+export const LAUNCHER_STORAGE_KEY = "elizaos.views.launcher";
 
 /**
- * Icons per springboard page (4 columns × 6 rows, iOS-like). Now that the top
+ * Pre-rename persisted key (#9951, "springboard" → "launcher"). Read once and
+ * migrated forward into {@link LAUNCHER_STORAGE_KEY} so an existing user's saved
+ * page order / favorites / manual flag survive the rename.
+ */
+const LEGACY_LAUNCHER_STORAGE_KEY = "elizaos.views.springboard";
+
+/**
+ * Icons per launcher page (4 columns × 6 rows, iOS-like). Now that the top
  * double safe-area gap is gone and the page indicator clears the chat composer,
  * a full 6-row page fits a normal phone; smaller phones scroll the grid. The
  * grid is `overflow-y-auto`, so overflow scrolls rather than clipping. The
- * Springboard renders a fixed 4-column grid, so this is `4 × 6 = 24`.
+ * Launcher renders a fixed 4-column grid, so this is `4 × 6 = 24`.
  */
-export const SPRINGBOARD_PAGE_SIZE = 24;
+export const LAUNCHER_PAGE_SIZE = 24;
 /**
  * Pin cap reused by the desktop-tab pinning model (`useDesktopTabs`). The
- * mobile Springboard no longer has a favorites dock, but the desktop tab rail
+ * mobile Launcher no longer has a favorites dock, but the desktop tab rail
  * still caps pinned tabs at this iOS-style count.
  */
-export const SPRINGBOARD_DOCK_LIMIT = 4;
+export const LAUNCHER_DOCK_LIMIT = 4;
 
-export interface SpringboardLayout {
+export interface LauncherLayout {
   /**
    * Ordered view ids kept out of the page grid. Retained as model plumbing for
-   * `toggleFavorite`/`moveIcon`; the Springboard seeds this empty (no dock) so
+   * `toggleFavorite`/`moveIcon`; the Launcher seeds this empty (no dock) so
    * every view renders as a uniform page tile.
    */
   favorites: string[];
@@ -44,14 +51,14 @@ export interface SpringboardLayout {
   pages: string[][];
   /**
    * True once the user has manually reordered icons (drag). Until then the
-   * springboard follows the incoming catalog order, so sort-mode changes and
+   * launcher follows the incoming catalog order, so sort-mode changes and
    * newly-installed views reflow naturally; after a manual drag the user's
    * arrangement is preserved.
    */
   manual?: boolean;
 }
 
-export function emptyLayout(): SpringboardLayout {
+export function emptyLayout(): LauncherLayout {
   return { favorites: [], pages: [] };
 }
 
@@ -59,7 +66,7 @@ export function emptyLayout(): SpringboardLayout {
  * First-run layout. The favorites dock was removed, so a fresh install seeds no
  * favorites — every available view flows onto the pages as a uniform tile.
  */
-export function defaultLayout(): SpringboardLayout {
+export function defaultLayout(): LauncherLayout {
   return emptyLayout();
 }
 
@@ -69,40 +76,49 @@ function isStringArray(value: unknown): value is string[] {
   );
 }
 
-export function readSpringboardLayout(): SpringboardLayout {
+function parseLayout(raw: string): LauncherLayout {
+  const parsed = JSON.parse(raw) as unknown;
+  if (!parsed || typeof parsed !== "object") return emptyLayout();
+  const record = parsed as Record<string, unknown>;
+  const favorites = isStringArray(record.favorites) ? record.favorites : [];
+  const pages =
+    Array.isArray(record.pages) && record.pages.every(isStringArray)
+      ? (record.pages as string[][])
+      : [];
+  const manual = record.manual === true ? true : undefined;
+  return { favorites, pages, manual };
+}
+
+export function readLauncherLayout(): LauncherLayout {
   if (typeof window === "undefined") return emptyLayout();
   try {
-    const raw = window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY);
-    if (!raw) return defaultLayout();
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return emptyLayout();
-    const record = parsed as Record<string, unknown>;
-    const favorites = isStringArray(record.favorites) ? record.favorites : [];
-    const pages =
-      Array.isArray(record.pages) && record.pages.every(isStringArray)
-        ? (record.pages as string[][])
-        : [];
-    const manual = record.manual === true ? true : undefined;
-    return { favorites, pages, manual };
+    const raw = window.localStorage.getItem(LAUNCHER_STORAGE_KEY);
+    if (raw) return parseLayout(raw);
+    // One-time migration from the pre-rename "springboard" key (#9951): read the
+    // legacy layout, persist it under the new key, and drop the old entry so the
+    // user keeps their page order / favorites / manual flag across the rename.
+    const legacyRaw = window.localStorage.getItem(LEGACY_LAUNCHER_STORAGE_KEY);
+    if (!legacyRaw) return defaultLayout();
+    const migrated = parseLayout(legacyRaw);
+    writeLauncherLayout(migrated);
+    window.localStorage.removeItem(LEGACY_LAUNCHER_STORAGE_KEY);
+    return migrated;
   } catch {
     return emptyLayout();
   }
 }
 
-export function writeSpringboardLayout(layout: SpringboardLayout): void {
+export function writeLauncherLayout(layout: LauncherLayout): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
-      SPRINGBOARD_STORAGE_KEY,
-      JSON.stringify(layout),
-    );
+    window.localStorage.setItem(LAUNCHER_STORAGE_KEY, JSON.stringify(layout));
   } catch {
     /* localStorage unavailable */
   }
 }
 
 /** All view ids currently placed somewhere in the layout (dock + pages). */
-export function placedIds(layout: SpringboardLayout): Set<string> {
+export function placedIds(layout: LauncherLayout): Set<string> {
   const ids = new Set<string>(layout.favorites);
   for (const page of layout.pages) {
     for (const id of page) ids.add(id);
@@ -124,15 +140,15 @@ function chunk(ids: string[], size: number): string[][] {
  * - drop ids that no longer exist (uninstalled / hidden views),
  * - append newly-available ids (preserving their catalog order) to the end,
  * - keep dock favorites out of the page grid (the dock is a separate surface),
- * - repack pages to SPRINGBOARD_PAGE_SIZE so removals never leave holes.
+ * - repack pages to LAUNCHER_PAGE_SIZE so removals never leave holes.
  *
  * Deterministic and pure — safe to run on every render.
  */
 export function reconcileLayout(
-  layout: SpringboardLayout,
+  layout: LauncherLayout,
   availableIds: string[],
-  pageSize: number = SPRINGBOARD_PAGE_SIZE,
-): SpringboardLayout {
+  pageSize: number = LAUNCHER_PAGE_SIZE,
+): LauncherLayout {
   const available = new Set(availableIds);
 
   // Dedupe defensively: toggleFavorite never adds a duplicate, but a corrupted
@@ -140,7 +156,7 @@ export function reconcileLayout(
   // otherwise render twice in the dock.
   const favorites = [...new Set(layout.favorites)]
     .filter((id) => available.has(id))
-    .slice(0, SPRINGBOARD_DOCK_LIMIT);
+    .slice(0, LAUNCHER_DOCK_LIMIT);
   const favoriteSet = new Set(favorites);
 
   const seen = new Set<string>(favorites);
@@ -170,13 +186,13 @@ export function reconcileLayout(
 
 /** Toggle an id in/out of the dock. Adding evicts the oldest when full. */
 export function toggleFavorite(
-  layout: SpringboardLayout,
+  layout: LauncherLayout,
   id: string,
-): SpringboardLayout {
+): LauncherLayout {
   if (layout.favorites.includes(id)) {
     return { ...layout, favorites: layout.favorites.filter((f) => f !== id) };
   }
-  const favorites = [...layout.favorites, id].slice(-SPRINGBOARD_DOCK_LIMIT);
+  const favorites = [...layout.favorites, id].slice(-LAUNCHER_DOCK_LIMIT);
   return { ...layout, favorites };
 }
 
@@ -186,18 +202,18 @@ export function toggleFavorite(
  * from the dock if it was a favorite (an icon lives in exactly one surface).
  *
  * NOTE: cross-page moves (`targetPage > 0`) are fully supported by this model,
- * but the Springboard's current drag gesture is `axis="y"` within the active
+ * but the Launcher's current drag gesture is `axis="y"` within the active
  * page only — so cross-page reorder is exercised by tests and available to
  * callers, not by a user gesture today. Do not build cross-page drag UI unless
  * product asks; this capability exists so paging stays correct under repack.
  */
 export function moveIcon(
-  layout: SpringboardLayout,
+  layout: LauncherLayout,
   id: string,
   targetPage: number,
   targetIndex: number,
-  pageSize: number = SPRINGBOARD_PAGE_SIZE,
-): SpringboardLayout {
+  pageSize: number = LAUNCHER_PAGE_SIZE,
+): LauncherLayout {
   const favorites = layout.favorites.filter((f) => f !== id);
   const pages = layout.pages.map((page) => page.filter((p) => p !== id));
   while (pages.length <= targetPage) pages.push([]);

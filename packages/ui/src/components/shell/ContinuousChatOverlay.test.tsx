@@ -387,7 +387,7 @@ describe("ContinuousChatOverlay", () => {
       pointerId: 1,
     });
 
-    expect(getShellSurface().page).toBe("springboard");
+    expect(getShellSurface().page).toBe("launcher");
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
@@ -465,8 +465,8 @@ describe("ContinuousChatOverlay", () => {
         fireEvent.pointerUp(grabber, { clientY: toY, pointerId: 1 });
       };
       pull(420, 280); // collapsed → half
-      expect(screen.getByTestId("chat-full-springboard")).toBeTruthy();
-      fireEvent.click(screen.getByTestId("chat-full-springboard"));
+      expect(screen.getByTestId("chat-full-launcher")).toBeTruthy();
+      fireEvent.click(screen.getByTestId("chat-full-launcher"));
       unmount();
 
       act(() => {
@@ -691,7 +691,7 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-header-shown")).toBe("false");
     expect(document.getElementById("continuous-thread")).toBeNull();
     expect(screen.queryByTestId("chat-thread")).toBeNull();
-    expect(screen.queryByTestId("chat-full-springboard")).toBeNull();
+    expect(screen.queryByTestId("chat-full-launcher")).toBeNull();
 
     const grabber = screen.getByTestId("chat-sheet-grabber");
     expect(grabber.className).toContain("before:-top-4");
@@ -1398,11 +1398,11 @@ describe("ContinuousChatOverlay", () => {
     expect(grabber.getAttribute("aria-hidden")).toBe("true");
   });
 
-  // ── chat-full Springboard launcher. The header row no longer exposes Home /
-  // Views / Settings as a mini app nav. It keeps one Springboard icon that
-  // returns to the combined Home/Springboard surface; Settings lives in the
-  // Springboard favorites dock.
-  it("renders only the Springboard launcher in the chat-full header", () => {
+  // ── chat-full Launcher. The header row no longer exposes Home /
+  // Views / Settings as a mini app nav. It keeps one Launcher icon that
+  // returns to the combined Home/Launcher surface; Settings lives in the
+  // Launcher favorites dock.
+  it("renders only the Launcher in the chat-full header", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -1412,8 +1412,8 @@ describe("ContinuousChatOverlay", () => {
     );
     openSheetToHalf();
 
-    const springboard = screen.getByTestId("chat-full-springboard");
-    expect((springboard as HTMLButtonElement).disabled).toBe(false);
+    const launcher = screen.getByTestId("chat-full-launcher");
+    expect((launcher as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByTestId("chat-full-home")).toBeNull();
     expect(screen.queryByTestId("chat-full-views")).toBeNull();
     expect(screen.queryByTestId("chat-full-settings")).toBeNull();
@@ -1432,7 +1432,7 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
   }
 
-  it("routes the chat-full Springboard button to the home callback", async () => {
+  it("routes the chat-full Launcher button to the home callback", async () => {
     const navigateHome = vi.fn();
     render(
       <ContinuousChatOverlay
@@ -1446,7 +1446,7 @@ describe("ContinuousChatOverlay", () => {
 
     // navigateAndClose collapses the sheet then defers the navigation a frame
     // (so the close animates first), so the callback fires on a short timer.
-    fireEvent.click(screen.getByTestId("chat-full-springboard"));
+    fireEvent.click(screen.getByTestId("chat-full-launcher"));
     await vi.waitFor(() => expect(navigateHome).toHaveBeenCalledTimes(1));
   });
 

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { assert, waitForTestId } from "../../storybook/home-widget-decorator";
-import { Springboard } from "./Springboard";
+import { Launcher } from "./Launcher";
 
 /**
  * Drive a real long-press on a tile — the only way into edit mode now that the
@@ -77,9 +77,9 @@ const VIEWS: ViewEntry[] = [
 // Module-scoped capture for the launch play (no @storybook/test in repo).
 let launchedId: string | null = null;
 
-const meta: Meta<typeof Springboard> = {
-  title: "Pages/Springboard",
-  component: Springboard,
+const meta: Meta<typeof Launcher> = {
+  title: "Pages/Launcher",
+  component: Launcher,
   parameters: { layout: "fullscreen" },
   args: { onLaunch: () => {} },
   decorators: [
@@ -92,7 +92,7 @@ const meta: Meta<typeof Springboard> = {
 };
 export default meta;
 
-type Story = StoryObj<typeof Springboard>;
+type Story = StoryObj<typeof Launcher>;
 
 export const Default: Story = {
   args: { entries: VIEWS },
@@ -125,7 +125,7 @@ export const TileLaunch: Story = {
   play: async ({ canvasElement }) => {
     launchedId = null;
     const tile = canvasElement.querySelector(
-      '[data-testid="springboard-tile-wallet"] button',
+      '[data-testid="launcher-tile-wallet"] button',
     );
     assert(tile instanceof HTMLButtonElement, "wallet tile button exists");
     tile.click();
@@ -163,16 +163,16 @@ async function waitForMissingTestId(
 export const EditModeToggle: Story = {
   args: { entries: VIEWS },
   play: async ({ canvasElement }) => {
-    await longPressTile(canvasElement, "springboard-tile-wallet");
-    await waitForTestId(canvasElement, "springboard-fav-wallet");
+    await longPressTile(canvasElement, "launcher-tile-wallet");
+    await waitForTestId(canvasElement, "launcher-fav-wallet");
     assert(
-      tilePulsing(canvasElement, "springboard-tile-wallet"),
+      tilePulsing(canvasElement, "launcher-tile-wallet"),
       "first long-press enters edit mode (tile pulses)",
     );
-    await longPressTile(canvasElement, "springboard-tile-wallet");
-    await waitForMissingTestId(canvasElement, "springboard-fav-wallet");
+    await longPressTile(canvasElement, "launcher-tile-wallet");
+    await waitForMissingTestId(canvasElement, "launcher-fav-wallet");
     assert(
-      !tilePulsing(canvasElement, "springboard-tile-wallet"),
+      !tilePulsing(canvasElement, "launcher-tile-wallet"),
       "a second long-press exits edit mode (pulse gone)",
     );
   },
@@ -183,15 +183,15 @@ export const EditModeToggle: Story = {
  * gesture and the sole entry point now that the Edit button is gone. The
  * story-gate keeps real timers, so the press is driven for real (pointerdown →
  * 520ms → pointerup) rather than faked. (The full pointer/touch gesture incl.
- * swipe-paging is covered end-to-end by `test:springboard-e2e`.)
+ * swipe-paging is covered end-to-end by `test:launcher-e2e`.)
  */
 export const LongPressToEdit: Story = {
   args: { entries: VIEWS },
   play: async ({ canvasElement }) => {
-    await longPressTile(canvasElement, "springboard-tile-wallet");
-    await waitForTestId(canvasElement, "springboard-fav-wallet");
+    await longPressTile(canvasElement, "launcher-tile-wallet");
+    await waitForTestId(canvasElement, "launcher-fav-wallet");
     assert(
-      tilePulsing(canvasElement, "springboard-tile-wallet"),
+      tilePulsing(canvasElement, "launcher-tile-wallet"),
       "a 520ms long-press entered edit mode (tile pulses)",
     );
   },

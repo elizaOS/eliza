@@ -15,17 +15,17 @@ import {
   type ViewModality,
 } from "../../platform/platform-guards";
 import {
-  setSpringboardEditing,
-  setSpringboardPage,
-  setSpringboardPageCount,
+  setLauncherEditing,
+  setLauncherPage,
+  setLauncherPageCount,
   useShellSurface,
 } from "../../state/shell-surface-store";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { recordRecentViewId } from "../../view-recents";
-import { Springboard } from "./Springboard";
+import { Launcher } from "./Launcher";
 
-const HIDDEN_SPRINGBOARD_VIEW_IDS = new Set([
+const HIDDEN_LAUNCHER_VIEW_IDS = new Set([
   "chat",
   "views",
   "apps",
@@ -36,14 +36,14 @@ const HIDDEN_SPRINGBOARD_VIEW_IDS = new Set([
   "background",
 ]);
 
-const HIDDEN_SPRINGBOARD_PATHS = new Set([
+const HIDDEN_LAUNCHER_PATHS = new Set([
   "/chat",
   "/views",
   "/apps",
   "/background",
 ]);
 
-const SPRINGBOARD_SYSTEM_ENTRY_IDS = new Set([
+const LAUNCHER_SYSTEM_ENTRY_IDS = new Set([
   "phone",
   "messages",
   "contacts",
@@ -68,18 +68,18 @@ const SPRINGBOARD_SYSTEM_ENTRY_IDS = new Set([
   "desktop",
 ]);
 
-function isVisibleSpringboardView(
+function isVisibleLauncherView(
   view: ViewRegistryEntry,
   enabledKinds: EnabledViewKinds,
   activeModality: ViewModality,
 ): boolean {
-  if (HIDDEN_SPRINGBOARD_VIEW_IDS.has(view.id)) return false;
-  if (view.path && HIDDEN_SPRINGBOARD_PATHS.has(view.path)) return false;
+  if (HIDDEN_LAUNCHER_VIEW_IDS.has(view.id)) return false;
+  if (view.path && HIDDEN_LAUNCHER_PATHS.has(view.path)) return false;
   if ((view.viewType ?? "gui") !== activeModality) return false;
   if (!isViewVisible(view, enabledKinds)) return false;
   if (
     view.visibleInManager === false &&
-    !SPRINGBOARD_SYSTEM_ENTRY_IDS.has(view.id)
+    !LAUNCHER_SYSTEM_ENTRY_IDS.has(view.id)
   ) {
     return false;
   }
@@ -93,7 +93,7 @@ function compareEntryLabels(left: { label: string }, right: { label: string }) {
   });
 }
 
-function compareSpringboardEntries(left: ViewEntry, right: ViewEntry): number {
+function compareLauncherEntries(left: ViewEntry, right: ViewEntry): number {
   const leftOrder = left.order ?? (left.kind === "view" ? 500 : 1000);
   const rightOrder = right.order ?? (right.kind === "view" ? 500 : 1000);
   if (leftOrder !== rightOrder) return leftOrder - rightOrder;
@@ -143,13 +143,13 @@ function editableEntrypointFor(entry: ViewEntry): string {
   );
 }
 
-export interface SpringboardSurfaceProps {
+export interface LauncherSurfaceProps {
   onNavigateHomeFromEdge?: () => void;
 }
 
-export const SpringboardSurface = React.memo(function SpringboardSurface({
+export const LauncherSurface = React.memo(function LauncherSurface({
   onNavigateHomeFromEdge,
-}: SpringboardSurfaceProps): React.JSX.Element {
+}: LauncherSurfaceProps): React.JSX.Element {
   const { views, loading, refresh: refreshViews } = useRoutableViews();
   const {
     entries: catalogEntries,
@@ -165,19 +165,19 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
     string | null
   >(null);
   // Page index + edit mode come from the single shell-surface store, so the
-  // springboard, the rail, and its one indicator can never disagree (and edit
-  // mode is auto-reset by the store when the user leaves the springboard).
-  const { springboardPage, springboardEditing } = useShellSurface();
+  // launcher, the rail, and its one indicator can never disagree (and edit
+  // mode is auto-reset by the store when the user leaves the launcher).
+  const { launcherPage, launcherEditing } = useShellSurface();
   const showDynamicViewControls = developerMode && dynamicViewBridgeAvailable();
 
   const loadedEntries = React.useMemo(
     () =>
       views
         .filter((view) =>
-          isVisibleSpringboardView(view, enabledKinds, activeModality),
+          isVisibleLauncherView(view, enabledKinds, activeModality),
         )
         .map(viewToEntry)
-        .sort(compareSpringboardEntries),
+        .sort(compareLauncherEntries),
     [activeModality, enabledKinds, views],
   );
 
@@ -186,14 +186,14 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
       catalogEntries
         .filter((entry) => entry.state !== "loaded")
         .filter((entry) => entry.modality === activeModality)
-        .sort(compareSpringboardEntries),
+        .sort(compareLauncherEntries),
     [activeModality, catalogEntries],
   );
 
   const entries = React.useMemo(
     () =>
       dedupeEntries([...loadedEntries, ...availableEntries]).sort(
-        compareSpringboardEntries,
+        compareLauncherEntries,
       ),
     [availableEntries, loadedEntries],
   );
@@ -409,7 +409,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
           </div>
         </form>
       ) : null}
-      <Springboard
+      <Launcher
         entries={entries}
         loading={loading}
         onLaunch={(entry) => handleLaunch(entryById.get(entry.id) ?? entry)}
@@ -419,11 +419,11 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
         onDeleteView={
           showDynamicViewControls ? handleDeleteDynamicView : undefined
         }
-        page={springboardPage}
-        onPageChange={setSpringboardPage}
-        onPageCountChange={setSpringboardPageCount}
-        editing={springboardEditing}
-        onEditingChange={setSpringboardEditing}
+        page={launcherPage}
+        onPageChange={setLauncherPage}
+        onPageCountChange={setLauncherPageCount}
+        editing={launcherEditing}
+        onEditingChange={setLauncherEditing}
         showPageDots={false}
       />
     </div>

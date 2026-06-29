@@ -6,7 +6,7 @@
  * and mobile.
  *
  * Each tab can be closed (unpinned ephemeral) or pinned (persisted across
- * restarts). A "+" button opens Springboard so users can launch more views.
+ * restarts). A "+" button opens Launcher so users can launch more views.
  */
 
 import { Plus, X } from "lucide-react";
@@ -102,10 +102,10 @@ export function DesktopTabBar({
       ))}
       <button
         type="button"
-        title="Open Springboard"
+        title="Open Launcher"
         onClick={onOpenViewManager}
         className="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-card/40 text-muted transition-colors hover:border-border hover:text-txt"
-        aria-label="Open Springboard"
+        aria-label="Open Launcher"
       >
         <Plus className="h-3 w-3" />
       </button>

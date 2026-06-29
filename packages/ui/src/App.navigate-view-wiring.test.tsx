@@ -325,8 +325,8 @@ vi.mock("./components/character/CharacterEditor", () => ({
   ),
 }));
 
-vi.mock("./components/pages/SpringboardSurface", () => ({
-  SpringboardSurface: () => <div data-testid="springboard-surface" />,
+vi.mock("./components/pages/LauncherSurface", () => ({
+  LauncherSurface: () => <div data-testid="launcher-surface" />,
 }));
 
 vi.mock("./components/settings/SecretsManagerSection", () => ({
@@ -472,7 +472,7 @@ describe("App navigate-view event wiring", () => {
     expect(appState.setTab).not.toHaveBeenCalledWith("chat");
   });
 
-  it("lets a view explicitly share the Home/Springboard background", async () => {
+  it("lets a view explicitly share the Home/Launcher background", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/shared-canvas");
 
@@ -609,14 +609,14 @@ describe("App navigate-view event wiring", () => {
     });
   });
 
-  it("keeps /views on the built-in Springboard instead of the remote manager bundle", async () => {
+  it("keeps /views on the built-in Launcher instead of the remote manager bundle", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/views");
 
     const { getByTestId, queryByTestId } = render(<App />);
 
     await waitFor(() => {
-      expect(getByTestId("springboard-surface")).toBeTruthy();
+      expect(getByTestId("launcher-surface")).toBeTruthy();
     });
     expect(queryByTestId("dynamic-view-loader")).toBeNull();
     expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();

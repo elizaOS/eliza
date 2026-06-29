@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 //
 // COMPOSED screen-state test — the gap the audit flagged. Every prior test
-// rendered HomeSpringboardSurface against a one-button stub and the Springboard
+// rendered HomeLauncherSurface against a one-button stub and the Launcher
 // in isolation, so the bugs that live in the COMPOSITION (two stacked dot
 // strips, swipe-back landing in jiggle mode) were structurally unreachable.
-// This renders the REAL HomeSpringboardSurface wrapping the REAL
-// SpringboardSurface, driven by the single shell-surface store, and asserts the
+// This renders the REAL HomeLauncherSurface wrapping the REAL
+// LauncherSurface, driven by the single shell-surface store, and asserts the
 // real transitions across the seam.
 import {
   act,
@@ -21,8 +21,8 @@ import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
-import { SpringboardSurface } from "../pages/SpringboardSurface";
-import { HomeSpringboardSurface } from "./HomeSpringboardSurface";
+import { LauncherSurface } from "../pages/LauncherSurface";
+import { HomeLauncherSurface } from "./HomeLauncherSurface";
 
 vi.mock("../../hooks/useAvailableViews", () => ({
   useRoutableViews: vi.fn(),
@@ -62,9 +62,9 @@ function view(
 }
 
 // Four formerly dock-favorite views + 24 page views, which pack beyond one
-// springboard page. The composed surface deliberately renders no page-indicator
-// strip: home/springboard navigation is gesture-only, and the inner
-// Springboard dots stay suppressed.
+// launcher page. The composed surface deliberately renders no page-indicator
+// strip: home/launcher navigation is gesture-only, and the inner
+// Launcher dots stay suppressed.
 const DOCK_VIEWS = [
   view("settings", "Settings", "/settings", { icon: "Settings" }),
   view("files", "Files", "/apps/files", { icon: "FolderClosed" }),
@@ -112,12 +112,12 @@ afterEach(() => {
 
 function renderComposed() {
   render(
-    <HomeSpringboardSurface
+    <HomeLauncherSurface
       home={<div data-testid="home-content">home</div>}
-      springboard={<SpringboardSurface />}
+      launcher={<LauncherSurface />}
     />,
   );
-  return screen.getByTestId("home-springboard-surface");
+  return screen.getByTestId("home-launcher-surface");
 }
 
 function flick(testid: string, dx: number, dy = 4): void {
@@ -142,19 +142,19 @@ function flick(testid: string, dx: number, dy = 4): void {
   });
 }
 
-const openSpringboard = () => flick("home-springboard-home-page", -140);
-const swipeBackHome = () => flick("home-springboard-springboard-page", 140);
+const openLauncher = () => flick("home-launcher-home-page", -140);
+const swipeBackHome = () => flick("home-launcher-launcher-page", 140);
 
-describe("Home ↔ Springboard composed surface", () => {
-  it("tracks the rail with the finger before committing a home ↔ springboard swipe", () => {
+describe("Home ↔ Launcher composed surface", () => {
+  it("tracks the rail with the finger before committing a home ↔ launcher swipe", () => {
     runAnimationFramesImmediately();
     const surface = renderComposed();
     Object.defineProperty(surface, "clientWidth", {
       configurable: true,
       value: 390,
     });
-    const homePage = screen.getByTestId("home-springboard-home-page");
-    const rail = screen.getByTestId("home-springboard-rail");
+    const homePage = screen.getByTestId("home-launcher-home-page");
+    const rail = screen.getByTestId("home-launcher-rail");
 
     fireEvent.pointerDown(homePage, {
       isPrimary: true,
@@ -179,30 +179,30 @@ describe("Home ↔ Springboard composed surface", () => {
       clientY: 304,
     });
 
-    expect(surface.getAttribute("data-page")).toBe("springboard");
+    expect(surface.getAttribute("data-page")).toBe("launcher");
     expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
   });
 
   it("renders no page-indicator strips — no dots competing with the composer (#4)", () => {
     const surface = renderComposed();
-    openSpringboard();
-    expect(surface.getAttribute("data-page")).toBe("springboard");
+    openLauncher();
+    expect(surface.getAttribute("data-page")).toBe("launcher");
 
-    expect(screen.queryByTestId("home-springboard-indicator")).toBeNull();
+    expect(screen.queryByTestId("home-launcher-indicator")).toBeNull();
     expect(screen.queryByLabelText("Home")).toBeNull();
     expect(screen.queryByLabelText("Apps page 1")).toBeNull();
     expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
   });
 
-  it("swiping back from the springboard returns HOME and is NOT in edit mode (#3)", () => {
+  it("swiping back from the launcher returns HOME and is NOT in edit mode (#3)", () => {
     const surface = renderComposed();
-    openSpringboard();
-    expect(surface.getAttribute("data-page")).toBe("springboard");
+    openLauncher();
+    expect(surface.getAttribute("data-page")).toBe("launcher");
 
     // Enter edit mode via a long-press on a tile (the Edit button was removed).
     vi.useFakeTimers();
     const settingsTile = screen
-      .getByTestId("springboard-tile-settings")
+      .getByTestId("launcher-tile-settings")
       .querySelector("button");
     if (!settingsTile) throw new Error("settings tile button missing");
     fireEvent.pointerDown(settingsTile, { clientX: 50, clientY: 50 });
@@ -210,67 +210,67 @@ describe("Home ↔ Springboard composed surface", () => {
     fireEvent.pointerUp(settingsTile);
     vi.useRealTimers();
     // Edit mode is on: per-tile pin affordances appear (no Done button now).
-    expect(screen.getByTestId("springboard-fav-settings")).toBeTruthy();
+    expect(screen.getByTestId("launcher-fav-settings")).toBeTruthy();
 
     // Swipe back. This is the exact gesture that used to strand the user in
     // jiggle mode. It must return home AND drop edit mode (store invariant).
     swipeBackHome();
     expect(surface.getAttribute("data-page")).toBe("home");
 
-    // Re-enter the springboard: it must be a CLEAN launch view, not stale edit.
-    openSpringboard();
-    expect(surface.getAttribute("data-page")).toBe("springboard");
-    expect(screen.queryByTestId("springboard-fav-settings")).toBeNull();
+    // Re-enter the launcher: it must be a CLEAN launch view, not stale edit.
+    openLauncher();
+    expect(surface.getAttribute("data-page")).toBe("launcher");
+    expect(screen.queryByTestId("launcher-fav-settings")).toBeNull();
   });
 
   it("a horizontal swipe that starts ON a tile never ghost-fires edit mode (#3)", () => {
     vi.useFakeTimers();
     renderComposed();
-    openSpringboard();
+    openLauncher();
 
     // Press a tile and PAN past the slop before the long-press timer elapses.
     const tile = screen
-      .getByTestId("springboard-tile-app0")
+      .getByTestId("launcher-tile-app0")
       .querySelector("button");
     if (!tile) throw new Error("tile button missing");
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 50 });
     fireEvent.pointerMove(tile, { clientX: 90, clientY: 52 }); // dx 40 > slop
     act(() => vi.advanceTimersByTime(600));
     // Swipe ⇒ NOT a long-press ⇒ NOT edit mode (no pin affordances surfaced).
-    expect(screen.queryByTestId("springboard-fav-app0")).toBeNull();
+    expect(screen.queryByTestId("launcher-fav-app0")).toBeNull();
 
     // Control: a STATIONARY hold past the threshold DOES enter edit mode, so the
     // intentional long-press affordance still works.
     const tile2 = screen
-      .getByTestId("springboard-tile-app1")
+      .getByTestId("launcher-tile-app1")
       .querySelector("button");
     if (!tile2) throw new Error("tile button missing");
     fireEvent.pointerDown(tile2, { clientX: 50, clientY: 50 });
     act(() => vi.advanceTimersByTime(600));
-    expect(screen.getByTestId("springboard-fav-app1")).toBeTruthy();
+    expect(screen.getByTestId("launcher-fav-app1")).toBeTruthy();
   });
 
   it("does not render a Background tile because backgrounds live in Settings", () => {
     renderComposed();
-    openSpringboard();
+    openLauncher();
 
-    expect(screen.queryByTestId("springboard-tile-background")).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-background")).toBeNull();
     expect(screen.queryByRole("button", { name: "Background" })).toBeNull();
   });
 
-  it("uses horizontal swipes, not rail dots, to move between home and springboard", () => {
+  it("uses horizontal swipes, not rail dots, to move between home and launcher", () => {
     const surface = renderComposed();
-    openSpringboard();
-    expect(surface.getAttribute("data-page")).toBe("springboard");
-    expect(screen.queryByTestId("home-springboard-indicator")).toBeNull();
+    openLauncher();
+    expect(surface.getAttribute("data-page")).toBe("launcher");
+    expect(screen.queryByTestId("home-launcher-indicator")).toBeNull();
 
     swipeBackHome();
     expect(surface.getAttribute("data-page")).toBe("home");
   });
 
-  it("springboard tiles render DISTINCT generated app-icon imagery (#5)", () => {
+  it("launcher tiles render DISTINCT generated app-icon imagery (#5)", () => {
     renderComposed();
-    openSpringboard();
+    openLauncher();
 
     const settingsVisual = document.querySelector<HTMLElement>(
       '[data-view-visual="settings"]',
@@ -280,8 +280,8 @@ describe("Home ↔ Springboard composed surface", () => {
     );
     expect(settingsVisual).toBeTruthy();
     expect(filesVisual).toBeTruthy();
-    expect(screen.getByTestId("springboard-image-settings")).toBeTruthy();
-    expect(screen.getByTestId("springboard-image-files")).toBeTruthy();
+    expect(screen.getByTestId("launcher-image-settings")).toBeTruthy();
+    expect(screen.getByTestId("launcher-image-files")).toBeTruthy();
     expect(settingsVisual?.getAttribute("style")).toContain("linear-gradient");
     expect(filesVisual?.getAttribute("style")).toContain("linear-gradient");
 

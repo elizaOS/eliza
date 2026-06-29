@@ -1,19 +1,19 @@
-// Self-contained fixture for the Springboard e2e: mounts the real Springboard
+// Self-contained fixture for the Launcher e2e: mounts the real Launcher
 // (the iOS-like view-launcher) with ~25 deterministic mock ViewEntry items
 // spread across multiple pages. A couple carry an `imageUrl` data-URI so an
 // image tile renders; the rest fall back to the Lucide glyph. Launch / edit /
-// delete are wired to stubs and surfaced on `window.__springboardCalls` so the
+// delete are wired to stubs and surfaced on `window.__launcherCalls` so the
 // runner can assert the real interaction handlers fired. No app server, no
 // network — fully self-contained (mirrors background-fixture's self-containment).
-// Paired with run-springboard-e2e.mjs.
+// Paired with run-launcher-e2e.mjs.
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import type { ViewEntry } from "../../../hooks/view-catalog";
-import { Springboard } from "../Springboard";
+import { Launcher } from "../Launcher";
 
 type Win = typeof window & {
-  __springboardCalls?: {
+  __launcherCalls?: {
     launch: string[];
     edit: string[];
     delete: string[];
@@ -90,12 +90,12 @@ const MANAGEABLE = new Set<string>(["models", "vectors"]);
 function Harness(): React.JSX.Element {
   React.useLayoutEffect(() => {
     const win = window as Win;
-    win.__springboardCalls = { launch: [], edit: [], delete: [] };
+    win.__launcherCalls = { launch: [], edit: [], delete: [] };
   }, []);
 
   return (
     <div
-      data-testid="springboard-fixture-root"
+      data-testid="launcher-fixture-root"
       style={{
         position: "relative",
         width: "100vw",
@@ -104,17 +104,17 @@ function Harness(): React.JSX.Element {
         background: "#0a0d16",
       }}
     >
-      <Springboard
+      <Launcher
         entries={ENTRIES}
         onLaunch={(entry) => {
-          (window as Win).__springboardCalls?.launch.push(entry.id);
+          (window as Win).__launcherCalls?.launch.push(entry.id);
         }}
         canManageView={(id) => MANAGEABLE.has(id)}
         onEditView={(id) => {
-          (window as Win).__springboardCalls?.edit.push(id);
+          (window as Win).__launcherCalls?.edit.push(id);
         }}
         onDeleteView={(id) => {
-          (window as Win).__springboardCalls?.delete.push(id);
+          (window as Win).__launcherCalls?.delete.push(id);
         }}
       />
     </div>

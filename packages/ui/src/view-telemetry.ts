@@ -1,6 +1,6 @@
 /**
  * View-launcher interaction telemetry — a client-only, best-effort event stream
- * for the Springboard / view catalog, mirroring the shape of
+ * for the Launcher / view catalog, mirroring the shape of
  * {@link ./cache-telemetry} (window CustomEvent + a bounded globalThis ring +
  * no-op guards). It is intentionally NOT a second sink: there is no server
  * endpoint and no new EventType — tests and the e2e walkthrough subscribe to the
@@ -11,7 +11,7 @@
 export const VIEW_INTERACTION_TELEMETRY_EVENT =
   "eliza:view-interaction-telemetry";
 
-export type ViewInteractionSource = "springboard" | "view-catalog";
+export type ViewInteractionSource = "launcher" | "view-catalog";
 
 export type ViewInteractionAction =
   | "launch"
