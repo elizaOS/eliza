@@ -146,6 +146,15 @@ REDIS_RATE_LIMITING = "false"
 # (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
 # failed cache read.
 INFERENCE_HOT_PATH_CACHE = "false"
+# Tier-2 optimistic off-path billing (#9899). OFF here = the synchronous credit
+# reserve runs exactly as before (no behavior change). When "true" (also requires
+# INFERENCE_HOT_PATH_CACHE + a writable KV backstop), an org whose balance clears
+# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits the actual cost off the
+# response path; the sweep-inference-charges cron settles any dropped inline
+# settles. SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes
+# the safe synchronous-reserve path. Flip only after review + a flag-flip runbook.
+INFERENCE_OPTIMISTIC_BILLING = "false"
+SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -317,6 +326,15 @@ REDIS_RATE_LIMITING = "false"
 # (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
 # failed cache read.
 INFERENCE_HOT_PATH_CACHE = "false"
+# Tier-2 optimistic off-path billing (#9899). OFF here = the synchronous credit
+# reserve runs exactly as before (no behavior change). When "true" (also requires
+# INFERENCE_HOT_PATH_CACHE + a writable KV backstop), an org whose balance clears
+# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits the actual cost off the
+# response path; the sweep-inference-charges cron settles any dropped inline
+# settles. SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes
+# the safe synchronous-reserve path. Flip only after review + a flag-flip runbook.
+INFERENCE_OPTIMISTIC_BILLING = "false"
+SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -430,6 +448,15 @@ REDIS_RATE_LIMITING = "false"
 # (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
 # failed cache read.
 INFERENCE_HOT_PATH_CACHE = "false"
+# Tier-2 optimistic off-path billing (#9899). OFF here = the synchronous credit
+# reserve runs exactly as before (no behavior change). When "true" (also requires
+# INFERENCE_HOT_PATH_CACHE + a writable KV backstop), an org whose balance clears
+# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits the actual cost off the
+# response path; the sweep-inference-charges cron settles any dropped inline
+# settles. SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes
+# the safe synchronous-reserve path. Flip only after review + a flag-flip runbook.
+INFERENCE_OPTIMISTIC_BILLING = "false"
+SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"

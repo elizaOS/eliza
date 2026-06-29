@@ -295,6 +295,15 @@ export class CreditsService {
     };
   }
 
+  /**
+   * Read an organization's current credit balance in USD. Used by the Tier-2
+   * optimistic-billing gate to decide fast-vs-safe path (#9899).
+   */
+  async getOrganizationBalanceUsd(organizationId: string): Promise<number> {
+    const org = await organizationsRepository.findById(organizationId);
+    return org ? Number(org.credit_balance) : 0;
+  }
+
   // Credit Transactions
   async getTransactionById(id: string): Promise<CreditTransaction | undefined> {
     return await creditTransactionsRepository.findById(id);

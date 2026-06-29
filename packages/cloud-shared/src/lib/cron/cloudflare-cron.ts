@@ -51,6 +51,8 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/process-provisioning-jobs",
     "/api/cron/process-stripe-queue",
     "/api/v1/cron/pool-replenish",
+    // #9899 Tier-2 optimistic-billing backstop (no-op when the flag is off).
+    "/api/cron/sweep-inference-charges",
   ],
   "0 */6 * * *": ["/api/cron/cleanup-anonymous-sessions", "/api/v1/cron/agent-backups"],
 };

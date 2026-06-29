@@ -73,6 +73,15 @@ import {
   isInferenceHotPathCacheEnabled,
   resolveInferenceAuthContext,
 } from "@/lib/services/inference-auth-context";
+import {
+  createOptimisticDebitSettler,
+  getGateBalanceUsd,
+  isOptimisticBackstopAvailable,
+  isOptimisticBillingEnabled,
+  isOptimisticEligible,
+  resolveSafeBalanceThresholdUsd,
+  writePendingInferenceCharge,
+} from "@/lib/services/inference-billing-fast-path";
 import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
@@ -952,10 +961,15 @@ export async function handleChatCompletionsPOST(
     const affiliateCode = req.headers.get("X-Affiliate-Code");
 
     const tBeforeReserve = Date.now();
-    let reservation: CreditReservation;
+    let reservation: CreditReservation | null = null;
     let appCreditsInfo:
       | { appId: string; estimatedBaseCost: number; app: typeof monetizedApp }
       | undefined;
+    // #9899 Tier-2: set when the optimistic off-path billing branch is taken;
+    // replaces the reservation settler with a deferred actual-cost debit.
+    let optimisticSettler:
+      | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
+      | null = null;
 
     if (useAppCredits && appId && monetizedApp) {
       // App credits path
@@ -1003,40 +1017,120 @@ export async function handleChatCompletionsPOST(
       };
       reservation = creditsService.createAnonymousReservation();
     } else {
-      // Organization credits path
-      try {
-        reservation = await reserveCredits(
+      // Organization credits path. #9899 Tier-2: when optimistic billing is
+      // enabled AND this org's balance comfortably clears SAFE_BALANCE_THRESHOLD,
+      // skip the synchronous reserve write — instead persist a durable
+      // pending-charge backstop and defer the FULL actual-cost debit to the
+      // post-response settler. Otherwise take the existing synchronous reserve.
+      // Only consider the optimistic path when the durable backstop is writable
+      // (cache available) — otherwise a forwarded request would have no recorded
+      // charge (free inference). Mirrors the IAC resolver's cache-health guard.
+      let useOptimistic = false;
+      let estimatedCostUsd = 0;
+      if (
+        isInferenceHotPathCacheEnabled() &&
+        isOptimisticBillingEnabled() &&
+        isOptimisticBackstopAvailable()
+      ) {
+        const { totalCost } = await calculateCost(
+          normalizedModel,
+          provider,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          billingSource,
+        );
+        estimatedCostUsd = totalCost;
+        const balanceUsd = await getGateBalanceUsd(user.organization_id!);
+        useOptimistic = isOptimisticEligible({
+          enabled: true,
+          useAppCredits: false,
+          balanceUsd,
+          thresholdUsd: resolveSafeBalanceThresholdUsd(),
+          estimatedCostUsd,
+        });
+      }
+
+      // Optimistic path is taken ONLY if the durable pending-charge actually
+      // persisted; a non-durable backstop falls through to the synchronous
+      // reserve so we never forward on an un-recorded charge (#9899).
+      let optimisticReady = false;
+      if (useOptimistic) {
+        const persisted = await writePendingInferenceCharge(
           {
+            requestId,
+            organizationId: user.organization_id!,
+            userId: user.id,
+            apiKeyId: apiKey?.id ?? null,
+            model,
+            provider,
+            billingSource,
+            estimatedCostUsd,
+          },
+          Date.now(),
+        );
+        if (persisted) {
+          reservation = creditsService.createAnonymousReservation();
+          optimisticSettler = createOptimisticDebitSettler({
+            requestId,
             organizationId: user.organization_id!,
             userId: user.id,
             model,
             provider,
             billingSource,
-            affiliateCode,
-          },
-          estimatedInputTokens,
-          estimatedOutputTokens,
-        );
-      } catch (error) {
-        if (error instanceof InsufficientCreditsError) {
-          return addCorsHeaders(
-            Response.json(
-              {
-                error: {
-                  message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-                  type: "insufficient_quota",
-                  code: "insufficient_credits",
-                },
-              },
-              { status: 402 },
-            ),
+          });
+          optimisticReady = true;
+        } else {
+          logger.warn(
+            "[Chat Completions] optimistic backstop not durable; using synchronous reserve",
+            { requestId, organizationId: user.organization_id! },
           );
         }
-        throw error;
+      }
+
+      if (!optimisticReady) {
+        try {
+          reservation = await reserveCredits(
+            {
+              organizationId: user.organization_id!,
+              userId: user.id,
+              model,
+              provider,
+              billingSource,
+              affiliateCode,
+            },
+            estimatedInputTokens,
+            estimatedOutputTokens,
+          );
+        } catch (error) {
+          if (error instanceof InsufficientCreditsError) {
+            return addCorsHeaders(
+              Response.json(
+                {
+                  error: {
+                    message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+                    type: "insufficient_quota",
+                    code: "insufficient_credits",
+                  },
+                },
+                { status: 402 },
+              ),
+            );
+          }
+          throw error;
+        }
       }
     }
 
-    settleReservation = createCreditReservationSettler(reservation);
+    // Optimistic path debits the actual cost off the response path; otherwise the
+    // reservation settler reconciles the upfront hold. Same (actualCost) shape.
+    if (optimisticSettler) {
+      settleReservation = optimisticSettler;
+    } else {
+      if (!reservation) {
+        throw new Error("[Chat Completions] credit reservation missing");
+      }
+      settleReservation = createCreditReservationSettler(reservation);
+    }
     const tAfterReserve = Date.now();
 
     // 7. Convert messages for AI SDK
