@@ -65,6 +65,10 @@ assert.ok(
   "catch-all routes must mount as Hono regex wildcard params",
 );
 assert.ok(
+  actualRoutes.includes("/api/v1/eliza/agents/:agentId/write"),
+  "PGlite write-back route must be mounted for the client write URL",
+);
+assert.ok(
   !actualRoutes.some((path) => path.endsWith("/*")),
   "generated routes must not use bare *",
 );
