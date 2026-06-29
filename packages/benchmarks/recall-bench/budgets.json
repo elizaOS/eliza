@@ -1,0 +1,16 @@
+{
+  "_comment": "Committed regression budgets for recall-bench (#9956), mirroring memperf/budgets.json. The runner compares MEASURED per-SearchMode rows against these and exits non-zero when a hard budget is crossed; a skipped (unmeasured) row never fails a budget. Numbers are the deterministic-embedding pipeline baseline at the 1k tier with ~20% headroom — they catch ranking/weight/fail-open regressions, not production embedding quality (see README). 'null' is never conflated with a measured 0. The same floors also pass the (easier) smoke tier, so either tier is green on the current baseline.",
+  "tier": "1k",
+  "k": 5,
+  "modes": {
+    "document-hybrid": { "minRecallAt5": 0.7, "minNdcgAt5": 0.68, "maxP95LatencyMs": 750 },
+    "document-vector": { "minRecallAt5": 0.55, "minNdcgAt5": 0.54, "maxP95LatencyMs": 750 },
+    "document-keyword": { "minRecallAt5": 0.25, "maxP95LatencyMs": 750 },
+    "searchMemories-vector": { "minRecallAt5": 0.8, "minNdcgAt5": 0.78, "maxP95LatencyMs": 750 },
+    "keyword-chat-scoreMemoryText": { "minRecallAt5": 0.05, "maxP95LatencyMs": 750 },
+    "facts-provider-keyword": { "minRecallAt5": 0.8, "maxP95LatencyMs": 750 }
+  },
+  "failOpen": {
+    "minObservableRecallDrop": 0.15
+  }
+}
