@@ -62,9 +62,14 @@ function getDrizzleDb(state: CompatRuntimeState): DrizzleDatabase | null {
 }
 
 const DISPLAY_NAME_RE = /^[A-Za-z0-9 _.\-@]{1,64}$/;
+type BoundaryRoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
 function isValidDisplayName(value: unknown): value is string {
   return typeof value === "string" && DISPLAY_NAME_RE.test(value.trim());
+}
+
+function roleForIdentityKind(kind: "owner" | "machine"): BoundaryRoleName {
+  return kind === "owner" ? "OWNER" : "USER";
 }
 
 // ── In-process rate limiting (auth bucket — same 20/min as auth.ts) ─────────
@@ -169,6 +174,7 @@ export async function handleAuthSessionRoutes(
           mode: "local" as const,
           passwordConfigured: false,
           ownerConfigured: false,
+          role: "OWNER",
         },
       });
       return true;
@@ -247,7 +253,7 @@ async function handleSetup(
   store: AuthStore,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {
-  if (!passwordChangeLimiter.consume(meta.ip)) {
+  if (!consumeAuthBucket(meta.ip)) {
     sendJsonErrorResponse(res, 429, "Too many requests");
     return true;
   }
@@ -501,6 +507,7 @@ async function handleMe(
         mode: "local" as const,
         passwordConfigured: Boolean(owner?.passwordHash),
         ownerConfigured: Boolean(owner),
+        role: "OWNER",
       },
     });
     return true;
@@ -521,6 +528,7 @@ async function handleMe(
         mode: "remote" as const,
         passwordConfigured: Boolean(owner?.passwordHash),
         ownerConfigured: Boolean(owner),
+        role: "GUEST",
       },
     });
     return true;
@@ -540,6 +548,7 @@ async function handleMe(
       mode: "session" as const,
       passwordConfigured: Boolean(ctx.identity.passwordHash),
       ownerConfigured: true,
+      role: roleForIdentityKind(ctx.identity.kind),
     },
   });
   return true;
@@ -553,7 +562,7 @@ async function handleChangePassword(
   store: AuthStore,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<boolean> {
-  if (!consumeAuthBucket(meta.ip)) {
+  if (!passwordChangeLimiter.consume(meta.ip)) {
     sendJsonErrorResponse(res, 429, "Too many requests");
     return true;
   }

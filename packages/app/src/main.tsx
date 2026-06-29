@@ -43,6 +43,8 @@ import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
 import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
+import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
+import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
 import type {
   BrandingConfig,
@@ -2111,7 +2113,15 @@ function mountReactApp(): void {
     <>
       <DesktopSurfaceNavigationRuntime />
       <DesktopTrayRuntime />
-      <App />
+      {/* #9946: this GUI shell is the single owner of the modality contract,
+          so every leaf's detectDomModality() reads one authoritative source.
+          #9948: provide the canonical role context once, under AppProvider, so
+          any view can gate developer/owner surfaces with useRole/<RoleGate>. */}
+      <ShellModalityProvider modality="gui">
+        <ShellRoleProvider>
+          <App />
+        </ShellRoleProvider>
+      </ShellModalityProvider>
     </>
   );
 

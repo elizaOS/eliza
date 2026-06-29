@@ -17,7 +17,10 @@ vi.mock("./compat-route-shared", async (importOriginal) => {
   return { ...actual, readCompatJsonBody: mocks.readCompatJsonBody };
 });
 
+import { verifyEmbedSessionToken } from "./auth/embed-session-token";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
+
+const EMBED_SECRET = "embed-secret-at-least-16-chars";
 
 function fakeRes() {
   let bodyText = "";
@@ -140,7 +143,11 @@ describe("handleEmbedAuthRoutes", () => {
       role: "OWNER",
       adminMode: true,
     });
-    const runtime = { agentId: "agent" };
+    const runtime = {
+      agentId: "agent",
+      getSetting: (k: string) =>
+        k === "ELIZA_EMBED_SESSION_SECRET" ? EMBED_SECRET : undefined,
+    };
     const r = fakeRes();
     await handleEmbedAuthRoutes(
       fakeReq("POST", "/api/embed/auth"),
@@ -148,11 +155,23 @@ describe("handleEmbedAuthRoutes", () => {
       runtimeState(runtime),
     );
     expect(r.status()).toBe(200);
-    expect(r.body()).toMatchObject({
+    const body = r.body() as {
+      entityId: string;
+      role: string;
+      adminMode: boolean;
+      token: string;
+      expiresAt: number;
+    };
+    expect(body).toMatchObject({
       entityId: "11111111-1111-1111-1111-111111111111",
       role: "OWNER",
       adminMode: true,
     });
+    // The minted scoped token round-trips to the same verified principal.
+    expect(typeof body.token).toBe("string");
+    const decoded = verifyEmbedSessionToken(body.token, EMBED_SECRET);
+    expect(decoded?.entityId).toBe("11111111-1111-1111-1111-111111111111");
+    expect(decoded?.role).toBe("OWNER");
     // The handshake is called with the live runtime + the parsed input.
     expect(mocks.verifyEmbedLaunch).toHaveBeenCalledWith(
       {
@@ -162,5 +181,26 @@ describe("handleEmbedAuthRoutes", () => {
       },
       runtime,
     );
+  });
+
+  it("returns a null token when no signing secret is configured", async () => {
+    mocks.readCompatJsonBody.mockResolvedValue({
+      platform: "telegram",
+      signedLaunchPayload: "valid",
+    });
+    mocks.verifyEmbedLaunch.mockResolvedValue({
+      ok: true,
+      entityId: "22222222-2222-2222-2222-222222222222",
+      role: "ADMIN",
+      adminMode: true,
+    });
+    const r = fakeRes();
+    await handleEmbedAuthRoutes(
+      fakeReq("POST", "/api/embed/auth"),
+      r.res,
+      runtimeState({ agentId: "agent", getSetting: () => undefined }),
+    );
+    expect(r.status()).toBe(200);
+    expect((r.body() as { token: unknown }).token).toBeNull();
   });
 });
