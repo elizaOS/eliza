@@ -54,9 +54,11 @@ packages/tui/
       index.ts             Text-edit primitives (cursor movement, word deletion, paste)
       cursor-movement.ts   Low-level cursor position math
       paste-handler.ts     PasteHandler — bracketed paste detection + large-paste markers
+    testing/
+      virtual-terminal.ts  VirtualTerminal — headless @xterm/headless terminal,
+                           exported via @elizaos/tui/testing
   test/
     chat-simple.ts         Runnable demo: full chat UI (markdown + loader + editor)
-    virtual-terminal.ts    VirtualTerminal test helper (wraps @xterm/headless)
     *.test.ts              Vitest unit tests for all subsystems
 ```
 
@@ -134,7 +136,7 @@ Use `setEditorKeybindings(manager)` at startup to remap `EditorAction` values to
 
 - **Every `render()` line must be <= `width`.** The TUI throws if a line is wider. Always call `truncateToWidth()` or `wrapTextWithAnsi()` before returning lines.
 - **ANSI codes do not carry across lines.** The TUI appends `SGR reset` after each line. Reapply styles per line or use `wrapTextWithAnsi()` which preserves them.
-- **`VirtualTerminal` is test-only.** It wraps `@xterm/headless` and lives in `test/virtual-terminal.ts` — not exported from `dist/`.
+- **`VirtualTerminal` is the headless test terminal.** It wraps `@xterm/headless`, implements the same `Terminal` interface as `ProcessTerminal`, and is exported from `@elizaos/tui/testing` (`src/testing/virtual-terminal.ts`). Drive it with `sendInput`/`resize`; read the rendered grid back cell-accurately with `getViewport`/`getScrollBuffer`/`getCursorPosition`/`getCellAttributes`, and the raw ANSI stream with `getWriteLog`. Intended for tests, not the runtime render path.
 - **Image rendering is capability-gated.** `detectCapabilities()` inspects the terminal env vars; `getCapabilities()` caches that result. The `Image` component calls `getCapabilities()` automatically and falls back to text output when Kitty/iTerm2 is absent.
 - **Kitty keyboard protocol.** `ProcessTerminal` enables the Kitty protocol on start. `matchesKey` handles both legacy and Kitty sequences. `isKittyProtocolActive()` reflects current state.
 - **Focus and IME.** Only one component holds focus at a time. When a container wraps an `Input`/`Editor`, it must propagate `focused` to the child or IME candidate windows appear at the wrong position (see README for the pattern).

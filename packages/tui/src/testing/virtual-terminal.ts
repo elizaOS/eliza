@@ -1,12 +1,20 @@
 import type { Terminal as XtermTerminalType } from "@xterm/headless";
 import xterm from "@xterm/headless";
-import type { Terminal } from "../src/terminal.js";
+import type { Terminal } from "../terminal.js";
 
 // Extract Terminal class from the module
 const XtermTerminal = xterm.Terminal;
 
 /**
- * Virtual terminal for testing using xterm.js for accurate terminal emulation
+ * Virtual terminal for testing using xterm.js for accurate terminal emulation.
+ *
+ * Implements the same {@link Terminal} interface the real `ProcessTerminal`
+ * does, so it drops straight into any TUI host (`new TUI(terminal)`,
+ * `startAgentTerminalTui({ terminal })`) and renders into a real `@xterm/headless`
+ * grid. Tests drive it with {@link sendInput}/{@link resize} and read the
+ * rendered result back cell-accurately via {@link getViewport},
+ * {@link getScrollBuffer}, {@link getCursorPosition}, and
+ * {@link getCellAttributes} — no ANSI-stripping regex required.
  */
 export class VirtualTerminal implements Terminal {
   private xterm: XtermTerminalType;
@@ -14,6 +22,8 @@ export class VirtualTerminal implements Terminal {
   private resizeHandler?: () => void;
   private _columns: number;
   private _rows: number;
+  /** Raw ANSI stream written by the host, in order — the source for recordings. */
+  private writeLog: string[] = [];
 
   constructor(columns = 80, rows = 24) {
     this._columns = columns;
@@ -48,6 +58,7 @@ export class VirtualTerminal implements Terminal {
   }
 
   write(data: string): void {
+    this.writeLog.push(data);
     this.xterm.write(data);
   }
 
@@ -180,6 +191,15 @@ export class VirtualTerminal implements Terminal {
     }
 
     return lines;
+  }
+
+  /**
+   * The raw ANSI stream the host has written so far, concatenated. This is the
+   * exact byte stream a real terminal would render — the source for an
+   * asciinema recording or a raw-output capture artifact.
+   */
+  getWriteLog(): string {
+    return this.writeLog.join("");
   }
 
   /**
