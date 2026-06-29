@@ -333,6 +333,143 @@ describe("useShellController — conversation loading watchdog", () => {
   });
 });
 
+// ── Conversation-nav interleaving fuzz over the REAL hook (#9954 item 1) ──────
+// The headline #9954 gap: rapid swipe ↔ new-conversation ↔ select interleavings
+// could select the wrong conversation against a stale nav closure. #10042 made
+// the swipe callbacks re-resolve through refs and drop a swipe while a switch is
+// in flight; the two hand-written cases above pin those specific shapes. This
+// block fuzzes the real `useShellController` over a LIVE mutating conversation
+// list (select flips the active id; new prepends at index 0 and activates it),
+// asserting the most-recent-first index invariants after EVERY step across the
+// named sequence plus seeded random walks — so a reintroduced stale-index or
+// off-by-one regression fails here regardless of ordering.
+describe("useShellController — conversation-nav interleaving (#9954)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  type Ctl = ReturnType<typeof useShellController>;
+  type Action = "next" | "prev" | "new" | "select";
+
+  function wireMutableConversations(initialIds: string[]): void {
+    appMock.value.conversations = initialIds.map((id) => ({ id }));
+    // Start on the oldest (highest index) so both swipe directions are live.
+    appMock.value.activeConversationId =
+      initialIds[initialIds.length - 1] ?? null;
+    appMock.value.handleSelectConversation = vi.fn((id: string) => {
+      appMock.value.activeConversationId = id;
+      return Promise.resolve();
+    }) as unknown as typeof appMock.value.handleSelectConversation;
+    let created = 0;
+    appMock.value.handleNewConversation = vi.fn(() => {
+      const id = `new-${created++}`;
+      appMock.value.conversations = [{ id }, ...appMock.value.conversations];
+      appMock.value.activeConversationId = id;
+      return Promise.resolve();
+    });
+  }
+
+  async function drive(
+    result: { current: Ctl },
+    rerender: () => void,
+    action: Action,
+    rng: () => number,
+  ): Promise<void> {
+    await act(async () => {
+      if (action === "next") result.current.conversationNav.goNext();
+      else if (action === "prev") result.current.conversationNav.goPrev();
+      else if (action === "new") result.current.clearConversation();
+      else {
+        // External (sidebar / deep-link) select interleaved with swipes.
+        const list = appMock.value.conversations;
+        if (list.length > 0) {
+          appMock.value.activeConversationId =
+            list[Math.floor(rng() * list.length)].id;
+        }
+      }
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    rerender();
+  }
+
+  function assertInvariants(ctl: Ctl): void {
+    const list = appMock.value.conversations;
+    const active = appMock.value.activeConversationId ?? null;
+    const expectedIndex = list.findIndex((c) => c.id === active);
+    const nav = ctl.conversationNav;
+    // The active conversation is always a member of the list (never orphaned).
+    if (active !== null) {
+      expect(list.some((c) => c.id === active)).toBe(true);
+    }
+    // nav.index tracks the active id's position in the most-recent-first list.
+    expect(nav.index).toBe(expectedIndex);
+    expect(nav.activeId).toBe(active);
+    // Edge hints are exactly the index boundaries — never navigable past an end.
+    expect(nav.hasPrev).toBe(expectedIndex > 0);
+    expect(nav.hasNext).toBe(
+      expectedIndex >= 0 && expectedIndex < list.length - 1,
+    );
+    // No transition is left in flight once the step settles.
+    expect(ctl.conversationLoading ?? false).toBe(false);
+  }
+
+  it("named sequence swipe-back → new → forward → new → forward → swipe-back stays index-consistent", async () => {
+    wireMutableConversations(["c0", "c1", "c2"]); // active = c2 (oldest, index 2)
+    const { result, rerender } = renderHook(() => useShellController());
+    assertInvariants(result.current);
+
+    const rng = mulberry32(1);
+    const sequence: Action[] = ["prev", "new", "next", "new", "next", "prev"];
+    for (const action of sequence) {
+      const before = appMock.value.activeConversationId;
+      const atIndex0Boundary =
+        action === "prev" && result.current.conversationNav.index === 0;
+      await drive(result, rerender, action, rng);
+      assertInvariants(result.current);
+      if (action === "new") {
+        // A new conversation lands at index 0 and becomes active.
+        expect(result.current.conversationNav.index).toBe(0);
+      }
+      if (atIndex0Boundary) {
+        // A swipe at the index-0 boundary is a no-op (no wrong-conversation jump).
+        expect(appMock.value.activeConversationId).toBe(before);
+      }
+    }
+    expect(
+      appMock.value.conversations.some(
+        (c) => c.id === appMock.value.activeConversationId,
+      ),
+    ).toBe(true);
+  });
+
+  it("seeded random walks keep the nav invariants on every step", async () => {
+    const actions: Action[] = ["next", "prev", "new", "select"];
+    for (let seed = 1; seed <= 12; seed++) {
+      wireMutableConversations(["a", "b", "c", "d"]);
+      const { result, rerender, unmount } = renderHook(() =>
+        useShellController(),
+      );
+      const rng = mulberry32(seed * 0x9e3779b1);
+      for (let stepN = 0; stepN < 40; stepN++) {
+        const action = actions[Math.floor(rng() * actions.length)];
+        await drive(result, rerender, action, rng);
+        assertInvariants(result.current);
+      }
+      unmount();
+    }
+  });
+});
+
+function mulberry32(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // ── Rich turn status derivation (#8813) ──────────────────────────────────────
 
 describe("useShellController — turnStatus derivation", () => {
