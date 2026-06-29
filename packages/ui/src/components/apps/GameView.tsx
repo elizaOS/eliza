@@ -2172,17 +2172,13 @@ export function GameView() {
           <div className="flex-1 min-h-0 relative">{renderViewerPane()}</div>
         ) : null}
         {(showLogsPanel && dashboardPanelEnabled) ||
-        (isCompactLayout &&
-          dashboardPanelEnabled &&
-          mobileSurface !== "game") ? (
-          isCompactLayout ? (
-            mobileSurface === "dashboard" || mobileSurface === "chat" ? (
-              renderLogsPanel("standalone")
-            ) : null
-          ) : (
-            renderLogsPanel()
-          )
-        ) : null}
+        (isCompactLayout && dashboardPanelEnabled && mobileSurface !== "game")
+          ? isCompactLayout
+            ? mobileSurface === "dashboard" || mobileSurface === "chat"
+              ? renderLogsPanel("standalone")
+              : null
+            : renderLogsPanel()
+          : null}
       </div>
     </div>
   );

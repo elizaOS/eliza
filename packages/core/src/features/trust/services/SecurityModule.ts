@@ -1,6 +1,15 @@
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime, UUID } from "../../../types/index.ts";
 import {
+	AUTHORITY_KEYWORDS,
+	detectObfuscatedKeywordMatches,
+	INJECTION_KEYWORDS,
+	INJECTION_PATTERNS,
+	INTIMIDATION_KEYWORDS,
+	normalizeForScan,
+	URGENCY_KEYWORDS,
+} from "../injection-primitives.ts";
+import {
 	type Action,
 	type BehavioralProfile,
 	type CoordinationDetection,
@@ -15,16 +24,6 @@ import {
 	SecurityEventType,
 	type ThreatAssessment,
 } from "../types/security.ts";
-
-import {
-	AUTHORITY_KEYWORDS,
-	detectObfuscatedKeywordMatches,
-	INJECTION_KEYWORDS,
-	INJECTION_PATTERNS,
-	INTIMIDATION_KEYWORDS,
-	normalizeForScan,
-	URGENCY_KEYWORDS,
-} from "../injection-primitives.ts";
 import { TrustEvidenceType } from "../types/trust.ts";
 import { getDb } from "./db.ts";
 import { getRecentIncidents, insertSecurityIncident } from "./SecurityStore.ts";
@@ -487,10 +486,7 @@ export class SecurityModule {
 		return {
 			urgency: this.calculateKeywordScore(text, URGENCY_KEYWORDS),
 			authority: this.calculateKeywordScore(text, AUTHORITY_KEYWORDS),
-			intimidation: this.calculateKeywordScore(
-				text,
-				INTIMIDATION_KEYWORDS,
-			),
+			intimidation: this.calculateKeywordScore(text, INTIMIDATION_KEYWORDS),
 			liking: this.detectFactorScore(text, "liking"),
 			reciprocity: this.detectFactorScore(text, "reciprocity"),
 			commitment: this.detectFactorScore(text, "commitment"),

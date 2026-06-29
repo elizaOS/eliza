@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	roleRank as gateRoleRank,
-	satisfiesRoleGate,
-} from "./runtime/context-gates.ts";
-import {
 	CANONICAL_ROLE_RANK,
 	canModifyRole,
 	getEntityRole,
@@ -12,6 +8,10 @@ import {
 	normalizeRole,
 	ROLE_RANK,
 } from "./roles.ts";
+import {
+	roleRank as gateRoleRank,
+	satisfiesRoleGate,
+} from "./runtime/context-gates.ts";
 import type { IAgentRuntime, Memory } from "./types";
 
 /**
@@ -137,9 +137,9 @@ describe("role gate rejects unknown tiers (#9948)", () => {
 		// The RoleGateRole type no longer has a `(string & {})` escape, but the
 		// runtime must still fail closed if an unknown value reaches roleRank.
 		expect(gateRoleRank("SUPERUSER" as never)).toBe(0);
-		expect(satisfiesRoleGate(["SUPERUSER" as never], { minRole: "GUEST" })).toBe(
-			false,
-		);
+		expect(
+			satisfiesRoleGate(["SUPERUSER" as never], { minRole: "GUEST" }),
+		).toBe(false);
 		expect(satisfiesRoleGate(["OWNER"], { minRole: "GUEST" })).toBe(true);
 	});
 });

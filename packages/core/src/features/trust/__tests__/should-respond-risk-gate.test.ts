@@ -22,21 +22,29 @@ function mkMessage(text: string): Memory {
 	} as unknown as Memory;
 }
 
-function mkRuntime(
-	useModelImpl?: (...args: unknown[]) => unknown,
-): { runtime: IAgentRuntime; useModel: ReturnType<typeof vi.fn> } {
+function mkRuntime(useModelImpl?: (...args: unknown[]) => unknown): {
+	runtime: IAgentRuntime;
+	useModel: ReturnType<typeof vi.fn>;
+} {
 	const useModel = vi.fn(useModelImpl ?? (() => "VERDICT: ALLOW\nREASON: ok"));
 	const runtime = {
 		agentId: "33333333-3333-3333-3333-333333333333",
 		useModel,
-		logger: { warn: () => {}, debug: () => {}, info: () => {}, error: () => {} },
+		logger: {
+			warn: () => {},
+			debug: () => {},
+			info: () => {},
+			error: () => {},
+		},
 	} as unknown as IAgentRuntime;
 	return { runtime, useModel };
 }
 
 describe("extractRiskFactors", () => {
 	it("scores benign text as zero risk", () => {
-		const f = extractRiskFactors("hey, can you help me with my homework today?");
+		const f = extractRiskFactors(
+			"hey, can you help me with my homework today?",
+		);
 		expect(f.score).toBe(0);
 		expect(f.structuralInjectionHits).toBe(0);
 		expect(f.letterSplitHits).toBe(0);
@@ -135,7 +143,9 @@ describe("registerCoreShouldRespondRiskHook", () => {
 		});
 		const stamped = (message.content.metadata as Record<string, unknown>)
 			?.injectionRisk as { score: number } | undefined;
-		expect(stamped?.score).toBeGreaterThanOrEqual(DEFAULT_RISK_VERIFY_THRESHOLD);
+		expect(stamped?.score).toBeGreaterThanOrEqual(
+			DEFAULT_RISK_VERIFY_THRESHOLD,
+		);
 	});
 
 	it("ignores other phases", () => {
