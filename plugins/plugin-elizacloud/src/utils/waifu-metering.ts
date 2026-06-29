@@ -21,7 +21,8 @@
  * Token counts are exact (reported by the gateway). USD is the authoritative
  * post-markup cost when the gateway surfaces it (`usage.cost_usd` /
  * `X-Eliza-Cost-Usd`); otherwise a conservative token-based estimate is used,
- * configurable per-model via WAIFU_METER_USD_PER_1K_INPUT / _OUTPUT. The credit
+ * configurable per-model via ELIZA_CLOUD_METER_USD_PER_1K_INPUT / _OUTPUT
+ * (legacy aliases WAIFU_METER_USD_PER_1K_INPUT / _OUTPUT still read). The credit
  * debit itself is always the cloud's authoritative number; the estimate only
  * affects waifu's burn display until the cloud cost is wired through.
  */
@@ -117,8 +118,9 @@ export function resolveWaifuMeteringConfig(
 /**
  * Resolve the inference webhook URL from the container environment.
  *
- * Prefers the explicit WAIFU_INFERENCE_WEBHOOK_URL. If that is absent but a
- * credits webhook URL (WAIFU_WEBHOOK_URL) is present, derive the sibling
+ * Prefers the explicit ELIZA_CLOUD_INFERENCE_WEBHOOK_URL (legacy alias
+ * WAIFU_INFERENCE_WEBHOOK_URL still read). If that is absent but a credits
+ * webhook URL (ELIZA_CLOUD_WEBHOOK_URL / legacy WAIFU_WEBHOOK_URL) is present, derive the sibling
  * `/inference` receiver path from the known `/credits` path. We NEVER post
  * inference events to the credits receiver: the credits mapper defaults unknown
  * payloads to `credits.topped_up`, which would corrupt credit state. If we
