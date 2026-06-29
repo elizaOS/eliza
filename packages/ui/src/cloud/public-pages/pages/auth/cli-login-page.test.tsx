@@ -120,7 +120,7 @@ describe("CliLoginPage", () => {
     expect(link.getAttribute("href")).toBe(SIGN_IN_HREF);
   });
 
-  it("completes the session when authenticated: POSTs /complete, notifies the opener, shows success, never redirects", async () => {
+  it("completes the session when authenticated: POSTs /complete, notifies the opener, and lands in Cloud", async () => {
     sessionAuthRef.current = {
       ready: true,
       authenticated: true,
@@ -151,11 +151,16 @@ describe("CliLoginPage", () => {
       { type: "eliza-cloud-auth-complete", sessionId: "sess-1" },
       "*",
     );
-    expect(screen.getByText("ek_live_abc")).toBeTruthy();
-    expect(navigateMock).not.toHaveBeenCalled();
+    expect(screen.getByText("Opening your dashboard...")).toBeTruthy();
+    expect(screen.queryByText("API Key Details")).toBeNull();
+    expect(screen.queryByText("ek_live_abc")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
+    expect(navigateMock).toHaveBeenCalledWith("/dashboard", {
+      replace: true,
+    });
   });
 
-  it("renders the error panel when the session id is missing — no POST, no redirect", async () => {
+  it("renders the error panel when the session id is missing — no POST, no redirect, no dead close button", async () => {
     searchParamsRef.current = new URLSearchParams("");
 
     render(<CliLoginPage />);
@@ -165,6 +170,12 @@ describe("CliLoginPage", () => {
     ).toBeTruthy();
     expect(apiFetchMock).not.toHaveBeenCalled();
     expect(navigateMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: "Open Eliza Cloud" })
+        .getAttribute("href"),
+    ).toBe("/dashboard");
   });
 
   it("surfaces a completion failure as the error panel", async () => {
@@ -184,6 +195,7 @@ describe("CliLoginPage", () => {
       expect(screen.getByText("Authentication Error")).toBeTruthy(),
     );
     expect(screen.getByText("boom")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
   });
 
   it("clears the stale Steward session on a 401 during completion", async () => {
