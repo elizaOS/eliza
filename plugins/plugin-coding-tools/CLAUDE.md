@@ -66,7 +66,7 @@ plugins/plugin-coding-tools/
       secrets.ts                  detectSecrets — flags AWS/GitHub/OpenAI/etc. tokens to gate WRITE/EDIT
   auto-enable.ts                  Lightweight auto-enable module (env reads only; no plugin runtime imports)
   AGENT_CONTRACT.md               Implementation brief for action-writing agents
-  build.ts                        tsdown build script
+  build.ts                        build script (Bun.build + tsc d.ts emit)
 ```
 
 ## Commands

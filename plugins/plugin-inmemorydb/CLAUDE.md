@@ -33,7 +33,7 @@ plugins/plugin-inmemorydb/
   hnsw.ts               EphemeralHNSW — cosine-distance HNSW vector index (IVectorStorage)
   types.ts              IStorage, IVectorStorage, VectorSearchResult, COLLECTIONS enum
   generated/specs/      Auto-generated specs (do not hand-edit)
-  build.ts              tsdown build script
+  build.ts              build script (Bun.build + tsc d.ts emit)
   vitest.config.ts      Test config
 ```
 

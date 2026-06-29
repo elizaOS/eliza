@@ -34,8 +34,9 @@
  *      (persisted workspaces) are never touched.
  *   3. Stuck-ingest clearing only removes the containerd INGEST staging dir
  *      (half-written, not-yet-committed pull blobs); committed content blobs and
- *      running containers are never touched. It is `rm -rf .../ingest/*` scoped
- *      to the ingest subtree only, guarded so a missing dir is a no-op.
+ *      running containers are never touched. It uses `find ... -mindepth 1
+ *      -delete` scoped to the ingest subtree only (never `rm -rf <glob>`),
+ *      bounded to the ingest dir and guarded so a missing dir is a no-op.
  *   4. Hard per-call SSH timeouts on the df read and the reclamation.
  *   5. A cooldown (`cooldownMs`) keyed per node so a node mid-cooldown is skipped
  *      even if still above the prune threshold — avoids prune-every-tick churn

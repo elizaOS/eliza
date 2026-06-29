@@ -199,11 +199,24 @@ export class DockerNodeManager {
           // reachability — the docker-info probe does.
           const diskStatus = await this.diskHealthStatus(node);
           if (diskStatus === "critical") {
+            // Only autoscaler-managed nodes are safe to drain on disk pressure:
+            // the autoscaler replaces them, so `degraded` trades a full node for
+            // a fresh one. Canonical (operator-managed) cores are NEVER
+            // autoscaler-replaced AND the disk-clean cycle skips non-healthy
+            // nodes — so marking a canonical node `degraded` would strand it
+            // full with no automated remediation. Keep it `healthy` so the
+            // disk-clean manager prunes it next cycle (the real fix) and surface
+            // the pressure loudly for operators.
+            if (isAutoscaledNode(node)) {
+              logger.warn(
+                `[docker-node-manager] Node ${node.node_id} (${node.hostname}) is reachable but disk is critically full; marking degraded so it drains/replaces instead of taking new work.`,
+              );
+              await dockerNodesRepository.updateStatus(node.node_id, "degraded");
+              return "degraded";
+            }
             logger.warn(
-              `[docker-node-manager] Node ${node.node_id} (${node.hostname}) is reachable but disk is critically full; marking degraded so it drains/replaces instead of taking new work.`,
+              `[docker-node-manager] Canonical node ${node.node_id} (${node.hostname}) is reachable but disk is critically full; leaving healthy so the disk-clean cycle can reclaim space (canonical nodes are not autoscaler-replaced). Operators: free space or set enabled=false.`,
             );
-            await dockerNodesRepository.updateStatus(node.node_id, "degraded");
-            return "degraded";
           }
           await dockerNodesRepository.updateStatus(node.node_id, "healthy");
           return "healthy";

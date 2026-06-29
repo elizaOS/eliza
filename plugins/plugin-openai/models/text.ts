@@ -986,7 +986,7 @@ function isTransientProviderError(error: unknown): boolean {
       return false;
     }
     return /timeout|timed out|econnreset|econnrefused|socket|network|fetch failed|terminated|server error|server_error|try again|overload|capacity|temporarily|unavailable|busy|rate ?limit|please retry/.test(
-      msg,
+      msg
     );
   }
   // Transient 400: overload/server-error wording. Do NOT retry genuine
@@ -995,7 +995,7 @@ function isTransientProviderError(error: unknown): boolean {
     if (/invalid|unsupported|must be|required|malformed|not allowed|schema/.test(msg)) {
       return false;
     }
-    return /server error|try again|overload|capacity|temporarily|busy|rate/.test(msg) || msg.trim() === " {}";
+    return /server error|try again|overload|capacity|temporarily|busy|rate/.test(msg);
   }
   return false;
 }
@@ -1009,14 +1009,14 @@ function isTransientProviderError(error: unknown): boolean {
  */
 async function generateTextWithTransientRetry(
   generateParams: NativeGenerateTextParams,
-  maxRetries = 3,
+  maxRetries = 3
 ): Promise<Awaited<ReturnType<typeof generateText<ToolSet>>>> {
   let attempt = 0;
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK's generateText overloads can't infer our NativeGenerateTextParams across the generic boundary.
   for (;;) {
     try {
       return (await generateText(
-        generateParams as Parameters<typeof generateText>[0],
+        generateParams as Parameters<typeof generateText>[0]
         // biome-ignore lint/suspicious/noExplicitAny: see above.
       )) as any;
     } catch (error) {
@@ -1026,7 +1026,7 @@ async function generateTextWithTransientRetry(
       logger.warn(
         `[OpenAI] transient model error (attempt ${attempt}/${maxRetries}), retrying in ${backoffMs}ms: ${
           (error as { message?: string })?.message ?? String(error)
-        }`,
+        }`
       );
       await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
@@ -1056,7 +1056,7 @@ interface BufferedStreamResult {
 async function consumeStreamWithTransientRetry(
   generateParams: NativeGenerateTextParams,
   onChunk: ((chunk: string) => void) | undefined,
-  maxRetries = 5,
+  maxRetries = 5
 ): Promise<BufferedStreamResult> {
   let attempt = 0;
   for (;;) {
@@ -1086,12 +1086,11 @@ async function consumeStreamWithTransientRetry(
     } catch (error) {
       if (attempt >= maxRetries || !isTransientProviderError(error)) throw error;
       attempt++;
-      const backoffMs =
-        Math.min(3000, 300 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
+      const backoffMs = Math.min(3000, 300 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
       logger.warn(
         `[OpenAI] transient stream error (attempt ${attempt}/${maxRetries}), retrying in ${backoffMs}ms: ${
           (error as { message?: string })?.message ?? String(error)
-        }`,
+        }`
       );
       await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
@@ -1212,7 +1211,13 @@ async function generateTextByModelType(
     // Cerebras-under-load 400 doesn't fail an otherwise-good build (see
     // consumeStreamWithTransientRetry). Token streaming isn't user-visible for
     // coding. Regular chat falls through to the live-streaming path below.
-    if (process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE === "1") {
+    const fullActionSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+    if (
+      fullActionSurface === "1" ||
+      fullActionSurface === "true" ||
+      fullActionSurface === "yes" ||
+      fullActionSurface === "on"
+    ) {
       const details = createLlmCallDetails(
         modelName,
         params,
@@ -1238,9 +1243,7 @@ async function generateTextByModelType(
           if (buffered.text) yield buffered.text;
         })(),
         text: Promise.resolve(buffered.text),
-        ...(shouldReturnNativeResult
-          ? { toolCalls: Promise.resolve(buffered.toolCalls) }
-          : {}),
+        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(buffered.toolCalls) } : {}),
         usage: Promise.resolve(convertUsage(buffered.usage)),
         finishReason: Promise.resolve(buffered.finishReason),
       };

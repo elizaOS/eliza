@@ -52,7 +52,7 @@ Alberta continual-RL design notes:
 bun run robot:bridge:mock     # bridge against the mock backend (port 9100)
 bun run robot:bridge:mujoco   # bridge against the MuJoCo simulator (port 9100)
 bun run robot:demo            # voice + sim demo (examples/robot-mujoco-demo)
-bun run build                 # tsdown — emit dist/
+bun run build                 # build.ts: Bun.build + tsc d.ts emit → dist/
 bun run typecheck             # tsgo --noEmit
 bun run test                  # vitest run + pytest shim
 bun run test:py               # uv run pytest tests/ -q
