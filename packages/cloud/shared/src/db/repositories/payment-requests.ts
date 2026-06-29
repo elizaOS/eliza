@@ -237,6 +237,28 @@ export class PaymentRequestsRepository {
     return rows.map((r) => r.id);
   }
 
+  /**
+   * Org-scoped variant of {@link expirePastPaymentRequests}: only flips past-due
+   * `pending`/`delivered` rows belonging to `organizationId`. Used by the authed
+   * per-request expire route so one tenant's call can never sweep another
+   * tenant's rows (the global variant stays for the cron janitor).
+   */
+  async expirePastPaymentRequestsForOrg(organizationId: string, now: Date): Promise<string[]> {
+    const expirable: PaymentRequestStatus[] = ["pending", "delivered"];
+    const rows = await db
+      .update(paymentRequests)
+      .set({ status: "expired", updated_at: now })
+      .where(
+        and(
+          eq(paymentRequests.organization_id, organizationId),
+          inArray(paymentRequests.status, expirable),
+          lt(paymentRequests.expires_at, now),
+        ),
+      )
+      .returning({ id: paymentRequests.id });
+    return rows.map((r) => r.id);
+  }
+
   async findPaymentRequestByProviderIntentKey(
     key: ProviderIntentKey,
     value: string,

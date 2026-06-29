@@ -43,7 +43,13 @@ app.post("/", async (c) => {
       );
     }
 
-    const expiredIds = await service.expirePast(new Date());
+    // Org-scoped: only ever sweeps this caller's own past-due rows. Using the
+    // unscoped `expirePast` here let any authed user trigger a global
+    // cross-tenant sweep (least-privilege / blast-radius bug, #10117).
+    const expiredIds = await service.expirePastForOrg(
+      user.organization_id,
+      new Date(),
+    );
     const wasExpired = expiredIds.includes(id);
 
     const after = await service.get(id, user.organization_id);
