@@ -210,6 +210,65 @@ describe("Launcher swipe paging (onDragEnd)", () => {
   });
 });
 
+describe("Launcher touch swipe (Android WebView pointer-capture guard)", () => {
+  // Reproduces the launcher-swipe regression seen on a real Pixel: on Android
+  // WebView, calling setPointerCapture on a TOUCH pointer mid-gesture makes the
+  // browser fire `pointercancel`, which the pager's onLostPointerCapture /
+  // onPointerCancel turns into an aborted drag — the flick silently snaps back
+  // and never reaches the apps page. The fix skips explicit capture for touch
+  // (touch pointers are implicitly captured to the target), so the cancel never
+  // fires.
+  function touchSwipeWithCaptureCancel(dx: number): { captureCalls: number } {
+    const pageWindow = screen.getByTestId("launcher-page-window");
+    let captureCalls = 0;
+    (pageWindow as HTMLElement).setPointerCapture = (pointerId: number) => {
+      captureCalls += 1;
+      // Mirror the WebView: an explicit capture on a live touch is answered with
+      // a pointercancel.
+      fireEvent.pointerCancel(pageWindow, {
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+      });
+    };
+    (pageWindow as HTMLElement).releasePointerCapture = () => {};
+    fireEvent.pointerDown(pageWindow, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 500,
+      clientY: 100,
+      isPrimary: true,
+    });
+    fireEvent.pointerMove(pageWindow, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 500 + dx,
+      clientY: 102,
+      isPrimary: true,
+    });
+    fireEvent.pointerUp(pageWindow, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 500 + dx,
+      clientY: 102,
+      isPrimary: true,
+    });
+    return { captureCalls };
+  }
+
+  it("advances a page on a touch swipe without taking pointer capture", () => {
+    render(<Launcher entries={PAGE2} onLaunch={() => {}} />);
+    let result: { captureCalls: number } = { captureCalls: -1 };
+    act(() => {
+      result = touchSwipeWithCaptureCancel(-300);
+    });
+    // The fix must not capture touch pointers (so the WebView never cancels) …
+    expect(result.captureCalls).toBe(0);
+    // … and the flick therefore commits to the next page.
+    expect(actions()).toContain("page-swipe");
+  });
+});
+
 describe("Launcher interaction telemetry", () => {
   it("emits launch on tap", () => {
     const onLaunch = vi.fn();
