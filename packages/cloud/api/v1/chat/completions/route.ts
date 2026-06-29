@@ -1624,7 +1624,42 @@ async function handleStreamingRequest(
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch (error) {
-        controller.error(error);
+        // Finding #11: a provider error mid-stream (e.g. the cerebras 429/5xx
+        // surfaced as a `fullStream` error part) would otherwise leave the
+        // already-sent 200 SSE body silently truncated — an OpenAI-compatible
+        // client sees a cut stream that looks like a normal (empty) completion
+        // and does not back off. Emit a terminal OpenAI-shaped error chunk +
+        // [DONE] so the client can distinguish failure (and rate-limit-back-off)
+        // from success. Error path only — the success path above is untouched.
+        const status =
+          getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error);
+        try {
+          const errorChunk = {
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+              type: "rate_limit_error",
+              code: status,
+            },
+          };
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`),
+          );
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch (enqueueError) {
+          // The stream was already torn down (client disconnected / controller
+          // closed) — fall back to erroring it so the runtime cleans up.
+          logger.error(
+            "[Chat Completions] Failed to emit terminal stream error chunk",
+            {
+              error:
+                enqueueError instanceof Error
+                  ? enqueueError.message
+                  : String(enqueueError),
+            },
+          );
+          controller.error(error);
+        }
       }
     },
   });
@@ -1926,4 +1961,17 @@ export const __nativeToolingTestHooks = {
   mapToolChoice,
   convertTools,
   computeEffectiveMaxTokens,
+} as const;
+
+/**
+ * Test-only seam for the streaming credit-settlement + terminal-error-chunk
+ * behavior (the money-leak repro in
+ * `__tests__/chat-completions-streaming-credit-leak.test.ts`). Exposes the
+ * internal streaming handler so a test can drive it with a mocked `streamText`
+ * (forcing a provider 429/5xx) and a REAL credit-reservation settler, then
+ * assert the reservation is released to 0 and a terminal error chunk is emitted.
+ * The `__` prefix + `TestHooks` suffix mark it as non-public.
+ */
+export const __streamingCreditTestHooks = {
+  handleStreamingRequest,
 } as const;
