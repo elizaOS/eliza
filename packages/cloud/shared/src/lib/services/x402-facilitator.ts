@@ -29,7 +29,15 @@ import {
 } from "@x402/svm";
 import { ExactSvmScheme as ExactSvmFacilitator } from "@x402/svm/exact/facilitator";
 import bs58 from "bs58";
-import { type Chain, createPublicClient, type Hex, http, type PublicClient } from "viem";
+import {
+  type Chain,
+  createPublicClient,
+  type Hex,
+  http,
+  type PublicClient,
+  parseAbiItem,
+  parseEventLogs,
+} from "viem";
 import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -362,6 +370,10 @@ const PAYMENT_PERMIT_TYPES = {
     { name: "fee", type: "Fee" },
   ],
 } as const;
+
+const ERC20_TRANSFER_EVENT = parseAbiItem(
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+);
 
 const PAYMENT_PERMIT_ABI = [
   {
@@ -1230,7 +1242,24 @@ class X402FacilitatorService {
         });
       }
 
-      logger.info("[x402-facilitator] Settlement TX submitted", {
+      const settlementClient = this.clients.get(accepted.network);
+      if (!settlementClient) {
+        throw new Error("settlement_no_rpc_client");
+      }
+      await this.requireSuccessfulEvmSettlementReceipt({
+        client: settlementClient,
+        txHash,
+        tokenAddress: (payload.paymentPermit?.payment.payToken ?? networkConfig.usdcAddress) as Hex,
+        payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
+        payTo:
+          payload.authorization?.to ??
+          payload.paymentPermit?.payment.payTo ??
+          paymentRequirements.payTo,
+        minimumAmount: paymentRequirements.amount,
+        timeoutMs: (paymentRequirements.maxTimeoutSeconds ?? 300) * 1000,
+      });
+
+      logger.info("[x402-facilitator] Settlement TX confirmed", {
         txHash,
         payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
         payTo: payload.authorization?.to ?? payload.paymentPermit?.payment.payTo,
@@ -1250,7 +1279,9 @@ class X402FacilitatorService {
 
       // Determine error reason
       let errorReason = "transaction_failed";
-      if (msg.includes("insufficient")) {
+      if (msg.startsWith("settlement_")) {
+        errorReason = msg;
+      } else if (msg.includes("insufficient")) {
         errorReason = "insufficient_gas";
       } else if (msg.includes("nonce") || msg.includes("already used")) {
         errorReason = "nonce_already_used";
@@ -1265,6 +1296,51 @@ class X402FacilitatorService {
         payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
         errorReason,
       };
+    }
+  }
+
+  private async requireSuccessfulEvmSettlementReceipt(params: {
+    client: PublicClient;
+    txHash: Hex;
+    tokenAddress: Hex;
+    payer?: string;
+    payTo: string;
+    minimumAmount: string;
+    timeoutMs: number;
+  }): Promise<void> {
+    const receipt = await params.client.waitForTransactionReceipt({
+      hash: params.txHash,
+      timeout: params.timeoutMs,
+    });
+    if (receipt.status !== "success") {
+      throw new Error("settlement_reverted");
+    }
+
+    const payer = params.payer?.toLowerCase();
+    const payTo = params.payTo.toLowerCase();
+    const tokenAddress = params.tokenAddress.toLowerCase();
+    const transfers = parseEventLogs({
+      abi: [ERC20_TRANSFER_EVENT],
+      logs: receipt.logs,
+      strict: false,
+    });
+    const received = transfers.reduce((total, event) => {
+      const { from, to, value } = event.args;
+      if (!from || !to || value === undefined) {
+        return total;
+      }
+      if (
+        event.address.toLowerCase() !== tokenAddress ||
+        to.toLowerCase() !== payTo ||
+        (payer && from.toLowerCase() !== payer)
+      ) {
+        return total;
+      }
+      return total + value;
+    }, 0n);
+
+    if (received < BigInt(params.minimumAmount)) {
+      throw new Error("settlement_amount_too_low");
     }
   }
 

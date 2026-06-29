@@ -7,6 +7,23 @@ const PAYER = "0x3333333333333333333333333333333333333333";
 const FACILITATOR = "0x4444444444444444444444444444444444444444";
 const SIGNATURE = "0xdeadbeef";
 const NONCE = "0x0000000000000000000000000000000000000000000000000000000000000001";
+const TX_HASH = "0xabc123";
+
+const writeContract = mock(async () => TX_HASH);
+const waitForTransactionReceipt = mock(async () => ({
+  status: "success",
+  logs: [],
+}));
+const parseEventLogs = mock(() => [
+  {
+    address: ASSET,
+    args: {
+      from: PAYER,
+      to: PAY_TO,
+      value: 100n,
+    },
+  },
+]);
 
 mock.module("@solana/kit", () => ({
   createKeyPairSignerFromBytes: mock(() => ({ address: "solana-signer" })),
@@ -48,7 +65,10 @@ mock.module("bs58", () => ({
 
 mock.module("viem", () => ({
   createPublicClient: mock(() => ({})),
+  createWalletClient: mock(() => ({ writeContract })),
   http: mock(() => ({})),
+  parseAbiItem: mock((signature: string) => signature),
+  parseEventLogs,
 }));
 
 mock.module("viem/accounts", () => ({
@@ -77,6 +97,7 @@ type MutableFacilitator = {
     {
       verifyTypedData: ReturnType<typeof mock>;
       readContract: ReturnType<typeof mock>;
+      waitForTransactionReceipt?: ReturnType<typeof mock>;
     }
   >;
 };
@@ -114,6 +135,25 @@ const requirements = {
 };
 
 function primeEvmFacilitator() {
+  writeContract.mockClear();
+  writeContract.mockResolvedValue(TX_HASH);
+  waitForTransactionReceipt.mockClear();
+  waitForTransactionReceipt.mockResolvedValue({
+    status: "success",
+    logs: [],
+  });
+  parseEventLogs.mockClear();
+  parseEventLogs.mockReturnValue([
+    {
+      address: ASSET,
+      args: {
+        from: PAYER,
+        to: PAY_TO,
+        value: 100n,
+      },
+    },
+  ]);
+
   const verifyTypedData = mock(async () => true);
   const readContract = mock(async () => 100n);
   const service = x402FacilitatorService as unknown as MutableFacilitator;
@@ -126,9 +166,13 @@ function primeEvmFacilitator() {
       chainId: 8453,
       usdcAddress: ASSET,
       usdcDomainName: "USDC",
+      rpcUrl: "https://rpc.example",
+      chain: {},
     },
   };
-  service.clients = new Map([[NETWORK, { verifyTypedData, readContract }]]);
+  service.clients = new Map([
+    [NETWORK, { verifyTypedData, readContract, waitForTransactionReceipt }],
+  ]);
   return { verifyTypedData, readContract };
 }
 
@@ -154,4 +198,72 @@ test("verify accepts matching signed authorization.value and continues to signat
   expect(result).toEqual({ isValid: true, payer: PAYER });
   expect(verifyTypedData).toHaveBeenCalledTimes(1);
   expect(readContract).toHaveBeenCalledTimes(1);
+});
+
+test("settle rejects when the submitted EVM transaction reverts before crediting", async () => {
+  primeEvmFacilitator();
+  waitForTransactionReceipt.mockResolvedValue({
+    status: "reverted",
+    logs: [],
+  });
+
+  const result = await x402FacilitatorService.settle(paymentPayload("100"), requirements);
+
+  expect(result).toEqual({
+    success: false,
+    transaction: "",
+    network: NETWORK,
+    payer: PAYER,
+    errorReason: "settlement_reverted",
+  });
+  expect(writeContract).toHaveBeenCalledTimes(1);
+  expect(waitForTransactionReceipt).toHaveBeenCalledWith({
+    hash: TX_HASH,
+    timeout: 300_000,
+  });
+});
+
+test("settle rejects when the receipt does not contain the required token transfer", async () => {
+  primeEvmFacilitator();
+  parseEventLogs.mockReturnValue([
+    {
+      address: ASSET,
+      args: {
+        from: PAYER,
+        to: PAY_TO,
+        value: 1n,
+      },
+    },
+  ]);
+
+  const result = await x402FacilitatorService.settle(paymentPayload("100"), requirements);
+
+  expect(result).toEqual({
+    success: false,
+    transaction: "",
+    network: NETWORK,
+    payer: PAYER,
+    errorReason: "settlement_amount_too_low",
+  });
+  expect(writeContract).toHaveBeenCalledTimes(1);
+  expect(waitForTransactionReceipt).toHaveBeenCalledTimes(1);
+});
+
+test("settle succeeds only after the EVM receipt proves the required transfer", async () => {
+  primeEvmFacilitator();
+
+  const result = await x402FacilitatorService.settle(paymentPayload("100"), requirements);
+
+  expect(result).toEqual({
+    success: true,
+    transaction: TX_HASH,
+    network: NETWORK,
+    payer: PAYER,
+  });
+  expect(writeContract).toHaveBeenCalledTimes(1);
+  expect(waitForTransactionReceipt).toHaveBeenCalledWith({
+    hash: TX_HASH,
+    timeout: 300_000,
+  });
+  expect(parseEventLogs).toHaveBeenCalledTimes(1);
 });
