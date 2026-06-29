@@ -46,6 +46,7 @@ import {
 } from "./cloud-steward-login";
 import { scrubPersistedActiveServerToken } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
+import { scrubPersistedActiveServerToken } from "./persistence";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
