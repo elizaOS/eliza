@@ -2,19 +2,17 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
-
-const mocks = vi.hoisted(() => ({
-  verifyEmbedLaunch: vi.fn(),
-}));
-
-vi.mock("./auth/embed-handshake", () => ({
-  verifyEmbedLaunch: mocks.verifyEmbedLaunch,
-}));
-
 import { verifyEmbedSessionToken } from "./auth/embed-session-token";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
 
 const EMBED_SECRET = "embed-secret-at-least-16-chars";
+
+// No module mocks: both collaborators are supplied directly. The request body
+// is delivered as the pre-parsed `req.body` the rawPath plugin-route adapter
+// attaches in production (readCompatJsonBody honours it), and verifyEmbedLaunch
+// is dependency-injected. Module mocks (vi.mock) race under app-core's vmForks
+// pool at full-suite parallelism, which previously hung/failed this file.
+const verifyEmbedLaunch = vi.fn();
 
 function fakeRes() {
   let bodyText = "";
@@ -34,11 +32,6 @@ function fakeRes() {
   };
 }
 
-// The route runs behind the runtime's plugin-route adapter (rawPath: true),
-// which pre-parses the JSON body and attaches it as `req.body`. Mirror that here
-// by setting `req.body` rather than mocking the body reader — the real
-// `readCompatJsonBody` honours the pre-parsed body and returns it synchronously,
-// so the test never depends on streaming a (never-ending) fake socket.
 function fakeReq(
   method: string,
   pathname: string,
@@ -61,48 +54,57 @@ const runtimeState = (current: unknown): CompatRuntimeState =>
     pendingRestartReasons: [],
   }) as CompatRuntimeState;
 
+const call = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: CompatRuntimeState,
+) =>
+  handleEmbedAuthRoutes(req, res, state, {
+    verifyEmbedLaunch: verifyEmbedLaunch as never,
+  });
+
 beforeEach(() => {
-  mocks.verifyEmbedLaunch.mockReset();
+  verifyEmbedLaunch.mockReset();
 });
 
 describe("handleEmbedAuthRoutes", () => {
   it("ignores non-matching method/path (returns false)", async () => {
     const { res } = fakeRes();
-    const handled = await handleEmbedAuthRoutes(
+    const handled = await call(
       fakeReq("GET", "/api/embed/auth"),
       res,
       runtimeState({}),
     );
     expect(handled).toBe(false);
-    expect(mocks.verifyEmbedLaunch).not.toHaveBeenCalled();
+    expect(verifyEmbedLaunch).not.toHaveBeenCalled();
   });
 
   it("503 when the agent runtime is not available", async () => {
     const r = fakeRes();
-    const handled = await handleEmbedAuthRoutes(
+    const handled = await call(
       fakeReq("POST", "/api/embed/auth"),
       r.res,
       runtimeState(null),
     );
     expect(handled).toBe(true);
     expect(r.status()).toBe(503);
-    expect(mocks.verifyEmbedLaunch).not.toHaveBeenCalled();
+    expect(verifyEmbedLaunch).not.toHaveBeenCalled();
   });
 
   it("400 on missing/invalid input (verify never called)", async () => {
     const r = fakeRes();
-    await handleEmbedAuthRoutes(
+    await call(
       fakeReq("POST", "/api/embed/auth", { platform: "telegram" }),
       r.res,
       runtimeState({}),
     );
     expect(r.status()).toBe(400);
-    expect(mocks.verifyEmbedLaunch).not.toHaveBeenCalled();
+    expect(verifyEmbedLaunch).not.toHaveBeenCalled();
   });
 
   it("400 on an unknown platform", async () => {
     const r = fakeRes();
-    await handleEmbedAuthRoutes(
+    await call(
       fakeReq("POST", "/api/embed/auth", {
         platform: "slack",
         signedLaunchPayload: "x",
@@ -111,17 +113,17 @@ describe("handleEmbedAuthRoutes", () => {
       runtimeState({}),
     );
     expect(r.status()).toBe(400);
-    expect(mocks.verifyEmbedLaunch).not.toHaveBeenCalled();
+    expect(verifyEmbedLaunch).not.toHaveBeenCalled();
   });
 
   it("403 (fail closed) when the handshake rejects", async () => {
-    mocks.verifyEmbedLaunch.mockResolvedValue({
+    verifyEmbedLaunch.mockResolvedValue({
       ok: false,
       status: 403,
       reason: "telegram_bad_signature",
     });
     const r = fakeRes();
-    await handleEmbedAuthRoutes(
+    await call(
       fakeReq("POST", "/api/embed/auth", {
         platform: "telegram",
         signedLaunchPayload: "forged",
@@ -130,11 +132,11 @@ describe("handleEmbedAuthRoutes", () => {
       runtimeState({}),
     );
     expect(r.status()).toBe(403);
-    expect(mocks.verifyEmbedLaunch).toHaveBeenCalledTimes(1);
+    expect(verifyEmbedLaunch).toHaveBeenCalledTimes(1);
   });
 
   it("200 with the verified principal on success", async () => {
-    mocks.verifyEmbedLaunch.mockResolvedValue({
+    verifyEmbedLaunch.mockResolvedValue({
       ok: true,
       entityId: "11111111-1111-1111-1111-111111111111",
       role: "OWNER",
@@ -146,7 +148,7 @@ describe("handleEmbedAuthRoutes", () => {
         k === "ELIZA_EMBED_SESSION_SECRET" ? EMBED_SECRET : undefined,
     };
     const r = fakeRes();
-    await handleEmbedAuthRoutes(
+    await call(
       fakeReq("POST", "/api/embed/auth", {
         platform: "telegram",
         signedLaunchPayload: "valid",
@@ -174,7 +176,7 @@ describe("handleEmbedAuthRoutes", () => {
     expect(decoded?.entityId).toBe("11111111-1111-1111-1111-111111111111");
     expect(decoded?.role).toBe("OWNER");
     // The handshake is called with the live runtime + the parsed input.
-    expect(mocks.verifyEmbedLaunch).toHaveBeenCalledWith(
+    expect(verifyEmbedLaunch).toHaveBeenCalledWith(
       {
         platform: "telegram",
         signedLaunchPayload: "valid",
@@ -185,14 +187,14 @@ describe("handleEmbedAuthRoutes", () => {
   });
 
   it("returns a null token when no signing secret is configured", async () => {
-    mocks.verifyEmbedLaunch.mockResolvedValue({
+    verifyEmbedLaunch.mockResolvedValue({
       ok: true,
       entityId: "22222222-2222-2222-2222-222222222222",
       role: "ADMIN",
       adminMode: true,
     });
     const r = fakeRes();
-    await handleEmbedAuthRoutes(
+    await call(
       fakeReq("POST", "/api/embed/auth", {
         platform: "telegram",
         signedLaunchPayload: "valid",
