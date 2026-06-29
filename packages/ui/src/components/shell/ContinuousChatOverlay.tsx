@@ -44,6 +44,7 @@ import {
   TUTORIAL_CHAT_CONTROL_EVENT,
   type TutorialChatControlDetail,
 } from "../../events";
+import { useConversationSwipeJank } from "../../hooks/useConversationSwipeJank";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -1057,14 +1058,27 @@ export function ContinuousChatOverlay({
   // capture until a horizontal commit, so vertical thread scrolling is
   // unaffected; it is only bound while the sheet is open (below).
   const [swipeDx, setSwipeDx] = React.useState(0);
+  // Frame-budget telemetry scoped to the swipe gesture (#9954): begin sampling
+  // on the first live drag and flush a dropped-frame/p95/fps summary into the
+  // telemetry ring on release, so swipe jank is observable without the dev HUD.
+  const swipeJank = useConversationSwipeJank();
   const conversationSwipe = usePullGesture({
-    onDragX: setSwipeDx,
+    onDragX: (dx) => {
+      // A non-zero offset means the gesture is actively dragging; 0 is the
+      // settle/cancel reset the gesture emits on release. `begin` is idempotent,
+      // so calling it every frame only starts one sampling window per gesture.
+      if (dx !== 0) swipeJank.begin();
+      else swipeJank.end();
+      setSwipeDx(dx);
+    },
     onSwipeLeft: () => {
       setSwipeDx(0);
+      swipeJank.end();
       conversationNav.goNext();
     },
     onSwipeRight: () => {
       setSwipeDx(0);
+      swipeJank.end();
       conversationNav.goPrev();
     },
   });
