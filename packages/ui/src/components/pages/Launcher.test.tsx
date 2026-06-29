@@ -36,6 +36,7 @@ function imageEntry(id: string, label: string, imageUrl: string): ViewEntry {
 }
 
 const FEW = [entry("chat", "Chat"), entry("settings", "Settings")];
+const LEGACY_SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
 
 /**
  * Enter edit mode the only way the launcher now offers it — a long-press on a
@@ -68,6 +69,28 @@ describe("Launcher", () => {
     expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
     // Label text is present (names below icons), no descriptions.
     expect(screen.getByText("Chat")).toBeTruthy();
+  });
+
+  it("preserves the manual order from a migrated Springboard layout", () => {
+    window.localStorage.setItem(
+      LEGACY_SPRINGBOARD_STORAGE_KEY,
+      JSON.stringify({
+        favorites: [],
+        pages: [["settings", "chat"]],
+        manual: true,
+      }),
+    );
+
+    render(<Launcher entries={FEW} onLaunch={() => {}} />);
+
+    const tileIds = Array.from(
+      screen
+        .getByTestId("launcher-page-0")
+        .querySelectorAll<HTMLElement>('[data-testid^="launcher-tile-"]'),
+    ).map((node) =>
+      node.getAttribute("data-testid")?.replace("launcher-tile-", ""),
+    );
+    expect(tileIds).toEqual(["settings", "chat"]);
   });
 
   it("marks preview and developer tiles without changing release tiles", () => {

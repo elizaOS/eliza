@@ -28,6 +28,10 @@ const PLUGIN_ID = "welcome";
 const WIDGET_ID = "welcome.ftu";
 const WIDGET_KEY = `${PLUGIN_ID}/${WIDGET_ID}`;
 const DEFAULT_SPAN = "col-span-4 row-span-1";
+const FIRST_USER_CHAT_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "message_received",
+  "message_sent",
+]);
 
 function FtuWelcomeWidget({
   slot,
@@ -48,10 +52,10 @@ function FtuWelcomeWidget({
   // model set. Three tappable chips.
   const suggestions = usePromptSuggestions([], { enabled: onHome });
 
-  // Retire once the user actually sends a message (typed, not via a chip) — the
-  // welcome has served its purpose.
-  const sentAMessage = (events ?? []).some(
-    (event) => event.eventType === "message_sent",
+  // Retire once a real chat turn starts. Some paths surface the first completed
+  // turn as `message_received` without a preceding `message_sent` event.
+  const sentAMessage = (events ?? []).some((event) =>
+    FIRST_USER_CHAT_EVENT_TYPES.has(event.eventType),
   );
   useEffect(() => {
     if (onHome && sentAMessage) markHomeWidgetActed(WIDGET_KEY);

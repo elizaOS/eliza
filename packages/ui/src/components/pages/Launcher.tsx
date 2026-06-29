@@ -279,7 +279,11 @@ export function Launcher({
   const [layout, setLayout] = useState<LauncherLayout>(() => {
     const stored = readLauncherLayout();
     return reconcileLayout(
-      { favorites: favorites ?? stored.favorites, pages: stored.pages },
+      {
+        favorites: favorites ?? stored.favorites,
+        pages: stored.pages,
+        manual: stored.manual,
+      },
       entries.map((e) => e.id),
     );
   });
@@ -315,7 +319,11 @@ export function Launcher({
   useEffect(() => {
     setLayout((prev) =>
       reconcileLayout(
-        { favorites: favorites ?? prev.favorites, pages: prev.pages },
+        {
+          favorites: favorites ?? prev.favorites,
+          pages: prev.pages,
+          manual: prev.manual,
+        },
         availableIds,
       ),
     );
