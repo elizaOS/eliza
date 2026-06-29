@@ -105,11 +105,13 @@ describe("bounded LRU eviction", () => {
       tick(10);
       ctrl.setActive(id);
     }
-    // Cap is 3 (or 1 on low-mem; CI reports no deviceMemory → 3). The retained
-    // keep-alive set (excluding active) must not exceed the cap; v1/v2 (oldest)
-    // should be evicted.
+    // Cap bounds the EVICTABLE (hidden, non-exempt) views to 3 (CI reports no
+    // deviceMemory → 3). So total non-pinned keep-alive = active (v5) + ≤3
+    // hidden = ≤4; the oldest hidden (v1) is evicted.
     const retained = ctrl.getRetainedKeepAliveIds();
-    expect(retained.length).toBeLessThanOrEqual(3);
+    const hidden = retained.filter((id) => id !== ctrl.getActiveId());
+    expect(hidden.length).toBeLessThanOrEqual(3);
+    expect(retained.length).toBeLessThanOrEqual(4);
     expect(retained).not.toContain("v1");
     expect(retained).toContain("v5"); // active, never evicted
   });
@@ -127,12 +129,23 @@ describe("bounded LRU eviction", () => {
 });
 
 describe("crash + recovery", () => {
-  it("marks crashed then recovering", () => {
+  it("marks crashed, then recovers the active view back to active", () => {
     ctrl.setActive("settings");
     ctrl.markCrashed("settings");
     expect(ctrl.getPhase("settings")).toBe("crashed");
+    // markRecovering passes through "recovering" then resolves to the resting
+    // phase — the active view returns to "active" (not stuck in recovering).
     ctrl.markRecovering("settings");
-    expect(ctrl.getPhase("settings")).toBe("recovering");
+    expect(ctrl.getPhase("settings")).toBe("active");
+  });
+
+  it("emits the transient recovering transition to subscribers", () => {
+    ctrl.setActive("settings");
+    ctrl.markCrashed("settings");
+    const seen: string[] = [];
+    ctrl.subscribeView("settings", (t) => seen.push(t.phase));
+    ctrl.markRecovering("settings");
+    expect(seen).toEqual(["recovering", "active"]);
   });
 });
 

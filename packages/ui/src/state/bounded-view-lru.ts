@@ -100,10 +100,10 @@ export function selectLruEvictions(
   exempt: ReadonlySet<string>,
 ): string[] {
   const eligible = retainedIds.filter((id) => !exempt.has(id));
-  // The retained set may exceed `max` only by the eligible (non-exempt) members,
-  // since exempt ids are never evicted. Evict eligible-oldest until the TOTAL
-  // retained count is within `max`.
-  const overflow = retainedIds.length - max;
+  // `max` bounds the EVICTABLE (non-exempt) retained views — the active view and
+  // pinned views do not count against the cap (see getKeepAliveMaxViews's
+  // docstring). Evict eligible-oldest until the eligible count is within `max`.
+  const overflow = eligible.length - max;
   if (overflow <= 0) return [];
   const ordered = [...eligible].sort((a, b) => {
     const at = lastActiveAt.get(a) ?? 0;

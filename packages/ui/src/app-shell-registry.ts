@@ -1,6 +1,5 @@
 import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import type { ComponentType } from "react";
-import { registerViewPolicy } from "./state/view-lifecycle";
 
 export type AppShellPageLoader = () => Promise<{
   default: ComponentType<Record<string, unknown>>;
@@ -46,17 +45,6 @@ export interface AppShellPageRegistration {
   /** Screen background policy for this page. Defaults to `"opaque"`. */
   backgroundPolicy?: AppShellBackgroundPolicy;
   /**
-   * Retain this page mounted-but-hidden when another view becomes active
-   * (#10202). Opt-in; default is unmount-on-hide. Retained pages are bounded by
-   * the device-memory keep-alive LRU and paused while hidden.
-   */
-  keepAlive?: boolean;
-  /**
-   * Pause this page's timers/polling/media/native subscriptions while hidden or
-   * backgrounded (#10202). Defaults to `true`.
-   */
-  pausable?: boolean;
-  /**
    * The React component the shell mounts when this page is active.
    * Prefer `loader` for heavy pages so boot only pays metadata cost.
    */
@@ -98,21 +86,6 @@ export function registerAppShellPage(
   const store = getRegistryStore();
   store.entries.set(registration.id, registration);
   store.version += 1;
-  // Mirror any declared retention policy into the view-lifecycle controller so a
-  // plugin page can opt into keep-alive / declare pausability (#10202).
-  if (
-    registration.keepAlive !== undefined ||
-    registration.pausable !== undefined
-  ) {
-    registerViewPolicy(registration.id, {
-      ...(registration.keepAlive !== undefined
-        ? { keepAlive: registration.keepAlive }
-        : {}),
-      ...(registration.pausable !== undefined
-        ? { pausable: registration.pausable }
-        : {}),
-    });
-  }
   for (const listener of store.listeners) listener();
 }
 
