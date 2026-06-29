@@ -140,19 +140,13 @@ CACHE_ENABLED = "true"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
-# Inference hot path (#9899). OFF here = byte-identical to the pre-#9899 route.
-# Flip to "true" (prod cutover) only after the hand-port is reviewed. On a cache
-# miss/unavailable the resolver falls back to the authoritative slow path
-# (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
-# failed cache read.
-INFERENCE_HOT_PATH_CACHE = "false"
 # Tier-2 optimistic off-path billing (#9899). OFF here = the synchronous credit
-# reserve runs exactly as before (no behavior change). When "true" (also requires
-# INFERENCE_HOT_PATH_CACHE + a writable KV backstop), an org whose balance clears
-# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits the actual cost off the
-# response path; the sweep-inference-charges cron settles any dropped inline
-# settles. SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes
-# the safe synchronous-reserve path. Flip only after review + a flag-flip runbook.
+# reserve runs exactly as before (no behavior change). When "true" and the KV
+# backstop is writable, an org whose balance clears SAFE_BALANCE_THRESHOLD skips
+# the sync reserve and debits the actual cost off the response path; the
+# sweep-inference-charges cron settles any dropped inline settles.
+# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
+# synchronous-reserve path. Flip only after review + a flag-flip runbook.
 INFERENCE_OPTIMISTIC_BILLING = "false"
 SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
@@ -320,19 +314,13 @@ CACHE_ENABLED = "true"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
-# Inference hot path (#9899). OFF here = byte-identical to the pre-#9899 route.
-# Flip to "true" (prod cutover) only after the hand-port is reviewed. On a cache
-# miss/unavailable the resolver falls back to the authoritative slow path
-# (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
-# failed cache read.
-INFERENCE_HOT_PATH_CACHE = "false"
 # Tier-2 optimistic off-path billing (#9899). OFF here = the synchronous credit
-# reserve runs exactly as before (no behavior change). When "true" (also requires
-# INFERENCE_HOT_PATH_CACHE + a writable KV backstop), an org whose balance clears
-# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits the actual cost off the
-# response path; the sweep-inference-charges cron settles any dropped inline
-# settles. SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes
-# the safe synchronous-reserve path. Flip only after review + a flag-flip runbook.
+# reserve runs exactly as before (no behavior change). When "true" and the KV
+# backstop is writable, an org whose balance clears SAFE_BALANCE_THRESHOLD skips
+# the sync reserve and debits the actual cost off the response path; the
+# sweep-inference-charges cron settles any dropped inline settles.
+# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
+# synchronous-reserve path. Flip only after review + a flag-flip runbook.
 INFERENCE_OPTIMISTIC_BILLING = "false"
 SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
@@ -442,19 +430,13 @@ CACHE_ENABLED = "true"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
-# Inference hot path (#9899). OFF here = byte-identical to the pre-#9899 route.
-# Flip to "true" (prod cutover) only after the hand-port is reviewed. On a cache
-# miss/unavailable the resolver falls back to the authoritative slow path
-# (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
-# failed cache read.
-INFERENCE_HOT_PATH_CACHE = "true"
 # Tier-2 optimistic off-path billing (#9899). OFF here = the synchronous credit
-# reserve runs exactly as before (no behavior change). When "true" (also requires
-# INFERENCE_HOT_PATH_CACHE + a writable KV backstop), an org whose balance clears
-# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits the actual cost off the
-# response path; the sweep-inference-charges cron settles any dropped inline
-# settles. SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes
-# the safe synchronous-reserve path. Flip only after review + a flag-flip runbook.
+# reserve runs exactly as before (no behavior change). When "true" and the KV
+# backstop is writable, an org whose balance clears SAFE_BALANCE_THRESHOLD skips
+# the sync reserve and debits the actual cost off the response path; the
+# sweep-inference-charges cron settles any dropped inline settles.
+# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
+# synchronous-reserve path. Flip only after review + a flag-flip runbook.
 INFERENCE_OPTIMISTIC_BILLING = "false"
 SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"

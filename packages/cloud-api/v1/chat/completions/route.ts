@@ -69,10 +69,7 @@ import {
   type CreditReservation,
   creditsService,
 } from "@/lib/services/credits";
-import {
-  isInferenceHotPathCacheEnabled,
-  resolveInferenceAuthContext,
-} from "@/lib/services/inference-auth-context";
+import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import {
   createOptimisticDebitSettler,
   getGateBalanceUsd,
@@ -751,44 +748,37 @@ export async function handleChatCompletionsPOST(
     | null = null;
 
   try {
-    // 1. Authenticate (+ moderation). #9899: when the inference hot-path cache
-    // is enabled, an API-key dedicated-agent request resolves auth + org +
-    // moderation in a SINGLE cache read (the actual hot path). Otherwise, and for
-    // non-API-key / cache-unavailable requests, the authoritative chain runs
-    // verbatim, so flag-OFF behavior is byte-identical to before.
+    // 1. Authenticate (+ moderation). #9899: API-key dedicated-agent requests
+    // resolve auth + org + moderation in a SINGLE cache read when the cache is
+    // available. Non-API-key / cache-unavailable requests take the authoritative
+    // slow path verbatim.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let moderationAlreadyChecked = false;
-    if (isInferenceHotPathCacheEnabled()) {
-      const resolution = await resolveInferenceAuthContext(req);
-      if (resolution.kind === "suspended") {
-        return addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message:
-                  "Your account has been suspended due to policy violations.",
-                type: "account_suspended",
-                code: "moderation_violation",
-              },
+    const resolution = await resolveInferenceAuthContext(req);
+    if (resolution.kind === "suspended") {
+      return addCorsHeaders(
+        Response.json(
+          {
+            error: {
+              message:
+                "Your account has been suspended due to policy violations.",
+              type: "account_suspended",
+              code: "moderation_violation",
             },
-            { status: 403 },
-          ),
-        );
-      }
-      if (resolution.kind === "authorized") {
-        user = {
-          id: resolution.ctx.userId,
-          organization_id: resolution.ctx.orgId,
-        };
-        apiKey = { id: resolution.ctx.apiKeyId };
-        // The resolver already verified not-suspended, so skip the synchronous read.
-        moderationAlreadyChecked = true;
-      } else {
-        const authed = await requireAuthOrApiKeyWithOrg(req);
-        user = authed.user;
-        apiKey = authed.apiKey ? { id: authed.apiKey.id } : null;
-      }
+          },
+          { status: 403 },
+        ),
+      );
+    }
+    if (resolution.kind === "authorized") {
+      user = {
+        id: resolution.ctx.userId,
+        organization_id: resolution.ctx.orgId,
+      };
+      apiKey = { id: resolution.ctx.apiKeyId };
+      // The resolver already verified not-suspended, so skip the synchronous read.
+      moderationAlreadyChecked = true;
     } else {
       const authed = await requireAuthOrApiKeyWithOrg(req);
       user = authed.user;
@@ -1027,11 +1017,7 @@ export async function handleChatCompletionsPOST(
       // charge (free inference). Mirrors the IAC resolver's cache-health guard.
       let useOptimistic = false;
       let estimatedCostUsd = 0;
-      if (
-        isInferenceHotPathCacheEnabled() &&
-        isOptimisticBillingEnabled() &&
-        isOptimisticBackstopAvailable()
-      ) {
+      if (isOptimisticBillingEnabled() && isOptimisticBackstopAvailable()) {
         const { totalCost } = await calculateCost(
           normalizedModel,
           provider,
