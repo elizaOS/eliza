@@ -55,6 +55,8 @@ function printPlan(plan: MigratePlan, slug: string): void {
       `  LONGTERM:      ${c.LONGTERM}`,
       `  SELF:          ${c.SELF}`,
       `  older marker:  ${c.MARKER}`,
+      `  dedup dropped: ${plan.summary.duplicatesDropped}`,
+      `  clipped:       ${plan.summary.clipped} (truncated at maxChunkLen)`,
       "",
       `daily logs seen: ${plan.summary.dailyLogsTotal}`,
       `named memory:    ${plan.summary.namedMemoryTotal}`,
@@ -115,14 +117,20 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   if (opts.emitCharacter || opts.emitMemories) {
     const { characterJson, memoriesJsonl } = emitSovereignArtifacts(plan);
     if (opts.emitCharacter) {
-      fs.mkdirSync(path.dirname(path.resolve(opts.emitCharacter)), { recursive: true });
+      fs.mkdirSync(path.dirname(path.resolve(opts.emitCharacter)), {
+        recursive: true,
+      });
       fs.writeFileSync(opts.emitCharacter, characterJson);
       clack.log.success(`character → ${opts.emitCharacter}`);
     }
     if (opts.emitMemories) {
-      fs.mkdirSync(path.dirname(path.resolve(opts.emitMemories)), { recursive: true });
+      fs.mkdirSync(path.dirname(path.resolve(opts.emitMemories)), {
+        recursive: true,
+      });
       fs.writeFileSync(opts.emitMemories, memoriesJsonl);
-      clack.log.success(`memories (${plan.memories.length}) → ${opts.emitMemories}`);
+      clack.log.success(
+        `memories (${plan.memories.length}) → ${opts.emitMemories}`,
+      );
     }
   }
 
@@ -130,7 +138,9 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   if (opts.out) {
     const password = opts.password?.trim();
     if (!password || password.length < 8) {
-      fail("--password (min 8 chars) is required to write an encrypted --out archive.");
+      fail(
+        "--password (min 8 chars) is required to write an encrypted --out archive.",
+      );
     }
     if (!firewall) {
       clack.log.warn(

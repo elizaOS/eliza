@@ -66,12 +66,49 @@ export interface OcAgentSource {
 
 const DAILY_RE = /^(\d{4})-(\d{2})-(\d{2})\.md$/;
 
+/**
+ * Candidate sub-roots within a home, in priority order. OCPlatform homes come
+ * in two shapes: FLAT (`<home>/SOUL.md`, `<home>/memory/`) and NESTED
+ * (`<home>/workspace/SOUL.md`, `<home>/workspace.default/...`). We probe in this
+ * order so a nested home doesn't silently migrate to an empty character.
+ * (Mirrors Hermes's `source_candidate` multi-path probing.)
+ */
+const HOME_SUBROOTS = ["", "workspace", "workspace.default"] as const;
+
 function readIfPresent(p: string): string | undefined {
   try {
     return fs.readFileSync(p, "utf8");
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Resolve the effective agent root: the first of `<home>`, `<home>/workspace`,
+ * `<home>/workspace.default` that contains any recognizable persona file or a
+ * `memory/` dir. Falls back to `<home>` if none match (so missing-home behavior
+ * is preserved — an empty source, not a throw).
+ */
+function resolveAgentRoot(home: string): string {
+  const PERSONA_FILES = ["SOUL.md", "IDENTITY.md", "AGENTS.md", "MEMORY.md"];
+  for (const sub of HOME_SUBROOTS) {
+    const root = sub ? path.join(home, sub) : home;
+    const hasPersona = PERSONA_FILES.some((f) => {
+      try {
+        return fs.statSync(path.join(root, f)).isFile();
+      } catch {
+        return false;
+      }
+    });
+    let hasMemoryDir = false;
+    try {
+      hasMemoryDir = fs.statSync(path.join(root, "memory")).isDirectory();
+    } catch {
+      hasMemoryDir = false;
+    }
+    if (hasPersona || hasMemoryDir) return root;
+  }
+  return home;
 }
 
 /** Resolve the awareness file: prefer "<agentId>-awareness.md", else any "*-awareness.md". */
@@ -96,7 +133,8 @@ function findAwareness(memoryDir: string, agentId: string): string | undefined {
  * @param agentId Agent slug used to resolve the awareness file + tagging.
  */
 export function readOcAgentHome(home: string, agentId: string): OcAgentSource {
-  const resolvedHome = path.resolve(home);
+  // Tolerate flat AND nested (workspace/, workspace.default/) home layouts.
+  const resolvedHome = resolveAgentRoot(path.resolve(home));
   const memoryDir = path.join(resolvedHome, "memory");
 
   const dailyLogs: OcDailyLog[] = [];
@@ -144,7 +182,9 @@ export function readOcAgentHome(home: string, agentId: string): OcAgentSource {
 
   let hasSecretsDir = false;
   try {
-    hasSecretsDir = fs.statSync(path.join(resolvedHome, "secrets")).isDirectory();
+    hasSecretsDir = fs
+      .statSync(path.join(resolvedHome, "secrets"))
+      .isDirectory();
   } catch {
     hasSecretsDir = false;
   }

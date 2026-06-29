@@ -8,11 +8,18 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { MigratedCharacter as Character, MigratedMemory as Memory, UUID } from "./types.js";
 import { buildAgentArchive } from "./archive-writer.js";
-import { type CharacterMapOptions, mapToCharacter } from "./character-mapper.js";
-import { readOcAgentHome } from "./openclaw-reader.js";
+import {
+  type CharacterMapOptions,
+  mapToCharacter,
+} from "./character-mapper.js";
 import { type MemoryTier, tierMemories } from "./memory-tiering.js";
+import { readOcAgentHome } from "./openclaw-reader.js";
+import type {
+  MigratedCharacter as Character,
+  MigratedMemory as Memory,
+  UUID,
+} from "./types.js";
 
 export interface MigrateOptions {
   /** OpenClaw agent home, e.g. ~/.moltbot. */
@@ -39,6 +46,10 @@ export interface MigratePlan {
     hasUser: boolean;
     firewalled: boolean;
     hasSecretsDir: boolean;
+    /** Cross-tier duplicate memories dropped during tiering. */
+    duplicatesDropped: number;
+    /** Memory bodies clipped at maxChunkLen (content truncated). */
+    clipped: number;
   };
 }
 
@@ -61,7 +72,7 @@ export function buildMigrationPlan(opts: MigrateOptions): MigratePlan {
   const entityId = randomUUID() as UUID;
   const roomId = randomUUID() as UUID;
 
-  const { memories, counts } = tierMemories(src, {
+  const { memories, counts, duplicatesDropped, clipped } = tierMemories(src, {
     memoryDays: opts.memoryDays ?? 14,
     roomId,
     entityId,
@@ -79,6 +90,8 @@ export function buildMigrationPlan(opts: MigrateOptions): MigratePlan {
       hasUser: Boolean(src.user?.trim()),
       firewalled: firewall,
       hasSecretsDir: src.hasSecretsDir,
+      duplicatesDropped,
+      clipped,
     },
   };
 }
@@ -128,5 +141,5 @@ export function emitSovereignArtifacts(plan: MigratePlan): {
 // Re-export the building blocks for direct use + testing.
 export { assemblePayload } from "./archive-writer.js";
 export { mapToCharacter } from "./character-mapper.js";
-export { readOcAgentHome } from "./ocplatform-reader.js";
 export { tierMemories } from "./memory-tiering.js";
+export { readOcAgentHome } from "./ocplatform-reader.js";
