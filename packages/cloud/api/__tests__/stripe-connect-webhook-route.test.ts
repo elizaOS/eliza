@@ -225,7 +225,7 @@ describe("Stripe Connect payout webhook route", () => {
 // issue describes (#10117). Signature ops are local HMAC-SHA256 — no network.
 describe("Stripe Connect webhook — real signature verification (no mock)", () => {
   const realStripe = new Stripe("sk_test_dummy_for_signature_only", {
-    apiVersion: "2024-11-20.acacia",
+    apiVersion: "2026-06-24.dahlia",
   });
   const secret = "whsec_connect_realtest";
   const payload = JSON.stringify(accountUpdatedEvent);
