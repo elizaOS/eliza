@@ -630,15 +630,67 @@ class AdvertisingService {
     const credentials = await this.getCredentials(account);
     const provider = this.getProvider(account.platform);
 
+    // Reconcile the credit hold when the budget changes. createCampaign charged
+    // budget*markup up front (stored as credits_allocated); a budget change here
+    // goes LIVE on the ad platform, but previously a raise charged nothing and a
+    // cut refunded nothing — breaking the budget↔credits_allocated invariant (and
+    // over-refunding at delete). Charge an increase BEFORE pushing it live
+    // (fail-closed on insufficient balance); refund a decrease AFTER the platform
+    // accepts it; keep credits_allocated in sync.
+    let newCreditsAllocated: number | undefined;
+    let budgetCreditDelta = 0;
+    if (input.budgetAmount !== undefined) {
+      newCreditsAllocated = calculateSpendCredits(
+        account.platform,
+        input.budgetAmount,
+      );
+      budgetCreditDelta =
+        newCreditsAllocated - parseFloat(campaign.credits_allocated);
+      if (budgetCreditDelta > 0) {
+        const debit = await creditsService.deductCredits({
+          organizationId,
+          amount: budgetCreditDelta,
+          description: `Ad budget increase: ${campaign.name}`,
+          metadata: { type: "ad_budget_increase", campaignId },
+        });
+        if (!debit.success) {
+          throw new Error("Insufficient credit balance for the budget increase");
+        }
+      }
+    }
+
     const result = await provider.updateCampaign(credentials, campaign.external_campaign_id, input);
 
     if (!result.success) {
+      // Platform rejected the change — undo any increase charge we just made.
+      if (budgetCreditDelta > 0) {
+        await creditsService.refundCredits({
+          organizationId,
+          amount: budgetCreditDelta,
+          description: `Ad budget increase refund (platform rejected): ${campaign.name}`,
+          metadata: { type: "ad_budget_increase_refund", campaignId },
+        });
+      }
       throw new Error(result.error || "Failed to update campaign");
+    }
+
+    // Platform accepted — refund a budget DECREASE now (never refund before the
+    // live budget is actually lowered).
+    if (budgetCreditDelta < 0) {
+      await creditsService.refundCredits({
+        organizationId,
+        amount: -budgetCreditDelta,
+        description: `Ad budget decrease refund: ${campaign.name}`,
+        metadata: { type: "ad_budget_decrease_refund", campaignId },
+      });
     }
 
     const updated = await adCampaignsRepository.update(campaignId, {
       name: input.name,
       budget_amount: input.budgetAmount ? String(input.budgetAmount) : undefined,
+      ...(newCreditsAllocated !== undefined
+        ? { credits_allocated: String(newCreditsAllocated) }
+        : {}),
       start_date: input.startDate,
       end_date: input.endDate,
       targeting: input.targeting,
@@ -730,10 +782,46 @@ class AdvertisingService {
       }
     }
 
-    // Refund unused budget
+    // Refund the genuinely-UNUSED budget. The old `creditsAllocated -
+    // credits_spent` refunded 100% of the allocation on every delete, because
+    // `credits_spent` is never written (its only writer, incrementSpend, has no
+    // callers) — so deleting a campaign that had spent its budget on real ads
+    // refunded the whole prepaid budget + markup ("free advertising"). Base the
+    // spent portion on the REAL recorded ad spend (`total_spend`, kept in sync by
+    // getCampaignMetrics) scaled by the same effective markup applied at
+    // allocation (credits_allocated / budget_amount), so the refund is exactly
+    // the unused fraction. Best-effort refresh spend first so a never-synced
+    // campaign can't over-refund.
+    let totalSpendUsd = parseFloat(campaign.total_spend);
+    if (campaign.external_campaign_id) {
+      try {
+        const freshMetrics = await this.getCampaignMetrics(
+          campaignId,
+          organizationId,
+        );
+        if (Number.isFinite(Number(freshMetrics.spend))) {
+          totalSpendUsd = Number(freshMetrics.spend);
+        }
+      } catch (metricsError) {
+        logger.warn(
+          "[Advertising] spend refresh before delete-refund failed; using stored total_spend",
+          {
+            campaignId,
+            error:
+              metricsError instanceof Error
+                ? metricsError.message
+                : String(metricsError),
+          },
+        );
+      }
+    }
     const creditsAllocated = parseFloat(campaign.credits_allocated);
-    const creditsSpent = parseFloat(campaign.credits_spent);
-    const creditsRemaining = creditsAllocated - creditsSpent;
+    const budgetAmountUsd = parseFloat(campaign.budget_amount);
+    const fractionSpent =
+      budgetAmountUsd > 0
+        ? Math.min(1, Math.max(0, totalSpendUsd / budgetAmountUsd))
+        : 0;
+    const creditsRemaining = Math.max(0, creditsAllocated * (1 - fractionSpent));
 
     if (creditsRemaining > 0) {
       await creditsService.refundCredits({
