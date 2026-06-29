@@ -177,7 +177,6 @@ export default defineConfig({
     ],
     exclude: unitExcludes,
     globals: false,
-    passWithNoTests: true,
     testTimeout: 30000,
   },
 });
