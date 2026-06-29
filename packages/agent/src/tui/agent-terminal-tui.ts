@@ -506,7 +506,7 @@ class AgentTerminalView implements Component {
     }>(this.fetchImpl, this.apiBaseUrl, "/api/conversations", {
       method: "POST",
       body: JSON.stringify({
-        title: "SSH terminal",
+        title: "elizaOS terminal",
         metadata: { source: "terminal-tui" },
       }),
     });
