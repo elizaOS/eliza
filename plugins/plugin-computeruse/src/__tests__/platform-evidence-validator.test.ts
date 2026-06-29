@@ -171,7 +171,7 @@ describe("platform evidence validator", () => {
       "[android-aosp-evidence] 8 checks validated (requires_device_evidence)",
     );
     expect(result.stdout).toContain(
-      "[macos-desktop-evidence] 9 checks validated (requires_device_evidence)",
+      "[macos-desktop-evidence] 9 checks validated (passed)",
     );
     expect(result.stdout).toContain(
       "[linux-desktop-evidence] 9 checks validated (requires_device_evidence)",
@@ -198,14 +198,7 @@ describe("platform evidence validator", () => {
     expect(result.stderr).toContain(
       "android-aosp-validation.json: --require-complete needs evidence.imageName",
     );
-    // macOS evidence FIELDS are now captured (#9581 — real on-device CUA evidence,
-    // 6/9 checks verified on M4 Max), so macos is no longer flagged for
-    // evidence.machineModel; its remaining unverified CHECKS still trip
-    // --require-complete. Match generically so this survives further macOS check
-    // verification without re-going-stale.
-    expect(result.stderr).toContain(
-      "macos-desktop-validation.json: --require-complete",
-    );
+    expect(result.stderr).not.toContain("macos-desktop-validation.json");
     expect(result.stderr).toContain(
       "linux-desktop-validation.json: --require-complete needs evidence.machineId",
     );
