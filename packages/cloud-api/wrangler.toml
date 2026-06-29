@@ -141,7 +141,10 @@ CACHE_ENABLED = "true"
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
 # Inference hot path (#9899). OFF here = byte-identical to the pre-#9899 route.
-# Flip to "true" (prod cutover) only after the hand-port is reviewed; fails open.
+# Flip to "true" (prod cutover) only after the hand-port is reviewed. On a cache
+# miss/unavailable the resolver falls back to the authoritative slow path
+# (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
+# failed cache read.
 INFERENCE_HOT_PATH_CACHE = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
@@ -309,7 +312,10 @@ CACHE_ENABLED = "true"
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
 # Inference hot path (#9899). OFF here = byte-identical to the pre-#9899 route.
-# Flip to "true" (prod cutover) only after the hand-port is reviewed; fails open.
+# Flip to "true" (prod cutover) only after the hand-port is reviewed. On a cache
+# miss/unavailable the resolver falls back to the authoritative slow path
+# (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
+# failed cache read.
 INFERENCE_HOT_PATH_CACHE = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
@@ -419,7 +425,10 @@ CACHE_ENABLED = "true"
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
 # Inference hot path (#9899). OFF here = byte-identical to the pre-#9899 route.
-# Flip to "true" (prod cutover) only after the hand-port is reviewed; fails open.
+# Flip to "true" (prod cutover) only after the hand-port is reviewed. On a cache
+# miss/unavailable the resolver falls back to the authoritative slow path
+# (re-authenticates via requireAuthOrApiKeyWithOrg) — no auth is granted from a
+# failed cache read.
 INFERENCE_HOT_PATH_CACHE = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
