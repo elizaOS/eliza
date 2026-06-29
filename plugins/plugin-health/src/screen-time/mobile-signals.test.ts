@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   androidUsageRowsFromSignals,
+  iosCoarseUsageRowsFromSignals,
   mobileScreenTimeDataSourceFromSignals,
   mobileSignalPermissionTargetForAction,
   mobileSignalSetupActionBadge,
@@ -191,6 +192,128 @@ describe("screen-time mobile signals", () => {
       statusLabel: "Unsupported",
       detail: "This iOS device has not reported Screen Time support.",
     });
+  });
+
+  it("ingests approved iOS coarse category summaries into aggregate rows", () => {
+    const sinceMs = Date.parse("2026-06-02T00:00:00.000Z");
+    const untilMs = Date.parse("2026-06-02T23:59:00.000Z");
+
+    expect(
+      iosCoarseUsageRowsFromSignals(
+        [
+          {
+            metadata: {
+              screenTime: {
+                authorization: { status: "approved" },
+                coarseSummaryAvailable: true,
+                rawUsageExportAvailable: false,
+                categories: [
+                  {
+                    identifier: "social",
+                    displayName: "Social",
+                    totalMs: 7_200_000,
+                  },
+                  { identifier: "productivity", totalSeconds: 5_400 },
+                ],
+              },
+            },
+          },
+        ],
+        sinceMs,
+        untilMs,
+      ),
+    ).toEqual([
+      {
+        source: "app",
+        identifier: "ios.category.social",
+        displayName: "Social",
+        totalSeconds: 7_200,
+        sessionCount: 1,
+        metadata: { platform: "ios", kind: "category", categoryId: "social" },
+      },
+      {
+        source: "app",
+        identifier: "ios.category.productivity",
+        displayName: "productivity",
+        totalSeconds: 5_400,
+        sessionCount: 1,
+        metadata: {
+          platform: "ios",
+          kind: "category",
+          categoryId: "productivity",
+        },
+      },
+    ]);
+  });
+
+  it("ignores iOS coarse summaries unless authorization is approved", () => {
+    const sinceMs = Date.parse("2026-06-02T00:00:00.000Z");
+    const untilMs = Date.parse("2026-06-02T23:59:00.000Z");
+    const categories = [{ identifier: "social", totalSeconds: 600 }];
+
+    // Not approved → never ingested.
+    for (const status of ["denied", "not-determined", "unavailable"]) {
+      expect(
+        iosCoarseUsageRowsFromSignals(
+          [
+            {
+              metadata: {
+                screenTime: {
+                  authorization: { status },
+                  coarseSummaryAvailable: true,
+                  categories,
+                },
+              },
+            },
+          ],
+          sinceMs,
+          untilMs,
+        ),
+      ).toEqual([]);
+    }
+
+    // Approved but coarse summaries not available → nothing to ingest.
+    expect(
+      iosCoarseUsageRowsFromSignals(
+        [
+          {
+            metadata: {
+              screenTime: {
+                authorization: { status: "approved" },
+                coarseSummaryAvailable: false,
+                categories,
+              },
+            },
+          },
+        ],
+        sinceMs,
+        untilMs,
+      ),
+    ).toEqual([]);
+  });
+
+  it("never ingests raw per-app export even if a signal claims it (platform constraint)", () => {
+    const sinceMs = Date.parse("2026-06-02T00:00:00.000Z");
+    const untilMs = Date.parse("2026-06-02T23:59:00.000Z");
+
+    expect(
+      iosCoarseUsageRowsFromSignals(
+        [
+          {
+            metadata: {
+              screenTime: {
+                authorization: { status: "approved" },
+                coarseSummaryAvailable: true,
+                rawUsageExportAvailable: true,
+                categories: [{ identifier: "social", totalSeconds: 600 }],
+              },
+            },
+          },
+        ],
+        sinceMs,
+        untilMs,
+      ),
+    ).toEqual([]);
   });
 
   it("owns mobile health/screen-time permission setup presentation policy", () => {
