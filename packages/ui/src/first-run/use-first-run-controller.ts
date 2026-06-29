@@ -99,6 +99,52 @@ async function getCloudStatusIfSupported() {
   return client.getCloudStatus().catch(() => null);
 }
 
+function isHttpLoopbackBase(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    return (
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "::1" ||
+      url.hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function shouldSubmitFirstRunViaAppShellOrigin(
+  runtime: FirstRunRuntime,
+  baseUrl: string,
+): boolean {
+  if (runtime !== "local") return false;
+  return shouldUseAppShellLocalAgentProxy(baseUrl);
+}
+
+function shouldUseAppShellLocalAgentProxy(apiBase: string): boolean {
+  if (!isHttpLoopbackBase(apiBase)) return false;
+  if (typeof window === "undefined") return false;
+  const { origin, protocol } = window.location;
+  if (protocol !== "http:" && protocol !== "https:") return false;
+  try {
+    return new URL(apiBase).origin !== origin;
+  } catch {
+    return false;
+  }
+}
+
+function localAgentClientBase(apiBase: string): string | null {
+  return shouldUseAppShellLocalAgentProxy(apiBase) ? null : apiBase;
+}
+
+function localAgentFetchBase(apiBase: string): string {
+  return shouldUseAppShellLocalAgentProxy(apiBase) &&
+    typeof window !== "undefined"
+    ? window.location.origin
+    : apiBase;
+}
+
 export interface FirstRunVoiceState {
   supported: boolean;
   listening: boolean;
@@ -547,7 +593,18 @@ export function useFirstRunController(): FirstRunController {
         draft: { ...sourceDraft, runtime },
         uiLanguage,
       });
-      await client.submitFirstRun(plan.payload);
+      const currentBase =
+        typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+      if (shouldSubmitFirstRunViaAppShellOrigin(runtime, currentBase.trim())) {
+        client.setBaseUrl(null);
+        try {
+          await client.submitFirstRun(plan.payload);
+        } finally {
+          client.setBaseUrl(currentBase || null);
+        }
+      } else {
+        await client.submitFirstRun(plan.payload);
+      }
       if (plan.runtimeConfig.needsProviderSetup) {
         showActionBanner({
           text: "Choose a model provider in Settings before sending the first message.",
@@ -602,7 +659,8 @@ export function useFirstRunController(): FirstRunController {
       setState("firstRunRuntimeTarget", serverTarget);
       setBusyText("Starting local agent");
       const apiBase = resolveFirstRunLocalAgentApiBase();
-      client.setBaseUrl(apiBase);
+      const clientBase = localAgentClientBase(apiBase);
+      client.setBaseUrl(clientBase);
       client.setToken(
         isAndroid || isIOS ? readSyncOnDeviceAgentBearer() : null,
       );
@@ -626,19 +684,32 @@ export function useFirstRunController(): FirstRunController {
             : MOBILE_LOCAL_AGENT_LABEL,
           apiBase,
         });
-      } else {
+      } else if (clientBase) {
         savePersistedActiveServer({
           id: "local:desktop",
           kind: "remote",
           label: "Local agent",
-          apiBase,
+          apiBase: clientBase,
         });
-        addAgentProfile({ kind: "remote", label: "Local agent", apiBase });
+        addAgentProfile({
+          kind: "remote",
+          label: "Local agent",
+          apiBase: clientBase,
+        });
+      } else {
+        savePersistedActiveServer({
+          id: "local:app-shell",
+          kind: "local",
+          label: "Local agent",
+        });
+        addAgentProfile({ kind: "local", label: "Local agent" });
       }
       setBusyText("Saving first-run profile");
       await submitFirstRun(sourceDraft, "local");
       if (firstRunDownloadsLocalModel(sourceDraft.localInference)) {
-        void autoDownloadRecommendedLocalModelInBackground(apiBase);
+        void autoDownloadRecommendedLocalModelInBackground(
+          localAgentFetchBase(apiBase),
+        );
       }
       clearPersistedFirstRunState();
       setBusyText(null);

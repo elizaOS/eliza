@@ -7,36 +7,46 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mirrors the cloud test harness in `use-first-run-controller.test.tsx` but
 // pins the platform to Electrobun desktop with the local runtime selectable.
 
-const mocks = vi.hoisted(() => ({
-  elizaCloudConnected: false,
-  addAgentProfile: vi.fn(),
-  autoDownloadRecommendedLocalModelInBackground: vi.fn(),
-  completeFirstRun: vi.fn(),
-  createPersistedActiveServer: vi.fn(),
-  getAuthStatus: vi.fn(async () => ({
-    required: false,
-    pairingEnabled: false,
-    expiresAt: null,
-  })),
-  getCloudStatus: vi.fn(async () => ({ connected: false, reason: undefined })),
-  getRestAuthToken: vi.fn(() => null),
-  getDesktopRuntimeMode: vi.fn(async () => null),
-  handleCloudLogin: vi.fn(async () => {}),
-  invokeDesktopBridgeRequest: vi.fn(async () => null),
-  microphoneOpenSettings: vi.fn(async () => {}),
-  microphoneRequest: vi.fn(async () => {}),
-  persistMobileRuntimeModeForServerTarget: vi.fn(),
-  preOpenWindow: vi.fn(() => null),
-  prepareFirstRunVoiceAndTranscription: vi.fn(async () => null),
-  savePersistedActiveServer: vi.fn(),
-  showActionBanner: vi.fn(),
-  setTab: vi.fn(),
-  setBaseUrl: vi.fn(),
-  setState: vi.fn(),
-  setToken: vi.fn(),
-  submitFirstRun: vi.fn(async () => null),
-  synthesizeFirstRunSpeech: vi.fn(async () => new ArrayBuffer(0)),
-}));
+const mocks = vi.hoisted(() => {
+  const clientState = { baseUrl: "" };
+  return {
+    clientState,
+    elizaCloudConnected: false,
+    addAgentProfile: vi.fn(),
+    autoDownloadRecommendedLocalModelInBackground: vi.fn(),
+    completeFirstRun: vi.fn(),
+    createPersistedActiveServer: vi.fn(),
+    getAuthStatus: vi.fn(async () => ({
+      required: false,
+      pairingEnabled: false,
+      expiresAt: null,
+    })),
+    getBaseUrl: vi.fn(() => clientState.baseUrl),
+    getCloudStatus: vi.fn(async () => ({
+      connected: false,
+      reason: undefined,
+    })),
+    getRestAuthToken: vi.fn(() => null),
+    getDesktopRuntimeMode: vi.fn(async () => null),
+    handleCloudLogin: vi.fn(async () => {}),
+    invokeDesktopBridgeRequest: vi.fn(async () => null),
+    microphoneOpenSettings: vi.fn(async () => {}),
+    microphoneRequest: vi.fn(async () => {}),
+    persistMobileRuntimeModeForServerTarget: vi.fn(),
+    preOpenWindow: vi.fn(() => null),
+    prepareFirstRunVoiceAndTranscription: vi.fn(async () => null),
+    savePersistedActiveServer: vi.fn(),
+    showActionBanner: vi.fn(),
+    setTab: vi.fn(),
+    setBaseUrl: vi.fn((baseUrl: string | null) => {
+      clientState.baseUrl = baseUrl ?? "";
+    }),
+    setState: vi.fn(),
+    setToken: vi.fn(),
+    submitFirstRun: vi.fn(async () => null),
+    synthesizeFirstRunSpeech: vi.fn(async () => new ArrayBuffer(0)),
+  };
+});
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
@@ -47,6 +57,7 @@ vi.mock("@capacitor/core", () => ({
 vi.mock("../api", () => ({
   client: {
     getAuthStatus: mocks.getAuthStatus,
+    getBaseUrl: mocks.getBaseUrl,
     getCloudStatus: mocks.getCloudStatus,
     getRestAuthToken: mocks.getRestAuthToken,
     setBaseUrl: mocks.setBaseUrl,
@@ -185,11 +196,13 @@ function ensureLocalStorage(): Storage {
 
 function resetMocks(): void {
   ensureLocalStorage().clear();
+  mocks.clientState.baseUrl = "";
   mocks.elizaCloudConnected = false;
   mocks.addAgentProfile.mockClear();
   mocks.autoDownloadRecommendedLocalModelInBackground.mockClear();
   mocks.completeFirstRun.mockClear();
   mocks.getAuthStatus.mockClear();
+  mocks.getBaseUrl.mockClear();
   mocks.getCloudStatus.mockReset();
   mocks.getCloudStatus.mockResolvedValue({
     connected: false,
@@ -235,24 +248,22 @@ describe("useFirstRunController local first-run", () => {
       ipcChannel: "agent:start",
     });
 
-    // Client repoints at the local agent api base and clears the token
-    // (desktop is neither Android nor iOS, so no on-device bearer).
-    expect(mocks.setBaseUrl).toHaveBeenCalledWith("http://127.0.0.1:31337");
+    // Browser-hosted app-shell traffic stays on the same-origin /api proxy
+    // instead of switching the renderer to a direct 127.0.0.1 API origin.
+    expect(mocks.setBaseUrl).toHaveBeenCalledWith(null);
     expect(mocks.setToken).toHaveBeenCalledWith(null);
 
     // waitForAgentApi probes getAuthStatus until ready.
     expect(mocks.getAuthStatus).toHaveBeenCalled();
 
     expect(mocks.savePersistedActiveServer).toHaveBeenCalledWith({
-      id: "local:desktop",
-      kind: "remote",
+      id: "local:app-shell",
+      kind: "local",
       label: "Local agent",
-      apiBase: "http://127.0.0.1:31337",
     });
     expect(mocks.addAgentProfile).toHaveBeenCalledWith({
-      kind: "remote",
+      kind: "local",
       label: "Local agent",
-      apiBase: "http://127.0.0.1:31337",
     });
     expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
       "local",
@@ -267,9 +278,10 @@ describe("useFirstRunController local first-run", () => {
     expect(mocks.submitFirstRun).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Demo Agent", sandboxMode: "off" }),
     );
+    expect(mocks.setBaseUrl).toHaveBeenCalledTimes(1);
     expect(
       mocks.autoDownloadRecommendedLocalModelInBackground,
-    ).toHaveBeenCalledWith("http://127.0.0.1:31337");
+    ).toHaveBeenCalledWith(window.location.origin);
 
     // First-run persistence is cleared and the flow lands in chat.
     expect(localStorage.getItem("eliza:first-run")).toBeNull();
