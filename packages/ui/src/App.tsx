@@ -78,6 +78,7 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
+import { isInChatOnboardingEnabled } from "./first-run/in-chat-onboarding";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -102,7 +103,6 @@ import {
 } from "./state";
 import { goHome } from "./state/shell-surface-store";
 import { isShellPaintable } from "./state/startup-coordinator";
-import { isInChatOnboardingEnabled } from "./first-run/in-chat-onboarding";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
