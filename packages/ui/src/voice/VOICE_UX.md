@@ -162,6 +162,11 @@ on what counts as "the wake word".
 What runs the always-on Stage-A detector on each target, and therefore which path
 the controller selects:
 
+The live verification surface for this table is
+[`VOICE_LIVE_MATRIX.md`](./VOICE_LIVE_MATRIX.md). `bun run voice:matrix` emits
+the reviewer-facing JSON/Markdown/HTML report and records skipped hardware cells
+explicitly instead of treating Linux-only evidence as cross-platform coverage.
+
 | Platform | Stage-A detector | Stage-B ASR confirm | Selected path | Always-on battery |
 |---|---|---|---|---|
 | **macOS** (desktop) | fused openWakeWord (CPU/Metal) | fused transcription / Whisper.cpp | head fast-path → two-stage | ✅ ~0.23 ms/frame |

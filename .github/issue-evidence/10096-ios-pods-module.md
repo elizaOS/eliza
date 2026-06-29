@@ -12,7 +12,7 @@
 
 - `node --check packages/app-core/scripts/run-mobile-build.mjs && node --check packages/app-core/scripts/mobile/ios-pods.mjs && node --check packages/app-core/scripts/mobile/ios-plist.mjs && node --check packages/app-core/scripts/run-mobile-build-plugin-manifest.test.mjs && node --check packages/app-core/scripts/run-mobile-build-ios-plist.test.mjs && node --check packages/app-core/scripts/mobile/ios-plist.test.mjs`
 - `bunx biome check packages/app-core/scripts/run-mobile-build.mjs packages/app-core/scripts/mobile/ios-pods.mjs packages/app-core/scripts/mobile/ios-plist.mjs packages/app-core/scripts/mobile/ios-plist.test.mjs packages/app-core/scripts/run-mobile-build-plugin-manifest.test.mjs packages/app-core/scripts/run-mobile-build-ios-plist.test.mjs .github/issue-evidence/10096-ios-pods-module.md`
-- `bun run --cwd packages/app-core test -- scripts/run-mobile-build-plugin-manifest.test.mjs scripts/run-mobile-build-ios-plist.test.mjs scripts/mobile/ios-plist.test.mjs scripts/run-mobile-build-ios-engine-gate.test.mjs scripts/run-mobile-build-android-targets.test.mjs` (5 files, 35 tests)
+- `bun run --cwd packages/app-core test -- scripts/run-mobile-build-plugin-manifest.test.mjs scripts/run-mobile-build-ios-plist.test.mjs scripts/mobile/ios-plist.test.mjs scripts/run-mobile-build-ios-engine-gate.test.mjs scripts/run-mobile-build-android-targets.test.mjs scripts/run-mobile-build-android-manifest.test.mjs` (6 files, 40 tests)
 - `bun run --cwd packages/app build:ios:cloud:sim`
 
 ## Full iOS Simulator Build Evidence
@@ -21,7 +21,9 @@
 
 Reviewed output markers:
 
-- Renderer reuse guard accepted the current web bundle: `[mobile-build] Auto-skipping web build: existing dist is up-to-date (buildId=45235f2c5f5d)`.
+- Vite production build completed: `✓ built in 39m 23s`.
+- Renderer manifest was regenerated with `buildId=4ee2c1ec5623` and 195 assets.
+- Chunk safety passed: `bn.js/crypto graph is confined to lazy vendor chunks (164 chunks scanned)`.
 - Capacitor copied web assets to `ios/App/App/public`, generated `capacitor.config.json`, and the stale-web guard overlaid the fresh `packages/app/dist` into the iOS public directory.
 - Capacitor sync completed and found 26 iOS plugins.
 - Split pod manifest generated the cloud simulator Podfile behavior:

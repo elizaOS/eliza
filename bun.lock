@@ -109,6 +109,7 @@
         "@elizaos/plugin-background-runner": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
+        "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-coding-tools": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
         "@elizaos/plugin-computeruse": "workspace:*",
@@ -712,6 +713,7 @@
         "@electric-sql/pglite-socket": "0.1.6",
         "@elevenlabs/elevenlabs-js": "^2.45.0",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-elevenlabs": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -3121,6 +3123,21 @@
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "^4.4.3",
+      },
+    },
+    "plugins/plugin-cloud-apps": {
+      "name": "@elizaos/plugin-cloud-apps",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/cloud-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@elizaos/core": "workspace:*",
+        "@types/bun": "^1.1.0",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
       },
     },
     "plugins/plugin-codex-cli": {
@@ -6275,6 +6292,8 @@
     "@elizaos/plugin-cli": ["@elizaos/plugin-cli@workspace:plugins/plugin-cli"],
 
     "@elizaos/plugin-cli-inference": ["@elizaos/plugin-cli-inference@workspace:plugins/plugin-cli-inference"],
+
+    "@elizaos/plugin-cloud-apps": ["@elizaos/plugin-cloud-apps@workspace:plugins/plugin-cloud-apps"],
 
     "@elizaos/plugin-codex-cli": ["@elizaos/plugin-codex-cli@workspace:plugins/plugin-codex-cli"],
 

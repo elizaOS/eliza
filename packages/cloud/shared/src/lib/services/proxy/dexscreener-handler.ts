@@ -78,6 +78,30 @@ export async function handleDexscreenerProxyGet(c: Context<AppEnv>): Promise<Res
         status: upstreamResponse.status,
         path: pathStr,
       });
+      // DexScreener is a FREE upstream, so a non-ok response cost us nothing —
+      // refund the upfront charge so the customer isn't billed for a failed call
+      // (matches the engine routes' refund-on-failure policy).
+      await creditsService
+        .refundCredits({
+          organizationId: organization_id,
+          amount: cost,
+          description: `API proxy refund: dexscreener — getRequest (upstream ${upstreamResponse.status})`,
+          metadata: {
+            type: "proxy_dexscreener_refund",
+            service: "dexscreener",
+            method: "getRequest",
+            path: pathStr,
+          },
+        })
+        .catch((refundError) => {
+          logger.warn("[DexscreenerProxy] refund after upstream failure failed", {
+            status: upstreamResponse.status,
+            error:
+              refundError instanceof Error
+                ? refundError.message
+                : String(refundError),
+          });
+        });
     }
 
     return new Response(body, {

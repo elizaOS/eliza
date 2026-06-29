@@ -94,7 +94,7 @@ import {
 } from "./accounts";
 import type { ICompatRuntime } from "./compat";
 import { DISCORD_SERVICE_NAME } from "./constants";
-import type { ChannelDebouncer, MessageDebouncer } from "./debouncer";
+import type { ChannelDebouncer } from "./debouncer";
 import {
 	handleGuildCreate as handleGuildCreateExtracted,
 	isGuildOnlyCommand,
@@ -483,7 +483,6 @@ export class DiscordService extends Service implements IDiscordService {
 	discordSettings: DiscordSettings;
 	messageManager?: MessageManager;
 	voiceManager?: VoiceManager;
-	private messageDebouncer?: MessageDebouncer;
 	private channelDebouncer?: ChannelDebouncer;
 	private _loginFailed = false;
 	private userSelections: Map<string, Record<string, unknown>> = new Map();
@@ -942,7 +941,6 @@ export class DiscordService extends Service implements IDiscordService {
 		this.discordSettings = state?.settings ?? getDiscordSettings(this.runtime);
 		this.messageManager = state?.messageManager;
 		this.voiceManager = state?.voiceManager;
-		this.messageDebouncer = state?.messageDebouncer;
 		this.channelDebouncer = state?.channelDebouncer;
 		this.allowedChannelIds = state?.allowedChannelIds;
 		this.dynamicChannelIds = state?.dynamicChannelIds ?? new Set();
@@ -1084,17 +1082,6 @@ export class DiscordService extends Service implements IDiscordService {
 				}
 				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.voiceManager = value;
-				}
-			},
-			get messageDebouncer() {
-				return state?.messageDebouncer ?? parent.messageDebouncer;
-			},
-			set messageDebouncer(value: MessageDebouncer | undefined) {
-				if (state) {
-					state.messageDebouncer = value;
-				}
-				if (!state || state.accountId === parent.defaultAccountId) {
-					parent.messageDebouncer = value;
 				}
 			},
 			get channelDebouncer() {
@@ -2648,14 +2635,12 @@ export class DiscordService extends Service implements IDiscordService {
 			return;
 		}
 
-		const { messageDebouncer, channelDebouncer } = setupDiscordEventListeners(
+		const { channelDebouncer } = setupDiscordEventListeners(
 			this.createAccountServiceFacade(state),
 		);
 
-		state.messageDebouncer = messageDebouncer;
 		state.channelDebouncer = channelDebouncer;
 		if (state.accountId === this.defaultAccountId) {
-			this.messageDebouncer = messageDebouncer;
 			this.channelDebouncer = channelDebouncer;
 		}
 	}
@@ -3338,12 +3323,9 @@ export class DiscordService extends Service implements IDiscordService {
 
 		const states = this.accountPool.list();
 		for (const state of states) {
-			state.messageDebouncer?.destroy();
 			state.channelDebouncer?.destroy();
-			state.messageDebouncer = undefined;
 			state.channelDebouncer = undefined;
 		}
-		this.messageDebouncer = undefined;
 		this.channelDebouncer = undefined;
 
 		this.userSelections.clear();

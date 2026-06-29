@@ -1,13 +1,36 @@
 # Conversation Nav Interleaving Evidence
 
 Issue: #9954 chat-ux conversation-nav interleaving
-Date: 2026-06-29
-Machine: Windows, PowerShell, Bun 1.4.0-canary.1, Node 24
+Updated verification: 2026-06-29 on the clean Linux `origin/develop`
+verification worktree.
 
-## Change
+## Current status
 
-This PR chunk addresses the cheapest, highest-confidence part of #9954:
-conversation-swipe interleavings.
+The earlier Windows-local blocker notes below are superseded by the clean
+verification pass. The issue is now closed and the current tree has passing
+unit/fuzz, real-overlay gesture E2E, chat-sheet E2E, render parity, and app
+audit evidence.
+
+Current durable artifacts live in:
+
+- `.github/issue-evidence/9954-chat-ux/README.md`
+- `.github/issue-evidence/9954-chat-ux/chatux-gestures.webm`
+- `.github/issue-evidence/9954-chat-ux/38-state-maximized-with-inset.png`
+- `.github/issue-evidence/9954-chat-ux/50-state-streaming-dots-in-bubble.png`
+- `.github/issue-evidence/9954-chat-ux/51-state-multi-send-while-responding.png`
+
+Current validation:
+
+```text
+bun run --cwd packages/ui test:chatux-gesture-e2e  PASS
+bun run --cwd packages/ui test:chat-sheet-e2e      PASS
+bun run --cwd packages/app audit:app               369 passed
+bun run verify                                     PASS
+```
+
+The original focused change notes are retained below for historical context.
+
+## Original change
 
 - Extracted pure adjacent-conversation navigation to
   `packages/ui/src/components/shell/conversation-nav.ts`.

@@ -47,6 +47,7 @@ import {
   hasStewardLoginLauncher,
   launchStewardLogin,
 } from "./cloud-steward-login";
+import { scrubPersistedActiveServerToken } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -904,6 +905,12 @@ export function useCloudState({
         setElizaCloudStatusReason(null);
         lastElizaCloudPollConnectedRef.current = false;
         elizaCloudPreferDisconnectedUntilLoginRef.current = true;
+        // Drop the persisted JWT on disconnect. The full sign-out path
+        // (StewardProviderRuntime) already scrubs it; cloud-disconnect cleared
+        // in-memory state but left active-server.accessToken in localStorage —
+        // an at-rest JWT leak readable by XSS / plugin views. Keep the server
+        // selection (kind/apiBase/label) so we know where to re-authenticate.
+        scrubPersistedActiveServerToken();
         if (wasConnected) {
           setActionNotice("Disconnected from Eliza Cloud.", "success");
         }

@@ -21,8 +21,6 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import kotlinx.coroutines.*
 import java.util.Locale
-import kotlin.math.abs
-import kotlin.math.min
 
 /**
  * Swabble (Voice Wake) Plugin for Capacitor Android
@@ -120,12 +118,6 @@ class SwabblePlugin : Plugin() {
     ) {
         val end: Double get() = start + duration
     }
-
-    data class WakeWordMatch(
-        val wakeWord: String,
-        val command: String,
-        val postGap: Double
-    )
 
     // ── Plugin methods ──────────────────────────────────────────────────
 
@@ -499,7 +491,21 @@ class SwabblePlugin : Plugin() {
         // Check for wake word — use all recognition alternatives for robustness
         val cfg = config ?: return
         for (alternative in matches) {
-            val match = matchWakeWord(alternative, segments, cfg)
+            val match = SwabbleWakeBridgeContract.matchWakeWord(
+                transcript = alternative,
+                segments = segments.map {
+                    SwabbleWakeBridgeContract.Segment(
+                        text = it.text,
+                        start = it.start,
+                        duration = it.duration
+                    )
+                },
+                config = SwabbleWakeBridgeContract.Config(
+                    triggers = cfg.triggers,
+                    minPostTriggerGap = cfg.minPostTriggerGap,
+                    minCommandLength = cfg.minCommandLength
+                )
+            )
             if (match != null) {
                 // Dedup: skip if we already dispatched this exact command
                 if (match.command == lastDispatchedCommand) continue
@@ -507,13 +513,11 @@ class SwabblePlugin : Plugin() {
 
                 transitionState(SwabbleState.TRIGGERED)
 
-                notifyListeners("wakeWord", JSObject().apply {
-                    put("wakeWord", match.wakeWord)
-                    put("command", match.command)
-                    put("transcript", alternative)
-                    put("postGap", match.postGap)
-                    put("confidence", confidence?.firstOrNull()?.toDouble() ?: 0.0)
-                })
+                notifyListeners("wakeWord", SwabbleWakeBridgeContract.wakeWordPayload(
+                    match = match,
+                    transcript = alternative,
+                    confidence = confidence?.firstOrNull()?.toDouble() ?: 0.0
+                ).toJSObject())
 
                 // Move to capturing state briefly, then back to listening
                 scope.launch {
@@ -529,142 +533,6 @@ class SwabblePlugin : Plugin() {
         }
 
         lastTranscript = transcript
-    }
-
-    // ── Wake word matching (regex + Levenshtein fuzzy) ──────────────────
-
-    /**
-     * Two-pass wake word matching:
-     * 1. Exact regex match (ported from classic VoiceWakeCommandExtractor)
-     * 2. Fuzzy match using Levenshtein distance for misheard trigger words
-     */
-    private fun matchWakeWord(
-        transcript: String,
-        segments: List<SpeechSegment>,
-        config: SwabbleConfig
-    ): WakeWordMatch? {
-        // Pass 1: exact regex match (from classic VoiceWakeCommandExtractor)
-        for (trigger in config.triggers) {
-            val command = extractCommandExact(transcript, trigger)
-            if (command != null && command.length >= config.minCommandLength) {
-                return WakeWordMatch(
-                    wakeWord = trigger,
-                    command = command,
-                    postGap = config.minPostTriggerGap
-                )
-            }
-        }
-
-        // Pass 2: fuzzy match using Levenshtein distance
-        val words = transcript.split("\\s+".toRegex()).filter { it.isNotEmpty() }
-        for ((wordIndex, _) in words.withIndex()) {
-            for (trigger in config.triggers) {
-                val triggerWords = trigger.split("\\s+".toRegex()).filter { it.isNotEmpty() }
-                val triggerLen = triggerWords.size
-
-                // Check if enough words remain to form the trigger
-                if (wordIndex + triggerLen > words.size) continue
-
-                val candidate = words.subList(wordIndex, wordIndex + triggerLen).joinToString(" ")
-                val distance = levenshteinDistance(candidate.lowercase(), trigger.lowercase())
-                val maxLen = maxOf(candidate.length, trigger.length)
-
-                // Accept if within 30% edit distance (fuzzy threshold)
-                if (maxLen > 0 && distance.toDouble() / maxLen <= 0.3) {
-                    val commandStart = wordIndex + triggerLen
-                    if (commandStart >= words.size) continue
-
-                    val command = words.subList(commandStart, words.size).joinToString(" ").trim()
-                    if (command.length < config.minCommandLength) continue
-
-                    // Estimate post-trigger gap from segments
-                    val gap = if (commandStart < segments.size && wordIndex + triggerLen - 1 < segments.size) {
-                        val triggerEnd = segments[wordIndex + triggerLen - 1].end
-                        val commandBegin = segments[commandStart].start
-                        commandBegin - triggerEnd
-                    } else {
-                        config.minPostTriggerGap
-                    }
-
-                    return WakeWordMatch(
-                        wakeWord = trigger,
-                        command = cleanCommand(command),
-                        postGap = gap
-                    )
-                }
-            }
-        }
-
-        return null
-    }
-
-    /**
-     * Exact command extraction using regex — ported from classic
-     * VoiceWakeCommandExtractor.extractCommand()
-     */
-    private fun extractCommandExact(text: String, trigger: String): String? {
-        val raw = text.trim()
-        if (raw.isEmpty()) return null
-
-        val normalizedTrigger = trigger.trim().lowercase()
-        if (normalizedTrigger.isEmpty()) return null
-
-        val escaped = Regex.escape(normalizedTrigger)
-        val regex = Regex("(?i)(?:^|\\s)($escaped)\\b[\\s\\p{Punct}]*([\\s\\S]+)$")
-        val match = regex.find(raw) ?: return null
-        val extracted = match.groupValues.getOrNull(2)?.trim() ?: return null
-        if (extracted.isEmpty()) return null
-
-        return cleanCommand(extracted)
-    }
-
-    /** Strip leading punctuation/whitespace from a command string. */
-    private fun cleanCommand(text: String): String {
-        return text.trimStart { it.isWhitespace() || it.isPunctuation() }.trim()
-    }
-
-    private fun Char.isPunctuation(): Boolean {
-        return when (Character.getType(this)) {
-            Character.CONNECTOR_PUNCTUATION.toInt(),
-            Character.DASH_PUNCTUATION.toInt(),
-            Character.START_PUNCTUATION.toInt(),
-            Character.END_PUNCTUATION.toInt(),
-            Character.INITIAL_QUOTE_PUNCTUATION.toInt(),
-            Character.FINAL_QUOTE_PUNCTUATION.toInt(),
-            Character.OTHER_PUNCTUATION.toInt() -> true
-            else -> false
-        }
-    }
-
-    /**
-     * Levenshtein edit distance between two strings.
-     * Used for fuzzy trigger word matching (handles speech recognition errors).
-     */
-    private fun levenshteinDistance(a: String, b: String): Int {
-        val m = a.length
-        val n = b.length
-        if (m == 0) return n
-        if (n == 0) return m
-
-        // Single-row DP to save memory
-        var prev = IntArray(n + 1) { it }
-        var curr = IntArray(n + 1)
-
-        for (i in 1..m) {
-            curr[0] = i
-            for (j in 1..n) {
-                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
-                curr[j] = minOf(
-                    prev[j] + 1,       // deletion
-                    curr[j - 1] + 1,   // insertion
-                    prev[j - 1] + cost  // substitution
-                )
-            }
-            val tmp = prev
-            prev = curr
-            curr = tmp
-        }
-        return prev[n]
     }
 
     // ── State machine ───────────────────────────────────────────────────

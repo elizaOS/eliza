@@ -8,7 +8,8 @@
  *
  * No live API — `requestRaw` is mocked to return constructed `Response`s.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, ResponseSkeleton } from "@elizaos/core";
+import { ResponseSkeletonStreamExtractor } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Deferred = {
@@ -125,6 +126,19 @@ function dataFrame(obj: unknown): string {
 
 function contentDelta(text: string): unknown {
   return { choices: [{ index: 0, delta: { content: text } }] };
+}
+
+/**
+ * One SSE frame carrying a `delta.tool_calls[0]` fragment (index 0). The Stage-1
+ * RESPONSE_HANDLER reply forces this shape — Cerebras returns the envelope as
+ * tool-call ARGUMENT deltas, never `delta.content`.
+ */
+function toolCallDelta(args: string, opts: { id?: string; name?: string } = {}): unknown {
+  const fn: Record<string, unknown> = { arguments: args };
+  if (opts.name) fn.name = opts.name;
+  const call: Record<string, unknown> = { index: 0, function: fn };
+  if (opts.id) call.id = opts.id;
+  return { choices: [{ index: 0, delta: { tool_calls: [call] } }] };
 }
 
 async function readStream(result: { textStream: AsyncIterable<string> }): Promise<string[]> {
@@ -503,6 +517,153 @@ describe("streamNativeChatCompletion", () => {
     expect(resolveStreamingEnabled()).toBe(true);
     delete process.env.ELIZAOS_CLOUD_STREAMING;
     expect(resolveStreamingEnabled()).toBe(true);
+  });
+});
+
+/**
+ * The Stage-1 RESPONSE_HANDLER call sets `tool_choice:"required"`, so Cerebras
+ * returns the whole reply envelope (incl. `replyText`) as tool-call ARGUMENT
+ * deltas — never `delta.content`. Without surfacing those into the textStream the
+ * runtime's structured extractor sees nothing and the reply lands all at once.
+ * These tests pin that the reply args ARE streamed (only on the structured
+ * `streamStructured` path), de-duped against Cerebras's aggregated re-send, and
+ * that the runtime extractor reduces the streamed envelope to ONLY `replyText`
+ * (no control-field leak).
+ */
+describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope", () => {
+  function structuredParams(): never {
+    // streamStructured===true is what gates tool-call-argument streaming.
+    return {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      streamStructured: true,
+    } as never;
+  }
+
+  beforeEach(() => {
+    transport.reset();
+    nextResponse = null;
+    requestRaw.mockClear();
+    delete process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY;
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+  afterEach(() => {
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+
+  it("surfaces tool-call argument deltas incrementally as the envelope grows", async () => {
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"shouldRespond":"RESPOND","contexts":["general"],')),
+      dataFrame(toolCallDelta('"replyText":"On it ')),
+      dataFrame(toolCallDelta('now."}')),
+      dataFrame({ choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }),
+      "data: [DONE]\n\n",
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      structuredParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    const chunks = await readStream(result);
+    // Streamed across MULTIPLE chunks (the bug = one final blob).
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join("")).toBe(
+      '{"shouldRespond":"RESPOND","contexts":["general"],"replyText":"On it now."}'
+    );
+    // The authoritative deduped tool call is still surfaced for downstream parse.
+    const toolCalls = await (result as { toolCalls: Promise<unknown[]> }).toolCalls;
+    expect(toolCalls).toEqual([
+      {
+        type: "tool-call",
+        toolCallId: "call_1",
+        toolName: "HANDLE_RESPONSE",
+        input: { shouldRespond: "RESPOND", contexts: ["general"], replyText: "On it now." },
+      },
+    ]);
+  });
+
+  it("does NOT double when Cerebras re-sends the complete envelope in a final frame", async () => {
+    const full = '{"shouldRespond":"RESPOND","replyText":"PONG"}';
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"shouldRespond":"RESPOND","replyText":"PO')),
+      dataFrame(toolCallDelta('NG"}')),
+      // Aggregated re-send re-carrying id + name + the COMPLETE object.
+      dataFrame(toolCallDelta(full, { id: "call_1", name: "HANDLE_RESPONSE" })),
+      "data: [DONE]\n\n",
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      structuredParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    // The envelope is streamed exactly once — the re-send adds nothing.
+    expect((await readStream(result)).join("")).toBe(full);
+  });
+
+  it("stays buffered (no tool-arg streaming) when streamStructured is absent", async () => {
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"replyText":"hi"}')),
+      "data: [DONE]\n\n",
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      nativeParams(), // no streamStructured
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    // Nothing reaches the UI token stream — the planner/non-structured shape must
+    // not leak its raw tool-call args.
+    expect(await readStream(result)).toEqual([]);
+    const toolCalls = await (result as { toolCalls: Promise<unknown[]> }).toolCalls;
+    expect(toolCalls).toHaveLength(1);
+  });
+
+  it("runtime extractor reduces the streamed envelope to ONLY replyText (no control-field leak)", async () => {
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],')),
+      dataFrame(toolCallDelta('"replyText":"On it ')),
+      dataFrame(toolCallDelta('now.","facts":[]}')),
+      "data: [DONE]\n\n",
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      structuredParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    // Feed the streamed chunks through the same extractor the runtime uses for the
+    // RESPONSE_HANDLER reply (unordered, streamFields=["replyText"]).
+    const visible: string[] = [];
+    const skeleton: ResponseSkeleton = { spans: [], id: "test" };
+    const extractor = new ResponseSkeletonStreamExtractor({
+      skeleton,
+      streamFields: ["replyText"],
+      unordered: true,
+      onChunk: (chunk) => visible.push(chunk),
+    });
+    for await (const chunk of result.textStream) extractor.push(chunk);
+    extractor.flush();
+
+    expect(visible.join("")).toBe("On it now.");
+    // The control fields were carried in the streamed envelope but never surfaced.
+    expect(visible.join("")).not.toContain("shouldRespond");
+    expect(visible.join("")).not.toContain("contexts");
   });
 });
 

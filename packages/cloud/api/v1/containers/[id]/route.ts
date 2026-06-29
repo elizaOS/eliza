@@ -28,20 +28,11 @@ import { getHetznerContainersClient } from "@/lib/services/containers/hetzner-cl
 import { HetznerClientError } from "@/lib/services/containers/hetzner-client/types";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { PatchContainerSchema } from "../schema";
 
 const app = new Hono<AppEnv>();
 
-const PatchSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("restart") }),
-  z.object({
-    action: z.literal("setEnv"),
-    environmentVars: z.record(z.string(), z.string()),
-  }),
-  z.object({
-    action: z.literal("scale"),
-    desiredCount: z.number().int().positive(),
-  }),
-]);
+const PatchSchema = PatchContainerSchema;
 
 function hetznerErrorStatus(
   code: HetznerClientError["code"],

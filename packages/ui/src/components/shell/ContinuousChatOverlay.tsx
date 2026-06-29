@@ -1093,12 +1093,14 @@ export function ContinuousChatOverlay({
     },
     onSwipeLeft: () => {
       setSwipeDx(0);
-      swipeJank.end();
+      // Tag the flushed window with the committed direction so the ring shows
+      // which way a janky swipe went (left → "next", the older conversation).
+      swipeJank.end("next");
       conversationNav.goNext();
     },
     onSwipeRight: () => {
       setSwipeDx(0);
-      swipeJank.end();
+      swipeJank.end("prev");
       conversationNav.goPrev();
     },
   });

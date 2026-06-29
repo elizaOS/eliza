@@ -56,3 +56,25 @@ gate and drives the whole lifecycle (0 page errors):
 
 **Real-LLM trajectory / audio:** N/A — presentation-layer lifecycle; the
 suggestions hook already has a deterministic fallback.
+
+## 2026-06-29 verification sweep
+
+Re-ran on the clean `origin/develop` verification worktree:
+
+```bash
+bun run --cwd packages/ui test -- \
+  src/widgets/home-dismissal-store.test.ts \
+  src/components/chat/widgets/ftu-welcome.test.tsx \
+  src/widgets/registry.home.test.ts \
+  src/widgets/widget-coverage.test.ts
+bun run --cwd packages/app audit:app
+```
+
+Results:
+
+- Focused FTU/home tests passed: 4 files, 29 tests.
+- App audit passed all 369 cases. Summary:
+  `broken=0 needs-work=0 minimalism-budget-failures=0`.
+- Manually inspected the app chat audit screenshots; the FTU welcome card is
+  visible without blocking the bottom composer, and mobile suggestion text wraps
+  without layout collision.

@@ -7931,6 +7931,9 @@ ${section_end}`;
 		tableName: string;
 		roomIds: UUID[];
 		limit?: number;
+		offset?: number;
+		textContains?: string;
+		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		return this.adapter.getMemoriesByRoomIds(params);

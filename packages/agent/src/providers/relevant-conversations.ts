@@ -13,7 +13,7 @@ import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
 } from "../api/conversation-metadata.ts";
-import { HASH_MEMORY_SOURCE, scoreMemoryText } from "../api/memory-routes.ts";
+import { HASH_MEMORY_SOURCE, rankByKeyword } from "../api/memory-routes.ts";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
@@ -24,9 +24,10 @@ const MAX_RELEVANT_RESULTS = 10;
 const MAX_HASH_MEMORY_RESULTS = 4;
 const HASH_MEMORY_SCAN_LIMIT = 2_000;
 const MATCH_THRESHOLD = 0.7;
-// scoreMemoryText returns `containsWhole(0|1) + matchedTerms/totalTerms`. Require
-// at least half the query terms (or a whole-query substring) to match so common
-// stop words like "you"/"are" don't drag in unrelated hash memories.
+// rankByKeyword returns a [0,1] max-normalized BM25 score. Require a hit to be at
+// least half as relevant as the best match in the scan; BM25's IDF already
+// down-weights common stop words ("you"/"are"), so weak/stop-word-only matches
+// score far below a real hit and fall under this floor.
 const MIN_HASH_MEMORY_SCORE = 0.5;
 const HASH_MEMORY_SNIPPET_LENGTH = 700;
 const RELEVANT_SNIPPET_LENGTH = 200;
@@ -49,22 +50,22 @@ async function loadHashMemories(
     includeEmbedding: false,
   });
 
-  return memories
-    .map((memory) => ({
-      memory,
-      score: scoreMemoryText(memory.content.text ?? "", query),
-    }))
-    .filter(({ memory, score }) => {
-      const source = (memory.content as { source?: string } | undefined)
-        ?.source;
-      return source === HASH_MEMORY_SOURCE && score >= MIN_HASH_MEMORY_SCORE;
-    })
+  // Only hash memories are candidates; rank them together so BM25's IDF is
+  // computed over the hash-memory corpus.
+  const hashMemories = memories.filter(
+    (memory) =>
+      (memory.content as { source?: string } | undefined)?.source ===
+      HASH_MEMORY_SOURCE,
+  );
+
+  return rankByKeyword(query, hashMemories, (m) => m.content.text ?? "")
+    .filter(({ score }) => score >= MIN_HASH_MEMORY_SCORE)
     .sort((left, right) => {
       if (right.score !== left.score) return right.score - left.score;
-      return (right.memory.createdAt ?? 0) - (left.memory.createdAt ?? 0);
+      return (right.item.createdAt ?? 0) - (left.item.createdAt ?? 0);
     })
     .slice(0, MAX_HASH_MEMORY_RESULTS)
-    .map(({ memory }) => memory);
+    .map(({ item }) => item);
 }
 
 export const relevantConversationsProvider: Provider = {

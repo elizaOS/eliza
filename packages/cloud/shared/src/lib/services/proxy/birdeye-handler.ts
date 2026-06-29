@@ -97,6 +97,37 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
 
     const body = await upstreamResponse.text();
 
+    // Mirror the engine's billing policy (resolveBillableCost refunds on >=500):
+    // we already debited `cost` upfront, so refund it when the upstream FAILS
+    // server-side (Birdeye 5xx outage) — the customer got no usable response. We
+    // keep the charge on 4xx (the customer's own bad request still consumed our
+    // Birdeye quota). Engine-backed market-data routes already refund; this
+    // direct handler must match.
+    if (upstreamResponse.status >= 500) {
+      await creditsService
+        .refundCredits({
+          organizationId: organization_id,
+          amount: cost,
+          description: `API proxy refund: market-data — ${pricedMethod} (upstream ${upstreamResponse.status})`,
+          metadata: {
+            type: "proxy_market-data_refund",
+            service: "market-data",
+            provider: "birdeye",
+            method: pricedMethod,
+          },
+        })
+        .catch((refundError) => {
+          logger.warn("[BirdeyeProxy] refund after upstream failure failed", {
+            method: pricedMethod,
+            status: upstreamResponse.status,
+            error:
+              refundError instanceof Error
+                ? refundError.message
+                : String(refundError),
+          });
+        });
+    }
+
     return new Response(body, {
       status: upstreamResponse.status,
       headers: {

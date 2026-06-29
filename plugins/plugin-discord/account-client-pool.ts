@@ -4,7 +4,7 @@ import {
 	normalizeAccountId,
 	type ResolvedDiscordAccount,
 } from "./accounts";
-import type { ChannelDebouncer, MessageDebouncer } from "./debouncer";
+import type { ChannelDebouncer } from "./debouncer";
 import type { MessageManager } from "./messages";
 import type { DiscordSettings } from "./types";
 import type { VoiceManager } from "./voice";
@@ -21,7 +21,6 @@ export interface DiscordAccountClientState {
 	loginFailed: boolean;
 	messageManager?: MessageManager;
 	voiceManager?: VoiceManager;
-	messageDebouncer?: MessageDebouncer;
 	channelDebouncer?: ChannelDebouncer;
 }
 

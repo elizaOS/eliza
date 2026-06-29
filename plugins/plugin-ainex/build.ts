@@ -1,47 +1,24 @@
 #!/usr/bin/env bun
-import { spawnSync } from "node:child_process";
-import { join } from "node:path";
-import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+/**
+ * Build script for @elizaos/plugin-ainex (Node). Orchestration lives in the shared
+ * driver (plugins/plugin-build.ts); this lists only what differs.
+ */
+import { buildPlugin } from "../plugin-build";
 
-const rmRecursiveScript = join(
-  import.meta.dirname,
-  "..",
-  "..",
-  "packages",
-  "scripts",
-  "rm-path-recursive.mjs",
-);
-
-function rmRecursive(targetPath: string) {
-  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
-    stdio: "inherit",
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      `failed to remove generated AiNex build output ${targetPath}`,
-    );
-  }
-}
-
-rmRecursive("dist");
-
-const external = await externalsFromPackageJson("./package.json");
-
-const result = await Bun.build({
-  entrypoints: ["src/index.ts"],
-  outdir: "dist",
-  target: "node",
-  format: "esm",
-  sourcemap: "external",
-  external,
+await buildPlugin({
+  name: "@elizaos/plugin-ainex",
+  clean: true,
+  externals: "auto",
+  targets: [
+    {
+      label: "Node",
+      entry: "src/index.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+    },
+  ],
+  dtsProject: "tsconfig.build.json",
+  dtsEmitDeclarationOnly: true,
+  rewriteDistImports: true,
 });
-if (!result.success) {
-  console.error("Build failed:", result.logs);
-  process.exit(1);
-}
-
-const { $ } = await import("bun");
-await $`tsc --emitDeclarationOnly --noCheck -p tsconfig.build.json`;
-await $`node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs`;
-
-console.log("Build complete: @elizaos/plugin-ainex");

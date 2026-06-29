@@ -846,12 +846,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// adapter pushes down as ILIKE.
 		const textContains = params.textContains?.trim().toLowerCase();
 		if (textContains) {
-			all = all.filter((memory) => {
-				const text = (memory.content as { text?: unknown } | undefined)?.text;
-				return (
-					typeof text === "string" && text.toLowerCase().includes(textContains)
-				);
-			});
+			all = all.filter((memory) =>
+				String(memory.content.text ?? "")
+					.toLowerCase()
+					.includes(textContains),
+			);
 		}
 
 		// Match plugin-sql ordering: newest first, then id desc as tiebreaker.
@@ -890,19 +889,40 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		tableName: string;
 		roomIds: UUID[];
 		limit?: number;
+		offset?: number;
+		textContains?: string;
+		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
-		const limit = params.limit ?? 20;
-		const out: Memory[] = [];
+		let all: Memory[] = [];
 		for (const rid of params.roomIds) {
 			const list =
 				this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
-			for (const m of list) {
-				out.push(m);
-				if (out.length >= limit) return out;
-			}
+			all.push(...list);
 		}
-		return out;
+
+		// Keyword filter — same case-insensitive `includes` semantics the SQL
+		// adapter pushes down as ILIKE.
+		const textContains = params.textContains?.trim().toLowerCase();
+		if (textContains) {
+			all = all.filter((memory) =>
+				String(memory.content.text ?? "")
+					.toLowerCase()
+					.includes(textContains),
+			);
+		}
+
+		// Match plugin-sql ordering: newest first so LIMIT/OFFSET window the
+		// freshest matches.
+		all = all.slice().sort((a, b) => {
+			const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
+			const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
+			return tb - ta;
+		});
+
+		const offset = typeof params.offset === "number" ? params.offset : 0;
+		const limit = params.limit ?? 20;
+		return all.slice(offset, offset + limit);
 	}
 
 	async getCachedEmbeddings(): Promise<
