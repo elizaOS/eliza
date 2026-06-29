@@ -79,6 +79,19 @@ assertGate(
   },
 );
 
+assertGate(
+  "tui library changes",
+  runGate({ config: "test", files: ["packages/tui/src/terminal.ts"] }),
+  {
+    server: "true",
+    client: "true",
+    plugins: "true",
+    desktop: "false",
+    zero_key: "true",
+    cloud: "false",
+  },
+);
+
 assertGate("full label", runGate({ config: "test", labels: "ci:full" }), {
   server: "true",
   client: "true",
