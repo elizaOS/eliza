@@ -7,6 +7,7 @@
 // ids (`back`, `select:<slot>:<phase>`, `refresh`) — functional parity with the
 // retired hand-written GUI/TUI surfaces.
 
+import { SpatialSurface } from "@elizaos/ui/spatial";
 import {
   cleanup,
   fireEvent,
@@ -14,7 +15,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { SpatialSurface } from "@elizaos/ui/spatial";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

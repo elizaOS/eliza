@@ -1,8 +1,8 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CompatRuntimeState } from "./compat-route-shared";
 import { verifyEmbedSessionToken } from "./auth/embed-session-token";
+import type { CompatRuntimeState } from "./compat-route-shared";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
 
 const EMBED_SECRET = "embed-secret-at-least-16-chars";
