@@ -1,0 +1,24 @@
+elizaOS terminal tui · Task Coordinator TUI
+tab/↑↓ focus · enter activates · esc/q closes
+
+ACTIVATE ME
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+chat (ctrl+l to type)
+No terminal chat sent yet.
+enter sends · ctrl+l focuses the view
+────────────────────────────────────────────────────────────────────────────────
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
