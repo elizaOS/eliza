@@ -44,6 +44,7 @@ import {
   captureWaylandPortalScreenshot,
   isWaylandSession,
 } from "./wayland-portal.js";
+import { psSpawnTimeoutMs } from "./windows-timeouts.js";
 
 const SCREEN_RECORDING_OPERATION_MESSAGE =
   "macOS Screen Recording permission is required for screenshots. Grant access in System Settings > Privacy & Security > Screen Recording, then retry.";
@@ -373,14 +374,14 @@ async function captureRegionWindows(
   // behavior is unchanged, only faster.
   if (psHostAvailable()) {
     try {
-      await runPsHost(psCmd, 15000);
+      await runPsHost(psCmd, psSpawnTimeoutMs(15000));
       return;
     } catch {
       /* warm host unavailable/errored — fall back to one-shot spawn */
     }
   }
   execSync(`powershell -NoProfile -Command "${psCmd}"`, {
-    timeout: 15000,
+    timeout: psSpawnTimeoutMs(15000),
     stdio: ["ignore", "pipe", "pipe"],
   });
 }

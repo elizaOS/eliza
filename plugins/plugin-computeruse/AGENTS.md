@@ -203,6 +203,13 @@ All read via `runtime.getSetting()` / `process.env`. Core vars are declared in `
 | `COMPUTER_USE_SANDBOX_RPC_PORT` | number | `8000` | No | Host-forwarded guest RPC port for wsb/qemu. Alias: `COMPUTERUSE_SANDBOX_RPC_PORT` |
 | `COMPUTER_USE_SANDBOX_IMAGE` | string | — | No | Docker image to use for sandbox mode. Alias: `COMPUTERUSE_SANDBOX_IMAGE` |
 
+Power-user escape hatches read directly via `process.env` (not declared as plugin parameters):
+
+| Env var | Type | Default | Description |
+|---------|------|---------|-------------|
+| `COMPUTERUSE_PS_HOST` | `0` to disable | enabled | Windows-only warm PowerShell host (`ps-host.ts`) that amortizes the cold-spawn AV tax. Set `0` to force every spawn through one-shot `powershell.exe`. |
+| `ELIZA_COMPUTERUSE_PS_TIMEOUT_MS` | number | unset | Windows-only **floor** for every PowerShell/WinRT spawn budget (capture, clipboard, ps-host startup, window enumeration/ops in `windows-list.ts`). Applied via `psSpawnTimeoutMs` — only ever RAISES a call site's default, never lowers it. Raise it on Defender-heavy hosts where cold `powershell.exe` spawns exceed the default budgets and false-fail with `ETIMEDOUT` (#9581). Mirrors `ELIZA_WAYLAND_PORTAL_TIMEOUT_MS`. |
+
 `BROWSER_EXECUTE_DISABLED` is declared in `package.json#agentConfig.pluginParameters` but is **inert**: `browser_execute` is unconditionally disabled in `src/security/browser-script-policy.ts` (`isBrowserExecuteAllowed()` always returns `false`, GHSA-rcvr-766c-4phv). No setting re-enables it.
 
 ## How to extend
