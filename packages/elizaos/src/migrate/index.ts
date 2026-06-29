@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Character, Memory, UUID } from "@elizaos/core";
+import type { MigratedCharacter as Character, MigratedMemory as Memory, UUID } from "./types.js";
 import { buildAgentArchive } from "./archive-writer.js";
 import { type CharacterMapOptions, mapToCharacter } from "./character-mapper.js";
 import { readOcAgentHome } from "./openclaw-reader.js";

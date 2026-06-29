@@ -1,43 +1,34 @@
 /**
  * Assemble a `.eliza-agent` archive from a migrated character + memories.
  *
- * Produces a PayloadSchema-conformant {@link AgentExportPayload} containing the
- * minimal entity / room / world the memories reference, then reuses Eliza's
- * native {@link buildEncryptedArchive} (gzip + AES-256-GCM) so the output is a
- * real `.eliza-agent` that {@link importAgent} round-trips. No parallel format.
+ * Produces a payload whose shape matches `@elizaos/agent`'s AgentExportPayload
+ * (so `importAgent` accepts it), then encrypts it with the self-contained V1
+ * writer. No dependency on the agent runtime.
  */
 
 import { randomUUID } from "node:crypto";
-import {
-  AgentStatus,
-  type Character,
-  ChannelType,
-  type Entity,
-  type Memory,
-  type Room,
-  Role,
-  type UUID,
-  type World,
-} from "@elizaos/core";
-import {
-  type AgentExportPayload,
-  buildEncryptedArchive,
-} from "@elizaos/agent";
+import { buildElizaAgentArchive } from "./archive-format.js";
+import type {
+  MigratedCharacter,
+  MigratedExportPayload,
+  MigratedMemory,
+  UUID,
+} from "./types.js";
 
 export interface BuildArchiveInput {
   agentId: UUID;
   /** Display slug used for room/world naming + sourceAgentId provenance. */
   sourceSlug: string;
-  character: Character;
+  character: MigratedCharacter;
   /** The entity (agent) the memories belong to. */
   entityId: UUID;
   /** The room migrated memories attach to. */
   roomId: UUID;
-  memories: Memory[];
+  memories: MigratedMemory[];
 }
 
 export interface AssembledPayload {
-  payload: AgentExportPayload;
+  payload: MigratedExportPayload;
   worldId: UUID;
 }
 
@@ -49,7 +40,7 @@ export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
   const now = Date.now();
   const worldId = randomUUID() as UUID;
 
-  const world: World = {
+  const world = {
     id: worldId,
     name: `${input.sourceSlug} (migrated)`,
     agentId: input.agentId,
@@ -57,20 +48,21 @@ export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
       type: "migration",
       description: "Imported from an OpenClaw agent home.",
       ownership: { ownerId: String(input.entityId) },
-      roles: { [String(input.entityId)]: Role.OWNER },
+      roles: { [String(input.entityId)]: "OWNER" },
     },
   };
 
-  const room: Room = {
+  const room = {
     id: input.roomId,
     name: `${input.sourceSlug} memory`,
     agentId: input.agentId,
     source: "openclaw-migration",
-    type: ChannelType.SELF,
+    // ChannelType.SELF — the agent's own memory room.
+    type: "SELF",
     worldId,
   };
 
-  const entity: Entity = {
+  const entity = {
     id: input.entityId,
     names: [input.character.name ?? input.sourceSlug],
     agentId: input.agentId,
@@ -79,22 +71,26 @@ export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
 
   // The agent DB record: identity fields live here; the richer characterConfig
   // (style/adjectives/knowledge/etc.) is merged on import.
-  const agent: AgentExportPayload["agent"] = {
+  const agent: Record<string, unknown> = {
     id: input.agentId,
     name: input.character.name,
     username: input.character.username ?? input.sourceSlug,
     system: input.character.system,
     bio: input.character.bio,
-    status: AgentStatus.ACTIVE,
+    // AgentStatus.ACTIVE.
+    status: "active",
     enabled: true,
     createdAt: now,
     updatedAt: now,
   };
 
-  // characterConfig carries non-DB fields (strip secrets per the schema).
-  const { secrets: _secrets, ...characterConfig } = input.character;
+  // characterConfig carries non-DB fields (drop volatile settings if any).
+  const { settings: _settings, ...characterConfig } = input.character as Record<
+    string,
+    unknown
+  >;
 
-  const payload: AgentExportPayload = {
+  const payload: MigratedExportPayload = {
     version: 1,
     exportedAt: new Date(now).toISOString(),
     sourceAgentId: input.sourceSlug,
@@ -119,10 +115,10 @@ export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
 /**
  * Assemble + encrypt into a `.eliza-agent` archive buffer.
  */
-export async function buildAgentArchive(
+export function buildAgentArchive(
   input: BuildArchiveInput,
   password: string,
-): Promise<Buffer> {
+): Buffer {
   const { payload } = assemblePayload(input);
-  return buildEncryptedArchive(payload, password);
+  return buildElizaAgentArchive(payload, password);
 }
