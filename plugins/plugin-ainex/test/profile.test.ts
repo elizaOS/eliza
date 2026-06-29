@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { AinexBridgeClient } from "../src/bridge-client";
 import {
   loadProfileFromBridge,
   parseRobotProfileDescriptor,
   robotProfileDescriptorSchema,
 } from "../src/profile-schema";
-import { AinexBridgeClient } from "../src/bridge-client";
 import type { RobotProfileDescriptor } from "../src/types";
 
 const FIXTURE: RobotProfileDescriptor = {

@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AddressInfo } from "node:net";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
 import { AinexBridgeClient } from "../src/bridge-client";
 
@@ -13,10 +13,18 @@ interface BridgeServerHarness {
       command: string,
       payload: Record<string, unknown>,
       request_id: string,
-    ) => { ok: boolean; message?: string; data?: Record<string, unknown> } | null,
+    ) => {
+      ok: boolean;
+      message?: string;
+      data?: Record<string, unknown>;
+    } | null,
   ) => void;
   /** All commands the test server has received this run. */
-  received: Array<{ command: string; payload: Record<string, unknown>; preempt: boolean }>;
+  received: Array<{
+    command: string;
+    payload: Record<string, unknown>;
+    preempt: boolean;
+  }>;
 }
 
 async function startBridgeServer(): Promise<BridgeServerHarness> {
@@ -27,7 +35,9 @@ async function startBridgeServer(): Promise<BridgeServerHarness> {
   const sockets: WsWebSocket[] = [];
   const received: BridgeServerHarness["received"] = [];
 
-  let handler: BridgeServerHarness extends { onCommand: (fn: infer H) => unknown }
+  let handler: BridgeServerHarness extends {
+    onCommand: (fn: infer H) => unknown;
+  }
     ? H
     : never = (() => ({ ok: true, message: "ok", data: {} })) as never;
 
@@ -128,8 +138,8 @@ describe("AinexBridgeClient", () => {
     expect(response.ok).toBe(true);
     expect(response.data.speed).toBe(2);
     expect(harness.received).toHaveLength(1);
-    expect(harness.received[0]!.command).toBe("walk.set");
-    expect(harness.received[0]!.payload.x).toBe(0.04);
+    expect(harness.received[0]?.command).toBe("walk.set");
+    expect(harness.received[0]?.payload.x).toBe(0.04);
 
     await client.disconnect();
   });
@@ -170,8 +180,8 @@ describe("AinexBridgeClient", () => {
     const client = new AinexBridgeClient({ url: harness.url });
     await client.connect();
     await client.disconnect();
-    await expect(client.send("walk.command", { action: "stop" })).rejects.toThrow(
-      /not connected/i,
-    );
+    await expect(
+      client.send("walk.command", { action: "stop" }),
+    ).rejects.toThrow(/not connected/i);
   });
 });

@@ -196,7 +196,7 @@ export async function loadDoctrBindings(): Promise<DocTRBindings | null> {
       async function ensureDetCtx(gguf: string): Promise<unknown> {
         const cached = detCtxCache.get(gguf);
         if (cached) return cached;
-        const cstr = Buffer.from(gguf + "\0", "utf-8");
+        const cstr = Buffer.from(`${gguf}\0`, "utf-8");
         const handle = lib.symbols.doctr_det_init(ptr(cstr));
         if (!handle) {
           throw new Error(
@@ -210,7 +210,7 @@ export async function loadDoctrBindings(): Promise<DocTRBindings | null> {
       async function ensureRecCtx(gguf: string): Promise<unknown> {
         const cached = recCtxCache.get(gguf);
         if (cached) return cached;
-        const cstr = Buffer.from(gguf + "\0", "utf-8");
+        const cstr = Buffer.from(`${gguf}\0`, "utf-8");
         const handle = lib.symbols.doctr_rec_init(ptr(cstr));
         if (!handle) {
           throw new Error(

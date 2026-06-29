@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { ModelType } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   elizaClassicPlugin,
   generateElizaResponse,
@@ -25,9 +25,13 @@ describe("eliza-classic deterministic responses", () => {
     const handler = elizaClassicPlugin.models?.[ModelType.TEXT_SMALL];
 
     await expect(
-      handler?.({} as never, {
-        prompt: "System: stay deterministic\nUser: why am I tired?\nAssistant:",
-      } as never),
+      handler?.(
+        {} as never,
+        {
+          prompt:
+            "System: stay deterministic\nUser: why am I tired?\nAssistant:",
+        } as never,
+      ),
     ).resolves.toEqual(
       JSON.stringify({
         thought: "Responding with deterministic ELIZA pattern matching.",
@@ -56,9 +60,7 @@ describe("eliza-classic deterministic responses", () => {
     });
     expect(embedding).toHaveLength(1536);
     expect(
-      Math.sqrt(
-        embedding?.reduce((sum, value) => sum + value * value, 0) ?? 0,
-      ),
+      Math.sqrt(embedding?.reduce((sum, value) => sum + value * value, 0) ?? 0),
     ).toBeCloseTo(1, 8);
 
     const same = await embeddingHandler?.({} as never, "hello world");

@@ -590,7 +590,7 @@ function readMtpTargetMeta(bundleDir: string): {
 
 function mtpMetadataAllowsStockAutoPair(bundleDir: string): boolean {
   const meta = readMtpTargetMeta(bundleDir);
-  if (!meta || meta.publishEligible !== true) return false;
+  if (meta?.publishEligible !== true) return false;
   if (mtpDrafterIsTargetCopy(bundleDir)) return false;
   if (
     meta.drafter?.finalElizaWeights === false ||

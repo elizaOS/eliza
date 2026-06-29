@@ -227,7 +227,7 @@ async function invoke(
   message: Memory = makeMessage(),
 ): Promise<ActionResult> {
   const opts = { parameters } as HandlerOptions;
-  const result = await todoAction.handler!(runtime, message, undefined, opts);
+  const result = await todoAction.handler?.(runtime, message, undefined, opts);
   if (result === undefined) {
     throw new Error("todoAction.handler returned undefined");
   }
@@ -270,7 +270,7 @@ describe("TODO action", () => {
         action: "write",
         todos: [{ content: "original", status: "pending" }],
       });
-      const originalId = service.rows[0]!.id;
+      const originalId = service.rows[0]?.id;
       const result = await invoke(runtime, {
         action: "write",
         todos: [
@@ -301,7 +301,7 @@ describe("TODO action", () => {
         action: "write",
         todos: [{ content: "child task", status: "pending" }],
       });
-      expect(service.rows[0]!.parentTrajectoryStepId).toBe("parent-step-99");
+      expect(service.rows[0]?.parentTrajectoryStepId).toBe("parent-step-99");
     });
 
     it("preserves caller order while reconciling mixed existing and new rows", async () => {
@@ -318,9 +318,9 @@ describe("TODO action", () => {
       const result = await invoke(runtime, {
         action: "write",
         todos: [
-          { id: charlie!.id, content: "charlie next", status: "in_progress" },
+          { id: charlie?.id, content: "charlie next", status: "in_progress" },
           { content: "delta", status: "pending" },
-          { id: alpha!.id, content: "alpha done", status: "completed" },
+          { id: alpha?.id, content: "alpha done", status: "completed" },
         ],
       });
 
@@ -416,7 +416,7 @@ describe("TODO action", () => {
         action: "create",
         content: "draft",
       });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       const result = await invoke(runtime, {
         action: "update",
         id,
@@ -424,8 +424,8 @@ describe("TODO action", () => {
         status: "in_progress",
       });
       expect(result.success).toBe(true);
-      expect(service.rows[0]!.content).toBe("final");
-      expect(service.rows[0]!.status).toBe("in_progress");
+      expect(service.rows[0]?.content).toBe("final");
+      expect(service.rows[0]?.status).toBe("in_progress");
     });
 
     it("rejects updates for another user's todo", async () => {
@@ -478,14 +478,14 @@ describe("TODO action", () => {
       });
       expect(result.success).toBe(false);
       expect(result.text).toContain("not_found");
-      expect(service.rows[0]!.content).toBe("other agent");
+      expect(service.rows[0]?.content).toBe("other agent");
     });
 
     it("clears completedAt when a completed todo moves back to pending", async () => {
       await invoke(runtime, { action: "create", content: "reopen me" });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       await invoke(runtime, { action: "complete", id });
-      expect(service.rows[0]!.completedAt).toBeInstanceOf(Date);
+      expect(service.rows[0]?.completedAt).toBeInstanceOf(Date);
 
       const result = await invoke(runtime, {
         action: "update",
@@ -494,34 +494,34 @@ describe("TODO action", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(service.rows[0]!.status).toBe("pending");
-      expect(service.rows[0]!.completedAt).toBeNull();
+      expect(service.rows[0]?.status).toBe("pending");
+      expect(service.rows[0]?.completedAt).toBeNull();
     });
   });
 
   describe("action=complete / cancel", () => {
     it("complete sets status=completed and completedAt", async () => {
       await invoke(runtime, { action: "create", content: "ship it" });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       const result = await invoke(runtime, { action: "complete", id });
       expect(result.success).toBe(true);
-      expect(service.rows[0]!.status).toBe("completed");
-      expect(service.rows[0]!.completedAt).toBeInstanceOf(Date);
+      expect(service.rows[0]?.status).toBe("completed");
+      expect(service.rows[0]?.completedAt).toBeInstanceOf(Date);
     });
 
     it("cancel sets status=cancelled", async () => {
       await invoke(runtime, { action: "create", content: "drop" });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       const result = await invoke(runtime, { action: "cancel", id });
       expect(result.success).toBe(true);
-      expect(service.rows[0]!.status).toBe("cancelled");
+      expect(service.rows[0]?.status).toBe("cancelled");
     });
   });
 
   describe("action=delete", () => {
     it("hard-deletes by id", async () => {
       await invoke(runtime, { action: "create", content: "gone" });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       const result = await invoke(runtime, { action: "delete", id });
       expect(result.success).toBe(true);
       expect(service.rows.length).toBe(0);
@@ -532,7 +532,7 @@ describe("TODO action", () => {
     it("returns user's pending+in_progress by default", async () => {
       await invoke(runtime, { action: "create", content: "a" });
       await invoke(runtime, { action: "create", content: "b" });
-      const id = service.rows[1]!.id;
+      const id = service.rows[1]?.id;
       await invoke(runtime, { action: "complete", id });
       const result = await invoke(runtime, { action: "list" });
       expect(result.success).toBe(true);
@@ -542,7 +542,7 @@ describe("TODO action", () => {
 
     it("includeCompleted=true returns everything", async () => {
       await invoke(runtime, { action: "create", content: "a" });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       await invoke(runtime, { action: "complete", id });
       const result = await invoke(runtime, {
         action: "list",
@@ -680,7 +680,7 @@ describe("TODO action", () => {
         completedAt: null,
       });
 
-      const result = await currentTodosProvider.get!(
+      const result = await currentTodosProvider.get?.(
         runtime,
         makeMessage(),
         undefined,
@@ -691,12 +691,13 @@ describe("TODO action", () => {
       expect(result.text).toContain("[→] doing task");
       expect(result.text).not.toContain("done task");
       expect(result.text).not.toContain("foreign task");
-      expect((result.data.todos as StoredTodo[]).map((todo) => todo.content))
-        .toEqual(["pending task", "doing task"]);
+      expect(
+        (result.data.todos as StoredTodo[]).map((todo) => todo.content),
+      ).toEqual(["pending task", "doing task"]);
     });
 
     it("returns empty context when entityId is missing", async () => {
-      const result = await currentTodosProvider.get!(
+      const result = await currentTodosProvider.get?.(
         runtime,
         makeMessage({ entityId: undefined }),
         undefined,

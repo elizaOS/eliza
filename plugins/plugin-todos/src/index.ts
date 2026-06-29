@@ -39,12 +39,24 @@ export default todosPlugin;
 
 export { todoAction } from "./actions/todo.js";
 export {
+  type LaneId,
+  type TodoCard,
+  type TodosSnapshot,
+  TodosSpatialView,
+  type TodosViewState,
+} from "./components/todos/TodosSpatialView.js";
+export { TodosView } from "./components/todos/TodosView.js";
+export {
   type TodoInsert,
   type TodoRow,
   todosSchema,
   todosTable,
 } from "./db/schema.js";
 export { currentTodosProvider } from "./providers/current-todos.js";
+export {
+  registerTodosTerminalView,
+  setTodosTerminalSnapshot,
+} from "./register-terminal-view.js";
 export {
   type CreateTodoInput,
   getTodosService,
@@ -53,19 +65,6 @@ export {
   type UpdateTodoInput,
 } from "./service.js";
 export * from "./types.js";
-
-export { TodosView } from "./components/todos/TodosView.js";
-export {
-  type LaneId,
-  type TodoCard,
-  type TodosSnapshot,
-  TodosSpatialView,
-  type TodosViewState,
-} from "./components/todos/TodosSpatialView.js";
-export {
-  registerTodosTerminalView,
-  setTodosTerminalSnapshot,
-} from "./register-terminal-view.js";
 
 // Side-effect: in a terminal host (Node agent, no DOM) this registers the todos
 // terminal view. DOM-guarded so the terminal engine stays out of browser bundles.

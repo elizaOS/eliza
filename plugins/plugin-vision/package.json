@@ -94,10 +94,10 @@
   "scripts": {
     "dev": "bun run build.ts --watch",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
-    "lint": "echo \"Lint skipped for release\"",
-    "typecheck": "echo \"Typecheck skipped for release\"",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest run",
-    "lint:check": "bun run lint",
+    "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "build:native": "bun run native/yolo.cpp/build.mjs",

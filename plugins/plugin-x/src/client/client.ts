@@ -1,7 +1,4 @@
 import type {
-  DMEventV2,
-  GetDMEventV2Params,
-  PostDMInConversationResult,
   TTweetv2Expansion,
   TTweetv2MediaField,
   TTweetv2PlaceField,
@@ -942,12 +939,9 @@ export class Client {
    * @param cursor Pagination cursor
    * @returns Array of DM conversations
    */
-  public async getDirectMessageConversations(
-    userId: string,
-    cursor?: string,
-  ): Promise<{ conversations: DMEventV2[] }> {
+  public async getDirectMessageConversations(userId: string, cursor?: string) {
     const client = await this.requireAuth().getV2Client();
-    const options: Partial<GetDMEventV2Params> = {
+    const options: NonNullable<Parameters<typeof client.v2.listDmEvents>[0]> = {
       "dm_event.fields": [
         "id",
         "text",
@@ -975,10 +969,7 @@ export class Client {
    * @param text The text of the message
    * @returns The response from the Twitter API
    */
-  public async sendDirectMessage(
-    conversationId: string,
-    text: string,
-  ): Promise<{ id: string; data: PostDMInConversationResult }> {
+  public async sendDirectMessage(conversationId: string, text: string) {
     const client = await this.requireAuth().getV2Client();
     const data = await client.v2.sendDmInConversation(conversationId, { text });
 

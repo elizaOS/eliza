@@ -3,9 +3,9 @@
 // runtime can be checked against the PyTorch reference in isolation.
 //
 //   bun verify/run_ggml.mjs <yolo.dll> <yolov8n.gguf>
-import { dlopen, FFIType, ptr, CString } from "bun:ffi";
+import { CString, dlopen, FFIType, ptr } from "bun:ffi";
 import { readFileSync, writeFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -34,7 +34,7 @@ const lib = dlopen(dll, {
   yolo_free: { args: [FFIType.pointer], returns: FFIType.void },
 });
 
-const ggufZ = Buffer.from(gguf + "\0", "utf8");
+const ggufZ = Buffer.from(`${gguf}\0`, "utf8");
 const ctx = lib.symbols.yolo_init(ptr(ggufZ));
 if (!ctx) {
   console.error("yolo_init returned NULL");

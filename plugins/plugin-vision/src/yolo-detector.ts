@@ -255,7 +255,7 @@ export class YOLODetector {
 
     const filtered = this.classFilterLower
       ? detections.filter((d) =>
-          this.classFilterLower!.has(d.className.toLowerCase()),
+          this.classFilterLower?.has(d.className.toLowerCase()),
         )
       : detections;
 
