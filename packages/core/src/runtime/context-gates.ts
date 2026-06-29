@@ -1,3 +1,4 @@
+import { CANONICAL_ROLE_RANK } from "../roles";
 import type {
 	AgentContext,
 	ContextGate,
@@ -6,14 +7,8 @@ import type {
 } from "../types/contexts";
 import { normalizeContextList } from "./context-normalization";
 
-const ROLE_RANK: Record<string, number> = {
-	NONE: 0,
-	GUEST: 1,
-	USER: 2,
-	MEMBER: 2,
-	ADMIN: 3,
-	OWNER: 4,
-};
+// #9948: single source of truth for role ranking (was a duplicate literal here).
+const ROLE_RANK: Record<string, number> = CANONICAL_ROLE_RANK;
 
 export function normalizeGateRole(role: RoleGateRole): RoleGateRole {
 	const normalized = String(role).trim().toUpperCase();
