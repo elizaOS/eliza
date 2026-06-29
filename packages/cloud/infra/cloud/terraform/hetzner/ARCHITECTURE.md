@@ -53,6 +53,17 @@ traffic spike" failure mode. Pulling sandboxes off the data plane is the
 autoscaler's job; the orchestrator that issues drain commands must stay up
 to coordinate it.
 
+## Confidential compute is not on Hetzner
+
+Both tiers above are **non-confidential**. Hetzner ships no SEV-SNP / TDX /
+memory-encryption / attestation product — the strongest isolation here is the
+dedicated-vCPU `ccx` line (scheduling isolation, not cryptographic isolation; the
+host can still read guest RAM). Confidential workloads (sealed model weights,
+attestation-gated key release, private inference) route to **Phala dStack CVM on
+Intel TDX**, never to these Hetzner VMs. See
+[`CONFIDENTIAL_COMPUTE.md`](../../CONFIDENTIAL_COMPUTE.md) for the verified verdict
+and the SEV-SNP/TDX hardware-attestation requirement.
+
 ## Code ↔ infrastructure mapping
 
 | Component | Code | Infra |

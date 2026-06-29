@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { KEY_BYTES } from "../src/crypto.js";
+import { generateMasterKey, KEY_BYTES } from "../src/crypto.js";
 import {
+  attestationMasterKey,
   defaultMasterKey,
   inMemoryMasterKey,
   MasterKeyUnavailableError,
   passphraseMasterKey,
   passphraseMasterKeyFromEnv,
+  type TeeAttestationVerifier,
 } from "../src/master-key.js";
 import { runtimePassphraseMasterKeyCaller } from "./vitest-assertion-shim.js";
 
@@ -289,5 +291,79 @@ describe("inMemoryMasterKey — sanity (regression baseline)", () => {
     const k = Buffer.alloc(KEY_BYTES, 7);
     const r = inMemoryMasterKey(k);
     expect((await r.load()).equals(k)).toBe(true);
+  });
+});
+
+describe("attestationMasterKey — fail-closed sealed-volume binding", () => {
+  /** Trusted: attestation passes → verifier releases the sealed-volume key. */
+  function trustedVerifier(key: Buffer): TeeAttestationVerifier {
+    return {
+      async releaseSealedVolumeKey() {
+        return key;
+      },
+      describe() {
+        return "tdx-dstack";
+      },
+    };
+  }
+
+  /** Untrusted: attestation absent/tampered → verifier refuses (throws). */
+  function refusingVerifier(reason: string): TeeAttestationVerifier {
+    return {
+      async releaseSealedVolumeKey() {
+        throw new Error(reason);
+      },
+      describe() {
+        return "tdx-dstack";
+      },
+    };
+  }
+
+  test("trusted evidence → releases the sealed-volume master key", async () => {
+    const sealedKey = generateMasterKey();
+    const r = attestationMasterKey(trustedVerifier(sealedKey));
+    const loaded = await r.load();
+    expect(loaded.equals(sealedKey)).toBe(true);
+  });
+
+  test("absent attestation → key unavailable (throws, no fallback)", async () => {
+    const r = attestationMasterKey(
+      refusingVerifier("no TEE evidence collected at boot"),
+    );
+    await expect(r.load()).rejects.toBeInstanceOf(MasterKeyUnavailableError);
+    await expect(r.load()).rejects.toThrow(/no TEE evidence/);
+  });
+
+  test("tampered attestation → key unavailable (throws, no fallback)", async () => {
+    const r = attestationMasterKey(
+      refusingVerifier(
+        "state-volume key release denied: measurement-mismatch",
+      ),
+    );
+    // Fail closed: a tampered agent/policy/device yields NO key — never a
+    // fallback/default/unsealed key.
+    await expect(r.load()).rejects.toBeInstanceOf(MasterKeyUnavailableError);
+    await expect(r.load()).rejects.toThrow(/measurement-mismatch/);
+  });
+
+  test("boot gate blocking secrets → key unavailable (throws)", async () => {
+    const r = attestationMasterKey(
+      refusingVerifier(
+        "state-volume key release refused: TEE boot gate blocks secrets",
+      ),
+    );
+    await expect(r.load()).rejects.toBeInstanceOf(MasterKeyUnavailableError);
+    await expect(r.load()).rejects.toThrow(/boot gate blocks secrets/);
+  });
+
+  test("verifier returns a wrong-size buffer → rejected (no short key)", async () => {
+    const r = attestationMasterKey(trustedVerifier(Buffer.alloc(16, 1)));
+    await expect(r.load()).rejects.toBeInstanceOf(MasterKeyUnavailableError);
+    await expect(r.load()).rejects.toThrow(/expected a 32-byte Buffer/);
+  });
+
+  test("describe surfaces the attestation provider for audit", () => {
+    const r = attestationMasterKey(trustedVerifier(generateMasterKey()));
+    expect(r.describe()).toBe("attestation://tdx-dstack");
   });
 });

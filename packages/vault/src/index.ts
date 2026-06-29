@@ -98,8 +98,10 @@ export type {
   MasterKeyResolver,
   OsKeychainOptions,
   PassphraseOptions,
+  TeeAttestationVerifier,
 } from "./master-key.js";
 export {
+  attestationMasterKey,
   defaultMasterKey,
   inMemoryMasterKey,
   MasterKeyUnavailableError,

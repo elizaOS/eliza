@@ -90,7 +90,7 @@ bun run --cwd plugins/plugin-tee clean           # rm -rf dist .turbo .turbo-tsc
 
 ## Conventions / gotchas
 
-- The plugin currently registers **no actions**. The README's mention of a `REMOTE_ATTESTATION` action is inaccurate — PhalaVendor.getActions() returns [].
+- The plugin currently registers **no actions** — `PhalaVendor.getActions()` returns `[]`. Remote attestation is the `phala-remote-attestation` **provider**, not an action. The README states this explicitly; do not reintroduce a `REMOTE_ATTESTATION` action claim.
 - `TEEService` uses `PhalaDeriveKeyProvider` unconditionally regardless of `TEE_VENDOR`; vendor selection in `teePlugin.init` only affects which vendor's providers/actions are registered.
 - `WALLET_SECRET_SALT` doubles as the derivation `path` argument inside `phalaDeriveKeyProvider`; it is passed directly to `TappdClient.deriveKey(secretSalt, "solana"|"evm")`.
 - `uploadAttestationQuote` POSTs to `https://proof.t16z.com/api/upload` — requires network access in production.
