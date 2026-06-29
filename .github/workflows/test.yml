@@ -80,6 +80,9 @@ jobs:
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
       PGLITE_WASM_MODE: node
+      # The TUI e2e capture test writes its .cast / viewport / scrollback
+      # artifacts here during `test:server`; the upload step below attaches them.
+      TUI_EVIDENCE_DIR: ${{ github.workspace }}/.github/issue-evidence/9969-tui-e2e
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -143,6 +146,19 @@ jobs:
 
       - name: Run server tests
         run: bun run test:server
+
+      # The TUI e2e capture test (packages/agent/test/tui-e2e/tui-capture.test.ts)
+      # records each session as an asciicast .cast plus viewport/scrollback
+      # snapshots into TUI_EVIDENCE_DIR. Attach them so a reviewer can replay the
+      # terminal session (`asciinema play session.cast`) — the screen/output/video
+      # capture for the TUI surface (#9944).
+      - name: Upload TUI e2e capture artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tui-e2e-artifacts
+          path: .github/issue-evidence/9969-tui-e2e/
+          if-no-files-found: ignore
 
   client-tests:
     name: Client Tests
