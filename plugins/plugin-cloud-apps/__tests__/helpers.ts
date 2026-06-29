@@ -8,40 +8,114 @@
  */
 
 import { mock } from "bun:test";
-import type { AppDto, AppResponse, ListAppsResponse } from "@elizaos/cloud-sdk";
+import type {
+  AppDeployStatusResponse,
+  AppDto,
+  AppResponse,
+  CreateAppInput,
+  CreateAppResponse,
+  DeleteAppResponse,
+  DeployAppInput,
+  DeployAppResponse,
+  ListAppsResponse,
+} from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 
 type ListAppsFn = () => Promise<ListAppsResponse>;
 type GetAppFn = (id: string) => Promise<AppResponse>;
+type CreateAppFn = (input: CreateAppInput) => Promise<CreateAppResponse>;
+type DeployAppFn = (
+  id: string,
+  input?: DeployAppInput,
+) => Promise<DeployAppResponse>;
+type GetAppDeployStatusFn = (id: string) => Promise<AppDeployStatusResponse>;
+type DeleteAppFn = (id: string) => Promise<DeleteAppResponse>;
 
-const state: { listApps: ListAppsFn; getApp: GetAppFn } = {
-  listApps: () => Promise.resolve({ success: true, apps: [] }),
-  getApp: () =>
-    Promise.resolve({ success: true, app: undefined as unknown as AppDto }),
-};
+interface SdkState {
+  listApps: ListAppsFn;
+  getApp: GetAppFn;
+  createApp: CreateAppFn;
+  deployApp: DeployAppFn;
+  getAppDeployStatus: GetAppDeployStatusFn;
+  deleteApp: DeleteAppFn;
+}
+
+function defaultState(): SdkState {
+  return {
+    listApps: () => Promise.resolve({ success: true, apps: [] }),
+    getApp: () =>
+      Promise.resolve({ success: true, app: undefined as unknown as AppDto }),
+    createApp: () =>
+      Promise.resolve({
+        success: true,
+        app: undefined as unknown as AppDto,
+        apiKey: "eliza_app_secret",
+      }),
+    deployApp: () =>
+      Promise.resolve({
+        success: true,
+        deploymentId: "dep_1",
+        status: "BUILDING",
+        startedAt: "2026-06-29T00:00:00.000Z",
+      }),
+    getAppDeployStatus: () =>
+      Promise.resolve({
+        success: true,
+        deploymentId: "dep_1",
+        status: "READY",
+        vercelUrl: null,
+        error: null,
+        startedAt: null,
+      }),
+    deleteApp: () => Promise.resolve({ success: true, message: "deleted" }),
+  };
+}
+
+const state: SdkState = defaultState();
 
 export function setListApps(fn: ListAppsFn): void {
   state.listApps = fn;
 }
-
 export function setGetApp(fn: GetAppFn): void {
   state.getApp = fn;
+}
+export function setCreateApp(fn: CreateAppFn): void {
+  state.createApp = fn;
+}
+export function setDeployApp(fn: DeployAppFn): void {
+  state.deployApp = fn;
+}
+export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
+  state.getAppDeployStatus = fn;
+}
+export function setDeleteApp(fn: DeleteAppFn): void {
+  state.deleteApp = fn;
 }
 
 /** Restore default (empty / no-op) behavior between tests. */
 export function resetSdk(): void {
-  state.listApps = () => Promise.resolve({ success: true, apps: [] });
-  state.getApp = () =>
-    Promise.resolve({ success: true, app: undefined as unknown as AppDto });
+  Object.assign(state, defaultState());
 }
 
-/** Stand-in for `ElizaCloudClient` — only the methods the read-core calls. */
+/** Stand-in for `ElizaCloudClient` — the methods the plugin calls. */
 export class FakeElizaCloudClient {
   listApps(): Promise<ListAppsResponse> {
     return state.listApps();
   }
   getApp(id: string): Promise<AppResponse> {
     return state.getApp(id);
+  }
+  createApp(input: CreateAppInput): Promise<CreateAppResponse> {
+    return state.createApp(input);
+  }
+  deployApp(id: string, input?: DeployAppInput): Promise<DeployAppResponse> {
+    return state.deployApp(id, input);
+  }
+  getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
+    return state.getAppDeployStatus(id);
+  }
+  deleteApp(id: string): Promise<DeleteAppResponse> {
+    return state.deleteApp(id);
   }
 }
 
@@ -62,6 +136,54 @@ export function keyedRuntime(): IAgentRuntime {
 /** A runtime with no Cloud API key. */
 export function unkeyedRuntime(): IAgentRuntime {
   return makeRuntime({});
+}
+
+/**
+ * A keyed runtime backed by a real in-memory `facts` store, so the facts-cache
+ * code under test exercises its actual create/get/update logic (only the store
+ * boundary is faked — the dedup + write path runs for real).
+ */
+export interface MemoryRuntime extends IAgentRuntime {
+  __facts: Memory[];
+}
+
+export function memoryRuntime(
+  settings: Record<string, string | undefined> = {
+    ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
+  },
+): MemoryRuntime {
+  const facts: Memory[] = [];
+  let counter = 0;
+  const runtime = {
+    agentId: "agent-0000-0000-0000-000000000000",
+    __facts: facts,
+    getSetting: (key: string) => settings[key] as unknown,
+    getMemories: (params: { tableName: string }) =>
+      Promise.resolve(params.tableName === "facts" ? [...facts] : []),
+    createMemory: (memory: Memory, tableName: string) => {
+      const id = `mem-${++counter}`;
+      if (tableName === "facts") facts.push({ ...memory, id } as Memory);
+      return Promise.resolve(id);
+    },
+    updateMemory: (patch: Partial<Memory> & { id: string }) => {
+      const idx = facts.findIndex(
+        (m) => (m as { id?: string }).id === patch.id,
+      );
+      if (idx >= 0) facts[idx] = { ...facts[idx], ...patch } as Memory;
+      return Promise.resolve(idx >= 0);
+    },
+  } as unknown as MemoryRuntime;
+  return runtime;
+}
+
+/** Build a message Memory with entity/room ids (for memory-writing actions). */
+export function makeRoomMessage(text: string): Memory {
+  return {
+    id: "msg-0000-0000-0000-000000000000",
+    entityId: "entity-0000-0000-0000-000000000000",
+    roomId: "room-0000-0000-0000-000000000000",
+    content: { text },
+  } as unknown as Memory;
 }
 
 /** Build a message Memory with the given text. */
