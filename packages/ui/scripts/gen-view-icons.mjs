@@ -1,7 +1,11 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
-const KEY = "21bc719f-1117-47e1-9c24-7d08f2ac0eb5:8e09e6214ea9facc7a0e0718cf751ff7";
+const KEY = process.env.FAL_KEY;
+if (!KEY) {
+  console.error("FAL_KEY env var required (fal.ai API key) to regenerate view icons.");
+  process.exit(1);
+}
 const OUT = "/tmp/view-icons";
 const RAW = "/tmp/svg-raw";
 mkdirSync(OUT, { recursive: true });

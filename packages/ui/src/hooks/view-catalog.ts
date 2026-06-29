@@ -22,8 +22,8 @@ import {
   type ViewKind,
 } from "@elizaos/core";
 import type { RegistryAppInfo } from "../api";
-import { viewIconDataUri } from "../components/views/view-icons.generated";
 import { resolveViewIconId } from "../components/views/view-icon-aliases";
+import { viewIconDataUri } from "../components/views/view-icons.generated";
 import type { ViewModality } from "../platform/platform-guards";
 import type { ViewRegistryEntry } from "./useAvailableViews";
 
