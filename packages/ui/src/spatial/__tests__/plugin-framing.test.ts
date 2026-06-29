@@ -28,10 +28,14 @@ const registeredIds: string[] = [];
 beforeAll(async () => {
   for (const load of Object.values(registerModules)) {
     const mod = (await load()) as Record<string, unknown>;
-    const entry = Object.entries(mod).find(
-      ([k, v]) => typeof v === "function" && /^register.*TerminalView$/.test(k),
-    );
-    if (entry) (entry[1] as () => void)();
+    // A plugin may register more than one terminal view from one module
+    // (e.g. plugin-app-control: views-manager + settings + voice). Call every
+    // `register*TerminalView` export, not just the first.
+    for (const [k, v] of Object.entries(mod)) {
+      if (typeof v === "function" && /^register.*TerminalView$/.test(k)) {
+        (v as () => void)();
+      }
+    }
   }
   registeredIds.push(...listTerminalViewIds().sort());
 }, 30_000);
