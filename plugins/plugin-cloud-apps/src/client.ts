@@ -54,6 +54,16 @@ export function resolveCloudApiBaseUrl(runtime: IAgentRuntime): string {
 }
 
 /**
+ * Resolve the Eliza Cloud dashboard (site) origin — the API base with a trailing
+ * `/api/v1` stripped (e.g. `https://www.elizacloud.ai`). Used to build the
+ * connector-agnostic CTA URLs the paid actions hand back so the user finishes a
+ * money/credential step in the browser, never over the connector.
+ */
+export function resolveCloudSiteBaseUrl(runtime: IAgentRuntime): string {
+  return apiBaseToSiteBaseUrl(resolveCloudApiBaseUrl(runtime));
+}
+
+/**
  * Construct an authenticated {@link ElizaCloudClient} from runtime settings.
  * Returns `null` when no API key is configured so callers can degrade
  * gracefully (no key → no cloud calls).
