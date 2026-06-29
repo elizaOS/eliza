@@ -18,11 +18,14 @@ const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
   try {
-    let organizationId: string;
+    let organizationId: string | null = null;
 
     const serviceIdentity = await validateServiceKey(c);
     if (serviceIdentity) {
-      organizationId = serviceIdentity.organizationId;
+      // Service-key callers orchestrate jobs on behalf of wallet-owned agents,
+      // so their job rows may belong to the agent owner org rather than the
+      // service org configured on the key.
+      organizationId = null;
     } else {
       const user = await requireUserOrApiKeyWithOrg(c);
       organizationId = user.organization_id;
@@ -33,10 +36,9 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Job ID is required" }, 400);
     }
 
-    const job = await provisioningJobService.getJobForOrg(
-      jobId,
-      organizationId,
-    );
+    const job = organizationId
+      ? await provisioningJobService.getJobForOrg(jobId, organizationId)
+      : await provisioningJobService.getJob(jobId);
 
     if (!job) {
       return c.json({ success: false, error: "Job not found" }, 404);

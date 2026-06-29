@@ -32,7 +32,7 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
-    const identity = await requireServiceKey(c);
+    await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
     const agent = await elizaSandboxService.getAgentById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
@@ -75,8 +75,8 @@ app.post("/", async (c) => {
 
     await provisioningJobService.enqueueAgentRestartOnce({
       agentId,
-      organizationId: identity.organizationId,
-      userId: identity.userId,
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
     });
 
     await agentBillingRepository.reactivateSandboxBillingAfterFunding(
