@@ -88,7 +88,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   if (!from) fail("--from <ocplatform-home> is required (e.g. ~/.moltbot).");
   if (!agentId) fail("--agent-id <slug> is required (e.g. sol).");
   const sourceHome = from;
-  const targetAgentId = agentId;
+  const sourceAgentId = agentId;
   if (!fs.existsSync(sourceHome)) fail(`Home not found: ${sourceHome}`);
 
   const firewall = opts.noFirewall ? false : (opts.firewall ?? true);
@@ -97,11 +97,11 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
     fail("--memory-days must be a non-negative number.");
   }
 
-  if (!quiet) clack.intro(pc.cyan(`migrate-agent: ${targetAgentId}`));
+  if (!quiet) clack.intro(pc.cyan(`migrate-agent: ${sourceAgentId}`));
 
   const plan = buildMigrationPlan({
     from: sourceHome,
-    agentId: targetAgentId,
+    agentId: sourceAgentId,
     memoryDays,
     firewall,
     currentContext: opts.currentContext,
@@ -129,7 +129,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
     return;
   }
 
-  printPlan(plan, targetAgentId);
+  printPlan(plan, sourceAgentId);
 
   if (opts.dryRun) {
     if (!quiet) clack.outro(pc.dim("dry-run: nothing written."));
@@ -174,7 +174,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
         ),
       );
     }
-    const buf = await archiveFromPlan(plan, targetAgentId, archivePassword);
+    const buf = await archiveFromPlan(plan, sourceAgentId, archivePassword);
     fs.mkdirSync(path.dirname(path.resolve(opts.out)), { recursive: true });
     fs.writeFileSync(opts.out, buf);
     clack.log.success(`archive → ${opts.out} (${buf.length} bytes)`);
