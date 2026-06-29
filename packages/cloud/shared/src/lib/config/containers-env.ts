@@ -180,6 +180,28 @@ export const containersEnv = {
   },
 
   /**
+   * First-party TEMPLATE image stamped onto a template app (one created WITHOUT a
+   * user repo) at create time, so create -> deploy resolves to a prebuilt,
+   * allowlisted image instead of failing with "no image to deploy".
+   *
+   * Defaults to the published example-app image at the `:showcase` tag that
+   * `.github/workflows/build-example-app-images.yml` publishes (and gates on a
+   * working container before pushing). It sits under `ghcr.io/elizaos/*`, so the
+   * apps-deploy allowlist permits it unchanged. Override the whole ref via
+   * `APP_DEFAULT_TEMPLATE_IMAGE`.
+   *
+   * TODO(ops, digest-pin): `:showcase` is a MUTABLE tag — the registry could
+   * re-point it after the deploy-time allowlist check. Once a stable showcase
+   * digest is published, pin this default to
+   * `ghcr.io/elizaos/example-edad@sha256:<64hex>` so a future digest-pin gate
+   * (`CONTAINER_IMAGE_REQUIRE_DIGEST`) accepts the template default unchanged.
+   */
+  appDefaultTemplateImage(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.APP_DEFAULT_TEMPLATE_IMAGE) ?? "ghcr.io/elizaos/example-edad:showcase";
+  },
+
+  /**
    * Whether image refs must be pinned to a full `@sha256:<64hex>` digest to be
    * accepted by the container image gate (in addition to the allowlist).
    *

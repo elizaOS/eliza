@@ -1,4 +1,5 @@
-import type { App } from "../../db/repositories/apps";
+import type { App, NewApp } from "../../db/repositories/apps";
+import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { AppNameConflictError, appsService } from "./apps";
 import { githubReposService } from "./github-repos";
@@ -36,6 +37,14 @@ export interface CreateAppOptions {
   repoName?: string;
   /** Whether the repo should be private (default: true) */
   repoPrivate?: boolean;
+  /**
+   * Explicit container image to deploy for a TEMPLATE app (one created WITHOUT a
+   * user repo, i.e. `createGitHubRepo: false`). When set, it is stamped onto
+   * `app.metadata.imageTag` and wins over the first-party template default.
+   * Ignored for repo-backed apps (they build from their repo). Must resolve to an
+   * allowlisted image (see the apps-deploy image gate) or the deploy rejects it.
+   */
+  imageTag?: string;
 }
 
 export interface CreateAppResult {
@@ -145,10 +154,40 @@ export class AppFactoryService {
     // Wait for parallel tasks to complete
     await Promise.all(parallelTasks);
 
-    // Step 3: Batch update the app record (single DB call) with the GitHub repo.
-    const updates: Record<string, string | null> = {};
+    // Step 3: Batch update the app record (single DB call) with the GitHub repo
+    // and, for template apps, the first-party template image (below).
+    const updates: Partial<NewApp> = {};
     if (githubRepo) {
       updates.github_repo = githubRepo;
+    }
+
+    // TEMPLATE-IMAGE WIRING (the launch blocker): a TEMPLATE app — one created
+    // WITHOUT a user repo (createGitHubRepo === false, the path the agent's
+    // CREATE_APP / `skipGitHubRepo: true` uses) — has neither a build pipeline
+    // nor a repo image, so the deploy runner's `resolveImageRef` would throw
+    // "no image to deploy". Stamp a first-party, allowlisted template image as
+    // `metadata.imageTag` at create time so create -> deploy resolves to a
+    // prebuilt, allowlisted image. Repo-backed apps are intentionally LEFT
+    // UNTOUCHED — they still (correctly) hit the build-from-repo-disabled path
+    // until that tier is armed. A caller-supplied image (`options.imageTag`) or
+    // an image already present on the app's metadata wins and is never
+    // overwritten.
+    if (!createGitHubRepo) {
+      const existingMeta = (app.metadata as Record<string, unknown>) ?? {};
+      const existingImageTag =
+        typeof existingMeta.imageTag === "string" ? existingMeta.imageTag : undefined;
+      const imageTag =
+        options.imageTag ?? existingImageTag ?? containersEnv.appDefaultTemplateImage();
+      if (imageTag !== existingImageTag) {
+        const metadata = { ...existingMeta, imageTag };
+        updates.metadata = metadata;
+        // Reflect the stamp on the returned app so callers see it without a re-read.
+        app.metadata = metadata;
+        logger.info("AppFactory: Stamped template image on app metadata", {
+          appId: app.id,
+          imageTag,
+        });
+      }
     }
 
     if (Object.keys(updates).length > 0) {
