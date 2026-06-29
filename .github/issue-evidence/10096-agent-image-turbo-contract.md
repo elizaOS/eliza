@@ -6,11 +6,13 @@
 - The test locks the Docker workspace artifact step to `node packages/scripts/run-turbo.mjs run build --filter=...` with the image's required app/agent/plugin filters.
 - The test rejects a reintroduced package/plugin shell build loop in that artifact step.
 - The test also confirms the remaining `plugins/*/dist` loop is only the post-build Node ESM rewrite step and runs after Turbo.
+- Wired the contract into `scenario-pr.yml` as an explicit `packages/scripts/__tests__` step so it runs in CI instead of relying on workspace test discovery.
 
 ## Verification
 
 - `node --check packages/scripts/__tests__/build-agent-image-workflow.test.ts`
 - `bun test packages/scripts/__tests__/build-agent-image-workflow.test.ts`
+- `bunx biome check .github/workflows/scenario-pr.yml packages/scripts/__tests__/build-agent-image-workflow.test.ts .github/issue-evidence/10096-agent-image-turbo-contract.md`
 - `gh run view 28356322785 --repo elizaOS/eliza --json status,conclusion,createdAt,headSha,headBranch,displayTitle,jobs,url`
 - `gh run view 28356322785 --repo elizaOS/eliza --job 84000059543 --log | rg -n "run-turbo\\.mjs run build|Packages in scope|Normalize plugin dist|docker-ci-smoke|Boot verified|within budget"`
 
