@@ -1,32 +1,23 @@
 /**
- * In-memory mock of the {@link SocketRedis} client surface, backed by
- * `ioredis-mock`. Selected only when `MOCK_REDIS=1` is set in the
- * environment — never used as a silent fallback.
+ * In-memory mock of the {@link SocketRedis} client surface. Selected only when
+ * `MOCK_REDIS=1` is set in the environment — never used as a silent fallback.
  *
  * The exposed methods match the subset of `SocketRedis` that callers in this
- * repo use (rate limiters, credit events, agent gateway relay, A2A task
- * store, generic cache). Values are JSON-encoded on the way in and decoded
- * on the way out so the round-trip behaviour matches `SocketRedis`.
+ * repo use (rate limiters, credit events, agent gateway relay, A2A task store,
+ * generic cache). Values are JSON-encoded on the way in and decoded on the way
+ * out so the round-trip behaviour matches `SocketRedis`.
+ *
+ * The backing store is a plain module-global `Map`, not `ioredis-mock`. Two
+ * runtimes have to share one implementation: the Bun unit/integration tests AND
+ * the cloud-api Worker bundle (wrangler `--local`) the cloud-e2e stack boots.
+ * `ioredis-mock` resolves to its browser build under wrangler/esbuild and throws
+ * `ReferenceError: window is not defined` inside workerd, so any nonce-storage
+ * route (e.g. SIWE nonce/verify) 500s. A dependency-free store runs identically
+ * everywhere. It is process-global on purpose: `buildRedisClient()` is called
+ * per request, so SIWE's nonce (written by one request, consumed by the next)
+ * must persist across instances within a process — matching `ioredis-mock`'s
+ * shared-store default.
  */
-
-import { createRequire } from "node:module";
-
-// Lazy: `import.meta.url` is undefined in some bundle contexts (e.g. the
-// Cloudflare Workers dev bundle reload path), so building createRequire at
-// module load throws. Defer until first use, which only happens when
-// MOCK_REDIS=1 and ioredis-mock is actually needed.
-let _requireCJS: NodeJS.Require | null = null;
-function getRequireCJS(): NodeJS.Require {
-  if (_requireCJS) return _requireCJS;
-  const url = import.meta.url;
-  if (!url) {
-    throw new Error(
-      "mock-redis: import.meta.url is undefined; cannot resolve ioredis-mock via createRequire",
-    );
-  }
-  _requireCJS = createRequire(url);
-  return _requireCJS;
-}
 
 interface IoRedisLike {
   get(key: string): Promise<string | null>;
@@ -57,12 +48,299 @@ interface IoRedisLike {
   quit(): Promise<string>;
 }
 
-type IoRedisMockCtor = new () => IoRedisLike;
+type StringEntry = { kind: "string"; value: string; expireAt: number | null };
+type ListEntry = { kind: "list"; value: string[]; expireAt: number | null };
+type SetEntry = { kind: "set"; value: Set<string>; expireAt: number | null };
+type ZSetEntry = { kind: "zset"; value: Map<string, number>; expireAt: number | null };
+type Entry = StringEntry | ListEntry | SetEntry | ZSetEntry;
 
-function createIoRedisMock(): IoRedisLike {
-  const mod = getRequireCJS()("ioredis-mock") as IoRedisMockCtor | { default: IoRedisMockCtor };
-  const Ctor: IoRedisMockCtor = "default" in mod ? mod.default : mod;
-  return new Ctor();
+/**
+ * Process-global store shared by every {@link InMemoryRedis} instance — see the
+ * file header for why this must outlive a single `buildRedisClient()` call.
+ */
+const GLOBAL_STORE = new Map<string, Entry>();
+
+function nowMs(): number {
+  return Date.now();
+}
+
+function globToRegExp(pattern: string): RegExp {
+  let out = "";
+  for (const ch of pattern) {
+    if (ch === "*") out += ".*";
+    else if (ch === "?") out += ".";
+    else out += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${out}$`);
+}
+
+function parseScoreBound(bound: number | string, fallback: number): number {
+  if (typeof bound === "number") return bound;
+  const s = bound.trim();
+  if (s === "-inf") return Number.NEGATIVE_INFINITY;
+  if (s === "+inf" || s === "inf") return Number.POSITIVE_INFINITY;
+  // Exclusive "(" prefix is treated as inclusive here; callers in this repo use
+  // inclusive numeric / ±inf ranges only, so the distinction never bites.
+  const n = Number.parseFloat(s.startsWith("(") ? s.slice(1) : s);
+  return Number.isNaN(n) ? fallback : n;
+}
+
+/**
+ * Dependency-free in-memory Redis matching the {@link IoRedisLike} surface used
+ * in this repo. Lazy TTL expiry: a key past its `expireAt` is treated as absent
+ * and dropped on next access.
+ */
+class InMemoryRedis implements IoRedisLike {
+  private read(key: string): Entry | undefined {
+    const entry = GLOBAL_STORE.get(key);
+    if (!entry) return undefined;
+    if (entry.expireAt !== null && entry.expireAt <= nowMs()) {
+      GLOBAL_STORE.delete(key);
+      return undefined;
+    }
+    return entry;
+  }
+
+  async get(key: string): Promise<string | null> {
+    const entry = this.read(key);
+    return entry?.kind === "string" ? entry.value : null;
+  }
+
+  async set(...args: Array<string | number>): Promise<string | null> {
+    const key = String(args[0]);
+    const value = String(args[1]);
+    let expireAt: number | null = null;
+    let nx = false;
+    for (let i = 2; i < args.length; i++) {
+      const token = String(args[i]).toUpperCase();
+      if (token === "EX") expireAt = nowMs() + Number(args[++i]) * 1000;
+      else if (token === "PX") expireAt = nowMs() + Number(args[++i]);
+      else if (token === "NX") nx = true;
+    }
+    if (nx && this.read(key)) return null;
+    GLOBAL_STORE.set(key, { kind: "string", value, expireAt });
+    return "OK";
+  }
+
+  async setex(key: string, seconds: number, value: string): Promise<string> {
+    GLOBAL_STORE.set(key, { kind: "string", value, expireAt: nowMs() + seconds * 1000 });
+    return "OK";
+  }
+
+  async getdel(key: string): Promise<string | null> {
+    const entry = this.read(key);
+    if (entry?.kind !== "string") return null;
+    GLOBAL_STORE.delete(key);
+    return entry.value;
+  }
+
+  async incr(key: string): Promise<number> {
+    const entry = this.read(key);
+    const current = entry?.kind === "string" ? Number.parseInt(entry.value, 10) || 0 : 0;
+    const next = current + 1;
+    GLOBAL_STORE.set(key, {
+      kind: "string",
+      value: String(next),
+      // INCR preserves an existing TTL.
+      expireAt: entry?.kind === "string" ? entry.expireAt : null,
+    });
+    return next;
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    const entry = this.read(key);
+    if (!entry) return 0;
+    entry.expireAt = nowMs() + seconds * 1000;
+    return 1;
+  }
+
+  async pexpire(key: string, ms: number): Promise<number> {
+    const entry = this.read(key);
+    if (!entry) return 0;
+    entry.expireAt = nowMs() + ms;
+    return 1;
+  }
+
+  async pttl(key: string): Promise<number> {
+    const entry = this.read(key);
+    if (!entry) return -2;
+    if (entry.expireAt === null) return -1;
+    return Math.max(0, entry.expireAt - nowMs());
+  }
+
+  async del(...keys: string[]): Promise<number> {
+    let count = 0;
+    for (const key of keys) {
+      if (this.read(key)) {
+        GLOBAL_STORE.delete(key);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async mget(...keys: string[]): Promise<Array<string | null>> {
+    return keys.map((key) => {
+      const entry = this.read(key);
+      return entry?.kind === "string" ? entry.value : null;
+    });
+  }
+
+  async scan(
+    _cursor: string | number,
+    ...args: Array<string | number>
+  ): Promise<[string, string[]]> {
+    let match = "*";
+    for (let i = 0; i < args.length; i++) {
+      if (String(args[i]).toUpperCase() === "MATCH") match = String(args[i + 1]);
+    }
+    const re = globToRegExp(match);
+    const keys: string[] = [];
+    for (const key of GLOBAL_STORE.keys()) {
+      if (this.read(key) && re.test(key)) keys.push(key);
+    }
+    // Single-page scan: cursor "0" signals completion, so the caller's
+    // until-"0" loop terminates after one pass with every matching key.
+    return ["0", keys];
+  }
+
+  private list(key: string): string[] {
+    const entry = this.read(key);
+    if (entry?.kind === "list") return entry.value;
+    const fresh: ListEntry = { kind: "list", value: [], expireAt: null };
+    GLOBAL_STORE.set(key, fresh);
+    return fresh.value;
+  }
+
+  async lpush(key: string, ...values: string[]): Promise<number> {
+    const list = this.list(key);
+    for (const v of values) list.unshift(v);
+    return list.length;
+  }
+
+  async rpush(key: string, ...values: string[]): Promise<number> {
+    const list = this.list(key);
+    for (const v of values) list.push(v);
+    return list.length;
+  }
+
+  async lpop(key: string, count?: number): Promise<string | string[] | null> {
+    const entry = this.read(key);
+    if (entry?.kind !== "list" || entry.value.length === 0) return null;
+    if (count === undefined) return entry.value.shift() ?? null;
+    return entry.value.splice(0, count);
+  }
+
+  async rpop(key: string): Promise<string | null> {
+    const entry = this.read(key);
+    if (entry?.kind !== "list" || entry.value.length === 0) return null;
+    return entry.value.pop() ?? null;
+  }
+
+  async llen(key: string): Promise<number> {
+    const entry = this.read(key);
+    return entry?.kind === "list" ? entry.value.length : 0;
+  }
+
+  private set_(key: string): Set<string> {
+    const entry = this.read(key);
+    if (entry?.kind === "set") return entry.value;
+    const fresh: SetEntry = { kind: "set", value: new Set(), expireAt: null };
+    GLOBAL_STORE.set(key, fresh);
+    return fresh.value;
+  }
+
+  async sadd(key: string, ...members: string[]): Promise<number> {
+    const set = this.set_(key);
+    let added = 0;
+    for (const m of members) {
+      if (!set.has(m)) {
+        set.add(m);
+        added++;
+      }
+    }
+    return added;
+  }
+
+  async srem(key: string, ...members: string[]): Promise<number> {
+    const entry = this.read(key);
+    if (entry?.kind !== "set") return 0;
+    let removed = 0;
+    for (const m of members) {
+      if (entry.value.delete(m)) removed++;
+    }
+    return removed;
+  }
+
+  async smembers(key: string): Promise<string[]> {
+    const entry = this.read(key);
+    return entry?.kind === "set" ? [...entry.value] : [];
+  }
+
+  private zset(key: string): Map<string, number> {
+    const entry = this.read(key);
+    if (entry?.kind === "zset") return entry.value;
+    const fresh: ZSetEntry = { kind: "zset", value: new Map(), expireAt: null };
+    GLOBAL_STORE.set(key, fresh);
+    return fresh.value;
+  }
+
+  async zadd(key: string, score: number, member: string): Promise<number> {
+    const zset = this.zset(key);
+    const isNew = !zset.has(member);
+    zset.set(member, score);
+    return isNew ? 1 : 0;
+  }
+
+  async zcard(key: string): Promise<number> {
+    const entry = this.read(key);
+    return entry?.kind === "zset" ? entry.value.size : 0;
+  }
+
+  async zrange(key: string, start: number, stop: number): Promise<string[]> {
+    const entry = this.read(key);
+    if (entry?.kind !== "zset") return [];
+    const sorted = [...entry.value.entries()]
+      .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      .map(([member]) => member);
+    const len = sorted.length;
+    const from = start < 0 ? Math.max(len + start, 0) : start;
+    const to = stop < 0 ? len + stop : stop;
+    return sorted.slice(from, to + 1);
+  }
+
+  async zrem(key: string, ...members: string[]): Promise<number> {
+    const entry = this.read(key);
+    if (entry?.kind !== "zset") return 0;
+    let removed = 0;
+    for (const m of members) {
+      if (entry.value.delete(m)) removed++;
+    }
+    return removed;
+  }
+
+  async zremrangebyscore(key: string, min: number | string, max: number | string): Promise<number> {
+    const entry = this.read(key);
+    if (entry?.kind !== "zset") return 0;
+    const lo = parseScoreBound(min, Number.NEGATIVE_INFINITY);
+    const hi = parseScoreBound(max, Number.POSITIVE_INFINITY);
+    let removed = 0;
+    for (const [member, score] of entry.value) {
+      if (score >= lo && score <= hi) {
+        entry.value.delete(member);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  async ping(): Promise<string> {
+    return "PONG";
+  }
+
+  async quit(): Promise<string> {
+    return "OK";
+  }
 }
 
 function serializeArg(value: unknown): string {
@@ -94,7 +372,7 @@ export class MockSocketRedis {
   private readonly client: IoRedisLike;
 
   constructor(client?: IoRedisLike) {
-    this.client = client ?? createIoRedisMock();
+    this.client = client ?? new InMemoryRedis();
   }
 
   async get<T = string>(key: string): Promise<T | null> {
