@@ -451,7 +451,8 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
   }
 
   const mod = (await import(pkg)) as Record<string, unknown>;
-  const candidate = mod.default ?? mod.elizaPlugin ?? mod.plugin;
+  const candidate =
+    mod.default ?? mod.elizaPlugin ?? mod.plugin ?? mod.schedulingPlugin;
   return candidate !== null &&
     typeof candidate === "object" &&
     typeof (candidate as { name?: unknown }).name === "string"

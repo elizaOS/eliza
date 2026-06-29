@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 import { Markdown } from "../src/components/markdown.js";
 import { type Component, TUI } from "../src/tui.js";
 import { defaultMarkdownTheme } from "./test-themes.js";
-import { VirtualTerminal } from "./virtual-terminal.js";
+import { VirtualTerminal } from "../src/testing/virtual-terminal.js";
 
 // Force full color in CI so ANSI assertions are deterministic
 const chalk = new Chalk({ level: 3 });

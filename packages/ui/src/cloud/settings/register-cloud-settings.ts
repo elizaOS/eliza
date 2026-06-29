@@ -3,7 +3,8 @@
  * (re-IA Step 2).
  *
  * Calling {@link registerCloudSettingsSections} registers:
- *  - a new **Cloud** settings group (between System and Security), and
+ *  - new **Cloud** and **Developer** settings groups (between System and
+ *    Security), and
  *  - the cloud sections that re-home the lifted cloud dashboard pages as in-app
  *    Settings sections, plus two additions to the existing **Security** group.
  *
@@ -17,9 +18,9 @@
  *  |-----------------------|----------|------------------------------------------|
  *  | cloud-account         | cloud    | account-security (AccountSurface)        |
  *  | cloud-billing         | cloud    | billing (BillingSectionBody + invoices)  |
- *  | cloud-api-keys        | cloud    | api-keys (ApiKeysSurface)                |
- *  | cloud-applications    | cloud    | applications (entry → /dashboard/apps)   |
- *  | cloud-monetization    | cloud    | monetization (Earnings + Affiliates)     |
+ *  | cloud-api-keys        | developer| api-keys (ApiKeysSurface)                |
+ *  | cloud-applications    | developer| applications (entry → /dashboard/apps)   |
+ *  | cloud-monetization    | developer| monetization (Earnings + Affiliates)     |
  *  | cloud-organization    | cloud    | organization (OrganizationSection)       |
  *  | cloud-security        | security | account-security (SecuritySurface)       |
  *  | cloud-plugin-grants   | security | account-security (PermissionsSurface)    |
@@ -45,6 +46,7 @@ import { registerCloudConnectorsSettingsSection } from "../connectors";
 import { registerMcpsSettingsSection } from "../mcps";
 import {
   CLOUD_SETTINGS_GROUP_ID,
+  DEVELOPER_SETTINGS_GROUP_ID,
   registerSettingsGroup,
 } from "./cloud-settings-group";
 import {
@@ -59,8 +61,9 @@ import {
 } from "./sections";
 
 /**
- * The Cloud group sits between System (built-in order 1) and Security (built-in
- * order 2), matching the IA in `docs/cloud-into-eliza/PLAN.md` §4.3.
+ * The Cloud + Developer groups sit between System (built-in order 1) and
+ * Security (built-in order 2), matching the IA in
+ * `docs/cloud-into-eliza/PLAN.md` §4.3.
  */
 let cloudSettingsRegistered = false;
 
@@ -72,6 +75,12 @@ export function registerCloudSettingsSections(): void {
     id: CLOUD_SETTINGS_GROUP_ID,
     label: "Cloud",
     order: 1.5,
+  });
+
+  registerSettingsGroup({
+    id: DEVELOPER_SETTINGS_GROUP_ID,
+    label: "Developer",
+    order: 1.6,
   });
 
   // ── Cloud group ──────────────────────────────────────────────────────────────
@@ -111,10 +120,11 @@ export function registerCloudSettingsSections(): void {
     icon: KeyRound,
     tone: "accent",
     hue: "accent",
-    group: CLOUD_SETTINGS_GROUP_ID,
+    group: DEVELOPER_SETTINGS_GROUP_ID,
     titleKey: "settings.sections.cloudApiKeys.title",
     defaultTitle: "API Keys",
-    order: 2,
+    order: 0,
+    viewKind: "developer",
     Component: CloudApiKeysSection,
   });
 
@@ -125,10 +135,11 @@ export function registerCloudSettingsSections(): void {
     icon: Grid3x3,
     tone: "accent",
     hue: "accent",
-    group: CLOUD_SETTINGS_GROUP_ID,
+    group: DEVELOPER_SETTINGS_GROUP_ID,
     titleKey: "settings.sections.cloudApplications.title",
     defaultTitle: "Applications",
-    order: 3,
+    order: 1,
+    viewKind: "developer",
     Component: CloudApplicationsSection,
   });
 
@@ -139,10 +150,11 @@ export function registerCloudSettingsSections(): void {
     icon: TrendingUp,
     tone: "accent",
     hue: "accent",
-    group: CLOUD_SETTINGS_GROUP_ID,
+    group: DEVELOPER_SETTINGS_GROUP_ID,
     titleKey: "settings.sections.cloudMonetization.title",
     defaultTitle: "Monetization",
-    order: 4,
+    order: 2,
+    viewKind: "developer",
     Component: CloudMonetizationSection,
   });
 
@@ -156,7 +168,7 @@ export function registerCloudSettingsSections(): void {
     group: CLOUD_SETTINGS_GROUP_ID,
     titleKey: "settings.sections.cloudOrganization.title",
     defaultTitle: "Organization",
-    order: 5,
+    order: 2,
     Component: CloudOrganizationSection,
   });
 

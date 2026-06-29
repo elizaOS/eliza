@@ -4,10 +4,11 @@
  *
  * The canonical group set lives in `settings-section-meta.ts`
  * (`SETTINGS_GROUP_ORDER` / `SETTINGS_GROUP_LABEL`), which is intentionally
- * frozen — the app-core `dev-route-catalog` parity test pins it. To add a "Cloud"
- * group without mutating that pinned list, host code registers the group here at
- * boot and the Settings view reads {@link listExtraSettingsGroups} to render any
- * group a section declares that the built-in order does not already cover.
+ * frozen — the app-core `dev-route-catalog` parity test pins it. To add groups
+ * such as "Cloud" or "Developer" without mutating that pinned list, host code
+ * registers them here at boot and the Settings view reads
+ * {@link listExtraSettingsGroups} to render any group a section declares that
+ * the built-in order does not already cover.
  *
  * Mirrors the section registry's global-symbol store so every bundle in the
  * process shares one group list even across module-identity splits.
@@ -65,3 +66,6 @@ export function getExtraSettingsGroup(
 
 /** The Cloud group id used by every cloud settings section in this directory. */
 export const CLOUD_SETTINGS_GROUP_ID = "cloud";
+
+/** Developer-only cloud settings group. Visibility is controlled per section. */
+export const DEVELOPER_SETTINGS_GROUP_ID = "developer";

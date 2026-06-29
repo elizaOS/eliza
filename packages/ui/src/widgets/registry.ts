@@ -171,7 +171,7 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       signalKinds: ["approval", "workflow", "activity"],
     },
     {
-      pluginId: "hyperliquid-app",
+      pluginId: "hyperliquid",
       label: "Hyperliquid",
       icon: "ChartCandlestick",
       defaultWidget: "notifications",
@@ -183,6 +183,13 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       icon: "Gauge",
       defaultWidget: "activity",
       signalKinds: ["workflow", "activity"],
+    },
+    {
+      pluginId: "native-settings",
+      label: "Native Settings",
+      icon: "Settings",
+      defaultWidget: "notifications",
+      signalKinds: ["notification", "activity"],
     },
     {
       pluginId: "personal-assistant",
@@ -199,7 +206,7 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       signalKinds: ["message", "notification"],
     },
     {
-      pluginId: "polymarket-app",
+      pluginId: "polymarket",
       label: "Polymarket",
       icon: "ChartNoAxesCombined",
       defaultWidget: "notifications",

@@ -416,7 +416,10 @@ export default scenario({
   tags: ["pr", "deterministic", "zero-cost", "lifeops", "scheduled-tasks"],
   isolation: "shared-runtime",
   requires: {
-    plugins: ["@elizaos/plugin-personal-assistant"],
+    plugins: [
+      "@elizaos/plugin-scheduling",
+      "@elizaos/plugin-personal-assistant",
+    ],
   },
   seed: [
     {

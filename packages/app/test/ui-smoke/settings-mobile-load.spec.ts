@@ -156,9 +156,6 @@ const CLOUD_SECTION_IDS = [
   "cloud-agents",
   "cloud-account",
   "cloud-billing",
-  "cloud-api-keys",
-  "cloud-applications",
-  "cloud-monetization",
   "cloud-organization",
   "cloud-connectors",
   "mcps",
@@ -166,10 +163,22 @@ const CLOUD_SECTION_IDS = [
   "cloud-plugin-grants",
 ] as const;
 
+const DEVELOPER_CLOUD_SECTION_IDS = [
+  "cloud-api-keys",
+  "cloud-applications",
+  "cloud-monetization",
+] as const;
+
 test.describe("cloud settings sections load at mobile width", () => {
   test.use({ viewport: VIEWPORT_SIZES.mobile });
 
-  for (const id of CLOUD_SECTION_IDS) {
+  for (const { id, developerMode } of [
+    ...CLOUD_SECTION_IDS.map((id) => ({ id, developerMode: false })),
+    ...DEVELOPER_CLOUD_SECTION_IDS.map((id) => ({
+      id,
+      developerMode: true,
+    })),
+  ] as const) {
     test(`${id} renders without crashing`, async ({ page }) => {
       await mkdir(OUT_DIR, { recursive: true });
 
@@ -185,7 +194,10 @@ test.describe("cloud settings sections load at mobile width", () => {
         consoleErrors.push(text);
       });
 
-      await seedAppStorage(page);
+      await seedAppStorage(
+        page,
+        developerMode ? { "eliza:developerMode": "1" } : {},
+      );
       await installDefaultAppRoutes(page);
       await openAppPath(page, "/settings");
 
