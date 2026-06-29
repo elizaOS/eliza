@@ -168,6 +168,74 @@ describe("signalKindForEventType", () => {
   it("falls back to activity for unknown event types", () => {
     expect(signalKindForEventType("nonsense")).toBe("activity");
   });
+
+  it("maps the welcome event type to the welcome signal kind (#9959)", () => {
+    expect(signalKindForEventType("welcome")).toBe("welcome");
+  });
+});
+
+// #9959 — the FTU `welcome` card must outrank every cold/ambient widget for a
+// brand-new account, yet always lose to a real "act now" signal so it never
+// buries an approval/escalation/blocked card the moment real activity exists.
+describe("welcome (FTU) signal weight ordering — #9959", () => {
+  it("ranks above every cold/ambient kind", () => {
+    const w = HOME_SIGNAL_WEIGHTS;
+    for (const cold of [
+      "reminder",
+      "message",
+      "check-in",
+      "nudge",
+      "workflow",
+      "activity",
+    ]) {
+      expect(w.welcome).toBeGreaterThan(w[cold]);
+    }
+  });
+
+  it("stays strictly below every act-now signal", () => {
+    const w = HOME_SIGNAL_WEIGHTS;
+    for (const actNow of ["approval", "escalation", "blocked"]) {
+      expect(w.welcome).toBeLessThan(w[actNow]);
+    }
+  });
+
+  it("floats a cold welcome widget to the top yet yields to a fresh approval", () => {
+    const now = NOW;
+    const welcomeCard = { id: "ftu", pluginId: "welcome", order: 5 };
+    const inboxCard = { id: "inbox", pluginId: "p", order: 5 };
+    const decls = [inboxCard, welcomeCard];
+    // Cold account: only the welcome signal is live → welcome card ranks first.
+    const cold = rankHomeWidgets(
+      decls,
+      [
+        {
+          widgetKey: "welcome/ftu",
+          weight: HOME_SIGNAL_WEIGHTS.welcome,
+          timestamp: now,
+        },
+      ],
+      { now },
+    );
+    expect(cold[0].declaration.id).toBe("ftu");
+    // A real approval lands on the inbox card → it must outrank the welcome card.
+    const active = rankHomeWidgets(
+      decls,
+      [
+        {
+          widgetKey: "welcome/ftu",
+          weight: HOME_SIGNAL_WEIGHTS.welcome,
+          timestamp: now,
+        },
+        {
+          widgetKey: "p/inbox",
+          weight: HOME_SIGNAL_WEIGHTS.approval,
+          timestamp: now,
+        },
+      ],
+      { now },
+    );
+    expect(active[0].declaration.id).toBe("inbox");
+  });
 });
 
 describe("homeSignalsFromEvents", () => {
