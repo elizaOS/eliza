@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
-import { getHostShim, resetHostShim } from "@elizaos/plugin-host-shim";
-import { installAndroidShim, resetAndroidShimForTests } from "./index";
+import { getHostShim, resetHostShim } from "../index.js";
+import { installAndroidShim, resetAndroidShimForTests } from "./index.js";
 
 interface TestWindow {
   ElizaosAndroidBridge?: { postMessage: ReturnType<typeof mock> };

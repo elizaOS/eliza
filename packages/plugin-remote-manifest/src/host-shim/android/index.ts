@@ -10,8 +10,8 @@
 import {
   installHostShim,
   type PluginHostShim,
-} from "@elizaos/plugin-host-shim";
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+} from "../index.js";
+import type { JsonValue } from "../../index.js";
 
 interface AndroidBridge {
   postMessage(message: string): void;

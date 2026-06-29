@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
-import { getHostShim, resetHostShim } from "./index";
-import { installWebShim, resetWebShimForTests } from "./web";
+import { getHostShim, resetHostShim } from "./index.js";
+import { installWebShim, resetWebShimForTests } from "./web.js";
 
 type MessageListener = (event: {
   data: unknown;

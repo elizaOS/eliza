@@ -17,8 +17,8 @@
 import {
   installHostShim,
   type PluginHostShim,
-} from "@elizaos/plugin-host-shim";
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+} from "../index.js";
+import type { JsonValue } from "../../index.js";
 
 interface IosMessageHandler {
   postMessage(message: unknown): void;

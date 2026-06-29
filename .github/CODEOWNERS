@@ -35,10 +35,8 @@
 /packages/contracts/                    @elizaos/security-team @elizaos/backend-leads
 
 # Plugin runtime / sandboxing surface.
-/packages/plugin-host-shim/             @elizaos/runtime-team
-/packages/plugin-host-shim-android/     @elizaos/runtime-team
-/packages/plugin-host-shim-electrobun/  @elizaos/runtime-team
-/packages/plugin-host-shim-ios/         @elizaos/runtime-team
+# The host-shim cluster (base + android/ios/electrobun) now lives under
+# plugin-remote-manifest/src/host-shim/ (subpath exports).
 /packages/plugin-worker-runtime/        @elizaos/runtime-team
 /packages/plugin-sub-agent-claude-code/ @elizaos/runtime-team @elizaos/security-team
 /packages/plugin-remote-manifest/       @elizaos/runtime-team @elizaos/security-team

@@ -9,9 +9,9 @@
  * Usage inside a view bundle:
  *
  * ```ts
- * import { installElectrobunShim } from "@elizaos/plugin-host-shim-electrobun";
+ * import { installElectrobunShim } from "@elizaos/plugin-remote-manifest/host-shim/electrobun";
  * installElectrobunShim();
- * import { getHostShim } from "@elizaos/plugin-host-shim";
+ * import { getHostShim } from "@elizaos/plugin-remote-manifest/host-shim";
  * const result = await getHostShim().request("provider.spotify", {});
  * ```
  */
@@ -19,8 +19,8 @@
 import {
   installHostShim,
   type PluginHostShim,
-} from "@elizaos/plugin-host-shim";
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+} from "../index.js";
+import type { JsonValue } from "../../index.js";
 
 interface ElectrobunBridge {
   postMessage(message: unknown): void;

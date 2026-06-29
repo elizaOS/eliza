@@ -12,8 +12,8 @@
  *     { kind: "elizaos.shim.event", event, data }
  */
 
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
-import { installHostShim, type PluginHostShim } from "./index";
+import type { JsonValue } from "../index.js";
+import { installHostShim, type PluginHostShim } from "./index.js";
 
 interface ParentRequest {
   kind: "elizaos.shim.request";

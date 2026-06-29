@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
-import { getHostShim, resetHostShim } from "@elizaos/plugin-host-shim";
-import { installElectrobunShim, resetElectrobunShimForTests } from "./index";
+import { getHostShim, resetHostShim } from "../index.js";
+import { installElectrobunShim, resetElectrobunShimForTests } from "./index.js";
 
 type Listener = (data: unknown) => void;
 

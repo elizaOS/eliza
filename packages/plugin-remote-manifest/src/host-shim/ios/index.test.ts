@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
-import { getHostShim, resetHostShim } from "@elizaos/plugin-host-shim";
-import { installIosShim, resetIosShimForTests } from "./index";
+import { getHostShim, resetHostShim } from "../index.js";
+import { installIosShim, resetIosShimForTests } from "./index.js";
 
 interface TestWindow {
   webkit?: {

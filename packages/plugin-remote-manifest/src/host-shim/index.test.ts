@@ -4,7 +4,7 @@ import {
   installHostShim,
   type PluginHostShim,
   resetHostShim,
-} from "./index";
+} from "./index.js";
 
 const shim: PluginHostShim = {
   on: () => () => {},

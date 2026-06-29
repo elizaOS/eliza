@@ -66,6 +66,36 @@
       "types": "./dist/signature.d.ts",
       "import": "./dist/signature.js",
       "default": "./dist/signature.js"
+    },
+    "./host-shim": {
+      "types": "./dist/host-shim/index.d.ts",
+      "eliza-source": {
+        "types": "./src/host-shim/index.ts",
+        "import": "./src/host-shim/index.ts",
+        "default": "./src/host-shim/index.ts"
+      },
+      "import": "./dist/host-shim/index.js",
+      "default": "./dist/host-shim/index.js"
+    },
+    "./host-shim/web": {
+      "types": "./dist/host-shim/web.d.ts",
+      "import": "./dist/host-shim/web.js",
+      "default": "./dist/host-shim/web.js"
+    },
+    "./host-shim/android": {
+      "types": "./dist/host-shim/android/index.d.ts",
+      "import": "./dist/host-shim/android/index.js",
+      "default": "./dist/host-shim/android/index.js"
+    },
+    "./host-shim/ios": {
+      "types": "./dist/host-shim/ios/index.d.ts",
+      "import": "./dist/host-shim/ios/index.js",
+      "default": "./dist/host-shim/ios/index.js"
+    },
+    "./host-shim/electrobun": {
+      "types": "./dist/host-shim/electrobun/index.d.ts",
+      "import": "./dist/host-shim/electrobun/index.js",
+      "default": "./dist/host-shim/electrobun/index.js"
     }
   }
 }

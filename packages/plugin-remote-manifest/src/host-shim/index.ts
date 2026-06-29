@@ -1,5 +1,5 @@
 /**
- * @elizaos/plugin-host-shim
+ * @elizaos/plugin-remote-manifest/host-shim
  *
  * The cross-platform shim contract that a remote-mode plugin's view JS
  * uses to talk to whichever environment it's mounted in (Electrobun
@@ -10,7 +10,7 @@
  * Author usage inside a view bundle:
  *
  * ```ts
- * import { getHostShim } from "@elizaos/plugin-host-shim";
+ * import { getHostShim } from "@elizaos/plugin-remote-manifest/host-shim";
  * const shim = getHostShim();
  * const ctx = await shim.request("provider.get", { name: "spotify" });
  * shim.on("plugin.event", (payload) => { /* ... *\/ });
@@ -22,7 +22,7 @@
  * `resolveViewUrl()` per platform.
  */
 
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "../index.js";
 
 /** Cross-platform contract every shim implements. */
 export interface PluginHostShim {
@@ -74,7 +74,7 @@ export function getHostShim(): PluginHostShim {
   if (!activeShim) {
     throw new Error(
       "PluginHostShim not installed. Did you import a platform package " +
-        "(@elizaos/plugin-host-shim-electrobun / -ios / -android / -web)?",
+        "(@elizaos/plugin-remote-manifest/host-shim/electrobun / -ios / -android / -web)?",
     );
   }
   return activeShim;
