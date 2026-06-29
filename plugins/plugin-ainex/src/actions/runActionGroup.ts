@@ -24,7 +24,8 @@ export const runActionGroupAction: Action = {
   ): Promise<ActionResult> => {
     const name = getStringOption(options, "name", "");
     if (name === "") {
-      const text = "AINEX_RUN_ACTION_GROUP requires options.name (e.g. 'wave').";
+      const text =
+        "AINEX_RUN_ACTION_GROUP requires options.name (e.g. 'wave').";
       await callback?.({ text });
       return { success: false, text };
     }

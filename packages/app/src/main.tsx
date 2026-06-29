@@ -919,7 +919,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     remoteConnect.click();
 
     const home = await waitForIosOnboardingElement<HTMLElement>(
-      '[data-testid="home-springboard-surface"][data-page="home"]',
+      '[data-testid="home-launcher-surface"][data-page="home"]',
       { visible: true },
     );
     const composer = await waitForIosOnboardingElement<HTMLElement>(

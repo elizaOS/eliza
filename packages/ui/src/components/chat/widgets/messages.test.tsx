@@ -85,7 +85,7 @@ function seedConversations(conversations: Conversation[]): void {
 
 // #9143 — the frontpage Messages widget renders recent conversations.
 // #9226 — when there are no conversations it renders nothing (no empty
-// placeholder card) so the Springboard home isn't cluttered with dead slots.
+// placeholder card) so the Launcher home isn't cluttered with dead slots.
 // It only shows NAMED conversations the agent has actually responded in.
 describe("MessagesWidget (#9143)", () => {
   it("renders nothing when there are no conversations (#9226)", () => {

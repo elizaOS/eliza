@@ -5,6 +5,7 @@ import type {
   Provider,
   State,
 } from "@elizaos/core";
+import { roleRank } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const rolesMock = vi.hoisted(() => ({
@@ -13,7 +14,11 @@ const rolesMock = vi.hoisted(() => ({
 
 vi.mock("./roles.ts", () => rolesMock);
 
-import { applyPluginRoleGating } from "./plugin-role-gating.ts";
+import {
+  applyPluginRoleGating,
+  PROVIDER_ROLE_OVERRIDES,
+  TIER_TO_CANONICAL_ROLE,
+} from "./plugin-role-gating.ts";
 
 const runtime = {
   agentId: "11111111-1111-1111-1111-111111111111",
@@ -121,5 +126,79 @@ describe("applyPluginRoleGating", () => {
     ]);
 
     expect(rolesMock.checkSenderRole).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("override tiers map onto canonical role ranks", () => {
+  it("normalizes each lowercase tier to a canonical role rank", () => {
+    expect(roleRank(TIER_TO_CANONICAL_ROLE.user)).toBe(roleRank("USER"));
+    expect(roleRank(TIER_TO_CANONICAL_ROLE.admin)).toBe(roleRank("ADMIN"));
+    expect(roleRank(TIER_TO_CANONICAL_ROLE.owner)).toBe(roleRank("OWNER"));
+    // The tiers form a strict hierarchy: user < admin < owner.
+    expect(roleRank("USER")).toBeLessThan(roleRank("ADMIN"));
+    expect(roleRank("ADMIN")).toBeLessThan(roleRank("OWNER"));
+  });
+
+  it("only references known tiers in the provider override map", () => {
+    for (const tier of Object.values(PROVIDER_ROLE_OVERRIDES)) {
+      expect(TIER_TO_CANONICAL_ROLE[tier]).toBeDefined();
+    }
+  });
+});
+
+describe("provider gating outcomes follow the canonical gate", () => {
+  beforeEach(() => {
+    rolesMock.checkSenderRole.mockReset();
+  });
+
+  async function visibleText(
+    providerName: string,
+    callerRole: string,
+  ): Promise<string | undefined> {
+    rolesMock.checkSenderRole.mockResolvedValue({
+      role: callerRole,
+      isOwner: callerRole === "OWNER",
+      isAdmin: callerRole === "OWNER" || callerRole === "ADMIN",
+    });
+    const gatedProvider = provider(providerName);
+    applyPluginRoleGating([pluginWithProviders([gatedProvider])]);
+    const result = await gatedProvider.get?.(
+      runtime,
+      message({ fromId: "discord-user-1" }),
+      {} as State,
+    );
+    return result?.text;
+  }
+
+  it("redacts an owner-gated provider for GUEST and NONE callers but passes OWNER", async () => {
+    // app_browser_workspace is an "owner" override.
+    expect(PROVIDER_ROLE_OVERRIDES.app_browser_workspace).toBe("owner");
+    expect(await visibleText("app_browser_workspace", "GUEST")).toBe("");
+    expect(await visibleText("app_browser_workspace", "NONE")).toBe("");
+    expect(await visibleText("app_browser_workspace", "USER")).toBe("");
+    expect(await visibleText("app_browser_workspace", "ADMIN")).toBe("");
+    expect(await visibleText("app_browser_workspace", "OWNER")).toBe(
+      "app_browser_workspace: visible",
+    );
+  });
+
+  it("passes an admin-gated provider for ADMIN and OWNER, redacts below", async () => {
+    expect(PROVIDER_ROLE_OVERRIDES.SECRETS_STATUS).toBe("admin");
+    expect(await visibleText("SECRETS_STATUS", "GUEST")).toBe("");
+    expect(await visibleText("SECRETS_STATUS", "USER")).toBe("");
+    expect(await visibleText("SECRETS_STATUS", "ADMIN")).toBe(
+      "SECRETS_STATUS: visible",
+    );
+    expect(await visibleText("SECRETS_STATUS", "OWNER")).toBe(
+      "SECRETS_STATUS: visible",
+    );
+  });
+
+  it("passes a user-gated provider for everyone above GUEST", async () => {
+    expect(PROVIDER_ROLE_OVERRIDES.todos).toBe("user");
+    expect(await visibleText("todos", "GUEST")).toBe("");
+    expect(await visibleText("todos", "USER")).toBe("todos: visible");
+    expect(await visibleText("todos", "ADMIN")).toBe("todos: visible");
+    expect(await visibleText("todos", "OWNER")).toBe("todos: visible");
   });
 });

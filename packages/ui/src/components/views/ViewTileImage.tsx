@@ -10,7 +10,7 @@ import { resolveApiUrl } from "../../utils/asset-url";
 import { emitViewInteraction } from "../../view-telemetry";
 import { ViewIcon } from "./ViewIcon";
 
-const SPRINGBOARD_ICON_PALETTES: ReadonlyArray<{
+const LAUNCHER_ICON_PALETTES: ReadonlyArray<{
   from: string;
   to: string;
   foreground: string;
@@ -34,10 +34,10 @@ function hashText(value: string): number {
   return hash >>> 0;
 }
 
-function springboardIconStyle(entry: ViewEntry): CSSProperties {
+function launcherIconStyle(entry: ViewEntry): CSSProperties {
   const palette =
-    SPRINGBOARD_ICON_PALETTES[
-      hashText(`${entry.id}:${entry.label}`) % SPRINGBOARD_ICON_PALETTES.length
+    LAUNCHER_ICON_PALETTES[
+      hashText(`${entry.id}:${entry.label}`) % LAUNCHER_ICON_PALETTES.length
     ];
   return {
     background: `linear-gradient(145deg, ${palette.from} 0%, ${palette.to} 100%)`,
@@ -72,7 +72,7 @@ function resolveTileImageUrl(url: string | undefined): string | undefined {
 /**
  * The shared visual core for view launch surfaces.
  *
- * Springboard tiles are app icons: paint the deterministic glyph tile
+ * Launcher tiles are app icons: paint the deterministic glyph tile
  * underneath the concrete hero or generated branded fallback so icons never
  * appear blank while image decoding catches up after a swipe. Catalog cards are
  * previews and use the same image/fallback order at their larger size.
@@ -90,7 +90,7 @@ export function ViewTileImage({
 }: {
   entry: ViewEntry;
   /** Which surface is rendering — tags the hero-image-error telemetry. */
-  source: "springboard" | "view-catalog";
+  source: "launcher" | "view-catalog";
   /** Styling for the image/glyph container (size, rounding, hover treatment). */
   containerClassName: string;
   /** Styling for the fallback glyph. */
@@ -107,13 +107,13 @@ export function ViewTileImage({
   const url = primaryUrl ?? fallbackUrl;
   const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
 
-  if (source === "springboard") {
+  if (source === "launcher") {
     if (url) {
       return (
         <div
           className={cn(containerClassName, "relative overflow-hidden")}
           data-view-visual={entry.id}
-          style={springboardIconStyle(entry)}
+          style={launcherIconStyle(entry)}
         >
           <span
             aria-hidden="true"
@@ -157,7 +157,7 @@ export function ViewTileImage({
       <div
         className={cn(containerClassName, "relative overflow-hidden")}
         data-view-visual={entry.id}
-        style={springboardIconStyle(entry)}
+        style={launcherIconStyle(entry)}
       >
         <span
           aria-hidden="true"

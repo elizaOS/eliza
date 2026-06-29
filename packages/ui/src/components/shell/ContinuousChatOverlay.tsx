@@ -50,7 +50,7 @@ import {
 } from "../../hooks/useLayoutShiftMonitor";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
-import { goHome, goSpringboard } from "../../state/shell-surface-store";
+import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
@@ -371,6 +371,8 @@ const EMPTY_CONVERSATION_NAV: ConversationNav = {
   hasNext: false,
   goPrev: () => {},
   goNext: () => {},
+  activeId: null,
+  index: -1,
 };
 
 /**
@@ -2721,7 +2723,7 @@ export function ContinuousChatOverlay({
     swipeEnabled: !sheetOpen,
     onSwipeLeft: () => {
       settleDrag();
-      if (!sheetOpen) goSpringboard();
+      if (!sheetOpen) goLauncher();
     },
     onSwipeRight: () => {
       settleDrag();
@@ -3104,6 +3106,11 @@ export function ContinuousChatOverlay({
           data-revealed={threadPresented ? "true" : "false"}
           data-chat-state={chatState}
           data-header-shown={headerVisible ? "true" : "false"}
+          // The active conversation id + its position in the most-recent-first
+          // list, surfaced so flows like the tutorial can observe a new-chat or a
+          // swipe-between-chats without reaching into controller internals.
+          data-conversation-id={conversationNav.activeId ?? undefined}
+          data-conversation-index={conversationNav.index}
           // ONE persistent element across pill ↔ input ↔ chat (never remounts —
           // that pop was the core jank). It's a transparent scale/position
           // container; the liquid glass lives in an inner layer faded by
@@ -3200,8 +3207,8 @@ export function ContinuousChatOverlay({
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
               Left: Maximize (toggle edge-to-edge full-screen) + Clear (reset to
               a fresh greeted thread, RotateCcw — it resets, it doesn't delete).
-              Right: one Springboard/Home launcher. Settings lives inside the
-              Springboard favorites dock, so the chat header stops acting like a
+              Right: one Launcher/Home launcher. Settings lives inside the
+              Launcher favorites dock, so the chat header stops acting like a
               second app nav bar. */}
             {threadPresented ? (
               <motion.div
@@ -3272,9 +3279,9 @@ export function ContinuousChatOverlay({
                 <div className="flex items-center gap-1.5">
                   <HeaderButton
                     icon={LayoutGrid}
-                    label="springboard"
+                    label="launcher"
                     onClick={() => navigateAndClose(() => navigateHome?.())}
-                    testId="chat-full-springboard"
+                    testId="chat-full-launcher"
                   />
                 </div>
               </motion.div>

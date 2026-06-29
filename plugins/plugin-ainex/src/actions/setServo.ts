@@ -6,15 +6,17 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { getNumberOption, getService, notConnected, sendOne } from "./_helpers";
 import type { JsonDict } from "../types";
+import { getNumberOption, getService, notConnected, sendOne } from "./_helpers";
 
 interface ServoTarget {
   id: number;
   position: number;
 }
 
-function _parsePositions(options: Record<string, unknown> | undefined): ServoTarget[] | null {
+function _parsePositions(
+  options: Record<string, unknown> | undefined,
+): ServoTarget[] | null {
   const positions = options?.positions;
   if (Array.isArray(positions)) {
     const out: ServoTarget[] = [];

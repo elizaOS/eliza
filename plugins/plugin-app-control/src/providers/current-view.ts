@@ -78,9 +78,10 @@ export const currentViewProvider: Provider = {
 
 			if (!current) return EMPTY;
 
+			const section = current.subview ? ` — ${current.subview} section` : "";
 			const where = current.viewPath
-				? `${current.viewLabel} view (${current.viewPath})`
-				: `${current.viewLabel} view`;
+				? `${current.viewLabel} view (${current.viewPath})${section}`
+				: `${current.viewLabel} view${section}`;
 
 			if (current.justSwitched) {
 				const agentInitiated = current.source !== "user";
@@ -92,6 +93,7 @@ export const currentViewProvider: Provider = {
 					values: {
 						currentViewId: current.viewId,
 						currentViewLabel: current.viewLabel,
+						...(current.subview ? { currentViewSubview: current.subview } : {}),
 						viewJustSwitched: true,
 						viewSwitchSource: current.source ?? "agent",
 					},
@@ -104,6 +106,7 @@ export const currentViewProvider: Provider = {
 				values: {
 					currentViewId: current.viewId,
 					currentViewLabel: current.viewLabel,
+					...(current.subview ? { currentViewSubview: current.subview } : {}),
 					viewJustSwitched: false,
 				},
 				data: { currentView: current },

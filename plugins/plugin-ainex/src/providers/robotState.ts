@@ -26,7 +26,7 @@ export const robotStateProvider: Provider = {
   ): Promise<ProviderResult> => {
     const service = runtime.getService<AinexService>(AinexService.serviceType);
     const telemetry = service?.getTelemetry();
-    if (!service || !service.isConnected() || !telemetry) {
+    if (!service?.isConnected() || !telemetry) {
       return _disconnectedResult();
     }
     const lines = [

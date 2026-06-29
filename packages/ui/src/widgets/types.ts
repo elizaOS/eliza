@@ -15,6 +15,23 @@ export const WIDGET_SLOTS = [
 export type WidgetSlot = (typeof WIDGET_SLOTS)[number];
 
 /**
+ * Show-once-then-retire lifecycle for a transient home-slot widget (FTU /
+ * connector / tutorial nudges). A widget with `sunset` is filtered out of the
+ * home grid once its condition is met; the per-key lifecycle state is persisted
+ * by `widgets/home-dismissal-store.ts`. Absent ⇒ the widget never sunsets (the
+ * data-driven cards rely on self-hiding-when-empty, not on this).
+ */
+export interface HomeWidgetSunset {
+  /** Retire after the widget has been shown in this many sessions (1 = show
+   *  once, then gone next session). */
+  afterSeen?: number;
+  /** Retire once the user acts on it (e.g. taps a prompt chip). */
+  afterAction?: boolean;
+  /** Render a dismiss control; retire permanently once dismissed. */
+  dismissible?: boolean;
+}
+
+/**
  * Serializable widget metadata declared by a plugin.
  *
  * The canonical shape lives in `@elizaos/core` (`PluginWidgetDeclaration`)
@@ -25,6 +42,8 @@ export type WidgetSlot = (typeof WIDGET_SLOTS)[number];
 export interface PluginWidgetDeclaration extends CorePluginWidgetDeclaration {
   /** Declarative UI spec — fallback for plugins without bundled React components. */
   uiSpec?: UiSpec;
+  /** Show-once-then-retire lifecycle (home slot only). See {@link HomeWidgetSunset}. */
+  sunset?: HomeWidgetSunset;
 }
 
 /** Props passed to every widget React component. */

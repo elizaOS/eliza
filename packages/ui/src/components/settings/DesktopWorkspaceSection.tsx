@@ -189,7 +189,7 @@ export function DesktopWorkspaceSection({
       ]);
 
       if (stackResponse.ok) {
-        const stackJson = (await stackResponse.json()) as unknown;
+        const stackJson: unknown = await stackResponse.json();
         setDevStackText(JSON.stringify(stackJson, null, 2));
       } else {
         setDevStackText(`GET /api/dev/stack → ${stackResponse.status}`);

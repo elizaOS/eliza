@@ -9,7 +9,7 @@
 // triggers an exponential backoff retry. Pending sends fail-fast; the caller
 // is expected to handle retries at the action layer if needed.
 
-import { WebSocket, type RawData } from "ws";
+import { type RawData, WebSocket } from "ws";
 import type {
   BridgeCommand,
   BridgeEvent,

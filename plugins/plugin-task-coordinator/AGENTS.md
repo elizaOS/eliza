@@ -22,18 +22,18 @@ The plugin's `init()` calls `registerOrchestratorCommands(runtime.agentId)`, whi
 
 ### Views registered (`src/index.ts`)
 
-| view id | path | viewType | componentExport | description |
-|---|---|---|---|---|
-| `task-coordinator` | `/task-coordinator` | default | `CodingAgentTasksPanel` | Task threads + PTY session panel |
-| `task-coordinator` | `/task-coordinator` | `xr` | `CodingAgentTasksPanel` | XR variant |
-| `task-coordinator` | `/task-coordinator/tui` | `tui` | `TaskCoordinatorTuiView` | TUI terminal variant |
-| `orchestrator` | `/orchestrator` | default | `OrchestratorWorkbench` | Multi-agent orchestration workbench |
-| `orchestrator` | `/orchestrator` | `xr` | `OrchestratorWorkbench` | XR variant |
-| `orchestrator` | `/orchestrator/tui` | `tui` | `OrchestratorTuiView` | TUI terminal variant |
+Two views, each ONE adaptive declaration spanning all three modalities from a single component — no per-`viewType` duplicates.
 
-The task-coordinator TUI view declares capabilities: `list-sessions`, `list-task-threads`, `open-thread`, `stop-session`, `refresh`.
+| view id | path | viewKind | modalities | componentExport | description |
+|---|---|---|---|---|---|
+| `task-coordinator` | `/task-coordinator` | `preview` | `gui`, `xr`, `tui` | `TaskCoordinatorView` | Coding-agent task threads, sessions, and controls |
+| `orchestrator` | `/orchestrator` | `developer` (`developerOnly`) | `gui`, `xr`, `tui` | `OrchestratorView` | Multi-agent task orchestration workbench |
 
-The orchestrator views declare capabilities — typed descriptors the TUI layer uses to drive the workbench. Capability IDs: `orchestrator-status`, `orchestrator-list-tasks`, `orchestrator-open-task`, `orchestrator-create-task`, `orchestrator-pause-task`, `orchestrator-resume-task`, `orchestrator-pause-all`, `orchestrator-resume-all`, `orchestrator-delete-task`, `orchestrator-fork-task`, `orchestrator-update-task`, `orchestrator-validate-task`, `orchestrator-add-agent`, `orchestrator-stop-agent`, `orchestrator-send-message`.
+`TaskCoordinatorView` (`src/TaskCoordinatorView.tsx`) and `OrchestratorView` (`src/OrchestratorView.tsx`) are the route components — each authored once and rendered inside a `SpatialSurface` that auto-detects GUI vs XR. `OrchestratorView` wraps the rich GUI/XR `OrchestratorWorkbench` in the spatial `Escape` hatch and degrades to the `OrchestratorSpatialView` summary in TUI; `TaskCoordinatorView` renders the presentational `TaskCoordinatorSpatialView` directly. The `tui` modality of both renders for real in the terminal — `register-terminal-view.tsx` registers `TaskCoordinatorSpatialView` and `OrchestratorSpatialView` into the `@elizaos/tui` terminal registry via `registerSpatialTerminalView`, each driven by a host-pushed snapshot. `CodingAgentTasksPanel` was not deleted; it still fills the `@elizaos/ui` Tasks-page slot (`register-slots.ts`) and is simply no longer a route `componentExport`.
+
+The `task-coordinator` view declares capabilities: `list-sessions`, `list-task-threads`, `open-thread`, `stop-session`, `refresh`.
+
+The `orchestrator` view declares capabilities — typed descriptors the TUI layer uses to drive the workbench. Capability IDs: `orchestrator-status`, `orchestrator-list-tasks`, `orchestrator-open-task`, `orchestrator-create-task`, `orchestrator-pause-task`, `orchestrator-resume-task`, `orchestrator-pause-all`, `orchestrator-resume-all`, `orchestrator-delete-task`, `orchestrator-fork-task`, `orchestrator-update-task`, `orchestrator-validate-task`, `orchestrator-add-agent`, `orchestrator-stop-agent`, `orchestrator-send-message`.
 
 ### Slot registry fills (`src/register-slots.ts`)
 
@@ -152,7 +152,7 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 ## Conventions / gotchas
 
 - **Two build steps.** The plugin has both a tsup JS build (`build:js`) and a Vite view-bundle build (`build:views`). The view bundle entry is `src/task-coordinator-view-bundle.ts` and outputs `dist/views/bundle.js`. Both must be built; `build` runs them in sequence.
-- **View bundle re-exports.** `task-coordinator-view-bundle.ts` re-exports all view components (`CodingAgentTasksPanel`, `TaskCoordinatorTuiView`, `OrchestratorWorkbench`, `OrchestratorTuiView`) plus the shared `interact` capability handler so the built bundle serves all `componentExport` names the view manifest declares.
+- **View bundle re-exports.** `task-coordinator-view-bundle.ts` re-exports the two unified route wrappers (`TaskCoordinatorView`, `OrchestratorView`) plus the shared `interact` capability handler, so the built bundle serves the `componentExport` names the view manifest declares. `OrchestratorWorkbench` ships inside the bundle transitively as the `Escape` child of `OrchestratorView`, not as a named export; `CodingAgentTasksPanel` is intentionally absent — it reaches its mount through the slot registry (`register-slots.ts` → the built-in Tasks page).
 - **Slot registry is a side-effect import.** `register-slots.ts` must be imported by the host app to activate the slot fills. Without it, the UI renders empty slot defaults in place of the coding-agent components.
 - **Minimal server runtime.** This plugin registers no providers, services, or evaluators, and its only action is the `/orchestrator-status` slash-command handler (`src/orchestrator-command.ts`). All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
 - **PTY console buffer cap.** `PtyConsoleBase` caps displayed output at 200,000 characters (`MAX_BUFFER_CHARS`). Older output is silently trimmed from the head.

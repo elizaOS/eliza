@@ -159,7 +159,7 @@ export class VisionServiceLifecycleManager {
    */
   async release(id: string): Promise<void> {
     const sub = this.subs.get(id);
-    if (!sub || !sub.loaded) return;
+    if (!sub?.loaded) return;
     try {
       await sub.handle.unload();
     } catch (error) {

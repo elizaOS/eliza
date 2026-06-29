@@ -38,7 +38,7 @@ describe("DesktopTabBar", () => {
     vi.clearAllMocks();
   });
 
-  it("switches views, closes a tab, and opens Springboard through real tab buttons", () => {
+  it("switches views, closes a tab, and opens Launcher through real tab buttons", () => {
     const onTabClick = vi.fn();
     const onTabClose = vi.fn();
     const onOpenViewManager = vi.fn();
@@ -68,7 +68,7 @@ describe("DesktopTabBar", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Open Springboard",
+        name: "Open Launcher",
       }),
     );
     expect(onOpenViewManager).toHaveBeenCalledTimes(1);

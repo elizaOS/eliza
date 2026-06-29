@@ -4,19 +4,19 @@ import { expect, type Locator, type Page, type Route } from "@playwright/test";
 import { installDefaultAppRoutes } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-// Shared onboarding → home → springboard fixtures, route mocks, and assertions
+// Shared onboarding → home → launcher fixtures, route mocks, and assertions
 // for the desktop-Chromium (onboarding-to-home.spec.ts) and mobile-viewport
 // (onboarding-to-home-mobile.spec.ts) lanes. Both drive the SAME keyless flow —
 // fresh device → real Local/on-device onboarding → completeFirstRun("chat") →
-// home with seeded widgets → swipe-left → springboard — so the fixtures and the
+// home with seeded widgets → swipe-left → launcher — so the fixtures and the
 // route layer live here once and the two specs differ only in browser context
 // (desktop vs Pixel-class touch viewport) and screenshot output directory.
 
 export const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 
-// Launcher views so the springboard is non-empty (the home WidgetHost only
-// renders when the catalog has visible views) AND so a known springboard tile
-// (`springboard-tile-settings`) is assertable. `settings` is a system entry id.
+// Launcher views so the launcher is non-empty (the home WidgetHost only
+// renders when the catalog has visible views) AND so a known launcher tile
+// (`launcher-tile-settings`) is assertable. `settings` is a system entry id.
 const VIEW_FIXTURES = [
   {
     id: "views-manager",
@@ -434,7 +434,7 @@ export async function installHomeRoutes(page: Page): Promise<void> {
     await fulfillJson(route, { plugins: PLUGIN_SNAPSHOT });
   });
 
-  // Views catalog — populate the springboard so the home WidgetHost mounts.
+  // Views catalog — populate the launcher so the home WidgetHost mounts.
   await page.route("**/api/views**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/views/search") {
@@ -574,27 +574,27 @@ export async function completeOnboardingToHome(
   // The onboarding surface is gone now that we are on the home.
   await expect(onboarding).toHaveCount(0, { timeout: 15_000 });
 
-  const surface = page.getByTestId("home-springboard-surface");
+  const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toHaveAttribute("data-page", "home");
   return { onboarding, surface };
 }
 
 /**
- * Swipe-left on the home page → the rail pans to the springboard, then assert a
+ * Swipe-left on the home page → the rail pans to the launcher, then assert a
  * real launcher tile. Uses a real left-flick that moves past the 72px
  * RAIL_FLICK_THRESHOLD. Touch-capable mobile contexts try Chromium's
  * touch-input path first, then fall back to the component's touch-typed
  * pointer contract if CI does not synthesize pointer events from that touch
  * stream. Desktop contexts use a mouse pointer drag.
  */
-export async function swipeLeftToSpringboard(
+export async function swipeLeftToLauncher(
   page: Page,
   surface: Locator,
 ): Promise<void> {
-  const homePage = page.getByTestId("home-springboard-home-page");
+  const homePage = page.getByTestId("home-launcher-home-page");
   await expect(homePage).toBeVisible();
   const box = await homePage.boundingBox();
-  if (!box) throw new Error("home-springboard-home-page has no bounding box");
+  if (!box) throw new Error("home-launcher-home-page has no bounding box");
   const startX = box.x + box.width * 0.72;
   const midY = box.y + box.height * 0.5;
   const touchCapable = await page.evaluate(
@@ -626,7 +626,7 @@ export async function swipeLeftToSpringboard(
       await client.detach().catch(() => undefined);
     }
     await page.waitForTimeout(250);
-    if ((await surface.getAttribute("data-page")) !== "springboard") {
+    if ((await surface.getAttribute("data-page")) !== "launcher") {
       await homePage.evaluate(
         (element, coordinates) => {
           const dispatchPointer = (type: string, x: number) => {
@@ -665,14 +665,14 @@ export async function swipeLeftToSpringboard(
     await page.mouse.up();
   }
 
-  await expect(surface).toHaveAttribute("data-page", "springboard", {
+  await expect(surface).toHaveAttribute("data-page", "launcher", {
     timeout: 10_000,
   });
-  const springboardPage = page.getByTestId("home-springboard-springboard-page");
-  await expect(springboardPage).toBeVisible();
-  // A real launcher tile is visible on the springboard.
+  const launcherPage = page.getByTestId("home-launcher-launcher-page");
+  await expect(launcherPage).toBeVisible();
+  // A real launcher tile is visible on the launcher.
   await expect(
-    springboardPage.getByTestId("springboard-tile-settings"),
+    launcherPage.getByTestId("launcher-tile-settings"),
   ).toBeVisible({ timeout: 15_000 });
 
   // The rail slides over 300ms; wait until nothing in the rail subtree is still
@@ -680,7 +680,7 @@ export async function swipeLeftToSpringboard(
   await page.waitForFunction(
     () => {
       const rail = document.querySelector(
-        '[data-testid="home-springboard-rail"]',
+        '[data-testid="home-launcher-rail"]',
       );
       if (!rail) return false;
       return !(rail as HTMLElement)

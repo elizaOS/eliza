@@ -117,4 +117,24 @@ describe("current_view acknowledgement provider (#8788)", () => {
 		expect(r.text).toContain("Wallet");
 		expect(r.values?.switchingToViewId).toBe("wallet");
 	});
+
+	it("surfaces the open subview/section for a view that has one (#9945)", async () => {
+		h.getCurrentView.mockResolvedValue({
+			viewId: "settings",
+			viewLabel: "Settings",
+			viewPath: "/settings",
+			viewType: "gui",
+			subview: "voice",
+			justSwitched: false,
+			updatedAt: "x",
+		});
+		const r = await currentViewProvider.get(runtime, msg("ok"), {
+			values: {},
+			data: {},
+			text: "",
+		});
+		expect(r.text).toContain("currently viewing");
+		expect(r.text).toContain("voice section");
+		expect(r.values?.currentViewSubview).toBe("voice");
+	});
 });

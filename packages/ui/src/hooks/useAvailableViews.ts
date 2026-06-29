@@ -1,9 +1,9 @@
 /**
  * Fetches available views from GET /api/views.
  *
- * This hook is the primary data source for Springboard. When the
+ * This hook is the primary data source for Launcher. When the
  * /api/views endpoint is live, it will return the full ViewRegistryEntry list.
- * Until then it returns an empty list so Springboard renders gracefully.
+ * Until then it returns an empty list so Launcher renders gracefully.
  *
  * Polling interval: 30s. The endpoint is expected to be cheap (in-memory list).
  * Polling can be replaced with a WebSocket subscription when
@@ -173,7 +173,7 @@ const VIEWS_CACHE_KEY = "views:available";
 
 const EMPTY_VIEWS: ViewRegistryEntry[] = [];
 
-// Per-tab Lucide glyph names for the builtin shell views, so each springboard
+// Per-tab Lucide glyph names for the builtin shell views, so each launcher
 // tile renders a DISTINCT icon instead of collapsing onto the generic
 // LayoutGrid fallback (every builtin entry previously shipped no `icon`, so
 // Settings/Files/Tasks all rendered the same 4-square placeholder). Names must

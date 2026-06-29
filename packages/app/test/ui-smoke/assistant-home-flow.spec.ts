@@ -409,15 +409,15 @@ function assistantMicButton(page: Page) {
   return page.getByRole("button", { name: /^(talk|voice input)$/i });
 }
 
-function springboardTile(page: Page, viewId: string) {
-  return page.getByTestId(`springboard-tile-${viewId}`).first();
+function launcherTile(page: Page, viewId: string) {
+  return page.getByTestId(`launcher-tile-${viewId}`).first();
 }
 
-async function settleHomeSpringboardRail(page: Page): Promise<void> {
+async function settleHomeLauncherRail(page: Page): Promise<void> {
   await page.waitForFunction(
     () => {
       const rail = document.querySelector(
-        '[data-testid="home-springboard-rail"]',
+        '[data-testid="home-launcher-rail"]',
       );
       if (!rail) return false;
       return !(rail as HTMLElement)
@@ -429,23 +429,23 @@ async function settleHomeSpringboardRail(page: Page): Promise<void> {
   );
 }
 
-async function openHomeSpringboard(page: Page): Promise<void> {
-  const surface = page.getByTestId("home-springboard-surface");
+async function openHomeLauncher(page: Page): Promise<void> {
+  const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toBeVisible({ timeout: 15_000 });
   await page.evaluate(() => {
     window.dispatchEvent(
-      new CustomEvent("eliza:home-springboard:navigate", {
-        detail: { page: "springboard" },
+      new CustomEvent("eliza:home-launcher:navigate", {
+        detail: { page: "launcher" },
       }),
     );
   });
-  await expect(surface).toHaveAttribute("data-page", "springboard", {
+  await expect(surface).toHaveAttribute("data-page", "launcher", {
     timeout: 10_000,
   });
   await expect(
-    page.getByTestId("home-springboard-springboard-page"),
+    page.getByTestId("home-launcher-launcher-page"),
   ).toBeVisible({ timeout: 15_000 });
-  await settleHomeSpringboardRail(page);
+  await settleHomeLauncherRail(page);
 }
 
 function conversationLog(page: Page) {
@@ -783,7 +783,7 @@ test.describe("assistant home app flow", () => {
     await screenshot(page, "04-chat-pill-suppressed");
 
     await openAppPath(page, "/views");
-    await expect(springboardTile(page, "settings")).toBeVisible({
+    await expect(launcherTile(page, "settings")).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByRole("button", { name: /Settings/i })).toBeVisible();
@@ -911,20 +911,20 @@ test.describe("assistant home app flow", () => {
     await openReadyChat(page, "/chat");
 
     // The home dashboard renders behind the floating chat. App launchers now
-    // live on the paired springboard page of HomeSpringboardSurface.
-    await expect(page.getByTestId("home-springboard-surface")).toHaveAttribute(
+    // live on the paired launcher page of HomeLauncherSurface.
+    await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
       "data-page",
       "home",
     );
-    await expect(page.getByTestId("home-springboard-home-page")).toBeVisible({
+    await expect(page.getByTestId("home-launcher-home-page")).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByTestId("home-screen")).toBeVisible();
 
-    await openHomeSpringboard(page);
+    await openHomeLauncher(page);
     const settingsTile = page
-      .getByTestId("home-springboard-springboard-page")
-      .getByTestId("springboard-tile-settings");
+      .getByTestId("home-launcher-launcher-page")
+      .getByTestId("launcher-tile-settings");
     await expect(settingsTile).toBeVisible({ timeout: 15_000 });
 
     // Tapping the Settings tile navigates to the Settings view (setTab path).

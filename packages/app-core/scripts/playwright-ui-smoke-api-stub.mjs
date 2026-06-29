@@ -1256,7 +1256,7 @@ function navigationDetailForTarget(target) {
     case "/wallet":
       return { viewId: "wallet", viewPath: "/wallet", viewLabel: "Wallet" };
     case "/views":
-      return { viewPath: "/views", viewLabel: "Springboard" };
+      return { viewPath: "/views", viewLabel: "Launcher" };
     case "/settings":
       return {
         viewId: "settings",

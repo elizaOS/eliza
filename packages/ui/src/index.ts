@@ -162,9 +162,6 @@ export * from "./components/apps/extensions/surface.helpers";
 export * from "./components/apps/extensions/types";
 export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
-export * from "./components/apps/surfaces/GameOperatorShell";
-export * from "./components/apps/surfaces/registry";
-export * from "./components/apps/surfaces/types";
 export { resolveCharacterGreetingAnimation } from "./components/character/character-greeting";
 // Vision-critical chat widgets (#8933) — presentational only, exported with
 // their public prop/value types for stories + host wiring.

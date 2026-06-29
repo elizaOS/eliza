@@ -100,13 +100,35 @@ yet; capture manually and say so until the tooling lands.
 | desktop (electrobun) | during `bun run dev:desktop`: `curl -s http://127.0.0.1:$ELIZA_API_PORT/api/dev/cursor-screenshot -o shot.png` + `GET /api/dev/console-log?maxLines=400` (loopback; screenshot only — no recording yet) | partial |
 | ios-sim | `bun run --cwd packages/app capture:ios-sim -- --issue <n> --slug <s>` (`simctl io` screenshot + recordVideo + backend log) | ready |
 | android-emu | `bun run --cwd packages/app capture:android-emu -- --issue <n> --slug <s>` (`adb` screencap + screenrecord + logcat) | ready |
-| linux-desktop | **TODO** — no orchestrated headed-capture helper yet (ffmpeg `x11grab` candidate); capture manually and note it | TODO |
-| windows-desktop | **TODO** — no orchestrated headed-capture helper yet (ffmpeg `gdigrab` candidate); capture manually and note it | TODO |
+| linux-desktop | `bun run --cwd packages/app capture:linux-desktop -- --issue <n> --slug <s>` (ffmpeg `x11grab` screenshot + recording + info log) | ready |
+| windows-desktop | `bun run --cwd packages/app capture:windows-desktop -- --issue <n> --slug <s>` (ffmpeg `gdigrab` screenshot + recording + info log) | ready |
 
-The `ios-sim` / `android-emu` helpers write `<issue#>-<slug>-<platform>.{png,mov/mp4,log}`
-into `.github/issue-evidence/` and **skip with a reason (exit 0)** when the
-platform/tooling is absent, so they are safe inside `bun run test:e2e:record`
-(both are registered suites in `scripts/e2e-recordings/suites.mjs`).
+The `ios-sim` / `android-emu` / `linux-desktop` / `windows-desktop` helpers write
+`<issue#>-<slug>-<platform>.{png,mov/mp4,log}` into `.github/issue-evidence/` and
+**skip with a reason (exit 0)** when the platform/tooling is absent, so they are
+safe inside `bun run test:e2e:record` (the sim/emu ones are registered suites in
+`scripts/e2e-recordings/suites.mjs`).
+
+#### Build and deploy the latest build BEFORE you capture — never screenshot a stale install
+
+A capture helper screenshots whatever is **currently installed / running** — it
+does **not** build or deploy your change. Screenshotting a stale install (or an
+old dev server) proves nothing. Before capturing on any platform, build the
+current tree and push it to the target:
+
+| Platform | Build + deploy the latest, then capture |
+| --- | --- |
+| android-emu / device | `bun run --cwd packages/app build:android && bun run --cwd packages/app install:android:adb` (build APK → `adb install -r`), then `capture:android-emu` |
+| ios-sim | `bun run --cwd packages/app build:ios && bun run --cwd packages/app cap:sync:ios` → install to the booted sim, then `capture:ios-sim` |
+| desktop (electrobun) | rebuild the desktop shell so it loads the current `dist` (`bun run build` / the packaged desktop build), relaunch, then `capture:linux-desktop` / `capture:windows-desktop` |
+| web / cloud-frontend | the `test:e2e:record` / `audit:cloud` / `audit:app` harness builds + serves the current tree itself — no separate deploy |
+
+A Capacitor app bundles the web assets **into the APK/IPA at build time**, so a
+renderer change only reaches the device after a fresh `build:android` /
+`build:ios` (cap sync) **and reinstall** — restarting the old app will **not**
+pick it up. Always confirm the running build is yours (check `versionName` or a
+known on-screen change, e.g. `adb shell dumpsys package ai.elizaos.app | grep
+versionName`) before trusting any on-device screenshot.
 
 ### Where artifacts live
 

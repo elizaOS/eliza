@@ -147,7 +147,14 @@ export function defaultManifestLoader(
 		} catch {
 			continue;
 		}
-		const result = validateManifest(parsed);
+		// Verify the staged bytes, not just the operator-authored manifest:
+		// a strict-release eliza-1 bundle whose on-disk text GGUF is not
+		// Gemma-4 (e.g. a Qwen stand-in) fails validation here, so the
+		// recommendation engine and active-model coordinator (both consumers
+		// of this loader) can never recommend or default to it.
+		const result = validateManifest(parsed, {
+			bundleRoot: path.dirname(candidate),
+		});
 		if (!result.ok) continue;
 		if (result.manifest.tier !== expectedTier) continue;
 		if (cacheKey) MANIFEST_CACHE.set(cacheKey, result.manifest);

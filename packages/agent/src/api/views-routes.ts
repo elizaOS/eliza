@@ -242,6 +242,13 @@ export interface CurrentViewState {
   layout?: string;
   placement?: string;
   /**
+   * Sub-section the view is focused on, when the view has addressable
+   * sub-sections (Settings = its section id, e.g. "voice"). Carried so the
+   * `current_view` provider can report the open subview and the agent can
+   * deep-link one via the VIEWS action `subview` param.
+   */
+  subview?: string;
+  /**
    * ISO timestamp of the navigate that *switched* into this view (distinct from
    * `updatedAt`, which also moves on same-view re-stamps). Read by the
    * `current_view` acknowledgement provider to know a switch *just happened*.
@@ -819,6 +826,12 @@ export async function handleViewsRoutes(
     // `shell:navigate:view` (the client already navigated locally) — that would
     // echo back and re-navigate. It still records state + emits VIEW_SWITCHED.
     const reportedSource = body?.source === "user" ? "user" : "agent";
+    const subview =
+      typeof body?.subview === "string" && body.subview.trim().length > 0
+        ? body.subview.trim()
+        : typeof body?.section === "string" && body.section.trim().length > 0
+          ? body.section.trim()
+          : undefined;
     const alwaysOnTop = body?.alwaysOnTop === true;
     const layoutViews = Array.isArray(body?.views)
       ? body.views.filter(
@@ -841,8 +854,8 @@ export async function handleViewsRoutes(
     };
 
     logger.info(
-      { src: "ViewsRoutes", viewId: id, viewPath, action },
-      `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}`,
+      { src: "ViewsRoutes", viewId: id, viewPath, action, subview },
+      `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}${subview ? ` (subview=${subview})` : ""}`,
     );
 
     const resolvedViewType = entry?.viewType ?? viewType ?? "gui";
@@ -870,6 +883,7 @@ export async function handleViewsRoutes(
         viewLabel,
         viewType: resolvedViewType,
         ...(action ? { action } : {}),
+        ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
         switchedAt,
@@ -920,6 +934,7 @@ export async function handleViewsRoutes(
         viewLabel,
         viewType: resolvedViewType,
         ...(action ? { action } : {}),
+        ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
       });
@@ -931,6 +946,7 @@ export async function handleViewsRoutes(
       viewPath,
       viewType: resolvedViewType,
       ...(action ? { action } : {}),
+      ...(subview ? { subview } : {}),
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
     });

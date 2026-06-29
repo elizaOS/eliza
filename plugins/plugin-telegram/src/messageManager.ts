@@ -28,6 +28,7 @@ import type {
 } from "@telegraf/types";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
 import { Markup } from "telegraf";
+import { resolveTelegramSenderAuth } from "./command-registration";
 import { renderTelegramInteractions } from "./interactions";
 import {
   type TelegramContent,
@@ -241,6 +242,47 @@ const getChannelType = (chat: Chat): ChannelType => {
   }
 };
 
+/** Label on the embedded-app (Telegram Mini App) launch button. */
+const EMBED_LAUNCH_BUTTON_TEXT = "Open Eliza App";
+
+/**
+ * Resolve the embedded-app `/embed` launch URL for the role-gated Mini App
+ * button (#9947). Reads the explicit `ELIZA_EMBED_URL` if set, otherwise
+ * derives `<web base>/embed` from `ELIZA_APP_URL` / `ELIZA_CLOUD_URL`. Returns
+ * `undefined` when nothing is configured or the resolved URL is not absolute
+ * `https` — Telegram rejects `web_app` buttons that are not https, so the
+ * button is simply not emitted rather than sent with an invalid URL.
+ */
+function resolveEmbedLaunchUrl(runtime: IAgentRuntime): string | undefined {
+  const direct = runtime.getSetting("ELIZA_EMBED_URL");
+  if (typeof direct === "string" && direct.trim().length > 0) {
+    return toHttpsUrl(direct.trim());
+  }
+  const base =
+    runtime.getSetting("ELIZA_APP_URL") ||
+    runtime.getSetting("ELIZA_CLOUD_URL");
+  if (typeof base === "string" && base.trim().length > 0) {
+    return toHttpsUrl(`${base.trim().replace(/\/+$/, "")}/embed`);
+  }
+  return undefined;
+}
+
+/** Return the URL only when it parses as absolute `https`, else `undefined`. */
+function toHttpsUrl(url: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  return parsed.protocol === "https:" ? parsed.toString() : undefined;
+}
+
+/** Build the Telegram `web_app` inline-keyboard button for the `/embed` route. */
+function buildEmbedLaunchButton(url: string): InlineKeyboardButton {
+  return { text: EMBED_LAUNCH_BUTTON_TEXT, web_app: { url } };
+}
+
 /**
  * Class representing a message manager.
  * @class
@@ -268,6 +310,29 @@ export class MessageManager {
 
   private scopedTelegramKey(key: string): string {
     return this.accountId === "default" ? key : `${this.accountId}:${key}`;
+  }
+
+  /**
+   * Build the embedded-app (Mini App) launch keyboard row for the current
+   * sender (#9947). Returns a single `web_app` button only when (a) an https
+   * `/embed` URL is configured and (b) `resolveTelegramSenderAuth` resolves the
+   * sender to an elevated role (OWNER or ADMIN). A non-elevated sender — or an
+   * unconfigured / non-https embed URL — yields `[]`, so no launch button is
+   * ever surfaced to an unauthorized user. The result is wired into the
+   * existing `keyboardRows` path; it is not a parallel keyboard mechanism.
+   */
+  protected async buildEmbedLaunchRow(
+    ctx: Context,
+  ): Promise<InlineKeyboardButton[]> {
+    const url = resolveEmbedLaunchUrl(this.runtime);
+    if (!url) return [];
+    const sender = await resolveTelegramSenderAuth(
+      ctx,
+      this.runtime,
+      this.accountId,
+    );
+    if (!sender.isAuthorized && !sender.isElevated) return [];
+    return [buildEmbedLaunchButton(url)];
   }
 
   /**
@@ -929,6 +994,11 @@ export class MessageManager {
         );
       }
 
+      // Role-gated embedded-app launch row: resolved once (it performs a role
+      // lookup) and attached to the final chunk only, alongside any other
+      // interaction controls.
+      const embedLaunchRow = await this.buildEmbedLaunchRow(ctx);
+
       for (let i = 0; i < chunks.length; i++) {
         const chunk = convertMarkdownToTelegram(chunks[i]);
         if (!ctx.chat) {
@@ -946,6 +1016,9 @@ export class MessageManager {
           keyboardRows.push(...rendered.keyboardRows);
         }
         if (telegramButtons.length > 0) keyboardRows.push(telegramButtons);
+        if (isLast && embedLaunchRow.length > 0) {
+          keyboardRows.push(embedLaunchRow);
+        }
         const replyMarkup =
           keyboardRows.length > 0
             ? Markup.inlineKeyboard(keyboardRows).reply_markup

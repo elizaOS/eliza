@@ -25,6 +25,7 @@ import {
 import {
   type ActiveViewLayout,
   createNavigateViewHandler,
+  type NavigateViewDetail,
 } from "./app-navigate-view";
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
@@ -55,9 +56,9 @@ import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
+import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
-import { HomeSpringboardSurface } from "./components/shell/HomeSpringboardSurface";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { NotificationCenter } from "./components/shell/NotificationCenter";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
@@ -150,7 +151,7 @@ import {
 // remaining page views are lazy-split below.
 import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
-import { SpringboardSurface } from "./components/pages/SpringboardSurface";
+import { LauncherSurface } from "./components/pages/LauncherSurface";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
@@ -1017,11 +1018,11 @@ function ViewLayoutSurface({
 /**
  * Fallback shown when a view/tab is unavailable. Chat is the always-present
  * ContinuousChatOverlay that floats over every view — views never embed an
- * inline ChatView — so an unavailable view falls back to the Springboard page
- * of the retained Home/Springboard surface, not a chat surface.
+ * inline ChatView — so an unavailable view falls back to the Launcher page
+ * of the retained Home/Launcher surface, not a chat surface.
  */
 function ViewUnavailableFallback(): ReactNode {
-  return <HomeScreenMount initialPage="springboard" />;
+  return <HomeScreenMount initialPage="launcher" />;
 }
 
 function renderPhoneSurface(
@@ -1040,7 +1041,7 @@ function renderPhoneSurface(
 function renderAppsSurface(navigationPath: string): ReactNode {
   if (!APPS_ENABLED) return <ViewUnavailableFallback />;
   if (!getAppSlugFromPath(navigationPath)) {
-    return <HomeScreenMount initialPage="springboard" />;
+    return <HomeScreenMount initialPage="launcher" />;
   }
   return (
     <TabContentView>
@@ -1339,7 +1340,7 @@ function greetingForTimeOfDay(): string {
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
 
-// Home/Springboard and Background opt into the unified app background (mounted
+// Home/Launcher and Background opt into the unified app background (mounted
 // once at the shell root), so their shell is transparent — no `bg-bg` to paint
 // over it. Every other view keeps the opaque shell (its own background).
 const APP_SHELL_CLASS_TRANSPARENT =
@@ -1442,7 +1443,7 @@ function routedShellMainClass(tab: string): string {
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
   // Routes with `backgroundPolicy: "shared"` intentionally sit on the unified
-  // Home/Springboard background. Every other route is opaque; the shell root
+  // Home/Launcher background. Every other route is opaque; the shell root
   // also paints a full-window underlay so status/home-indicator safe areas do
   // not expose the shared background around app views.
   const shellClass =
@@ -1555,13 +1556,13 @@ function ContinuousChatOverlayMount(): ReactNode {
 /**
  * The iOS-style home dashboard for the /chat route — recent activity, recent
  * messages, and a customizable widget area. Sits beside the retained
- * Springboard page behind the always-present chat overlay. Wires tile taps to the real nav:
+ * Launcher page behind the always-present chat overlay. Wires tile taps to the real nav:
  * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
  */
 function HomeScreenMount({
   initialPage = "home",
 }: {
-  initialPage?: "home" | "springboard";
+  initialPage?: "home" | "launcher";
 }): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
   const { views } = useAvailableViews();
@@ -1597,12 +1598,12 @@ function HomeScreenMount({
     ),
     [Home, onOpenTile],
   );
-  const springboard = useMemo(() => <SpringboardSurface />, []);
+  const launcher = useMemo(() => <LauncherSurface />, []);
   return (
     <div className="relative min-h-0 min-w-0 flex-1 self-stretch overflow-hidden">
-      <HomeSpringboardSurface
+      <HomeLauncherSurface
         home={home}
-        springboard={springboard}
+        launcher={launcher}
         initialPage={initialPage}
       />
     </div>
@@ -1838,7 +1839,7 @@ export function App() {
   // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleNavigateView = createNavigateViewHandler({
+    const baseHandler = createNavigateViewHandler({
       availableViewsForDesktopTabs,
       closeDesktopTab,
       desktopTabs,
@@ -1848,6 +1849,25 @@ export function App() {
       setTab,
       setViewLayout,
     });
+    // An agent-dispatched navigate to the Settings view that carries a `subview`
+    // deep-links a section. Route it through the same settings state the
+    // slash-command path uses (initialSection + #hash) instead of the generic
+    // path nav, which would drop the requested section.
+    const handleNavigateView = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      if (
+        detail?.subview &&
+        (detail.viewId === "settings" || detail.viewPath === "/settings")
+      ) {
+        console.debug(
+          `[SettingsNavigate] routing subview "${detail.subview}" to SettingsView initialSection`,
+        );
+        setSettingsInitialSection(detail.subview);
+        setTab("settings");
+        return;
+      }
+      baseHandler(event);
+    };
     window.addEventListener("eliza:navigate:view", handleNavigateView);
     return () =>
       window.removeEventListener("eliza:navigate:view", handleNavigateView);
@@ -2193,7 +2213,7 @@ export function App() {
               seamlessly across shared-background routes. It keeps the
               background event channel mounted for the whole session, but only
               renders the visual wallpaper when the active route opts into the
-              Home/Springboard background. */}
+              Home/Launcher background. */}
           <AppBackground visible={renderSharedAppBackground} />
           {/* Readability scrim for text-dense shared-background views. It sits
               between the wallpaper (z-0) and content (z-10) and covers safe

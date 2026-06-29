@@ -14,8 +14,8 @@ import {
   seedHomeWidgetNotifications,
 } from "../../../widgets/__fixtures__/home-widget-mock-data";
 import { ShaderBackground } from "../../../backgrounds/ShaderBackground";
-import { SpringboardSurface } from "../../pages/SpringboardSurface";
-import { HomeSpringboardSurface } from "../HomeSpringboardSurface";
+import { LauncherSurface } from "../../pages/LauncherSurface";
+import { HomeLauncherSurface } from "../HomeLauncherSurface";
 import { HomeScreen, type HomeTileTarget } from "../HomeScreen";
 
 // Inject the home-widget data BEFORE the React tree renders so every widget's
@@ -37,7 +37,7 @@ function Harness(): React.JSX.Element {
       style={{ position: "fixed", inset: 0, overflow: "hidden" }}
     >
       <ShaderBackground />
-      <HomeSpringboardSurface
+      <HomeLauncherSurface
         home={
           <HomeScreen
             onOpenTile={(t: HomeTileTarget) =>
@@ -46,7 +46,7 @@ function Harness(): React.JSX.Element {
             showNativeOsTiles={showNativeOsTiles}
           />
         }
-        springboard={<SpringboardSurface />}
+        launcher={<LauncherSurface />}
       />
     </div>
   );

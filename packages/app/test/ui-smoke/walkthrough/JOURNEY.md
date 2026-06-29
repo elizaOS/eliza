@@ -22,8 +22,8 @@ isolation; the walkthrough joins them into one continuous journey.
   - Send: `[data-testid="chat-composer-action"]`
   - Chat thread lines: `[data-testid="thread-line"]`
   - Onboarding shell: `[data-testid="onboarding-toast"]`
-  - Springboard: `[data-testid="springboard"]`
-  - Springboard tiles: `[data-testid^="springboard-tile-"]`
+  - Launcher: `[data-testid="launcher"]`
+  - Launcher tiles: `[data-testid^="launcher-tile-"]`
   - Character editor: `[data-testid="character-editor-view"]`
 - Record with `E2E_RECORD=1 bun run --cwd packages/app test:e2e:record` after
   the spec is automated, then regenerate contact sheets/viewer if needed.
@@ -42,11 +42,11 @@ isolation; the walkthrough joins them into one continuous journey.
 - `chat-large-paste.spec.ts` covers paste-to-attachment behavior.
 - `settings-sections-interactions.spec.ts` has a live-only character bio
   write/reload/read-back path.
-- `springboard-interaction.spec.ts` covers Springboard tiles, paging, edit mode,
+- `launcher-interaction.spec.ts` covers Launcher tiles, paging, edit mode,
   and tap-to-launch.
 - `view-switching-chat-e2e.spec.ts` covers chat-command view switching.
 - `walkthrough/walkthrough-capture-smoke.spec.ts` covers an early, keyless
-  capture path for onboarding, chat send/receive, full chat detent, Springboard,
+  capture path for onboarding, chat send/receive, full chat detent, Launcher,
   and launching a view. It is not the full 22-step journey; it records named
   screenshots only when run through the existing `E2E_RECORD=1` harness.
 
@@ -87,10 +87,10 @@ and named in the final evidence.
 | 16 | Pull back up to full width | The overlay expands from pill/rest back to the full-width/full-height state. | Grabber or keyboard gesture opens chat; overlay `data-open="true"`; `[data-testid="chat-sheet"]` has `data-detent="full"`; thread visible. | `16-chat-full-again.png` |
 | 17 | Click into input | Composer receives focus and keyboard-aware state is applied. | `document.activeElement` is the composer; chat remains open or opens to the keyboard detent; no layout overlap around composer. | `17-input-focused.png` |
 | 18 | Pull down to just the input | The chat history hides while composer/input remains visible. | `chat-sheet` detent is collapsed or input-only; `[data-testid="chat-composer-textarea"]` visible; thread content either hidden or clipped above composer by design. | `18-input-only-detent.png` |
-| 19 | Swipe to Springboard of views | The home/springboard surface shows the view grid. | `/views` or the internal springboard page is active; `[data-testid="springboard"]` visible; at least one `[data-testid^="springboard-tile-"]` visible. | `19-springboard.png` |
-| 20 | Click another view | A Springboard tile launches a real view. | Click the first visible tile button; URL leaves `/views`; the target route's ready selector from `apps-session-route-cases.ts` or visible heading appears. | `20-launch-view.png` |
+| 19 | Swipe to Launcher of views | The home/launcher surface shows the view grid. | `/views` or the internal launcher page is active; `[data-testid="launcher"]` visible; at least one `[data-testid^="launcher-tile-"]` visible. | `19-launcher.png` |
+| 20 | Click another view | A Launcher tile launches a real view. | Click the first visible tile button; URL leaves `/views`; the target route's ready selector from `apps-session-route-cases.ts` or visible heading appears. | `20-launch-view.png` |
 | 21 | Open chat | The chat overlay opens over the current view without remounting the view. | Current view marker remains visible behind/around the overlay; overlay `data-open="true"`; composer can send or receive focus. | `21-chat-over-view.png` |
-| 22 | Back to dashboard | The app returns to home/dashboard and leaves chat at its rest detent. | Home/dashboard or springboard home pane visible; overlay collapsed; no page diagnostics accumulated through the journey. | `22-dashboard-rest.png` |
+| 22 | Back to dashboard | The app returns to home/dashboard and leaves chat at its rest detent. | Home/dashboard or launcher home pane visible; overlay collapsed; no page diagnostics accumulated through the journey. | `22-dashboard-rest.png` |
 
 ## Validation Checklist
 

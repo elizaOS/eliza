@@ -25,7 +25,7 @@ export const policyStatusProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     const service = runtime.getService<AinexService>(AinexService.serviceType);
-    if (!service || !service.isConnected()) {
+    if (!service?.isConnected()) {
       return _disconnectedResult();
     }
     const policy = service.getPolicyStatus();
@@ -36,9 +36,7 @@ export const policyStatusProvider: Provider = {
         data: {},
       };
     }
-    const target = policy.target_label
-      ? ` target=${policy.target_label}`
-      : "";
+    const target = policy.target_label ? ` target=${policy.target_label}` : "";
     return {
       text: `AiNex policy: state=${policy.state} task=${policy.task} step=${policy.step}${target}`,
       values: {

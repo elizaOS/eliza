@@ -136,7 +136,7 @@ export async function loadYoloBindings(): Promise<YoloBindings | null> {
       async function ensureCtx(gguf: string): Promise<unknown> {
         const cached = ctxCache.get(gguf);
         if (cached) return cached;
-        const cstr = Buffer.from(gguf + "\0", "utf-8");
+        const cstr = Buffer.from(`${gguf}\0`, "utf-8");
         const handle = lib.symbols.yolo_init(ptr(cstr));
         if (!handle) {
           throw new Error(

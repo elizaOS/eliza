@@ -16,25 +16,23 @@ export {
   RemoteDesktopError,
   startRemoteSession,
 } from "./lifeops/remote-desktop.js";
-
-export {
-  __resetRemoteSessionServiceForTests,
-  getRemoteSessionService,
-  RemoteSessionError,
-  RemoteSessionService,
-  type DataPlaneResolution,
-  type DataPlaneResolver,
-  type RemoteSessionServiceOptions,
-} from "./remote/remote-session-service.js";
-
 export {
   generatePairingCode,
   PAIRING_CODE_LENGTH,
   PAIRING_CODE_TTL_MS,
-  PairingCodeStore,
   type PairingCodeEntry,
+  PairingCodeStore,
   type PairingCodeStoreOptions,
 } from "./remote/pairing-code.js";
+export {
+  __resetRemoteSessionServiceForTests,
+  type DataPlaneResolution,
+  type DataPlaneResolver,
+  getRemoteSessionService,
+  RemoteSessionError,
+  RemoteSessionService,
+  type RemoteSessionServiceOptions,
+} from "./remote/remote-session-service.js";
 
 export type {
   DataPlaneUnavailableReason,

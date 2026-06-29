@@ -72,6 +72,11 @@ export const HOME_SIGNAL_WEIGHTS: Readonly<Record<string, number>> = {
   blocked: 10,
   escalation: 10,
   approval: 9,
+  // First-time-user guidance (#9959): outranks every cold widget so a fresh
+  // account's welcome card sits at the top, but stays BELOW approval/escalation/
+  // blocked so a real "act now" signal always wins. Retires via the sunset
+  // lifecycle (home-dismissal-store) once the user engages or dismisses.
+  welcome: 8,
   reminder: 6,
   message: 5,
   "check-in": 4,
@@ -176,6 +181,7 @@ export const EVENT_TYPE_TO_SIGNAL_KIND: Readonly<Record<string, string>> = {
   blocked: "blocked",
   escalation: "escalation",
   approval: "approval",
+  welcome: "welcome",
   reminder: "reminder",
   message: "message",
   "proactive-message": "message",
