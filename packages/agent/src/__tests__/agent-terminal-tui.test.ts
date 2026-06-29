@@ -187,7 +187,7 @@ describe("agent terminal tui", () => {
     // (b) Type into the composer + Enter while a view is mounted: a message
     // send fires and the view stays mounted.
     terminal.send(CTRL_L); // focus the composer
-    terminal.send("hello over ssh");
+    terminal.send("hello over terminal");
     terminal.send("\r");
     expect(
       await waitForCall(calls, (call) =>
@@ -199,7 +199,7 @@ describe("agent terminal tui", () => {
       call.url.endsWith("/api/conversations/conv-terminal/messages"),
     );
     expect(JSON.parse(String(chatCall?.init?.body))).toMatchObject({
-      text: "hello over ssh",
+      text: "hello over terminal",
       source: "terminal-tui",
       metadata: { viewId: "wallet", viewType: "tui" },
     });
