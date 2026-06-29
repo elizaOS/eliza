@@ -640,12 +640,8 @@ class AdvertisingService {
     let newCreditsAllocated: number | undefined;
     let budgetCreditDelta = 0;
     if (input.budgetAmount !== undefined) {
-      newCreditsAllocated = calculateSpendCredits(
-        account.platform,
-        input.budgetAmount,
-      );
-      budgetCreditDelta =
-        newCreditsAllocated - parseFloat(campaign.credits_allocated);
+      newCreditsAllocated = calculateSpendCredits(account.platform, input.budgetAmount);
+      budgetCreditDelta = newCreditsAllocated - parseFloat(campaign.credits_allocated);
       if (budgetCreditDelta > 0) {
         const debit = await creditsService.deductCredits({
           organizationId,
@@ -795,10 +791,7 @@ class AdvertisingService {
     let totalSpendUsd = parseFloat(campaign.total_spend);
     if (campaign.external_campaign_id) {
       try {
-        const freshMetrics = await this.getCampaignMetrics(
-          campaignId,
-          organizationId,
-        );
+        const freshMetrics = await this.getCampaignMetrics(campaignId, organizationId);
         if (Number.isFinite(Number(freshMetrics.spend))) {
           totalSpendUsd = Number(freshMetrics.spend);
         }
@@ -807,10 +800,7 @@ class AdvertisingService {
           "[Advertising] spend refresh before delete-refund failed; using stored total_spend",
           {
             campaignId,
-            error:
-              metricsError instanceof Error
-                ? metricsError.message
-                : String(metricsError),
+            error: metricsError instanceof Error ? metricsError.message : String(metricsError),
           },
         );
       }
@@ -818,9 +808,7 @@ class AdvertisingService {
     const creditsAllocated = parseFloat(campaign.credits_allocated);
     const budgetAmountUsd = parseFloat(campaign.budget_amount);
     const fractionSpent =
-      budgetAmountUsd > 0
-        ? Math.min(1, Math.max(0, totalSpendUsd / budgetAmountUsd))
-        : 0;
+      budgetAmountUsd > 0 ? Math.min(1, Math.max(0, totalSpendUsd / budgetAmountUsd)) : 0;
     const creditsRemaining = Math.max(0, creditsAllocated * (1 - fractionSpent));
 
     if (creditsRemaining > 0) {

@@ -120,10 +120,7 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
           logger.warn("[BirdeyeProxy] refund after upstream failure failed", {
             method: pricedMethod,
             status: upstreamResponse.status,
-            error:
-              refundError instanceof Error
-                ? refundError.message
-                : String(refundError),
+            error: refundError instanceof Error ? refundError.message : String(refundError),
           });
         });
     }
