@@ -30,13 +30,7 @@
  * minimizing the chance of collapsing two GENUINELY independent same-text
  * sends to the same room (e.g. two split swarm results both saying "Done").
  * Attachments already discriminate distinct media sends (see
- * {@link deliveryIdentityFromContent}); this window bounds the text-only case.
- *
- * Accepted tradeoff: two legitimately-distinct short replies with identical
- * normalized text (e.g. "ok" / "done") sent to the SAME room within this 2s
- * window collapse to one delivery. We accept that because the false-collapse
- * cost (one rare duplicated short ack lost) is far cheaper than the dupe this
- * guards, and a tighter-than-2s window risks missing the real cross-path race. */
+ * {@link deliveryIdentityFromContent}); this window bounds the text-only case. */
 const DEFAULT_DEDUPE_WINDOW_MS = 2000;
 
 /** Cap the live key set so a long-running server can't grow this unbounded. */
@@ -184,7 +178,9 @@ export function beginDelivery(
 
   const windowMs = options?.windowMs ?? DEFAULT_DEDUPE_WINDOW_MS;
   const now = options?.now ?? Date.now();
-  const key = dedupeKey(roomId, normalized, options?.identity ?? "");
+  const identity =
+    typeof options?.identity === "string" ? options.identity : "";
+  const key = dedupeKey(roomId, normalized, identity);
 
   const last = state.recentDeliveries.get(key);
   // A committed (or in-flight) delivery within the window → duplicate. A
