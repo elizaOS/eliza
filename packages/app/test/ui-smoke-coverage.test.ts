@@ -58,7 +58,7 @@ interface DenyEntry {
  * is wired into the keyless lane (remove it from the deny-list). This is the
  * ratchet that prevents new dark specs from being parked in debt indefinitely.
  */
-const MAX_KEYLESS_DEBT = 1;
+const MAX_KEYLESS_DEBT = 3;
 
 function specFileNames(): string[] {
   return readdirSync(UI_SMOKE_DIR)

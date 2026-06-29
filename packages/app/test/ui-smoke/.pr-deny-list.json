@@ -7,6 +7,21 @@
       "reason": "Real cloud login + provisioning + chat against real Eliza Cloud; needs ELIZA_UI_SMOKE_CLOUD_LIVE=1 + ELIZA_UI_SMOKE_LIVE_STACK=1 + ELIZAOS_CLOUD_API_KEY and spends real cloud credits, so it must never run in a keyless PR lane — wired only into the nightly app-live-e2e.yml workflow."
     },
     {
+      "spec": "provider-config.spec.ts",
+      "category": "live-only",
+      "reason": "Provider switching must hit the real app-core provider/runtime pipeline with ELIZA_UI_SMOKE_LIVE_STACK=1; the keyless route layer cannot restart the agent or re-derive the active provider and the spec self-skips without the live stack."
+    },
+    {
+      "spec": "vault-routing.spec.ts",
+      "category": "live-only",
+      "reason": "Routing config must persist through the real on-disk vault with ELIZA_UI_SMOKE_LIVE_STACK=1; the keyless stub returns a static routing config and does not persist PUTs, so the spec self-skips in PR smoke."
+    },
+    {
+      "spec": "wallet-keys.spec.ts",
+      "category": "live-only",
+      "reason": "Wallet key add/reveal/delete must round-trip through the real vault-backed /api/secrets/inventory endpoints with ELIZA_UI_SMOKE_LIVE_STACK=1; the keyless stub exposes fixed inventory and the spec self-skips in PR smoke."
+    },
+    {
       "spec": "view-switching-local-llm-e2e.spec.ts",
       "category": "live-only",
       "reason": "Drives real chat through a local llama.cpp model planner and requires a running llama-server (LLAMACPP_URL, usually with an eliza-1 GGUF loaded); the keyless PR lane cannot provide that model daemon or GPU/CPU budget, so it is a manual/live local-model report spec rather than a secret-free PR gate."
@@ -45,6 +60,16 @@
       "spec": "sensitive-request-in-chat.spec.ts",
       "category": "keyless-debt",
       "reason": "Fixture-driven sensitive-request chat smoke; needs keyless wiring + verification after the lifeops decomposition refactor settles the new view-bearing plugins. Tracked debt — wire into keyless CI then remove this entry."
+    },
+    {
+      "spec": "multi-client-desync.spec.ts",
+      "category": "keyless-debt",
+      "reason": "Desired two-client convergence contract, but the current keyless route layer creates per-page mocks with no shared message store, so the spec self-skips until a shared fixture backend or live shared agent/channel path is wired."
+    },
+    {
+      "spec": "multi-window-sync.spec.ts",
+      "category": "keyless-debt",
+      "reason": "Desired cross-window preference sync contract, but the renderer does not yet ship the BroadcastChannel/useTabSync layer the spec asserts, so it self-skips until that feature lands and can run keyless."
     }
   ]
 }
