@@ -761,6 +761,10 @@ export class SubAgentRouter extends Service {
       const { state, decision } = routerLoopTransition(this.loopState, {
         type: "state_lost",
         lineageKey: respawnLineageKey(session, origin),
+        // A `task_complete` for this lineage claims its slot under the
+        // completion key; pass it so the reducer can suppress a teardown-race
+        // state-loss whose deliverable already posted (no false "retry?").
+        completionKey: completionLineageKey(session, origin),
       });
       this.loopState = state;
       if (decision.kind === "already_terminal") {
