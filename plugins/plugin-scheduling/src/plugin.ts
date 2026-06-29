@@ -57,6 +57,9 @@ export const schedulingPlugin: Plugin = {
     void runtime.initPromise
       .then(async () => {
         try {
+          await runtime.getServiceLoadPromise(
+            ScheduledTaskRunnerService.serviceType,
+          );
           // Register the built-in fallback pack only when no consumer host has
           // injected deps (e.g. a stock mobile boot without
           // @elizaos/plugin-personal-assistant). When a host is present it owns

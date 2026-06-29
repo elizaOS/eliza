@@ -120,11 +120,9 @@ function relationshipsEqual(
  * (client.getRelationshipsPeople / getRelationshipsCandidates), polling quietly
  * while the document is visible. Tapping the card opens the Relationships view.
  */
-const DEFAULT_SPAN = "col-span-2 row-span-1";
-
 export function RelationshipsAttentionWidget({
   slot,
-  spanClassName = DEFAULT_SPAN,
+  spanClassName = "col-span-2 row-span-1",
 }: Partial<WidgetProps>) {
   const [data, setData] = useState<RelationshipsAttentionData>(EMPTY_DATA);
   const nav = useWidgetNavigation();
@@ -183,7 +181,7 @@ export function RelationshipsAttentionWidget({
   // otherwise the stalest contact to reach out to. Tapping opens Relationships.
   if (hasPendingMerge) {
     return (
-      <div className={spanClassName}>
+      <div className={`min-w-0 ${spanClassName}`}>
         <HomeWidgetCard
           icon={<Users />}
           label="People"
@@ -198,7 +196,7 @@ export function RelationshipsAttentionWidget({
     );
   }
   return (
-    <div className={spanClassName}>
+    <div className={`min-w-0 ${spanClassName}`}>
       <HomeWidgetCard
         icon={<Users />}
         label="Reach out"

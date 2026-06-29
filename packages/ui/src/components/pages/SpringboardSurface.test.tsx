@@ -101,7 +101,7 @@ afterEach(() => {
 });
 
 describe("SpringboardSurface", () => {
-  it("shows launcher tiles and hides Home/Springboard self-links", () => {
+  it("shows Settings as a favorite and hides Home/Springboard self-links", () => {
     render(<SpringboardSurface />);
 
     expect(screen.getByTestId("springboard-tile-settings")).toBeTruthy();

@@ -92,6 +92,7 @@
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-remote-manifest": "workspace:*",
+    "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/plugin-streaming": "workspace:*",

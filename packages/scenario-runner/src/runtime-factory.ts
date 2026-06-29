@@ -498,6 +498,20 @@ export async function createScenarioRuntime(
   }
   await runtime.registerPlugin(lifeOpsPlugin);
 
+  const schedulingModule = (await import(
+    "@elizaos/plugin-scheduling"
+  )) as Record<string, unknown>;
+  const schedulingPlugin = extractPlugin(schedulingModule, [
+    "default",
+    "schedulingPlugin",
+  ]);
+  if (!schedulingPlugin) {
+    throw new Error(
+      "[scenario-runner] @elizaos/plugin-scheduling did not export a Plugin",
+    );
+  }
+  await runtime.registerPlugin(schedulingPlugin);
+
   for (const extra of options?.extraPlugins ?? []) {
     await runtime.registerPlugin(extra);
   }

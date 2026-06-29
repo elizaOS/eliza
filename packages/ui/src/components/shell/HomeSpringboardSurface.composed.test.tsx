@@ -61,10 +61,10 @@ function view(
   };
 }
 
-// Four dock favorites (so the dock fills) + 24 page views, which pack into TWO
-// springboard pages (page size 20). Two pages is what makes the doubled-dots
-// bug observable: the inner Springboard WOULD render its own dot strip here if
-// it weren't suppressed in favor of the rail's single indicator.
+// Four formerly dock-favorite views + 24 page views, which pack beyond one
+// springboard page. The composed surface deliberately renders no page-indicator
+// strip: home/springboard navigation is gesture-only, and the inner
+// Springboard dots stay suppressed.
 const DOCK_VIEWS = [
   view("settings", "Settings", "/settings", { icon: "Settings" }),
   view("files", "Files", "/apps/files", { icon: "FolderClosed" }),
@@ -183,20 +183,15 @@ describe("Home ↔ Springboard composed surface", () => {
     expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
   });
 
-  it("suppresses nested page-indicator strips (#4)", () => {
+  it("renders no page-indicator strips — no dots competing with the composer (#4)", () => {
     const surface = renderComposed();
     openSpringboard();
     expect(surface.getAttribute("data-page")).toBe("springboard");
 
-    // HomeSpringboardSurface intentionally renders no dot strip: the dots
-    // collided with the floating chat composer. The inner Springboard's own dot
-    // strip is also suppressed while nested, so there are no stacked rows.
     expect(screen.queryByTestId("home-springboard-indicator")).toBeNull();
+    expect(screen.queryByLabelText("Home")).toBeNull();
+    expect(screen.queryByLabelText("Apps page 1")).toBeNull();
     expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
-    expect(
-      document.querySelectorAll('[data-testid="home-springboard-indicator"]')
-        .length,
-    ).toBe(0);
   });
 
   it("swiping back from the springboard returns HOME and is NOT in edit mode (#3)", () => {
@@ -263,13 +258,14 @@ describe("Home ↔ Springboard composed surface", () => {
     expect(screen.queryByRole("button", { name: "Background" })).toBeNull();
   });
 
-  it("does not expose rail dot buttons after the composer-collision removal", () => {
+  it("uses horizontal swipes, not rail dots, to move between home and springboard", () => {
     const surface = renderComposed();
     openSpringboard();
-
     expect(surface.getAttribute("data-page")).toBe("springboard");
-    expect(screen.queryByLabelText("Apps page 2")).toBeNull();
-    expect(screen.queryByLabelText("Home")).toBeNull();
+    expect(screen.queryByTestId("home-springboard-indicator")).toBeNull();
+
+    swipeBackHome();
+    expect(surface.getAttribute("data-page")).toBe("home");
   });
 
   it("springboard tiles render DISTINCT generated app-icon imagery (#5)", () => {
