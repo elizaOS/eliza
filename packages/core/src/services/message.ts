@@ -2420,6 +2420,22 @@ const CODING_SUB_AGENT_CONTEXTS: readonly AgentContext[] = [
 	"automation",
 ];
 
+/**
+ * Parent actions a coding sub-agent never needs, excluded from its planner
+ * surface even though they'd otherwise pass the coding-context gate. Each extra
+ * tool schema enlarges the request, and a large tool set + a large file
+ * generation is exactly what makes weaker hosted models (Cerebras glm-4.7)
+ * intermittently reject the request (server_error / 400) or narrate instead of
+ * emitting FILE. A coding sub-agent does not open/close UI views or spawn its
+ * own sub-agents, so dropping these trims the surface toward the tools that
+ * actually do the work (FILE/SHELL/WORKTREE/WEB/REPLY/STOP).
+ */
+const CODING_SUB_AGENT_EXCLUDED_ACTIONS: ReadonlySet<string> = new Set(
+	// Stored in normalizeActionIdentifier() form (uppercase, underscores
+	// stripped), since that is what the filter compares against.
+	["VIEWS", "CLOSEVIEW", "CLOSEALLVIEWS", "TASKS"],
+);
+
 function actionPassesPlannerExecutionGates(args: {
 	action: Action;
 	activeContexts?: readonly AgentContext[];
@@ -6158,22 +6174,29 @@ export async function runV5MessageRuntimeStage1(args: {
 			fullSurfaceEnv === "yes" ||
 			fullSurfaceEnv === "on";
 		const plannerCandidateActions = useFullSurface
-			? (args.runtime.actions ?? []).filter((action) =>
-					// Full-surface = the eliza-code coding sub-agent (its ACP server
-					// sets ELIZA_PLANNER_FULL_ACTION_SURFACE). It must NOT receive the
-					// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
-					// the model and it never calls FILE. Instead treat the coding
-					// contexts (code/files/terminal/automation) as active and run the
-					// normal execution gates: that admits the coding tools
-					// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
-					// context-free control actions (REPLY/STOP/…) and drops the
-					// messaging/social chat actions. Role still applies (FILE=ADMIN,
-					// SHELL=OWNER; the coding sub-agent runs as OWNER).
-					actionPassesPlannerExecutionGates({
-						action,
-						activeContexts: CODING_SUB_AGENT_CONTEXTS,
-						userRoles: [senderRole],
-					}),
+			? (args.runtime.actions ?? []).filter(
+					(action) =>
+						// Full-surface = the eliza-code coding sub-agent (its ACP server
+						// sets ELIZA_PLANNER_FULL_ACTION_SURFACE). It must NOT receive the
+						// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
+						// the model and it never calls FILE. Instead treat the coding
+						// contexts (code/files/terminal/automation) as active and run the
+						// normal execution gates: that admits the coding tools
+						// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
+						// context-free control actions (REPLY/STOP/…) and drops the
+						// messaging/social chat actions. Role still applies (FILE=ADMIN,
+						// SHELL=OWNER; the coding sub-agent runs as OWNER). UI/orchestration
+						// parents that pass the gate but a coder never needs are dropped
+						// too (see CODING_SUB_AGENT_EXCLUDED_ACTIONS) to keep the request
+						// small enough for weaker hosted models to handle large builds.
+						!CODING_SUB_AGENT_EXCLUDED_ACTIONS.has(
+							normalizeActionIdentifier(action.name),
+						) &&
+						actionPassesPlannerExecutionGates({
+							action,
+							activeContexts: CODING_SUB_AGENT_CONTEXTS,
+							userRoles: [senderRole],
+						}),
 				)
 			: await collectV5PlannerCandidateActions({
 					runtime: args.runtime,

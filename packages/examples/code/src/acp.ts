@@ -255,6 +255,21 @@ const _connection = new AgentSideConnection(
         const preamble: string[] = [];
         const manual = await readWorkspaceManual(session.cwd);
         if (manual) preamble.push(manual);
+        // Execution contract: weaker coding models (e.g. Cerebras glm-4.7) tend
+        // to NARRATE a plan ("I'll create the app...") and end the turn instead
+        // of emitting the FILE/SHELL action, especially on larger tasks — which
+        // leaves nothing on disk. Make the act-don't-describe requirement
+        // explicit so a build actually happens before the agent reports done.
+        preamble.push(
+          "Execution contract: DO the work by calling tools — use the FILE " +
+            "action to actually write/edit each file and the SHELL action to run " +
+            "commands. Do NOT reply with a description of what you are about to " +
+            "do; a turn that only says \"I'll create...\" or \"Creating the app " +
+            'now" without an accompanying FILE/SHELL tool call is a failure. For ' +
+            "a multi-file or large build, write the full content of each file " +
+            "with a FILE action first, then verify, and only then report what you " +
+            "did. Never claim a file exists unless you wrote it this session.",
+        );
         if (session.cwd) {
           // The coding tools (FILE/EDIT) require ABSOLUTE paths. Tell the agent
           // its workspace root up front so it writes absolute paths directly
