@@ -143,10 +143,10 @@ export interface ShellController {
   /** Toggle transcription mode on/off. Enabling opens a long-running capture
    *  that suppresses replies; disabling stops it and RESUMES the hands-free mic
    *  loop it paused (transcript off leaves the mic on — they are linked). */
-  toggleTranscriptionMode: () => void;
+  toggleTranscriptionMode: () => void | Promise<void>;
   /** End transcription AND turn the mic fully off (the mic button's action while
    *  transcribing — turning off the mic turns off transcript). */
-  stopTranscriptionAndMic: () => void;
+  stopTranscriptionAndMic: () => void | Promise<void>;
   /** Register where push-to-talk dictation drops its final transcript (the
    *  overlay wires this to its composer draft). Pass null to clear. */
   setDictationSink: (sink: ((text: string) => void) | null) => void;
@@ -433,7 +433,9 @@ export function useShellController(): ShellController {
   // Forward handle to `toggleTranscriptionMode` (defined far below) so the
   // converse capture loop can flip INTO transcription on a spoken "start
   // transcription" without a definition-order/closure problem.
-  const toggleTranscriptionModeRef = React.useRef<() => void>(() => {});
+  const toggleTranscriptionModeRef = React.useRef<() => void | Promise<void>>(
+    () => {},
+  );
   // The continuous-chat-mode persisted before hands-free engaged, restored when
   // the user taps the mic off so a deliberate ChatView "vad-gated" choice isn't
   // clobbered to "off". Defaults to "off" — tapping the mic off means voice off.
@@ -624,7 +626,7 @@ export function useShellController(): ShellController {
     [sendChatText],
   );
 
-  const stopCapture = React.useCallback(() => {
+  const stopCaptureAndDrain = React.useCallback(async () => {
     const handle = captureRef.current;
     captureRef.current = null;
     // Mark this as a user-initiated stop so the clean-auto-stop carryover does
@@ -634,13 +636,22 @@ export function useShellController(): ShellController {
     turnCarryoverRef.current = "";
     turnAggregatorRef.current?.reset();
     if (handle) {
-      void handle.stop().catch(() => {});
-      handle.dispose();
+      try {
+        await handle.stop();
+      } catch {
+        /* stop is best-effort from UI controls */
+      } finally {
+        handle.dispose();
+      }
     }
     setAnalyser(null);
     setRecording(false);
     setTranscript("");
   }, []);
+
+  const stopCapture = React.useCallback(() => {
+    void stopCaptureAndDrain();
+  }, [stopCaptureAndDrain]);
 
   const startCapture = React.useCallback(
     (intent?: CaptureIntent) => {
@@ -867,7 +878,7 @@ export function useShellController(): ShellController {
     else startCapture();
   }, [recording, startCapture, stopCapture]);
 
-  React.useEffect(() => stopCapture, [stopCapture]);
+  React.useEffect(() => () => stopCapture(), [stopCapture]);
 
   // Restore a persisted "always-on" continuous-chat mode on boot: engage the
   // hands-free re-listen LOOP (not a one-shot capture) so always-on survives a
@@ -1035,11 +1046,11 @@ export function useShellController(): ShellController {
   // silently. Turning it off (this toggle, the mic button, or a spoken exit
   // phrase) finalizes the session, which drops the transcript into the composer
   // as an attachment the user sends with their next message.
-  const toggleTranscriptionMode = React.useCallback(() => {
+  const toggleTranscriptionMode = React.useCallback(async () => {
     if (transcriptionModeRef.current) {
       setTranscriptionMode(false);
       transcriptionModeRef.current = false;
-      if (captureRef.current) stopCapture();
+      if (captureRef.current) await stopCaptureAndDrain();
       // Close the recording session → Transcript record + chat link-widget.
       finalizeTranscriptSession();
       // Turning transcript OFF must leave the mic ON: resume the hands-free
@@ -1071,6 +1082,7 @@ export function useShellController(): ShellController {
   }, [
     startCapture,
     stopCapture,
+    stopCaptureAndDrain,
     voiceOutput,
     beginTranscriptSession,
     finalizeTranscriptSession,
@@ -1079,10 +1091,10 @@ export function useShellController(): ShellController {
   // The mic button while transcribing: turn the mic (and thus transcript) fully
   // OFF. Distinct from `toggleTranscriptionMode`'s off-path, which leaves the
   // mic listening — "turning off the mic turns off transcript" (mic = parent).
-  const stopTranscriptionAndMic = React.useCallback(() => {
+  const stopTranscriptionAndMic = React.useCallback(async () => {
     setTranscriptionMode(false);
     transcriptionModeRef.current = false;
-    if (captureRef.current) stopCapture();
+    if (captureRef.current) await stopCaptureAndDrain();
     finalizeTranscriptSession();
     resumeHandsFreeAfterTranscriptRef.current = false;
     // Turn the mic fully off like a hands-free tap-off: persist the prior
@@ -1090,7 +1102,7 @@ export function useShellController(): ShellController {
     saveContinuousChatMode(priorContinuousModeRef.current);
     setHandsFree(false);
     handsFreeRef.current = false;
-  }, [stopCapture, finalizeTranscriptSession]);
+  }, [stopCaptureAndDrain, finalizeTranscriptSession]);
   // Keep the forward ref current so the converse capture loop (defined above)
   // can flip into transcription on a spoken start phrase.
   toggleTranscriptionModeRef.current = toggleTranscriptionMode;

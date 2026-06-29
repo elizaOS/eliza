@@ -1,0 +1,754 @@
+#!/usr/bin/env node
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
+const ISSUE = "9958";
+
+const DIMENSIONS = {
+  platform: [
+    "web",
+    "linux",
+    "macos-electrobun",
+    "windows-electrobun",
+    "ios",
+    "android",
+  ],
+  transcriptionState: ["off", "on"],
+  chimeIn: ["should-respond", "should-not-respond"],
+  wakewordContext: [
+    "idle-wake",
+    "already-listening-wake-inert",
+    "mid-transcription-wake",
+  ],
+  noiseRejection: [
+    "quiet",
+    "noisy-reverberant",
+    "echo-self-voice",
+    "overlapping-speech",
+  ],
+  voices: ["owner", "enrolled-contact", "unknown", "multi-speaker"],
+};
+
+const CELLS = [
+  {
+    id: "web.fake-mic.roundtrip",
+    title: "Web fake-device mic capture -> ASR -> agent -> TTS",
+    platform: "web",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "live-client-audio",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "packages/app",
+      "test:e2e",
+      "test/ui-smoke/voice-realaudio.spec.ts",
+    ],
+    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
+    probe: "web",
+  },
+  {
+    id: "web.fake-mic.transcript-roundtrip",
+    title:
+      "Web fake-device transcript capture -> record -> player -> chat attachment",
+    platform: "web",
+    dimensions: {
+      transcriptionState: "on",
+      chimeIn: "should-not-respond",
+      wakewordContext: "mid-transcription-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "transcripts-roundtrip",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "packages/app",
+      "test:e2e",
+      "test/ui-smoke/transcript-realaudio.spec.ts",
+    ],
+    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
+    probe: "web",
+  },
+  {
+    id: "web.workbench.respond-no-respond",
+    title: "Headful workbench should-respond / should-not-respond client cells",
+    platform: "web",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-not-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "multi-speaker",
+    },
+    class: "chime-in-matrix",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "packages/app",
+      "test:e2e",
+      "test/ui-smoke/voice-workbench-respond-no-respond.spec.ts",
+    ],
+    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    evidence: [
+      ".github/issue-evidence/8785-voice-headful",
+      "packages/app/test-results",
+    ],
+    probe: "web",
+  },
+  {
+    id: "linux.fused-acoustic.workbench-real",
+    title:
+      "Linux fused ASR/VAD/diarization/Kokoro workbench real-service matrix",
+    platform: "linux",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "noisy-reverberant",
+      voices: "multi-speaker",
+    },
+    class: "real-acoustic-workbench",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "plugins/plugin-local-inference",
+      "voice:workbench",
+      "--real",
+    ],
+    evidence: [
+      "$VOICE_REAL_MATRIX_OUT/voice-workbench-real",
+      ".github/issue-evidence/9147-real-audio-matrix-m4max.md",
+    ],
+    probe: "linuxFused",
+  },
+  {
+    id: "linux.fused-acoustic.barge-in",
+    title: "Linux fused voice barge-in latency and cancellation harness",
+    platform: "linux",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "already-listening-wake-inert",
+      noiseRejection: "echo-self-voice",
+      voices: "owner",
+    },
+    class: "barge-in",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "plugins/plugin-local-inference",
+      "voice:bargein-bench",
+    ],
+    evidence: ["plugins/plugin-local-inference/native/verify"],
+    probe: "linuxFused",
+  },
+  {
+    id: "macos.electrobun.live-roundtrip",
+    title:
+      "macOS Electrobun live mic -> ASR -> agent -> Kokoro -> speaker loop",
+    platform: "macos-electrobun",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "desktop-live-voice",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "packages/app",
+      "capture:macos-desktop",
+      "--",
+      "--issue",
+      ISSUE,
+      "--slug",
+      "voice-macos-electrobun",
+    ],
+    evidence: [
+      `.github/issue-evidence/${ISSUE}-voice-macos-electrobun-macos-desktop.*`,
+    ],
+    probe: "macosElectrobun",
+  },
+  {
+    id: "windows.electrobun.live-roundtrip",
+    title:
+      "Windows Electrobun live mic -> ASR -> agent -> Kokoro -> speaker loop",
+    platform: "windows-electrobun",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "desktop-live-voice",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "packages/app",
+      "capture:windows-desktop",
+      "--",
+      "--issue",
+      ISSUE,
+      "--slug",
+      "voice-windows-electrobun",
+    ],
+    evidence: [
+      `.github/issue-evidence/${ISSUE}-voice-windows-electrobun-windows-desktop.*`,
+    ],
+    probe: "windowsElectrobun",
+  },
+  {
+    id: "ios.sim-or-device.voice-roundtrip",
+    title: "iOS simulator/device voice self-test and capture evidence",
+    platform: "ios",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "mobile-live-voice",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "packages/app",
+      "capture:ios-sim",
+      "--",
+      "--issue",
+      ISSUE,
+      "--slug",
+      "voice-ios",
+    ],
+    evidence: [`.github/issue-evidence/${ISSUE}-voice-ios-ios-sim.*`],
+    probe: "ios",
+  },
+  {
+    id: "ios.talkmode.native-bridge",
+    title:
+      "TalkMode iOS transcript, permission, state, and barge-in bridge contracts",
+    platform: "ios",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "already-listening-wake-inert",
+      noiseRejection: "echo-self-voice",
+      voices: "owner",
+    },
+    class: "native-bridge-unit",
+    command: [
+      "swift",
+      "test",
+      "--package-path",
+      "plugins/plugin-native-talkmode/ios",
+    ],
+    evidence: ["plugins/plugin-native-talkmode/ios/Tests"],
+    probe: "swiftPackage",
+  },
+  {
+    id: "ios.swabble.native-bridge",
+    title: "Swabble iOS wake-firing -> JS bridge event contract",
+    platform: "ios",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "native-bridge-unit",
+    command: [
+      "swift",
+      "test",
+      "--package-path",
+      "plugins/plugin-native-swabble/ios",
+    ],
+    evidence: ["plugins/plugin-native-swabble/ios/Tests"],
+    probe: "swiftPackage",
+  },
+  {
+    id: "android.device.voice-roundtrip",
+    title:
+      "Android device WebView real on-device STT -> agent -> TTS voice self-test",
+    platform: "android",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "mobile-live-voice",
+    command: ["bun", "run", "--cwd", "packages/app", "test:e2e:android:local"],
+    evidence: ["packages/app/test-results", ".github/issue-evidence"],
+    probe: "android",
+  },
+  {
+    id: "android.talkmode.native-bridge",
+    title:
+      "TalkMode Android capture lifecycle, transcript, permission, and barge-in bridge contracts",
+    platform: "android",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "already-listening-wake-inert",
+      noiseRejection: "echo-self-voice",
+      voices: "owner",
+    },
+    class: "native-bridge-unit",
+    command: ["./gradlew", ":elizaos-capacitor-talkmode:testDebugUnitTest"],
+    cwd: "packages/app/android",
+    evidence: ["plugins/plugin-native-talkmode/android/src/test/java"],
+    probe: "androidGradle",
+  },
+  {
+    id: "android.swabble.native-bridge",
+    title: "Swabble Android wake-firing -> JS bridge event contract",
+    platform: "android",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "native-bridge-unit",
+    command: ["./gradlew", ":elizaos-capacitor-swabble:testDebugUnitTest"],
+    cwd: "packages/app/android",
+    evidence: ["plugins/plugin-native-swabble/android/src/test/java"],
+    probe: "androidGradle",
+  },
+  {
+    id: "wake.openwakeword.real-head",
+    title: "Real openWakeWord head wake-context cells",
+    platform: "linux",
+    dimensions: {
+      transcriptionState: "on",
+      chimeIn: "should-not-respond",
+      wakewordContext: "mid-transcription-wake",
+      noiseRejection: "overlapping-speech",
+      voices: "multi-speaker",
+    },
+    class: "wakeword-device-gap",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "plugins/plugin-local-inference",
+      "voice:workbench",
+      "--real",
+    ],
+    evidence: ["$VOICE_REAL_MATRIX_OUT/voice-workbench-real"],
+    probe: "openWakeWord",
+  },
+  {
+    id: "stt.stage-b.evaluation",
+    title:
+      "Stage-B STT evaluation: iOS SFSpeechRecognizer vs Android SpeechRecognizer vs fused ASR",
+    platform: "android",
+    dimensions: {
+      transcriptionState: "on",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "noisy-reverberant",
+      voices: "multi-speaker",
+    },
+    class: "stt-evaluation",
+    command: [
+      "bun",
+      "packages/scripts/voice-matrix.mjs",
+      "--stage-b-eval-placeholder",
+    ],
+    evidence: [".github/issue-evidence/9147-voice-asr-m4max.md"],
+    probe: "stageBStt",
+  },
+];
+
+function parseArgs(argv) {
+  const args = {
+    run: false,
+    out: path.join(".github", "issue-evidence", `${ISSUE}-voice-matrix`),
+    platforms: new Set(),
+    includeHeavy: false,
+    requireGreen: false,
+    stageBPlaceholder: false,
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i];
+    if (token === "--run") args.run = true;
+    else if (token === "--include-heavy") args.includeHeavy = true;
+    else if (token === "--require-green") args.requireGreen = true;
+    else if (token === "--stage-b-eval-placeholder")
+      args.stageBPlaceholder = true;
+    else if (token === "--out") args.out = argv[++i] ?? args.out;
+    else if (token === "--platform") {
+      for (const p of String(argv[++i] ?? "").split(",")) {
+        if (p.trim()) args.platforms.add(p.trim());
+      }
+    }
+  }
+  return args;
+}
+
+function commandExists(name) {
+  const cmd = process.platform === "win32" ? "where" : "which";
+  return spawnSync(cmd, [name], { stdio: "ignore" }).status === 0;
+}
+
+function runCapture(command, cwd, extraEnv = {}) {
+  const startedAt = new Date().toISOString();
+  const result = spawnSync(command[0], command.slice(1), {
+    cwd: path.resolve(REPO_ROOT, cwd ?? "."),
+    encoding: "utf8",
+    env: { ...process.env, ...extraEnv },
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return {
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    exitCode: result.status ?? 1,
+    signal: result.signal,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+function probeCell(cell) {
+  if (!commandExists("bun")) {
+    return { available: false, reason: "bun is not available on PATH" };
+  }
+  switch (cell.probe) {
+    case "web":
+      return {
+        available: true,
+        reason: "Chromium fake-device mic lane is host-runnable",
+      };
+    case "linuxFused":
+      if (process.platform !== "linux")
+        return {
+          available: false,
+          reason: `requires Linux runner; current=${process.platform}`,
+        };
+      if (!process.env.ELIZA_INFERENCE_LIBRARY)
+        return {
+          available: false,
+          reason: "ELIZA_INFERENCE_LIBRARY is not set",
+        };
+      if (!process.env.ELIZA_ASR_BUNDLE)
+        return { available: false, reason: "ELIZA_ASR_BUNDLE is not set" };
+      return {
+        available: true,
+        reason: "Linux fused voice environment is provisioned",
+      };
+    case "openWakeWord":
+      if (!process.env.ELIZA_OPENWAKEWORD_REAL_READY) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_OPENWAKEWORD_REAL_READY is not set for a real wake-word head run",
+        };
+      }
+      return { available: true, reason: "real openWakeWord head gate enabled" };
+    case "macosElectrobun":
+      if (process.platform !== "darwin")
+        return {
+          available: false,
+          reason: `requires macOS runner; current=${process.platform}`,
+        };
+      if (process.env.ELIZA_VOICE_MACOS_ELECTROBUN_READY !== "1") {
+        return {
+          available: false,
+          reason:
+            "set ELIZA_VOICE_MACOS_ELECTROBUN_READY=1 on a macOS Electrobun voice runner with loopback mic/audio capture",
+        };
+      }
+      return {
+        available: true,
+        reason: "macOS Electrobun voice runner enabled",
+      };
+    case "windowsElectrobun":
+      if (process.platform !== "win32")
+        return {
+          available: false,
+          reason: `requires Windows runner; current=${process.platform}`,
+        };
+      if (process.env.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY !== "1") {
+        return {
+          available: false,
+          reason:
+            "set ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1 on a Windows Electrobun voice runner with loopback mic/audio capture",
+        };
+      }
+      return {
+        available: true,
+        reason: "Windows Electrobun voice runner enabled",
+      };
+    case "ios":
+      if (process.platform !== "darwin")
+        return {
+          available: false,
+          reason: `requires macOS host with xcrun; current=${process.platform}`,
+        };
+      if (!commandExists("xcrun"))
+        return { available: false, reason: "xcrun is not available" };
+      if (process.env.ELIZA_VOICE_IOS_READY !== "1") {
+        return {
+          available: false,
+          reason:
+            "set ELIZA_VOICE_IOS_READY=1 after installing a current iOS simulator/device build with voice assets",
+        };
+      }
+      return { available: true, reason: "iOS voice capture runner enabled" };
+    case "swiftPackage":
+      if (process.platform !== "darwin")
+        return {
+          available: false,
+          reason: `requires macOS Swift toolchain; current=${process.platform}`,
+        };
+      if (!commandExists("swift"))
+        return { available: false, reason: "swift is not available on PATH" };
+      return {
+        available: true,
+        reason: "macOS Swift Package test toolchain is available",
+      };
+    case "android":
+      if (!commandExists("adb"))
+        return { available: false, reason: "adb is not available" };
+      if (process.env.ELIZA_VOICE_ANDROID_READY !== "1") {
+        return {
+          available: false,
+          reason:
+            "set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed",
+        };
+      }
+      return { available: true, reason: "Android voice runner enabled" };
+    case "androidGradle": {
+      const androidDir = path.join(REPO_ROOT, "packages", "app", "android");
+      if (!fs.existsSync(androidDir)) {
+        return {
+          available: false,
+          reason:
+            "packages/app/android is not generated; run packages/app cap:sync:android or build:android first",
+        };
+      }
+      const gradlew = path.join(
+        androidDir,
+        process.platform === "win32" ? "gradlew.bat" : "gradlew",
+      );
+      if (!fs.existsSync(gradlew))
+        return {
+          available: false,
+          reason: "generated Android project has no Gradle wrapper",
+        };
+      return {
+        available: true,
+        reason: "generated Android Gradle project exists",
+      };
+    }
+    case "stageBStt":
+      return {
+        available: false,
+        reason:
+          "Stage-B STT battery/latency evaluation needs paired iOS+Android device runners and power telemetry",
+      };
+    default:
+      return { available: false, reason: `unknown probe ${cell.probe}` };
+  }
+}
+
+function statusFor(args, probe, execution) {
+  if (!probe.available) return "skip";
+  if (!args.run) return "pending";
+  if (!execution) return "pending";
+  return execution.exitCode === 0 ? "pass" : "fail";
+}
+
+function renderMarkdown(report) {
+  const rows = report.cells.map((cell) => {
+    const cmd = cell.command
+      .map((part) => (part.includes(" ") ? JSON.stringify(part) : part))
+      .join(" ");
+    return `| \`${cell.id}\` | ${cell.status} | ${cell.platform} | ${cell.class} | ${cell.probe.reason.replaceAll("|", "\\|")} | \`${cmd.replaceAll("|", "\\|")}\` |`;
+  });
+  return [
+    "# Voice Live Matrix",
+    "",
+    `Generated: ${report.generatedAt}`,
+    `Host: ${report.host.platform} ${report.host.arch} (${report.host.hostname})`,
+    "",
+    "| Cell | Status | Platform | Class | Probe / Result | Command |",
+    "|---|---:|---|---|---|---|",
+    ...rows,
+    "",
+    "## Summary",
+    "",
+    `- Pass: ${report.summary.pass}`,
+    `- Fail: ${report.summary.fail}`,
+    `- Pending: ${report.summary.pending}`,
+    `- Skip: ${report.summary.skip}`,
+    "",
+    "Hardware-unavailable cells are explicit `skip` rows. They are not evidence of platform coverage.",
+    "",
+  ].join("\n");
+}
+
+function renderHtml(report) {
+  const esc = (s) =>
+    String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  const rows = report.cells
+    .map(
+      (cell) =>
+        `<tr class="${esc(cell.status)}"><td><code>${esc(cell.id)}</code><br>${esc(cell.title)}</td><td>${esc(cell.status)}</td><td>${esc(cell.platform)}</td><td>${esc(cell.class)}</td><td>${esc(
+          Object.entries(cell.dimensions)
+            .map(([k, v]) => `${k}=${v}`)
+            .join("\n"),
+        )}</td><td>${esc(cell.probe.reason)}</td><td><code>${esc(cell.command.join(" "))}</code></td><td>${esc(cell.evidence.join("\n"))}</td></tr>`,
+    )
+    .join("\n");
+  return `<!doctype html>
+<meta charset="utf-8">
+<title>Voice Live Matrix</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:24px;background:#fafafa;color:#151515}
+table{width:100%;border-collapse:collapse;background:white}
+th,td{border:1px solid #ddd;padding:8px;vertical-align:top;white-space:pre-wrap}
+th{background:#f1f1f1;text-align:left}
+.pass td:nth-child(2){color:#116b2d;font-weight:700}
+.fail td:nth-child(2){color:#9a1b1b;font-weight:700}
+.skip td:nth-child(2),.pending td:nth-child(2){color:#7a5b00;font-weight:700}
+code{font-size:12px}
+</style>
+<h1>Voice Live Matrix</h1>
+<p>Generated ${esc(report.generatedAt)} on ${esc(report.host.platform)} ${esc(report.host.arch)} (${esc(report.host.hostname)}).</p>
+<p>Pass ${report.summary.pass} · Fail ${report.summary.fail} · Pending ${report.summary.pending} · Skip ${report.summary.skip}</p>
+<table><thead><tr><th>Cell</th><th>Status</th><th>Platform</th><th>Class</th><th>Dimensions</th><th>Probe / Result</th><th>Command</th><th>Evidence</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.stageBPlaceholder) {
+    console.error(
+      "Stage-B STT evaluation must run on paired iOS/Android device lanes with power telemetry.",
+    );
+    process.exit(2);
+  }
+
+  const selected = CELLS.filter(
+    (cell) =>
+      args.platforms.size === 0 ||
+      args.platforms.has(cell.platform) ||
+      args.platforms.has(cell.id),
+  );
+  const cells = [];
+  for (const cell of selected) {
+    const probe = probeCell(cell);
+    let execution = null;
+    if (args.run && probe.available) {
+      execution = runCapture(cell.command, cell.cwd, cell.env);
+      probe.reason =
+        execution.exitCode === 0
+          ? `command passed (${execution.finishedAt})`
+          : `command failed with exit ${execution.exitCode}${execution.signal ? ` signal ${execution.signal}` : ""}`;
+    }
+    cells.push({
+      ...cell,
+      cwd: cell.cwd ?? ".",
+      env: cell.env ?? {},
+      probe,
+      execution: execution
+        ? {
+            exitCode: execution.exitCode,
+            signal: execution.signal,
+            startedAt: execution.startedAt,
+            finishedAt: execution.finishedAt,
+            stdoutTail: execution.stdout.slice(-4000),
+            stderrTail: execution.stderr.slice(-4000),
+          }
+        : null,
+      status: statusFor(args, probe, execution),
+    });
+  }
+
+  const summary = { pass: 0, fail: 0, pending: 0, skip: 0 };
+  for (const cell of cells) summary[cell.status] += 1;
+
+  const report = {
+    schema: "eliza_voice_live_matrix_v1",
+    issue: Number(ISSUE),
+    generatedAt: new Date().toISOString(),
+    mode: args.run ? "run" : "probe",
+    dimensions: DIMENSIONS,
+    host: {
+      platform: process.platform,
+      arch: process.arch,
+      hostname: os.hostname(),
+      runnerOs: process.env.RUNNER_OS ?? null,
+      runnerArch: process.env.RUNNER_ARCH ?? null,
+    },
+    summary,
+    cells,
+  };
+
+  const outDir = path.resolve(REPO_ROOT, args.out);
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(outDir, "voice-matrix.json"),
+    JSON.stringify(report, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(outDir, "voice-matrix.md"),
+    renderMarkdown(report),
+  );
+  fs.writeFileSync(path.join(outDir, "index.html"), renderHtml(report));
+  console.log(
+    `[voice:matrix] wrote ${path.relative(REPO_ROOT, outDir)}/voice-matrix.json`,
+  );
+  console.log(
+    `[voice:matrix] pass=${summary.pass} fail=${summary.fail} pending=${summary.pending} skip=${summary.skip}`,
+  );
+
+  if (
+    summary.fail > 0 ||
+    (args.requireGreen && (summary.pending > 0 || summary.skip > 0))
+  ) {
+    process.exit(1);
+  }
+}
+
+main().catch((error) => {
+  console.error(
+    `[voice:matrix] ${error instanceof Error ? error.stack : String(error)}`,
+  );
+  process.exit(1);
+});
