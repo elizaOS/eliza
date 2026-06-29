@@ -92,11 +92,9 @@ import {
 import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
 import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
 import {
-  ensurePlistArrayStrings,
   mergeIosInfoPlist,
   removePbxListEntries,
   replaceIosAppGroupPlaceholders,
-  replaceOrInsertPlistString,
 } from "./mobile/ios-plist.mjs";
 import {
   ANDROID_OFFICIAL_CAPACITOR_PACKAGES,

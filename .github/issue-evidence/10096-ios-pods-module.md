@@ -10,9 +10,9 @@
 
 ## Verification
 
-- `node --check packages/app-core/scripts/run-mobile-build.mjs && node --check packages/app-core/scripts/mobile/ios-pods.mjs && node --check packages/app-core/scripts/mobile/ios-plist.mjs && node --check packages/app-core/scripts/run-mobile-build-plugin-manifest.test.mjs && node --check packages/app-core/scripts/run-mobile-build-ios-plist.test.mjs`
-- `bunx biome check packages/app-core/scripts/run-mobile-build.mjs packages/app-core/scripts/mobile/ios-pods.mjs packages/app-core/scripts/mobile/ios-plist.mjs packages/app-core/scripts/run-mobile-build-plugin-manifest.test.mjs packages/app-core/scripts/run-mobile-build-ios-plist.test.mjs .github/issue-evidence/10096-ios-pods-module.md`
-- `bun run --cwd packages/app-core test -- scripts/run-mobile-build-plugin-manifest.test.mjs scripts/run-mobile-build-ios-plist.test.mjs scripts/run-mobile-build-ios-engine-gate.test.mjs scripts/run-mobile-build-android-targets.test.mjs`
+- `node --check packages/app-core/scripts/run-mobile-build.mjs && node --check packages/app-core/scripts/mobile/ios-pods.mjs && node --check packages/app-core/scripts/mobile/ios-plist.mjs && node --check packages/app-core/scripts/run-mobile-build-plugin-manifest.test.mjs && node --check packages/app-core/scripts/run-mobile-build-ios-plist.test.mjs && node --check packages/app-core/scripts/mobile/ios-plist.test.mjs`
+- `bunx biome check packages/app-core/scripts/run-mobile-build.mjs packages/app-core/scripts/mobile/ios-pods.mjs packages/app-core/scripts/mobile/ios-plist.mjs packages/app-core/scripts/mobile/ios-plist.test.mjs packages/app-core/scripts/run-mobile-build-plugin-manifest.test.mjs packages/app-core/scripts/run-mobile-build-ios-plist.test.mjs .github/issue-evidence/10096-ios-pods-module.md`
+- `bun run --cwd packages/app-core test -- scripts/run-mobile-build-plugin-manifest.test.mjs scripts/run-mobile-build-ios-plist.test.mjs scripts/mobile/ios-plist.test.mjs scripts/run-mobile-build-ios-engine-gate.test.mjs scripts/run-mobile-build-android-targets.test.mjs` (5 files, 35 tests)
 - `bun run --cwd packages/app build:ios:cloud:sim`
 
 ## Full iOS Simulator Build Evidence
@@ -21,14 +21,16 @@
 
 Reviewed output markers:
 
-- Vite production build completed: `✓ built in 3m 52s`.
-- Renderer stale-web guard passed: `wrote eliza-renderer-build.json buildId=45235f2c5f5d (195 assets)` and chunk safety reported `OK`.
+- Renderer reuse guard accepted the current web bundle: `[mobile-build] Auto-skipping web build: existing dist is up-to-date (buildId=45235f2c5f5d)`.
+- Capacitor copied web assets to `ios/App/App/public`, generated `capacitor.config.json`, and the stale-web guard overlaid the fresh `packages/app/dist` into the iOS public directory.
 - Capacitor sync completed and found 26 iOS plugins.
 - Split pod manifest generated the cloud simulator Podfile behavior:
   - `iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA not set)`
   - `iOS Podfile: App Store build keeps local Bun runtime and omits mobile-agent tunnel bridge`
   - `Pod installation complete! There are 25 dependencies from the Podfile and 26 total pods installed.`
+- Split plist overlay ran: `[mobile-build] Merged iOS permission strings.`
 - Xcode built `App.xcworkspace` for `generic/platform=iOS Simulator` with `-sdk iphonesimulator`, `CODE_SIGNING_ALLOWED=NO`, `ARCHS=arm64`, and `IPHONEOS_DEPLOYMENT_TARGET=16.0`.
+- Asset catalog emitted pre-existing missing splash image warnings, then the app target embedded pods, validated embedded extensions, and copied Swift libraries.
 - Final Xcode result: `** BUILD SUCCEEDED **`.
 
 ## Not Covered
