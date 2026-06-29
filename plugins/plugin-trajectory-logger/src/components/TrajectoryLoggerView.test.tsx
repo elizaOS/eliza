@@ -204,11 +204,9 @@ describe("TrajectoryLoggerView — unified GUI/XR wrapper", () => {
     // inside a SpatialSurface — mirror that here, as the *SpatialView tests do,
     // so the surface attribute the host provides is present for the assertion.
     render(
-      React.createElement(
-        SpatialSurface,
-        { modality: "gui" },
-        React.createElement(TrajectoryLoggerView),
-      ),
+      <SpatialSurface modality="gui">
+        <TrajectoryLoggerView />
+      </SpatialSurface>,
     );
     expect(document.querySelector("[data-spatial-surface]")).toBeTruthy();
     expect(screen.getByText("Back")).toBeTruthy();
