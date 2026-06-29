@@ -39,7 +39,11 @@ const KEYLESS_WORKFLOW = path.join(
   ".github/workflows/scenario-pr.yml",
 );
 
-const VALID_CATEGORIES = ["live-only", "dedicated-tool", "keyless-debt"] as const;
+const VALID_CATEGORIES = [
+  "live-only",
+  "dedicated-tool",
+  "keyless-debt",
+] as const;
 type DenyCategory = (typeof VALID_CATEGORIES)[number];
 
 interface DenyEntry {
@@ -88,9 +92,7 @@ describe("ui-smoke spec coverage gate", () => {
     const entries = denyList();
     const seen = new Set<string>();
 
-    const stale = entries
-      .map((e) => e.spec)
-      .filter((spec) => !specs.has(spec));
+    const stale = entries.map((e) => e.spec).filter((spec) => !specs.has(spec));
     expect(
       stale,
       `Deny-list references specs that no longer exist (remove them): ${stale.join(", ")}`,

@@ -40,7 +40,11 @@ const WORKFLOW_PATH = path.join(
   "scenario-pr.yml",
 );
 
-const VALID_CATEGORIES = new Set(["live-only", "dedicated-tool", "keyless-debt"]);
+const VALID_CATEGORIES = new Set([
+  "live-only",
+  "dedicated-tool",
+  "keyless-debt",
+]);
 
 /** All spec file basenames under test/ui-smoke, sorted. */
 function allSpecs() {
@@ -104,7 +108,9 @@ function runCheck() {
     }
     seen.add(entry.spec);
     if (!specs.has(entry.spec)) {
-      problems.push(`deny-list references a spec that does not exist: ${entry.spec}`);
+      problems.push(
+        `deny-list references a spec that does not exist: ${entry.spec}`,
+      );
     }
     if (!VALID_CATEGORIES.has(entry.category)) {
       problems.push(
@@ -158,6 +164,8 @@ switch (mode) {
     break;
   default:
     console.error(`Unknown mode: ${mode}`);
-    console.error("Usage: ui-smoke-pr-specs.mjs [--list|--list-auto|--json|--check]");
+    console.error(
+      "Usage: ui-smoke-pr-specs.mjs [--list|--list-auto|--json|--check]",
+    );
     process.exit(2);
 }
