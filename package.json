@@ -190,6 +190,8 @@
     "bench:eliza-1": "bun run --cwd packages/benchmarks/eliza-1 start",
     "bench:memperf": "node packages/benchmarks/memperf/run-all.mjs",
     "bench:memperf:json": "node packages/benchmarks/memperf/run-all.mjs --json",
+    "bench:recall": "bun run --cwd packages/benchmarks/recall-bench bench",
+    "bench:recall:1k": "bun run --cwd packages/benchmarks/recall-bench bench:1k",
     "bench:three-agent": "bun run --cwd packages/benchmarks/three-agent-dialogue bench",
     "bench:voice-speaker": "node packages/scripts/run-python.mjs -m pytest packages/benchmarks/voice-speaker-validation/tests/ -v --tb=short",
     "bench:voice-speaker:smoke": "node packages/scripts/run-python.mjs -m pytest packages/benchmarks/voice-speaker-validation/tests/test_diarization.py::TestDiarization::test_single_speaker_control -v",

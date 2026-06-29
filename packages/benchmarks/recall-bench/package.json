@@ -1,0 +1,13 @@
+{
+  "name": "@elizaos/recall-bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Precision/Recall/nDCG/latency benchmark for the real @elizaos/core memory-recall + knowledge-retrieval pipeline (#9956).",
+  "scripts": {
+    "bench": "bun --conditions=eliza-source run.ts --tier smoke",
+    "bench:1k": "bun --conditions=eliza-source run.ts --tier 1k",
+    "bench:10k": "bun --conditions=eliza-source run.ts --tier 10k",
+    "test": "vitest run"
+  }
+}
