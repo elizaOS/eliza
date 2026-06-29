@@ -8,6 +8,13 @@ vi.mock("@elizaos/core", () => ({
   writeWorkspaceFolderConfig: vi.fn(),
 }));
 
+vi.mock("./mac-window-effects", () => ({
+  enableVibrancy: vi.fn(() => false),
+  ensureShadow: vi.fn(() => false),
+  setNativeDragRegion: vi.fn(),
+  setTrafficLightsPosition: vi.fn(),
+}));
+
 const electrobunMock = vi.hoisted(() => {
   type Handler = (event?: unknown) => void;
   const handlers = new Map<string, Handler[]>();
