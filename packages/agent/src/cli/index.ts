@@ -107,6 +107,14 @@ export async function runAutonomousCli(
   }
 
   if (command === "serve" || command === "start") {
+    // Keep a serving agent alive across background promise rejections, and hand
+    // an uncaught exception off to the supervisor (Docker/K8s restart policy,
+    // desktop AgentManager, dev api-supervisor) for a clean restart instead of
+    // a silent death. One-shot commands and tests keep default behavior.
+    if (process.env.NODE_ENV !== "test") {
+      const { installProcessCrashGuards } = await import("@elizaos/shared");
+      installProcessCrashGuards({ onUncaughtException: "restart" });
+    }
     const keepAlive = setInterval(() => {}, 1 << 30);
     const { startEliza } = await import("../runtime/index.ts");
     const runtime = await startEliza({ serverOnly: true }).catch((error) => {

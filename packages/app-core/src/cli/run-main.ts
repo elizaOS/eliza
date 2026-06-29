@@ -1,6 +1,7 @@
 import process from "node:process";
 import {
   getLogPrefix,
+  installProcessCrashGuards,
   RESTART_EXIT_CODE,
   setRestartHandler,
 } from "@elizaos/shared";
@@ -10,6 +11,58 @@ import {
 } from "../runtime/error-handlers";
 import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
 import { registerSubCliByName } from "./program/register.subclis";
+
+/** Commands that boot a long-running server we must keep alive across faults. */
+const LONG_RUNNING_COMMANDS = new Set(["start", "serve"]);
+
+function isLongRunningServerCommand(argv: string[]): boolean {
+  const primary = getPrimaryCommand(argv);
+  return primary != null && LONG_RUNNING_COMMANDS.has(primary);
+}
+
+/**
+ * Install the global crash handlers.
+ *
+ * For a long-running server (`start` / `serve`) a background promise rejection
+ * must never take down the agent, and an uncaught exception should hand off to
+ * the supervisor for a clean restart — so we use {@link installProcessCrashGuards}.
+ * One-shot CLI commands keep the strict "fail the command" behavior. Tests opt
+ * out entirely so a rejection still fails the test.
+ */
+function installGlobalErrorHandlers(argv: string[]): void {
+  if (process.env.NODE_ENV === "test") return;
+
+  if (isLongRunningServerCommand(argv)) {
+    installProcessCrashGuards({
+      logPrefix: getLogPrefix(),
+      isIgnorable: shouldIgnoreUnhandledRejection,
+      onUncaughtException: "restart",
+    });
+    return;
+  }
+
+  process.on("unhandledRejection", (reason) => {
+    if (shouldIgnoreUnhandledRejection(reason)) {
+      console.warn(
+        `${getLogPrefix()} Provider credits appear exhausted; request failed without output. Top up credits and retry.`,
+      );
+      return;
+    }
+    console.error(
+      `${getLogPrefix()} Unhandled rejection:`,
+      formatUncaughtError(reason),
+    );
+    process.exit(1);
+  });
+
+  process.on("uncaughtException", (error) => {
+    console.error(
+      `${getLogPrefix()} Uncaught exception:`,
+      formatUncaughtError(error),
+    );
+    process.exit(1);
+  });
+}
 
 let cliRestartHandlerRegistered = false;
 
@@ -62,27 +115,7 @@ export async function runCli(argv: string[] = process.argv) {
   // has a chance to flush cleanly before the process spins down.
   program.exitOverride();
 
-  process.on("unhandledRejection", (reason) => {
-    if (shouldIgnoreUnhandledRejection(reason)) {
-      console.warn(
-        `${getLogPrefix()} Provider credits appear exhausted; request failed without output. Top up credits and retry.`,
-      );
-      return;
-    }
-    console.error(
-      `${getLogPrefix()} Unhandled rejection:`,
-      formatUncaughtError(reason),
-    );
-    process.exit(1);
-  });
-
-  process.on("uncaughtException", (error) => {
-    console.error(
-      `${getLogPrefix()} Uncaught exception:`,
-      formatUncaughtError(error),
-    );
-    process.exit(1);
-  });
+  installGlobalErrorHandlers(argv);
 
   const primary = getPrimaryCommand(argv);
   if (primary && !hasHelpOrVersion(argv)) {

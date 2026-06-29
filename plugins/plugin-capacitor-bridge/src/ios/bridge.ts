@@ -423,7 +423,68 @@ function hydrateIosEnvFromArgv(
 	return { appSupportDir, bundlePath };
 }
 
+/**
+ * Install process-level crash guards for the on-device iOS runtime.
+ *
+ * The Bun runtime here IS the iOS app's WebView host process, so a default
+ * `unhandledRejection`/`uncaughtException` termination kills the whole app and
+ * forces the user to relaunch from the home screen. Instead we keep the runtime
+ * alive: a rejected background promise is logged and ignored, and an uncaught
+ * exception is logged but does not exit — a degraded-but-alive agent beats a
+ * dead app, and the bridge's boot-retry recovers transient failures.
+ *
+ * Inlined (not imported from `@elizaos/shared`) so the mobile bundle's
+ * dependency set is unchanged. Idempotent via a globalThis latch.
+ */
+function installIosBackendCrashGuards(): void {
+	const slot = globalThis as { __elizaIosCrashGuardsInstalled?: boolean };
+	if (slot.__elizaIosCrashGuardsInstalled) return;
+	slot.__elizaIosCrashGuardsInstalled = true;
+	const format = (value: unknown): string =>
+		value instanceof Error ? (value.stack ?? value.message) : String(value);
+	process.on("unhandledRejection", (reason) => {
+		console.error(
+			"[ios-bridge] Unhandled promise rejection (non-fatal):",
+			format(reason),
+		);
+	});
+	process.on("uncaughtException", (error) => {
+		console.error(
+			"[ios-bridge] Uncaught exception (agent kept alive):",
+			format(error),
+		);
+	});
+}
+
+/**
+ * Boot the runtime with a bounded retry so a transient init failure (a slow
+ * keychain read, a model file still being written, a flaky first DB open)
+ * self-heals instead of permanently wedging the backend in `bootError`.
+ */
+async function bootRuntimeWithRetry(
+	boot: () => Promise<IAgentRuntime>,
+): Promise<IAgentRuntime> {
+	const maxAttempts = 3;
+	let lastError: unknown;
+	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		try {
+			return await boot();
+		} catch (error) {
+			lastError = error;
+			if (attempt >= maxAttempts) break;
+			const backoffMs = 1000 * 2 ** (attempt - 1);
+			console.error(
+				`[ios-bridge] runtime boot attempt ${attempt}/${maxAttempts} failed; retrying in ${backoffMs}ms:`,
+				error instanceof Error ? error.message : String(error),
+			);
+			await new Promise((resolve) => setTimeout(resolve, backoffMs));
+		}
+	}
+	throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
+	installIosBackendCrashGuards();
 	const argvEnv = hydrateIosEnvFromArgv();
 	// ── Mobile filesystem sandbox ────────────────────────────────────────────
 	// Install the fs shim as the very first action — before any runtime code
@@ -468,7 +529,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 
 	const { bootElizaRuntime, dispatchRoute } = await loadAgentModule();
 
-	const runtime = await bootElizaRuntime();
+	const runtime = await bootRuntimeWithRetry(bootElizaRuntime);
 	installIosNativeLlamaHandlers(runtime);
 
 	maybeAutoRunModelGrind();
