@@ -208,6 +208,20 @@ jobs:
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
 
+      # The spatial-view XR simulator (the "X" in GUI/TUI/XR): boots the stories
+      # dev server and drives the CSS-3D headset harness in chromium. Previously
+      # ran in no workflow.
+      - name: XR sim spec (packages/ui spatial views)
+        run: bun run --cwd packages/ui test:xr-sim
+
+      - name: Upload XR sim artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: xr-sim-artifacts
+          path: /tmp/xr-shots/
+          if-no-files-found: ignore
+
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
 
