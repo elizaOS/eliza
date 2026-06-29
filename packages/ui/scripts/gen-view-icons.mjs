@@ -1,9 +1,11 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const KEY = process.env.FAL_KEY;
 if (!KEY) {
-  console.error("FAL_KEY env var required (fal.ai API key) to regenerate view icons.");
+  console.error(
+    "FAL_KEY env var required (fal.ai API key) to regenerate view icons.",
+  );
   process.exit(1);
 }
 const OUT = "/tmp/view-icons";
@@ -50,7 +52,8 @@ const SUBJECTS = {
   automations: "a lightning bolt over gears",
   triggers: "a lightning bolt",
   inventory: "stacked storage boxes",
-  documents: "a single sheet of white paper with a folded corner and a few horizontal lines",
+  documents:
+    "a single sheet of white paper with a folded corner and a few horizontal lines",
   files: "a closed folder",
   plugins: "a power plug",
   skills: "three sparkle stars",
@@ -77,8 +80,12 @@ const STYLE =
 function strip(file) {
   let svg = readFileSync(file, "utf8");
   const vb = svg.match(/viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/);
-  const W = vb ? vb[1] : "2048", H = vb ? vb[2] : "2048";
-  const re = new RegExp(`<path[^>]*\\bd="M\\s*0\\s+0\\s+L\\s*${W}\\s+0\\s+L\\s*${W}\\s+${H}\\s+L\\s*0\\s+${H}[^"]*"[^>]*>\\s*</path>`, "g");
+  const W = vb ? vb[1] : "2048",
+    H = vb ? vb[2] : "2048";
+  const re = new RegExp(
+    `<path[^>]*\\bd="M\\s*0\\s+0\\s+L\\s*${W}\\s+0\\s+L\\s*${W}\\s+${H}\\s+L\\s*0\\s+${H}[^"]*"[^>]*>\\s*</path>`,
+    "g",
+  );
   const n = (svg.match(/<path/g) || []).length;
   svg = svg.replace(re, "");
   svg = svg.replace(/<text[\s\S]*?<\/text>/g, "");
@@ -88,32 +95,68 @@ function strip(file) {
   return { stripped: n - after, remain: after, out };
 }
 
-const ids = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SUBJECTS);
+const ids = process.argv.slice(2).length
+  ? process.argv.slice(2)
+  : Object.keys(SUBJECTS);
 const results = [];
 for (const id of ids) {
   const subject = SUBJECTS[id];
-  if (!subject) { console.log(`SKIP ${id} (no subject)`); continue; }
+  if (!subject) {
+    console.log(`SKIP ${id} (no subject)`);
+    continue;
+  }
   try {
-    const res = await fetch("https://fal.run/fal-ai/recraft/v4.1/text-to-vector", {
-      method: "POST",
-      headers: { Authorization: `Key ${KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: subject + STYLE, style: "vector_illustration" }),
-    });
+    const res = await fetch(
+      "https://fal.run/fal-ai/recraft/v4.1/text-to-vector",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Key ${KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: subject + STYLE,
+          style: "vector_illustration",
+        }),
+      },
+    );
     const j = await res.json();
     const url = j?.images?.[0]?.url;
-    if (!url) { console.log(`FAIL ${id}: ${JSON.stringify(j).slice(0,120)}`); results.push([id,"FAIL"]); continue; }
+    if (!url) {
+      console.log(`FAIL ${id}: ${JSON.stringify(j).slice(0, 120)}`);
+      results.push([id, "FAIL"]);
+      continue;
+    }
     const svgBuf = Buffer.from(await (await fetch(url)).arrayBuffer());
     const rawFile = `${RAW}/${id}.svg`;
     writeFileSync(rawFile, svgBuf);
     const { stripped, remain, out } = strip(rawFile);
-    execFileSync("rsvg-convert", ["-w","512","-h","512","-b","none", out, "-o", `${OUT}/${id}.png`]);
-    console.log(`OK ${id}: stripped ${stripped} bg, ${remain} paths -> ${id}.png`);
-    results.push([id,"OK"]);
+    execFileSync("rsvg-convert", [
+      "-w",
+      "512",
+      "-h",
+      "512",
+      "-b",
+      "none",
+      out,
+      "-o",
+      `${OUT}/${id}.png`,
+    ]);
+    console.log(
+      `OK ${id}: stripped ${stripped} bg, ${remain} paths -> ${id}.png`,
+    );
+    results.push([id, "OK"]);
   } catch (e) {
-    console.log(`ERR ${id}: ${String(e).slice(0,120)}`);
-    results.push([id,"ERR"]);
+    console.log(`ERR ${id}: ${String(e).slice(0, 120)}`);
+    results.push([id, "ERR"]);
   }
 }
-console.log("\nSUMMARY:", results.filter(r=>r[1]==="OK").length, "ok /", results.length, "total");
-const bad = results.filter(r=>r[1]!=="OK");
-if (bad.length) console.log("NOT OK:", bad.map(r=>r[0]).join(" "));
+console.log(
+  "\nSUMMARY:",
+  results.filter((r) => r[1] === "OK").length,
+  "ok /",
+  results.length,
+  "total",
+);
+const bad = results.filter((r) => r[1] !== "OK");
+if (bad.length) console.log("NOT OK:", bad.map((r) => r[0]).join(" "));

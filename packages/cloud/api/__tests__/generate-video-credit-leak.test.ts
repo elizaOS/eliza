@@ -43,10 +43,7 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   ...rateLimitActual,
   RateLimitPresets: { STRICT: { limit: 1, windowSeconds: 1 } },
-  rateLimit:
-    () =>
-    async (_c: unknown, next: () => Promise<void>) =>
-      next(),
+  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
 mock.module("@/lib/services/content-safety", () => ({
