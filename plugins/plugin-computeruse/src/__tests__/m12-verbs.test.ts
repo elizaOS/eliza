@@ -72,13 +72,15 @@ describe("window getters", () => {
     );
   });
 
-  it("resizeWindow validates x/y before touching the OS", () => {
-    expect(() => resizeWindow("w1", undefined as unknown as number, 5)).toThrow(
-      /x and y are required/,
-    );
-    expect(() => resizeWindow("w1", 5, undefined as unknown as number)).toThrow(
-      /x and y are required/,
-    );
+  it("resizeWindow validates x/y before touching the OS", async () => {
+    // resizeWindow is async (it may route through the warm PowerShell host), so
+    // the validation surfaces as a rejection rather than a synchronous throw.
+    await expect(
+      resizeWindow("w1", undefined as unknown as number, 5),
+    ).rejects.toThrow(/x and y are required/);
+    await expect(
+      resizeWindow("w1", 5, undefined as unknown as number),
+    ).rejects.toThrow(/x and y are required/);
   });
 });
 

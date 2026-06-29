@@ -15,7 +15,45 @@ import {
   validateInt,
   validateWindowId,
 } from "./helpers.js";
-import { psSpawnTimeoutMs } from "./windows-timeouts.js";
+import { psHostAvailable, runPsHost } from "./ps-host.js";
+
+/**
+ * Run a PowerShell snippet via the warm host when available (Windows), else a
+ * one-shot `runCommand` spawn. Returns stdout. On a Defender-heavy host a cold
+ * `powershell.exe` spawn is ~10-16s — longer than these ops' 5s timeouts — so
+ * routing through the warm host both speeds them up AND stops them from
+ * ETIMEDOUT-failing. Falls back transparently to the one-shot spawn.
+ *
+ * IMPORTANT for warm-session safety: the host is a persistent process, so any
+ * `Add-Type` in `ps` MUST be idempotent — give each P/Invoke a UNIQUE type name
+ * and guard it with `if (-not ([System.Management.Automation.PSTypeName]'X').Type)`,
+ * otherwise the second call in the session throws "type already exists".
+ */
+async function runWindowsPowerShell(
+  ps: string,
+  timeoutMs: number,
+): Promise<string> {
+  if (psHostAvailable()) {
+    try {
+      return await runPsHost(ps, timeoutMs);
+    } catch (err) {
+      // A SCRIPT-level error (the warm host ran the script and it threw, e.g.
+      // `Window not found`) is authoritative — re-running it through a cold
+      // one-shot spawn can only repeat the same failure (slowly) or, on a
+      // Defender-heavy host where the cold spawn exceeds timeoutMs, mask it as
+      // an opaque ETIMEDOUT. Surface it directly. Only HOST-level failures
+      // (host unavailable / exited / timed out / disposed) fall back.
+      if (
+        err instanceof Error &&
+        err.message.startsWith("ps-host script error:")
+      ) {
+        throw err;
+      }
+      /* host unavailable/errored — fall back to one-shot spawn */
+    }
+  }
+  return runCommand("powershell", ["-Command", ps], timeoutMs);
+}
 
 function escapeAppleScriptString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -135,7 +173,36 @@ function runDarwinWindowScript(target: WindowInfo, body: string): string {
 
 // ── List Windows ────────────────────────────────────────────────────────────
 
+// Short cache so the scene provider (which enumerates apps+windows every turn)
+// and the burst of resolve-helper lookups inside a single window action don't
+// each cold-spawn `powershell.exe`. The window set changes during a task, so the
+// TTL is deliberately short; `warmWindowsCache()` (via the warm host, sub-second)
+// keeps it fresh without a cold spawn. Override with `COMPUTERUSE_WINDOWS_CACHE_MS`.
+const WINDOWS_CACHE_MS = (() => {
+  const raw = Number(process.env.COMPUTERUSE_WINDOWS_CACHE_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 2000;
+})();
+let windowsCache: WindowInfo[] | null = null;
+let windowsCachedAt = 0;
+
 export function listWindows(): WindowInfo[] {
+  const now = Date.now();
+  if (windowsCache && now - windowsCachedAt < WINDOWS_CACHE_MS) {
+    return windowsCache;
+  }
+  const fresh = enumerateWindowsList();
+  windowsCache = fresh;
+  windowsCachedAt = now;
+  return fresh;
+}
+
+/** Force a fresh window enumeration, ignoring the cache. */
+export function refreshWindows(): WindowInfo[] {
+  windowsCache = null;
+  return listWindows();
+}
+
+function enumerateWindowsList(): WindowInfo[] {
   const os = currentPlatform();
 
   if (os === "darwin") {
@@ -148,6 +215,27 @@ export function listWindows(): WindowInfo[] {
     return listWindowsWindows();
   }
   return [];
+}
+
+const WINDOWS_LIST_PS =
+  "Get-Process | Where-Object {$_.MainWindowTitle} | " +
+  "Select-Object Id, MainWindowTitle | ConvertTo-Json -Compress";
+
+/**
+ * Asynchronously refresh the window cache via the warm PowerShell host (Windows
+ * only). Lets the scene path / service pre-seed the cache without the blocking
+ * ~10-16s cold spawn the sync {@link listWindows} would otherwise pay. No-op
+ * (and never throws) off Windows or when the host is unavailable.
+ */
+export async function warmWindowsCache(): Promise<void> {
+  if (currentPlatform() !== "win32" || !psHostAvailable()) return;
+  try {
+    const output = await runPsHost(WINDOWS_LIST_PS, 10000);
+    windowsCache = parseWindowsWindowList(output);
+    windowsCachedAt = Date.now();
+  } catch {
+    /* leave cache untouched; sync enumeration remains the fallback */
+  }
 }
 
 // `owner|||title` (sentinel-joined) → WindowInfo. macOS windows have no stable
@@ -284,17 +372,8 @@ function listWindowsLinux(): WindowInfo[] {
   }
 }
 
-function listWindowsWindows(): WindowInfo[] {
+export function parseWindowsWindowList(output: string): WindowInfo[] {
   try {
-    // 15s (matching the capture/clipboard budgets) so a cold `powershell.exe`
-    // spawn under Defender real-time scanning (~11.6s measured, #9581) doesn't
-    // ETIMEDOUT and silently return [] — the documented "listWindows() returns
-    // 0 on a Defender-heavy host" failure. Raisable via
-    // ELIZA_COMPUTERUSE_PS_TIMEOUT_MS for extreme hosts.
-    const output = execSync(
-      `powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object Id, MainWindowTitle | ConvertTo-Json"`,
-      { encoding: "utf-8", timeout: psSpawnTimeoutMs(15000) },
-    );
     const parsed = JSON.parse(output);
     const list = Array.isArray(parsed) ? parsed : [parsed];
     return list.map((p: { Id: number; MainWindowTitle: string }) => ({
@@ -307,6 +386,18 @@ function listWindowsWindows(): WindowInfo[] {
   }
 }
 
+function listWindowsWindows(): WindowInfo[] {
+  try {
+    const output = execSync(`powershell -Command "${WINDOWS_LIST_PS}"`, {
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+    return parseWindowsWindowList(output);
+  } catch {
+    return [];
+  }
+}
+
 // ── Focus Window ────────────────────────────────────────────────────────────
 
 /**
@@ -314,7 +405,7 @@ function listWindowsWindows(): WindowInfo[] {
  * `get_current_window_id`). Best-effort per-OS query; returns `null` when no
  * window is focused or the platform query is unavailable.
  */
-export function getActiveWindow(): WindowInfo | null {
+export async function getActiveWindow(): Promise<WindowInfo | null> {
   const os = currentPlatform();
   try {
     if (os === "darwin") {
@@ -349,20 +440,14 @@ export function getActiveWindow(): WindowInfo | null {
       return { id, title, app: title };
     }
     if (os === "win32") {
-      const ps =
-        "Add-Type 'using System;using System.Runtime.InteropServices;" +
-        'public class W{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();}\';' +
-        "$h=[W]::GetForegroundWindow();" +
-        "$p=Get-Process | Where-Object { $_.MainWindowHandle -eq $h } | Select-Object -First 1;" +
-        'if($p){ "$($p.Id)|||$($p.MainWindowTitle)|||$($p.ProcessName)" }';
-      const out = execSync(
-        `powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`,
-        {
-          encoding: "utf-8",
-          timeout: psSpawnTimeoutMs(8000),
-          stdio: ["ignore", "pipe", "ignore"],
-        },
-      ).trim();
+      const ps = `
+        if (-not ([System.Management.Automation.PSTypeName]'ElizaWin32.Fg').Type) {
+          Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();' -Name Fg -Namespace ElizaWin32
+        }
+        $h = [ElizaWin32.Fg]::GetForegroundWindow()
+        $p = Get-Process | Where-Object { $_.MainWindowHandle -eq $h } | Select-Object -First 1
+        if ($p) { "$($p.Id)|||$($p.MainWindowTitle)|||$($p.ProcessName)" }`;
+      const out = (await runWindowsPowerShell(ps, 8000)).trim();
       if (!out) return null;
       const [id, title, app] = out.split("|||");
       if (!id) return null;
@@ -394,17 +479,17 @@ export function getApplicationWindows(appName: string): WindowInfo[] {
  * size+position). Position is required; width/height optional (position-only
  * when omitted).
  */
-export function resizeWindow(
+export async function resizeWindow(
   windowId: string,
   x: number,
   y: number,
   width?: number,
   height?: number,
-): { success: true; message: string } {
+): Promise<{ success: true; message: string }> {
   if (typeof x !== "number" || typeof y !== "number") {
     throw new Error("x and y are required for window set_bounds");
   }
-  setWindowBounds(windowId, x, y, width, height);
+  await setWindowBounds(windowId, x, y, width, height);
   const size =
     width !== undefined && height !== undefined
       ? ` size (${validateInt(width)}x${validateInt(height)})`
@@ -425,9 +510,11 @@ export function resizeWindow(
  * `position`/`size` of the matched process window. Linux: `xdotool
  * getwindowgeometry --shell`.
  */
-export function getWindowBounds(windowId?: string): ScreenRegion {
+export async function getWindowBounds(
+  windowId?: string,
+): Promise<ScreenRegion> {
   const os = currentPlatform();
-  const id = windowId ?? getActiveWindow()?.id;
+  const id = windowId ?? (await getActiveWindow())?.id;
   if (!id) {
     throw new Error(
       "No windowId provided and no active window to read bounds from",
@@ -482,21 +569,20 @@ export function getWindowBounds(windowId?: string): ScreenRegion {
     // NOTE: do NOT pass -UsingNamespace System.Runtime.InteropServices — Add-Type
     // already imports it for the DllImport attribute, and a duplicate using is a
     // warning-as-error that silently fails the type and yields a zeroed rect.
+    // Guarded + uniquely-named so it is idempotent in the persistent warm host.
     const ps = `
-      Add-Type -MemberDefinition '[StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);' -Name Win32Rect -Namespace Win32
+      if (-not ([System.Management.Automation.PSTypeName]'ElizaWin32.Rect').Type) {
+        Add-Type -MemberDefinition '[StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);' -Name Rect -Namespace ElizaWin32
+      }
       $proc = Get-Process -Id ${commandId} -ErrorAction SilentlyContinue
       if (-not $proc) { throw "Window not found: ${commandId}" }
-      $r = New-Object "Win32.Win32Rect+RECT"
-      [void][Win32.Win32Rect]::GetWindowRect($proc.MainWindowHandle, [ref]$r)
+      $r = New-Object "ElizaWin32.Rect+RECT"
+      [void][ElizaWin32.Rect]::GetWindowRect($proc.MainWindowHandle, [ref]$r)
       "$($r.Left),$($r.Top),$($r.Right),$($r.Bottom)"
     `;
     // 10s: the first Add-Type call JIT-compiles the P/Invoke shim (cold csc),
     // which can exceed the 5s used elsewhere when the box is under load.
-    const out = runCommand(
-      "powershell",
-      ["-Command", ps],
-      psSpawnTimeoutMs(10000),
-    ).trim();
+    const out = (await runWindowsPowerShell(ps, 10000)).trim();
     const [left, top, right, bottom] = out
       .split(",")
       .map((v) => Number(v.trim()));
@@ -514,7 +600,7 @@ export function getWindowBounds(windowId?: string): ScreenRegion {
   throw new Error(`getWindowBounds is not supported on ${os}`);
 }
 
-export function focusWindow(windowId: string): void {
+export async function focusWindow(windowId: string): Promise<void> {
   const os = currentPlatform();
   const target = resolveWindowTarget(windowId);
 
@@ -544,26 +630,28 @@ export function focusWindow(windowId: string): void {
   } else if (os === "win32") {
     const commandId = resolveWindowCommandId(windowId);
     const ps = `
-      Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name Win32 -Namespace Win32
+      if (-not ([System.Management.Automation.PSTypeName]'ElizaWin32.Focus').Type) {
+        Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name Focus -Namespace ElizaWin32
+      }
       $proc = Get-Process -Id ${commandId} -ErrorAction SilentlyContinue
       if (-not $proc) { throw "Window not found: ${commandId}" }
-      [Win32.Win32]::SetForegroundWindow($proc.MainWindowHandle)
+      [ElizaWin32.Focus]::SetForegroundWindow($proc.MainWindowHandle)
     `;
-    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
+    await runWindowsPowerShell(ps, 8000);
   }
 }
 
-export function switchWindow(windowQuery: string): void {
-  focusWindow(windowQuery);
+export async function switchWindow(windowQuery: string): Promise<void> {
+  await focusWindow(windowQuery);
 }
 
-function setWindowBounds(
+async function setWindowBounds(
   windowId: string,
   x: number,
   y: number,
   width?: number,
   height?: number,
-): void {
+): Promise<void> {
   const safeX = validateInt(x);
   const safeY = validateInt(y);
   const safeWidth =
@@ -627,22 +715,24 @@ function setWindowBounds(
     const widthArg = safeWidth ?? 0;
     const heightArg = safeHeight ?? 0;
     const ps = `
-      Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);' -Name Win32 -Namespace Win32
+      if (-not ([System.Management.Automation.PSTypeName]'ElizaWin32.Pos').Type) {
+        Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);' -Name Pos -Namespace ElizaWin32
+      }
       $proc = Get-Process -Id ${commandId} -ErrorAction SilentlyContinue
       if (-not $proc) { throw "Window not found: ${commandId}" }
-      [Win32.Win32]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, ${safeX}, ${safeY}, ${widthArg}, ${heightArg}, ${noSizeFlag})
+      [ElizaWin32.Pos]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, ${safeX}, ${safeY}, ${widthArg}, ${heightArg}, ${noSizeFlag})
     `;
-    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
+    await runWindowsPowerShell(ps, 8000);
     return;
   }
 
   throw new Error(`Window move is not supported on ${os}`);
 }
 
-export function arrangeWindows(arrangement = "tile"): {
+export async function arrangeWindows(arrangement = "tile"): Promise<{
   success: true;
   message: string;
-} {
+}> {
   const windows = listWindows();
   if (windows.length === 0) {
     return {
@@ -656,42 +746,53 @@ export function arrangeWindows(arrangement = "tile"): {
   const count = windows.length;
   const cascadeOffset = 32;
 
-  windows.forEach((windowInfo, index) => {
+  for (const [index, windowInfo] of windows.entries()) {
     if (normalized === "cascade") {
       const width = Math.max(480, Math.floor(screen.width * 0.72));
       const height = Math.max(360, Math.floor(screen.height * 0.72));
       const maxOffsetX = Math.max(0, screen.width - width);
       const maxOffsetY = Math.max(0, screen.height - height);
-      setWindowBounds(
+      await setWindowBounds(
         windowInfo.id,
         Math.min(index * cascadeOffset, maxOffsetX),
         Math.min(index * cascadeOffset, maxOffsetY),
         width,
         height,
       );
-      return;
-    }
-
-    if (normalized === "vertical") {
+    } else if (normalized === "vertical") {
       const width = Math.max(1, Math.floor(screen.width / count));
-      setWindowBounds(windowInfo.id, index * width, 0, width, screen.height);
-      return;
-    }
-
-    if (normalized === "horizontal") {
+      await setWindowBounds(
+        windowInfo.id,
+        index * width,
+        0,
+        width,
+        screen.height,
+      );
+    } else if (normalized === "horizontal") {
       const height = Math.max(1, Math.floor(screen.height / count));
-      setWindowBounds(windowInfo.id, 0, index * height, screen.width, height);
-      return;
+      await setWindowBounds(
+        windowInfo.id,
+        0,
+        index * height,
+        screen.width,
+        height,
+      );
+    } else {
+      const columns = Math.ceil(Math.sqrt(count));
+      const rows = Math.ceil(count / columns);
+      const width = Math.max(1, Math.floor(screen.width / columns));
+      const height = Math.max(1, Math.floor(screen.height / rows));
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      await setWindowBounds(
+        windowInfo.id,
+        column * width,
+        row * height,
+        width,
+        height,
+      );
     }
-
-    const columns = Math.ceil(Math.sqrt(count));
-    const rows = Math.ceil(count / columns);
-    const width = Math.max(1, Math.floor(screen.width / columns));
-    const height = Math.max(1, Math.floor(screen.height / rows));
-    const column = index % columns;
-    const row = Math.floor(index / columns);
-    setWindowBounds(windowInfo.id, column * width, row * height, width, height);
-  });
+  }
 
   return {
     success: true,
@@ -699,18 +800,18 @@ export function arrangeWindows(arrangement = "tile"): {
   };
 }
 
-export function moveWindow(
+export async function moveWindow(
   windowId: string,
   x?: number,
   y?: number,
-): {
+): Promise<{
   success: true;
   message: string;
-} {
+}> {
   if (typeof x !== "number" || typeof y !== "number") {
     throw new Error("x and y are required for window move");
   }
-  setWindowBounds(windowId, x, y);
+  await setWindowBounds(windowId, x, y);
   return {
     success: true,
     message: `Moved window to (${validateInt(x)}, ${validateInt(y)}).`,
@@ -719,7 +820,23 @@ export function moveWindow(
 
 // ── Minimize Window ─────────────────────────────────────────────────────────
 
-export function minimizeWindow(windowId: string): void {
+/**
+ * PowerShell `ShowWindow` P/Invoke, guarded + uniquely-named so it is idempotent
+ * in the persistent warm host (minimize/maximize/restore share the same import).
+ * `nCmdShow`: 6=minimize, 3=maximize, 9=restore.
+ */
+function showWindowPs(commandId: string, nCmdShow: number): string {
+  return `
+    if (-not ([System.Management.Automation.PSTypeName]'ElizaWin32.Show').Type) {
+      Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Name Show -Namespace ElizaWin32
+    }
+    $proc = Get-Process -Id ${commandId} -ErrorAction SilentlyContinue
+    if (-not $proc) { throw "Window not found: ${commandId}" }
+    [ElizaWin32.Show]::ShowWindow($proc.MainWindowHandle, ${nCmdShow})
+  `;
+}
+
+export async function minimizeWindow(windowId: string): Promise<void> {
   const os = currentPlatform();
   const target = resolveWindowTarget(windowId);
 
@@ -737,19 +854,13 @@ export function minimizeWindow(windowId: string): void {
     }
   } else if (os === "win32") {
     const commandId = resolveWindowCommandId(windowId);
-    const ps = `
-      Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Name Win32 -Namespace Win32
-      $proc = Get-Process -Id ${commandId} -ErrorAction SilentlyContinue
-      if (-not $proc) { throw "Window not found: ${commandId}" }
-      [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 6)
-    `;
-    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
+    await runWindowsPowerShell(showWindowPs(commandId, 6), 8000);
   }
 }
 
 // ── Maximize Window ─────────────────────────────────────────────────────────
 
-export function maximizeWindow(windowId: string): void {
+export async function maximizeWindow(windowId: string): Promise<void> {
   const os = currentPlatform();
   const target = resolveWindowTarget(windowId);
 
@@ -771,17 +882,11 @@ export function maximizeWindow(windowId: string): void {
     }
   } else if (os === "win32") {
     const commandId = resolveWindowCommandId(windowId);
-    const ps = `
-      Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Name Win32 -Namespace Win32
-      $proc = Get-Process -Id ${commandId} -ErrorAction SilentlyContinue
-      if (-not $proc) { throw "Window not found: ${commandId}" }
-      [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 3)
-    `;
-    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
+    await runWindowsPowerShell(showWindowPs(commandId, 3), 8000);
   }
 }
 
-export function restoreWindow(windowId: string): void {
+export async function restoreWindow(windowId: string): Promise<void> {
   const os = currentPlatform();
   const target = resolveWindowTarget(windowId);
 
@@ -810,19 +915,13 @@ export function restoreWindow(windowId: string): void {
     }
   } else if (os === "win32") {
     const commandId = resolveWindowCommandId(windowId);
-    const ps = `
-      Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Name Win32 -Namespace Win32
-      $proc = Get-Process -Id ${commandId} -ErrorAction SilentlyContinue
-      if (-not $proc) { throw "Window not found: ${commandId}" }
-      [Win32.Win32]::ShowWindow($proc.MainWindowHandle, 9)
-    `;
-    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
+    await runWindowsPowerShell(showWindowPs(commandId, 9), 8000);
   }
 }
 
 // ── Close Window ────────────────────────────────────────────────────────────
 
-export function closeWindow(windowId: string): void {
+export async function closeWindow(windowId: string): Promise<void> {
   const os = currentPlatform();
   const target = resolveWindowTarget(windowId);
 
@@ -843,8 +942,11 @@ export function closeWindow(windowId: string): void {
   } else if (os === "win32") {
     const commandId = resolveWindowCommandId(windowId);
     const ps = `Stop-Process -Id ${commandId} -ErrorAction SilentlyContinue`;
-    runCommand("powershell", ["-Command", ps], psSpawnTimeoutMs(5000));
+    await runWindowsPowerShell(ps, 8000);
   }
+  // The window list just changed (a window is gone) — drop the cache so the
+  // next list/scene read reflects reality rather than the closed window.
+  windowsCache = null;
 }
 
 export const list_windows = listWindows;
@@ -872,7 +974,50 @@ export const WINDOWS_PRIMARY_SCREEN_SIZE_COMMAND =
   'powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; ' +
   '[System.Windows.Forms.Screen]::PrimaryScreen.Bounds | ConvertTo-Json -Compress"';
 
+// Primary screen size is stable for a session. Cache the authoritative read
+// (seeded via the warm host by `warmScreenSizeCache()`) so callers don't
+// re-spawn `powershell.exe` — and so the win32 read doesn't ETIMEDOUT to the
+// wrong 1920x1080 fallback against a cold spawn that exceeds its 5s budget.
+let screenSizeCache: ScreenSize | null = null;
+
 export function getScreenSize(): ScreenSize {
+  if (screenSizeCache) return screenSizeCache;
+  const s = computeScreenSize();
+  if (s) {
+    // Cache real reads (not the hard fallback) so the sync path also stops
+    // re-spawning powershell.exe on every call when the warm host is absent.
+    screenSizeCache = s;
+    return s;
+  }
+  return { width: 1920, height: 1080 };
+}
+
+/**
+ * Pre-seed the screen-size cache via the warm PowerShell host (Windows only).
+ * No-op (never throws) off Windows or when the host is unavailable.
+ */
+export async function warmScreenSizeCache(): Promise<void> {
+  if (currentPlatform() !== "win32" || !psHostAvailable()) return;
+  try {
+    const out = await runPsHost(
+      "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::PrimaryScreen.Bounds | ConvertTo-Json -Compress",
+      10000,
+    );
+    const b = JSON.parse(out);
+    if (
+      typeof b?.Width === "number" &&
+      typeof b?.Height === "number" &&
+      b.Width > 0 &&
+      b.Height > 0
+    ) {
+      screenSizeCache = { width: b.Width, height: b.Height };
+    }
+  } catch {
+    /* leave cache untouched; computeScreenSize remains the fallback */
+  }
+}
+
+function computeScreenSize(): ScreenSize | null {
   const os = currentPlatform();
 
   if (os === "darwin") {
@@ -924,7 +1069,7 @@ export function getScreenSize(): ScreenSize {
       if (match) {
         const [, width, height] = match;
         if (width === undefined || height === undefined) {
-          return { width: 1920, height: 1080 };
+          return null;
         }
         return {
           width: Number.parseInt(width, 10),
@@ -934,7 +1079,7 @@ export function getScreenSize(): ScreenSize {
     } catch {
       /* fallback */
     }
-    return { width: 1920, height: 1080 };
+    return null;
   }
 
   if (os === "linux") {
@@ -963,7 +1108,7 @@ export function getScreenSize(): ScreenSize {
         if (match) {
           const [, width, height] = match;
           if (width === undefined || height === undefined) {
-            return { width: 1920, height: 1080 };
+            return null;
           }
           return {
             width: Number.parseInt(width, 10),
@@ -974,14 +1119,14 @@ export function getScreenSize(): ScreenSize {
         /* fallback */
       }
     }
-    return { width: 1920, height: 1080 };
+    return null;
   }
 
   if (os === "win32") {
     try {
       const output = execSync(WINDOWS_PRIMARY_SCREEN_SIZE_COMMAND, {
         encoding: "utf-8",
-        timeout: psSpawnTimeoutMs(5000),
+        timeout: 5000,
       });
       const bounds = JSON.parse(output);
       if (
@@ -995,8 +1140,8 @@ export function getScreenSize(): ScreenSize {
     } catch {
       /* fallback */
     }
-    return { width: 1920, height: 1080 };
+    return null;
   }
 
-  return { width: 1920, height: 1080 };
+  return null;
 }

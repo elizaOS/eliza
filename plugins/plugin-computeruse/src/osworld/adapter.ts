@@ -64,7 +64,7 @@ export class OSWorldAdapter {
   async getObservation(instruction: string): Promise<OSWorldObservation> {
     let screenshot = "";
     try {
-      const buf = captureScreenshot();
+      const buf = await captureScreenshot();
       screenshot = buf.toString("base64");
     } catch {
       // Screenshot failed — return empty

@@ -20,6 +20,7 @@ import {
   createPermissionDeniedError,
   isPermissionDeniedError,
 } from "./permissions.js";
+import { psHostAvailable, runPsHost } from "./ps-host.js";
 import { tagScreenshotError } from "./screenshot-errors.js";
 import {
   canUseWaylandScreenshotPortal,
@@ -33,7 +34,9 @@ const SCREEN_RECORDING_OPERATION_MESSAGE =
 /**
  * Capture a screenshot of the entire screen (or a region) and return as a Buffer (PNG).
  */
-export function captureScreenshot(region?: ScreenRegion): Buffer {
+export async function captureScreenshot(
+  region?: ScreenRegion,
+): Promise<Buffer> {
   const os = currentPlatform();
   const tmpFile = join(tmpdir(), `computeruse-screenshot-${Date.now()}.png`);
 
@@ -43,7 +46,7 @@ export function captureScreenshot(region?: ScreenRegion): Buffer {
     } else if (os === "linux") {
       captureLinux(tmpFile, region);
     } else if (os === "win32") {
-      captureWindows(tmpFile, region);
+      await captureWindows(tmpFile, region);
     }
 
     const data = readFileSync(tmpFile);
@@ -203,7 +206,10 @@ function detectX11ScreenSize(): string {
 
 // ── Windows ─────────────────────────────────────────────────────────────────
 
-function captureWindows(tmpFile: string, _region?: ScreenRegion): void {
+async function captureWindows(
+  tmpFile: string,
+  _region?: ScreenRegion,
+): Promise<void> {
   const escapedPath = tmpFile.replace(/\//g, "\\");
   const psCmd = [
     "Add-Type -AssemblyName System.Windows.Forms",
@@ -216,6 +222,16 @@ function captureWindows(tmpFile: string, _region?: ScreenRegion): void {
     "$bitmap.Dispose()",
   ].join("; ");
 
+  // Prefer the warm host (a cold spawn is ~10-16s on Defender hosts and would
+  // ETIMEDOUT this 15s budget); fall back to the one-shot spawn.
+  if (psHostAvailable()) {
+    try {
+      await runPsHost(psCmd, 15000);
+      return;
+    } catch {
+      /* warm host unavailable/errored — fall back to one-shot spawn */
+    }
+  }
   execSync(`powershell -Command "${psCmd}"`, {
     timeout: 15000,
     stdio: ["ignore", "pipe", "pipe"],

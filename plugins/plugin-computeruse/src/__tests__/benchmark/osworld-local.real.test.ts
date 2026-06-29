@@ -16,17 +16,17 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { assertScreenshotBase64NotBlank } from "../../../test/helpers/screenshot-quality.ts";
 import { OSWorldAdapter } from "../../osworld/adapter.js";
 import type { OSWorldAction } from "../../osworld/types.js";
 import { captureScreenshot } from "../../platform/screenshot.js";
 import { ComputerUseService } from "../../services/computer-use-service.js";
-import { assertScreenshotBase64NotBlank } from "../../../test/helpers/screenshot-quality.ts";
 
 // ── Environment detection ───────────────────────────────────────────────
 
 let canCapture = false;
 try {
-  captureScreenshot();
+  await captureScreenshot();
   canCapture = true;
 } catch {
   // No screen recording permission
