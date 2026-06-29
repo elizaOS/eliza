@@ -1,5 +1,4 @@
 {
-  "$schema": "./.pr-deny-list.schema.json",
   "description": "Single source of truth for ui-smoke specs that are deliberately NOT on the keyless PR path. The PR lane is directory-driven: it runs every test/ui-smoke/*.spec.ts EXCEPT the entries below, so any new spec is on the PR path by default and every exclusion is recorded here with a category and reason. Wiring is enforced by test/ui-smoke-coverage.test.ts; discovery is implemented by scripts/ui-smoke-pr-specs.mjs. Categories: live-only (genuinely cannot run keyless — needs real cloud credits, a model daemon, or a live stack and would fail/cost money), dedicated-tool (a long-running reporting/audit harness with its own package script and a broad/destructive walk), keyless-debt (fixture-capable, SHOULD run keyless but is not yet verified — a non-growing ratchet, see MAX_KEYLESS_DEBT).",
   "specs": [
     {
