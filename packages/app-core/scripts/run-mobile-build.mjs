@@ -91,13 +91,6 @@ import {
   stageAndroidAgentRuntime,
 } from "./lib/stage-android-agent.mjs";
 import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
-import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
-import {
-  ensurePlistArrayStrings,
-  removePbxListEntries,
-  replaceIosAppGroupPlaceholders,
-  replaceOrInsertPlistString,
-} from "./mobile/ios-plist.mjs";
 import {
   appendMissingAndroidManifestBlock,
   appendMissingApplicationBlock,
@@ -116,6 +109,13 @@ import {
   stripXmlComments,
   validateAndroidAppActionsXmlResource,
 } from "./mobile/android-manifest.mjs";
+import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
+import {
+  ensurePlistArrayStrings,
+  removePbxListEntries,
+  replaceIosAppGroupPlaceholders,
+  replaceOrInsertPlistString,
+} from "./mobile/ios-plist.mjs";
 import { resolveAndroidBuildTarget } from "./mobile/targets/android.mjs";
 
 export {
