@@ -87,6 +87,17 @@ export {
   type TextProps,
   VStack,
 } from "./primitives.tsx";
+// WebXR runtime — make navigator.xr available everywhere (native preferred,
+// polyfill fallback) + enter a real immersive XRWebGLLayer scene.
+export {
+  detectWebXRCapability,
+  ensureWebXR,
+  enterImmersiveScene,
+  type ImmersivePanel,
+  type ImmersiveSceneHandle,
+  type ImmersiveSceneOptions,
+  type WebXRCapability,
+} from "./webxr-runtime.ts";
 // Real 3D spatial renderer (XR modality) + its deterministic math core.
 export {
   type XRDevicePose,
