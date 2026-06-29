@@ -69,7 +69,7 @@ app.post("/", async (c) => {
     // This route is on the agent reply hot path: the always-on
     // `relevant-conversations` recall provider embeds the incoming message on
     // EVERY memory-backed turn (blocking Stage-1), so paying the old per-request
-    // auth+org+moderation DB chain here added ~1.5-6s to every reply. Non-API-key
+    // auth+org+moderation DB chain here added ~1.5s+ to every reply. Non-API-key
     // / cache-unavailable requests fall to the authoritative slow path verbatim.
     let user: { id: string; organization_id: string | null };
     let apiKeyId: string | null;
