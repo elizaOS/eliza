@@ -20,6 +20,7 @@
 
 import type {
   Action,
+  ActionResult,
   IAgentRuntime,
   Memory,
   Plugin,
@@ -44,8 +45,120 @@ import type {
 import {
   fromWireError,
   toWireError,
+  type WireError,
 } from "@elizaos/plugin-remote-manifest/worker-runtime/error";
 import * as z from "zod";
+
+const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
+  ]),
+) as z.ZodType<JsonValue>;
+
+const JsonObjectSchema = z.record(z.string(), JsonValueSchema);
+
+const WireErrorSchema = z
+  .object({
+    name: z.string(),
+    message: z.string(),
+    stack: z.string().optional(),
+    cause: JsonValueSchema.optional(),
+    code: z.string().optional(),
+  })
+  .passthrough() as z.ZodType<WireError>;
+
+const MemorySchema = z
+  .object({
+    entityId: z.string(),
+    roomId: z.string(),
+    content: JsonObjectSchema,
+  })
+  .catchall(JsonValueSchema) as z.ZodType<Memory>;
+
+const UpdateMemorySchema = z
+  .object({
+    id: z.string(),
+    content: JsonObjectSchema.optional(),
+  })
+  .catchall(JsonValueSchema) as z.ZodType<
+  Parameters<IAgentRuntime["updateMemory"]>[0]
+>;
+
+const ActionResultSchema = z
+  .object({
+    success: z.boolean(),
+    text: z.string().optional(),
+    userFacingText: z.string().optional(),
+    verifiedUserFacing: z.boolean().optional(),
+    values: JsonObjectSchema.optional(),
+    data: JsonObjectSchema.optional(),
+    error: z.union([z.string(), WireErrorSchema]).optional(),
+    continueChain: z.boolean().optional(),
+  })
+  .catchall(JsonValueSchema);
+
+const ActionHandlerWireResultSchema = z.union([ActionResultSchema, z.null()]);
+
+const RouteTypeSchema = z.enum([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "STATIC",
+]);
+
+const RouteHandlerResultSchema = z.object({
+  status: z.number().int(),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: JsonValueSchema.optional(),
+});
+
+const HostRpcArgsSchema = {
+  getService: z.object({ serviceType: z.string() }).passthrough(),
+  useModel: z
+    .object({ modelType: z.string(), params: JsonValueSchema })
+    .passthrough(),
+  getMemory: z.object({ memoryId: z.string() }).passthrough(),
+  createMemory: z
+    .object({
+      memory: MemorySchema,
+      tableName: z.string().optional(),
+    })
+    .passthrough(),
+  updateMemory: z.object({ memory: UpdateMemorySchema }).passthrough(),
+  emitEvent: z
+    .object({
+      name: z.string(),
+      payload: JsonObjectSchema.optional(),
+    })
+    .passthrough(),
+  getSetting: z.object({ key: z.string() }).passthrough(),
+  setSetting: z
+    .object({
+      key: z.string(),
+      value: JsonValueSchema,
+    })
+    .passthrough(),
+  composeState: z.object({ message: MemorySchema }).passthrough(),
+} as const;
+
+function toActionResult(
+  value: z.infer<typeof ActionHandlerWireResultSchema>,
+): ActionResult | undefined {
+  if (value === null) return undefined;
+  return {
+    ...value,
+    ...(typeof value.error === "object" && value.error !== null
+      ? { error: fromWireError(value.error, "remote worker action") }
+      : {}),
+  };
+}
 
 /**
  * Schema for the announce/dynamic descriptor the worker emits via
@@ -104,10 +217,10 @@ const RouteDescriptorSchema = z
   .object({
     path: z.string(),
     routeHandler: RemoteFunctionRefSchema.optional(),
-    type: z.unknown().optional(),
-    name: z.unknown().optional(),
-    public: z.unknown().optional(),
-    isMultipart: z.unknown().optional(),
+    type: RouteTypeSchema.optional(),
+    name: z.string().optional(),
+    public: z.boolean().optional(),
+    isMultipart: z.boolean().optional(),
   })
   .passthrough();
 
@@ -559,7 +672,8 @@ export class RemotePluginBridge {
             ...(callbackId ? { callbackId } : {}),
           },
         );
-        return result as unknown as ReturnType<Action["handler"]>;
+        const parsed = ActionHandlerWireResultSchema.parse(result);
+        return toActionResult(parsed);
       } finally {
         if (callbackId) {
           this.state.actionCallbacks.delete(callbackId);
@@ -692,21 +806,35 @@ export class RemotePluginBridge {
     if (!descriptor.routeHandler) return null;
     const ref = descriptor.routeHandler;
     const routeHandler = async (ctx: unknown) =>
-      this.workerRpc("route", ref.id, { ctx: this.normalize(ctx) });
+      RouteHandlerResultSchema.parse(
+        await this.workerRpc("route", ref.id, { ctx: this.normalize(ctx) }),
+      );
 
-    const route = {
+    const routeBase = {
       path: descriptor.path,
-      ...(descriptor.type ? { type: descriptor.type as string } : {}),
-      ...(descriptor.name ? { name: descriptor.name as string } : {}),
-      ...(descriptor.public !== undefined
-        ? { public: Boolean(descriptor.public) }
-        : {}),
+      type: descriptor.type ?? "GET",
       ...(descriptor.isMultipart !== undefined
-        ? { isMultipart: Boolean(descriptor.isMultipart) }
+        ? { isMultipart: descriptor.isMultipart }
         : {}),
       routeHandler,
-    } as unknown as NonNullable<Plugin["routes"]>[number];
-    return route;
+    };
+    if (descriptor.public === true) {
+      if (!descriptor.name) {
+        throw new Error(
+          `[RemotePluginBridge] public route ${descriptor.path} must declare a name`,
+        );
+      }
+      return {
+        ...routeBase,
+        public: true,
+        name: descriptor.name,
+      };
+    }
+    return {
+      ...routeBase,
+      ...(descriptor.name ? { name: descriptor.name } : {}),
+      ...(descriptor.public === false ? { public: false } : {}),
+    };
   }
 
   private makeEventHandlerProxy(ref: ParsedFunctionRef) {
@@ -815,73 +943,65 @@ export class RemotePluginBridge {
   private async dispatchRuntimeMethod(
     message: HostRpcMessage,
   ): Promise<JsonValue> {
-    const args = (message.args ?? {}) as Record<string, JsonValue>;
     switch (message.method) {
       case "getService": {
-        const serviceType = String(args.serviceType);
+        const args = HostRpcArgsSchema.getService.parse(message.args);
+        const serviceType = args.serviceType;
         const service = this.runtime.getService(serviceType);
         return service ? { available: true } : null;
       }
       case "useModel": {
-        const modelType = String(args.modelType);
-        const params = args.params as JsonValue;
+        const args = HostRpcArgsSchema.useModel.parse(message.args);
         const result = await this.runtime.useModel(
-          modelType as Parameters<IAgentRuntime["useModel"]>[0],
-          params as Parameters<IAgentRuntime["useModel"]>[1],
+          args.modelType as Parameters<IAgentRuntime["useModel"]>[0],
+          args.params as Parameters<IAgentRuntime["useModel"]>[1],
         );
         return (result ?? null) as JsonValue;
       }
       case "getMemory": {
-        const memoryId = String(args.memoryId);
+        const args = HostRpcArgsSchema.getMemory.parse(message.args);
         const memory = await this.runtime.getMemoryById(
-          memoryId as Parameters<IAgentRuntime["getMemoryById"]>[0],
+          args.memoryId as Parameters<IAgentRuntime["getMemoryById"]>[0],
         );
         return JSON.parse(JSON.stringify(memory ?? null)) as JsonValue;
       }
       case "createMemory": {
-        const memory = args.memory as JsonValue;
-        const tableName =
-          typeof args.tableName === "string" ? args.tableName : undefined;
+        const args = HostRpcArgsSchema.createMemory.parse(message.args);
         const created = await this.runtime.createMemory(
-          memory as unknown as Memory,
-          tableName ?? "messages",
+          args.memory,
+          args.tableName ?? "messages",
         );
         return String(created);
       }
       case "updateMemory": {
-        await this.runtime.updateMemory(
-          args.memory as unknown as Parameters<
-            IAgentRuntime["updateMemory"]
-          >[0],
-        );
+        const args = HostRpcArgsSchema.updateMemory.parse(message.args);
+        await this.runtime.updateMemory(args.memory);
         return null;
       }
       case "emitEvent": {
-        const eventName = String(args.name);
-        const payload = args.payload as JsonValue;
-        await this.runtime.emitEvent(
-          eventName as Parameters<IAgentRuntime["emitEvent"]>[0],
-          payload as unknown as Parameters<IAgentRuntime["emitEvent"]>[1],
-        );
+        const args = HostRpcArgsSchema.emitEvent.parse(message.args);
+        await this.runtime.emitEvent(args.name, {
+          ...(args.payload ?? {}),
+          runtime: this.runtime,
+        });
         return null;
       }
       case "getSetting": {
-        const key = String(args.key);
-        const value = this.runtime.getSetting(key);
+        const args = HostRpcArgsSchema.getSetting.parse(message.args);
+        const value = this.runtime.getSetting(args.key);
         return (value ?? null) as JsonValue;
       }
       case "setSetting": {
-        const key = String(args.key);
-        const value = args.value;
+        const args = HostRpcArgsSchema.setSetting.parse(message.args);
         this.runtime.setSetting(
-          key,
-          value as Parameters<IAgentRuntime["setSetting"]>[1],
+          args.key,
+          args.value as Parameters<IAgentRuntime["setSetting"]>[1],
         );
         return null;
       }
       case "composeState": {
-        const memory = args.message as unknown as Memory;
-        const result = await this.runtime.composeState(memory);
+        const args = HostRpcArgsSchema.composeState.parse(message.args);
+        const result = await this.runtime.composeState(args.message);
         return JSON.parse(JSON.stringify(result ?? null)) as JsonValue;
       }
       default:
