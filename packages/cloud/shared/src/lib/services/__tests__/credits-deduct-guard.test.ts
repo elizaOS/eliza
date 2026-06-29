@@ -19,7 +19,7 @@
  * Self-skips if PGlite is unavailable (mirrors the sibling suite).
  */
 
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -54,6 +54,7 @@ const ORG_ID = "00000000-0000-0000-0000-0000000000d1";
 const USER_ID = "00000000-0000-0000-0000-0000000000d2";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
+let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let creditsService: typeof import("../credits").creditsService;
 let InsufficientCreditsError: typeof import("../credits").InsufficientCreditsError;
 let pgliteReady = true;
@@ -86,7 +87,7 @@ async function listDebits(): Promise<{ amount: number; type: string }[]> {
 
 beforeAll(async () => {
   try {
-    ({ dbWrite } = await import("../../../db/client"));
+    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ creditsService, InsufficientCreditsError } = await import("../credits"));
 
     // The columns the real credit-deduct SQL + the auto-top-up findById
@@ -140,6 +141,10 @@ beforeAll(async () => {
     console.warn("[credits-deduct-guard] PGlite unavailable, skipping DB cases:", error);
   }
 }, PGLITE_TIMEOUT);
+
+afterAll(async () => {
+  if (closeDb) await closeDb();
+});
 
 describe("reserveAndDeductCredits — atomic debit", () => {
   beforeEach(async () => {

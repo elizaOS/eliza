@@ -22,6 +22,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/client";
 import { logger } from "../utils/logger";
 
@@ -52,7 +53,7 @@ function maskIp(ip: string): string {
  */
 export async function runWithSignupGrantIpCap(
   ip: string | undefined,
-  grant: () => Promise<void>,
+  grant: (tx?: DbTransaction) => Promise<void>,
 ): Promise<boolean> {
   if (!ip) {
     await grant();
@@ -88,7 +89,7 @@ export async function runWithSignupGrantIpCap(
       return false;
     }
 
-    await grant();
+    await grant(tx);
     return true;
   });
 }
