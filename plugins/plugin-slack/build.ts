@@ -1,29 +1,21 @@
-import { build } from "bun";
+#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-slack (Node). Orchestration lives in the shared
+ * driver (plugins/plugin-build.ts); this lists only what differs.
+ */
+import { buildPlugin } from "../plugin-build";
 
-await build({
-  entrypoints: ["./src/index.ts"],
-  outdir: "./dist",
-  target: "node",
-  format: "esm",
-  splitting: false,
-  sourcemap: "external",
-  minify: false,
-  external: ["@elizaos/core", "@slack/bolt", "@slack/web-api", "zod"],
+await buildPlugin({
+  name: "@elizaos/plugin-slack",
+  externals: ["@elizaos/core", "@slack/bolt", "@slack/web-api", "zod"],
+  targets: [
+    {
+      label: "Node",
+      entry: "./src/index.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+    },
+  ],
+  dtsProject: "tsconfig.build.json",
 });
-
-const proc = Bun.spawn(
-  ["bunx", "tsc", "-p", "tsconfig.build.json", "--noCheck"],
-  {
-    cwd: import.meta.dir,
-    stdout: "inherit",
-    stderr: "inherit",
-  },
-);
-
-const exitCode = await proc.exited;
-if (exitCode !== 0) {
-  console.error("TypeScript declaration generation failed");
-  process.exit(exitCode);
-}
-
-console.log("Build complete!");

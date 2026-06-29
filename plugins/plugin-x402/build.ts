@@ -1,28 +1,21 @@
-import { build } from "bun";
+#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-x402 (Node). Orchestration lives in the shared
+ * driver (plugins/plugin-build.ts); this lists only what differs.
+ */
+import { buildPlugin } from "../plugin-build";
 
-await build({
-  entrypoints: ["./src/index.ts"],
-  outdir: "./dist",
-  target: "node",
-  format: "esm",
-  splitting: false,
-  sourcemap: "external",
-  minify: false,
-  external: ["@elizaos/core", "viem", "drizzle-orm", "@solana/web3.js"],
+await buildPlugin({
+  name: "@elizaos/plugin-x402",
+  externals: ["@elizaos/core", "viem", "drizzle-orm", "@solana/web3.js"],
+  targets: [
+    {
+      label: "Node",
+      entry: "./src/index.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+    },
+  ],
+  dtsProject: "tsconfig.dts.json",
 });
-
-const proc = Bun.spawn(
-  ["bunx", "tsc", "--noCheck", "-p", "tsconfig.dts.json"],
-  {
-    cwd: import.meta.dir,
-    stdout: "inherit",
-    stderr: "inherit",
-  },
-);
-
-const procExit = await proc.exited;
-if (procExit !== 0) {
-  process.exit(procExit);
-}
-
-console.log("Build complete!");
