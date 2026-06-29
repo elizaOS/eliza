@@ -462,6 +462,7 @@ export * from "./first-run/pre-seed-local-runtime";
 export * from "./genui/index";
 export {
   DEFAULT_FRAME_BUDGET,
+  FRAME_SAMPLER_INIT,
   type FrameBudget,
   type FrameBudgetSummary,
   type FrameBudgetTelemetryEvent,

@@ -281,6 +281,21 @@ jobs:
           path: packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
           if-no-files-found: ignore
 
+      # Perf gate (#9954): drive REAL overlay-scroll + conversation-swipe in
+      # headless chromium, feed REAL rAF/longtask/layout-shift entries through the
+      # shared frame-budget + layout-stability detectors, HARD-FAIL on dropped
+      # frames, p95 frame time, or CLS. Previously ran in no workflow.
+      - name: Perf gate e2e (#9954)
+        run: bun run --cwd packages/ui test:perf-gate-e2e
+
+      - name: Upload perf gate e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: perf-gate-e2e-artifacts
+          path: packages/ui/src/components/shell/__e2e__/output-perf-gate-e2e/
+          if-no-files-found: ignore
+
   xr-harness-e2e:
     name: XR harness e2e
     needs: changes

@@ -282,3 +282,67 @@ export class FrameBudgetSampler {
     this.longTaskCount = 0;
   }
 }
+
+/**
+ * Browser-side init script (for `page.addInitScript` / `page.evaluate`) that
+ * records RAW inter-frame `requestAnimationFrame` deltas plus
+ * `PerformanceObserver('longtask')` entries while `window.__ELIZA_FRAME` is
+ * sampling. Mirrors {@link LAYOUT_SHIFT_OBSERVER_INIT} in layout-stability.ts:
+ * it collects RAW entries only — the Node caller feeds them to
+ * {@link summarizeFrameSamples} / {@link shouldReportFrameBudget}, so the gate
+ * applies the exact same math the live HUD does.
+ *
+ * `start()` resets the buffers and (re)installs the longtask observer, so each
+ * gesture window is measured in isolation; `read()` returns a snapshot
+ * (`{ deltas, longTasks }`); `stop()` halts sampling. `longtask` is unsupported
+ * in some engines (notably Safari) — feature-detected at the boundary, so the
+ * deltas still measure framerate there with a long-task count of 0.
+ *
+ * Co-located with the pure math (exactly how LAYOUT_SHIFT_OBSERVER_INIT sits
+ * beside summarizeStability) and inert until a caller injects it — zero prod cost.
+ */
+export const FRAME_SAMPLER_INIT = `
+(() => {
+  const w = window;
+  if (w.__ELIZA_FRAME) return;
+  let deltas = [];
+  let longTasks = 0;
+  let last = null;
+  let raf = null;
+  let obs = null;
+  const tick = (now) => {
+    if (last !== null) deltas.push(now - last);
+    last = now;
+    raf = requestAnimationFrame(tick);
+  };
+  w.__ELIZA_FRAME = {
+    start() {
+      deltas = [];
+      longTasks = 0;
+      last = null;
+      try {
+        obs = new PerformanceObserver((list) => {
+          longTasks += list.getEntries().length;
+        });
+        obs.observe({ entryTypes: ['longtask'] });
+      } catch {
+        obs = null;
+      }
+      if (raf === null) raf = requestAnimationFrame(tick);
+    },
+    stop() {
+      if (raf !== null) {
+        cancelAnimationFrame(raf);
+        raf = null;
+      }
+      if (obs) {
+        obs.disconnect();
+        obs = null;
+      }
+    },
+    read() {
+      return { deltas: deltas.slice(), longTasks };
+    },
+  };
+})();
+`;
