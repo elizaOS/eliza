@@ -26,8 +26,10 @@
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import type { AgentRuntime } from "@elizaos/core";
+import { SessionCwdService } from "@elizaos/plugin-coding-tools";
 import { getAgentClient } from "./lib/agent-client.js";
 import { initializeAgent } from "./lib/agent.js";
+import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
 import {
   ensureSessionIdentity,
   getMainRoomElizaId,
@@ -59,6 +61,12 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= cwd;
       process.env.SHELL_ALLOWED_DIRECTORY ??= cwd;
     }
+    // Drop-in for the opencode coding sub-agent: when the host configured
+    // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no
+    // explicit OPENAI_*, inherit that provider config so eliza-code runs on the
+    // same backend with zero extra setup. The orchestrator forwards the parent
+    // env to this spawned process.
+    applyOpencodeProviderEnv(process.env);
     runtimePromise = (async () => {
       // Resolve the session identity FIRST and mark its user as the runtime OWNER
       // — the coding tools are role-gated (FILE=ADMIN, SHELL=OWNER), so without
@@ -68,9 +76,21 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       // the role resolver sees the owner at boot.
       identity = ensureSessionIdentity();
       process.env.ELIZA_ADMIN_ENTITY_ID ??= identity.userId;
+      // A coding sub-agent has a small, all-relevant tool set (FILE/SHELL/READ/
+      // EDIT/…); expose them ALL as native tools (full surface, no chat-style
+      // tiering) so the model can actually CALL them instead of only seeing them
+      // described in the prompt and narrating.
+      process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
       // Headless coding sub-agent: only sql + provider + shell + coding-tools.
       // codingOnly drops mcp/goals AND the orchestrator (recursion guard).
       const runtime = await initializeAgent({ codingOnly: true });
+      // Mark the session user as OWNER via the RUNTIME SETTING the role resolver
+      // actually reads (getConfiguredOwnerEntityIds → runtime.getSetting), not just
+      // process.env — otherwise the sender stays GUEST and FILE/SHELL are gated off.
+      const rt = runtime as unknown as {
+        setSetting?: (k: string, v: unknown) => void;
+      };
+      rt.setSetting?.("ELIZA_ADMIN_ENTITY_ID", identity.userId);
       getAgentClient().setRuntime(runtime);
       log("runtime initialized", { owner: identity.userId });
       return runtime;
@@ -164,7 +184,7 @@ const _connection = new AgentSideConnection(
       return {};
     },
     async newSession(params: { cwd?: string }) {
-      await ensureRuntime(params.cwd);
+      const runtime = await ensureRuntime(params.cwd);
       const id = randomUUID();
       const session = identity as SessionIdentity;
       const room: ChatRoom = {
@@ -176,6 +196,20 @@ const _connection = new AgentSideConnection(
         elizaRoomId: getMainRoomElizaId(session),
       };
       sessions.set(id, { room, cwd: params.cwd, manualInjected: false });
+      // Point the coding tools' per-conversation working directory at the ACP
+      // workspace. We can't process.chdir() (it would break bun's workspace
+      // @elizaos/* resolution, so the process stays in the monorepo), and
+      // SessionCwdService otherwise defaults the conversation cwd to
+      // process.cwd() — the monorepo — making `pwd`, relative-path resolution,
+      // and the sandbox roots all point at the wrong directory. Set it
+      // explicitly to the build workspace so FILE/SHELL/LS operate there.
+      // conversationId == message.roomId == room.elizaRoomId (see agent-client).
+      if (params.cwd) {
+        const cwdSvc = runtime.getService<SessionCwdService>(
+          SessionCwdService.serviceType,
+        );
+        cwdSvc?.setCwd(String(room.elizaRoomId), params.cwd);
+      }
       log("session created", { id, cwd: params.cwd });
       return { sessionId: id };
     },
@@ -192,10 +226,27 @@ const _connection = new AgentSideConnection(
       // coding sub-agent + relay contract" orientation as claude/codex/opencode.
       if (!session.manualInjected) {
         session.manualInjected = true;
+        const preamble: string[] = [];
         const manual = await readWorkspaceManual(session.cwd);
-        if (manual) {
-          text = `${manual}\n\n---\n\nTask:\n${text}`;
-          log("injected workspace operating manual", { chars: manual.length });
+        if (manual) preamble.push(manual);
+        if (session.cwd) {
+          // The coding tools (FILE/EDIT) require ABSOLUTE paths. Tell the agent
+          // its workspace root up front so it writes absolute paths directly
+          // instead of emitting a relative path, having it rejected, and
+          // round-tripping through `pwd` to rediscover the directory.
+          preamble.push(
+            `Your workspace directory is: ${session.cwd}\n` +
+              `All file paths MUST be absolute — create and edit files under ` +
+              `this directory (e.g. ${session.cwd}/<filename>) and run shell ` +
+              `commands from here.`,
+          );
+        }
+        if (preamble.length > 0) {
+          text = `${preamble.join("\n\n---\n\n")}\n\n---\n\nTask:\n${text}`;
+          log("injected workspace preamble", {
+            manual: manual.length,
+            cwd: session.cwd ?? null,
+          });
         }
       }
       log("prompt", { sessionId: params.sessionId, chars: text.length });
