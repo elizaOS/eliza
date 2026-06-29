@@ -141,6 +141,7 @@ import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
+import { handleEmbedAuthRoutes } from "./embed-auth-routes";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleFirstRunTtsRoute } from "./first-run-tts-route";
 import { handleI18nLocaleRoute } from "./i18n-locale-routes";
@@ -735,6 +736,8 @@ async function handleCompatRouteInner(
 
   // Auth / pairing / first-run status.
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
+  // Embedded-app launch verification (Discord Activity / Telegram Mini App).
+  if (await handleEmbedAuthRoutes(req, res, state)) return true;
   // Sensitive-request REST surface (create/get/submit/cancel) for owner secret
   // collection — e.g. orchestrator provider keys land in the shared vault
   // instead of plain config. Each branch self-authorizes via
