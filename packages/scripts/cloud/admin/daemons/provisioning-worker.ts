@@ -53,6 +53,8 @@ type WorkerReconcileOrphanAppContainers =
   typeof import("@elizaos/cloud-shared/lib/services/app-container-orphan-reconciler").reconcileOrphanAppContainersOnNodes;
 type WorkerWithTimeout =
   typeof import("@elizaos/cloud-shared/lib/utils/with-timeout").withTimeout;
+type WorkerProcessNodeDiskCleanup =
+  typeof import("@elizaos/cloud-shared/lib/services/node-disk-manager").processNodeDiskCleanup;
 
 interface PreflightKmsClient {
   getOrCreateKey(keyId: string): Promise<unknown>;
@@ -76,6 +78,7 @@ interface WorkerDeps {
   reconcileOrphanContainersOnNodes: WorkerReconcileOrphanContainers;
   reconcileOrphanAppContainersOnNodes: WorkerReconcileOrphanAppContainers;
   withTimeout: WorkerWithTimeout;
+  processNodeDiskCleanup: WorkerProcessNodeDiskCleanup;
 }
 
 export interface ProvisioningWorkerConfig {
@@ -202,6 +205,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         "@elizaos/cloud-shared/lib/services/app-container-orphan-reconciler"
       ),
       import("@elizaos/cloud-shared/lib/utils/with-timeout"),
+      import("@elizaos/cloud-shared/lib/services/node-disk-manager"),
     ]).then(
       ([
         jobsModule,
@@ -217,6 +221,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         nodeWorkloadsModule,
         appOrphanReconcilerModule,
         withTimeoutModule,
+        nodeDiskManagerModule,
       ]) => ({
         provisioningJobService: jobsModule.provisioningJobService,
         logger: loggerModule.logger,
@@ -234,6 +239,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         reconcileOrphanAppContainersOnNodes:
           appOrphanReconcilerModule.reconcileOrphanAppContainersOnNodes,
         withTimeout: withTimeoutModule.withTimeout,
+        processNodeDiskCleanup: nodeDiskManagerModule.processNodeDiskCleanup,
       }),
     );
   }
@@ -358,6 +364,34 @@ async function processNodeHealthCheckCycle(): Promise<NodeHealthSummary> {
     }
   }
   return { total: result.size, healthy, unhealthy };
+}
+
+interface NodeDiskCleanupSummary {
+  nodesScanned: number;
+  nodesSkipped: number;
+  pruned: number;
+  pruneFailed: number;
+}
+
+/**
+ * Prune Docker disk on HEALTHY nodes that crossed the high-water mark. Reclaims
+ * with `docker system prune -af` (no `--volumes`) + clears stuck containerd
+ * ingest from failed pulls + buildkit prune, with a per-node cooldown so it does
+ * not prune every tick. This is the missing self-management that keeps a node
+ * from filling up on retried failed image pulls (`no space left on device`) and
+ * breaking dedicated-agent provisioning. Runs over the same SSH pool the daemon
+ * already authenticates with `CONTAINERS_SSH_KEY`; ON by default (thresholds in
+ * `containers-env.ts`).
+ */
+async function processNodeDiskCleanupCycle(): Promise<NodeDiskCleanupSummary> {
+  const { processNodeDiskCleanup } = await loadDeps();
+  const report = await processNodeDiskCleanup();
+  return {
+    nodesScanned: report.nodesScanned,
+    nodesSkipped: report.nodesSkipped,
+    pruned: report.pruned,
+    pruneFailed: report.pruneFailed,
+  };
 }
 
 /**
@@ -1057,6 +1091,28 @@ async function runInfraMaintenanceCycle(
         healthy: summary.healthy,
         unhealthy: summary.unhealthy,
       });
+    },
+  );
+
+  // Disk cleanup runs RIGHT AFTER the node-health check so it sees fresh node
+  // status (only `healthy` nodes are pruned) and BEFORE the image pre-pull, so a
+  // node we just reclaimed has room for the next warm-image pull instead of
+  // failing it on `no space left on device`. Bounded by PHASE_TIMEOUT_MS like
+  // every infra phase.
+  await runBoundedPhase(
+    logger,
+    "node disk cleanup cycle",
+    () => processNodeDiskCleanupCycle(),
+    (summary) => {
+      if (summary.pruned > 0 || summary.pruneFailed > 0) {
+        logger.info("[provisioning-worker] node disk cleanup cycle complete", {
+          event: "node_disk_cleanup.pruned",
+          nodesScanned: summary.nodesScanned,
+          nodesSkipped: summary.nodesSkipped,
+          pruned: summary.pruned,
+          pruneFailed: summary.pruneFailed,
+        });
+      }
     },
   );
 

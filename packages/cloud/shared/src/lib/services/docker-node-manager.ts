@@ -21,6 +21,7 @@ import {
   shellQuote,
 } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
+import { type DiskHealthVerdict, diskHealthVerdict, probeNodeDiskUsage } from "./node-disk-manager";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -188,6 +189,22 @@ export class DockerNodeManager {
         const dockerId = await ssh.exec("docker info --format '{{.ID}}'", 10_000);
 
         if (dockerId.trim()) {
+          // Disk-aware verdict: a node whose Docker daemon answers but whose
+          // disk is critically full still can't pull images or provision agents
+          // (`no space left on device`). Mark it `degraded` so the scheduler
+          // stops placing on it (available only counts `healthy`) and the
+          // autoscaler sees lost capacity and provisions a replacement. Probed
+          // AFTER `docker info` confirmed reachability; a failed df read is
+          // treated as `ok` (returns null → `ok`) so disk never owns
+          // reachability — the docker-info probe does.
+          const diskStatus = await this.diskHealthStatus(node);
+          if (diskStatus === "critical") {
+            logger.warn(
+              `[docker-node-manager] Node ${node.node_id} (${node.hostname}) is reachable but disk is critically full; marking degraded so it drains/replaces instead of taking new work.`,
+            );
+            await dockerNodesRepository.updateStatus(node.node_id, "degraded");
+            return "degraded";
+          }
           await dockerNodesRepository.updateStatus(node.node_id, "healthy");
           return "healthy";
         } else {
@@ -227,6 +244,27 @@ export class DockerNodeManager {
 
     await dockerNodesRepository.updateStatus(node.node_id, status);
     return status;
+  }
+
+  /**
+   * Disk-aware health sub-verdict for a node already confirmed reachable. Reads
+   * `df` over the shared SSH pool and applies the pure {@link diskHealthVerdict}
+   * against `NODE_DISK_UNHEALTHY_THRESHOLD_PCT`. A failed df read yields `ok`
+   * (null usage) so disk never owns reachability — the `docker info` probe does.
+   * Isolated so a df hiccup can never throw out of the health check.
+   */
+  async diskHealthStatus(node: DockerNode): Promise<DiskHealthVerdict> {
+    try {
+      const usedPercent = await probeNodeDiskUsage(node);
+      return diskHealthVerdict(usedPercent, containersEnv.nodeDiskUnhealthyThresholdPct());
+    } catch (error) {
+      logger.warn("[docker-node-manager] Disk health probe failed; treating as ok", {
+        nodeId: node.node_id,
+        hostname: node.hostname,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return "ok";
+    }
   }
 
   /**

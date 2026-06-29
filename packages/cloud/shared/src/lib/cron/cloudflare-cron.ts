@@ -32,6 +32,10 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/sample-eliza-price",
     "/api/cron/process-redemptions",
     "/api/cron/cleanup-stuck-provisioning",
+    // node-disk-cleanup matches the daemon's 5-min infra-maintenance cadence;
+    // it's a daemon-superseded parity endpoint (the real prune runs in the
+    // provisioning-worker, which owns the SSH credential + docker_nodes truth).
+    "/api/v1/cron/node-disk-cleanup",
     // node-autoscale, agent-hot-pool, pool-drain-idle moved to the
     // provisioning-worker daemon's infra-maintenance cycle so the
     // orchestrator host owns docker_nodes truth. The control-plane still
