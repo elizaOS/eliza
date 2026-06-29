@@ -28,9 +28,11 @@ function setup(isDesktop = true) {
   const openWindow = vi.fn<
     (opts: OpenWindowArg) => Promise<{ id: string } | null>
   >(async () => ({ id: "w1" }));
-  const openLauncher = vi.fn<() => Promise<{ id: string } | null>>(async () => ({
-    id: "launcher",
-  }));
+  const openLauncher = vi.fn<() => Promise<{ id: string } | null>>(
+    async () => ({
+      id: "launcher",
+    }),
+  );
   renderHook(() =>
     useBarSurfaceWindows({
       openWindow,

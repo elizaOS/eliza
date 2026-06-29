@@ -88,7 +88,10 @@ describe("useWakeController — fused on-device path", () => {
     await fire({ stage: "stage-a-candidate" });
     expect(onWake).not.toHaveBeenCalled();
     t = 1200;
-    await fire({ stage: "stage-b-transcript", transcript: "hey ada what's up" });
+    await fire({
+      stage: "stage-b-transcript",
+      transcript: "hey ada what's up",
+    });
     expect(onWake).toHaveBeenCalledTimes(1);
     expect(onWake.mock.calls[0][0].path).toBe("two-stage-asr");
   });
@@ -101,7 +104,11 @@ describe("useWakeController — fused on-device path", () => {
         enabled: true,
         alwaysOn: false,
         characterName: "eliza",
-        capabilities: { openWakeWord: false, asrConfirm: false, swabble: false },
+        capabilities: {
+          openWakeWord: false,
+          asrConfirm: false,
+          swabble: false,
+        },
         onWake,
         fusedWakeSource: source,
       }),
