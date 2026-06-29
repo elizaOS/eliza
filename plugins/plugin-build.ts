@@ -60,6 +60,19 @@ export interface BuildPluginConfig {
   /** tsconfig project passed to `tsc` for declaration emit. */
   dtsProject?: string;
   /**
+   * Pass `--emitDeclarationOnly` to the declaration `tsc` invocation (for
+   * plugins whose `dtsProject` tsconfig would otherwise also emit JS). Default:
+   * false. */
+  dtsEmitDeclarationOnly?: boolean;
+  /**
+   * After declaration emit, rewrite bare relative specifiers in the emitted
+   * files to explicit NodeNext-resolvable paths (`./x` -> `./x.js`,
+   * `./dir` -> `./dir/index.js`). Needed by single-entrypoint connector plugins
+   * that ship a bundled `dist/index.js` but a per-file `.d.ts` tree whose
+   * re-exports would otherwise stay bare and fail to resolve for NodeNext
+   * consumers. Default: false. */
+  rewriteDistImports?: boolean;
+  /**
    * Tolerate a failed `tsc` declaration emit (warn + continue with JS-only
    * outputs) instead of aborting. Mirrors the per-package fallback some plugins
    * carried; default false (fail loud).
@@ -75,6 +88,14 @@ const RM_RECURSIVE = resolve(
   "packages",
   "scripts",
   "rm-path-recursive.mjs",
+);
+
+const REWRITE_DIST_IMPORTS = resolve(
+  import.meta.dir,
+  "..",
+  "packages",
+  "scripts",
+  "rewrite-dist-relative-imports-node-esm.mjs",
 );
 
 export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
@@ -130,16 +151,20 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
   if (config.dtsProject) {
     console.log("📝 Generating TypeScript declarations…");
     const project = config.dtsProject;
+    const emitDeclOnly = config.dtsEmitDeclarationOnly ?? false;
+    const run = emitDeclOnly
+      ? () => Bun.$`tsc --project ${project} --emitDeclarationOnly --noCheck`
+      : () => Bun.$`tsc --project ${project} --noCheck`;
     if (config.dtsTolerant) {
       try {
-        await Bun.$`tsc --project ${project} --noCheck`;
+        await run();
       } catch {
         console.warn(
           "Warning: TypeScript declaration generation failed; continuing with bundled JS outputs only.",
         );
       }
     } else {
-      await Bun.$`tsc --project ${project} --noCheck`;
+      await run();
     }
   }
 
@@ -147,6 +172,11 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     const target = join(distDir, shim.path);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, shim.content, "utf8");
+  }
+
+  if (config.rewriteDistImports) {
+    console.log("🔧 Rewriting dist relative imports for NodeNext…");
+    await Bun.$`node ${REWRITE_DIST_IMPORTS}`;
   }
 
   console.log(

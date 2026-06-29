@@ -1,21 +1,16 @@
-import { build } from "bun";
+#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-instagram (Node). Orchestration lives in the shared
+ * driver (plugins/plugin-build.ts); this lists only what differs.
+ */
+import { buildPlugin } from "../plugin-build";
 
-await build({
-  entrypoints: ["./src/index.ts"],
-  outdir: "./dist",
-  target: "node",
-  format: "esm",
-  minify: false,
-  sourcemap: "external",
-  external: ["@elizaos/core"],
+await buildPlugin({
+  name: "@elizaos/plugin-instagram",
+  externals: ["@elizaos/core"],
+  targets: [
+    { label: "Node", entry: "./src/index.ts", outSubdir: "", target: "node", format: "esm" },
+  ],
+  dtsProject: "tsconfig.build.json",
+  dtsEmitDeclarationOnly: true,
 });
-
-// Generate type declarations
-const proc = Bun.spawn(["tsc", "--emitDeclarationOnly", "--noCheck", "-p", "tsconfig.build.json"], {
-  stdout: "inherit",
-  stderr: "inherit",
-});
-
-await proc.exited;
-
-console.log("Build completed successfully");
