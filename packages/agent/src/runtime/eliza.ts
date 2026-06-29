@@ -31,6 +31,9 @@ import {
   startMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
+// Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
+// is armed, and it refuses to arm in production — see crash-injection.ts.
+import { maybeInjectFault } from "./crash-injection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
 import {
@@ -3513,6 +3516,9 @@ export async function startEliza(
   // never complete — is still countable via /api/dev/boot-history. void: never
   // delay readiness. recordBootTelemetry below captures the completed-boot case.
   void recordBootEvent("[eliza-boot]");
+  // #10203 crash/restart stability: a `boot`-point fault fires here, the
+  // earliest awaited seam, so the supervisor restart path can be exercised.
+  await maybeInjectFault("boot");
 
   // Resolve and register baseline `@elizaos/plugin-*` modules into the
   // STATIC_ELIZA_PLUGINS blocking map BEFORE any plugin resolution happens. See the
@@ -4027,6 +4033,8 @@ export async function startEliza(
     forceIncludePluginNames: initialForceIncludePluginNames,
   });
   bootTimer.lap(`resolve-plugins-${initialPluginResolutionPhase}-import`);
+  // #10203: exercise a fault right after the blocking plugin set resolves.
+  await maybeInjectFault("plugin-load");
 
   if (resolvedPlugins.length === 0) {
     if (preOnboarding) {
@@ -5251,6 +5259,8 @@ export async function startEliza(
   bootTimer.summary();
   void recordBootTelemetry(bootTimer.getSummary());
   startMemorySampler({ intervalMs: 30_000 });
+  // #10203: a `ready`-point fault fires once the agent has reached steady boot.
+  await maybeInjectFault("ready");
 
   installActionAliases(runtime);
 
