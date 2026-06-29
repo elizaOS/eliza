@@ -245,6 +245,7 @@ export * from "./pages/workflow-graph-events";
 // DesktopWorkspaceSection omitted — App.tsx lazy-loads it.
 export * from "./permissions/PermissionRecoveryCallout";
 export * from "./RoleGate.tsx";
+export * from "./ShellModalityProvider.tsx";
 export * from "./ShellRoleProvider.tsx";
 export * from "./settings/ApiKeyConfig";
 export * from "./settings/PermissionsSection";
