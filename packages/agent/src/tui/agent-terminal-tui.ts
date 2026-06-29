@@ -65,6 +65,27 @@ function resolveDefaultApiBaseUrl(): string {
   return `http://${displayHost}:${port}`;
 }
 
+/**
+ * The TUI talks to the agent over HTTP. On the same host it rides the backend's
+ * loopback-trust gate, but a tunnel/reverse-proxy injects `X-Forwarded-For`,
+ * which disables that gate — so a remote terminal needs a real credential.
+ * `ELIZA_API_TOKEN` is the exact key `isAuthorized` validates; when set we send
+ * it as a Bearer token, otherwise nothing changes for loopback sessions.
+ */
+export function resolveTuiApiToken(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const token = env.ELIZA_API_TOKEN?.trim();
+  return token ? token : null;
+}
+
+export function buildTuiAuthHeaders(
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const token = resolveTuiApiToken(env);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function readJson<T>(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
@@ -75,6 +96,7 @@ async function readJson<T>(
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...buildTuiAuthHeaders(),
       ...init?.headers,
     },
   });
