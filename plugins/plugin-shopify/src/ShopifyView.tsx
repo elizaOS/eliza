@@ -11,12 +11,11 @@
  * `register-terminal-view.tsx`).
  */
 
-import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useState } from "react";
 import {
   type ShopifySnapshot,
-  type ShopifyTab,
   ShopifySpatialView,
+  type ShopifyTab,
 } from "./components/ShopifySpatialView.tsx";
 import { useShopifyDashboard } from "./useShopifyDashboard.ts";
 
@@ -172,9 +171,5 @@ export function ShopifyView() {
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <ShopifySpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <ShopifySpatialView snapshot={snapshot} onAction={onAction} />;
 }

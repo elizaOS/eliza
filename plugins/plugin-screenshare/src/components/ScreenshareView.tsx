@@ -10,12 +10,8 @@
  * through the terminal registry (see `register-terminal-view.tsx`).
  */
 
-import {
-  client,
-  selectLatestRunForApp,
-  useAppSelector,
-} from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+import { client, selectLatestRunForApp, useAppSelector } from "@elizaos/ui";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildViewerUrl,
@@ -58,11 +54,13 @@ function toCapabilitySnapshots(
   capabilities: CapabilitiesResponse | null,
 ): ScreenshareCapabilitySnapshot[] {
   if (!capabilities) return [];
-  return Object.entries(capabilities.capabilities).map(([name, capability]) => ({
-    name,
-    available: capability.available,
-    tool: capability.tool,
-  }));
+  return Object.entries(capabilities.capabilities).map(
+    ([name, capability]) => ({
+      name,
+      available: capability.available,
+      tool: capability.tool,
+    }),
+  );
 }
 
 export function ScreenshareView() {
@@ -314,9 +312,5 @@ export function ScreenshareView() {
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <ScreenshareSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <ScreenshareSpatialView snapshot={snapshot} onAction={onAction} />;
 }

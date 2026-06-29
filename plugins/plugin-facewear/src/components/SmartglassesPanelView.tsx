@@ -19,7 +19,6 @@
  * panel is a real control surface rather than a static mirror.
  */
 
-import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   callWifiBridge,
@@ -180,9 +179,5 @@ export function SmartglassesPanelView() {
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <SmartglassesSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <SmartglassesSpatialView snapshot={snapshot} onAction={onAction} />;
 }

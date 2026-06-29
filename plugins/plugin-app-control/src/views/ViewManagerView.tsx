@@ -18,7 +18,6 @@
  * and externalized from this bundle.
  */
 
-import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useEffect, useState } from "react";
 import {
 	type ViewManagerSnapshot,
@@ -57,11 +56,7 @@ export function ViewManagerView() {
 
 	const snapshot: ViewManagerSnapshot = { views, loading, error };
 
-	return (
-		<SpatialSurface>
-			<ViewManagerSpatialView snapshot={snapshot} onOpenView={openView} />
-		</SpatialSurface>
-	);
+	return <ViewManagerSpatialView snapshot={snapshot} onOpenView={openView} />;
 }
 
 export default ViewManagerView;

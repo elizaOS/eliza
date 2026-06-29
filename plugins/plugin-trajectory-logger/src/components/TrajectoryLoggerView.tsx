@@ -12,7 +12,7 @@
  */
 
 import type { OverlayAppContext } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import { useCallback, useState } from "react";
 import type { PhaseName } from "../phases";
 import { summarizePhases } from "../phases";
@@ -94,8 +94,6 @@ export function TrajectoryLoggerView({
   };
 
   return (
-    <SpatialSurface>
-      <TrajectoryLoggerSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
+    <TrajectoryLoggerSpatialView snapshot={snapshot} onAction={onAction} />
   );
 }

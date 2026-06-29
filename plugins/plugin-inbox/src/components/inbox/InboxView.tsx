@@ -24,7 +24,7 @@
  */
 
 import { client } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -324,11 +324,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
     };
   }, [state, items, filters, activeChannels]);
 
-  return (
-    <SpatialSurface>
-      <InboxSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <InboxSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 export default InboxView;

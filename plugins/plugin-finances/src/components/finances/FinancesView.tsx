@@ -25,7 +25,7 @@
  */
 
 import { client } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -433,11 +433,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
     [load],
   );
 
-  return (
-    <SpatialSurface>
-      <FinancesSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <FinancesSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 export default FinancesView;

@@ -24,7 +24,7 @@
  */
 
 import { client } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -273,11 +273,7 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
     return { status: "ready", goals: state.goals, activeStatuses: activeList };
   }, [state, activeStatuses]);
 
-  return (
-    <SpatialSurface>
-      <GoalsSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <GoalsSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 export default GoalsView;

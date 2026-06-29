@@ -23,7 +23,7 @@ import {
   type FeedWallet,
   selectLatestRunForApp,
 } from "@elizaos/app-core/ui-compat";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -265,9 +265,5 @@ export function FeedView() {
     sending,
   };
 
-  return (
-    <SpatialSurface>
-      <FeedSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <FeedSpatialView snapshot={snapshot} onAction={onAction} />;
 }

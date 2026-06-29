@@ -15,7 +15,7 @@
  */
 
 import { client } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SelfControlStatus } from "../../services/website-blocker/index.ts";
 import { type FocusSnapshot, FocusSpatialView } from "./FocusSpatialView.tsx";
@@ -184,11 +184,7 @@ export function FocusView({
 
   const snapshot = toSnapshot(state, releasing);
 
-  return (
-    <SpatialSurface>
-      <FocusSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <FocusSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 export default FocusView;

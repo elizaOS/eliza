@@ -12,7 +12,7 @@
 
 import { Phone } from "@elizaos/capacitor-phone";
 import { consumePendingPhoneNumber } from "@elizaos/ui/app-navigate-view";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type PhoneCallRow,
@@ -188,9 +188,5 @@ export function PhoneView() {
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <PhoneSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <PhoneSpatialView snapshot={snapshot} onAction={onAction} />;
 }

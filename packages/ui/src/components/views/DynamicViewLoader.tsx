@@ -55,6 +55,7 @@ import {
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
+import { SpatialSurface } from "../../spatial/index.ts";
 import {
   useAppSelector,
   useAppSelectorShallow,
@@ -1396,7 +1397,13 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
             />
           )}
         >
-          <View {...viewProps} />
+          {/* One shell-level SpatialSurface owns modality for every mounted
+              view — GUI by auto-detect, XR inside a headset host — so plugin
+              view components no longer each wrap themselves. Omitting `modality`
+              keeps the exact auto-detect behaviour the per-view wrappers had. */}
+          <SpatialSurface>
+            <View {...viewProps} />
+          </SpatialSurface>
         </ErrorBoundary>
         <AgentElementOverlay />
         <AgentSurfaceElementReporter />

@@ -22,7 +22,7 @@
  */
 
 import { client } from "@elizaos/ui";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LeaderboardEntry } from "../types";
@@ -197,11 +197,7 @@ export function SocialAlphaView(props: SocialAlphaViewProps = {}): ReactNode {
 		[load],
 	);
 
-	return (
-		<SpatialSurface>
-			<SocialAlphaSpatialView snapshot={snapshot} onAction={onAction} />
-		</SpatialSurface>
-	);
+	return <SocialAlphaSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 export default SocialAlphaView;

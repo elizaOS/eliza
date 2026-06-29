@@ -11,7 +11,6 @@
  * `register-terminal-view.tsx`).
  */
 
-import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback } from "react";
 import {
   type HyperliquidSnapshot,
@@ -30,8 +29,16 @@ function navigateHome(): void {
 }
 
 export function HyperliquidView() {
-  const { status, markets, positions, orders, loading, error, unavailable, refresh } =
-    useHyperliquidState();
+  const {
+    status,
+    markets,
+    positions,
+    orders,
+    loading,
+    error,
+    unavailable,
+    refresh,
+  } = useHyperliquidState();
 
   const onAction = useCallback(
     (action: string) => {
@@ -69,9 +76,5 @@ export function HyperliquidView() {
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <HyperliquidSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <HyperliquidSpatialView snapshot={snapshot} onAction={onAction} />;
 }

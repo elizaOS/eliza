@@ -25,7 +25,7 @@ import {
   navigateToPhoneWithNumber,
 } from "@elizaos/ui/app-navigate-view";
 import { isNative } from "@elizaos/ui/platform";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { matchesQuery } from "./ContactsAppView.helpers.ts";
 import {
@@ -190,9 +190,5 @@ export function ContactsView() {
     error,
   };
 
-  return (
-    <SpatialSurface>
-      <ContactsSpatialView snapshot={snapshot} onAction={onAction} />
-    </SpatialSurface>
-  );
+  return <ContactsSpatialView snapshot={snapshot} onAction={onAction} />;
 }

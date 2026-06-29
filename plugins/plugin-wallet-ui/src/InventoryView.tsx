@@ -21,7 +21,7 @@
  * this wrapper, never registered as a separate app/nav tab.
  */
 
-import { Escape, SpatialSurface } from "@elizaos/ui/spatial";
+import { Escape } from "@elizaos/ui/spatial";
 import { InventoryAppView } from "./components/InventoryAppView.tsx";
 import {
   InventorySpatialView,
@@ -44,17 +44,15 @@ const TUI_FALLBACK_SNAPSHOT: WalletSnapshot = {
 
 export function InventoryView() {
   return (
-    <SpatialSurface>
-      <Escape
-        tui={
-          <InventorySpatialView
-            snapshot={TUI_FALLBACK_SNAPSHOT}
-            onAction={() => {}}
-          />
-        }
-      >
-        <InventoryAppView />
-      </Escape>
-    </SpatialSurface>
+    <Escape
+      tui={
+        <InventorySpatialView
+          snapshot={TUI_FALLBACK_SNAPSHOT}
+          onAction={() => {}}
+        />
+      }
+    >
+      <InventoryAppView />
+    </Escape>
   );
 }
