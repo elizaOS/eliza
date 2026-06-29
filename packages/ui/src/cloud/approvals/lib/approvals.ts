@@ -5,7 +5,7 @@
  * Endpoints (all same-origin via the shared cloud `api<T>` client):
  *  - GET  /api/v1/approval-requests            owner list (Bearer-gated)
  *  - POST /api/v1/approval-requests/:id/approve  signer-facing (signature)
- *  - POST /api/v1/approval-requests/:id/deny     signer-facing (reason)
+ *  - POST /api/v1/approval-requests/:id/deny     signer-facing (signature + reason)
  *  - GET  /api/v1/ballots                       owner list (Bearer-gated)
  *  - POST /api/v1/ballots/:id/vote               participant (scoped token)
  *  - POST /api/v1/ballots/:id/tally              owner (tally if threshold met)
@@ -121,16 +121,23 @@ export function useApproveRequest() {
   });
 }
 
-/** Deny an approval request (no signature required). */
+/** Deny an approval request with a wallet/ed25519 signature. */
 export function useDenyRequest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; reason?: string }) => {
+    mutationFn: async (input: {
+      id: string;
+      signature: string;
+      reason?: string;
+    }) => {
       const data = await api<ApprovalActionResponse>(
         `/api/v1/approval-requests/${encodeURIComponent(input.id)}/deny`,
         {
           method: "POST",
-          json: { reason: input.reason ?? "denied by owner" },
+          json: {
+            reason: input.reason ?? "denied by owner",
+            signature: input.signature,
+          },
         },
       );
       return data.approvalRequest;

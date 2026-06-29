@@ -88,13 +88,15 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
   }, [challenge.message, submitSignature]);
 
   const handleDeny = useCallback(async () => {
+    const trimmed = signature.trim();
+    if (!trimmed) return;
     setError(null);
     try {
-      await deny.mutateAsync({ id: request.id });
+      await deny.mutateAsync({ id: request.id, signature: trimmed });
     } catch (caught) {
       setError(errorMessage(caught, "Failed to deny approval."));
     }
-  }, [deny, request.id]);
+  }, [deny, request.id, signature]);
 
   const expiresAt = formatApprovalTimestamp(request.expiresAt);
 
@@ -153,7 +155,7 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
             >
               {walletCapable
                 ? "Or paste a signature"
-                : "Paste signature to approve"}
+                : "Paste signature to approve or deny"}
             </label>
             <Textarea
               id={`sig-${request.id}`}
@@ -190,7 +192,7 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
               type="button"
               variant="outline"
               onClick={handleDeny}
-              disabled={busy}
+              disabled={busy || signature.trim().length === 0}
             >
               {deny.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
