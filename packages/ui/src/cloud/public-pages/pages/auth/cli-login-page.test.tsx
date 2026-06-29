@@ -155,7 +155,7 @@ describe("CliLoginPage", () => {
     expect(screen.queryByText("API Key Details")).toBeNull();
     expect(screen.queryByText("ek_live_abc")).toBeNull();
     expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
-    expect(navigateMock).toHaveBeenCalledWith("/dashboard", {
+    expect(navigateMock).toHaveBeenCalledWith("/join", {
       replace: true,
     });
   });
@@ -175,7 +175,7 @@ describe("CliLoginPage", () => {
       screen
         .getByRole("link", { name: "Open Eliza Cloud" })
         .getAttribute("href"),
-    ).toBe("/dashboard");
+    ).toBe("/join");
   });
 
   it("surfaces a completion failure as the error panel", async () => {

@@ -16,8 +16,9 @@ import { flattenPrompt } from "./src/prompt-flatten";
 /**
  * @elizaos/plugin-cli-inference — the TOS-clean SAFE/CLOUD inference route.
  *
- * Serves chat/planner inference by SPAWNING the sanctioned local CLI:
+ * Serves chat/planner inference through sanctioned local routes:
  *   - `claude --print`  (reads ~/.claude/.credentials.json itself), or
+ *   - a warm Claude Agent SDK session (reads the Claude subscription creds itself), or
  *   - `codex exec`      (reads ~/.codex/auth.json itself).
  *
  * eliza never sees/forwards/logs the subscription token — the child env is
@@ -27,8 +28,9 @@ import { flattenPrompt } from "./src/prompt-flatten";
  * `packages/agent/src/auth/credentials.ts` and plugin-codex-cli `postResponses`)
  * which replay the consumer-subscription token in-process.
  *
- * The whole models map is INERT unless `ELIZA_CHAT_VIA_CLI` is `claude` or
- * `codex`. We register TEXT_LARGE / TEXT_MEGA / RESPONSE_HANDLER only:
+ * The whole models map is INERT unless `ELIZA_CHAT_VIA_CLI` is `claude`,
+ * `claude-sdk`, or `codex`. We register TEXT_LARGE / TEXT_MEGA /
+ * RESPONSE_HANDLER only:
  *
  *   - RESPONSE_HANDLER is the whole point — it generates the user-facing reply,
  *     which is exactly what "chat on the sub" means. That is one CLI spawn per
@@ -291,7 +293,7 @@ export function buildModels(
 export const cliInferencePlugin: Plugin = {
   name: "cli-inference",
   description:
-    "TOS-clean SAFE/CLOUD inference: spawns the sanctioned claude/codex CLI as large-tier model handlers; the CLI reads its own creds. Inert unless ELIZA_CHAT_VIA_CLI=claude|codex.",
+    "TOS-clean SAFE/CLOUD inference: serves large-tier model handlers through sanctioned claude, claude-sdk, or codex routes; each route reads its own creds. Inert unless ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex.",
   // High priority so that, when ELIZA_CHAT_VIA_CLI is set, this plugin
   // deterministically wins the tiers it registers (TEXT_LARGE / TEXT_MEGA /
   // RESPONSE_HANDLER) over default-priority (0) model providers like
@@ -300,6 +302,9 @@ export const cliInferencePlugin: Plugin = {
   config: {
     ELIZA_CHAT_VIA_CLI: readEnv("ELIZA_CHAT_VIA_CLI") ?? null,
     ELIZA_CLI_CLAUDE_MODEL: readEnv("ELIZA_CLI_CLAUDE_MODEL") ?? null,
+    ELIZA_CLI_CLAUDE_PLANNER_MODEL: readEnv("ELIZA_CLI_CLAUDE_PLANNER_MODEL") ?? null,
+    ELIZA_CLI_CLAUDE_BIN: readEnv("ELIZA_CLI_CLAUDE_BIN") ?? null,
+    ELIZA_CLI_SDK_RESTART_AFTER_TURNS: readEnv("ELIZA_CLI_SDK_RESTART_AFTER_TURNS") ?? null,
     ELIZA_CLI_CODEX_MODEL: readEnv("ELIZA_CLI_CODEX_MODEL") ?? null,
     ELIZA_CLI_TIMEOUT_MS: readEnv("ELIZA_CLI_TIMEOUT_MS") ?? null,
   },

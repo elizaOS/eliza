@@ -139,6 +139,10 @@ describe("agent terminal tui", () => {
           return response({ ok: true });
         }
         if (url.endsWith("/api/conversations")) {
+          expect(JSON.parse(String(init?.body))).toMatchObject({
+            title: "Terminal session",
+            metadata: { source: "terminal-tui" },
+          });
           return response({ conversation: { id: "conv-terminal" } });
         }
         if (url.endsWith("/api/conversations/conv-terminal/messages")) {

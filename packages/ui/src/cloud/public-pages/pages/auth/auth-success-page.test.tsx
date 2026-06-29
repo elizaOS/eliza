@@ -53,7 +53,7 @@ describe("AuthSuccessPage", () => {
       screen
         .getByRole("link", { name: "Open Eliza Cloud" })
         .getAttribute("href"),
-    ).toBe("/dashboard");
+    ).toBe("/join");
     expect(closeSpy).not.toHaveBeenCalled();
   });
 });

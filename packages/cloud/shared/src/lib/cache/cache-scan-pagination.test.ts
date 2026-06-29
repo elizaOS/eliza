@@ -11,8 +11,10 @@
  * cursor, so a memory-backed CacheClient exercises the multi-page path and any
  * parse-the-cursor regression fails these tests.
  */
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { logger } from "../utils/logger";
 import { MemoryCacheAdapter } from "./adapters/memory-cache-adapter";
+import type { CacheRedisClient } from "./adapters/types";
 
 // client.ts statically imports the Upstash/redis adapters; those external libs
 // aren't in the unit env. The memory backend never instantiates them, so stub
@@ -87,5 +89,43 @@ describe("CacheClient SCAN over the memory backend (end-to-end cursor threading)
     await cache.delPattern(`${prefix}*`);
     const remaining = (await cache.scanByPrefix(prefix, 1000)).filter((k) => k.startsWith(prefix));
     expect(remaining.length).toBe(0);
+  });
+});
+
+describe("CacheClient.delPattern empty SCAN page guard", () => {
+  let CacheClient: typeof import("./client").CacheClient;
+  let warnSpy: ReturnType<typeof spyOn>;
+
+  afterEach(() => {
+    warnSpy?.mockRestore();
+  });
+
+  test("counts empty non-terminal pages and warns when the iteration cap is exhausted", async () => {
+    ({ CacheClient } = await import("./client"));
+    const scan = mock(async (cursor: string | number) => [
+      cursor === "0" ? "opaque:1" : "opaque:next",
+      [],
+    ]);
+    const del = mock(async () => 0);
+    const cache = new CacheClient();
+    const fakeRedis = {
+      backend: "fake-empty-scan",
+      scan,
+      del,
+    } as unknown as CacheRedisClient;
+    Object.assign(cache as unknown as Record<string, unknown>, {
+      enabled: true,
+      initialized: true,
+      nativeRedisConnectPromise: null,
+      nativeRedisReady: true,
+      redis: fakeRedis,
+    });
+    warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+
+    await cache.delPattern("never-matches:*", 10, 3);
+
+    expect(scan).toHaveBeenCalledTimes(3);
+    expect(del).not.toHaveBeenCalled();
+    expect(String(warnSpy.mock.calls[0]?.[0] ?? "")).toContain("reached max iterations (3)");
   });
 });

@@ -1,5 +1,6 @@
-import type { ChatMessage } from "@elizaos/core";
+import type { ChatMessage, PluginAutoEnableContext } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { shouldEnable } from "../auto-enable";
 import {
   buildModels,
   ClaudeCli,
@@ -34,6 +35,10 @@ function binaryOnPath(bin: string): boolean {
   } catch {
     return false;
   }
+}
+
+function autoEnableCtx(env: Record<string, string | undefined>): PluginAutoEnableContext {
+  return { env } as unknown as PluginAutoEnableContext;
 }
 
 // Pin fake binary paths so the SOC2 `resolveSafeBinary` allowlist check never
@@ -408,11 +413,23 @@ describe("models map gating (large-tier only)", () => {
     expect(keys.sort()).toEqual([...LARGE_TIER_MODEL_TYPES].sort());
   });
 
+  it("ELIZA_CHAT_VIA_CLI=claude-sdk -> same large-tier-only set", () => {
+    const keys = Object.keys(
+      buildModels({ ELIZA_CHAT_VIA_CLI: "claude-sdk" }) as Record<string, unknown>
+    );
+    expect(keys.sort()).toEqual([...LARGE_TIER_MODEL_TYPES].sort());
+  });
+
   it("resolveCliBackend accepts claude|codex|claude-sdk (case-insensitive)", () => {
     expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "Claude" })).toBe("claude");
     expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "CODEX" })).toBe("codex");
     expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "Claude-SDK" })).toBe("claude-sdk");
     expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "gemini" })).toBeUndefined();
     expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "" })).toBeUndefined();
+  });
+
+  it("auto-enables for claude-sdk with the same trim/case normalization", () => {
+    expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "  Claude-SDK " }))).toBe(true);
+    expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "gemini" }))).toBe(false);
   });
 });

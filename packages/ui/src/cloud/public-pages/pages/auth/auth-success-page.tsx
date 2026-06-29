@@ -10,7 +10,7 @@ import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
 
-const CLOUD_DASHBOARD_PATH = "/dashboard";
+const CLOUD_LANDING_PATH = "/join";
 
 const platformNames: Record<string, string> = {
   google: "Google",
@@ -80,13 +80,16 @@ export default function AuthSuccessPage() {
             </p>
           </div>
 
-          <a href={CLOUD_DASHBOARD_PATH} className="w-full">
-            <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
+          <Button
+            asChild
+            className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
+          >
+            <a href={CLOUD_LANDING_PATH}>
               {t("cloud.authSuccess.openCloud", {
                 defaultValue: "Open Eliza Cloud",
               })}
-            </Button>
-          </a>
+            </a>
+          </Button>
         </div>
       </div>
     </div>
