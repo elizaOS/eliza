@@ -13,21 +13,23 @@ import {
   useState,
 } from "react";
 import { type ChatTurnStatus, client } from "../api";
+import { startTutorial } from "../components/pages/tutorial/tutorial-controller";
 import { ConfirmDialog, PromptDialog } from "../components/ui/confirm-dialog";
 import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
 import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
+import type { FirstRunPorts } from "../first-run/first-run-use-case";
+import { isInChatOnboardingEnabled } from "../first-run/in-chat-onboarding";
 import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
 } from "../first-run/mobile-runtime-mode";
-import { isInChatOnboardingEnabled } from "../first-run/in-chat-onboarding";
-import { useInChatOnboarding } from "../first-run/useInChatOnboarding";
 import {
   activeServerKindToFirstRunRuntimeTarget,
   type FirstRunRuntimeTarget,
 } from "../first-run/runtime-target";
+import { useInChatOnboarding } from "../first-run/useInChatOnboarding";
 import type { UiLanguage } from "../i18n";
 import {
   getWindowNavigationPath,
@@ -1714,15 +1716,40 @@ function AppProviderInner({
   coordinatorResetRef.current = startupCoordinator.reset;
   coordinatorFirstRunCompleteRef.current = startupCoordinator.firstRunComplete;
 
-  // Chat-centric first-run (#9952, Phase 1): when the flag is ON and a fresh
-  // profile is still in the `first-run-required` phase, seed the onboarding
-  // greeting + runtime choice into the live transcript and open the floating
-  // chat. Flag OFF → no-op (legacy full-screen first-run path unchanged).
+  // Chat-centric first-run (#9952): when the flag is ON and a fresh profile is
+  // still in the `first-run-required` phase, seed the onboarding greeting +
+  // runtime choice into the live transcript, open the floating chat, and route
+  // each pick through the headless first-run use case. Flag OFF → no-op (legacy
+  // full-screen first-run path unchanged). `onProgress` is replaced by the
+  // conductor with a transcript-status writer.
+  const firstRunPorts = useMemo<FirstRunPorts>(
+    () => ({
+      uiLanguage,
+      elizaCloudConnected,
+      setState,
+      handleCloudLogin,
+      completeFirstRun,
+      showActionBanner,
+      setTab,
+      startTutorial,
+      onProgress: () => undefined,
+    }),
+    [
+      uiLanguage,
+      elizaCloudConnected,
+      setState,
+      handleCloudLogin,
+      completeFirstRun,
+      showActionBanner,
+      setTab,
+    ],
+  );
   useInChatOnboarding(
     isInChatOnboardingEnabled() &&
       startupCoordinator.phase === "first-run-required" &&
       !firstRunComplete,
     setConversationMessages,
+    firstRunPorts,
   );
 
   // Memoize the coordinator handle so that unrelated re-renders (e.g. chatInput

@@ -2,11 +2,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findChoiceRegions } from "../components/chat/message-choice-parser";
 import {
-  buildFirstRunAckMessage,
   buildFirstRunSeedMessages,
   consumeFirstRunChoice,
   FIRST_RUN_CHOICE_SCOPE,
   FIRST_RUN_RUNTIME_VALUES,
+  isFirstRunChoiceValue,
   isInChatOnboardingEnabled,
   setFirstRunChoiceInterceptor,
 } from "./in-chat-onboarding";
@@ -52,14 +52,23 @@ describe("consumeFirstRunChoice", () => {
     expect(consumeFirstRunChoice("cloud")).toBe(false);
   });
 
-  it("routes only first-run runtime values to the registered handler", () => {
+  it("routes runtime + scoped (provider/agent/tutorial) values to the handler", () => {
     const handler = vi.fn();
     setFirstRunChoiceInterceptor(handler);
 
-    for (const value of FIRST_RUN_RUNTIME_VALUES) {
+    const firstRunValues = [
+      ...FIRST_RUN_RUNTIME_VALUES,
+      "provider:on-device",
+      "provider:elizacloud",
+      "agent:abc",
+      "agent:new",
+      "tutorial:take",
+      "tutorial:skip",
+    ];
+    for (const value of firstRunValues) {
       expect(consumeFirstRunChoice(value)).toBe(true);
     }
-    expect(handler).toHaveBeenCalledTimes(FIRST_RUN_RUNTIME_VALUES.length);
+    expect(handler).toHaveBeenCalledTimes(firstRunValues.length);
 
     handler.mockClear();
     expect(consumeFirstRunChoice("hello world")).toBe(false);
@@ -74,12 +83,14 @@ describe("consumeFirstRunChoice", () => {
   });
 });
 
-describe("buildFirstRunAckMessage", () => {
-  it("acknowledges the picked runtime as an assistant message", () => {
-    const ack = buildFirstRunAckMessage("local", 5);
-    expect(ack.role).toBe("assistant");
-    expect(ack.text).toMatch(/local agent/i);
-    expect(ack.timestamp).toBe(5);
+describe("isFirstRunChoiceValue", () => {
+  it("recognizes runtime + scoped choice values, rejects free text", () => {
+    expect(isFirstRunChoiceValue("cloud")).toBe(true);
+    expect(isFirstRunChoiceValue("provider:on-device")).toBe(true);
+    expect(isFirstRunChoiceValue("agent:new")).toBe(true);
+    expect(isFirstRunChoiceValue("tutorial:skip")).toBe(true);
+    expect(isFirstRunChoiceValue("hello")).toBe(false);
+    expect(isFirstRunChoiceValue("providerish")).toBe(false);
   });
 });
 

@@ -275,7 +275,7 @@ async function startMobileLocalAgent(): Promise<void> {
   }
 }
 
-async function startLocalRuntime(): Promise<void> {
+export async function startLocalRuntime(): Promise<void> {
   if (isDesktopPlatform()) {
     try {
       const desktopRuntimeMode = await getDesktopRuntimeMode().catch(
@@ -301,7 +301,7 @@ async function startLocalRuntime(): Promise<void> {
   await startMobileLocalAgent();
 }
 
-async function waitForAgentApi(): Promise<void> {
+export async function waitForAgentApi(): Promise<void> {
   const deadline = Date.now() + FIRST_RUN_AGENT_WAIT_MS;
   let delayMs = 750;
   while (Date.now() < deadline) {

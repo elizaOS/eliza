@@ -1,5 +1,5 @@
 /**
- * In-chat onboarding (Phase 1) — chat-centric first-run.
+ * In-chat onboarding (#9952) — chat-centric first-run.
  *
  * When the `inChatOnboarding` boot-config flag is ON, a fresh profile lands
  * directly on the homescreen with the real floating chat (ContinuousChatOverlay)
@@ -7,23 +7,31 @@
  * into that real chat as synthetic assistant messages. The choice renders for
  * free via the existing `InlineWidgetText` marker path — no separate surface.
  *
- * This module owns ONLY the flag read, the seed-message construction, and a
- * tiny interceptor registry so a first-run choice pick is handled locally
- * instead of being sent to the agent. The headless first-run use case
- * (provisioning) is wired in Phase 2 — see the SEAM marker in
- * `consumeFirstRunChoice`.
+ * This module owns the flag read, the seed-message construction, and the
+ * first-run choice interceptor registry. The provisioning logic lives in the
+ * headless `first-run-use-case.ts`; the conductor (`useInChatOnboarding`)
+ * registers a handler here that routes each pick into that use case.
+ *
+ * Choice grammar: every first-run pick encodes its scope id into the choice
+ * `value` (`provider:on-device`, `agent:new`, `tutorial:take`, …) so the
+ * existing value-only `sendAction(value)` round-trips it without threading the
+ * `ChoiceMatch.id` through `InlineWidgetText`. The bare runtime values
+ * (`cloud` / `local` / `other`) keep their short form.
  */
 
 import { logger } from "@elizaos/logger";
 import type { ConversationMessage } from "../api";
 import { getBootConfig } from "../config/boot-config-store";
 
-/** Scope tag carried by the onboarding `[CHOICE:first-run …]` marker. */
+/** Scope tag carried by every onboarding `[CHOICE:first-run …]` marker. */
 export const FIRST_RUN_CHOICE_SCOPE = "first-run";
 
-/** The runtime-selection choice values seeded at first-run. */
+/** The runtime-selection choice values seeded first. */
 export const FIRST_RUN_RUNTIME_VALUES = ["cloud", "local", "other"] as const;
 export type FirstRunRuntimeValue = (typeof FIRST_RUN_RUNTIME_VALUES)[number];
+
+/** Scoped value prefixes for the later choice steps (provider / agent / tutorial). */
+const FIRST_RUN_SCOPED_PREFIXES = ["provider:", "agent:", "tutorial:"] as const;
 
 /** localStorage override the e2e harness sets to flip the flag on without a host build. */
 const LOCAL_STORAGE_FLAG_KEY = "eliza:in-chat-onboarding";
@@ -59,15 +67,14 @@ const RUNTIME_CHOICE_MARKER = [
   "[/CHOICE]",
 ].join("\n");
 
-/** Labels keyed by runtime value, for the local acknowledgement message. */
-const RUNTIME_VALUE_LABELS: Record<FirstRunRuntimeValue, string> = {
-  cloud: "Eliza Cloud",
-  local: "a local agent on this device",
-  other: "a custom setup",
-};
-
 function isFirstRunRuntimeValue(value: string): value is FirstRunRuntimeValue {
   return (FIRST_RUN_RUNTIME_VALUES as readonly string[]).includes(value);
+}
+
+/** True for any value the in-chat onboarding interceptor owns. */
+export function isFirstRunChoiceValue(value: string): boolean {
+  if (isFirstRunRuntimeValue(value)) return true;
+  return FIRST_RUN_SCOPED_PREFIXES.some((prefix) => value.startsWith(prefix));
 }
 
 /**
@@ -92,19 +99,6 @@ export function buildFirstRunSeedMessages(now: number): ConversationMessage[] {
   ];
 }
 
-/** The local acknowledgement appended when a first-run runtime choice is picked. */
-export function buildFirstRunAckMessage(
-  value: FirstRunRuntimeValue,
-  now: number,
-): ConversationMessage {
-  return {
-    id: `first-run-ack-${value}`,
-    role: "assistant",
-    text: `Great — setting up ${RUNTIME_VALUE_LABELS[value]}…`,
-    timestamp: now,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // First-run choice interceptor registry
 //
@@ -114,7 +108,7 @@ export function buildFirstRunAckMessage(
 // send path is byte-identical.
 // ---------------------------------------------------------------------------
 
-type FirstRunChoiceHandler = (value: FirstRunRuntimeValue) => void;
+export type FirstRunChoiceHandler = (value: string) => void;
 
 let activeFirstRunChoiceHandler: FirstRunChoiceHandler | null = null;
 
@@ -127,14 +121,14 @@ export function setFirstRunChoiceInterceptor(
 
 /**
  * Intercept a chat-send value while in-chat onboarding is active. Returns true
- * (and routes to the registered handler) when `value` is a first-run runtime
- * choice; false otherwise, so the caller proceeds with a normal send.
+ * (and routes to the registered handler) when `value` is a first-run choice;
+ * false otherwise, so the caller proceeds with a normal send.
  */
 export function consumeFirstRunChoice(value: string): boolean {
   const handler = activeFirstRunChoiceHandler;
   if (!handler) return false;
-  if (!isFirstRunRuntimeValue(value)) return false;
-  logger.info(`[InChatOnboarding] intercepted first-run runtime choice: ${value}`);
+  if (!isFirstRunChoiceValue(value)) return false;
+  logger.info(`[InChatOnboarding] intercepted first-run choice: ${value}`);
   handler(value);
   return true;
 }

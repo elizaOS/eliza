@@ -103,12 +103,14 @@ test("in-chat onboarding seeds the greeting + runtime choice into the real float
     fullPage: true,
   });
 
-  // Picking a runtime is intercepted locally (consumeFirstRunChoice) and appends
-  // the acknowledgement instead of dispatching an agent send.
+  // Picking a runtime is intercepted locally (consumeFirstRunChoice) and routed
+  // through the headless first-run use case — the agent send is skipped and the
+  // next ConductorStep (the provider sub-choice) is seeded into the transcript.
   await local.click();
-  await expect(page.getByText(/local agent on this device/i)).toBeVisible({
+  await expect(page.getByTestId("choice-provider:on-device")).toBeVisible({
     timeout: 10_000,
   });
+  await expect(page.getByTestId("choice-provider:elizacloud")).toBeVisible();
 
   await expectNoRenderTelemetryErrors(page, "in-chat onboarding");
 });
