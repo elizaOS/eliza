@@ -14,9 +14,9 @@ import {
   readRendererBuildManifest,
   writeRendererBuildManifest,
 } from "./renderer-build-manifest.mjs";
-import { resolveRepoRootFromImportMeta } from "./repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
 
-const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",
