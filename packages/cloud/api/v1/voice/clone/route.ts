@@ -468,7 +468,13 @@ app.post("/", async (c) => {
       }
     }
 
-    if (reservation) {
+    // Only refund if the voice clone was NOT committed. Once userVoicePersisted
+    // is true the ElevenLabs voice exists and the user_voices row is usable for
+    // TTS, so a later (post-commit) failure — attachSamplesToVoice,
+    // completeCloningJob, or the affiliate lookup inside billFlatUsage — must NOT
+    // refund a delivered clone (the file's own note above). This also prevents a
+    // post-settle double-reconcile (settle happens after the commit).
+    if (reservation && !userVoicePersisted) {
       await reservation.reconcile(0);
       logger.info("[Voice Clone API] Credits refunded", {
         organizationId: user?.organization_id,

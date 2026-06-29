@@ -354,6 +354,10 @@ async function runSunoMusic(
 app.post("/", async (c) => {
   let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
     null;
+  // Once the charge is SETTLED, a later (non-critical, post-settle) failure must
+  // NOT hit the catch's reconcile(0) — which is non-idempotent and would refund
+  // the already-correct charge, giving free music. Mirrors generate-image.
+  let chargeSettled = false;
 
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -447,6 +451,7 @@ app.post("/", async (c) => {
           : await runSunoMusic(c.env, request);
 
     await reservation.reconcile(cost.totalCost);
+    chargeSettled = true;
 
     const generation = await generationsService.create({
       organization_id: user.organization_id,
@@ -494,7 +499,7 @@ app.post("/", async (c) => {
       cost,
     });
   } catch (error) {
-    if (reservation) {
+    if (reservation && !chargeSettled) {
       await reservation.reconcile(0).catch((reconcileError) => {
         logger.error("[GenerateMusic] Failed to refund reservation", {
           error:
