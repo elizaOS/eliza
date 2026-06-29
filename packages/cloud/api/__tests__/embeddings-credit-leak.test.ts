@@ -18,6 +18,7 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { APICallError } from "ai";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
+import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as usageActual from "@/lib/services/usage";
 
@@ -40,6 +41,7 @@ mock.module("@/lib/middleware/rate-limit", () => ({
 }));
 
 mock.module("@/lib/providers/language-model", () => ({
+  ...languageModelActual,
   hasTextEmbeddingProviderConfigured: () => true,
   getTextEmbeddingModel: () => ({}) as never,
   resolveEmbeddingProviderSource: () => "openai",
@@ -75,6 +77,7 @@ const embeddingsRoute = (await import("../v1/embeddings/route")).default;
 afterAll(() => {
   mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
   mock.module("@/lib/middleware/rate-limit", () => rateLimitActual);
+  mock.module("@/lib/providers/language-model", () => languageModelActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module("@/lib/services/usage", () => usageActual);
   mock.module("ai", () => aiActual);
