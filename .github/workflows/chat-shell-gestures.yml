@@ -103,6 +103,12 @@ jobs:
       - name: TopicGroup gesture e2e
         run: bun run --cwd packages/ui test:chatux-gesture-e2e
 
+      # Perf gate: drive the overlay under scroll + swipe, feed real
+      # PerformanceObserver + rAF entries into the shared frame-budget +
+      # layout-stability detectors, hard-fail on dropped-frame % / p95 / CLS.
+      - name: Chat overlay perf gate
+        run: bun run --cwd packages/ui test:chat-perf-gate
+
       - name: Upload gesture videos + screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -112,5 +118,6 @@ jobs:
             packages/ui/src/components/shell/__e2e__/output-conversation-swipe/
             packages/ui/src/components/shell/__e2e__/output/
             packages/ui/src/components/shell/__e2e__/output-chatux/
+            packages/ui/src/components/shell/__e2e__/output-perf-gate/
           if-no-files-found: warn
           retention-days: 14
