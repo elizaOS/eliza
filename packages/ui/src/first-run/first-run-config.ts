@@ -10,10 +10,40 @@ import {
   type ServiceRouteConfig,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
+import type { FirstRunRuntime } from "./first-run";
 import {
   type FirstRunRuntimeTarget,
   isElizaCloudFirstRunTarget,
 } from "./runtime-target";
+
+/**
+ * The default inference provider the first-run flow should pre-highlight per
+ * runtime — the one genuinely-new product rule, encoded here in the use-case
+ * layer (next to `needsProviderSetup`) rather than in any widget:
+ *
+ *  - `cloud`  → `elizacloud` (all models, pay-as-you-go) — the agent runs on
+ *               Eliza Cloud, so its inference defaults to Eliza Cloud.
+ *  - `local`  → `on-device` (everything runs on this device).
+ *  - `remote` → the remote agent owns its own provider, so there is no default
+ *               to offer; the in-chat flow does not ask.
+ *
+ * The literal ids map to the `FirstRunLocalInference` sub-choice the controller
+ * draft carries: `elizacloud` ⇒ `cloud-inference`, `on-device` ⇒ `all-local`.
+ */
+export type FirstRunDefaultProvider = "elizacloud" | "on-device" | null;
+
+export function defaultProviderForRuntime(
+  runtime: FirstRunRuntime,
+): FirstRunDefaultProvider {
+  switch (runtime) {
+    case "cloud":
+      return "elizacloud";
+    case "local":
+      return "on-device";
+    case "remote":
+      return null;
+  }
+}
 
 export interface BuildFirstRunConnectionArgs {
   firstRunRuntimeTarget?: FirstRunRuntimeTarget;

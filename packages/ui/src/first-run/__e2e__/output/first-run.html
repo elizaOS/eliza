@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>onboarding e2e</title>
+<!doctype html><html><head><meta charset="utf-8"><title>first-run e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%}</style>
 </head><body><div id="root"></div><script>"use strict";
@@ -33,9 +33,9 @@
     mod
   ));
 
-  // node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js
+  // ../../../node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js
   var require_scheduler_production = __commonJS({
-    "node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js"(exports) {
+    "../../../node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js"(exports) {
       "use strict";
       function push(heap, node) {
         var index = heap.length;
@@ -306,9 +306,9 @@
     }
   });
 
-  // node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js
+  // ../../../node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js
   var require_scheduler = __commonJS({
-    "node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js"(exports, module) {
+    "../../../node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js"(exports, module) {
       "use strict";
       if (true) {
         module.exports = require_scheduler_production();
@@ -318,9 +318,9 @@
     }
   });
 
-  // node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js
+  // ../../../node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js
   var require_react_production = __commonJS({
-    "node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js"(exports) {
+    "../../../node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js"(exports) {
       "use strict";
       var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element");
       var REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal");
@@ -332,7 +332,7 @@
       var REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref");
       var REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense");
       var REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo");
-      var REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
+      var REACT_LAZY_TYPE2 = /* @__PURE__ */ Symbol.for("react.lazy");
       var REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity");
       var MAYBE_ITERATOR_SYMBOL = Symbol.iterator;
       function getIteratorFn(maybeIterable) {
@@ -401,10 +401,10 @@
       function cloneAndReplaceKey(oldElement, newKey) {
         return ReactElement(oldElement.type, newKey, oldElement.props);
       }
-      function isValidElement(object) {
+      function isValidElement2(object) {
         return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
       }
-      function escape2(key) {
+      function escape(key) {
         var escaperLookup = { "=": "=0", ":": "=2" };
         return "$" + key.replace(/[=:]/g, function(match) {
           return escaperLookup[match];
@@ -412,7 +412,7 @@
       }
       var userProvidedKeyEscapeRegex = /\/+/g;
       function getElementKey(element, index) {
-        return "object" === typeof element && null !== element && null != element.key ? escape2("" + element.key) : index.toString(36);
+        return "object" === typeof element && null !== element && null != element.key ? escape("" + element.key) : index.toString(36);
       }
       function resolveThenable(thenable) {
         switch (thenable.status) {
@@ -455,7 +455,7 @@
                 case REACT_PORTAL_TYPE:
                   invokeCallback = true;
                   break;
-                case REACT_LAZY_TYPE:
+                case REACT_LAZY_TYPE2:
                   return invokeCallback = children._init, mapIntoArray(
                     invokeCallback(children._payload),
                     array,
@@ -468,7 +468,7 @@
         if (invokeCallback)
           return callback = callback(children), invokeCallback = "" === nameSoFar ? "." + getElementKey(children, 0) : nameSoFar, isArrayImpl(callback) ? (escapedPrefix = "", null != invokeCallback && (escapedPrefix = invokeCallback.replace(userProvidedKeyEscapeRegex, "$&/") + "/"), mapIntoArray(callback, array, escapedPrefix, "", function(c) {
             return c;
-          })) : null != callback && (isValidElement(callback) && (callback = cloneAndReplaceKey(
+          })) : null != callback && (isValidElement2(callback) && (callback = cloneAndReplaceKey(
             callback,
             escapedPrefix + (null == callback.key || children && children.key === callback.key ? "" : ("" + callback.key).replace(
               userProvidedKeyEscapeRegex,
@@ -553,7 +553,7 @@
         }
         console.error(error);
       };
-      var Children = {
+      var Children2 = {
         map: mapChildren,
         forEach: function(children, forEachFunc, forEachContext) {
           mapChildren(
@@ -577,7 +577,7 @@
           }) || [];
         },
         only: function(children) {
-          if (!isValidElement(children))
+          if (!isValidElement2(children))
             throw Error(
               "React.Children.only expected to receive a single React element child."
             );
@@ -585,7 +585,7 @@
         }
       };
       exports.Activity = REACT_ACTIVITY_TYPE;
-      exports.Children = Children;
+      exports.Children = Children2;
       exports.Component = Component;
       exports.Fragment = REACT_FRAGMENT_TYPE;
       exports.Profiler = REACT_PROFILER_TYPE;
@@ -664,10 +664,10 @@
       exports.forwardRef = function(render) {
         return { $$typeof: REACT_FORWARD_REF_TYPE, render };
       };
-      exports.isValidElement = isValidElement;
+      exports.isValidElement = isValidElement2;
       exports.lazy = function(ctor) {
         return {
-          $$typeof: REACT_LAZY_TYPE,
+          $$typeof: REACT_LAZY_TYPE2,
           _payload: { _status: -1, _result: ctor },
           _init: lazyInitializer
         };
@@ -759,9 +759,9 @@
     }
   });
 
-  // node_modules/.bun/react@19.2.5/node_modules/react/index.js
+  // ../../../node_modules/.bun/react@19.2.5/node_modules/react/index.js
   var require_react = __commonJS({
-    "node_modules/.bun/react@19.2.5/node_modules/react/index.js"(exports, module) {
+    "../../../node_modules/.bun/react@19.2.5/node_modules/react/index.js"(exports, module) {
       "use strict";
       if (true) {
         module.exports = require_react_production();
@@ -771,11 +771,11 @@
     }
   });
 
-  // node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js
+  // ../../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js
   var require_react_dom_production = __commonJS({
-    "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
+    "../../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React4 = require_react();
+      var React7 = require_react();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -815,7 +815,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React4.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React7.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -920,9 +920,9 @@
     }
   });
 
-  // node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/index.js
+  // ../../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/index.js
   var require_react_dom = __commonJS({
-    "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/index.js"(exports, module) {
+    "../../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/index.js"(exports, module) {
       "use strict";
       function checkDCE() {
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE !== "function") {
@@ -946,12 +946,12 @@
     }
   });
 
-  // node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js
+  // ../../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js
   var require_react_dom_client_production = __commonJS({
-    "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
+    "../../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React4 = require_react();
+      var React7 = require_react();
       var ReactDOM = require_react_dom();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
@@ -1087,7 +1087,7 @@
       var REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense");
       var REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list");
       var REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo");
-      var REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
+      var REACT_LAZY_TYPE2 = /* @__PURE__ */ Symbol.for("react.lazy");
       var REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity");
       var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel");
       var MAYBE_ITERATOR_SYMBOL = Symbol.iterator;
@@ -1131,7 +1131,7 @@
               return type;
             case REACT_MEMO_TYPE:
               return innerType = type.displayName || null, null !== innerType ? innerType : getComponentNameFromType(type.type) || "Memo";
-            case REACT_LAZY_TYPE:
+            case REACT_LAZY_TYPE2:
               innerType = type._payload;
               type = type._init;
               try {
@@ -1142,7 +1142,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React4.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React7.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -2863,7 +2863,7 @@
                   case REACT_MEMO_TYPE:
                     fiberTag = 14;
                     break a;
-                  case REACT_LAZY_TYPE:
+                  case REACT_LAZY_TYPE2:
                     fiberTag = 16;
                     owner = null;
                     break a;
@@ -3507,7 +3507,7 @@
               lanes,
               element.key
             );
-          if (null !== current && (current.elementType === elementType || "object" === typeof elementType && null !== elementType && elementType.$$typeof === REACT_LAZY_TYPE && resolveLazy(elementType) === current.type))
+          if (null !== current && (current.elementType === elementType || "object" === typeof elementType && null !== elementType && elementType.$$typeof === REACT_LAZY_TYPE2 && resolveLazy(elementType) === current.type))
             return current = useFiber(current, element.props), coerceRef(current, element), current.return = returnFiber, current;
           current = createFiberFromTypeAndProps(
             element.type,
@@ -3564,7 +3564,7 @@
                   returnFiber.mode,
                   lanes
                 ), newChild.return = returnFiber, newChild;
-              case REACT_LAZY_TYPE:
+              case REACT_LAZY_TYPE2:
                 return newChild = resolveLazy(newChild), createChild(returnFiber, newChild, lanes);
             }
             if (isArrayImpl(newChild) || getIteratorFn(newChild))
@@ -3596,7 +3596,7 @@
                 return newChild.key === key ? updateElement(returnFiber, oldFiber, newChild, lanes) : null;
               case REACT_PORTAL_TYPE:
                 return newChild.key === key ? updatePortal(returnFiber, oldFiber, newChild, lanes) : null;
-              case REACT_LAZY_TYPE:
+              case REACT_LAZY_TYPE2:
                 return newChild = resolveLazy(newChild), updateSlot(returnFiber, oldFiber, newChild, lanes);
             }
             if (isArrayImpl(newChild) || getIteratorFn(newChild))
@@ -3632,7 +3632,7 @@
                 return existingChildren = existingChildren.get(
                   null === newChild.key ? newIdx : newChild.key
                 ) || null, updatePortal(returnFiber, existingChildren, newChild, lanes);
-              case REACT_LAZY_TYPE:
+              case REACT_LAZY_TYPE2:
                 return newChild = resolveLazy(newChild), updateFromMap(
                   existingChildren,
                   returnFiber,
@@ -3768,7 +3768,7 @@
                           returnFiber = lanes;
                           break a;
                         }
-                      } else if (currentFirstChild.elementType === key || "object" === typeof key && null !== key && key.$$typeof === REACT_LAZY_TYPE && resolveLazy(key) === currentFirstChild.type) {
+                      } else if (currentFirstChild.elementType === key || "object" === typeof key && null !== key && key.$$typeof === REACT_LAZY_TYPE2 && resolveLazy(key) === currentFirstChild.type) {
                         deleteRemainingChildren(
                           returnFiber,
                           currentFirstChild.sibling
@@ -3824,7 +3824,7 @@
                   returnFiber = lanes;
                 }
                 return placeSingleChild(returnFiber);
-              case REACT_LAZY_TYPE:
+              case REACT_LAZY_TYPE2:
                 return newChild = resolveLazy(newChild), reconcileChildFibersImpl(
                   returnFiber,
                   currentFirstChild,
@@ -4291,7 +4291,7 @@
         null === (null === workInProgressHook ? index2.memoizedState : workInProgressHook.next) && (index2 = index2.alternate, ReactSharedInternals.H = null === index2 || null === index2.memoizedState ? HooksDispatcherOnMount : HooksDispatcherOnUpdate);
         return thenable;
       }
-      function use(usable) {
+      function use2(usable) {
         if (null !== usable && "object" === typeof usable) {
           if ("function" === typeof usable.then) return useThenable(usable);
           if (usable.$$typeof === REACT_CONTEXT_TYPE) return readContext(usable);
@@ -5060,7 +5060,7 @@
       }
       var ContextOnlyDispatcher = {
         readContext,
-        use,
+        use: use2,
         useCallback: throwInvalidHookError,
         useContext: throwInvalidHookError,
         useEffect: throwInvalidHookError,
@@ -5086,7 +5086,7 @@
       ContextOnlyDispatcher.useEffectEvent = throwInvalidHookError;
       var HooksDispatcherOnMount = {
         readContext,
-        use,
+        use: use2,
         useCallback: function(callback, deps) {
           mountWorkInProgressHook().memoizedState = [
             callback,
@@ -5272,7 +5272,7 @@
       };
       var HooksDispatcherOnUpdate = {
         readContext,
-        use,
+        use: use2,
         useCallback: updateCallback,
         useContext: readContext,
         useEffect: updateEffect,
@@ -5317,7 +5317,7 @@
       HooksDispatcherOnUpdate.useEffectEvent = updateEvent;
       var HooksDispatcherOnRerender = {
         readContext,
-        use,
+        use: use2,
         useCallback: updateCallback,
         useContext: readContext,
         useEffect: updateEffect,
@@ -12588,7 +12588,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1840 = React4.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1840 = React7.version;
       if ("19.2.5" !== isomorphicReactPackageVersion$jscomp$inline_1840)
         throw Error(
           formatProdErrorMessage(
@@ -12687,9 +12687,9 @@
     }
   });
 
-  // node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/client.js
+  // ../../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/client.js
   var require_client = __commonJS({
-    "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/client.js"(exports, module) {
+    "../../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/client.js"(exports, module) {
       "use strict";
       function checkDCE() {
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE !== "function") {
@@ -12713,9 +12713,9 @@
     }
   });
 
-  // node_modules/.bun/react@19.2.5/node_modules/react/cjs/react-jsx-runtime.production.js
+  // ../../../node_modules/.bun/react@19.2.5/node_modules/react/cjs/react-jsx-runtime.production.js
   var require_react_jsx_runtime_production = __commonJS({
-    "node_modules/.bun/react@19.2.5/node_modules/react/cjs/react-jsx-runtime.production.js"(exports) {
+    "../../../node_modules/.bun/react@19.2.5/node_modules/react/cjs/react-jsx-runtime.production.js"(exports) {
       "use strict";
       var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element");
       var REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment");
@@ -12743,9 +12743,9 @@
     }
   });
 
-  // node_modules/.bun/react@19.2.5/node_modules/react/jsx-runtime.js
+  // ../../../node_modules/.bun/react@19.2.5/node_modules/react/jsx-runtime.js
   var require_jsx_runtime = __commonJS({
-    "node_modules/.bun/react@19.2.5/node_modules/react/jsx-runtime.js"(exports, module) {
+    "../../../node_modules/.bun/react@19.2.5/node_modules/react/jsx-runtime.js"(exports, module) {
       "use strict";
       if (true) {
         module.exports = require_react_jsx_runtime_production();
@@ -12755,9 +12755,25 @@
     }
   });
 
-  // eliza-core-stub:@elizaos/core
+  // eliza-pkg-stub:@elizaos/core
   var require_core = __commonJS({
-    "eliza-core-stub:@elizaos/core"(exports, module) {
+    "eliza-pkg-stub:@elizaos/core"(exports, module) {
+      var noop = new Proxy(() => noop, { get: () => noop });
+      module.exports = new Proxy({}, { get: () => noop });
+    }
+  });
+
+  // eliza-pkg-stub:@elizaos/shared/events
+  var require_events = __commonJS({
+    "eliza-pkg-stub:@elizaos/shared/events"(exports, module) {
+      var noop = new Proxy(() => noop, { get: () => noop });
+      module.exports = new Proxy({}, { get: () => noop });
+    }
+  });
+
+  // eliza-pkg-stub:@elizaos/shared
+  var require_shared = __commonJS({
+    "eliza-pkg-stub:@elizaos/shared"(exports, module) {
       var noop = new Proxy(() => noop, { get: () => noop });
       module.exports = new Proxy({}, { get: () => noop });
     }
@@ -12766,213 +12782,8 @@
   // packages/ui/src/first-run/__e2e__/onboarding-fixture.tsx
   var import_client = __toESM(require_client(), 1);
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
-  var import_react3 = __toESM(require_react(), 1);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/mergeClasses.mjs
-  var mergeClasses = (...classes) => classes.filter((className, index, array) => {
-    return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
-  }).join(" ").trim();
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/toKebabCase.mjs
-  var toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/toCamelCase.mjs
-  var toCamelCase = (string) => string.replace(
-    /^([A-Z])|[\s-_]+(\w)/g,
-    (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
-  );
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/toPascalCase.mjs
-  var toPascalCase = (string) => {
-    const camelCase = toCamelCase(string);
-    return camelCase.charAt(0).toUpperCase() + camelCase.slice(1);
-  };
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/Icon.mjs
-  var import_react2 = __toESM(require_react(), 1);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/defaultAttributes.mjs
-  var defaultAttributes = {
-    xmlns: "http://www.w3.org/2000/svg",
-    width: 24,
-    height: 24,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 2,
-    strokeLinecap: "round",
-    strokeLinejoin: "round"
-  };
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/hasA11yProp.mjs
-  var hasA11yProp = (props) => {
-    for (const prop in props) {
-      if (prop.startsWith("aria-") || prop === "role" || prop === "title") {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/context.mjs
-  var import_react = __toESM(require_react(), 1);
-  var LucideContext = (0, import_react.createContext)({});
-  var useLucideContext = () => (0, import_react.useContext)(LucideContext);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/Icon.mjs
-  var Icon = (0, import_react2.forwardRef)(
-    ({ color, size, strokeWidth, absoluteStrokeWidth, className = "", children, iconNode, ...rest }, ref) => {
-      const {
-        size: contextSize = 24,
-        strokeWidth: contextStrokeWidth = 2,
-        absoluteStrokeWidth: contextAbsoluteStrokeWidth = false,
-        color: contextColor = "currentColor",
-        className: contextClass = ""
-      } = useLucideContext() ?? {};
-      const calculatedStrokeWidth = absoluteStrokeWidth ?? contextAbsoluteStrokeWidth ? Number(strokeWidth ?? contextStrokeWidth) * 24 / Number(size ?? contextSize) : strokeWidth ?? contextStrokeWidth;
-      return (0, import_react2.createElement)(
-        "svg",
-        {
-          ref,
-          ...defaultAttributes,
-          width: size ?? contextSize ?? defaultAttributes.width,
-          height: size ?? contextSize ?? defaultAttributes.height,
-          stroke: color ?? contextColor,
-          strokeWidth: calculatedStrokeWidth,
-          className: mergeClasses("lucide", contextClass, className),
-          ...!children && !hasA11yProp(rest) && { "aria-hidden": "true" },
-          ...rest
-        },
-        [
-          ...iconNode.map(([tag, attrs]) => (0, import_react2.createElement)(tag, attrs)),
-          ...Array.isArray(children) ? children : [children]
-        ]
-      );
-    }
-  );
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
-  var createLucideIcon = (iconName, iconNode) => {
-    const Component = (0, import_react3.forwardRef)(
-      ({ className, ...props }, ref) => (0, import_react3.createElement)(Icon, {
-        ref,
-        iconNode,
-        className: mergeClasses(
-          `lucide-${toKebabCase(toPascalCase(iconName))}`,
-          `lucide-${iconName}`,
-          className
-        ),
-        ...props
-      })
-    );
-    Component.displayName = toPascalCase(iconName);
-    return Component;
-  };
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/arrow-right.mjs
-  var __iconNode = [
-    ["path", { d: "M5 12h14", key: "1ays0h" }],
-    ["path", { d: "m12 5 7 7-7 7", key: "xquz4c" }]
-  ];
-  var ArrowRight = createLucideIcon("arrow-right", __iconNode);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/bot.mjs
-  var __iconNode2 = [
-    ["path", { d: "M12 8V4H8", key: "hb8ula" }],
-    ["rect", { width: "16", height: "12", x: "4", y: "8", rx: "2", key: "enze0r" }],
-    ["path", { d: "M2 14h2", key: "vft8re" }],
-    ["path", { d: "M20 14h2", key: "4cs60a" }],
-    ["path", { d: "M15 13v2", key: "1xurst" }],
-    ["path", { d: "M9 13v2", key: "rq6x2g" }]
-  ];
-  var Bot = createLucideIcon("bot", __iconNode2);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/check.mjs
-  var __iconNode3 = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
-  var Check = createLucideIcon("check", __iconNode3);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/chevron-left.mjs
-  var __iconNode4 = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
-  var ChevronLeft = createLucideIcon("chevron-left", __iconNode4);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/cloud.mjs
-  var __iconNode5 = [
-    ["path", { d: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z", key: "p7xjir" }]
-  ];
-  var Cloud = createLucideIcon("cloud", __iconNode5);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/cpu.mjs
-  var __iconNode6 = [
-    ["path", { d: "M12 20v2", key: "1lh1kg" }],
-    ["path", { d: "M12 2v2", key: "tus03m" }],
-    ["path", { d: "M17 20v2", key: "1rnc9c" }],
-    ["path", { d: "M17 2v2", key: "11trls" }],
-    ["path", { d: "M2 12h2", key: "1t8f8n" }],
-    ["path", { d: "M2 17h2", key: "7oei6x" }],
-    ["path", { d: "M2 7h2", key: "asdhe0" }],
-    ["path", { d: "M20 12h2", key: "1q8mjw" }],
-    ["path", { d: "M20 17h2", key: "1fpfkl" }],
-    ["path", { d: "M20 7h2", key: "1o8tra" }],
-    ["path", { d: "M7 20v2", key: "4gnj0m" }],
-    ["path", { d: "M7 2v2", key: "1i4yhu" }],
-    ["rect", { x: "4", y: "4", width: "16", height: "16", rx: "2", key: "1vbyd7" }],
-    ["rect", { x: "8", y: "8", width: "8", height: "8", rx: "1", key: "z9xiuo" }]
-  ];
-  var Cpu = createLucideIcon("cpu", __iconNode6);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/loader-circle.mjs
-  var __iconNode7 = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
-  var LoaderCircle = createLucideIcon("loader-circle", __iconNode7);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/mail-check.mjs
-  var __iconNode8 = [
-    ["path", { d: "M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8", key: "12jkf8" }],
-    ["path", { d: "m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7", key: "1ocrg3" }],
-    ["path", { d: "m16 19 2 2 4-4", key: "1b14m6" }]
-  ];
-  var MailCheck = createLucideIcon("mail-check", __iconNode8);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/plus.mjs
-  var __iconNode9 = [
-    ["path", { d: "M5 12h14", key: "1ays0h" }],
-    ["path", { d: "M12 5v14", key: "s699le" }]
-  ];
-  var Plus = createLucideIcon("plus", __iconNode9);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/refresh-cw.mjs
-  var __iconNode10 = [
-    ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
-    ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
-    ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
-    ["path", { d: "M8 16H3v5", key: "1cv678" }]
-  ];
-  var RefreshCw = createLucideIcon("refresh-cw", __iconNode10);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings-2.mjs
-  var __iconNode11 = [
-    ["path", { d: "M14 17H5", key: "gfn3mx" }],
-    ["path", { d: "M19 7h-9", key: "6i9tg" }],
-    ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
-    ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
-  ];
-  var Settings2 = createLucideIcon("settings-2", __iconNode11);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/shield-check.mjs
-  var __iconNode12 = [
-    [
-      "path",
-      {
-        d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
-        key: "oel41y"
-      }
-    ],
-    ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
-  ];
-  var ShieldCheck = createLucideIcon("shield-check", __iconNode12);
-
-  // packages/ui/src/first-run/CompactOnboarding.tsx
-  var React3 = __toESM(require_react(), 1);
+  // packages/ui/src/first-run/FirstRunChat.tsx
+  var React6 = __toESM(require_react(), 1);
 
   // packages/ui/src/components/brand/eliza-mark.tsx
   var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
@@ -13009,634 +12820,363 @@
     );
   }
 
-  // packages/ui/src/config/boot-config-store.ts
-  var import_core = __toESM(require_core(), 1);
-  var DEFAULT_BOOT_CONFIG = {
-    branding: {},
-    cloudApiBase: "https://www.elizacloud.ai"
-  };
-  var BOOT_CONFIG_STORE_KEY = /* @__PURE__ */ Symbol.for("elizaos.app.boot-config");
-  var BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
-  function getGlobalSlot() {
-    return globalThis;
-  }
-  function getBootConfigStore() {
-    const globalObject = getGlobalSlot();
-    const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
-    if (mirroredWindowConfig) {
-      const mirroredStore = { current: mirroredWindowConfig };
-      globalObject[BOOT_CONFIG_STORE_KEY] = mirroredStore;
-      return mirroredStore;
-    }
-    const existing = globalObject[BOOT_CONFIG_STORE_KEY];
-    if (existing && typeof existing === "object" && "current" in existing) {
-      return existing;
-    }
-    const store = { current: DEFAULT_BOOT_CONFIG };
-    globalObject[BOOT_CONFIG_STORE_KEY] = store;
-    globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
-    return store;
-  }
-  function getBootConfig() {
-    return getBootConfigStore().current;
-  }
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
+  var import_react3 = __toESM(require_react(), 1);
 
-  // packages/shared/src/events/index.ts
-  var TRAY_ACTION_EVENT = "eliza:tray-action";
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/mergeClasses.mjs
+  var mergeClasses = (...classes) => classes.filter((className, index, array) => {
+    return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
+  }).join(" ").trim();
 
-  // node_modules/.bun/@capacitor+core@8.4.0/node_modules/@capacitor/core/dist/index.js
-  var ExceptionCode;
-  (function(ExceptionCode2) {
-    ExceptionCode2["Unimplemented"] = "UNIMPLEMENTED";
-    ExceptionCode2["Unavailable"] = "UNAVAILABLE";
-  })(ExceptionCode || (ExceptionCode = {}));
-  var CapacitorException = class extends Error {
-    constructor(message, code, data) {
-      super(message);
-      this.message = message;
-      this.code = code;
-      this.data = data;
-    }
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/toKebabCase.mjs
+  var toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/toCamelCase.mjs
+  var toCamelCase = (string) => string.replace(
+    /^([A-Z])|[\s-_]+(\w)/g,
+    (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
+  );
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/toPascalCase.mjs
+  var toPascalCase = (string) => {
+    const camelCase = toCamelCase(string);
+    return camelCase.charAt(0).toUpperCase() + camelCase.slice(1);
   };
-  var getPlatformId = (win) => {
-    var _a, _b;
-    if (win === null || win === void 0 ? void 0 : win.androidBridge) {
-      return "android";
-    } else if ((_b = (_a = win === null || win === void 0 ? void 0 : win.webkit) === null || _a === void 0 ? void 0 : _a.messageHandlers) === null || _b === void 0 ? void 0 : _b.bridge) {
-      return "ios";
-    } else {
-      return "web";
-    }
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/Icon.mjs
+  var import_react2 = __toESM(require_react(), 1);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/defaultAttributes.mjs
+  var defaultAttributes = {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: 24,
+    height: 24,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
   };
-  var createCapacitor = (win) => {
-    const capCustomPlatform = win.CapacitorCustomPlatform || null;
-    const cap = win.Capacitor || {};
-    const Plugins = cap.Plugins = cap.Plugins || {};
-    const getPlatform = () => {
-      return capCustomPlatform !== null ? capCustomPlatform.name : getPlatformId(win);
-    };
-    const isNativePlatform = () => getPlatform() !== "web";
-    const isPluginAvailable = (pluginName) => {
-      const plugin = registeredPlugins.get(pluginName);
-      if (plugin === null || plugin === void 0 ? void 0 : plugin.platforms.has(getPlatform())) {
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/hasA11yProp.mjs
+  var hasA11yProp = (props) => {
+    for (const prop in props) {
+      if (prop.startsWith("aria-") || prop === "role" || prop === "title") {
         return true;
       }
-      if (getPluginHeader(pluginName)) {
-        return true;
-      }
-      return false;
-    };
-    const getPluginHeader = (pluginName) => {
-      var _a;
-      return (_a = cap.PluginHeaders) === null || _a === void 0 ? void 0 : _a.find((h) => h.name === pluginName);
-    };
-    const handleError = (err) => win.console.error(err);
-    const registeredPlugins = /* @__PURE__ */ new Map();
-    const registerPlugin2 = (pluginName, jsImplementations = {}) => {
-      const registeredPlugin = registeredPlugins.get(pluginName);
-      if (registeredPlugin) {
-        console.warn(`Capacitor plugin "${pluginName}" already registered. Cannot register plugins twice.`);
-        return registeredPlugin.proxy;
-      }
-      const platform = getPlatform();
-      const pluginHeader = getPluginHeader(pluginName);
-      let jsImplementation;
-      const loadPluginImplementation = async () => {
-        if (!jsImplementation && platform in jsImplementations) {
-          jsImplementation = typeof jsImplementations[platform] === "function" ? jsImplementation = await jsImplementations[platform]() : jsImplementation = jsImplementations[platform];
-        } else if (capCustomPlatform !== null && !jsImplementation && "web" in jsImplementations) {
-          jsImplementation = typeof jsImplementations["web"] === "function" ? jsImplementation = await jsImplementations["web"]() : jsImplementation = jsImplementations["web"];
-        }
-        return jsImplementation;
-      };
-      const createPluginMethod = (impl, prop) => {
-        var _a, _b;
-        if (pluginHeader) {
-          const methodHeader = pluginHeader === null || pluginHeader === void 0 ? void 0 : pluginHeader.methods.find((m) => prop === m.name);
-          if (methodHeader) {
-            if (methodHeader.rtype === "promise") {
-              return (options) => cap.nativePromise(pluginName, prop.toString(), options);
-            } else {
-              return (options, callback) => cap.nativeCallback(pluginName, prop.toString(), options, callback);
-            }
-          } else if (impl) {
-            return (_a = impl[prop]) === null || _a === void 0 ? void 0 : _a.bind(impl);
-          }
-        } else if (impl) {
-          return (_b = impl[prop]) === null || _b === void 0 ? void 0 : _b.bind(impl);
-        } else {
-          throw new CapacitorException(`"${pluginName}" plugin is not implemented on ${platform}`, ExceptionCode.Unimplemented);
-        }
-      };
-      const createPluginMethodWrapper = (prop) => {
-        let remove;
-        const wrapper = (...args) => {
-          const p = loadPluginImplementation().then((impl) => {
-            const fn = createPluginMethod(impl, prop);
-            if (fn) {
-              const p2 = fn(...args);
-              remove = p2 === null || p2 === void 0 ? void 0 : p2.remove;
-              return p2;
-            } else {
-              throw new CapacitorException(`"${pluginName}.${prop}()" is not implemented on ${platform}`, ExceptionCode.Unimplemented);
-            }
-          });
-          if (prop === "addListener") {
-            p.remove = async () => remove();
-          }
-          return p;
-        };
-        wrapper.toString = () => `${prop.toString()}() { [capacitor code] }`;
-        Object.defineProperty(wrapper, "name", {
-          value: prop,
-          writable: false,
-          configurable: false
-        });
-        return wrapper;
-      };
-      const addListener = createPluginMethodWrapper("addListener");
-      const removeListener = createPluginMethodWrapper("removeListener");
-      const addListenerNative = (eventName, callback) => {
-        const call = addListener({ eventName }, callback);
-        const remove = async () => {
-          const callbackId = await call;
-          removeListener({
-            eventName,
-            callbackId
-          }, callback);
-        };
-        const p = new Promise((resolve) => call.then(() => resolve({ remove })));
-        p.remove = async () => {
-          console.warn(`Using addListener() without 'await' is deprecated.`);
-          await remove();
-        };
-        return p;
-      };
-      const proxy = new Proxy({}, {
-        get(_, prop) {
-          switch (prop) {
-            // https://github.com/facebook/react/issues/20030
-            case "$$typeof":
-              return void 0;
-            case "toJSON":
-              return () => ({});
-            case "addListener":
-              return pluginHeader ? addListenerNative : addListener;
-            case "removeListener":
-              return removeListener;
-            default:
-              return createPluginMethodWrapper(prop);
-          }
-        }
-      });
-      Plugins[pluginName] = proxy;
-      registeredPlugins.set(pluginName, {
-        name: pluginName,
-        proxy,
-        platforms: /* @__PURE__ */ new Set([...Object.keys(jsImplementations), ...pluginHeader ? [platform] : []])
-      });
-      return proxy;
-    };
-    if (!cap.convertFileSrc) {
-      cap.convertFileSrc = (filePath) => filePath;
     }
-    cap.getPlatform = getPlatform;
-    cap.handleError = handleError;
-    cap.isNativePlatform = isNativePlatform;
-    cap.isPluginAvailable = isPluginAvailable;
-    cap.registerPlugin = registerPlugin2;
-    cap.Exception = CapacitorException;
-    cap.DEBUG = !!cap.DEBUG;
-    cap.isLoggingEnabled = !!cap.isLoggingEnabled;
-    return cap;
+    return false;
   };
-  var initCapacitorGlobal = (win) => win.Capacitor = createCapacitor(win);
-  var Capacitor = /* @__PURE__ */ initCapacitorGlobal(typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : {});
-  var registerPlugin = Capacitor.registerPlugin;
-  var WebPlugin = class {
-    constructor() {
-      this.listeners = {};
-      this.retainedEventArguments = {};
-      this.windowListeners = {};
-    }
-    addListener(eventName, listenerFunc) {
-      let firstListener = false;
-      const listeners = this.listeners[eventName];
-      if (!listeners) {
-        this.listeners[eventName] = [];
-        firstListener = true;
-      }
-      this.listeners[eventName].push(listenerFunc);
-      const windowListener = this.windowListeners[eventName];
-      if (windowListener && !windowListener.registered) {
-        this.addWindowListener(windowListener);
-      }
-      if (firstListener) {
-        this.sendRetainedArgumentsForEvent(eventName);
-      }
-      const remove = async () => this.removeListener(eventName, listenerFunc);
-      const p = Promise.resolve({ remove });
-      return p;
-    }
-    async removeAllListeners() {
-      this.listeners = {};
-      for (const listener in this.windowListeners) {
-        this.removeWindowListener(this.windowListeners[listener]);
-      }
-      this.windowListeners = {};
-    }
-    notifyListeners(eventName, data, retainUntilConsumed) {
-      const listeners = this.listeners[eventName];
-      if (!listeners) {
-        if (retainUntilConsumed) {
-          let args = this.retainedEventArguments[eventName];
-          if (!args) {
-            args = [];
-          }
-          args.push(data);
-          this.retainedEventArguments[eventName] = args;
-        }
-        return;
-      }
-      listeners.forEach((listener) => listener(data));
-    }
-    hasListeners(eventName) {
-      var _a;
-      return !!((_a = this.listeners[eventName]) === null || _a === void 0 ? void 0 : _a.length);
-    }
-    registerWindowListener(windowEventName, pluginEventName) {
-      this.windowListeners[pluginEventName] = {
-        registered: false,
-        windowEventName,
-        pluginEventName,
-        handler: (event) => {
-          this.notifyListeners(pluginEventName, event);
-        }
-      };
-    }
-    unimplemented(msg = "not implemented") {
-      return new Capacitor.Exception(msg, ExceptionCode.Unimplemented);
-    }
-    unavailable(msg = "not available") {
-      return new Capacitor.Exception(msg, ExceptionCode.Unavailable);
-    }
-    async removeListener(eventName, listenerFunc) {
-      const listeners = this.listeners[eventName];
-      if (!listeners) {
-        return;
-      }
-      const index = listeners.indexOf(listenerFunc);
-      this.listeners[eventName].splice(index, 1);
-      if (!this.listeners[eventName].length) {
-        this.removeWindowListener(this.windowListeners[eventName]);
-      }
-    }
-    addWindowListener(handle) {
-      window.addEventListener(handle.windowEventName, handle.handler);
-      handle.registered = true;
-    }
-    removeWindowListener(handle) {
-      if (!handle) {
-        return;
-      }
-      window.removeEventListener(handle.windowEventName, handle.handler);
-      handle.registered = false;
-    }
-    sendRetainedArgumentsForEvent(eventName) {
-      const args = this.retainedEventArguments[eventName];
-      if (!args) {
-        return;
-      }
-      delete this.retainedEventArguments[eventName];
-      args.forEach((arg) => {
-        this.notifyListeners(eventName, arg);
-      });
-    }
-  };
-  var encode = (str) => encodeURIComponent(str).replace(/%(2[346B]|5E|60|7C)/g, decodeURIComponent).replace(/[()]/g, escape);
-  var decode = (str) => str.replace(/(%[\dA-F]{2})+/gi, decodeURIComponent);
-  var CapacitorCookiesPluginWeb = class extends WebPlugin {
-    async getCookies() {
-      const cookies = document.cookie;
-      const cookieMap = {};
-      cookies.split(";").forEach((cookie) => {
-        if (cookie.length <= 0)
-          return;
-        let [key, value] = cookie.replace(/=/, "CAP_COOKIE").split("CAP_COOKIE");
-        key = decode(key).trim();
-        value = decode(value).trim();
-        cookieMap[key] = value;
-      });
-      return cookieMap;
-    }
-    async setCookie(options) {
-      try {
-        const encodedKey = encode(options.key);
-        const encodedValue = encode(options.value);
-        const expires = options.expires ? `; expires=${options.expires.replace("expires=", "")}` : "";
-        const path = (options.path || "/").replace("path=", "");
-        const domain = options.url != null && options.url.length > 0 ? `domain=${options.url}` : "";
-        document.cookie = `${encodedKey}=${encodedValue || ""}${expires}; path=${path}; ${domain};`;
-      } catch (error) {
-        return Promise.reject(error);
-      }
-    }
-    async deleteCookie(options) {
-      try {
-        document.cookie = `${options.key}=; Max-Age=0`;
-      } catch (error) {
-        return Promise.reject(error);
-      }
-    }
-    async clearCookies() {
-      try {
-        const cookies = document.cookie.split(";") || [];
-        for (const cookie of cookies) {
-          document.cookie = cookie.replace(/^ +/, "").replace(/=.*/, `=;expires=${(/* @__PURE__ */ new Date()).toUTCString()};path=/`);
-        }
-      } catch (error) {
-        return Promise.reject(error);
-      }
-    }
-    async clearAllCookies() {
-      try {
-        await this.clearCookies();
-      } catch (error) {
-        return Promise.reject(error);
-      }
-    }
-  };
-  var CapacitorCookies = registerPlugin("CapacitorCookies", {
-    web: () => new CapacitorCookiesPluginWeb()
-  });
-  var readBlobAsBase64 = async (blob) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64String = reader.result;
-      resolve(base64String.indexOf(",") >= 0 ? base64String.split(",")[1] : base64String);
-    };
-    reader.onerror = (error) => reject(error);
-    reader.readAsDataURL(blob);
-  });
-  var normalizeHttpHeaders = (headers = {}) => {
-    const originalKeys = Object.keys(headers);
-    const loweredKeys = Object.keys(headers).map((k) => k.toLocaleLowerCase());
-    const normalized = loweredKeys.reduce((acc, key, index) => {
-      acc[key] = headers[originalKeys[index]];
-      return acc;
-    }, {});
-    return normalized;
-  };
-  var buildUrlParams = (params2, shouldEncode = true) => {
-    if (!params2)
-      return null;
-    const output = Object.entries(params2).reduce((accumulator, entry) => {
-      const [key, value] = entry;
-      let encodedValue;
-      let item;
-      if (Array.isArray(value)) {
-        item = "";
-        value.forEach((str) => {
-          encodedValue = shouldEncode ? encodeURIComponent(str) : str;
-          item += `${key}=${encodedValue}&`;
-        });
-        item.slice(0, -1);
-      } else {
-        encodedValue = shouldEncode ? encodeURIComponent(value) : value;
-        item = `${key}=${encodedValue}`;
-      }
-      return `${accumulator}&${item}`;
-    }, "");
-    return output.substr(1);
-  };
-  var buildRequestInit = (options, extra = {}) => {
-    const output = Object.assign({ method: options.method || "GET", headers: options.headers }, extra);
-    const headers = normalizeHttpHeaders(options.headers);
-    const type = headers["content-type"] || "";
-    if (typeof options.data === "string") {
-      output.body = options.data;
-    } else if (type.includes("application/x-www-form-urlencoded")) {
-      const params2 = new URLSearchParams();
-      for (const [key, value] of Object.entries(options.data || {})) {
-        params2.set(key, value);
-      }
-      output.body = params2.toString();
-    } else if (type.includes("multipart/form-data") || options.data instanceof FormData) {
-      const form = new FormData();
-      if (options.data instanceof FormData) {
-        options.data.forEach((value, key) => {
-          form.append(key, value);
-        });
-      } else {
-        for (const key of Object.keys(options.data)) {
-          form.append(key, options.data[key]);
-        }
-      }
-      output.body = form;
-      const headers2 = new Headers(output.headers);
-      headers2.delete("content-type");
-      output.headers = headers2;
-    } else if (type.includes("application/json") || typeof options.data === "object") {
-      output.body = JSON.stringify(options.data);
-    }
-    return output;
-  };
-  var CapacitorHttpPluginWeb = class extends WebPlugin {
-    /**
-     * Perform an Http request given a set of options
-     * @param options Options to build the HTTP request
-     */
-    async request(options) {
-      const requestInit = buildRequestInit(options, options.webFetchExtra);
-      const urlParams = buildUrlParams(options.params, options.shouldEncodeUrlParams);
-      const url = urlParams ? `${options.url}?${urlParams}` : options.url;
-      const response = await fetch(url, requestInit);
-      const contentType = response.headers.get("content-type") || "";
-      let { responseType = "text" } = response.ok ? options : {};
-      if (contentType.includes("application/json")) {
-        responseType = "json";
-      }
-      let data;
-      let blob;
-      switch (responseType) {
-        case "arraybuffer":
-        case "blob":
-          blob = await response.blob();
-          data = await readBlobAsBase64(blob);
-          break;
-        case "json":
-          data = await response.json();
-          break;
-        case "document":
-        case "text":
-        default:
-          data = await response.text();
-      }
-      const headers = {};
-      response.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
-      return {
-        data,
-        headers,
-        status: response.status,
-        url: response.url
-      };
-    }
-    /**
-     * Perform an Http GET request given a set of options
-     * @param options Options to build the HTTP request
-     */
-    async get(options) {
-      return this.request(Object.assign(Object.assign({}, options), { method: "GET" }));
-    }
-    /**
-     * Perform an Http POST request given a set of options
-     * @param options Options to build the HTTP request
-     */
-    async post(options) {
-      return this.request(Object.assign(Object.assign({}, options), { method: "POST" }));
-    }
-    /**
-     * Perform an Http PUT request given a set of options
-     * @param options Options to build the HTTP request
-     */
-    async put(options) {
-      return this.request(Object.assign(Object.assign({}, options), { method: "PUT" }));
-    }
-    /**
-     * Perform an Http PATCH request given a set of options
-     * @param options Options to build the HTTP request
-     */
-    async patch(options) {
-      return this.request(Object.assign(Object.assign({}, options), { method: "PATCH" }));
-    }
-    /**
-     * Perform an Http DELETE request given a set of options
-     * @param options Options to build the HTTP request
-     */
-    async delete(options) {
-      return this.request(Object.assign(Object.assign({}, options), { method: "DELETE" }));
-    }
-  };
-  var CapacitorHttp = registerPlugin("CapacitorHttp", {
-    web: () => new CapacitorHttpPluginWeb()
-  });
-  var SystemBarsStyle;
-  (function(SystemBarsStyle2) {
-    SystemBarsStyle2["Dark"] = "DARK";
-    SystemBarsStyle2["Light"] = "LIGHT";
-    SystemBarsStyle2["Default"] = "DEFAULT";
-  })(SystemBarsStyle || (SystemBarsStyle = {}));
-  var SystemBarType;
-  (function(SystemBarType2) {
-    SystemBarType2["StatusBar"] = "StatusBar";
-    SystemBarType2["NavigationBar"] = "NavigationBar";
-  })(SystemBarType || (SystemBarType = {}));
-  var SystemBarsPluginWeb = class extends WebPlugin {
-    async setStyle() {
-      this.unavailable("not available for web");
-    }
-    async setAnimation() {
-      this.unavailable("not available for web");
-    }
-    async show() {
-      this.unavailable("not available for web");
-    }
-    async hide() {
-      this.unavailable("not available for web");
-    }
-  };
-  var SystemBars = registerPlugin("SystemBars", {
-    web: () => new SystemBarsPluginWeb()
-  });
 
-  // packages/ui/src/bridge/electrobun-rpc.ts
-  function getDesktopBridgeWindow() {
-    const g = globalThis;
-    if (typeof g.window !== "undefined") {
-      return g.window;
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/context.mjs
+  var import_react = __toESM(require_react(), 1);
+  var LucideContext = (0, import_react.createContext)({});
+  var useLucideContext = () => (0, import_react.useContext)(LucideContext);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/Icon.mjs
+  var Icon = (0, import_react2.forwardRef)(
+    ({ color, size, strokeWidth, absoluteStrokeWidth, className = "", children, iconNode, ...rest }, ref) => {
+      const {
+        size: contextSize = 24,
+        strokeWidth: contextStrokeWidth = 2,
+        absoluteStrokeWidth: contextAbsoluteStrokeWidth = false,
+        color: contextColor = "currentColor",
+        className: contextClass = ""
+      } = useLucideContext() ?? {};
+      const calculatedStrokeWidth = absoluteStrokeWidth ?? contextAbsoluteStrokeWidth ? Number(strokeWidth ?? contextStrokeWidth) * 24 / Number(size ?? contextSize) : strokeWidth ?? contextStrokeWidth;
+      return (0, import_react2.createElement)(
+        "svg",
+        {
+          ref,
+          ...defaultAttributes,
+          width: size ?? contextSize ?? defaultAttributes.width,
+          height: size ?? contextSize ?? defaultAttributes.height,
+          stroke: color ?? contextColor,
+          strokeWidth: calculatedStrokeWidth,
+          className: mergeClasses("lucide", contextClass, className),
+          ...!children && !hasA11yProp(rest) && { "aria-hidden": "true" },
+          ...rest
+        },
+        [
+          ...iconNode.map(([tag, attrs]) => (0, import_react2.createElement)(tag, attrs)),
+          ...Array.isArray(children) ? children : [children]
+        ]
+      );
     }
-    if (typeof window !== "undefined") {
-      return window;
-    }
-    return null;
-  }
-  function getElectrobunRendererRpc() {
-    return getDesktopBridgeWindow()?.__ELIZA_ELECTROBUN_RPC__;
-  }
-  async function invokeDesktopBridgeRequestWithTimeout(options) {
-    const rpc = getElectrobunRendererRpc();
-    const request = rpc?.request?.[options.rpcMethod];
-    if (!request || !rpc?.request) {
-      return { status: "missing" };
-    }
-    const call = request.call(rpc.request, options.params);
-    let tid;
-    const timeoutPromise = new Promise((resolve) => {
-      tid = setTimeout(() => resolve({ tag: "timeout" }), options.timeoutMs);
-    });
-    const settledPromise = call.then(
-      (value) => ({ tag: "done", value }),
-      (error) => ({ tag: "reject", error })
+  );
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
+  var createLucideIcon = (iconName, iconNode) => {
+    const Component = (0, import_react3.forwardRef)(
+      ({ className, ...props }, ref) => (0, import_react3.createElement)(Icon, {
+        ref,
+        iconNode,
+        className: mergeClasses(
+          `lucide-${toKebabCase(toPascalCase(iconName))}`,
+          `lucide-${iconName}`,
+          className
+        ),
+        ...props
+      })
     );
-    try {
-      const winner = await Promise.race([
-        settledPromise,
-        timeoutPromise
-      ]);
-      if (tid !== void 0) clearTimeout(tid);
-      if (winner.tag === "timeout") return { status: "timeout" };
-      if (winner.tag === "reject") {
-        return { status: "rejected", error: winner.error };
+    Component.displayName = toPascalCase(iconName);
+    return Component;
+  };
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/arrow-right.mjs
+  var __iconNode = [
+    ["path", { d: "M5 12h14", key: "1ays0h" }],
+    ["path", { d: "m12 5 7 7-7 7", key: "xquz4c" }]
+  ];
+  var ArrowRight = createLucideIcon("arrow-right", __iconNode);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/bot.mjs
+  var __iconNode2 = [
+    ["path", { d: "M12 8V4H8", key: "hb8ula" }],
+    ["rect", { width: "16", height: "12", x: "4", y: "8", rx: "2", key: "enze0r" }],
+    ["path", { d: "M2 14h2", key: "vft8re" }],
+    ["path", { d: "M20 14h2", key: "4cs60a" }],
+    ["path", { d: "M15 13v2", key: "1xurst" }],
+    ["path", { d: "M9 13v2", key: "rq6x2g" }]
+  ];
+  var Bot = createLucideIcon("bot", __iconNode2);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/check.mjs
+  var __iconNode3 = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
+  var Check = createLucideIcon("check", __iconNode3);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/chevron-left.mjs
+  var __iconNode4 = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
+  var ChevronLeft = createLucideIcon("chevron-left", __iconNode4);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/circle-check.mjs
+  var __iconNode5 = [
+    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+    ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
+  ];
+  var CircleCheck = createLucideIcon("circle-check", __iconNode5);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/external-link.mjs
+  var __iconNode6 = [
+    ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
+    ["path", { d: "M10 14 21 3", key: "gplh6r" }],
+    ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
+  ];
+  var ExternalLink = createLucideIcon("external-link", __iconNode6);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/image-up.mjs
+  var __iconNode7 = [
+    [
+      "path",
+      {
+        d: "M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21",
+        key: "9csbqa"
       }
-      return { status: "ok", value: winner.value };
-    } catch (error) {
-      if (tid !== void 0) clearTimeout(tid);
-      return { status: "rejected", error };
-    }
-  }
+    ],
+    ["path", { d: "m14 19.5 3-3 3 3", key: "9vmjn0" }],
+    ["path", { d: "M17 22v-5.5", key: "1aa6fl" }],
+    ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }]
+  ];
+  var ImageUp = createLucideIcon("image-up", __iconNode7);
 
-  // packages/ui/src/utils/openExternalUrl.ts
-  var registeredCapacitorBrowser = null;
-  function isCapacitorGlobal(value) {
-    return !!value && typeof value === "object";
-  }
-  function getCapacitorBrowser() {
-    if (!Capacitor.isNativePlatform()) return null;
-    const cap = Reflect.get(globalThis, "Capacitor");
-    if (isCapacitorGlobal(cap) && cap.Plugins?.Browser) {
-      return cap.Plugins.Browser;
-    }
-    registeredCapacitorBrowser ??= registerPlugin("Browser");
-    return registeredCapacitorBrowser;
-  }
-  async function openExternalUrl(url) {
-    const capacitorBrowser = getCapacitorBrowser();
-    if (capacitorBrowser) {
-      await capacitorBrowser.open({ url });
-      return;
-    }
-    const bridged = await invokeDesktopBridgeRequestWithTimeout({
-      rpcMethod: "desktopOpenExternal",
-      ipcChannel: "desktop:openExternal",
-      params: { url },
-      timeoutMs: 1e4
-    });
-    if (bridged !== null && bridged.status === "ok") return;
-    if (getElectrobunRendererRpc() !== void 0) {
-      return;
-    }
-    if (typeof window === "undefined" || typeof window.open !== "function") {
-      return;
-    }
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/key-round.mjs
+  var __iconNode8 = [
+    [
+      "path",
+      {
+        d: "M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z",
+        key: "1s6t7t"
+      }
+    ],
+    ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
+  ];
+  var KeyRound = createLucideIcon("key-round", __iconNode8);
 
-  // packages/ui/src/components/ui/status-badge.tsx
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/loader-circle.mjs
+  var __iconNode9 = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+  var LoaderCircle = createLucideIcon("loader-circle", __iconNode9);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/plus.mjs
+  var __iconNode10 = [
+    ["path", { d: "M5 12h14", key: "1ays0h" }],
+    ["path", { d: "M12 5v14", key: "s699le" }]
+  ];
+  var Plus = createLucideIcon("plus", __iconNode10);
+
+  // ../../../node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/refresh-cw.mjs
+  var __iconNode11 = [
+    ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
+    ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
+    ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
+    ["path", { d: "M8 16H3v5", key: "1cv678" }]
+  ];
+  var RefreshCw = createLucideIcon("refresh-cw", __iconNode11);
+
+  // packages/ui/src/components/chat/widgets/ChoiceWidget.tsx
+  var import_react4 = __toESM(require_react(), 1);
+
+  // ../../../node_modules/.bun/@radix-ui+react-slot@1.3.0+b2e33729a97476bf/node_modules/@radix-ui/react-slot/dist/index.mjs
+  var React2 = __toESM(require_react(), 1);
+
+  // ../../../node_modules/.bun/@radix-ui+react-compose-refs@1.1.3+b2e33729a97476bf/node_modules/@radix-ui/react-compose-refs/dist/index.mjs
   var React = __toESM(require_react(), 1);
+  function setRef(ref, value) {
+    if (typeof ref === "function") {
+      return ref(value);
+    } else if (ref !== null && ref !== void 0) {
+      ref.current = value;
+    }
+  }
+  function composeRefs(...refs) {
+    return (node) => {
+      let hasCleanup = false;
+      const cleanups = refs.map((ref) => {
+        const cleanup = setRef(ref, node);
+        if (!hasCleanup && typeof cleanup == "function") {
+          hasCleanup = true;
+        }
+        return cleanup;
+      });
+      if (hasCleanup) {
+        return () => {
+          for (let i = 0; i < cleanups.length; i++) {
+            const cleanup = cleanups[i];
+            if (typeof cleanup == "function") {
+              cleanup();
+            } else {
+              setRef(refs[i], null);
+            }
+          }
+        };
+      }
+    };
+  }
+  function useComposedRefs(...refs) {
+    return React.useCallback(composeRefs(...refs), refs);
+  }
 
-  // node_modules/.bun/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
+  // ../../../node_modules/.bun/@radix-ui+react-slot@1.3.0+b2e33729a97476bf/node_modules/@radix-ui/react-slot/dist/index.mjs
+  // @__NO_SIDE_EFFECTS__
+  function createSlot(ownerName) {
+    const Slot2 = React2.forwardRef((props, forwardedRef) => {
+      let { children, ...slotProps } = props;
+      let slottableElement = null;
+      let hasSlottable = false;
+      const newChildren = [];
+      if (isLazyComponent(children) && typeof use === "function") {
+        children = use(children._payload);
+      }
+      React2.Children.forEach(children, (maybeSlottable) => {
+        if (isSlottable(maybeSlottable)) {
+          hasSlottable = true;
+          const slottable = maybeSlottable;
+          let child = "child" in slottable.props ? slottable.props.child : slottable.props.children;
+          if (isLazyComponent(child) && typeof use === "function") {
+            child = use(child._payload);
+          }
+          slottableElement = getSlottableElementFromSlottable(slottable, child);
+          newChildren.push(slottableElement?.props?.children);
+        } else {
+          newChildren.push(maybeSlottable);
+        }
+      });
+      if (slottableElement) {
+        slottableElement = React2.cloneElement(slottableElement, void 0, newChildren);
+      } else if (
+        // A `Slottable` was found but it didn't resolve to a single element (e.g.
+        // it wrapped multiple elements, text, or a render-prop `child` that
+        // wasn't an element). Don't fall back to treating the `Slottable` wrapper
+        // itself as the slot target — throw a descriptive error below instead.
+        !hasSlottable && React2.Children.count(children) === 1 && React2.isValidElement(children)
+      ) {
+        slottableElement = children;
+      }
+      const slottableElementRef = slottableElement ? getElementRef(slottableElement) : void 0;
+      const composedRef = useComposedRefs(forwardedRef, slottableElementRef);
+      if (!slottableElement) {
+        if (children || children === 0) {
+          throw new Error(
+            hasSlottable ? createSlottableError(ownerName) : createSlotError(ownerName)
+          );
+        }
+        return children;
+      }
+      const mergedProps = mergeProps(slotProps, slottableElement.props ?? {});
+      if (slottableElement.type !== React2.Fragment) {
+        mergedProps.ref = forwardedRef ? composedRef : slottableElementRef;
+      }
+      return React2.cloneElement(slottableElement, mergedProps);
+    });
+    Slot2.displayName = `${ownerName}.Slot`;
+    return Slot2;
+  }
+  var Slot = /* @__PURE__ */ createSlot("Slot");
+  var SLOTTABLE_IDENTIFIER = /* @__PURE__ */ Symbol.for("radix.slottable");
+  var getSlottableElementFromSlottable = (slottable, child) => {
+    if ("child" in slottable.props) {
+      const child2 = slottable.props.child;
+      if (!React2.isValidElement(child2)) return null;
+      return React2.cloneElement(child2, void 0, slottable.props.children(child2.props.children));
+    }
+    return React2.isValidElement(child) ? child : null;
+  };
+  function mergeProps(slotProps, childProps) {
+    const overrideProps = { ...childProps };
+    for (const propName in childProps) {
+      const slotPropValue = slotProps[propName];
+      const childPropValue = childProps[propName];
+      const isHandler = /^on[A-Z]/.test(propName);
+      if (isHandler) {
+        if (slotPropValue && childPropValue) {
+          overrideProps[propName] = (...args) => {
+            const result = childPropValue(...args);
+            slotPropValue(...args);
+            return result;
+          };
+        } else if (slotPropValue) {
+          overrideProps[propName] = slotPropValue;
+        }
+      } else if (propName === "style") {
+        overrideProps[propName] = { ...slotPropValue, ...childPropValue };
+      } else if (propName === "className") {
+        overrideProps[propName] = [slotPropValue, childPropValue].filter(Boolean).join(" ");
+      }
+    }
+    return { ...slotProps, ...overrideProps };
+  }
+  function getElementRef(element) {
+    let getter = Object.getOwnPropertyDescriptor(element.props, "ref")?.get;
+    let mayWarn = getter && "isReactWarning" in getter && getter.isReactWarning;
+    if (mayWarn) {
+      return element.ref;
+    }
+    getter = Object.getOwnPropertyDescriptor(element, "ref")?.get;
+    mayWarn = getter && "isReactWarning" in getter && getter.isReactWarning;
+    if (mayWarn) {
+      return element.props.ref;
+    }
+    return element.props.ref || element.ref;
+  }
+  function isSlottable(child) {
+    return React2.isValidElement(child) && typeof child.type === "function" && "__radixId" in child.type && child.type.__radixId === SLOTTABLE_IDENTIFIER;
+  }
+  var REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
+  function isLazyComponent(element) {
+    return element != null && typeof element === "object" && "$$typeof" in element && element.$$typeof === REACT_LAZY_TYPE && "_payload" in element && isPromiseLike(element._payload);
+  }
+  function isPromiseLike(value) {
+    return typeof value === "object" && value !== null && "then" in value;
+  }
+  var createSlotError = (ownerName) => {
+    return `${ownerName} failed to slot onto its children. Expected a single React element child or \`Slottable\`.`;
+  };
+  var createSlottableError = (ownerName) => {
+    return `${ownerName} failed to slot onto its \`Slottable\`. Expected \`Slottable\` to receive a single React element child.`;
+  };
+  var use = React2[" use ".trim().toString()];
+
+  // ../../../node_modules/.bun/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
   function r(e) {
     var t, f, n = "";
     if ("string" == typeof e || "number" == typeof e) n += e;
@@ -13651,7 +13191,52 @@
     return n;
   }
 
-  // node_modules/.bun/tailwind-merge@3.4.0/node_modules/tailwind-merge/dist/bundle-mjs.mjs
+  // ../../../node_modules/.bun/class-variance-authority@0.7.1/node_modules/class-variance-authority/dist/index.mjs
+  var falsyToString = (value) => typeof value === "boolean" ? `${value}` : value === 0 ? "0" : value;
+  var cx = clsx;
+  var cva = (base, config) => (props) => {
+    var _config_compoundVariants;
+    if ((config === null || config === void 0 ? void 0 : config.variants) == null) return cx(base, props === null || props === void 0 ? void 0 : props.class, props === null || props === void 0 ? void 0 : props.className);
+    const { variants, defaultVariants } = config;
+    const getVariantClassNames = Object.keys(variants).map((variant) => {
+      const variantProp = props === null || props === void 0 ? void 0 : props[variant];
+      const defaultVariantProp = defaultVariants === null || defaultVariants === void 0 ? void 0 : defaultVariants[variant];
+      if (variantProp === null) return null;
+      const variantKey = falsyToString(variantProp) || falsyToString(defaultVariantProp);
+      return variants[variant][variantKey];
+    });
+    const propsWithoutUndefined = props && Object.entries(props).reduce((acc, param) => {
+      let [key, value] = param;
+      if (value === void 0) {
+        return acc;
+      }
+      acc[key] = value;
+      return acc;
+    }, {});
+    const getCompoundVariantClassNames = config === null || config === void 0 ? void 0 : (_config_compoundVariants = config.compoundVariants) === null || _config_compoundVariants === void 0 ? void 0 : _config_compoundVariants.reduce((acc, param) => {
+      let { class: cvClass, className: cvClassName, ...compoundVariantOptions } = param;
+      return Object.entries(compoundVariantOptions).every((param2) => {
+        let [key, value] = param2;
+        return Array.isArray(value) ? value.includes({
+          ...defaultVariants,
+          ...propsWithoutUndefined
+        }[key]) : {
+          ...defaultVariants,
+          ...propsWithoutUndefined
+        }[key] === value;
+      }) ? [
+        ...acc,
+        cvClass,
+        cvClassName
+      ] : acc;
+    }, []);
+    return cx(base, getVariantClassNames, getCompoundVariantClassNames, props === null || props === void 0 ? void 0 : props.class, props === null || props === void 0 ? void 0 : props.className);
+  };
+
+  // packages/ui/src/components/ui/button.tsx
+  var React3 = __toESM(require_react(), 1);
+
+  // ../../../node_modules/.bun/tailwind-merge@3.4.0/node_modules/tailwind-merge/dist/bundle-mjs.mjs
   var concatArrays = (array1, array2) => {
     const combinedArray = new Array(array1.length + array2.length);
     for (let i = 0; i < array1.length; i++) {
@@ -16665,8 +16250,370 @@
     return twMerge(clsx(inputs));
   }
 
-  // packages/ui/src/components/ui/status-badge.tsx
+  // packages/ui/src/components/ui/button.tsx
   var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+  var buttonVariants = cva(
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium  transition-colors     disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+    {
+      variants: {
+        variant: {
+          default: "bg-accent text-accent-fg hover:bg-accent-hover",
+          surface: "bg-card text-muted-strong hover:bg-surface",
+          surfaceAccent: "bg-accent-subtle text-txt-strong hover:bg-accent-subtle/70",
+          surfaceDestructive: "bg-destructive-subtle text-danger hover:bg-destructive-subtle/70",
+          destructive: "bg-destructive text-destructive-fg hover:bg-destructive/85",
+          outline: "bg-card text-txt hover:bg-surface",
+          secondary: "bg-bg-accent text-txt hover:bg-surface",
+          ghost: "text-muted-strong hover:bg-surface hover:text-txt",
+          link: "text-primary underline-offset-4 hover:underline"
+        },
+        size: {
+          default: "h-10 px-4 py-2",
+          sm: "h-9 rounded-sm px-3 py-1.5",
+          lg: "h-11 rounded-sm px-8 py-2.5",
+          icon: "h-10 w-10",
+          "icon-sm": "h-8 w-8",
+          "icon-lg": "h-11 w-11"
+        }
+      },
+      defaultVariants: {
+        variant: "default",
+        size: "default"
+      }
+    }
+  );
+  var Button = React3.forwardRef(
+    ({ className, variant, size, asChild = false, style, type, ...props }, ref) => {
+      const Comp = asChild ? Slot : "button";
+      const resolvedType = asChild ? type : type ?? "button";
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        Comp,
+        {
+          className: cn(buttonVariants({ variant, size, className })),
+          ref,
+          style,
+          type: resolvedType,
+          ...props
+        }
+      );
+    }
+  );
+  Button.displayName = "Button";
+
+  // packages/ui/src/components/chat/widgets/ChoiceWidget.tsx
+  var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
+  function isCancelLike(value, label) {
+    const v = value.toLowerCase();
+    const l = label.toLowerCase();
+    return v === "cancel" || v === "no" || v === "none" || l === "cancel";
+  }
+  function ChoiceWidget({
+    id,
+    scope,
+    options,
+    onChoose,
+    allowCustom = false
+  }) {
+    const [selected, setSelected] = (0, import_react4.useState)(null);
+    const [customMode, setCustomMode] = (0, import_react4.useState)(false);
+    const [customText, setCustomText] = (0, import_react4.useState)("");
+    const handleChoose = (0, import_react4.useCallback)(
+      (option) => {
+        if (selected) return;
+        setSelected(option);
+        onChoose(option.value);
+      },
+      [onChoose, selected]
+    );
+    const submitCustom = (0, import_react4.useCallback)(() => {
+      const value = customText.trim();
+      if (!value || selected) return;
+      const option = { value, label: value };
+      setSelected(option);
+      onChoose(value);
+    }, [customText, onChoose, selected]);
+    if (options.length === 0 && !allowCustom) return null;
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+      "fieldset",
+      {
+        className: "my-2 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0",
+        "aria-label": `Choose ${scope}`,
+        "data-choice-id": id,
+        "data-choice-scope": scope,
+        children: [
+          options.map((option) => {
+            const cancel = isCancelLike(option.value, option.label);
+            const isSelected = selected?.value === option.value;
+            const variant = cancel ? "ghost" : "outline";
+            return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              Button,
+              {
+                type: "button",
+                variant,
+                size: "sm",
+                disabled: selected !== null,
+                "aria-label": option.label,
+                "aria-pressed": isSelected,
+                "data-testid": `choice-${option.value}`,
+                className: cancel ? "h-7 px-3 text-xs text-muted hover:text-txt disabled:opacity-40" : "h-7 px-3 text-xs disabled:opacity-40",
+                onClick: () => handleChoose(option),
+                children: isSelected ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: "inline-flex items-center gap-1", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Check, { className: "h-3.5 w-3.5", "aria-hidden": true }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: option.label })
+                ] }) : option.label
+              },
+              option.value
+            );
+          }),
+          allowCustom && !selected ? customMode ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: "inline-flex items-center gap-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "input",
+              {
+                type: "text",
+                "aria-label": "Your own answer",
+                "data-testid": "choice-custom-input",
+                value: customText,
+                placeholder: "Type your answer\u2026",
+                className: "h-7 min-w-40 rounded-md border border-border bg-transparent px-2 text-xs outline-none ",
+                onChange: (e) => setCustomText(e.currentTarget.value),
+                onKeyDown: (e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    submitCustom();
+                  }
+                }
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              Button,
+              {
+                type: "button",
+                variant: "outline",
+                size: "sm",
+                "data-testid": "choice-custom-send",
+                "aria-label": "Send your answer",
+                disabled: customText.trim().length === 0,
+                className: "h-7 px-3 text-xs disabled:opacity-40",
+                onClick: submitCustom,
+                children: "Send"
+              }
+            )
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            Button,
+            {
+              type: "button",
+              variant: "outline",
+              size: "sm",
+              "data-testid": "choice-custom-open",
+              "aria-label": "Other",
+              className: "h-7 px-3 text-xs",
+              onClick: () => setCustomMode(true),
+              children: "Other\u2026"
+            }
+          ) : null,
+          selected ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: "text-2xs text-muted", role: "status", children: [
+            "Selected: ",
+            selected.label
+          ] }) : null
+        ]
+      }
+    );
+  }
+
+  // packages/ui/src/components/chat/widgets/credential-request-widget.tsx
+  var import_react5 = __toESM(require_react(), 1);
+  var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+  function OAuthLink({
+    variant,
+    onAuthorize
+  }) {
+    const status = variant.status ?? "idle";
+    if (status === "connected") {
+      return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+        "div",
+        {
+          "data-testid": "credential-oauth-connected",
+          className: "flex items-center gap-2 text-xs text-accent",
+          role: "status",
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CircleCheck, { className: "h-4 w-4", "aria-hidden": true }),
+            "Connected to ",
+            variant.provider
+          ]
+        }
+      );
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+      Button,
+      {
+        type: "button",
+        size: "sm",
+        "data-testid": "credential-oauth-authorize",
+        disabled: status === "connecting",
+        onClick: () => onAuthorize?.(variant.authorizeUrl),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ExternalLink, { className: "h-3.5 w-3.5", "aria-hidden": true }),
+          status === "connecting" ? "Connecting\u2026" : `Connect ${variant.provider}`
+        ]
+      }
+    );
+  }
+  function PasteSecret({
+    variant,
+    onSubmitSecret
+  }) {
+    const [value, setValue] = (0, import_react5.useState)("");
+    const handleSubmit = (0, import_react5.useCallback)(() => {
+      const trimmed = value.trim();
+      if (trimmed.length === 0) return;
+      onSubmitSecret?.(trimmed);
+    }, [onSubmitSecret, value]);
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "space-y-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "block text-xs space-y-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "font-medium", children: variant.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          "input",
+          {
+            "aria-label": variant.label,
+            "data-testid": "credential-secret-input",
+            className: "w-full border border-border bg-bg px-2 py-1.5 text-sm",
+            type: "password",
+            placeholder: variant.placeholder,
+            value,
+            onChange: (event) => setValue(event.currentTarget.value)
+          }
+        )
+      ] }),
+      variant.helpText ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "text-xs text-muted", children: variant.helpText }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+        Button,
+        {
+          type: "button",
+          size: "sm",
+          "data-testid": "credential-secret-submit",
+          disabled: value.trim().length === 0,
+          onClick: handleSubmit,
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(KeyRound, { className: "h-3.5 w-3.5", "aria-hidden": true }),
+            "Save secret"
+          ]
+        }
+      )
+    ] });
+  }
+  function ImageUpload({
+    variant,
+    onSubmitImage
+  }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "block text-xs space-y-1", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "font-medium", children: variant.label }),
+      variant.previewUrl ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        "img",
+        {
+          src: variant.previewUrl,
+          alt: `${variant.label} preview`,
+          "data-testid": "credential-image-preview",
+          className: "max-h-40 w-auto border border-border"
+        }
+      ) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex items-center gap-2 text-muted", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ImageUp, { className: "h-4 w-4", "aria-hidden": true }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          "input",
+          {
+            "aria-label": variant.label,
+            "data-testid": "credential-image-input",
+            className: "w-full border border-border bg-bg px-2 py-1.5 text-sm",
+            type: "file",
+            accept: variant.accept ?? "image/*",
+            capture: "environment",
+            onChange: (event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) onSubmitImage?.(file);
+            }
+          }
+        )
+      ] })
+    ] });
+  }
+  function variantTitle(variant) {
+    switch (variant.kind) {
+      case "oauth-link":
+        return `Connect ${variant.provider}`;
+      case "paste-secret":
+      case "image-upload":
+        return variant.label;
+    }
+  }
+  function CredentialRequestWidget({
+    variant,
+    onAuthorize,
+    onSubmitSecret,
+    onSubmitImage
+  }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+      "div",
+      {
+        "data-testid": "credential-request",
+        "data-credential-kind": variant.kind,
+        className: "my-2 border border-border bg-card p-3 text-sm space-y-3",
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "font-medium", children: variantTitle(variant) }),
+          variant.kind === "oauth-link" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(OAuthLink, { variant, onAuthorize }) : variant.kind === "paste-secret" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(PasteSecret, { variant, onSubmitSecret }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ImageUpload, { variant, onSubmitImage })
+        ]
+      }
+    );
+  }
+
+  // packages/ui/src/config/boot-config-store.ts
+  var import_core = __toESM(require_core(), 1);
+  var DEFAULT_BOOT_CONFIG = {
+    branding: {},
+    cloudApiBase: "https://elizacloud.ai",
+    preferSharedCloudTier: true
+  };
+  var BOOT_CONFIG_STORE_KEY = /* @__PURE__ */ Symbol.for("elizaos.app.boot-config");
+  var BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
+  function getGlobalSlot() {
+    return globalThis;
+  }
+  function getBootConfigStore() {
+    const globalObject = getGlobalSlot();
+    const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
+    if (mirroredWindowConfig) {
+      const mirroredStore = { current: mirroredWindowConfig };
+      globalObject[BOOT_CONFIG_STORE_KEY] = mirroredStore;
+      return mirroredStore;
+    }
+    const existing = globalObject[BOOT_CONFIG_STORE_KEY];
+    if (existing && typeof existing === "object" && "current" in existing) {
+      return existing;
+    }
+    const store = { current: DEFAULT_BOOT_CONFIG };
+    globalObject[BOOT_CONFIG_STORE_KEY] = store;
+    globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
+    return store;
+  }
+  function getBootConfig() {
+    return getBootConfigStore().current;
+  }
+
+  // packages/ui/src/events/index.ts
+  var import_events = __toESM(require_events(), 1);
+
+  // packages/ui/src/first-run/__e2e__/app-state.stub.ts
+  function useAppSelectorShallow(selector) {
+    return selector({
+      setTab: (tab) => {
+        if (typeof window !== "undefined") window.__firstRunRoutedTab = tab;
+        console.log(`[first-run] setTab(${tab})`);
+      }
+    });
+  }
+
+  // packages/ui/src/components/ui/status-badge.tsx
+  var React4 = __toESM(require_react(), 1);
+  var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
   function normalizeStatusVariant(variant) {
     if (variant === "error") return "danger";
     if (variant === "neutral") return "muted";
@@ -16698,7 +16645,7 @@
     if (normalized === "info") return "bg-status-info";
     return "bg-muted";
   }
-  var StatusBadge = React.forwardRef(
+  var StatusBadge = React4.forwardRef(
     ({
       label,
       status,
@@ -16712,7 +16659,7 @@
     }, ref) => {
       const resolvedVariant = status ?? variant ?? tone ?? "muted";
       const showDot = withDot || pulse;
-      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+      return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(
         "span",
         {
           ref,
@@ -16725,8 +16672,8 @@
           ),
           ...props,
           children: [
-            resolvedVariant === "processing" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(LoaderCircle, { className: "h-3 w-3 animate-spin" }) : icon ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "[&>svg]:h-3 [&>svg]:w-3", children: icon }) : showDot ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "relative flex h-2 w-2", children: [
-              pulse && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            resolvedVariant === "processing" ? /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(LoaderCircle, { className: "h-3 w-3 animate-spin" }) : icon ? /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { className: "[&>svg]:h-3 [&>svg]:w-3", children: icon }) : showDot ? /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("span", { className: "relative flex h-2 w-2", children: [
+              pulse && /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
                 "span",
                 {
                   className: cn(
@@ -16735,7 +16682,7 @@
                   )
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
                 "span",
                 {
                   className: cn(
@@ -16745,19 +16692,19 @@
                 }
               )
             ] }) : null,
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: label })
+            /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { children: label })
           ]
         }
       );
     }
   );
   StatusBadge.displayName = "StatusBadge";
-  var StatusDot = React.forwardRef(
+  var StatusDot = React4.forwardRef(
     ({ status, tone: toneProp, className, ...props }, ref) => {
       const variant = normalizeStatusVariant(
         toneProp ?? (status === "success" || status === "completed" || status === "connected" ? "success" : status === "error" || status === "failed" || status === "denied" ? "danger" : "muted")
       );
-      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
         "span",
         {
           ref,
@@ -16794,12 +16741,34 @@
     if (!normalized) return status;
     return normalized.replace(/\b\w/g, (match) => match.toUpperCase());
   }
+  var AGENT_LIFECYCLE_LABELS = {
+    running: "Ready",
+    ready: "Ready",
+    provisioning: "Setting up",
+    starting: "Starting up",
+    resuming: "Starting up",
+    stopping: "Stopping",
+    suspending: "Pausing",
+    suspended: "Asleep",
+    sleeping: "Asleep",
+    stopped: "Stopped",
+    error: "Failed to start",
+    failed: "Failed to start"
+  };
+  function agentLifecycleLabel(status) {
+    const normalized = status.trim().toLowerCase();
+    return AGENT_LIFECYCLE_LABELS[normalized] ?? statusLabelForState(status);
+  }
 
   // packages/ui/src/first-run/AgentPicker.tsx
-  var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
   function isDeletingStatus(status) {
     const normalized = status.trim().toLowerCase();
     return normalized === "deletion_pending" || normalized === "deleting";
+  }
+  function isFailedStatus(status) {
+    const normalized = status.trim().toLowerCase();
+    return normalized === "error" || normalized === "failed";
   }
   function formatLastActive(agent) {
     const raw = agent.last_heartbeat_at ?? agent.updated_at;
@@ -16825,29 +16794,29 @@
     showBack = true
   }) {
     const binding = phase === "binding";
-    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
       "div",
       {
         "data-testid": "onboarding-agent-picker",
         className: "flex w-full flex-col gap-5",
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "flex flex-col gap-1.5", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h1", { className: "text-center text-[20px] font-semibold tracking-[-0.01em]", children: "Choose your agent" }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: "text-center text-[13px] leading-snug text-white/65", children: "Pick one of your existing Eliza Cloud agents, or create a new one." })
+          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "flex flex-col gap-1.5", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("h1", { className: "text-center text-[20px] font-semibold tracking-[-0.01em]", children: "Choose your agent" }),
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { className: "text-center text-[13px] leading-snug text-white/65", children: "Pick one of your existing Eliza Cloud agents, or create a new one." })
           ] }),
-          phase === "loading" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "flex items-center justify-center gap-2 py-8 text-white/70", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          phase === "loading" ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "flex items-center justify-center gap-2 py-8 text-white/70", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
               LoaderCircle,
               {
                 "data-testid": "onboarding-agent-loading",
                 className: "h-5 w-5 animate-spin"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "text-sm", children: "Finding your agents\u2026" })
-          ] }) : phase === "error" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "flex w-full flex-col items-center gap-4 py-4", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: "text-center text-sm leading-snug text-white/85", children: errorMessage ?? "Could not load your agents. Try again." }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "flex items-center gap-3", children: [
-              showBack && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "text-sm", children: "Finding your agents\u2026" })
+          ] }) : phase === "error" ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "flex w-full flex-col items-center gap-4 py-4", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { className: "text-center text-sm leading-snug text-white/85", children: errorMessage ?? "Could not load your agents. Try again." }),
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "flex items-center gap-3", children: [
+              showBack && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
                 "button",
                 {
                   type: "button",
@@ -16855,12 +16824,12 @@
                   onClick: onBack,
                   className: "inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10",
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ChevronLeft, { className: "h-4 w-4" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(ChevronLeft, { className: "h-4 w-4" }),
                     "Back"
                   ]
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
                 "button",
                 {
                   type: "button",
@@ -16868,21 +16837,22 @@
                   onClick: onRetry,
                   className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] motion-reduce:active:scale-100",
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(RefreshCw, { className: "h-4 w-4" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(RefreshCw, { className: "h-4 w-4" }),
                     "Try again"
                   ]
                 }
               )
             ] })
-          ] }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "flex w-full flex-col gap-2.5 max-h-[min(50vh,380px)] overflow-y-auto overscroll-contain pr-0.5", children: agents.map((agent) => {
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "flex w-full flex-col gap-2.5 max-h-[min(50vh,380px)] overflow-y-auto overscroll-contain pr-0.5", children: agents.map((agent) => {
               const isActive = activeAgentId !== null && agent.agent_id === activeAgentId;
               const deleting = isDeletingStatus(agent.status);
+              const failed = isFailedStatus(agent.status);
               const isBinding = binding && bindingAgentId === agent.agent_id;
-              const disabled = binding || deleting || isActive;
+              const disabled = binding || deleting || failed || isActive;
               const label = agent.agent_name || agent.agent_id;
               const lastActive = formatLastActive(agent);
-              return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+              return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
                 "button",
                 {
                   type: "button",
@@ -16892,38 +16862,38 @@
                   onClick: () => onPick(agent.agent_id),
                   className: "group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-4 py-3.5 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:active:scale-100",
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Bot, { className: "h-5 w-5 text-white/90" }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: "flex min-w-0 flex-1 flex-col gap-1", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: "flex items-center gap-2", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "truncate text-[15px] font-semibold leading-tight", children: label }),
-                        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Bot, { className: "h-5 w-5 text-white/90" }) }),
+                    /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { className: "flex min-w-0 flex-1 flex-col gap-1", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { className: "flex items-center gap-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "truncate text-[15px] font-semibold leading-tight", children: label }),
+                        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                           StatusBadge,
                           {
                             tone: statusToneForState(agent.status),
-                            label: deleting ? "Deleting" : statusLabelForState(agent.status)
+                            label: deleting ? "Deleting" : agentLifecycleLabel(agent.status)
                           }
                         )
                       ] }),
-                      lastActive ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: "truncate text-[12px] text-white/55", children: [
+                      lastActive ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { className: "truncate text-[12px] text-white/55", children: [
                         "Last active ",
                         lastActive
                       ] }) : null
                     ] }),
-                    isActive ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: "inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold text-white/80", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Check, { className: "h-4 w-4" }),
+                    isActive ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { className: "inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold text-white/80", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Check, { className: "h-4 w-4" }),
                       "Active"
-                    ] }) : isBinding ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(LoaderCircle, { className: "h-4 w-4 shrink-0 animate-spin text-white/70" }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ArrowRight, { className: "h-4 w-4 shrink-0 text-white/40 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" })
+                    ] }) : isBinding ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(LoaderCircle, { className: "h-4 w-4 shrink-0 animate-spin text-white/70" }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(ArrowRight, { className: "h-4 w-4 shrink-0 text-white/40 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" })
                   ]
                 },
                 agent.agent_id
               );
             }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
               "div",
               {
                 className: `mt-1 flex items-center gap-3 ${showBack ? "justify-between" : "justify-end"}`,
                 children: [
-                  showBack && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+                  showBack && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
                     "button",
                     {
                       type: "button",
@@ -16932,12 +16902,12 @@
                       onClick: onBack,
                       className: "inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 disabled:opacity-50",
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ChevronLeft, { className: "h-4 w-4" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(ChevronLeft, { className: "h-4 w-4" }),
                         "Back"
                       ]
                     }
                   ),
-                  /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+                  /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
                     "button",
                     {
                       type: "button",
@@ -16946,7 +16916,7 @@
                       onClick: onCreateNew,
                       className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100",
                       children: [
-                        binding ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(LoaderCircle, { className: "h-4 w-4 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Plus, { className: "h-4 w-4" }),
+                        binding ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(LoaderCircle, { className: "h-4 w-4 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Plus, { className: "h-4 w-4" }),
                         "Create new"
                       ]
                     }
@@ -16958,6 +16928,19 @@
         ]
       }
     );
+  }
+
+  // packages/ui/src/first-run/first-run-config.ts
+  var import_shared = __toESM(require_shared(), 1);
+  function defaultProviderForRuntime(runtime) {
+    switch (runtime) {
+      case "cloud":
+        return "elizacloud";
+      case "local":
+        return "on-device";
+      case "remote":
+        return null;
+    }
   }
 
   // packages/ui/src/first-run/onboarding-intent.ts
@@ -16980,26 +16963,34 @@
   }
 
   // packages/ui/src/first-run/__e2e__/use-first-run-controller.stub.ts
-  var React2 = __toESM(require_react());
+  var React5 = __toESM(require_react());
   var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
   function useFirstRunController() {
     const stepParam = params.get("step");
-    const [step, setStep] = React2.useState(
-      stepParam === "remote" ? "remote" : stepParam === "inference" ? "inference" : "runtime"
+    const [step, setStep] = React5.useState(
+      stepParam === "remote" ? "remote" : stepParam === "inference" ? "inference" : stepParam === "pick-agent" ? "pick-agent" : "runtime"
     );
-    const [draft, setDraft] = React2.useState({
+    const [draft, setDraft] = React5.useState({
       agentName: "Eliza",
       runtime: params.get("runtime") ?? (stepParam === "inference" ? "local" : "cloud"),
       localInference: params.get("localinference") ?? "all-local",
       remoteApiBase: params.get("step") === "remote" ? "https://agent.example.com" : "",
       remoteToken: ""
     });
+    const [submitting, setSubmitting] = React5.useState(params.has("busy"));
     const micStatus = params.get("mic") === "denied" ? "denied" : params.get("mic") === "prompt" ? "prompt" : "granted";
-    const updateDraft = React2.useCallback((key, value) => {
+    const updateDraft = React5.useCallback((key, value) => {
       setDraft((d) => ({ ...d, [key]: value }));
     }, []);
     const cloudLogin = params.has("cloudlogin");
-    const busy = params.has("busy");
+    const finishRuntime = React5.useCallback(async () => {
+      setSubmitting(true);
+      if (typeof window !== "undefined") {
+        window.__firstRunSubmits = (window.__firstRunSubmits ?? 0) + 1;
+        window.__firstRunComplete = true;
+      }
+      console.log("[first-run] POST /api/first-run (finishRuntime)");
+    }, []);
     return {
       step,
       setStep,
@@ -17008,12 +16999,25 @@
       localRuntimeAvailable: !params.has("nolocal"),
       cloudOnly: params.has("cloudonly"),
       elizaCloudConnected: params.has("connected"),
-      submitting: busy,
-      busyText: busy ? params.get("busy") || "Starting your agent\u2026" : null,
+      submitting,
+      busyText: submitting ? params.get("busy") || "Starting your agent\u2026" : null,
       error: params.get("error"),
       cloudError: cloudLogin ? "Open this link to log in: https://cloud.elizaos.ai/signin?token=demo" : null,
+      cloudLoginFallbackUrl: cloudLogin ? "https://cloud.elizaos.ai/signin?token=demo" : null,
       primaryLabel: "Continue",
       canBack: step !== "runtime",
+      // Picker state for the "pick-agent" step.
+      pickerAgents: [],
+      pickerPhase: "ready",
+      pickerError: null,
+      pickerActiveAgentId: null,
+      pickerBindingId: null,
+      onPickAgent: () => {
+      },
+      onCreateNewAgent: () => void finishRuntime(),
+      onRetryPicker: () => {
+      },
+      onBackFromPicker: () => setStep("runtime"),
       voice: {
         supported: true,
         listening: false,
@@ -17031,8 +17035,10 @@
         }
       },
       goBack: () => setStep("runtime"),
-      finishRuntime: async () => {
-        console.log("[onboarding] finishRuntime");
+      finishRuntime,
+      startVoice: async () => {
+      },
+      stopVoice: async () => {
       },
       toggleVoice: async () => {
       },
@@ -17041,372 +17047,297 @@
     };
   }
 
-  // packages/ui/src/first-run/CompactOnboarding.tsx
-  var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-  function CompactOnboarding() {
+  // packages/ui/src/first-run/FirstRunChat.tsx
+  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+  function AgentBubble({
+    children,
+    BrandMark
+  }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex w-full items-start gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(BrandMark, { className: "h-4 w-4" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "min-w-0 flex-1 space-y-2 text-[15px] leading-snug", children })
+    ] });
+  }
+  function FirstRunChat() {
     const c = useFirstRunController();
-    const { busyText, cloudError, error, submitting, step, draft, cloudOnly } = c;
-    const busy = submitting;
+    const {
+      step,
+      cloudOnly,
+      submitting,
+      busyText,
+      error,
+      cloudError,
+      cloudLoginFallbackUrl,
+      localRuntimeAvailable
+    } = c;
+    const { setTab } = useAppSelectorShallow((s) => ({ setTab: s.setTab }));
     const appName = getBootConfig().branding?.appName ?? "elizaOS";
     const BrandMark = getBootConfig().brandMark ?? ElizaMark;
-    const isOverlayShell = React3.useMemo(
-      () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("shellMode") === "onboarding-overlay",
-      []
-    );
-    const finishAndMaybeClose = React3.useCallback(async () => {
-      try {
-        await c.finishRuntime();
-        if (isOverlayShell) window.close();
-      } catch {
-      }
-    }, [c, isOverlayShell]);
-    const chooseCloud = React3.useCallback(() => {
-      c.updateDraft("runtime", "cloud");
-      void finishAndMaybeClose();
-    }, [c, finishAndMaybeClose]);
-    const cloudOnlyAutoStarted = React3.useRef(false);
-    React3.useEffect(() => {
-      if (cloudOnly && !cloudOnlyAutoStarted.current && step === "runtime" && !submitting) {
+    const cloudOnlyAutoStarted = React6.useRef(false);
+    React6.useEffect(() => {
+      if (cloudOnly && !cloudOnlyAutoStarted.current && step === "runtime") {
         cloudOnlyAutoStarted.current = true;
-        chooseCloud();
+        c.updateDraft("runtime", "cloud");
+        void c.finishRuntime();
       }
-    }, [cloudOnly, step, submitting, chooseCloud]);
-    const chooseLocal = React3.useCallback(() => {
-      c.updateDraft("runtime", "local");
-      c.setStep("inference");
-    }, [c]);
-    const chooseCloudInference = React3.useCallback(() => {
-      c.updateDraft("localInference", "cloud-inference");
-      void finishAndMaybeClose();
-    }, [c, finishAndMaybeClose]);
-    const chooseLocalInference = React3.useCallback(() => {
-      c.updateDraft("localInference", "all-local");
-      void finishAndMaybeClose();
-    }, [c, finishAndMaybeClose]);
-    const chooseRemote = React3.useCallback(() => {
-      c.updateDraft("runtime", "remote");
-      c.setStep("remote");
-    }, [c]);
-    React3.useEffect(() => {
+    }, [cloudOnly, step, c]);
+    const chooseRuntime = React6.useCallback(
+      (value) => {
+        if (value === "cloud") {
+          c.updateDraft("runtime", "cloud");
+          void c.finishRuntime();
+          return;
+        }
+        if (value === "local") {
+          c.updateDraft("runtime", "local");
+          c.setStep("inference");
+          return;
+        }
+        c.updateDraft("runtime", "remote");
+        c.setStep("remote");
+      },
+      [c]
+    );
+    const chooseProvider = React6.useCallback(
+      (value) => {
+        if (value === "other") {
+          c.updateDraft("localInference", "all-local");
+          void c.finishRuntime().then(() => setTab("settings"));
+          return;
+        }
+        c.updateDraft(
+          "localInference",
+          value === "elizacloud" ? "cloud-inference" : "all-local"
+        );
+        void c.finishRuntime();
+      },
+      [c, setTab]
+    );
+    React6.useEffect(() => {
       const onTrayAction = (event) => {
         const itemId = event.detail?.itemId ?? "";
         if (trayActionToOnboardingChoice(itemId) === "cloud") {
-          chooseCloud();
+          c.updateDraft("runtime", "cloud");
+          void c.finishRuntime();
         }
       };
-      document.addEventListener(TRAY_ACTION_EVENT, onTrayAction);
-      return () => document.removeEventListener(TRAY_ACTION_EVENT, onTrayAction);
-    }, [chooseCloud]);
-    const cloudLoginUrl = React3.useMemo(() => {
+      document.addEventListener(import_events.TRAY_ACTION_EVENT, onTrayAction);
+      return () => document.removeEventListener(import_events.TRAY_ACTION_EVENT, onTrayAction);
+    }, [c]);
+    const cloudLoginUrl = React6.useMemo(() => {
+      if (cloudLoginFallbackUrl) return cloudLoginFallbackUrl;
       const match = (cloudError ?? "").match(/https?:\/\/\S+/);
       return match ? match[0] : null;
-    }, [cloudError]);
-    const statusMessage = busy ? busyText : error ?? (cloudLoginUrl ? null : cloudError);
+    }, [cloudError, cloudLoginFallbackUrl]);
     const onRemote = step === "remote" && !cloudOnly;
     const onInference = step === "inference" && !cloudOnly;
-    return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "first-run-screen pointer-events-none fixed inset-0 p-6 text-white", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "mx-auto flex h-full w-full max-w-[24rem] flex-col items-center justify-start pt-[calc(var(--safe-area-top,0px)+3rem)] text-center", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+    const onPickAgent = step === "pick-agent";
+    const providerDefault = defaultProviderForRuntime("local");
+    const providerOptions = [
+      {
+        value: "elizacloud",
+        label: providerDefault === "elizacloud" ? "Eliza Cloud (recommended)" : "Eliza Cloud"
+      },
+      {
+        value: "on-device",
+        label: providerDefault === "on-device" ? "On-device (recommended)" : "On-device"
+      }
+    ];
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       "div",
       {
-        "data-testid": "onboarding-toast",
-        className: "pointer-events-auto flex w-full flex-col items-center gap-8",
-        children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex w-full flex-col items-center gap-8 motion-safe:animate-[shell-overlay-in_220ms_ease-out]", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex items-center justify-center gap-3", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(BrandMark, { className: "h-11 w-11" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-3xl font-medium leading-none tracking-normal", children: appName })
-          ] }),
-          onRemote ? (
-            // ADVANCED — connect to a self-run setup. Reachable only via the
-            // demoted "Advanced setup" link, with gentle, plain-language copy.
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex w-full flex-col gap-5", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h1", { className: "text-center text-[20px] font-semibold tracking-[-0.01em]", children: "Connect your own agent" }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-col gap-1.5 text-left", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-                  "label",
-                  {
-                    htmlFor: "onboarding-remote-address",
-                    className: "text-[12px] font-medium text-white/70",
-                    children: "Server address"
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-                  "input",
-                  {
-                    id: "onboarding-remote-address",
-                    autoFocus: true,
-                    inputMode: "url",
-                    autoCapitalize: "none",
-                    autoCorrect: "off",
-                    spellCheck: false,
-                    value: draft.remoteApiBase,
-                    onChange: (e) => c.updateDraft("remoteApiBase", e.target.value),
-                    placeholder: "https://agent.example.com",
-                    className: "w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40  "
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-col gap-1.5 text-left", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-                  "label",
-                  {
-                    htmlFor: "onboarding-remote-password",
-                    className: "text-[12px] font-medium text-white/70",
-                    children: "Access token"
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-                  "input",
-                  {
-                    id: "onboarding-remote-password",
-                    type: "password",
-                    value: draft.remoteToken,
-                    onChange: (e) => c.updateDraft("remoteToken", e.target.value),
-                    onKeyDown: (e) => {
-                      if (e.key === "Enter") void finishAndMaybeClose();
-                    },
-                    placeholder: "Leave blank to pair with a code",
-                    className: "w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40  "
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-[11px] leading-relaxed text-white/45", children: "The server's ELIZA_API_TOKEN. Leave blank to pair with a one-time code shown on the host." })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "mt-1 flex items-center justify-between gap-3", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                  "button",
-                  {
-                    type: "button",
-                    disabled: busy,
-                    onClick: () => c.setStep("runtime"),
-                    className: "inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 disabled:opacity-50",
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ChevronLeft, { className: "h-4 w-4" }),
-                      "Back"
-                    ]
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                  "button",
-                  {
-                    type: "button",
-                    "data-testid": "onboarding-remote-connect",
-                    disabled: busy || draft.remoteApiBase.trim().length === 0,
-                    onClick: () => void finishAndMaybeClose(),
-                    className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100",
-                    children: [
-                      busy ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(LoaderCircle, { className: "h-4 w-4 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ArrowRight, { className: "h-4 w-4" }),
-                      "Connect"
-                    ]
-                  }
-                )
-              ] })
-            ] })
-          ) : cloudLoginUrl ? (
-            // CLOUD SIGN-IN handoff — finish in the browser, then come back.
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex w-full flex-col items-center gap-5", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "grid h-12 w-12 place-items-center rounded-2xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(MailCheck, { className: "h-6 w-6" }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h1", { className: "text-[18px] font-semibold", children: "Sign in to Eliza Cloud" }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                "button",
+        "data-testid": "first-run-chat",
+        className: "pointer-events-none fixed inset-0 overflow-y-auto p-6 text-white",
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "pointer-events-auto mx-auto flex w-full max-w-[30rem] flex-col gap-6 pt-[calc(var(--safe-area-top,0px)+2.5rem)] motion-safe:animate-[shell-overlay-in_220ms_ease-out]", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AgentBubble, { BrandMark, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { "data-testid": "first-run-greeting", children: [
+            "hey there! I'm ",
+            appName === "elizaOS" ? "Eliza" : appName,
+            "."
+          ] }) }),
+          onPickAgent ? (
+            // After cloud sign-in, when the user already has cloud agents, choose
+            // one or create new. The picker is the controller's, rendered inline.
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(AgentBubble, { BrandMark, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { children: "Which agent should I run?" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "text-txt", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                AgentPicker,
                 {
-                  type: "button",
-                  "data-testid": "onboarding-cloud-open-signin",
-                  onClick: () => void openExternalUrl(cloudLoginUrl),
-                  className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90",
-                  children: [
-                    "Open sign-in page",
-                    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ArrowRight, { className: "h-4 w-4" })
-                  ]
+                  agents: c.pickerAgents,
+                  activeAgentId: c.pickerActiveAgentId,
+                  phase: c.pickerPhase,
+                  errorMessage: c.pickerError,
+                  bindingAgentId: c.pickerBindingId,
+                  onPick: c.onPickAgent,
+                  onCreateNew: c.onCreateNewAgent,
+                  onRetry: c.onRetryPicker,
+                  onBack: c.onBackFromPicker,
+                  showBack: !cloudOnly
                 }
-              )
-            ] })
-          ) : step === "pick-agent" ? (
-            // PICK AGENT — after cloud sign-in, when the user already has cloud
-            // agents, choose an existing one or create a new one.
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-              AgentPicker,
-              {
-                agents: c.pickerAgents,
-                activeAgentId: c.pickerActiveAgentId,
-                phase: c.pickerPhase,
-                errorMessage: c.pickerError,
-                bindingAgentId: c.pickerBindingId,
-                onPick: c.onPickAgent,
-                onCreateNew: c.onCreateNewAgent,
-                onRetry: c.onRetryPicker,
-                onBack: c.onBackFromPicker,
-                showBack: !cloudOnly
-              }
-            )
+              ) })
+            ] }, "pick-agent")
+          ) : onRemote ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(AgentBubble, { BrandMark, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { children: "Connect your own agent \u2014 where does it live?" }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(RemoteConnectForm, { controller: c })
+          ] }, "remote") : cloudLoginUrl ? (
+            // Cloud sign-in handoff rendered as the in-chat credential widget.
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(AgentBubble, { BrandMark, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { children: "Sign in to Eliza Cloud to continue." }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "text-txt", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                CredentialRequestWidget,
+                {
+                  variant: {
+                    kind: "oauth-link",
+                    provider: "Eliza Cloud",
+                    authorizeUrl: cloudLoginUrl,
+                    status: submitting ? "connecting" : "idle"
+                  },
+                  onAuthorize: () => {
+                    c.updateDraft("runtime", "cloud");
+                    void c.finishRuntime();
+                  }
+                }
+              ) })
+            ] }, "cloud-signin")
           ) : onInference ? (
-            // INFERENCE — after picking the on-device agent, choose where it
-            // thinks: Eliza Cloud (recommended — fast, best models) or fully
-            // on-device (kept for privacy/offline, but slow and limited on
-            // phones). Picking cloud finishes via the sign-in handoff above.
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex w-full flex-col gap-5", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex flex-col gap-1.5", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h1", { className: "text-[22px] font-semibold leading-tight tracking-[-0.01em]", children: "Where should it think?" }),
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-[13px] leading-snug text-white/70", children: "Your agent runs on this device. Choose where it runs its AI." })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "flex w-full flex-col gap-3", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                  "button",
+            // PROVIDER — after picking the local runtime: where should it think?
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(AgentBubble, { BrandMark, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { children: "Where should I run my AI?" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "text-txt", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                  ChoiceWidget,
                   {
-                    type: "button",
-                    "data-testid": "onboarding-inference-cloud",
-                    disabled: busy,
-                    onClick: chooseCloudInference,
-                    className: "group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left transition-[transform,opacity] duration-200 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100",
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Cloud, { className: "h-5 w-5 text-[#FF5800]" }) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex min-w-0 flex-1 flex-col gap-0.5", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex items-center gap-2", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-[16px] font-semibold leading-tight text-[#FF5800]", children: "Cloud inference" }),
-                          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "rounded-full bg-[#FF5800]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#FF5800]", children: "Recommended" })
-                        ] }),
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-[12px] leading-snug text-black/55", children: "Fast, runs the best models. Sign in to Eliza Cloud." })
-                      ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ArrowRight, { className: "h-5 w-5 shrink-0 text-[#FF5800]/60 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" })
-                    ]
+                    id: "first-run-provider",
+                    scope: "first-run-provider",
+                    options: providerOptions,
+                    allowCustom: false,
+                    onChoose: chooseProvider
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                  "button",
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "mt-1", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                  ChoiceWidget,
                   {
-                    type: "button",
-                    "data-testid": "onboarding-inference-local",
-                    disabled: busy,
-                    onClick: chooseLocalInference,
-                    className: "group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-5 py-4 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100",
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Cpu, { className: "h-5 w-5 text-white/90" }) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex min-w-0 flex-1 flex-col gap-0.5", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex items-center gap-2", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-[15px] font-semibold leading-tight", children: "On-device inference" }),
-                          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/60", children: "Offline" })
-                        ] }),
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-[12px] leading-snug text-white/55", children: "Private and offline. Slower, and limited on phones." })
-                      ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ArrowRight, { className: "h-4 w-4 shrink-0 text-white/40 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" })
-                    ]
+                    id: "first-run-provider-other",
+                    scope: "first-run-provider-other",
+                    options: [{ value: "other", label: "Use another provider\u2026" }],
+                    allowCustom: false,
+                    onChoose: chooseProvider
                   }
-                )
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                "button",
-                {
-                  type: "button",
-                  disabled: busy,
-                  onClick: () => c.setStep("runtime"),
-                  className: "mx-auto inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 disabled:opacity-50",
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ChevronLeft, { className: "h-4 w-4" }),
-                    "Back"
-                  ]
-                }
-              )
-            ] })
-          ) : (
-            // WELCOME / CHOICE — one warm headline, one obvious primary action,
-            // a clear private alternative, and the technical path demoted to a
-            // quiet link so a first-timer never sees jargon.
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("h1", { className: "text-[22px] font-semibold leading-tight tracking-[-0.01em]", children: [
-                "How should ",
-                appName,
-                " run?"
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "mt-1 flex w-full flex-col gap-3", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                  "button",
-                  {
-                    type: "button",
-                    "data-testid": "onboarding-option-cloud",
-                    disabled: busy,
-                    onClick: chooseCloud,
-                    className: "group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left transition-[transform,opacity] duration-200 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100",
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Cloud, { className: "h-5 w-5 text-[#FF5800]" }) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex min-w-0 flex-1 items-center gap-2", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-[17px] font-semibold leading-tight text-[#FF5800]", children: "Eliza Cloud" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "rounded-full bg-[#FF5800]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#FF5800]", children: "Recommended" })
-                      ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ArrowRight, { className: "h-5 w-5 shrink-0 text-[#FF5800]/60 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" })
-                    ]
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                  "button",
-                  {
-                    type: "button",
-                    "data-testid": "onboarding-option-local",
-                    disabled: busy || cloudOnly,
-                    onClick: chooseLocal,
-                    className: `group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-5 py-4 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100 ${cloudOnly ? "hidden" : ""}`,
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ShieldCheck, { className: "h-5 w-5 text-white/90" }) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex min-w-0 flex-1 items-center gap-2", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "text-[15px] font-semibold leading-tight", children: "This device" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/60", children: "Private" })
-                      ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ArrowRight, { className: "h-4 w-4 shrink-0 text-white/40 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" })
-                    ]
-                  }
-                ),
-                !cloudOnly ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                  "button",
-                  {
-                    type: "button",
-                    "data-testid": "onboarding-option-remote",
-                    disabled: busy,
-                    onClick: chooseRemote,
-                    className: "mx-auto mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/85 disabled:opacity-40",
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Settings2, { className: "h-3.5 w-3.5" }),
-                      "Advanced"
-                    ]
-                  }
-                ) : null
+                ) })
               ] })
-            ] })
+            ] }, "provider")
+          ) : (
+            // RUNTIME — the first question.
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(AgentBubble, { BrandMark, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { children: "Do you want to log in with your Eliza Cloud account or run your agent locally?" }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "text-txt", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                ChoiceWidget,
+                {
+                  id: "first-run-runtime",
+                  scope: "first-run-runtime",
+                  options: [
+                    { value: "cloud", label: "Log in with Eliza Cloud" },
+                    ...localRuntimeAvailable ? [{ value: "local", label: "Run locally on this device" }] : [],
+                    { value: "remote", label: "Connect my own agent" }
+                  ],
+                  allowCustom: false,
+                  onChoose: chooseRuntime
+                }
+              ) })
+            ] }, "runtime")
           ),
-          statusMessage ? (
-            // Announce progress/error changes to screen readers (TalkBack) —
-            // polite, since this is the shared progress + error status node.
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-              "p",
-              {
-                role: "status",
-                "aria-live": "polite",
-                "aria-atomic": "true",
-                className: "min-h-5 text-sm leading-snug text-white/85",
-                children: statusMessage
-              }
-            )
+          (busyText || error) && !cloudLoginUrl ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            "p",
+            {
+              role: "status",
+              "aria-live": "polite",
+              "data-testid": "first-run-status",
+              className: "pl-11 text-sm leading-snug text-white/80",
+              children: submitting ? busyText : error
+            }
           ) : null
         ] })
       }
-    ) }) });
+    );
+  }
+  function RemoteConnectForm({
+    controller
+  }) {
+    const { draft, submitting } = controller;
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "space-y-2 text-txt", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        "input",
+        {
+          inputMode: "url",
+          autoCapitalize: "none",
+          autoCorrect: "off",
+          spellCheck: false,
+          value: draft.remoteApiBase,
+          "aria-label": "Server address",
+          onChange: (e) => controller.updateDraft("remoteApiBase", e.target.value),
+          placeholder: "https://agent.example.com",
+          "data-testid": "first-run-remote-address",
+          className: "w-full rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none"
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        "input",
+        {
+          type: "password",
+          value: draft.remoteToken,
+          "aria-label": "Access token",
+          onChange: (e) => controller.updateDraft("remoteToken", e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") void controller.finishRuntime();
+          },
+          placeholder: "Access token (optional)",
+          "data-testid": "first-run-remote-token",
+          className: "w-full rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none"
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        ChoiceWidget,
+        {
+          id: "first-run-remote-actions",
+          scope: "first-run-remote-actions",
+          options: [
+            { value: "back", label: "Back" },
+            { value: "connect", label: submitting ? "Connecting\u2026" : "Connect" }
+          ],
+          allowCustom: false,
+          onChoose: (value) => {
+            if (value === "back") {
+              controller.setStep("runtime");
+              return;
+            }
+            if (draft.remoteApiBase.trim().length > 0) {
+              void controller.finishRuntime();
+            }
+          }
+        }
+      )
+    ] });
   }
 
   // packages/ui/src/first-run/__e2e__/onboarding-fixture.tsx
-  var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
   function Harness() {
-    return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       "div",
       {
         style: {
           position: "fixed",
           inset: 0,
-          // Brand backdrop the onboarding card is designed to sit over (white text
-          // + #FF5800 accents).
+          // Brand backdrop the in-chat first-run flow is designed to sit over
+          // (white text + #FF5800 accents).
           background: "radial-gradient(120% 100% at 50% 0%, #ff8a3d 0%, #ff5800 55%, #c63f00 100%)",
           fontFamily: "ui-sans-serif, system-ui, sans-serif"
         },
-        children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(CompactOnboarding, {})
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(FirstRunChat, {})
       }
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Harness, {}));
+  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 
@@ -17478,14 +17409,13 @@ lucide-react/dist/esm/icons/arrow-right.mjs:
 lucide-react/dist/esm/icons/bot.mjs:
 lucide-react/dist/esm/icons/check.mjs:
 lucide-react/dist/esm/icons/chevron-left.mjs:
-lucide-react/dist/esm/icons/cloud.mjs:
-lucide-react/dist/esm/icons/cpu.mjs:
+lucide-react/dist/esm/icons/circle-check.mjs:
+lucide-react/dist/esm/icons/external-link.mjs:
+lucide-react/dist/esm/icons/image-up.mjs:
+lucide-react/dist/esm/icons/key-round.mjs:
 lucide-react/dist/esm/icons/loader-circle.mjs:
-lucide-react/dist/esm/icons/mail-check.mjs:
 lucide-react/dist/esm/icons/plus.mjs:
 lucide-react/dist/esm/icons/refresh-cw.mjs:
-lucide-react/dist/esm/icons/settings-2.mjs:
-lucide-react/dist/esm/icons/shield-check.mjs:
 lucide-react/dist/esm/lucide-react.mjs:
   (**
    * @license lucide-react v1.18.0 - ISC
@@ -17493,8 +17423,5 @@ lucide-react/dist/esm/lucide-react.mjs:
    * This source code is licensed under the ISC license.
    * See the LICENSE file in the root directory of this source tree.
    *)
-
-@capacitor/core/dist/index.js:
-  (*! Capacitor: https://capacitorjs.com/ - MIT License *)
 */
 </script></body></html>
