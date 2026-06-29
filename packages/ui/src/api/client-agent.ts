@@ -86,6 +86,7 @@ import type {
   LogsFilter,
   LogsResponse,
   OrchestratorAccountOverview,
+  OrchestratorAccountReadiness,
   OrchestratorRoomRosterOverview,
   PluginInfo,
   PluginMutationResult,
@@ -1007,6 +1008,9 @@ declare module "./client-base" {
     reopenCodingAgentTaskThread(threadId: string): Promise<boolean>;
     getOrchestratorStatus(): Promise<CodingAgentOrchestratorStatus | null>;
     getOrchestratorAccounts(): Promise<OrchestratorAccountOverview>;
+    getOrchestratorAccountReadiness(opts?: {
+      rotation?: boolean;
+    }): Promise<OrchestratorAccountReadiness>;
     getOrchestratorRooms(): Promise<OrchestratorRoomRosterOverview>;
     createOrchestratorTask(
       input: CodingAgentCreateTaskInput,
@@ -3767,6 +3771,18 @@ ElizaClient.prototype.getOrchestratorAccounts = async function (
   this: ElizaClient,
 ) {
   return this.fetch<OrchestratorAccountOverview>("/api/orchestrator/accounts");
+};
+
+ElizaClient.prototype.getOrchestratorAccountReadiness = async function (
+  this: ElizaClient,
+  opts,
+) {
+  const qs = opts?.rotation ? "?rotation=1" : "";
+  // Always 200 with the verdict body; `ready: false` + `problems` is the loud,
+  // displayable signal (the panel renders it; the CLI exits non-zero on it).
+  return this.fetch<OrchestratorAccountReadiness>(
+    `/api/orchestrator/accounts/readiness${qs}`,
+  );
 };
 
 ElizaClient.prototype.getOrchestratorRooms = async function (
