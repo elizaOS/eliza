@@ -5,6 +5,20 @@
 // chooses the Remote runtime with touch input, connects to the deterministic
 // host agent exposed through adb reverse, and asserts the post-onboarding home
 // surface. No desktop Chromium or page.route fixtures are involved.
+//
+// ⚠️ NEEDS HUMAN REDESIGN (#9952). Onboarding moved INTO the floating chat
+// (ContinuousChatOverlay) and the separate full-screen onboarding surface was
+// deleted. The in-chat conductor only offers runtime choices
+// `choice-__first_run__:runtime:{cloud,local,other}` — the "Remote" runtime card,
+// the `first-run-remote-address` input, and the `choice-connect` button no longer
+// exist. `runtime:other` ("Bring your own keys") now runs the LOCAL backend with
+// a provider sub-choice; there is NO in-chat "connect to a remote host agent at a
+// URL" step anymore (finishRemote still exists in first-run-finish.ts but is
+// unreachable from the in-chat conductor). This device lane is UNEXECUTABLE here
+// (needs a real Android device) and its remote-connect path below cannot be
+// repointed by construction — a human must decide how device remote-connect
+// onboarding is driven post-#9952 (e.g. via deep-link / Settings) and rewrite the
+// body. Only the first-surface assertion (`continuous-chat-overlay`) is updated.
 import path from "node:path";
 import type { Locator } from "@playwright/test";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
@@ -57,9 +71,14 @@ test.describe
           timeout: 60_000,
         });
 
-        const onboarding = page.getByTestId("first-run-chat");
+        // #9952: onboarding IS the chat — the conductor greets inside the REAL
+        // floating ContinuousChatOverlay (no separate full-screen surface).
+        const onboarding = page.getByTestId("continuous-chat-overlay");
         await expect(onboarding).toBeVisible({ timeout: 60_000 });
 
+        // ⚠️ The remote-connect onboarding UI below was removed by #9952 (see the
+        // file header). These selectors no longer exist; a human must redesign
+        // how device remote-connect onboarding is driven. UNEXECUTABLE here.
         const remoteOption = page.getByTestId("choice-remote");
         await expect(remoteOption).toBeVisible({ timeout: 30_000 });
         await activate(remoteOption);
