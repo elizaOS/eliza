@@ -29,8 +29,7 @@ const MIC_GLYPH =
 // almond cuts a hole in the white button; the pupil cuts a hole inside that
 // hole (even-odd) so it fills back to white, reading as an eye.
 const VISION_GLYPH =
-  "M7 18Q18 9 29 18Q18 27 7 18Z" +
-  "M22 18A4 4 0 1 0 14 18A4 4 0 1 0 22 18Z";
+  "M7 18Q18 9 29 18Q18 27 7 18Z" + "M22 18A4 4 0 1 0 14 18A4 4 0 1 0 22 18Z";
 
 function glyphForIcon(icon: "mic" | "send" | "vision"): string {
   if (icon === "mic") return MIC_GLYPH;

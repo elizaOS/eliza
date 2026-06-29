@@ -67,6 +67,7 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
@@ -408,6 +409,9 @@ function useShellMode(): ShellMode {
  * chrome — over a transparent background.
  */
 function ChatOverlayShell() {
+  // The bar has no inline tab system, so "show a view" / "show the launcher"
+  // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
+  useBarSurfaceWindows();
   return (
     <div
       data-testid="chat-overlay-shell"
