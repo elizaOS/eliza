@@ -9,6 +9,7 @@
 
 import {
   type AppPermissionsView,
+  parseAppPermissions,
   RECOGNISED_PERMISSION_NAMESPACES,
   type RecognisedPermissionNamespace,
 } from "@elizaos/shared";
@@ -45,30 +46,25 @@ function summariseRequested(
   view: AppPermissionsView,
   ns: RecognisedPermissionNamespace,
 ): string | null {
-  const block = view.requestedPermissions?.[ns];
-  if (!block || typeof block !== "object" || Array.isArray(block)) return null;
+  // Parse through the canonical manifest parser so the read fields are strongly
+  // typed (`string[]`) instead of hand-narrowed `unknown` casts.
+  const parsed = parseAppPermissions(view.requestedPermissions);
+  if (parsed.ok === false) return null;
   if (ns === "fs") {
-    const fs = block as { read?: unknown; write?: unknown };
-    const read = Array.isArray(fs.read) ? (fs.read as unknown[]) : [];
-    const write = Array.isArray(fs.write) ? (fs.write as unknown[]) : [];
+    const fs = parsed.manifest.fs;
+    if (!fs) return null;
     const parts: string[] = [];
-    if (read.length > 0)
-      parts.push(
-        `read: ${read.filter((v) => typeof v === "string").join(", ")}`,
-      );
-    if (write.length > 0)
-      parts.push(
-        `write: ${write.filter((v) => typeof v === "string").join(", ")}`,
-      );
+    if (fs.read && fs.read.length > 0)
+      parts.push(`read: ${fs.read.join(", ")}`);
+    if (fs.write && fs.write.length > 0)
+      parts.push(`write: ${fs.write.join(", ")}`);
     return parts.length > 0 ? parts.join(" · ") : null;
   }
   if (ns === "net") {
-    const net = block as { outbound?: unknown };
-    const outbound = Array.isArray(net.outbound)
-      ? (net.outbound as unknown[])
-      : [];
-    const hosts = outbound.filter((v): v is string => typeof v === "string");
-    return hosts.length > 0 ? `outbound: ${hosts.join(", ")}` : null;
+    const outbound = parsed.manifest.net?.outbound;
+    return outbound && outbound.length > 0
+      ? `outbound: ${outbound.join(", ")}`
+      : null;
   }
   return null;
 }
