@@ -128,7 +128,7 @@ describe("CliLoginPage", () => {
     expect(link.getAttribute("href")).toBe(SIGN_IN_HREF);
   });
 
-  it("completes the session when authenticated: POSTs /complete, notifies the opener, and lands in Cloud", async () => {
+  it("completes the session when authenticated: POSTs /complete, notifies the opener, shows success, never redirects or script-closes", async () => {
     sessionAuthRef.current = {
       ready: true,
       authenticated: true,
@@ -160,15 +160,15 @@ describe("CliLoginPage", () => {
       { type: "eliza-cloud-auth-complete", sessionId: "sess-1" },
       "*",
     );
-    expect(screen.getByText("Opening your dashboard...")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Continue to dashboard" })
+        .getAttribute("href"),
+    ).toBe("/");
     expect(screen.queryByText("API Key Details")).toBeNull();
     expect(screen.queryByText("ek_live_abc")).toBeNull();
     expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
-    // The page navigates the SPA to the cloud landing — it never tries to
-    // script-close the tab, even when an opener is present.
-    expect(navigateMock).toHaveBeenCalledWith("/join", {
-      replace: true,
-    });
+    expect(navigateMock).not.toHaveBeenCalled();
     expect(closeSpy).not.toHaveBeenCalled();
   });
 
@@ -183,11 +183,6 @@ describe("CliLoginPage", () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
     expect(navigateMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
-    expect(
-      screen
-        .getByRole("link", { name: "Open Eliza Cloud" })
-        .getAttribute("href"),
-    ).toBe("/join");
   });
 
   it("surfaces a completion failure as the error panel", async () => {
