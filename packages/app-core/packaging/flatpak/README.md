@@ -129,7 +129,7 @@ When you're ready to submit the store variant to Flathub:
    `build-options.build-args: --share=network` shim is no longer needed.
 2. **Replace screenshot URLs** in `ai.elizaos.App.metainfo.xml`. Three
    placeholder `<screenshot>` entries currently point at
-   `https://app.elizaos.ai/screenshots/{dashboard,onboarding,plugins}.png`
+   `https://app.elizacloud.ai/screenshots/{dashboard,onboarding,plugins}.png`
    — host the real 1280×720 PNGs at those paths (or update the URLs to
    wherever they're served from) before submitting. Flathub fetches the
    URLs at review time.

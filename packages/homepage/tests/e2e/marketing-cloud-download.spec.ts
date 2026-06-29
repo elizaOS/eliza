@@ -1,3 +1,4 @@
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import {
   type APIRequestContext,
   expect,
@@ -13,10 +14,18 @@ function escapeRegExp(value: string): string {
 async function expectCloudPath(locator: Locator) {
   const href = await locator.getAttribute("href");
   expect(href).toBeTruthy();
-  const url = new URL(href ?? "", "https://www.elizacloud.ai");
-  expect(["elizacloud.ai", "www.elizacloud.ai"]).toContain(url.hostname);
+  const url = new URL(href ?? "", EXTERNAL_URLS.cloud);
+  expect(url.origin).toBe(EXTERNAL_URLS.cloud);
   expect(url.pathname).toMatch(/^\/login\/?$/);
   expect(url.searchParams.get("intent")).toBe("launch");
+}
+
+async function expectWebAppPath(locator: Locator) {
+  const href = await locator.getAttribute("href");
+  expect(href).toBeTruthy();
+  const url = new URL(href ?? "", EXTERNAL_URLS.app);
+  expect(url.origin).toBe(EXTERNAL_URLS.app);
+  expect(url.pathname).toMatch(/^\/?$/);
 }
 
 async function _expectExternalOrLocal(
@@ -69,6 +78,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   const productNav = page.getByRole("navigation", {
     name: "Eliza products",
   });
+  await expectWebAppPath(productNav.getByRole("link", { name: /^Web app$/ }));
   await expect(
     productNav.getByRole("link", { name: /^Download$/ }),
   ).toHaveAttribute("href", "#download");
@@ -77,6 +87,9 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   await expect(
     page.getByRole("link", { name: /^Download$/ }).first(),
   ).toHaveAttribute("href", "#download");
+  await expectWebAppPath(
+    page.getByRole("link", { name: /^Open web app$/ }).first(),
+  );
   await expectCloudPath(
     page.getByRole("link", { name: /^Try Eliza Cloud$/ }).first(),
   );
@@ -139,7 +152,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /^Install elizaOS$/ }).first(),
-  ).toHaveAttribute("href", /^https:\/\/elizaos\.ai\/?$/);
+  ).toHaveAttribute("href", EXTERNAL_URLS.os);
   await expect(
     page.getByRole("heading", { name: /^Run in Cloud\.$/ }),
   ).toBeVisible();
@@ -185,9 +198,15 @@ test("homepage live marketing links resolve for cloud, os, release, and download
     uniqueHrefs.set(url.toString(), link.label);
   }
 
+  const appLinks = [...uniqueHrefs.keys()].filter((href) => {
+    const url = new URL(href);
+    return url.origin === EXTERNAL_URLS.app;
+  });
+  expect(appLinks).toEqual([`${EXTERNAL_URLS.app}/`]);
+
   const cloudLinks = [...uniqueHrefs.keys()].filter((href) => {
     const url = new URL(href);
-    return url.hostname.endsWith("elizacloud.ai");
+    return url.origin === EXTERNAL_URLS.cloud;
   });
   expect(cloudLinks).toHaveLength(1);
   expect(new URL(cloudLinks[0]).pathname).toMatch(/^\/login\/?$/);
@@ -209,7 +228,7 @@ test("homepage live marketing links resolve for cloud, os, release, and download
   const expectedNonCloudTargets = Array.from(
     new Set(
       [
-        "https://elizaos.ai/",
+        `${EXTERNAL_URLS.os}/`,
         releaseData.release.url,
         releaseData.release.checksum?.url,
         ...downloadTargets,
@@ -219,7 +238,10 @@ test("homepage live marketing links resolve for cloud, os, release, and download
   );
 
   const nonCloudHrefs = [...uniqueHrefs.keys()].filter(
-    (href) => !new URL(href).hostname.endsWith("elizacloud.ai"),
+    (href) =>
+      !["app.elizacloud.ai", "elizacloud.ai", "www.elizacloud.ai"].includes(
+        new URL(href).hostname,
+      ),
   );
   expect(nonCloudHrefs.sort()).toEqual(expectedNonCloudTargets.sort());
 

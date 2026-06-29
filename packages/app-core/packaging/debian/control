@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: elizaos <dev@app.elizaos.ai>
 Build-Depends: debhelper-compat (= 13), nodejs (>= 22.12.0), npm
 Standards-Version: 4.6.2
-Homepage: https://app.elizaos.ai
+Homepage: https://app.elizacloud.ai
 Vcs-Git: https://github.com/elizaos/elizaos-app.git
 Vcs-Browser: https://github.com/elizaos/elizaos-app
 Rules-Requires-Root: no

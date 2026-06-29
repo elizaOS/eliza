@@ -1,13 +1,17 @@
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
+
+const DEFAULT_RELEASE_NOTES_URL = `${EXTERNAL_URLS.github}/releases`;
+
 export function summarizeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 export function normalizeReleaseNotesUrl(url?: string | null): string {
-  const candidate = url?.trim() || "https://elizaos.ai/releases/";
+  const candidate = url?.trim() || DEFAULT_RELEASE_NOTES_URL;
   try {
     return new URL(candidate).toString();
   } catch {
-    return "https://elizaos.ai/releases/";
+    return DEFAULT_RELEASE_NOTES_URL;
   }
 }
 

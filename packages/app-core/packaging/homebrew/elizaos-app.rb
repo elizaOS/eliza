@@ -39,7 +39,7 @@ class ElizaosApp < Formula
         elizaos-app configure     Configuration guidance
 
       Dashboard: http://localhost:2138
-      Docs:      https://docs.app.elizaos.ai
+      Docs:      https://docs.elizaos.ai
     EOS
   end
 
