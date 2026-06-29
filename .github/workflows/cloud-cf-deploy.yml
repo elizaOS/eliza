@@ -81,7 +81,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-api:
     name: Deploy API Worker
-    runs-on: ${{ fromJSON((github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -225,7 +225,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-console:
     name: Deploy Console (Pages · elizacloud.ai)
-    runs-on: ${{ fromJSON((github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -391,7 +391,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
-    runs-on: ${{ fromJSON((github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
