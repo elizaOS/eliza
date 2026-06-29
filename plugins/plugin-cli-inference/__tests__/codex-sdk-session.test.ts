@@ -109,7 +109,12 @@ describe("CodexSdkSession — ROUTE mode (native outputSchema)", () => {
 
   it("salvages a JSON object wrapped in prose", async () => {
     const { session } = makeSession(
-      [{ finalResponse: '{"action":"REPLY","params":"{\\"text\\":\\"4\\"}"}' }],
+      [
+        {
+          finalResponse:
+            'Sure, here is the action: {"action":"REPLY","params":"{\\"text\\":\\"4\\"}"} — let me know if you need anything else.',
+        },
+      ],
       { router: true }
     );
     const out = JSON.parse(await session.route("2+2?"));

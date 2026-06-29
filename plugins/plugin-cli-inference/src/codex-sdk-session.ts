@@ -103,8 +103,20 @@ export interface CodexSdkSessionConfig {
 
 const SDK_PACKAGE = "@openai/codex-sdk";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isCodexModule(value: unknown): value is CodexModule {
+  return isRecord(value) && typeof value.Codex === "function";
+}
+
 async function loadCodex(): Promise<CodexModule> {
-  return (await import(SDK_PACKAGE)) as unknown as CodexModule;
+  const codex: unknown = await import(SDK_PACKAGE);
+  if (!isCodexModule(codex)) {
+    throw new Error("[cli-inference:codex-sdk] Codex SDK module has an unexpected shape");
+  }
+  return codex;
 }
 
 /** Pull the assistant text out of a completed codex turn. */
