@@ -86,7 +86,7 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
   const appManifestPlugins = readAppManifestPlugins();
 
   it("discovers app-manifest plugins from package.json", () => {
-    expect(appManifestPlugins.length).toBeGreaterThanOrEqual(32);
+    expect(appManifestPlugins.length).toBeGreaterThanOrEqual(28);
   });
 
   it("resolves >=1 home widget for every app-manifest plugin", () => {

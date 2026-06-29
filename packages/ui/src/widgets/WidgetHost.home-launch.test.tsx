@@ -113,10 +113,10 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
     const notifications = screen.getByTestId("widget-notifications");
     expect(notifications.textContent).toContain("PR review requested");
     expect(notifications.textContent).toContain("2");
-    // Recent conversations is a curated home-grid tile; with conversation data
-    // present it renders alongside notifications.
-    const messages = screen.getByTestId("widget-messages");
-    expect(messages.textContent).toContain("Trip planning");
+    // Recent conversations is no longer a launch-screen tile; the persistent
+    // chat overlay owns conversation entry points while the home grid keeps
+    // attention widgets visible.
+    expect(screen.queryByTestId("widget-messages")).toBeNull();
   });
 
   it("self-hides every card when there is no data (the #9143 clean home)", () => {

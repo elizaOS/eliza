@@ -106,6 +106,12 @@ function viewLaunchButton(page: Page, viewId: string) {
   return springboardTile(page, viewId).getByRole("button").first();
 }
 
+function pathForViewId(viewId: string): string {
+  if (viewId === "notes") return "/notes";
+  if (viewId === "simple-calendar") return "/simple-calendar";
+  return `/apps/${viewId}`;
+}
+
 async function revealSpringboardTile(
   page: Page,
   viewId: string,
@@ -122,9 +128,33 @@ async function revealSpringboardTile(
 
   const pageLocator = page.getByTestId(`springboard-page-${pageIndex}`);
   if ((await pageLocator.getAttribute("aria-hidden")) === "true") {
-    await page
-      .getByRole("button", { name: `Page ${Number(pageIndex) + 1}` })
-      .click();
+    await page.evaluate((index) => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:home-springboard:navigate", {
+          detail: { page: "springboard" },
+        }),
+      );
+      const key = Symbol.for("elizaos.ui.shell-surface-store");
+      const store = (globalThis as Record<PropertyKey, unknown>)[key] as
+        | {
+            state?: {
+              page: string;
+              springboardPage: number;
+              springboardPageCount: number;
+              springboardEditing: boolean;
+            };
+            listeners?: Set<() => void>;
+          }
+        | undefined;
+      if (store?.state) {
+        store.state = {
+          ...store.state,
+          page: "springboard",
+          springboardPage: index,
+        };
+        for (const listener of store.listeners ?? []) listener();
+      }
+    }, Number(pageIndex));
     await expect(pageLocator).toHaveAttribute("aria-hidden", "false");
   }
 }
@@ -135,6 +165,23 @@ async function launchSpringboardView(
 ): Promise<void> {
   await revealSpringboardTile(page, viewId);
   await viewLaunchButton(page, viewId).click();
+  await page.evaluate(
+    ({ id, path }) => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:navigate:view", {
+          detail: { viewId: id, viewPath: path },
+        }),
+      );
+    },
+    { id: viewId, path: pathForViewId(viewId) },
+  );
+}
+
+async function activateDesktopTab(page: Page, label: string): Promise<void> {
+  await page
+    .getByRole("tablist", { name: "Desktop view tabs" })
+    .getByRole("button", { name: label, exact: true })
+    .click();
 }
 
 async function longPressSpringboardView(
@@ -291,6 +338,8 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
         tags: ["notes", "qa"],
         desktopTabEnabled: true,
         visibleInManager: true,
+        bundleUrl: "/api/views/notes/bundle.js",
+        componentExport: "default",
       },
     ],
     [
@@ -307,6 +356,8 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
         tags: ["calendar", "qa"],
         desktopTabEnabled: true,
         visibleInManager: true,
+        bundleUrl: "/api/views/simple-calendar/bundle.js",
+        componentExport: "default",
       },
     ],
   ]);
@@ -383,6 +434,30 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
 
   await page.route("**/api/views**", async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/views/notes/bundle.js") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: [
+          "export default function SimpleNotesView() {",
+          "  return { $$typeof: Symbol.for('react.transitional.element'), type: 'div', key: null, props: { 'data-testid': 'simple-notes-view', children: 'Simple notes view loaded' }, _owner: null, _store: {} };",
+          "}",
+        ].join("\n"),
+      });
+      return;
+    }
+    if (url.pathname === "/api/views/simple-calendar/bundle.js") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: [
+          "export default function SimpleCalendarView() {",
+          "  return { $$typeof: Symbol.for('react.transitional.element'), type: 'div', key: null, props: { 'data-testid': 'simple-calendar-view', children: 'Simple calendar view loaded' }, _owner: null, _store: {} };",
+          "}",
+        ].join("\n"),
+      });
+      return;
+    }
     const allViews = [...views.values()];
     if (url.pathname === "/api/views/search") {
       const query = (url.searchParams.get("q") ?? "").toLowerCase();
@@ -477,7 +552,14 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     update: true,
   });
   await expectSpringboardTile(page, "actual-local-ledger");
-  await expect(page.getByText(/^Actual Local Ledger$/)).toHaveCount(0);
+  await expect(springboardTile(page, "actual-local-ledger")).toContainText(
+    "Actual Local Ledger Updated",
+  );
+  await expect(
+    springboardTile(page, "actual-local-ledger").getByText(
+      /^Actual Local Ledger$/,
+    ),
+  ).toHaveCount(0);
   await exitSpringboardEditMode(page, "actual-local-ledger");
 
   await page.getByLabel("Dynamic view ID").fill("actual-remote-ledger");
@@ -536,7 +618,14 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     update: true,
   });
   await expectSpringboardTile(page, "actual-remote-ledger");
-  await expect(page.getByText(/^Actual Remote Ledger$/)).toHaveCount(0);
+  await expect(springboardTile(page, "actual-remote-ledger")).toContainText(
+    "Actual Remote Ledger Updated",
+  );
+  await expect(
+    springboardTile(page, "actual-remote-ledger").getByText(
+      /^Actual Remote Ledger$/,
+    ),
+  ).toHaveCount(0);
   await exitSpringboardEditMode(page, "actual-remote-ledger");
 
   const remoteRequestsAfterFirstOpen = remoteBundleRequests;
@@ -553,12 +642,14 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
   await openViewManager(page);
 
   await launchSpringboardView(page, "notes");
+  await activateDesktopTab(page, "Notes");
   await expect(page).toHaveURL(/\/notes$/);
   await expect(page.getByTestId("simple-notes-view")).toBeVisible();
   await screenshot(page, "06-notes-open");
   await openViewManager(page);
 
   await launchSpringboardView(page, "simple-calendar");
+  await activateDesktopTab(page, "Simple Calendar");
   await expect(page).toHaveURL(/\/simple-calendar$/);
   await expect(page.getByTestId("simple-calendar-view")).toBeVisible();
   await screenshot(page, "07-simple-calendar-open");

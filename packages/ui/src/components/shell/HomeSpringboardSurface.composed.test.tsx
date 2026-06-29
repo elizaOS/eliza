@@ -183,27 +183,20 @@ describe("Home ↔ Springboard composed surface", () => {
     expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
   });
 
-  it("renders exactly ONE page-indicator strip — no stacked dot rows (#4)", () => {
+  it("suppresses nested page-indicator strips (#4)", () => {
     const surface = renderComposed();
     openSpringboard();
     expect(surface.getAttribute("data-page")).toBe("springboard");
 
-    // The single rail indicator: Home + one dot per springboard page (2 pages).
-    const indicator = screen.getByTestId("home-springboard-indicator");
-    const railDots = indicator.querySelectorAll("button");
-    expect(railDots.length).toBe(3); // Home + Apps page 1 + Apps page 2
-    expect(screen.getByLabelText("Home")).toBeTruthy();
-    expect(screen.getByLabelText("Apps page 1")).toBeTruthy();
-    expect(screen.getByLabelText("Apps page 2")).toBeTruthy();
-
-    // The inner Springboard's OWN dot strip (aria-label "Page N") must be gone —
-    // it is what stacked under the rail dots before. There must be none.
+    // HomeSpringboardSurface intentionally renders no dot strip: the dots
+    // collided with the floating chat composer. The inner Springboard's own dot
+    // strip is also suppressed while nested, so there are no stacked rows.
+    expect(screen.queryByTestId("home-springboard-indicator")).toBeNull();
     expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
-    // ...and only one indicator container exists.
     expect(
       document.querySelectorAll('[data-testid="home-springboard-indicator"]')
         .length,
-    ).toBe(1);
+    ).toBe(0);
   });
 
   it("swiping back from the springboard returns HOME and is NOT in edit mode (#3)", () => {
@@ -270,19 +263,13 @@ describe("Home ↔ Springboard composed surface", () => {
     expect(screen.queryByRole("button", { name: "Background" })).toBeNull();
   });
 
-  it("tapping a rail dot jumps directly to that surface", () => {
+  it("does not expose rail dot buttons after the composer-collision removal", () => {
     const surface = renderComposed();
     openSpringboard();
 
-    // Jump to springboard page 2 via its dot.
-    fireEvent.click(screen.getByLabelText("Apps page 2"));
-    expect(
-      screen.getByLabelText("Apps page 2").getAttribute("aria-current"),
-    ).toBe("true");
-
-    // Jump home via the home dot.
-    fireEvent.click(screen.getByLabelText("Home"));
-    expect(surface.getAttribute("data-page")).toBe("home");
+    expect(surface.getAttribute("data-page")).toBe("springboard");
+    expect(screen.queryByLabelText("Apps page 2")).toBeNull();
+    expect(screen.queryByLabelText("Home")).toBeNull();
   });
 
   it("springboard tiles render DISTINCT generated app-icon imagery (#5)", () => {
