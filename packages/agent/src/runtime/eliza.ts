@@ -2146,17 +2146,40 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     | undefined;
   if (effectivelyEnabled) {
     const nano =
-      llmText?.nanoModel || models?.nano || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
+      llmText?.nanoModel ||
+      models?.nano ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_NANO_MODEL") ||
+      DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const small =
-      llmText?.smallModel || models?.small || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
-    const medium = llmText?.mediumModel || models?.medium || small;
+      llmText?.smallModel ||
+      models?.small ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_SMALL_MODEL") ||
+      DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
+    const medium =
+      llmText?.mediumModel ||
+      models?.medium ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_MEDIUM_MODEL") ||
+      small;
     const large =
-      llmText?.largeModel || models?.large || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
-    const mega = llmText?.megaModel || models?.mega || large;
+      llmText?.largeModel ||
+      models?.large ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_LARGE_MODEL") ||
+      DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
+    const mega =
+      llmText?.megaModel ||
+      models?.mega ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_MEGA_MODEL") ||
+      large;
     const responseHandlerModel =
-      llmText?.responseHandlerModel || llmText?.shouldRespondModel;
+      llmText?.responseHandlerModel ||
+      llmText?.shouldRespondModel ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL") ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL");
     const actionPlannerModel =
-      llmText?.actionPlannerModel || llmText?.plannerModel;
+      llmText?.actionPlannerModel ||
+      llmText?.plannerModel ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL") ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_PLANNER_MODEL");
     process.env.SMALL_MODEL = small;
     process.env.NANO_MODEL = nano;
     process.env.MEDIUM_MODEL = medium;

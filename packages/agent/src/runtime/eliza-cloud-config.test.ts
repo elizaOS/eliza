@@ -24,7 +24,20 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZAOS_CLOUD_BASE_URL",
   "ELIZA_CLOUD_AGENT_ID",
+  "ELIZAOS_CLOUD_NANO_MODEL",
   "ELIZAOS_CLOUD_SMALL_MODEL",
+  "ELIZAOS_CLOUD_MEDIUM_MODEL",
+  "ELIZAOS_CLOUD_LARGE_MODEL",
+  "ELIZAOS_CLOUD_MEGA_MODEL",
+  "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL",
+  "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL",
+  "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL",
+  "ELIZAOS_CLOUD_PLANNER_MODEL",
+  "NANO_MODEL",
+  "SMALL_MODEL",
+  "MEDIUM_MODEL",
+  "LARGE_MODEL",
+  "MEGA_MODEL",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -184,6 +197,48 @@ describe("provisioned cloud container topology (#9887)", () => {
     ).toBe(true);
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
     expect(process.env.ELIZAOS_CLOUD_ENABLED).toBe("true");
+  });
+
+  it("keeps effective model pins when managed topology is already canonical", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZAOS_CLOUD_LARGE_MODEL = "large-from-env";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_SMALL_MODEL: "small-from-config-env",
+          ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL: "responder-from-config-env",
+        },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_SMALL_MODEL).toBe("small-from-config-env");
+    expect(process.env.SMALL_MODEL).toBe("small-from-config-env");
+    expect(process.env.ELIZAOS_CLOUD_LARGE_MODEL).toBe("large-from-env");
+    expect(process.env.LARGE_MODEL).toBe("large-from-env");
+    expect(process.env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL).toBe(
+      "responder-from-config-env",
+    );
+    expect(process.env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL).toBe(
+      "responder-from-config-env",
+    );
   });
 
   it("keeps repaired managed containers off local-inference fallback", () => {
