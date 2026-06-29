@@ -56,10 +56,6 @@ import {
 import { ChatTurnStatusCtx } from "./ChatTurnStatusContext.hooks";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
-import {
-  FIRST_RUN_ACTION_PREFIX,
-  tryHandleFirstRunAction,
-} from "../first-run/first-run-action-channel";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext.hooks";
 import {
