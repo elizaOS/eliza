@@ -36,39 +36,6 @@ import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action
  *     in `packages/scenario-runner/src/final-checks/index.ts`.
  */
 
-function assertApiBody(options: {
-  includesAll?: ReadonlyArray<string>;
-  includesAny?: ReadonlyArray<string>;
-  excludes?: ReadonlyArray<string>;
-}): (status: number, body: unknown) => string | undefined {
-  return (_status, body) => {
-    const serialized =
-      typeof body === "string" ? body : JSON.stringify(body ?? "");
-    if (options.includesAll) {
-      for (const needle of options.includesAll) {
-        if (!serialized.includes(needle)) {
-          return `expected body to include "${needle}"`;
-        }
-      }
-    }
-    if (options.includesAny && options.includesAny.length > 0) {
-      const ok = options.includesAny.some((needle) =>
-        serialized.includes(needle),
-      );
-      if (!ok) {
-        return `expected body to include any of ${options.includesAny.join(", ")}`;
-      }
-    }
-    if (options.excludes) {
-      for (const needle of options.excludes) {
-        if (serialized.includes(needle)) {
-          return `expected body to exclude "${needle}"`;
-        }
-      }
-    }
-  };
-}
-
 export default scenario({
   lane: "live-only",
   id: "email-reply-draft-outcome",
