@@ -4,6 +4,15 @@ name: coverage-gate
 # (warns but does not fail the build). Flip to required by setting the env
 # var COVERAGE_GATE_ENFORCE=1 in this workflow once the baseline is stable.
 #
+# Companion mechanism (issue #9943): packages/core, packages/agent,
+# packages/app-core, and packages/shared now carry a `coverage.thresholds` floor
+# in their vitest configs, set conservatively at 1% to establish the mechanism
+# (inert in normal CI because the test scripts do not pass --coverage). The
+# intended progression: measure the real per-package baseline, raise each
+# threshold to just below it, then flip COVERAGE_GATE_ENFORCE to "1" here so this
+# changed-files gate also fails the build. Until then both layers stay advisory
+# so develop CI cannot regress to red on coverage alone.
+#
 # TODO(security): promote to required once the team agrees on a per-package
 # threshold floor. See docs/security/ai-pr-review-policy.md for the broader
 # review checklist.
