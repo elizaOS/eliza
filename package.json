@@ -112,7 +112,7 @@
     "audit:scripts": "node packages/scripts/audit-scripts.mjs",
     "audit:scripts:self-test": "node packages/scripts/audit-scripts.self-test.mjs",
     "lint:all": "bun run lint:check && bun run typecheck",
-    "verify": "bun run audit:type-safety-ratchet && NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck lint --concurrency=8 --filter='!@elizaos/example-code' && bun run audit:build-model && bun run audit:turbo-build-deps && bun run audit:scripts && bun run typecheck:dist",
+    "verify": "bun run audit:type-safety-ratchet && NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck lint --concurrency=8 --filter='!@elizaos/example-code' && bun run audit:build-model && bun run audit:turbo-build-deps && bun run audit:tee-secret-leak && bun run audit:scripts && bun run typecheck:dist",
     "check": "bun run verify",
     "pre-commit": "bun run packages/scripts/pre-commit-lint.js",
     "release": "bunx lerna publish from-package --dist-tag latest --force-publish --yes --no-verify-access --no-sort",

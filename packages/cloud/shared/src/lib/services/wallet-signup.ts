@@ -44,13 +44,14 @@ async function grantWalletSignupCredits(params: {
   // concurrent same-IP signups cannot each pass the cap before any commits.
   const signupIp = getClientIp();
   try {
-    return await runWithSignupGrantIpCap(signupIp, async () => {
+    return await runWithSignupGrantIpCap(signupIp, async (tx) => {
       await creditsService.addCredits({
         organizationId: params.organizationId,
         amount: params.amount,
         description: "Wallet sign-up bonus",
         stripePaymentIntentId: params.idempotencyKey,
         metadata: { type: "wallet_signup", chain: params.chain, ip_address: signupIp },
+        db: tx,
       });
     });
   } catch (err) {

@@ -3,7 +3,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { sqlRows } from "../../db/execute-helpers";
+import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
 import { dbWrite } from "../../db/helpers";
 import {
   type CreditPack,
@@ -93,6 +93,11 @@ export interface AddCreditsParams {
   description: string;
   metadata?: Record<string, unknown>;
   stripePaymentIntentId?: string;
+  /**
+   * Internal: execute the mutation on an existing transaction. Used when the
+   * caller must hold a DB-level lock across the balance mutation.
+   */
+  db?: SqlExecutor;
 }
 
 /**
@@ -192,11 +197,12 @@ export class CreditsService {
       stripePaymentIntentId,
       transactionType,
     } = params;
+    const executor = params.db ?? dbWrite;
     const metadataJson = JSON.stringify(metadata ?? {});
     const stripeId = stripePaymentIntentId ?? null;
 
     const rows = await sqlRows<CreditMutationRow>(
-      dbWrite,
+      executor,
       sql`
         WITH org AS (
           SELECT id, credit_balance::numeric AS current_balance
@@ -241,6 +247,29 @@ export class CreditsService {
             stripe_payment_intent_id,
             created_at
         ),
+        existing AS (
+          SELECT
+            id,
+            organization_id,
+            user_id,
+            amount,
+            type,
+            description,
+            metadata,
+            stripe_payment_intent_id,
+            created_at
+          FROM credit_transactions
+          WHERE ${stripeId}::text IS NOT NULL
+            AND stripe_payment_intent_id = ${stripeId}
+          LIMIT 1
+        ),
+        chosen_transaction AS (
+          SELECT * FROM inserted
+          UNION ALL
+          SELECT * FROM existing
+          WHERE NOT EXISTS (SELECT 1 FROM inserted)
+          LIMIT 1
+        ),
         updated AS (
           UPDATE organizations AS o
           SET
@@ -255,17 +284,17 @@ export class CreditsService {
           EXISTS(SELECT 1 FROM org) AS org_exists,
           (SELECT current_balance FROM org) AS current_balance,
           COALESCE((SELECT new_balance FROM updated), (SELECT current_balance FROM org)) AS new_balance,
-          inserted.id,
-          inserted.organization_id,
-          inserted.user_id,
-          inserted.amount,
-          inserted.type,
-          inserted.description,
-          inserted.metadata,
-          inserted.stripe_payment_intent_id,
-          inserted.created_at
+          chosen_transaction.id,
+          chosen_transaction.organization_id,
+          chosen_transaction.user_id,
+          chosen_transaction.amount,
+          chosen_transaction.type,
+          chosen_transaction.description,
+          chosen_transaction.metadata,
+          chosen_transaction.stripe_payment_intent_id,
+          chosen_transaction.created_at
         FROM (SELECT 1) AS singleton
-        LEFT JOIN inserted ON true
+        LEFT JOIN chosen_transaction ON true
       `,
     );
 
@@ -274,7 +303,7 @@ export class CreditsService {
       throw new Error("Organization not found");
     }
 
-    if (!row.id && stripePaymentIntentId) {
+    if (!row.id && stripePaymentIntentId && !params.db) {
       const existingTransaction =
         await this.getTransactionByStripePaymentIntent(stripePaymentIntentId);
       if (existingTransaction) {
@@ -341,11 +370,11 @@ export class CreditsService {
     transaction: CreditTransaction;
     newBalance: number;
   }> {
-    const { organizationId, amount, description, metadata, stripePaymentIntentId } = params;
+    const { organizationId, amount, description, metadata, stripePaymentIntentId, db } = params;
 
     // IDEMPOTENCY: If stripePaymentIntentId is provided, check for existing transaction
     // This prevents race conditions when both synchronous and webhook calls try to add credits
-    if (stripePaymentIntentId) {
+    if (stripePaymentIntentId && !db) {
       const existingTransaction =
         await this.getTransactionByStripePaymentIntent(stripePaymentIntentId);
 
@@ -373,6 +402,7 @@ export class CreditsService {
       description,
       metadata,
       stripePaymentIntentId,
+      db,
       transactionType: "credit",
     }).then(async (result) => {
       invalidateOrganizationCache(organizationId).catch((error) => {

@@ -2752,7 +2752,11 @@ function isJunkCodingReply(text: unknown): boolean {
 	) {
 		return true;
 	}
-	if (/^(<tool_call|<arg_key|<arg_value|```json|\[?\s*\{.*"(action|decision|tool_calls|thought)"\s*:)/.test(t)) {
+	if (
+		/^(<tool_call|<arg_key|<arg_value|```json|\[?\s*\{.*"(action|decision|tool_calls|thought)"\s*:)/.test(
+			t,
+		)
+	) {
 		return true;
 	}
 	return false;

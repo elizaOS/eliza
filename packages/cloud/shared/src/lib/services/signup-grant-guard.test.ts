@@ -140,11 +140,14 @@ describe("runWithSignupGrantIpCap (anti-sybil free-grant cap)", () => {
 
   test("falls open and runs the grant without a transaction when no IP is known", async () => {
     let granted = false;
-    const ran = await runWithSignupGrantIpCap(undefined, async () => {
+    let receivedTx: unknown = "unset";
+    const ran = await runWithSignupGrantIpCap(undefined, async (tx) => {
       granted = true;
+      receivedTx = tx;
     });
     expect(ran).toBe(true);
     expect(granted).toBe(true);
+    expect(receivedTx).toBeUndefined();
     expect(transaction).not.toHaveBeenCalled();
   });
 
@@ -156,6 +159,14 @@ describe("runWithSignupGrantIpCap (anti-sybil free-grant cap)", () => {
     const countIdx = executedSql.findIndex((s) => s.includes("COUNT(*)"));
     expect(lockIdx).toBeGreaterThanOrEqual(0);
     expect(countIdx).toBeGreaterThan(lockIdx);
+  });
+
+  test("passes the lock-holding transaction to the grant callback for known IPs", async () => {
+    let receivedTx: unknown;
+    await runWithSignupGrantIpCap("2.2.2.2", async (tx) => {
+      receivedTx = tx;
+    });
+    expect(receivedTx).toBeInstanceOf(FakeTx);
   });
 
   test("grants below the cap and withholds once it is reached", async () => {
