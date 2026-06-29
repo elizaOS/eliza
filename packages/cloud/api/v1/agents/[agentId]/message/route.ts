@@ -14,9 +14,10 @@
  * component that can actually reach the bridge. Same pattern as the logs
  * route, but synchronous (we wait for the result instead of returning a 202).
  *
- * Auth: X-Service-Key (WAIFU_SERVICE_KEY) — same as provision. Org/user are
- * mapped from WAIFU_SERVICE_ORG_ID / WAIFU_SERVICE_USER_ID, so a service
- * caller can only chat agents owned by the service org.
+ * Auth: X-Service-Key (WAIFU_SERVICE_KEY) — same as provision. The service
+ * key authorizes the caller, but the message job is owned by the agent's
+ * persisted org/user so wallet-owned agents are reachable and billed to the
+ * actual owner.
  */
 
 import { Hono } from "hono";
@@ -43,7 +44,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function __hono_POST(c: AppContext) {
   try {
-    const identity = await requireServiceKey(c);
+    await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
     const body = await c.req.json().catch(() => null);
 
@@ -61,19 +62,16 @@ async function __hono_POST(c: AppContext) {
 
     const { text, userId, sessionId, roomId } = parsed.data;
 
-    // Agent must exist under the service org before we enqueue.
-    const agent = await elizaSandboxService.getAgent(
-      agentId,
-      identity.organizationId,
-    );
+    // Resolve by id, then attribute the daemon job to the actual agent owner.
+    const agent = await elizaSandboxService.getAgentById(agentId);
     if (!agent) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
     const { job } = await provisioningJobService.enqueueAgentMessage({
       agentId,
-      organizationId: identity.organizationId,
-      userId: identity.userId,
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
       text,
       ...(userId ? { senderId: userId } : {}),
       ...(sessionId ? { sessionId } : {}),
@@ -90,7 +88,7 @@ async function __hono_POST(c: AppContext) {
       await sleep(POLL_INTERVAL_MS);
       const current = await provisioningJobService.getJobForOrg(
         job.id,
-        identity.organizationId,
+        agent.organization_id,
       );
       if (!current) continue;
 
