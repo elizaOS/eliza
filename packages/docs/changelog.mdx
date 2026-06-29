@@ -47,7 +47,7 @@ A new **Open in cloud** button on the Eliza homepage takes you from a marketing 
 
 ## Refreshed app catalog artwork
 
-The [apps view](/dashboard/apps) ships with new hero artwork across the catalog, including a dedicated ClawVille tile. The desktop splash screen has also been updated so first-run feels fresher before your agent finishes booting.
+The [apps view](/dashboard/apps) ships with new hero artwork across the catalog. The desktop splash screen has also been updated so first-run feels fresher before your agent finishes booting.
 
 ## Self-correcting action parameters
 
@@ -112,11 +112,7 @@ The runtime now respects per-plugin role declarations on startup. Plugins that d
 
 </Update>
 
-<Update label="2026-04-25" description="Week of April 25; game app UX overhaul, automations sidebar, mobile pane navigation, lifeops and wallet polish" tags={["Feature", "Update", "Fix"]}>
-
-## Game app UX overhaul
-
-The [game apps](/dashboard/apps) have been redesigned around a chat-native experience. ClawVille now leads with a clearer header, a focused operator panel with suggested commands, and an in-game event timeline so you can see what your agent is doing, what changed, and what to try next without parsing engineering states. Implementation details are tucked away while gameplay context, objectives, and outcomes take the front seat.
+<Update label="2026-04-25" description="Week of April 25; automations sidebar, mobile pane navigation, lifeops and wallet polish" tags={["Feature", "Update", "Fix"]}>
 
 ## Automations sidebar and chat polish
 
@@ -456,10 +452,6 @@ Setting up connectors no longer requires editing config files. Discord, Telegram
 
 Companion mode has been redesigned as a launchable overlay app instead of a shell toggle. Open it from the apps view and it floats above your dashboard. The 3D scene now uses a lighter procedural environment, and VRM avatar files are significantly smaller — reducing the initial download by roughly 70%. Avatars load lazily when you open the companion and are disposed when you close it.
 
-## Vincent trading panels
-
-The [Apps view](/dashboard/apps) now includes Vincent trading profile and strategy panels. View your vault status, connection state, and trading strategies without leaving the dashboard.
-
 ## Updates
 
 - **Provider switcher** — A new provider switcher in [settings](/apps/dashboard/settings) lets you swap between local and cloud LLM providers in one click. Your routing preference is saved and applied immediately — no restart required.
@@ -468,7 +460,6 @@ The [Apps view](/dashboard/apps) now includes Vincent trading profile and strate
 - **Relationships graph improvements** — The contacts view identity cluster graph now shows richer relationship data with improved layout and filtering in the graph panel.
 - **Plugin role gating** — Plugins can now declare required roles, and the runtime only loads them when the active user meets the role requirement. This keeps the action space focused and prevents accidental access to admin-only features.
 - **Life-ops widget visibility** — Sidebar widgets for life-ops features like Calendar and Gmail now hide automatically when the corresponding plugin isn't loaded, reducing clutter for users who haven't configured those integrations.
-- **Hyperscape live telemetry** — The [Hyperscape game](/dashboard/apps) now streams live session data including goals, quick-actions, and agent thoughts directly into the app panel.
 
 ## Bug fixes
 
@@ -477,19 +468,11 @@ The [Apps view](/dashboard/apps) now includes Vincent trading profile and strate
 - Fixed a dev-mode startup crash caused by barrel file resolution in the Rollup bundler
 
 </Update>
-<Update label="2026-04-11" description="Week of April 11; 'Scape game app, Shopify plugin, Vincent trading, inbox actions, companion overlay, coding agent streaming" tags={["Feature", "Update", "Fix"]}>
-
-## 'Scape game app
-
-The xRSPS game is now playable directly in the [apps view](/dashboard/apps). Click the 'Scape tile and you land in a working game session — no configuration required. An operator surface shows your agent's live status, location, inventory, skills, and nearby entities. You can pause, resume, and steer the agent with natural-language prompts from the operator panel. The agent's autonomous loop journal and recent actions are visible alongside the game view.
+<Update label="2026-04-11" description="Week of April 11; Shopify plugin, inbox actions, companion overlay, coding agent streaming" tags={["Feature", "Update", "Fix"]}>
 
 ## Shopify plugin
 
 A new Shopify plugin lets your agent manage an online store through conversation. Connect your Shopify credentials and your agent can browse products, manage inventory levels, look up orders, search customers, and handle store operations — all from chat. A dedicated Shopify panel in the [apps view](/dashboard/apps) provides direct access to products, orders, inventory, and customer dashboards.
-
-## Vincent trading panels
-
-The [apps view](/dashboard/apps) now includes a Vincent section with trading profile and strategy panels. View your connected trading profile, review active strategies, and monitor trading activity without leaving the dashboard.
 
 ## Inbox actions
 
@@ -639,7 +622,7 @@ The orchestrator, Vite, API, and Electrobun can now print framed settings tables
 
 </Update>
 
-<Update label="2026-04-06" description="Week of March 31 – April 6; managed Discord bots, download channels, Vincent OAuth fix" tags={["Feature", "Update", "Fix"]}>
+<Update label="2026-04-06" description="Week of March 31 – April 6; managed Discord bots, download channels" tags={["Feature", "Update", "Fix"]}>
 
 ## Managed Discord for cloud agents
 
@@ -654,9 +637,6 @@ The homepage download dropdown now separates stable and canary releases into cle
 - **Official plugins preferred at startup** — The runtime now loads verified official plugins before attempting dynamic resolution, which means faster startup and more predictable plugin behavior out of the box.
 - **Todo and goals plugins retired** — The standalone todo and goals plugins have been removed in favor of the life-ops system introduced last week, which offers richer task management with recurring habits, reminders, and progress tracking.
 
-## Bug fixes
-
-- Fixed Vincent OAuth login failing silently when the redirect landed in an external browser instead of the desktop webview — the OAuth flow now completes correctly regardless of which browser handles the callback
 </Update>
 
 <Update label="2026-04-05" description="Dashboard chat: action callbacks replace in-place (Discord-style progressive messages over SSE)" tags={["Update", "Fix"]}>
@@ -692,7 +672,7 @@ Character selection during [setup](/guides/beginners-user-guide) now plays a pre
 ## Updates
 
 - **Setup simplified to two steps** — The [setup wizard](/guides/beginners-user-guide) has been streamlined from six steps down to splash, identity, providers, and chat. Voice configuration and permissions have moved to [settings](/apps/dashboard/settings) where they can be configured at any time, reducing first-run friction.
-- **Wallet setup available inline** — The [wallet](/guides/wallet) page now shows Vincent connect, Steward status, and setup options directly instead of redirecting you to settings. Each wallet section handles its own unconfigured state, so you always see the full layout with contextual setup prompts.
+- **Wallet setup available inline** — The [wallet](/guides/wallet) page now shows Steward status and setup options directly instead of redirecting you to settings. Each wallet section handles its own unconfigured state, so you always see the full layout with contextual setup prompts.
 - **Wallet plugins auto-enable** — When EVM or Solana private keys are present in your environment, the corresponding wallet plugins now load automatically on startup. Previously, you had to manually enable them even when keys were already configured.
 - **Plugin install paths recorded** — Installing a plugin from the dashboard now records its install path in your configuration, so the plugin resolver can find downloaded packages reliably across restarts.
 - **Voiceline volume normalized** — All setup voicelines are now normalized to -16 LUFS (EBU R128), preventing volume jumps when switching between characters or languages.
@@ -744,10 +724,6 @@ Eliza now supports native Discord slash commands. Four commands ship this week �
 ## Skills marketplace with remote registry
 
 You can now browse and install skills from a remote registry directly in the dashboard. The [skills](/plugins/skills) marketplace connects to a hosted catalog, so new community-contributed skills appear automatically without a Eliza update.
-
-## Vincent OAuth wallet login
-
-The [wallet](/guides/wallet) UI now supports Vincent OAuth login, giving you a browser-based authentication flow for connecting wallet services without manually entering credentials.
 
 ## Steward EVM signing for cloud containers
 

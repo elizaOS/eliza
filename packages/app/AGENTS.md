@@ -59,7 +59,7 @@ packages/app/
 ## Key internal modules
 
 - `app.config.ts` (package root) — single source of truth for app identity. `appId: "ai.elizaos.app"`, `cliName: "eliza"`, `envPrefix: "ELIZA"`, desktop `urlScheme: "elizaos"`. `src/app-config.ts` re-exports it as `APP_CONFIG` plus derived `APP_BRANDING_BASE`/`APP_LOG_PREFIX`/`APP_NAMESPACE`/`APP_URL_SCHEME`. Copy `app.config.ts` to white-label a new app.
-- `src/plugin-registrations.ts` — `SIDE_EFFECT_APP_MODULE_LOADERS`: plugins imported for their self-registration side effects (feed, scape, shopify-ui, etc.), not for exported components.
+- `src/plugin-registrations.ts` — `SIDE_EFFECT_APP_MODULE_LOADERS`: plugins imported for their self-registration side effects (feed, scape, shopify, etc.), not for exported components.
 - `src/main.tsx` — React entry point. Owns `initializeAppModules()` + `buildAppBootConfig()` inline (parallel-loads plugins, assembles `AppBootConfig`), then mounts React, then `initializePlatform()` (storage bridge, Capacitor listeners, desktop shell) concurrently after mount.
 
 ## Boot sequence

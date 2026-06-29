@@ -33,7 +33,6 @@ export const plugin = optionalPlugin;
 export const shopifyPlugin = optionalPlugin;
 export const stewardPlugin = optionalPlugin;
 export const trainingPlugin = optionalPlugin;
-export const vincentPlugin = optionalPlugin;
 
 export const documentsRoutes = Object.freeze([]);
 export const trainingRoutes = Object.freeze([]);

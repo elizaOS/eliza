@@ -85,7 +85,6 @@ The `BLOCKED_ENV_KEYS` set prevents the API from writing to security-sensitive e
 - `ELIZA_API_TOKEN` — API authentication
 - `ELIZA_WALLET_EXPORT_TOKEN` — wallet private key export
 - `ELIZA_TERMINAL_RUN_TOKEN` — shell command execution
-- `HYPERSCAPE_AUTH_TOKEN` — cloud service auth
 
 ### Sensitive Credentials (blocked)
 - `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY` — wallet private keys

@@ -494,35 +494,6 @@ test("shopify utility controls exercise commerce workflows", async ({
   await expectNoIssues(page, issues.splice(0), "shopify interactions");
 });
 
-test("vincent utility controls refresh and disconnect deterministic state", async ({
-  page,
-}) => {
-  skipUnlessRoutesRegistered(["vincent"]);
-  const issues = installIssueGuards(page);
-
-  const vincent = routeCaseByName("vincent");
-  await openAppWindow(page, vincent);
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Vincent refresh",
-  );
-  await expect(page.getByTestId("vincent-status-card")).toContainText(
-    "Connected",
-  );
-  await expect(page.getByText("Wallet")).toBeVisible();
-  await expect(page.getByText("Strategy")).toBeVisible();
-  await expect(page.getByText("P&L").first()).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open Vincent" })).toBeVisible();
-  await clickRequired(
-    page.getByRole("button", { name: "Disconnect" }),
-    "Vincent disconnect",
-  );
-  await expect(page.getByTestId("vincent-status-card")).toContainText(
-    "Disconnected",
-  );
-  await expectNoIssues(page, issues.splice(0), "vincent interactions");
-});
-
 test("wallet inventory controls update visible deterministic state", async ({
   page,
 }) => {

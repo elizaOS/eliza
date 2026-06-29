@@ -83,23 +83,23 @@ const viewsManagerTuiView = {
   viewType: "tui" as const,
 };
 
-const notesView = {
-  id: "notes",
-  label: "Notes",
+const shopifyView = {
+  id: "shopify",
+  label: "Shopify",
   available: true,
-  pluginName: "@elizaos/plugin-simple-views",
-  path: "/notes",
-  bundleUrl: "/api/views/notes/bundle.js",
+  pluginName: "@elizaos/plugin-shopify",
+  path: "/shopify",
+  bundleUrl: "/api/views/shopify/bundle.js",
   viewType: "gui" as const,
 };
 
-const simpleCalendarView = {
-  id: "simple-calendar",
-  label: "Simple Calendar",
+const calendarView = {
+  id: "calendar",
+  label: "Calendar",
   available: true,
-  pluginName: "@elizaos/plugin-simple-views",
-  path: "/simple-calendar",
-  bundleUrl: "/api/views/simple-calendar/bundle.js",
+  pluginName: "@elizaos/plugin-calendar",
+  path: "/calendar",
+  bundleUrl: "/api/views/calendar/bundle.js",
   viewType: "gui" as const,
 };
 
@@ -128,8 +128,8 @@ const mockAvailableViews = [
   remoteLedgerView,
   viewsManagerView,
   viewsManagerTuiView,
-  notesView,
-  simpleCalendarView,
+  shopifyView,
+  calendarView,
   sharedCanvasView,
   documentsView,
 ];
@@ -556,8 +556,8 @@ describe("App navigate-view event wiring", () => {
 
     navigateView({
       action: "split-view",
-      viewId: "notes",
-      views: ["notes", "simple-calendar"],
+      viewId: "shopify",
+      views: ["shopify", "calendar"],
       layout: "horizontal",
       placement: "right",
     });
@@ -565,16 +565,16 @@ describe("App navigate-view event wiring", () => {
     await waitFor(() => {
       expect(getByTestId("view-layout-surface")).toBeTruthy();
     });
-    expect(getByTestId("view-layout-pane-notes")).toBeTruthy();
-    expect(getByTestId("view-layout-pane-simple-calendar")).toBeTruthy();
+    expect(getByTestId("view-layout-pane-shopify")).toBeTruthy();
+    expect(getByTestId("view-layout-pane-calendar")).toBeTruthy();
     const loaders = getAllByTestId("dynamic-view-loader");
     expect(
       loaders.map((loader) => loader.getAttribute("data-view-id")),
-    ).toEqual(["notes", "simple-calendar"]);
-    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(notesView, {
+    ).toEqual(["shopify", "calendar"]);
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(shopifyView, {
       pinned: false,
     });
-    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(simpleCalendarView, {
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
       pinned: false,
     });
   });
@@ -588,7 +588,7 @@ describe("App navigate-view event wiring", () => {
     navigateView({
       action: "split-view",
       viewId: "documents",
-      views: ["documents", "simple-calendar"],
+      views: ["documents", "calendar"],
       layout: "horizontal",
     });
 
@@ -600,11 +600,11 @@ describe("App navigate-view event wiring", () => {
       getAllByTestId("dynamic-view-loader").map((loader) =>
         loader.getAttribute("data-view-id"),
       ),
-    ).toEqual(["documents", "simple-calendar"]);
+    ).toEqual(["documents", "calendar"]);
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(documentsView, {
       pinned: false,
     });
-    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(simpleCalendarView, {
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
       pinned: false,
     });
   });

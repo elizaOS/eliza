@@ -540,7 +540,6 @@ packages/elizaos/examples/
 /the-org/
 /rs-sdk/
 /openclaw-classic/
-/examples/runescape2004/
 
 # Database files
 *.db
@@ -1034,7 +1033,6 @@ waifu.fun/
 /packages/os/homepage/public/assets/elizaos-usb-key-concept.png
 /plugins/plugin-contacts/assets/hero.png
 /plugins/plugin-phone/assets/hero.png
-/plugins/plugin-vincent/assets/hero.png
 /plugins/plugin-wifi/assets/hero.png
 /packages/benchmarks/skillsbench/docs/skills-research/repos_by_stars.json
 /plugins/plugin-companion/public_src/animations/mixamo/Look Around.fbx

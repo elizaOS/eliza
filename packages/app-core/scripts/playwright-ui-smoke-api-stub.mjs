@@ -9,8 +9,7 @@ const repoRoot = path.resolve(new URL("../../..", import.meta.url).pathname);
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const DEMO_ORCHESTRATOR = process.env.ELIZA_UI_SMOKE_DEMO_ORCHESTRATOR === "1";
 const HUMAN_CHAT_FIXTURES = process.env.ELIZA_UI_SMOKE_HUMAN_CHAT === "1";
-const SMOKE_NOTIFICATIONS =
-  process.env.ELIZA_UI_SMOKE_NOTIFICATIONS === "1";
+const SMOKE_NOTIFICATIONS = process.env.ELIZA_UI_SMOKE_NOTIFICATIONS === "1";
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
 let lifeOpsAppEnabled = true;
@@ -119,14 +118,6 @@ const smokeViewDeclarations = [
   // `/documents` collides with the built-in "documents" tab (App.tsx findView
   // matches `/${tab}`), which would hijack the `/character/documents` route.
   ["calendar", "Calendar", "plugin-calendar", "/calendar", "CalendarView"],
-  ["notes", "Notes", "plugin-simple-views", "/notes", "NotesView"],
-  [
-    "simple-calendar",
-    "Simple Calendar",
-    "plugin-simple-views",
-    "/simple-calendar",
-    "SimpleCalendarView",
-  ],
   ["finances", "Finances", "plugin-finances", "/finances", "FinancesView"],
   ["focus", "Focus", "plugin-blocker", "/focus", "FocusView"],
   ["goals", "Goals", "plugin-goals", "/goals", "GoalsView"],
@@ -175,21 +166,7 @@ const smokeViewDeclarations = [
     "ShopifyView",
     ["gui", "tui"],
   ],
-  [
-    "steward",
-    "Steward",
-    "/steward",
-    "StewardView",
-    ["gui", "tui"],
-  ],
-  [
-    "vincent",
-    "Vincent",
-    "plugin-vincent",
-    "/vincent",
-    "VincentView",
-    ["gui", "tui"],
-  ],
+  ["steward", "Steward", "/steward", "StewardView", ["gui", "tui"]],
   [
     "wallet",
     "Wallet",
@@ -513,12 +490,6 @@ const stubCatalogApps = [
     category: "platform",
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-vincent",
-    displayName: "Vincent",
-    description: "Manage Vincent DeFi account access and trading context.",
-    category: "platform",
-  }),
-  stubCatalogApp({
     name: "@elizaos/plugin-hyperliquid",
     displayName: "Hyperliquid",
     description: "Inspect Hyperliquid markets, positions, and order status.",
@@ -607,36 +578,11 @@ const stubMemoryBrowseResponse = {
   offset: 0,
 };
 
-const simpleViewsState = {
-  notes: [
-    {
-      id: "note-ui-smoke",
-      title: "UI smoke note",
-      body: "Rendered from the optional simple views plugin.",
-      color: "yellow",
-      createdAt: "2026-06-25T00:00:00.000Z",
-      updatedAt: "2026-06-25T00:00:00.000Z",
-    },
-  ],
-  events: [
-    {
-      id: "event-ui-smoke",
-      title: "UI smoke calendar event",
-      date: "2026-06-25",
-      time: "09:00",
-      notes: "Rendered from the optional simple views plugin.",
-      color: "green",
-      createdAt: "2026-06-25T00:00:00.000Z",
-    },
-  ],
-  selectedDate: "2026-06-25",
-};
-
 const smokeNotifications = [
   {
     id: "smoke-notification-view-qa",
     title: "View switching ready",
-    body: "Notes and Simple Calendar are registered for desktop QA.",
+    body: "Shopify and Wallet are registered for desktop QA.",
     category: "workflow",
     priority: "high",
     source: "ui-smoke",
@@ -1222,12 +1168,6 @@ function normalizeAssistantInput(value) {
 
 function classifyAssistantAction(text) {
   const normalized = text.toLowerCase();
-  if (/\b(note|notes|sticky)\b/.test(normalized)) {
-    return { type: "navigate", target: "/notes" };
-  }
-  if (/\b(calendar|schedule|event|events)\b/.test(normalized)) {
-    return { type: "navigate", target: "/simple-calendar" };
-  }
   if (/\b(wallet|inventory|address|balance)\b/.test(normalized)) {
     return { type: "navigate", target: "/wallet" };
   }
@@ -1245,14 +1185,6 @@ function classifyAssistantAction(text) {
 
 function navigationDetailForTarget(target) {
   switch (target) {
-    case "/notes":
-      return { viewId: "notes", viewPath: "/notes", viewLabel: "Notes" };
-    case "/simple-calendar":
-      return {
-        viewId: "simple-calendar",
-        viewPath: "/simple-calendar",
-        viewLabel: "Simple Calendar",
-      };
     case "/wallet":
       return { viewId: "wallet", viewPath: "/wallet", viewLabel: "Wallet" };
     case "/views":
@@ -1307,12 +1239,7 @@ function createDeterministicAssistantText({ body, conversationId, transport }) {
   const action = classifyAssistantAction(inputText);
   if (HUMAN_CHAT_FIXTURES) {
     if (action.type === "navigate") {
-      const label =
-        action.target === "/simple-calendar"
-          ? "Simple Calendar"
-          : action.target === "/notes"
-            ? "Notes"
-            : action.target?.replace(/^\//, "") || "that view";
+      const label = action.target?.replace(/^\//, "") || "that view";
       return `Opening ${label}.`;
     }
     return inputText
@@ -3575,25 +3502,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/vincent/status") {
-    sendJson(req, res, 200, {
-      connected: false,
-      connectedAt: null,
-      tradingVenues: ["hyperliquid", "polymarket"],
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/vincent/strategy") {
-    sendJson(req, res, 200, { connected: false, strategy: null });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/vincent/trading-profile") {
-    sendJson(req, res, 200, { connected: false, profile: null });
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/shopify/status") {
     sendJson(req, res, 200, { connected: false, shop: null });
     return;
@@ -5145,21 +5053,6 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/logs") {
     sendJson(req, res, 200, stubLogsResponse);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/simple-views/state") {
-    sendJson(req, res, 200, simpleViewsState);
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/simple-views/interact") {
-    await drainRequest(req);
-    sendJson(req, res, 200, {
-      success: true,
-      text: "OK",
-      state: simpleViewsState,
-    });
     return;
   }
 

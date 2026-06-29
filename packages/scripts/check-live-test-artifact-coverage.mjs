@@ -50,45 +50,81 @@ const LIKELY_LLM_PATTERNS = [
 ];
 const NON_MODEL_EXCLUSION_RULES = [
   {
-    reason: "Playwright/browser UI or visual audit suite; capture belongs to UI screenshots/traces rather than model-call trajectory artifacts.",
-    matches: (row) => /playwright|run-ui-playwright|run-e2e|aesthetic-audit|contact-sheet|web-views|cloud-wallet|homepage|os-homepage|app-xr|llama-ui|packages\/test\/cloud-e2e/i.test(row.value),
+    reason:
+      "Playwright/browser UI or visual audit suite; capture belongs to UI screenshots/traces rather than model-call trajectory artifacts.",
+    matches: (row) =>
+      /playwright|run-ui-playwright|run-e2e|aesthetic-audit|contact-sheet|web-views|cloud-wallet|homepage|os-homepage|app-xr|llama-ui|packages\/test\/cloud-e2e/i.test(
+        row.value,
+      ),
   },
   {
-    reason: "Repository/package test-lane aggregator; underlying leaf scripts are inventoried separately.",
-    matches: (row) => /run-all-tests|test:cloud:full|test:cloud &&|--only=e2e|--filter=|--pattern|test:e2e:heavy|TEST_LANE=/i.test(row.value),
+    reason:
+      "Repository/package test-lane aggregator; underlying leaf scripts are inventoried separately.",
+    matches: (row) =>
+      /run-all-tests|test:cloud:full|test:cloud &&|--only=e2e|--filter=|--pattern|test:e2e:heavy|TEST_LANE=/i.test(
+        row.value,
+      ),
   },
   {
-    reason: "Local plugin smoke harness; validates plugin bootstrapping/service wiring, not LLM token/cache behavior.",
-    matches: (row) => /run-local-plugin-live-smoke|plugin-(discord|edge-tts|elizacloud|music|shopify|sql|telegram|workflow)/i.test(row.value),
+    reason:
+      "Local plugin smoke harness; validates plugin bootstrapping/service wiring, not LLM token/cache behavior.",
+    matches: (row) =>
+      /run-local-plugin-live-smoke|plugin-(discord|edge-tts|elizacloud|music|shopify|sql|telegram|workflow)/i.test(
+        row.value,
+      ),
   },
   {
-    reason: "External device, hardware, OS, or mobile gateway validation; evidence is environment logs/device traces, not model-call artifacts.",
-    matches: (row) => /bluebubbles|android-sms|riscv64|usb|virtual-usb|smartglasses|simulator|evenhub|sandbox-live|live-sandbox|mobile/i.test(row.value),
+    reason:
+      "External device, hardware, OS, or mobile gateway validation; evidence is environment logs/device traces, not model-call artifacts.",
+    matches: (row) =>
+      /bluebubbles|android-sms|riscv64|usb|virtual-usb|smartglasses|simulator|evenhub|sandbox-live|live-sandbox|mobile/i.test(
+        row.value,
+      ),
   },
   {
-    reason: "Database, migration, SDK, or cloud integration test; real external state is exercised without LLM trajectory/cache semantics.",
-    matches: (row) => /migration|integration|DATABASE|cloud-sdk|ELIZA_CLOUD_SDK_LIVE|cloud-api|feed|market-realism|sql tests|test:real|background-real|live-schedule|scheduled-task|reminder-review|lifeops-scheduling|schedule-merged/i.test(row.value),
+    reason:
+      "Database, migration, SDK, or cloud integration test; real external state is exercised without LLM trajectory/cache semantics.",
+    matches: (row) =>
+      /migration|integration|DATABASE|cloud-sdk|ELIZA_CLOUD_SDK_LIVE|cloud-api|feed|market-realism|sql tests|test:real|background-real|live-schedule|scheduled-task|reminder-review|lifeops-scheduling|schedule-merged/i.test(
+        row.value,
+      ),
   },
   {
-    reason: "Template/example/component e2e wrapper; no provider/model terms in the script command.",
-    matches: (row) => /templates\/plugin|examples\/_plugin|plugin-starter|__APP_PACKAGE_NAME__|test:component|test\.ts|vitest run src\/e2e/i.test(row.value),
+    reason:
+      "Template/example/component e2e wrapper; no provider/model terms in the script command.",
+    matches: (row) =>
+      /templates\/plugin|examples\/_plugin|plugin-starter|__APP_PACKAGE_NAME__|test:component|test\.ts|vitest run src\/e2e/i.test(
+        row.value,
+      ),
   },
   {
-    reason: "Static lint or package quality gate included by broad live/e2e name matching; not a runtime artifact source.",
+    reason:
+      "Static lint or package quality gate included by broad live/e2e name matching; not a runtime artifact source.",
     matches: (row) => /\blint\b|biome check|echo 'unit-only/i.test(row.value),
   },
   {
-    reason: "Manual real/e2e plugin suite without model/provider terms; keep as non-model evidence unless a provider key is introduced.",
-    matches: (row) => /test:e2e:manual|\.real\.e2e|\.live\.e2e|acp-codex-smoke|example-bluesky|plugin-(documents|shopify-ui|task-coordinator|vincent|agent-orchestrator)/i.test(row.value),
+    reason:
+      "Manual real/e2e plugin suite without model/provider terms; keep as non-model evidence unless a provider key is introduced.",
+    matches: (row) =>
+      /test:e2e:manual|\.real\.e2e|\.live\.e2e|acp-codex-smoke|example-bluesky|plugin-(documents|shopify|task-coordinator|agent-orchestrator)/i.test(
+        row.value,
+      ),
   },
   {
-    reason: "Package-local browser/unit/e2e bundle with no model/provider terms.",
-    matches: (row) => /test:slow|vitest\.e2e|npx playwright test|npm run test:ui|npm run test:client|npm run test:unit/i.test(row.value),
+    reason:
+      "Package-local browser/unit/e2e bundle with no model/provider terms.",
+    matches: (row) =>
+      /test:slow|vitest\.e2e|npx playwright test|npm run test:ui|npm run test:client|npm run test:unit/i.test(
+        row.value,
+      ),
   },
 ];
 
 function excerpt(value, max = 900) {
-  return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
 }
 
 function parseArgs(argv) {
@@ -156,7 +192,9 @@ function nonModelExclusion(row) {
   if (row.likelyLlm || row.hasArtifactEvidence) return null;
   const value = `${row.packageJson} ${row.packageName} ${row.script} ${row.command}`;
   const candidate = { ...row, value };
-  const rule = NON_MODEL_EXCLUSION_RULES.find((entry) => entry.matches(candidate));
+  const rule = NON_MODEL_EXCLUSION_RULES.find((entry) =>
+    entry.matches(candidate),
+  );
   return rule ? rule.reason : null;
 }
 
@@ -192,10 +230,12 @@ function slugify(value) {
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-      char
-    ],
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        char
+      ],
   );
 }
 
@@ -222,10 +262,14 @@ function readWrappedRuns() {
         completedAt: String(report.completedAt || ""),
         durationMs: Number(report.durationMs || 0),
         exitCode: Number(report.exitCode ?? -1),
-        command: Array.isArray(report.command) ? report.command.map(String) : [],
+        command: Array.isArray(report.command)
+          ? report.command.map(String)
+          : [],
         commandText: commandText(report.command),
         viewerIndex: String(report.artifactPaths?.viewerIndex || ""),
-        playbackIndex: existsSync(path.join(path.dirname(reportPath), "playback.html"))
+        playbackIndex: existsSync(
+          path.join(path.dirname(reportPath), "playback.html"),
+        )
           ? path.join(path.dirname(reportPath), "playback.html")
           : "",
         llmCallsJsonl: String(report.artifactPaths?.llmCallsJsonl || ""),
@@ -264,7 +308,11 @@ function matchingWrappedRuns(row, wrappedRuns) {
 }
 
 function suggestedAction(row) {
-  if (row.modelArtifactRequired && row.structuredLlmCoverageReason && row.structuredLlmCoverageReason !== "structured-present") {
+  if (
+    row.modelArtifactRequired &&
+    row.structuredLlmCoverageReason &&
+    row.structuredLlmCoverageReason !== "structured-present"
+  ) {
     return `Wrapped playback is present, but no structured LLM sidecar rows were recoverable: ${row.structuredLlmCoverageDetail}`;
   }
   if (row.nonModelArtifactExclusionReason) {
@@ -307,7 +355,8 @@ function structuredCoverage(row) {
   if (!row.wrappedRunCount) {
     return {
       reason: "no-wrapped-playback",
-      detail: "No wrapped playback run exists for this model-classified script.",
+      detail:
+        "No wrapped playback run exists for this model-classified script.",
     };
   }
   const latest = row.latestWrappedRun || {};
@@ -315,37 +364,55 @@ function structuredCoverage(row) {
   if (Number(latest.exitCode) === 124) {
     return {
       reason: "timeout-before-sidecar",
-      detail: "The captured wrapper run timed out before any sidecar LLM call rows were emitted.",
+      detail:
+        "The captured wrapper run timed out before any sidecar LLM call rows were emitted.",
     };
   }
-  if (/self-test|validate-capability-router|audit-capability-router|remote-capabilities/i.test(value)) {
+  if (
+    /self-test|validate-capability-router|audit-capability-router|remote-capabilities/i.test(
+      value,
+    )
+  ) {
     return {
       reason: "validation-or-self-test-no-model-call",
-      detail: "The wrapped run exercises capability validation or self-test logic and did not emit provider prompt/response sidecars.",
+      detail:
+        "The wrapped run exercises capability validation or self-test logic and did not emit provider prompt/response sidecars.",
     };
   }
-  if (/mobile-local-chat|android|ios|simulator|voice-live-validation|voice:validate/i.test(value)) {
+  if (
+    /mobile-local-chat|android|ios|simulator|voice-live-validation|voice:validate/i.test(
+      value,
+    )
+  ) {
     return {
       reason: "external-runtime-no-sidecar",
-      detail: "The wrapped run is gated on mobile, simulator, voice, or device runtime behavior and produced runtime logs rather than LLM sidecar rows.",
+      detail:
+        "The wrapped run is gated on mobile, simulator, voice, or device runtime behavior and produced runtime logs rather than LLM sidecar rows.",
     };
   }
   const latestOutput = `${latest.stdoutExcerpt || ""} ${latest.stderrExcerpt || ""}`;
-  if (/SKIP .*server is unavailable|server is unavailable|fetch failed|ECONNREFUSED|connection refused/i.test(latestOutput)) {
+  if (
+    /SKIP .*server is unavailable|server is unavailable|fetch failed|ECONNREFUSED|connection refused/i.test(
+      latestOutput,
+    )
+  ) {
     return {
       reason: "runtime-service-unavailable-no-sidecar",
-      detail: "The wrapped run completed as a runtime skip because a required local service was unavailable before any model-call sidecar rows could be emitted.",
+      detail:
+        "The wrapped run completed as a runtime skip because a required local service was unavailable before any model-call sidecar rows could be emitted.",
     };
   }
   if (Number(latest.exitCode) !== 0) {
     return {
       reason: "wrapper-failed-before-sidecar",
-      detail: "The latest wrapped run failed before a structured LLM sidecar could be emitted.",
+      detail:
+        "The latest wrapped run failed before a structured LLM sidecar could be emitted.",
     };
   }
   return {
     reason: "no-call-artifact-emitted",
-    detail: "The wrapped run completed but did not emit llm-calls.jsonl or recoverable scenario trajectory model stages.",
+    detail:
+      "The wrapped run completed but did not emit llm-calls.jsonl or recoverable scenario trajectory model stages.",
   };
 }
 
@@ -354,7 +421,8 @@ function inventoryScripts(wrappedRuns = []) {
   for (const file of packageJsonPaths()) {
     const pkg = readPackage(file);
     if (!pkg || typeof pkg !== "object") continue;
-    const scripts = pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
+    const scripts =
+      pkg.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
     for (const [name, command] of Object.entries(scripts)) {
       const value = `${name} ${command}`;
       if (!SCRIPT_PATTERN.test(value)) continue;
@@ -446,10 +514,22 @@ function relativizeArtifactLinks(rows, reportDir) {
       latestWrappedRun: row.latestWrappedRun
         ? {
             ...row.latestWrappedRun,
-            viewerIndex: relFromReport(row.latestWrappedRun.viewerIndex, reportDir),
-            playbackIndex: relFromReport(row.latestWrappedRun.playbackIndex, reportDir),
-            llmCallsJsonl: relFromReport(row.latestWrappedRun.llmCallsJsonl, reportDir),
-            reportJson: relFromReport(row.latestWrappedRun.reportJson, reportDir),
+            viewerIndex: relFromReport(
+              row.latestWrappedRun.viewerIndex,
+              reportDir,
+            ),
+            playbackIndex: relFromReport(
+              row.latestWrappedRun.playbackIndex,
+              reportDir,
+            ),
+            llmCallsJsonl: relFromReport(
+              row.latestWrappedRun.llmCallsJsonl,
+              reportDir,
+            ),
+            reportJson: relFromReport(
+              row.latestWrappedRun.reportJson,
+              reportDir,
+            ),
           }
         : null,
       wrappedRuns,
@@ -465,10 +545,16 @@ function scriptFindings(rows) {
       if (!row.hasArtifactEvidence) {
         disposition = "model-artifact-gap";
         reasons.push("likely model-call script without artifact evidence");
-      } else if (row.wrappedRunCount > 0 && row.latestWrappedRun?.exitCode === 0) {
+      } else if (
+        row.wrappedRunCount > 0 &&
+        row.latestWrappedRun?.exitCode === 0
+      ) {
         disposition = "model-wrapper-pass";
         reasons.push("latest wrapped artifact run passed");
-      } else if (row.wrappedRunCount > 0 && row.latestWrappedRun?.exitCode !== 0) {
+      } else if (
+        row.wrappedRunCount > 0 &&
+        row.latestWrappedRun?.exitCode !== 0
+      ) {
         disposition = "model-wrapper-failed";
         reasons.push("latest wrapped artifact run failed");
       } else if (row.knownArtifactPath) {
@@ -480,11 +566,14 @@ function scriptFindings(rows) {
       }
     } else if (row.nonModelArtifactExcluded) {
       disposition = "non-model-excluded";
-      reasons.push(row.nonModelArtifactExclusionReason || "documented non-model exclusion");
+      reasons.push(
+        row.nonModelArtifactExclusionReason || "documented non-model exclusion",
+      );
     } else if (row.hasArtifactEvidence) {
-      disposition = row.wrappedRunCount > 0 && row.latestWrappedRun?.exitCode !== 0
-        ? "non-model-wrapper-failed"
-        : "non-model-artifact-evidence";
+      disposition =
+        row.wrappedRunCount > 0 && row.latestWrappedRun?.exitCode !== 0
+          ? "non-model-wrapper-failed"
+          : "non-model-artifact-evidence";
       reasons.push(
         row.wrappedRunCount > 0
           ? "wrapper artifact evidence exists"
@@ -492,7 +581,9 @@ function scriptFindings(rows) {
       );
     } else {
       disposition = "non-model-unclassified";
-      reasons.push("no model requirement, artifact evidence, or explicit exclusion");
+      reasons.push(
+        "no model requirement, artifact evidence, or explicit exclusion",
+      );
     }
     if (row.knownArtifactPath) reasons.push("artifact hint present");
     if (row.wrappedRunCount > 0) {
@@ -508,7 +599,9 @@ function scriptFindings(rows) {
     if (structuredLlmCallCount > 0) {
       reasons.push(`${structuredLlmCallCount} structured LLM call(s) captured`);
     } else if (row.modelArtifactRequired && row.structuredLlmCoverageReason) {
-      reasons.push(`structured LLM sidecar status: ${row.structuredLlmCoverageReason}`);
+      reasons.push(
+        `structured LLM sidecar status: ${row.structuredLlmCoverageReason}`,
+      );
     }
     return {
       packageJson: row.packageJson,
@@ -578,8 +671,19 @@ function modelScriptReviewHtml(row, finding) {
     ["Built-in artifact hint", row.knownArtifactPath ? "yes" : "no"],
     ["Wrapped run count", row.wrappedRunCount || 0],
     ["Latest wrapped exit", row.latestWrappedRun?.exitCode ?? "n/a"],
-    ["Structured LLM runs", (row.wrappedRuns || []).filter((run) => Number(run.structuredLlmCallCount || 0) > 0).length],
-    ["Structured LLM calls", (row.wrappedRuns || []).reduce((sum, run) => sum + Number(run.structuredLlmCallCount || 0), 0)],
+    [
+      "Structured LLM runs",
+      (row.wrappedRuns || []).filter(
+        (run) => Number(run.structuredLlmCallCount || 0) > 0,
+      ).length,
+    ],
+    [
+      "Structured LLM calls",
+      (row.wrappedRuns || []).reduce(
+        (sum, run) => sum + Number(run.structuredLlmCallCount || 0),
+        0,
+      ),
+    ],
     ["Structured coverage reason", row.structuredLlmCoverageReason || "n/a"],
   ];
   return `<!doctype html>
@@ -619,7 +723,10 @@ function modelScriptReviewHtml(row, finding) {
   <main>
     <section class="panel"><h2>Review Summary</h2><div class="body">
       <table><tbody>${evidenceRows
-        .map(([key, value]) => `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(value)}</td></tr>`)
+        .map(
+          ([key, value]) =>
+            `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(value)}</td></tr>`,
+        )
         .join("")}</tbody></table>
       <p><strong>Reasons:</strong> ${escapeHtml((finding.reasons || []).join("; "))}</p>
       ${
@@ -671,13 +778,21 @@ function writeModelScriptReviewPages(rows, findings, reportDir) {
   const dir = path.join(reportDir, "model-scripts");
   mkdirSync(dir, { recursive: true });
   const findingByScript = new Map(
-    findings.map((finding) => [`${finding.packageJson}:${finding.script}`, finding]),
+    findings.map((finding) => [
+      `${finding.packageJson}:${finding.script}`,
+      finding,
+    ]),
   );
   let count = 0;
   for (const row of rows) {
     if (!row.modelReviewPath) continue;
-    const finding = findingByScript.get(`${row.packageJson}:${row.script}`) || {};
-    writeFileSync(row.modelReviewPath, modelScriptReviewHtml(row, finding), "utf8");
+    const finding =
+      findingByScript.get(`${row.packageJson}:${row.script}`) || {};
+    writeFileSync(
+      row.modelReviewPath,
+      modelScriptReviewHtml(row, finding),
+      "utf8",
+    );
     count += 1;
   }
   return count;
@@ -819,7 +934,13 @@ function renderMarkdown(payload) {
       `| \`${finding.packageJson}\` | \`${finding.script}\` | ${finding.disposition} | likely LLM=${finding.likelyLlm ? "yes" : "no"}; artifact=${finding.hasArtifactEvidence ? "yes" : "no"}; wrapped=${finding.wrappedRunCount}; exit=${finding.latestWrappedExitCode ?? ""}; structured=${finding.structuredLlmCoverageReason || ""}; review=${finding.modelReviewHref || ""} | ${(finding.reasons || []).join("; ").replaceAll("|", "\\|")} |`,
     );
   }
-  lines.push("", "## Scripts", "", "| package | script | kind | artifact scope | likely LLM | artifact hint | wrapped runs | latest wrapped exit | next action | command |", "|---|---|---:|---|---:|---:|---:|---:|---|---|");
+  lines.push(
+    "",
+    "## Scripts",
+    "",
+    "| package | script | kind | artifact scope | likely LLM | artifact hint | wrapped runs | latest wrapped exit | next action | command |",
+    "|---|---|---:|---|---:|---:|---:|---:|---|---|",
+  );
   for (const row of payload.rows) {
     lines.push(
       `| \`${row.packageJson}\` | \`${row.script}\` | ${row.kind} | ${row.artifactScope} | ${row.likelyLlm ? "yes" : "no"} | ${row.knownArtifactPath ? "yes" : "no"} | ${row.wrappedRunCount || 0} | ${row.latestWrappedRun ? row.latestWrappedRun.exitCode : ""} | ${row.suggestedAction.replaceAll("|", "\\|")} | \`${row.command.replaceAll("|", "\\|")}\` |`,
@@ -856,12 +977,15 @@ function main() {
     summary: {
       totalScripts: rows.length,
       knownArtifactScripts: rows.filter((row) => row.knownArtifactPath).length,
-      unknownArtifactScripts: rows.filter((row) => !row.knownArtifactPath).length,
-      wrapperEvidenceScripts: rows.filter((row) => row.wrappedRunCount > 0).length,
+      unknownArtifactScripts: rows.filter((row) => !row.knownArtifactPath)
+        .length,
+      wrapperEvidenceScripts: rows.filter((row) => row.wrappedRunCount > 0)
+        .length,
       artifactEvidenceScripts: rows.filter((row) => row.hasArtifactEvidence)
         .length,
-      scriptsWithoutArtifactEvidence: rows.filter((row) => !row.hasArtifactEvidence)
-        .length,
+      scriptsWithoutArtifactEvidence: rows.filter(
+        (row) => !row.hasArtifactEvidence,
+      ).length,
       nonModelArtifactExcludedScripts: rows.filter(
         (row) => row.nonModelArtifactExcluded,
       ).length,
@@ -871,8 +995,9 @@ function main() {
           !row.hasArtifactEvidence &&
           !row.nonModelArtifactExcluded,
       ).length,
-      modelArtifactRequiredScripts: rows.filter((row) => row.modelArtifactRequired)
-        .length,
+      modelArtifactRequiredScripts: rows.filter(
+        (row) => row.modelArtifactRequired,
+      ).length,
       modelArtifactRequiredWithoutEvidence: rows.filter(
         (row) => row.modelArtifactRequired && !row.hasArtifactEvidence,
       ).length,
@@ -885,7 +1010,8 @@ function main() {
       ).length,
       packageCount: new Set(rows.map((row) => row.packageJson)).size,
       wrappedRuns: wrappedRuns.length,
-      wrapperPlaybackRuns: wrappedRuns.filter((run) => run.playbackIndex).length,
+      wrapperPlaybackRuns: wrappedRuns.filter((run) => run.playbackIndex)
+        .length,
       structuredLlmRuns: wrappedRuns.filter(
         (run) => Number(run.structuredLlmCallCount || 0) > 0,
       ).length,

@@ -581,7 +581,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
 /**
  * Props every app-shell page view receives, mirroring the OverlayAppContext that
  * `DynamicViewLoader` injects on web/desktop. Overlay-app views (polymarket,
- * vincent, …) read `t` / `exitToApps` from props and crash ("t is not a
+ * …) read `t` / `exitToApps` from props and crash ("t is not a
  * function") if mounted with none — which is exactly what happens on iOS/Android
  * where these views render through the in-process app-shell path instead of
  * DynamicViewLoader. Views that read translations from hooks ignore the extras.
