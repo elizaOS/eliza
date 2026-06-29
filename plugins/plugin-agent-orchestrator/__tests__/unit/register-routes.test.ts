@@ -17,18 +17,14 @@ vi.mock("@elizaos/core", () => ({
 import { codingAgentRouteRegistration } from "../../src/register-routes.ts";
 
 describe("register-routes — bundler-safe sentinel export", () => {
-  it("exposes the registration as an awaitable Promise that bundlers can latch onto", async () => {
+  it("exposes a value sentinel that bundlers can latch onto", async () => {
     expect(codingAgentRouteRegistration).toBeDefined();
-    expect(typeof (codingAgentRouteRegistration as Promise<void>).then).toBe(
-      "function",
-    );
-    await expect(codingAgentRouteRegistration).resolves.toBeUndefined();
+    expect(codingAgentRouteRegistration).toBe(true);
   });
 
   it("registers the coding-agent route plugin loader with the runtime", async () => {
-    await codingAgentRouteRegistration;
     expect(registerAppRoutePluginLoader).toHaveBeenCalledWith(
-      "@elizaos/plugin-agent-orchestrator",
+      "@elizaos/plugin-agent-orchestrator:routes",
       expect.any(Function),
     );
   });

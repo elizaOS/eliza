@@ -6,6 +6,11 @@ import {
   pendingDraftProvider,
   workflowStatusProvider,
 } from './providers/index';
+// Register the rawPath route plugin (`@elizaos/plugin-workflow:routes`) with
+// the app-route-plugin-registry so the runtime mounts /api/workflow/* on the
+// host HTTP server. The value import keeps bundlers from dropping this module as
+// a side-effect-only import.
+import { workflowRouteRegistration } from './register-routes';
 import { workflowRoutes } from './routes/index';
 import {
   EmbeddedWorkflowService,
@@ -13,12 +18,8 @@ import {
   WorkflowCredentialStore,
   WorkflowService,
 } from './services/index';
-// Side-effect: register the rawPath route plugin
-// (`@elizaos/plugin-workflow:routes`) with the app-route-plugin-registry so
-// the runtime mounts /api/workflow/* on the host HTTP server. Without this
-// import the registry call in register-routes.ts never fires and every
-// /api/workflow/* request returns 404.
-import './register-routes';
+
+void workflowRouteRegistration;
 
 /**
  * Workflow Plugin for ElizaOS

@@ -108,6 +108,42 @@ jobs:
       - name: Views system tests
         run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts
 
+      - name: Terminal TUI PTY and smoke coverage
+        run: |
+          bunx vitest run --config packages/agent/vitest.config.ts packages/agent/src/__tests__/agent-terminal-tui.test.ts --coverage.enabled=false
+          cat > /tmp/eliza-tui-mock-server.cjs <<'NODE'
+          const http = require("node:http");
+          const fs = require("node:fs");
+          const server = http.createServer((req, res) => {
+            const url = new URL(req.url || "/", "http://127.0.0.1");
+            res.setHeader("Content-Type", "application/json");
+            if (req.method === "GET" && url.pathname === "/api/views") {
+              res.end(JSON.stringify({ views: [{ id: "messages", label: "Messages TUI", path: "/messages/tui", viewType: "tui" }] }));
+              return;
+            }
+            if (req.method === "GET" && url.pathname === "/api/commands") {
+              res.end(JSON.stringify({ commands: [], surface: "tui", agentId: null, generatedAt: new Date(0).toISOString() }));
+              return;
+            }
+            res.statusCode = 404;
+            res.end(JSON.stringify({ error: "not found" }));
+          });
+          server.listen(0, "127.0.0.1", () => {
+            const { port } = server.address();
+            fs.writeFileSync("/tmp/eliza-tui-api-url", `http://127.0.0.1:${port}`);
+          });
+          NODE
+          node /tmp/eliza-tui-mock-server.cjs &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 80); do
+            test -s /tmp/eliza-tui-api-url && break
+            sleep 0.1
+          done
+          api_url="$(cat /tmp/eliza-tui-api-url)"
+          timeout 30s bun --conditions=eliza-source packages/agent/src/bin.ts tui-smoke --api "$api_url" | tee /tmp/eliza-tui-smoke.log
+          grep -q "elizaos-tui-ready api=$api_url" /tmp/eliza-tui-smoke.log
+
       - name: Remote capability router tests
         run: bun run test:remote-capabilities
 
@@ -224,6 +260,9 @@ jobs:
 
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
+
+      - name: XR sim Playwright coverage
+        run: bun run --cwd packages/ui test:xr-sim
 
   xr-harness-e2e:
     name: XR harness e2e

@@ -1,37 +1,21 @@
-import process from "node:process";
 import { loadElizaConfig } from "@elizaos/agent";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { formatError } from "@elizaos/shared";
-import { wrapEdgeTtsHandlerWithFirstLineCache } from "./tts-cache-wiring.js";
+import {
+  DEFAULT_TEXT_TO_SPEECH_PROVIDER,
+  isTextToSpeechProviderDisabled,
+  type TextToSpeechProviderConfig,
+  type TtsModelHandler,
+} from "./tts-provider-registry.js";
 
-export interface EdgeTtsConfig {
-  plugins?: {
-    entries?: {
-      "edge-tts"?: {
-        enabled?: boolean;
-      };
-    };
-  };
+export type EdgeTtsConfig = TextToSpeechProviderConfig;
+
+export function isEdgeTtsDisabled(config: TextToSpeechProviderConfig): boolean {
+  return isTextToSpeechProviderDisabled(
+    config,
+    DEFAULT_TEXT_TO_SPEECH_PROVIDER,
+  );
 }
-
-export function isEdgeTtsDisabled(config: EdgeTtsConfig): boolean {
-  if (config.plugins?.entries?.["edge-tts"]?.enabled === false) {
-    return true;
-  }
-
-  const raw = process.env ? process.env.ELIZA_DISABLE_EDGE_TTS : undefined;
-  if (!raw || typeof raw !== "string") {
-    return false;
-  }
-
-  const normalized = raw.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes";
-}
-
-type TtsModelHandler = (
-  runtime: AgentRuntime,
-  input: unknown,
-) => Promise<unknown>;
 
 type RuntimeWithModelRegistration = AgentRuntime & {
   getModel: (modelType: string | number) => TtsModelHandler | undefined;
@@ -43,28 +27,17 @@ type RuntimeWithModelRegistration = AgentRuntime & {
   ) => void;
 };
 
-type EdgeTtsPluginModule = {
-  default?: { models?: Record<string, TtsModelHandler> };
-  edgeTTSPlugin?: { models?: Record<string, TtsModelHandler> };
-};
-
-function readHandler(
-  plugin: EdgeTtsPluginModule["default"],
-): TtsModelHandler | undefined {
-  const handler = plugin?.models?.[ModelType.TEXT_TO_SPEECH];
-  return typeof handler === "function" ? handler : undefined;
-}
-
 /**
  * `@elizaos/agent` boot calls its own `collectPluginNames`, so the app wrapper
- * that adds Edge TTS is bypassed. Register the Edge TTS model handler on the
- * live runtime so streaming / swarm voice can still resolve TEXT_TO_SPEECH.
+ * that adds the default TTS provider is bypassed. Register the model handler on
+ * the live runtime so streaming / swarm voice can still resolve TEXT_TO_SPEECH.
  */
 export async function ensureTextToSpeechHandler(
   runtime: AgentRuntime,
 ): Promise<void> {
   const config = loadElizaConfig();
-  if (isEdgeTtsDisabled(config)) {
+  const provider = DEFAULT_TEXT_TO_SPEECH_PROVIDER;
+  if (isTextToSpeechProviderDisabled(config, provider)) {
     return;
   }
 
@@ -82,36 +55,26 @@ export async function ensureTextToSpeechHandler(
   }
 
   try {
-    const nodeModule = (await import(
-      "@elizaos/plugin-edge-tts"
-    )) as EdgeTtsPluginModule;
-    const handler = readHandler(nodeModule.default);
+    const handler = await provider.loadHandler();
 
-    if (!handler) {
-      throw new Error(
-        "@elizaos/plugin-edge-tts did not expose a TEXT_TO_SPEECH handler",
-      );
-    }
-
-    // Wrap the Edge TTS handler with the first-sentence LRU cache so short
+    // Wrap the TTS handler with the first-sentence LRU cache so short
     // opener phrases like "Got it." / "Sure!" reuse synthesised bytes across
     // turns. The wrapper is a no-op when sqlite is unavailable or
     // `ELIZA_TTS_CACHE_DISABLE=1` is set.
-    const wrappedHandler =
-      (await wrapEdgeTtsHandlerWithFirstLineCache(handler)) ?? handler;
+    const wrappedHandler = (await provider.wrapHandler?.(handler)) ?? handler;
 
     runtimeWithRegistration.registerModel(
       ModelType.TEXT_TO_SPEECH,
       wrappedHandler,
-      "edge-tts",
-      0,
+      provider.providerName,
+      provider.priority,
     );
     logger.info(
-      "[eliza] Registered Edge TTS for runtime TEXT_TO_SPEECH (streaming / swarm voice)",
+      `[eliza] Registered ${provider.providerName} for runtime TEXT_TO_SPEECH (streaming / swarm voice)`,
     );
   } catch (error) {
     throw new Error(
-      `[eliza] Could not register Edge TTS for TEXT_TO_SPEECH: ${formatError(error)}`,
+      `[eliza] Could not register ${provider.providerName} for TEXT_TO_SPEECH: ${formatError(error)}`,
     );
   }
 }

@@ -528,7 +528,7 @@ class AgentTerminalView implements Component {
     }>(this.fetchImpl, this.apiBaseUrl, "/api/conversations", {
       method: "POST",
       body: JSON.stringify({
-        title: "Terminal session",
+        title: "Terminal TUI",
         metadata: { source: "terminal-tui" },
       }),
     });

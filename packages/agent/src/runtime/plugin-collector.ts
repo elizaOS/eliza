@@ -15,6 +15,9 @@ import path from "node:path";
 import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
   type: "json",
 };
+import providerPluginMap from "@elizaos/registry/first-party/provider-plugin-map.json" with {
+  type: "json",
+};
 import {
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
@@ -164,35 +167,14 @@ function isStoreBuildVariant(): boolean {
 export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> =
   channelPluginMap;
 
-/** Maps environment variable names to model-provider plugin packages. */
-export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
-  ANTHROPIC_API_KEY: "@elizaos/plugin-anthropic",
-  OPENAI_API_KEY: "@elizaos/plugin-openai",
-  CEREBRAS_API_KEY: "@elizaos/plugin-openai",
-  GEMINI_API_KEY: "@elizaos/plugin-google-genai",
-  GOOGLE_API_KEY: "@elizaos/plugin-google-genai",
-  GOOGLE_GENERATIVE_AI_API_KEY: "@elizaos/plugin-google-genai",
-  GROQ_API_KEY: "@elizaos/plugin-groq",
-  XAI_API_KEY: "@elizaos/plugin-xai",
-  OPENROUTER_API_KEY: "@elizaos/plugin-openrouter",
-  DEEPSEEK_API_KEY: "@elizaos/plugin-deepseek",
-  MISTRAL_API_KEY: "@elizaos/plugin-mistral",
-  TOGETHER_API_KEY: "@elizaos/plugin-together",
-  AI_GATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
-  AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
-  OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
-  NEARAI_API_KEY: "@elizaos/plugin-nearai",
-  ZAI_API_KEY: "@elizaos/plugin-zai",
-  Z_AI_API_KEY: "@elizaos/plugin-zai",
-  // CLI-backed inference (claude --print / codex exec on the user's subscription
-  // via the sanctioned CLI). Loads only when ELIZA_CHAT_VIA_CLI=claude|codex; the
-  // plugin self-gates its models map on the same var, and registers at priority
-  // 100 so it wins the large tier over a co-loaded API provider.
-  ELIZA_CHAT_VIA_CLI: "@elizaos/plugin-cli-inference",
-  // ElizaCloud — loaded when API key is present OR cloud is explicitly enabled
-  ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",
-  ELIZAOS_CLOUD_ENABLED: "@elizaos/plugin-elizacloud",
-};
+/**
+ * Maps environment variable names to model-provider plugin packages. Derived at
+ * registry build time from config fields marked `autoEnableProvider`; see
+ * packages/registry/src/first-party. To add or rename a provider env key, edit
+ * the owning registry entry and regenerate — not this list.
+ */
+export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> =
+  providerPluginMap;
 
 const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
   "@elizaos/plugin-ollama",

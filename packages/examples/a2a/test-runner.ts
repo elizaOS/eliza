@@ -8,6 +8,18 @@ import { startServer } from "./server";
 import { runA2ATestClient } from "./test-client";
 
 if (import.meta.main) {
+  // Skip this live A2A e2e in the keyless workspace sweep (run-all-tests.mjs,
+  // ELIZA_LIVE_TEST=0); the server refuses to start without a provider key.
+  const hasProviderKey = [
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "ELIZA_API_KEY",
+  ].some((name) => process.env[name]?.trim());
+  if (!hasProviderKey) {
+    console.log("[a2a] skipped: no inference provider key configured.");
+    process.exit(0);
+  }
   const { port, close } = await startServer({ port: 0 });
   const baseUrl = `http://localhost:${port}`;
   let exitCode = 0;

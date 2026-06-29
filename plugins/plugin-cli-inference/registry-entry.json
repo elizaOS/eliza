@@ -1,0 +1,69 @@
+{
+  "id": "cli-inference",
+  "name": "CLI Inference",
+  "description": "Node-only model provider that shells out to sanctioned local Claude or Codex CLIs.",
+  "npmName": "@elizaos/plugin-cli-inference",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["ai-provider", "llm", "cli", "claude", "codex"],
+  "config": {
+    "ELIZA_CHAT_VIA_CLI": {
+      "type": "select",
+      "required": false,
+      "sensitive": false,
+      "label": "CLI Backend",
+      "help": "Enable CLI-backed large-tier inference with claude or codex.",
+      "advanced": false,
+      "options": [
+        { "value": "claude", "label": "Claude" },
+        { "value": "codex", "label": "Codex" }
+      ],
+      "autoEnableProvider": true
+    },
+    "ELIZA_CLI_CLAUDE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "claude-opus-4-7",
+      "label": "Claude CLI Model",
+      "help": "Model passed to claude --print.",
+      "advanced": true
+    },
+    "ELIZA_CLI_CODEX_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gpt-5.5",
+      "label": "Codex CLI Model",
+      "help": "Model passed to codex exec.",
+      "advanced": true
+    },
+    "ELIZA_CLI_TIMEOUT_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "120000",
+      "label": "Timeout",
+      "help": "Per-call CLI spawn timeout in milliseconds.",
+      "advanced": true,
+      "min": 0,
+      "unit": "ms"
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Terminal",
+    "group": "models",
+    "groupOrder": 20,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaOS/eliza",
+    "repository": "https://github.com/elizaOS/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}

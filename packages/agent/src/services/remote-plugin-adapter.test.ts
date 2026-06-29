@@ -1107,6 +1107,192 @@ describe("remote plugin adapter", () => {
     );
   });
 
+  it("rejects malformed remote evaluator processor results", async () => {
+    const router = makeRouter({
+      processEvaluator: async () => ({
+        result: { text: "missing success" },
+      }),
+    });
+    const runtime = makeRuntime(router);
+    const plugin = createRemoteCapabilityPlugin({
+      id: "remote-evaluator",
+      name: "@remote/evaluator",
+      evaluators: [
+        {
+          name: "REMOTE_EVALUATOR",
+          description: "Remote evaluator.",
+          prompt: "Remote evaluator prompt.",
+          schema: { type: "object" },
+          hasProcessor: true,
+        },
+      ],
+    });
+    const processor = plugin.evaluators?.[0]?.processors?.[0];
+
+    await expect(
+      processor?.process({
+        runtime,
+        message: { content: { text: "hello" } },
+        state: {},
+        options: {},
+        prepared: null,
+        output: null,
+      } as never),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      method: "plugin.evaluator.REMOTE_EVALUATOR.process",
+      message:
+        'Remote plugin "remote-evaluator" evaluator.REMOTE_EVALUATOR.process returned an action result without boolean success.',
+    });
+  });
+
+  it("rejects malformed remote response-handler patches", async () => {
+    const router = makeRouter({
+      evaluateResponseHandlerEvaluator: async () => ({
+        patch: { addCandidateActions: [42] },
+      }),
+    });
+    const runtime = makeRuntime(router);
+    const plugin = createRemoteCapabilityPlugin({
+      id: "remote-response-handler",
+      name: "@remote/response-handler",
+      responseHandlerEvaluators: [
+        {
+          name: "REMOTE_RESPONSE_HANDLER",
+          description: "Remote response handler.",
+        },
+      ],
+    });
+    const evaluator = plugin.responseHandlerEvaluators?.[0];
+
+    await expect(
+      evaluator?.evaluate({
+        runtime,
+        message: { content: { text: "hello" } },
+        state: {},
+        messageHandler: {},
+        availableContexts: [],
+      } as never),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      method: "plugin.responseHandler.REMOTE_RESPONSE_HANDLER.evaluate",
+      message:
+        'Remote plugin "remote-response-handler" responseHandler.REMOTE_RESPONSE_HANDLER.evaluate returned invalid patch field "addCandidateActions".',
+    });
+  });
+
+  it("rejects missing remote app diagnostics instead of using an empty fallback", async () => {
+    const router = makeRouter({
+      callAppBridge: async () => ({}),
+    });
+    const runtime = makeRuntime(router);
+    const plugin = createRemoteCapabilityPlugin({
+      id: "remote-app",
+      name: "@remote/demo",
+      appBridge: { hooks: ["collectLaunchDiagnostics"] },
+    });
+
+    await plugin.init?.({}, runtime);
+    const routeModule = await importAppRouteModule("@remote/demo");
+
+    await expect(
+      routeModule?.collectLaunchDiagnostics?.({
+        appName: "@remote/demo",
+        launchUrl: "https://remote.example/app",
+        runtime,
+        viewer: null,
+        runId: "run-1",
+        session: null,
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      method: "plugin.collectLaunchDiagnostics",
+      message:
+        'Remote plugin "remote-app" collectLaunchDiagnostics returned no diagnostics payload.',
+    });
+
+    await plugin.dispose?.(runtime);
+  });
+
+  it("rejects malformed remote app-route responses instead of treating them as misses", async () => {
+    const router = makeRouter({
+      callAppBridge: async () => ({
+        result: { status: 200, body: { ok: true } },
+      }),
+    });
+    const runtime = makeRuntime(router);
+    const plugin = createRemoteCapabilityPlugin({
+      id: "remote-route",
+      name: "@remote/demo",
+      appBridge: { hooks: ["handleAppRoutes"] },
+    });
+
+    await plugin.init?.({}, runtime);
+    const routeModule = await importAppRouteModule("@remote/demo");
+
+    await expect(
+      routeModule?.handleAppRoutes?.({
+        req: { headers: {} },
+        res: {
+          statusCode: 200,
+          setHeader: () => {},
+          end: () => {},
+        },
+        method: "GET",
+        pathname: "/api/apps/remote-demo/command",
+        url: new URL("http://localhost/api/apps/remote-demo/command"),
+        runtime,
+        readJsonBody: async () => ({}),
+        json: () => {},
+        error: () => {},
+      } as never),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      method: "plugin.handleAppRoutes",
+      message:
+        'Remote plugin "remote-route" handleAppRoutes must return handled: true or handled: false.',
+    });
+
+    await plugin.dispose?.(runtime);
+  });
+
+  it("allows explicit remote app-route misses", async () => {
+    const router = makeRouter({
+      callAppBridge: async () => ({
+        result: { handled: false },
+      }),
+    });
+    const runtime = makeRuntime(router);
+    const plugin = createRemoteCapabilityPlugin({
+      id: "remote-route-miss",
+      name: "@remote/demo",
+      appBridge: { hooks: ["handleAppRoutes"] },
+    });
+
+    await plugin.init?.({}, runtime);
+    const routeModule = await importAppRouteModule("@remote/demo");
+
+    await expect(
+      routeModule?.handleAppRoutes?.({
+        req: { headers: {} },
+        res: {
+          statusCode: 200,
+          setHeader: () => {},
+          end: () => {},
+        },
+        method: "GET",
+        pathname: "/api/apps/remote-demo/command",
+        url: new URL("http://localhost/api/apps/remote-demo/command"),
+        runtime,
+        readJsonBody: async () => ({}),
+        json: () => {},
+        error: () => {},
+      } as never),
+    ).resolves.toBe(false);
+
+    await plugin.dispose?.(runtime);
+  });
+
   it("registers remote modules through runtime.registerPlugin", async () => {
     const router = makeRouter({
       listModules: async () => ({ modules: [remoteModule] }),

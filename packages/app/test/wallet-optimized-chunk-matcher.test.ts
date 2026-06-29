@@ -54,4 +54,12 @@ describe("wallet optimized-deps chunk matcher", () => {
       expect(VENDOR_OPTIMIZED_WALLET_TEST.test(id), id).toBe(true);
     }
   });
+
+  it("matches the direct crypto billing card that imports both wallet stacks", () => {
+    expect(
+      VENDOR_OPTIMIZED_WALLET_TEST.test(
+        "/repo/packages/ui/src/cloud/billing/components/direct-crypto-credit-card.tsx",
+      ),
+    ).toBe(true);
+  });
 });

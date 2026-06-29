@@ -79,6 +79,11 @@ export const configFieldSchema = z.object({
   unit: z.string().optional(),
 
   visible: visibilityCondition.optional(),
+
+  // When true, this config key auto-enables the entry's `npmName` in runtime
+  // provider discovery. This drives the generated provider-plugin map; do not
+  // infer provider env vars from naming patterns.
+  autoEnableProvider: z.boolean().optional(),
 });
 
 export type ConfigField = z.infer<typeof configFieldSchema>;
