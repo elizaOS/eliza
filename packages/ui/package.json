@@ -379,7 +379,8 @@
     "vaul": "^1.1.2",
     "viem": "^2.48.8",
     "wagmi": "^3.6.15",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "webxr-polyfill": "^2.0.3"
   },
   "devDependencies": {
     "@capacitor/haptics": "8.0.2",
@@ -411,7 +412,8 @@
     "three": "^0.184.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "@types/webxr": "^0.5.0"
   },
   "publishConfig": {
     "access": "public",
