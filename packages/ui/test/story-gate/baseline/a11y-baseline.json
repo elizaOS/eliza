@@ -637,5 +637,9 @@
   "toolevents-toolcalleventlog--running": ["color-contrast"],
   "toolevents-toolcalleventlog--success": ["color-contrast"],
   "views-dynamicviewloader--failed-to-load": ["color-contrast"],
-  "views-shellviewagentsurface--character-view": ["color-contrast"]
+  "views-shellviewagentsurface--character-view": ["color-contrast"],
+  "primitives-rolegate--admin": ["color-contrast"],
+  "primitives-rolegate--owner": ["color-contrast"],
+  "primitives-rolegate--user": ["color-contrast"],
+  "widgets-homewidgets--populated": ["color-contrast"]
 }
