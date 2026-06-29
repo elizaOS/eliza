@@ -21,22 +21,29 @@ issues. Local machine: Windows, Node v24.15.0, Bun 1.4.0.
 
 | PR | Base | Status | Related issues | Action |
 | --- | --- | --- | --- | --- |
-| #10019 `fix/develop-workflow-followups` | develop | opened by this pass | #9626 | Watch restarted checks after rebase; merge when green. |
+| #10029 `codex/fix/remove-dead-core-plugin-map` | develop | open | #9941 | Review dead plugin-map removal and targeted tests. |
+| #10028 `fix/launcher-swipe-pointer-capture` | develop | open | #9967 | Review Android WebView pointer-capture fix and app evidence. |
+| #10027 `codex/fix-9942-9944` | develop | draft | #9942, #9944 | Leave draft until capture helpers and gates are ready. |
+| #10025 `docs/issue-board-triage-2026-06-29` | develop | this triage artifact | #8434 | Keep current as issues/PRs move. |
+| #10024 `feat/tui-settings-voice-views` | develop | open | #9946, #9969, #9958 | Review terminal view coverage and evidence. |
+| #10022 `codex/fix/remote-plugin-bridge-validation` | develop | locally validated | #9940 | Merge only after CI is allowed to complete. |
+| #10020 `chore/purge-deleted-plugin-refs` | develop | conflict/dirty | #9941 | Rebase or supersede before review. |
+| #10019 `fix/develop-workflow-followups` | develop | locally validated | #9626 | Merge only after CI is allowed to complete. |
 | #10018 `fix/xr-sim-rolldown-react-ci` | develop | open | #9968 | Review CI unblock for XR harness. |
-| #10017 `fix/9991-review-followup` | develop | open | #9943 | Two-eyes review; merge when green. |
-| #10016 `fix/9965-domain-topology` | develop | open | #9965 | Review domain/link changes and merge when green. |
+| #10017 `fix/9991-review-followup` | develop | approved, CI blocked | #9943 | Merge when checks are allowed to complete. |
+| #10016 `fix/9965-domain-topology` | develop | open | #9965 | Rebase/review domain-link changes; merge when green. |
 | #10007 `nubs/iac-userorg-lifecycle-invalidation` | perf branch | open | #8434, #9853, #9899 | Review after #9981 stabilizes. |
 | #9981 `perf/iac-hotpath-prod-port` | main | open | #8434, #9899 | Needs auth/security review before prod/main merge. |
 
 ## Work ordering
 
-The requested order is: tests/workflows first, then middle difficulty, then
-hardest, then easiest. The first workflow chunk is PR #10019. Middle-first next
-queue: #9943/#10017 review, #9965/#10016 review, #9970, #9955, #9954, #9941,
-#9940, #9956. Hard/gated queue: #8434, #9853, #9960, #9963, #9964, #9967,
-#9968, #9958, #9953, #9939, #9899, #9880, #9581, #9580, #9180. Easy/closure
-queue after verification: #9969, #9966, #9961, #9959, #9957, #9947, #9946,
-#9874.
+The requested order is easiest first, while still reviewing open PRs when they
+unblock easy closures. Immediate queue: quick validation/closure for #9969,
+#9966, #9961, #9959, #9957, #9947, #9946, and #9874; low-risk PR review for
+#10025, #10029, #10022, #10019, #10017, #10016, and #10018. Middle queue:
+#9970, #9955, #9954, #9941, #9940, #9956, #9950, #9949, #9948, #9952, and
+#9626. Hard/gated queue: #8434, #9853, #9960, #9963, #9964, #9967, #9968,
+#9958, #9953, #9939, #9899, #9880, #9581, #9580, and #9180.
 
 ## Issue-by-issue triage
 
@@ -79,4 +86,3 @@ queue after verification: #9969, #9966, #9961, #9959, #9957, #9947, #9946,
 | #9580 On-device inference matrix | Comments show CUDA/RTX verification and training-script cleanup; remaining backend matrix/training. | Mostly hardware/training gated. | Hard/gated | No plain-Windows closure; document hardware needs. |
 | #9180 pgbouncer tenant DB rollout | Comments repeatedly mark it pure operator rollout, no code deliverable. | No, unless operator prod access is granted. | Blocked ops | Leave open for operator or close if ops completed externally. |
 | #8434 Cloud 10-user launch tracker | Active coordination. Latest comments discuss #10017, #9981, #10007, prod-cutover auth. | Partial: review PRs and verify logs; prod launch needs cloud/phone agents. | Hard | Review #9981/#10007 after CI and auth review; keep comments coordinated. |
-
