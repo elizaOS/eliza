@@ -21,7 +21,6 @@
 
 import { requireAuthOrApiKeyWithOrg } from "../auth";
 import { cache } from "../cache/client";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 import { contentModerationService } from "./content-moderation";
 import {
@@ -45,13 +44,6 @@ export type InferenceAuthResolution =
   | { kind: "authorized"; ctx: InferenceAuthContext; source: "cache" | "origin" }
   | { kind: "suspended"; userId: string }
   | { kind: "slow_path"; reason: "non_api_key" | "cache_unavailable" };
-
-type StringEnv = Record<string, string | undefined>;
-
-/** Whether the inference hot-path cache is enabled (default OFF). */
-export function isInferenceHotPathCacheEnabled(env: StringEnv = getCloudAwareEnv()): boolean {
-  return (env.INFERENCE_HOT_PATH_CACHE ?? "").trim() === "true";
-}
 
 /**
  * Extract a cacheable API-key credential from the request, mirroring the

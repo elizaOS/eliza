@@ -140,12 +140,13 @@ CACHE_ENABLED = "true"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
-# Inference hot path (#9899). Both default OFF; flag-OFF is byte-identical to
-# the pre-#9899 route. INFERENCE_HOT_PATH_CACHE collapses auth+moderation to a
-# single cache read; INFERENCE_OPTIMISTIC_BILLING enables Tier-2 off-path
-# billing (durable backstop). SAFE_BALANCE_THRESHOLD (USD) left empty -> +Inf ->
-# every org takes the safe synchronous-reserve path even if optimistic is on.
-INFERENCE_HOT_PATH_CACHE = "false"
+# Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
+# enables it; when "true" with a writable KV backstop, an org clearing
+# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
+# response path (the sweep-inference-charges cron settles dropped inline settles).
+# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
+# synchronous-reserve path. The auth+moderation hot-path cache is the default now
+# (no flag); a cache miss falls back to the authoritative slow path.
 INFERENCE_OPTIMISTIC_BILLING = "false"
 SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
@@ -313,12 +314,13 @@ CACHE_ENABLED = "true"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
-# Inference hot path (#9899). Both default OFF; flag-OFF is byte-identical to
-# the pre-#9899 route. INFERENCE_HOT_PATH_CACHE collapses auth+moderation to a
-# single cache read; INFERENCE_OPTIMISTIC_BILLING enables Tier-2 off-path
-# billing (durable backstop). SAFE_BALANCE_THRESHOLD (USD) left empty -> +Inf ->
-# every org takes the safe synchronous-reserve path even if optimistic is on.
-INFERENCE_HOT_PATH_CACHE = "true"
+# Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
+# enables it; when "true" with a writable KV backstop, an org clearing
+# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
+# response path (the sweep-inference-charges cron settles dropped inline settles).
+# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
+# synchronous-reserve path. The auth+moderation hot-path cache is the default now
+# (no flag); a cache miss falls back to the authoritative slow path.
 INFERENCE_OPTIMISTIC_BILLING = "false"
 SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
@@ -444,12 +446,13 @@ CACHE_ENABLED = "true"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
-# Inference hot path (#9899). Both default OFF; flag-OFF is byte-identical to
-# the pre-#9899 route. INFERENCE_HOT_PATH_CACHE collapses auth+moderation to a
-# single cache read; INFERENCE_OPTIMISTIC_BILLING enables Tier-2 off-path
-# billing (durable backstop). SAFE_BALANCE_THRESHOLD (USD) left empty -> +Inf ->
-# every org takes the safe synchronous-reserve path even if optimistic is on.
-INFERENCE_HOT_PATH_CACHE = "true"
+# Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
+# enables it; when "true" with a writable KV backstop, an org clearing
+# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
+# response path (the sweep-inference-charges cron settles dropped inline settles).
+# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
+# synchronous-reserve path. The auth+moderation hot-path cache is the default now
+# (no flag); a cache miss falls back to the authoritative slow path.
 INFERENCE_OPTIMISTIC_BILLING = "false"
 SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
