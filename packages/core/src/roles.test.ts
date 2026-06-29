@@ -131,3 +131,15 @@ describe("canonical role rank (#9948)", () => {
 		expect(satisfiesRoleGate(["MEMBER"], { minRole: "USER" })).toBe(true);
 	});
 });
+
+describe("role gate rejects unknown tiers (#9948)", () => {
+	it("ranks an unknown role as 0 (below GUEST) so a stray value can never pass a gate", () => {
+		// The RoleGateRole type no longer has a `(string & {})` escape, but the
+		// runtime must still fail closed if an unknown value reaches roleRank.
+		expect(gateRoleRank("SUPERUSER" as never)).toBe(0);
+		expect(satisfiesRoleGate(["SUPERUSER" as never], { minRole: "GUEST" })).toBe(
+			false,
+		);
+		expect(satisfiesRoleGate(["OWNER"], { minRole: "GUEST" })).toBe(true);
+	});
+});
