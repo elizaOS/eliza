@@ -15,6 +15,7 @@ import {
   createVoiceCapture,
   type VoiceCaptureFactoryOptions,
 } from "../../../voice/voice-capture-factory";
+import { resolveAdjacentConversationId } from "../conversation-nav";
 import { useShellController } from "../useShellController";
 
 // jsdom in this env ships a `window.localStorage` whose methods throw (the
@@ -351,12 +352,41 @@ describe("useShellController — conversation-nav interleaving (#9954)", () => {
   type Ctl = ReturnType<typeof useShellController>;
   type Action = "next" | "prev" | "new" | "select";
 
+  // Records any SWIPE select (goNext/goPrev → handleSelectConversation) that
+  // targeted a conversation which is NOT a neighbour of the active id at the
+  // moment the call fired. That is exactly the stale-closure bug: with the
+  // #10042 seq/epoch guard every swipe re-resolves through refs against the
+  // LIVE active index, so this stays empty. (External `select` mutates the
+  // active id directly and never routes through handleSelectConversation, so it
+  // can't pollute this signal.) The post-rerender index invariants in
+  // `assertInvariants` alone do NOT catch a reverted guard — they hold for a
+  // wrong-but-present selection — so this call-time check is the actual teeth.
+  let staleSwipeSelects: Array<{ requested: string; activeAtCall: string }> =
+    [];
+
   function wireMutableConversations(initialIds: string[]): void {
+    staleSwipeSelects = [];
     appMock.value.conversations = initialIds.map((id) => ({ id }));
     // Start on the oldest (highest index) so both swipe directions are live.
     appMock.value.activeConversationId =
       initialIds[initialIds.length - 1] ?? null;
     appMock.value.handleSelectConversation = vi.fn((id: string) => {
+      const active = appMock.value.activeConversationId ?? null;
+      const neighbours = [
+        resolveAdjacentConversationId(
+          appMock.value.conversations,
+          active,
+          "prev",
+        ),
+        resolveAdjacentConversationId(
+          appMock.value.conversations,
+          active,
+          "next",
+        ),
+      ];
+      if (!neighbours.includes(id)) {
+        staleSwipeSelects.push({ requested: id, activeAtCall: String(active) });
+      }
       appMock.value.activeConversationId = id;
       return Promise.resolve();
     }) as unknown as typeof appMock.value.handleSelectConversation;
@@ -411,6 +441,9 @@ describe("useShellController — conversation-nav interleaving (#9954)", () => {
     );
     // No transition is left in flight once the step settles.
     expect(ctl.conversationLoading ?? false).toBe(false);
+    // Every swipe resolved against the LIVE active index — never a stale one.
+    // This is the assertion that fails if the #10042 guard is reverted.
+    expect(staleSwipeSelects).toEqual([]);
   }
 
   it("named sequence swipe-back → new → forward → new → forward → swipe-back stays index-consistent", async () => {
@@ -453,6 +486,45 @@ describe("useShellController — conversation-nav interleaving (#9954)", () => {
       for (let stepN = 0; stepN < 40; stepN++) {
         const action = actions[Math.floor(rng() * actions.length)];
         await drive(result, rerender, action, rng);
+        assertInvariants(result.current);
+      }
+      unmount();
+    }
+  });
+
+  // The walks above rerender after EVERY op, so the nav closure is always fresh
+  // and the stale-closure race never fires — those invariants hold even with the
+  // #10042 guard reverted. The race the guard actually fixes needs TWO ops to
+  // share ONE nav closure (a second swipe dispatched before the first switch
+  // settles + rerenders). This drives exactly that: rapid bursts of two ops in a
+  // single act() with no rerender between, asserting (via the call-time
+  // adjacency check in assertInvariants) that the second op never navigates
+  // against the now-stale index. Reverting the goNext/goPrev ref-resolution in
+  // useShellController makes this fail; the guard keeps it green.
+  it("rapid swipe bursts never resolve against a stale index (#10042 regression)", async () => {
+    const burstable: Exclude<Action, "select">[] = ["next", "prev", "new"];
+    const fire = (ctl: Ctl, action: Action): void => {
+      if (action === "next") ctl.conversationNav.goNext();
+      else if (action === "prev") ctl.conversationNav.goPrev();
+      else if (action === "new") ctl.clearConversation();
+    };
+    for (let seed = 1; seed <= 12; seed++) {
+      wireMutableConversations(["a", "b", "c", "d", "e"]);
+      const { result, rerender, unmount } = renderHook(() =>
+        useShellController(),
+      );
+      const rng = mulberry32(seed * 0x85ebca6b);
+      for (let stepN = 0; stepN < 25; stepN++) {
+        const a = burstable[Math.floor(rng() * burstable.length)];
+        const b = burstable[Math.floor(rng() * burstable.length)];
+        // Both ops read the SAME `result.current` (no rerender between), so the
+        // second runs against the first's about-to-be-stale closure/index.
+        await act(async () => {
+          fire(result.current, a);
+          fire(result.current, b);
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        rerender();
         assertInvariants(result.current);
       }
       unmount();
