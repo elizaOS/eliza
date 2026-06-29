@@ -2515,6 +2515,102 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("uses the Stage 1 ack when an async action finishes without planner prose", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Spawn the coding task.",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "spawn-1",
+						name: "TASKS_SPAWN_AGENT",
+						arguments: {},
+					},
+				],
+			},
+		]);
+		runtime.actions = [
+			{
+				name: "TASKS_SPAWN_AGENT",
+				description: "Spawn a coding task.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: vi.fn(async () => ({
+					success: true,
+					text: "",
+					continueChain: false,
+				})),
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("On it.");
+		}
+	});
+
+	it("keeps suppressPlannerReply action turns silent", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The terminal action should stay silent.",
+				contexts: ["general"],
+				candidateActionNames: ["SILENT_ACTION"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "silent-1",
+						name: "SILENT_ACTION",
+						arguments: {},
+					},
+				],
+			},
+		]);
+		runtime.actions = [
+			{
+				name: "SILENT_ACTION",
+				description: "Stop the turn without replying.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: vi.fn(async () => ({
+					success: true,
+					text: "",
+					continueChain: false,
+					data: { suppressPlannerReply: true },
+				})),
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseMessages).toEqual([]);
+		}
+	});
+
 	it("voice turn signal can force IGNORE before early reply/planning", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
