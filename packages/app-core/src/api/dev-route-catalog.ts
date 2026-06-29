@@ -397,16 +397,6 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
-    tabId: "voice",
-    path: "/settings/voice",
-    label: "Voice",
-    group: "Settings",
-    visibility: "all",
-    featureFlag: null,
-    requiresAuth: true,
-    platformGate: null,
-  },
-  {
     tabId: "companion",
     path: "/companion",
     label: "Companion",

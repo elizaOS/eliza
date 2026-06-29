@@ -22,7 +22,7 @@
 //      screen color is always defined; never blank, never two conflicting layers.
 //   B. When the wallpaper shows, its color === the seeded persisted color —
 //      switching views never mutates the user's background color.
-//   C. The known-shared surfaces (chat, background, settings, voice, /views,
+//   C. The known-shared surfaces (chat, background, settings, /views,
 //      /apps) always show the wallpaper — never the opaque underlay.
 //   D. Returning to the launcher (`/views`) always restores the wallpaper,
 //      regardless of which (possibly opaque) view preceded it.
@@ -338,7 +338,6 @@ const BUILTIN_TABS: { tab: BuiltinTab; path: string }[] = [
   { tab: "relationships", path: "/relationships" },
   { tab: "memories", path: "/memories" },
   { tab: "rolodex", path: "/rolodex" },
-  { tab: "voice", path: "/voice" },
   { tab: "runtime", path: "/runtime" },
   { tab: "database", path: "/database" },
   { tab: "desktop", path: "/desktop" },
@@ -358,7 +357,6 @@ const ALWAYS_SHARED = new Set([
   "chat@/chat",
   "background@/background",
   "settings@/settings",
-  "voice@/voice",
   "views@/views",
   "apps@/apps",
 ]);

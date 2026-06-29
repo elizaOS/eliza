@@ -71,7 +71,6 @@ export type BuiltinTab =
   | "relationships"
   | "memories"
   | "rolodex"
-  | "voice"
   | "runtime"
   | "database"
   | "desktop"
@@ -307,7 +306,6 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   relationships: "/apps/relationships",
   memories: "/apps/memories",
   rolodex: "/rolodex",
-  voice: "/settings/voice",
   runtime: "/apps/runtime",
   database: "/apps/database",
   desktop: "/desktop",
@@ -458,9 +456,10 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   }
 
   // /settings/<sub> — resolve nested settings paths
+  // /settings/<sub> (including /settings/voice) — the Settings view selects the
+  // matching section from the URL hash; the route always resolves to the
+  // Settings tab.
   if (normalized.startsWith("/settings/")) {
-    const sub = normalized.slice("/settings/".length);
-    if (sub === "voice") return "settings";
     return "settings";
   }
 
@@ -564,8 +563,6 @@ export function titleForTab(tab: Tab): string {
       return "Files";
     case "rolodex":
       return "Rolodex";
-    case "voice":
-      return "Voice";
     case "runtime":
       return "Runtime";
     case "database":
