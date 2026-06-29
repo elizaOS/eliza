@@ -16,6 +16,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
+  calculateCost,
   estimateTokens,
   getProviderFromModel,
   normalizeModelName,
@@ -231,11 +232,20 @@ app.post("/", async (c) => {
         // backstop actually persisted. The inline debit only fires when it
         // CLAIMS this entry (getAndDelete) at settle time, so a missing entry
         // would mean free inference — fall back to the synchronous reserve
-        // instead. estimatedCostUsd:0 keeps this within the route's existing
-        // under-bill-on-Worker-death acceptance: the inline settler charges the
-        // REAL cost in steady state; only a DROPPED settle (isolate eviction)
-        // falls to the cron sweep, which then charges 0 — a sub-cent under-bill,
-        // NEVER an over-bill from a blind estimate.
+        // instead. The backstop records the REAL input-token cost estimate (NOT
+        // 0): in steady state the inline settler charges the actual cost, but a
+        // DROPPED settle (isolate eviction) falls to the cron sweep, which then
+        // recovers THIS estimate — so a bulk embedMany ingestion batch can't leak
+        // its whole cost. Embeddings have no output tokens and input tokens are
+        // known up front, so the estimate is accurate (no blind-over-bill risk),
+        // mirroring the chat path's `estimatedCostUsd = totalCost` backstop.
+        const { totalCost: backstopEstimateUsd } = await calculateCost(
+          model,
+          provider,
+          estimatedInputTokens,
+          0,
+          billingSource,
+        );
         const persisted = await writePendingInferenceCharge(
           {
             requestId,
@@ -245,7 +255,7 @@ app.post("/", async (c) => {
             model,
             provider,
             billingSource: billingSource ?? "",
-            estimatedCostUsd: 0,
+            estimatedCostUsd: backstopEstimateUsd,
           },
           Date.now(),
         );
