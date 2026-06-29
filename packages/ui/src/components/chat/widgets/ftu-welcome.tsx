@@ -12,10 +12,8 @@
  * persists across reloads.
  */
 
-import { X } from "lucide-react";
 import { useEffect } from "react";
 import { dispatchChatPrefill } from "../../../events";
-import { cn } from "../../../lib/utils";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import {
   dismissHomeWidget,
@@ -66,45 +64,41 @@ function FtuWelcomeWidget({
     markHomeWidgetActed(WIDGET_KEY);
   };
 
+  // Deliberately flat — no card/border/background/rounded-pill chrome. The
+  // welcome sits directly on the home: a greeting line and the starters as plain
+  // tappable text (hover underline is the only affordance).
   return (
-    <div className={spanClassName}>
-      <section
-        data-testid="chat-widget-ftu-welcome"
-        aria-label="Welcome — getting started"
-        className="flex w-full flex-col gap-3 rounded-xl border border-white/12 bg-black/55 px-4 py-3.5 text-left"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-sm font-semibold leading-snug text-white">
-            Welcome — ask me anything, or tap a starter.
-          </p>
+    <section
+      className={spanClassName}
+      data-testid="chat-widget-ftu-welcome"
+      aria-label="Welcome — getting started"
+    >
+      <p className="text-sm font-medium text-white">
+        Welcome — ask me anything to get started.
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5">
+        {suggestions.map((text) => (
           <button
+            key={text}
             type="button"
-            data-testid="ftu-welcome-dismiss"
-            aria-label="Dismiss welcome"
-            onClick={() => dismissHomeWidget(WIDGET_KEY)}
-            className="-mr-1 -mt-0.5 shrink-0 rounded-md p-1 text-white/45 transition-colors hover:text-white/80"
+            data-testid="ftu-welcome-chip"
+            onClick={() => onChip(text)}
+            className="text-sm text-white/75 underline-offset-4 transition-colors hover:text-white hover:underline"
           >
-            <X className="h-4 w-4" aria-hidden />
+            {text}
           </button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {suggestions.map((text) => (
-            <button
-              key={text}
-              type="button"
-              data-testid="ftu-welcome-chip"
-              onClick={() => onChip(text)}
-              className={cn(
-                "rounded-full bg-accent-subtle px-3 py-1.5 text-xs font-medium text-accent",
-                "transition-colors hover:bg-accent hover:text-accent-foreground",
-              )}
-            >
-              {text}
-            </button>
-          ))}
-        </div>
-      </section>
-    </div>
+        ))}
+        <button
+          type="button"
+          data-testid="ftu-welcome-dismiss"
+          aria-label="Dismiss welcome"
+          onClick={() => dismissHomeWidget(WIDGET_KEY)}
+          className="text-sm text-white/40 transition-colors hover:text-white/70"
+        >
+          Dismiss
+        </button>
+      </div>
+    </section>
   );
 }
 
