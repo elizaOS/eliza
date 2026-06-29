@@ -1,19 +1,24 @@
 /**
  * Playwright test extension wiring the cloud stack as a worker-scoped fixture.
  *
- * One stack boot per worker. Per-test we seed a fresh user + inject the
- * playwright-test-session cookie before the page navigates.
+ * One stack boot per worker. Per-test the `seededUser` identity is minted by the
+ * REAL SIWE login handshake against the booted cloud-api (nonce → sign → verify
+ * → find-or-create wallet account), then elevated to the suite's privileged
+ * baseline (admin + funded org). So every spec authenticates with a credential
+ * the genuine login path produced — not a direct DB-inserted key. We then inject
+ * the playwright-test-session cookie for that identity before the page navigates.
  */
 
 import crypto from "node:crypto";
 import { test as base, expect, type Page } from "@playwright/test";
 import { PLAYWRIGHT_TEST_AUTH_SECRET } from "../fixtures/env";
-import { type SeededUser, seedTestUser } from "../fixtures/seed";
+import type { SeededUser } from "../fixtures/seed";
 import {
   type StackHandle,
   type StartCloudStackOptions,
   startCloudStack,
 } from "../fixtures/stack";
+import { loginAsSeededUser } from "./wallet-login";
 
 function buildPlaywrightSessionToken(
   userId: string,
@@ -57,9 +62,11 @@ export const test = base.extend<CloudTestFixtures, CloudStackFixtures>({
     { scope: "worker", timeout: 240_000 },
   ],
 
-  seededUser: async ({ stack: _stack }, use) => {
-    // _stack ensures DATABASE_URL pointed at PGlite is live before we seed.
-    const user = await seedTestUser();
+  seededUser: async ({ stack }, use) => {
+    // Drive the real login path against the booted cloud-api, then elevate to
+    // the privileged baseline. `stack` also guarantees DATABASE_URL is pointed
+    // at the live PGlite bridge the elevation writes to.
+    const user = await loginAsSeededUser(stack.urls.api);
     await use(user);
   },
 
