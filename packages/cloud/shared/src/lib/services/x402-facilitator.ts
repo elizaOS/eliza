@@ -29,7 +29,15 @@ import {
 } from "@x402/svm";
 import { ExactSvmScheme as ExactSvmFacilitator } from "@x402/svm/exact/facilitator";
 import bs58 from "bs58";
-import { type Chain, createPublicClient, type Hex, http, type PublicClient } from "viem";
+import {
+  type Chain,
+  createPublicClient,
+  type Hex,
+  http,
+  type PublicClient,
+  parseAbiItem,
+  parseEventLogs,
+} from "viem";
 import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -362,6 +370,10 @@ const PAYMENT_PERMIT_TYPES = {
     { name: "fee", type: "Fee" },
   ],
 } as const;
+
+const ERC20_TRANSFER_EVENT = parseAbiItem(
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+);
 
 const PAYMENT_PERMIT_ABI = [
   {
@@ -815,6 +827,21 @@ class X402FacilitatorService {
         return { isValid: false, invalidReason: "missing_authorization" };
       }
       payerForError = authorization.from;
+      // SECURITY: gate on the SIGNED amount actually transferred on-chain
+      // (`authorization.value` — bound by the EIP-712 signature below and moved
+      // by settle(): transferWithAuthorization for "exact", permit+transferFrom
+      // for "upto"), not only the client-supplied `accepted.amount` checked at
+      // step 3. `accepted.amount` is unsigned request metadata, so a value gate
+      // that relies on it alone can be satisfied independently of what is
+      // actually paid. Mirrors the exact_permit `payAmount` gate above.
+      // Legitimate clients sign value == requirements.amount → never false-rejects.
+      if (BigInt(authorization.value) < BigInt(paymentRequirements.amount)) {
+        return {
+          isValid: false,
+          invalidReason: "insufficient_amount",
+          payer: authorization.from,
+        };
+      }
       if (BigInt(authorization.validBefore) <= BigInt(now)) {
         return {
           isValid: false,
@@ -1215,7 +1242,24 @@ class X402FacilitatorService {
         });
       }
 
-      logger.info("[x402-facilitator] Settlement TX submitted", {
+      const settlementClient = this.clients.get(accepted.network);
+      if (!settlementClient) {
+        throw new Error("settlement_no_rpc_client");
+      }
+      await this.requireSuccessfulEvmSettlementReceipt({
+        client: settlementClient,
+        txHash,
+        tokenAddress: (payload.paymentPermit?.payment.payToken ?? networkConfig.usdcAddress) as Hex,
+        payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
+        payTo:
+          payload.authorization?.to ??
+          payload.paymentPermit?.payment.payTo ??
+          paymentRequirements.payTo,
+        minimumAmount: paymentRequirements.amount,
+        timeoutMs: (paymentRequirements.maxTimeoutSeconds ?? 300) * 1000,
+      });
+
+      logger.info("[x402-facilitator] Settlement TX confirmed", {
         txHash,
         payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
         payTo: payload.authorization?.to ?? payload.paymentPermit?.payment.payTo,
@@ -1235,7 +1279,9 @@ class X402FacilitatorService {
 
       // Determine error reason
       let errorReason = "transaction_failed";
-      if (msg.includes("insufficient")) {
+      if (msg.startsWith("settlement_")) {
+        errorReason = msg;
+      } else if (msg.includes("insufficient")) {
         errorReason = "insufficient_gas";
       } else if (msg.includes("nonce") || msg.includes("already used")) {
         errorReason = "nonce_already_used";
@@ -1250,6 +1296,51 @@ class X402FacilitatorService {
         payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
         errorReason,
       };
+    }
+  }
+
+  private async requireSuccessfulEvmSettlementReceipt(params: {
+    client: PublicClient;
+    txHash: Hex;
+    tokenAddress: Hex;
+    payer?: string;
+    payTo: string;
+    minimumAmount: string;
+    timeoutMs: number;
+  }): Promise<void> {
+    const receipt = await params.client.waitForTransactionReceipt({
+      hash: params.txHash,
+      timeout: params.timeoutMs,
+    });
+    if (receipt.status !== "success") {
+      throw new Error("settlement_reverted");
+    }
+
+    const payer = params.payer?.toLowerCase();
+    const payTo = params.payTo.toLowerCase();
+    const tokenAddress = params.tokenAddress.toLowerCase();
+    const transfers = parseEventLogs({
+      abi: [ERC20_TRANSFER_EVENT],
+      logs: receipt.logs,
+      strict: false,
+    });
+    const received = transfers.reduce((total, event) => {
+      const { from, to, value } = event.args;
+      if (!from || !to || value === undefined) {
+        return total;
+      }
+      if (
+        event.address.toLowerCase() !== tokenAddress ||
+        to.toLowerCase() !== payTo ||
+        (payer && from.toLowerCase() !== payer)
+      ) {
+        return total;
+      }
+      return total + value;
+    }, 0n);
+
+    if (received < BigInt(params.minimumAmount)) {
+      throw new Error("settlement_amount_too_low");
     }
   }
 
