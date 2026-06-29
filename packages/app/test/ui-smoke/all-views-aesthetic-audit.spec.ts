@@ -6,6 +6,8 @@ import { expect, type Page, test } from "@playwright/test";
 import {
   bucket,
   computeVerdict,
+  MINIMALISM_DENSITY_CEILING,
+  minimalismDensity,
   parseNavigationTabPaths,
 } from "./aesthetic-audit-rules";
 import {
@@ -146,9 +148,50 @@ interface ViewFinding {
   viewType: "gui" | "tui";
   /** Readable text length in the view root; ~0 means the view never painted. */
   readableChars: number;
+  /** Border/divider element count + viewport area for the "Her"-minimal gate (#9950). */
+  borderDividerCount: number;
+  viewportArea: number;
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
   verdict: "good" | "needs-work" | "needs-eyeball" | "broken";
+}
+
+/**
+ * Count rendered border/divider elements for the "Her"-minimal density gate
+ * (#9950): an element with a visible border on any side (width ≥ 1px, style not
+ * `none`/`hidden`), plus explicit `<hr>` and `role="separator"`. Returns the
+ * count and the viewport area (px²) so the verdict policy can normalize.
+ */
+async function collectBorderDividerMetrics(
+  page: Page,
+): Promise<{ borderDividerCount: number; viewportArea: number }> {
+  return page.evaluate(() => {
+    const nodes = Array.from(document.querySelectorAll("*")).slice(0, 4000);
+    let count = 0;
+    for (const node of nodes) {
+      const el = node as Element;
+      if (el.tagName === "HR" || el.getAttribute("role") === "separator") {
+        count += 1;
+        continue;
+      }
+      const cs = getComputedStyle(el);
+      const sides = [
+        [cs.borderTopWidth, cs.borderTopStyle],
+        [cs.borderRightWidth, cs.borderRightStyle],
+        [cs.borderBottomWidth, cs.borderBottomStyle],
+        [cs.borderLeftWidth, cs.borderLeftStyle],
+      ] as const;
+      const hasVisibleBorder = sides.some(
+        ([width, style]) =>
+          parseFloat(width) >= 1 && style !== "none" && style !== "hidden",
+      );
+      if (hasVisibleBorder) count += 1;
+    }
+    return {
+      borderDividerCount: count,
+      viewportArea: Math.max(1, window.innerWidth * window.innerHeight),
+    };
+  });
 }
 
 /** Scan the rendered DOM for any blue text/background/border color (banned). */
@@ -256,6 +299,12 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
     `- **readable content chars:** ${finding.readableChars}`,
+    `- **minimalism — border/divider density:** ${(() => {
+      const d = minimalismDensity(finding);
+      return d === null
+        ? "n/a"
+        : `${d.toFixed(1)}/Mpx² (${finding.borderDividerCount} dividers; ceiling ${MINIMALISM_DENSITY_CEILING})${d > MINIMALISM_DENSITY_CEILING ? " ⚠ over budget" : ""}`;
+    })()}`,
     `- **screenshot quality issues:** ${finding.qualityIssues.length ? finding.qualityIssues.join("; ") : "none"}`,
     "",
     "## Notes",
@@ -413,6 +462,11 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         const borderRadiusViolations = await collectBorderRadiusViolations(
           page,
         ).catch(() => []);
+        const { borderDividerCount, viewportArea } =
+          await collectBorderDividerMetrics(page).catch(() => ({
+            borderDividerCount: 0,
+            viewportArea: 1,
+          }));
 
         const base = {
           slug: view.slug,
@@ -425,6 +479,8 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           borderRadiusViolations,
           overlayPresent,
           readableChars,
+          borderDividerCount,
+          viewportArea,
           quality,
           qualityIssues,
         };

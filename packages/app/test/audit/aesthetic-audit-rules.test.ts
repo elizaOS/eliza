@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   bucket,
   computeVerdict,
+  exceedsMinimalismBudget,
+  MINIMALISM_DENSITY_CEILING,
+  minimalismDensity,
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   parseNavigationTabPaths,
   parseRgb,
@@ -163,5 +166,97 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
     expect(computeVerdict(finding({ borderRadiusViolations: ["32px"] }))).toBe(
       "needs-eyeball",
     );
+  });
+
+  it("divider density over the minimal ceiling is a soft needs-eyeball (#9950)", () => {
+    // 100 dividers over a 1,000,000 px² viewport = 100/Mpx² » the 45 ceiling.
+    expect(
+      computeVerdict(
+        finding({ borderDividerCount: 100, viewportArea: 1_000_000 }),
+      ),
+    ).toBe("needs-eyeball");
+  });
+
+  it("a sparse view stays good; a real crash still outranks the soft minimalism signal (#9950)", () => {
+    // Under the ceiling → still good.
+    expect(
+      computeVerdict(
+        finding({ borderDividerCount: 10, viewportArea: 1_000_000 }),
+      ),
+    ).toBe("good");
+    // A console error outranks any minimalism breach.
+    expect(
+      computeVerdict(
+        finding({
+          consoleErrors: ["boom"],
+          borderDividerCount: 100,
+          viewportArea: 1_000_000,
+        }),
+      ),
+    ).toBe("broken");
+  });
+});
+
+describe("minimalism density gate (#9950)", () => {
+  const finding = (o: Partial<VerdictFinding> = {}): VerdictFinding => ({
+    slug: "plugin-foo-gui",
+    viewType: "gui",
+    consoleErrors: [],
+    qualityIssues: [],
+    readableChars: 500,
+    blueColors: [],
+    hoverViolations: [],
+    overlayPresent: true,
+    borderRadiusViolations: [],
+    ...o,
+  });
+
+  it("returns null when the finding carries no minimalism measurement", () => {
+    expect(minimalismDensity(finding())).toBeNull();
+    expect(exceedsMinimalismBudget(finding())).toBe(false);
+    // A zero/absent viewport area is treated as unmeasured, not a divide-by-zero.
+    expect(
+      minimalismDensity(finding({ borderDividerCount: 5, viewportArea: 0 })),
+    ).toBeNull();
+  });
+
+  it("normalizes border/divider count by viewport area (per 1,000,000 px²)", () => {
+    expect(
+      minimalismDensity(
+        finding({ borderDividerCount: 45, viewportArea: 1_000_000 }),
+      ),
+    ).toBe(45);
+    // Same divider count on a smaller viewport is a HIGHER density (more cramped).
+    expect(
+      minimalismDensity(
+        finding({ borderDividerCount: 45, viewportArea: 500_000 }),
+      ),
+    ).toBe(90);
+  });
+
+  it("trips only when density strictly exceeds the ceiling", () => {
+    // Exactly at the ceiling is not a breach.
+    expect(
+      exceedsMinimalismBudget(
+        finding({
+          borderDividerCount: MINIMALISM_DENSITY_CEILING,
+          viewportArea: 1_000_000,
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      exceedsMinimalismBudget(
+        finding({
+          borderDividerCount: MINIMALISM_DENSITY_CEILING + 1,
+          viewportArea: 1_000_000,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("honors a caller-supplied ceiling (per-view ratcheting)", () => {
+    const f = finding({ borderDividerCount: 20, viewportArea: 1_000_000 });
+    expect(exceedsMinimalismBudget(f, 10)).toBe(true);
+    expect(exceedsMinimalismBudget(f, 30)).toBe(false);
   });
 });
