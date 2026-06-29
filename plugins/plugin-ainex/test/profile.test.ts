@@ -114,14 +114,18 @@ describe("RobotProfileDescriptor zod schema", () => {
   });
 
   it("rejects home_rad outside [lower_rad, upper_rad]", () => {
+    const [headPan, headTilt] = FIXTURE.kinematics.joints;
+    expect(headPan).toBeDefined();
+    expect(headTilt).toBeDefined();
+    if (!headPan || !headTilt) {
+      throw new Error("Expected profile fixture to include head joints");
+    }
+
     const bad = {
       ...FIXTURE,
       kinematics: {
         ...FIXTURE.kinematics,
-        joints: [
-          { ...FIXTURE.kinematics.joints[0]!, home_rad: 5 },
-          FIXTURE.kinematics.joints[1]!,
-        ],
+        joints: [{ ...headPan, home_rad: 5 }, headTilt],
       },
     };
     expect(() => parseRobotProfileDescriptor(bad)).toThrow();
