@@ -14,7 +14,10 @@ mocked `searchMemories`:
   `vector` / `keyword`), ingested through the real `DocumentService.addDocument`.
 - `AgentRuntime.searchMemories` (the raw cosine path the providers ride).
 - The `FACTS` provider (`factsProvider.get`) — keyword + recency, no vectors.
-- `rankByKeyword` — the keyword chat-search surface (`memory-routes.ts`, BM25).
+- `rankByKeyword` — the keyword chat-search surface (`memory-routes.ts`); BM25
+  with Porter2 stemming. The `keyword-morph-*` slice ranks a real-English
+  morphological corpus stemmed (production) vs unstemmed to isolate the stemming
+  lift.
 - A forced **fail-open**: `embedRecallQuery → null` (via a throwing query
   embedder) so `_vectorSearch` falls open to keyword, and the recall drop is
   measured.
@@ -73,7 +76,8 @@ chunks each doc into fragments).
 Per-`SearchMode` rows with Precision@5, Recall@5, MRR, nDCG@5, HitRate@5, p50/p95
 latency, each `measured: true` only on a real run (`null`, never `0`, otherwise).
 Plus the `failOpen` block (`vectorRecallAt5`, `failOpenRecallAt5`, `recallDrop`,
-`observable`) and the budget `checks`.
+`observable`), the `stemming` block (`stemmedRecallAt5`, `unstemmedRecallAt5`,
+`recallLift`, `observable`), and the budget `checks`.
 
 ### Committed 1k baseline (deterministic)
 
@@ -83,32 +87,29 @@ Plus the `failOpen` block (`vectorRecallAt5`, `failOpenRecallAt5`, `recallDrop`,
 | `document-vector` | 0.965 | 0.974 |
 | `document-keyword` | 0.370 | 0.422 |
 | `searchMemories-vector` | 0.965 | 0.974 |
-| `keyword-chat-bm25` | 0.370 | 0.422 |
+| `keyword-chat-bm25` | 0.510 | 0.547 |
 | `facts-provider-keyword` | 1.000 | 1.000 |
 | `document-vector-failopen` | 0.370 | 0.422 |
+| `keyword-morph-stemmed` | 1.000 | 1.000 |
+| `keyword-morph-unstemmed` | 0.050 | 0.036 |
 
-**Fail-open recall drop 0.595 (observable).** Hybrid/vector clearly out-recall
-keyword; forcing the query embed to fail collapses `document-vector` (0.965) to
-keyword level (0.370). The keyword chat-search (`keyword-chat-bm25`) now matches
-the document-keyword BM25 ceiling (0.370) — keyword methods can't beat the
-confusable distractors (that needs the vector path), exactly the
-keyword-vs-semantic gap #9956 wants tracked.
+**Fail-open recall drop 0.595 (observable); stemming recall lift 0.950
+(observable).** Hybrid/vector clearly out-recall keyword; forcing the query embed
+to fail collapses `document-vector` (0.965) to keyword level (0.370). On the
+morphology slice, Porter2 stemming lifts keyword recall from 0.050 (exact-token)
+to 1.000 — the keyword-vs-semantic and stemmed-vs-unstemmed gaps #9956 wants
+tracked.
 
-### Three ranking issues this bench caught + fixed
+### Ranking issues this bench caught + fixed
 
 **(a) `service.ts` document recall** — the first run exposed `document-vector` at
 **0.715** while pure cosine (`searchMemories-vector`) hit **0.965** — a 25-point
 gap *inside the ranking*, not the retrieval. Root cause, both structural (robust
 to any embedding, not synthetic-embedding tuning):
 
-The first run exposed `document-vector` at **0.715** while pure cosine
-(`searchMemories-vector`) hit **0.965** — a 25-point gap *inside the ranking*,
-not the retrieval. Root cause, both structural (robust to any embedding, not
-synthetic-embedding tuning):
-
 1. **`_vectorSearch`/`_hybridSearch` passed `limit:` but the adapter honours
    `count:`** → the candidate pool silently fell back to the default **10**
-   fragments instead of the intended 20/40.
+   fragments instead of the intended 20/40 (fixed in `plugin-sql`).
 2. **They passed `query:` to `searchMemories`**, triggering a runtime BM25 rerank
    that **drops zero-keyword-overlap candidates** (`search.ts`,
    `if (score <= 0) continue`) — i.e. it silently keyword-filters the semantic
@@ -116,23 +117,29 @@ synthetic-embedding tuning):
    vector (cosine-similarity)"). Every other semantic-recall caller already omits
    `query`; document search was the lone outlier.
 
-Fix (pure-vector candidates + `count`): **document-vector 0.715 → 0.965**,
-**document-hybrid (the default) 0.880 → 0.950**. The parametric knobs
-(`HYBRID_VECTOR_WEIGHT` 0.6/0.4, `match_threshold`) are deliberately **left
-alone** — their optimum depends on the real embedding's cosine distribution, so
+Fix: **document-vector 0.715 → 0.965**, **document-hybrid (the default) 0.880 →
+0.950**.
+
+**(b) Keyword chat-search ranking** — `scoreMemoryText` was a pairwise substring +
+term-presence count with **no IDF**, so at document scale filler/common words tied
+with real hits and it collapsed to **0.095**. Replaced with corpus-aware BM25
+(`rankByKeyword`): **keyword-chat 0.095 → 0.510**. The ranker uses the `search.ts`
+BM25 (Porter2 stemming + a stop-word list + Unicode/accent normalization) — the
+documents `bm25Scores` has none of these and its ASCII strip silently drops
+accented/CJK text.
+
+**(c) Keyword stemming (the `keyword-morph-*` slice)** — the main corpus tags
+every token with a number (`configure0`), which defeats Porter (its rules need a
+real letter-ending), so it *cannot* measure stemming. The morphology slice uses
+real English families with no tags: each query is the family's `-ing` form, absent
+from every doc but sharing its Porter stem. Exact-token BM25 matches nothing
+(**unstemmed 0.050**); stemmed BM25 matches the family's docs (**stemmed 1.000**).
+The 0.950 lift is pure rule-based stemming, not a vector/semantic signal — a real,
+generalizing keyword win, gated by `stemming.minRecallLift`.
+
+**Parametric knobs left untouched.** `HYBRID_VECTOR_WEIGHT` 0.6/0.4 and
+`match_threshold` 0.1/0.05 depend on the real embedding's cosine distribution, so
 tuning them against this deterministic embedding would overfit, not improve.
-
-**(b) Keyword chat-search** — `scoreMemoryText` was a pairwise substring +
-term-presence count with **no IDF**, so at document scale filler/common words
-tied with real hits and it collapsed to **0.095**. Replaced with corpus-aware
-BM25 (`rankByKeyword`, reusing the existing `bm25Scores`): **keyword-chat 0.095 →
-0.370**, now equal to the document-keyword BM25 ceiling. It deliberately does
-*not* climb past 0.370 — the confusable distractors are keyword-indistinguishable
-by design, so beating them requires the vector path, not a keyword hack.
-
-**(c)** The `match_threshold` / hybrid-weight knobs are intentionally untouched
-(see above) — chasing the benchmark number by tuning them would overfit the
-synthetic embedding rather than improve production retrieval.
 
 ## Budgets & CI
 

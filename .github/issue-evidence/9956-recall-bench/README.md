@@ -35,40 +35,43 @@ credentials), so every number is byte-reproducible run-to-run and on CI.
 | `document-vector` | 0.965 | 0.974 |
 | `document-keyword` | 0.370 | 0.422 |
 | `searchMemories-vector` | 0.965 | 0.974 |
-| `keyword-chat-bm25` | 0.370 | 0.422 |
+| `keyword-chat-bm25` | 0.510 | 0.547 |
 | `facts-provider-keyword` | 1.000 | 1.000 |
 | `document-vector-failopen` | 0.370 | 0.422 |
+| `keyword-morph-stemmed` | 1.000 | 1.000 |
+| `keyword-morph-unstemmed` | 0.050 | 0.036 |
 
-**Fail-open recall drop = 0.595 (observable).** Forcing `embedRecallQuery → null`
-collapses `document-vector` (0.965) to keyword level (0.370) — the silent
-degradation #9956 names, now measured and gated.
+**Fail-open recall drop = 0.595 (observable); stemming recall lift = 0.950
+(observable).** Forcing `embedRecallQuery → null` collapses `document-vector`
+(0.965) to keyword level (0.370). On the morphology slice, Porter2 stemming lifts
+keyword recall 0.050 → 1.000 — both silent degradations #9956 names, now gated.
 
-### Ranking fixes this bench caught
+### Ranking issues this bench caught + fixed
 
-Two distinct ranking issues, both fixed; the parametric knobs (hybrid 0.6/0.4
-weight, `match_threshold`) are left untouched (their optimum is embedding-specific,
-so tuning them on the deterministic embedding would overfit).
+The parametric knobs (hybrid 0.6/0.4 weight, `match_threshold`) are left untouched
+(embedding-specific → tuning on the deterministic embedding would overfit).
 
-| mode | before | after |
+| metric | before | after |
 | --- | --- | --- |
 | `document-vector` | 0.715 | **0.965** |
 | `document-hybrid` (default) | 0.880 | **0.950** |
-| `keyword-chat` (BM25) | 0.095 | **0.370** |
+| `keyword-chat` ranking | 0.095 | **0.510** |
+| keyword stemming lift | (unmeasured) | **0.950** |
 | fail-open drop | 0.345 | **0.595** |
 
-- **`packages/core/.../documents/service.ts`** — `_vectorSearch`/`_hybridSearch`
-  passed `limit:` (adapter honours `count:` → pool silently capped at 10) and
-  `query:` (a runtime BM25 rerank that drops zero-overlap candidates, silently
-  keyword-filtering the semantic results `vector` mode exists for). Fix:
-  pure-vector candidates via `count`. Core search tests stay green (25/25).
-- **`packages/agent/.../memory-routes.ts`** — `scoreMemoryText` (pairwise
-  substring + term-presence, **no IDF**) collapsed to 0.095 at scale; replaced
-  with corpus-aware BM25 (`rankByKeyword`, reusing `bm25Scores`). Now equals the
-  document-keyword BM25 ceiling (0.370) — it can't beat the confusable distractors
-  (that needs vectors), which is correct, not overfitting. The 3 ranking callers
-  (memory search, conversation message search, relevant-conversations) move to
-  batch BM25; the browse *filter* keeps boolean term-matching. Caller contract
-  tests stay green (7/7).
+- **`plugin-sql` + `core/.../documents/service.ts` (document recall)** —
+  `_vectorSearch`/`_hybridSearch` passed `limit:` (the adapter ignored it, honouring
+  `count:` → pool silently capped at 10) and `query:` (a runtime BM25 rerank that
+  drops zero-overlap candidates, silently keyword-filtering the semantic results
+  `vector` mode exists for). Fix: honour `limit` in plugin-sql + drop `query`. Core
+  search tests green (25/25).
+- **`agent/.../memory-routes.ts` (keyword chat-search)** — `scoreMemoryText`
+  (pairwise substring + term-presence, **no IDF**) collapsed to 0.095; replaced
+  with `rankByKeyword` on the `search.ts` BM25 (Porter2 stemming + stop-words +
+  Unicode). keyword-chat 0.095 → 0.510; the new `keyword-morph-*` slice isolates
+  the stemming lift (unstemmed 0.050 → stemmed 1.000). The 3 ranking callers move
+  to batch BM25; the browse *filter* keeps boolean term-matching. Caller contract
+  tests green (7/7).
 
 ## Evidence checklist (PR_EVIDENCE.md)
 

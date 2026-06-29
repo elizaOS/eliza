@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildCorpus, buildFacts, type CorpusTier } from "./corpus.ts";
+import {
+  buildCorpus,
+  buildFacts,
+  buildMorphologyCorpus,
+  type CorpusTier,
+} from "./corpus.ts";
 import { cosine, embedText, tokenize } from "./embedding.ts";
 
 const mean = (xs: number[]) =>
@@ -75,5 +80,30 @@ describe("recall-bench corpus", () => {
       expect(rel).toContain(base);
       expect(conf).toContain(base);
     }
+  });
+
+  // Morphology slice: the lift is real only if each query's surface form never
+  // appears verbatim in its relevant docs — so only stemming (not exact-token
+  // BM25) can bridge query→doc. Assert that invariant + the documented shape.
+  describe("morphology slice", () => {
+    it("is deterministic", () => {
+      expect(buildMorphologyCorpus()).toEqual(buildMorphologyCorpus());
+    });
+
+    it("queries' surface form is absent from every relevant doc", () => {
+      const m = buildMorphologyCorpus();
+      expect(m.queries).toHaveLength(10);
+      expect(m.docs).toHaveLength(40);
+      const docById = new Map(m.docs.map((d) => [d.id, d]));
+      for (const q of m.queries) {
+        const queryWord = q.text.split(/\s+/)[0]; // the -ing form
+        expect(q.relevantDocIds.length).toBeGreaterThanOrEqual(3);
+        for (const id of q.relevantDocIds) {
+          const text = docById.get(id)?.text ?? "";
+          // exact-token BM25 would score 0 — only a shared stem can match.
+          expect(tokenize(text)).not.toContain(queryWord);
+        }
+      }
+    });
   });
 });

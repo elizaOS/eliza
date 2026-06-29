@@ -367,3 +367,84 @@ export function buildCorpus(tier: CorpusTier): Corpus {
 
   return { tier, topics, docs, queries };
 }
+
+// ── morphology slice (proves keyword stemming, #9956 follow-up) ────────────────
+//
+// The main corpus tags every token with a number (`configure0`), which defeats
+// Porter (its suffix rules need a real letter-ending), so it CANNOT measure a
+// stemming improvement. This slice uses real English inflectional families with
+// NO tags: each query is the family's `-ing` form, which is ABSENT from every
+// document — but stems to the same root as the doc forms. So exact-token BM25
+// (unstemmed) matches nothing and a Porter-stemmed BM25 matches the family's
+// docs. The lift is produced purely by rule-based stemming (a keyword technique),
+// not by any semantic/vector signal. Families are stem-verified + collision-free
+// (see the offline check in the PR; every `-ing` query stems to its docs' stem
+// and the 10 stems are mutually disjoint).
+
+export interface MorphologyCorpus {
+  docs: Array<{ id: string; text: string }>;
+  queries: Array<{ id: string; text: string; relevantDocIds: string[] }>;
+}
+
+/** [naturalQueryWord (-ing, absent from docs), [doc forms that share its stem]] */
+const MORPHOLOGY_FAMILIES: ReadonlyArray<readonly [string, readonly string[]]> =
+  [
+    ["configuring", ["configuration", "configured", "configures"]],
+    ["optimizing", ["optimization", "optimized", "optimizes"]],
+    ["compressing", ["compression", "compressed", "compresses"]],
+    ["validating", ["validation", "validated", "validates"]],
+    ["deploying", ["deployment", "deployed", "deploys"]],
+    ["scheduling", ["scheduled", "schedules", "scheduler"]],
+    ["filtering", ["filtered", "filters", "filterable"]],
+    ["rendering", ["rendered", "renders", "renderer"]],
+    ["publishing", ["published", "publishes", "publisher"]],
+    ["encrypting", ["encryption", "encrypted", "encrypts"]],
+  ];
+
+const MORPH_FILLER = [
+  "the",
+  "system",
+  "for",
+  "our",
+  "this",
+  "service",
+  "today",
+  "again",
+  "please",
+  "now",
+];
+const MORPH_RELEVANT_PER_FAMILY = 4;
+
+/**
+ * Build the morphology slice. Deterministic. Each family's docs carry two of its
+ * doc forms (never the query's `-ing` form); other families are mutual
+ * distractors (disjoint stems). Recall is labelled at the doc level.
+ */
+export function buildMorphologyCorpus(): MorphologyCorpus {
+  const rnd = mulberry32(0x9956 + 0x4d52); // "MR"
+  const docs: MorphologyCorpus["docs"] = [];
+  const queries: MorphologyCorpus["queries"] = [];
+
+  MORPHOLOGY_FAMILIES.forEach(([query, forms], t) => {
+    const relevantDocIds: string[] = [];
+    for (let d = 0; d < MORPH_RELEVANT_PER_FAMILY; d++) {
+      const id = `m-${t}-${d}`;
+      relevantDocIds.push(id);
+      const f1 = forms[d % forms.length];
+      const f2 = forms[(d + 1) % forms.length];
+      docs.push({
+        id,
+        text: [pick(MORPH_FILLER, rnd), f1, f2, pick(MORPH_FILLER, rnd)].join(
+          " ",
+        ),
+      });
+    }
+    queries.push({
+      id: `mq-${t}`,
+      text: `${query} ${pick(MORPH_FILLER, rnd)}`,
+      relevantDocIds,
+    });
+  });
+
+  return { docs, queries };
+}
