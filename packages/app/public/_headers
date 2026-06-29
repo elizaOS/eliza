@@ -32,6 +32,11 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
-# OAuth/popup callback pages need a relaxed COOP so window.closed works.
+# OAuth/popup callback pages need a relaxed COOP so popup status remains
+# observable when a browser path is script-opened. OS-opened tabs still must not
+# render dead close controls.
 /app-auth/*
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+
+/auth/*
   Cross-Origin-Opener-Policy: same-origin-allow-popups

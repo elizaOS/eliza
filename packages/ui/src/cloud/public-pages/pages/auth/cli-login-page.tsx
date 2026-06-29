@@ -37,6 +37,8 @@ type PageState =
 
 type PanelTone = "accent" | "danger" | "success";
 
+const CLOUD_DASHBOARD_PATH = "/dashboard";
+
 const PANEL_TONE_CLASSES: Record<
   PanelTone,
   { container: string; icon: string }
@@ -74,12 +76,6 @@ function getPageState({
   if (!ready) return { status: "initializing" };
   if (!authenticated) return { status: "waiting_auth" };
   return { status: "loading" };
-}
-
-function getUserEmail(user: unknown): string | undefined {
-  if (!user || typeof user !== "object" || !("email" in user)) return undefined;
-  const { email } = user as { email?: unknown };
-  return typeof email === "string" ? email : undefined;
 }
 
 function CliLoginPanel({
@@ -126,7 +122,7 @@ function CliLoginPanel({
 
 export default function CliLoginPage() {
   const t = useCloudT();
-  const { authenticated, ready, user } = useSessionAuth();
+  const { authenticated, ready } = useSessionAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const sessionId = searchParams.get("session");
@@ -203,6 +199,11 @@ export default function CliLoginPage() {
     };
   }, [authenticated, ready, sessionId, t]);
 
+  useEffect(() => {
+    if (completion.status !== "success") return;
+    navigate(CLOUD_DASHBOARD_PATH, { replace: true });
+  }, [completion.status, navigate]);
+
   const pageState = getPageState({
     authenticated,
     completion,
@@ -213,7 +214,6 @@ export default function CliLoginPage() {
   const returnToQuery = searchParams.toString();
   const returnTo = `/auth/cli-login${returnToQuery ? `?${returnToQuery}` : ""}`;
   const signInHref = `/login?returnTo=${encodeURIComponent(returnTo)}`;
-  const userEmail = getUserEmail(user);
 
   // No "CLI Authentication" interstitial: when the user isn't signed in yet,
   // forward straight to the Steward login. `returnTo` brings the browser back
@@ -278,15 +278,16 @@ export default function CliLoginPage() {
                 </Button>
               </a>
             ) : null}
-            <Button
-              onClick={() => window.close()}
-              variant="outline"
-              className="w-full mt-2 border-white/14 hover:bg-white/10"
-            >
-              {t("cloud.cliLogin.closeWindow", {
-                defaultValue: "Close Window",
-              })}
-            </Button>
+            <a href={CLOUD_DASHBOARD_PATH} className="w-full">
+              <Button
+                variant="outline"
+                className="w-full mt-2 border-white/14 hover:bg-white/10"
+              >
+                {t("cloud.cliLogin.openCloud", {
+                  defaultValue: "Open Eliza Cloud",
+                })}
+              </Button>
+            </a>
           </>
         }
         description={pageState.errorMessage}
@@ -376,17 +377,16 @@ export default function CliLoginPage() {
     return (
       <CliLoginPanel
         actions={
-          <Button
-            onClick={() => window.close()}
-            variant="outline"
-            className="w-full border-white/14 hover:bg-white/10"
-          >
-            {t("cloud.cliLogin.closeWindow", { defaultValue: "Close Window" })}
-          </Button>
+          <a href={CLOUD_DASHBOARD_PATH} className="w-full">
+            <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
+              {t("cloud.cliLogin.openCloud", {
+                defaultValue: "Open Eliza Cloud",
+              })}
+            </Button>
+          </a>
         }
         description={t("cloud.cliLogin.successDescription", {
-          defaultValue:
-            "You're signed in. Your credentials were sent to the app or CLI you started from.",
+          defaultValue: "You're signed in. Redirecting you to Eliza Cloud.",
         })}
         icon={CheckCircle2}
         title={t("cloud.cliLogin.authComplete", {
@@ -394,42 +394,11 @@ export default function CliLoginPage() {
         })}
         tone="success"
       >
-        <div className="w-full bg-black/40 border border-white/14 p-4 space-y-3">
-          <p className="text-xs font-medium text-neutral-400">
-            {t("cloud.cliLogin.apiKeyDetails", {
-              defaultValue: "API Key Details",
-            })}
-          </p>
-          <div className="text-sm space-y-2">
-            <div className="flex justify-between">
-              <span className="text-neutral-500">
-                {t("cloud.cliLogin.prefix", { defaultValue: "Prefix" })}
-              </span>
-              <span className="font-mono text-white">
-                {pageState.apiKeyPrefix}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-neutral-500">
-                {t("cloud.cliLogin.createdFor", {
-                  defaultValue: "Created for",
-                })}
-              </span>
-              <span className="text-white">
-                {userEmail ||
-                  t("cloud.cliLogin.yourAccount", {
-                    defaultValue: "Your account",
-                  })}
-              </span>
-            </div>
-          </div>
-        </div>
-
         <div className="w-full border border-green-500/20 bg-green-500/5 p-4">
           <p className="text-sm text-green-400 flex items-center justify-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
-            {t("cloud.cliLogin.returnToTerminal", {
-              defaultValue: "You can now close this window.",
+            {t("cloud.cliLogin.redirectingToDashboard", {
+              defaultValue: "Opening your dashboard...",
             })}
           </p>
         </div>
