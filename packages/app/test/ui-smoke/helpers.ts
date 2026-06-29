@@ -208,13 +208,17 @@ export async function seedAppStorage(
   const storage = { ...DEFAULT_APP_STORAGE, ...overrides };
   await page.addInitScript(
     ({ entries, seededKey }) => {
-      if (sessionStorage.getItem(seededKey) === "1") {
-        return;
+      try {
+        if (sessionStorage.getItem(seededKey) === "1") {
+          return;
+        }
+        for (const [key, value] of Object.entries(entries)) {
+          localStorage.setItem(key, value);
+        }
+        sessionStorage.setItem(seededKey, "1");
+      } catch {
+        // Sandboxed or opaque-origin frames can deny Web Storage access.
       }
-      for (const [key, value] of Object.entries(entries)) {
-        localStorage.setItem(key, value);
-      }
-      sessionStorage.setItem(seededKey, "1");
     },
     { entries: storage, seededKey: STORAGE_SEEDED_KEY },
   );

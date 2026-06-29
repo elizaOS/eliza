@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bucket,
   computeVerdict,
+  evaluateAestheticMetricBudget,
   exceedsMinimalismBudget,
   MINIMALISM_DENSITY_CEILING,
   minimalismDensity,
@@ -99,9 +100,13 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
     consoleErrors: [],
     qualityIssues: [],
     readableChars: 500,
+    borderDividerDensity: 20,
+    textDensity: 8,
+    whitespaceRatio: 0.72,
     blueColors: [],
     hoverViolations: [],
     overlayPresent: true,
+    overlayClearanceIssues: [],
     borderRadiusViolations: [],
     ...o,
   });
@@ -160,6 +165,9 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
     expect(computeVerdict(finding({ overlayPresent: false }))).toBe(
       "needs-work",
     );
+    expect(
+      computeVerdict(finding({ overlayClearanceIssues: ["clipped"] })),
+    ).toBe("needs-work");
   });
 
   it("off-scale border radius is a soft needs-eyeball (non-blocking)", () => {
@@ -204,9 +212,13 @@ describe("minimalism density gate (#9950)", () => {
     consoleErrors: [],
     qualityIssues: [],
     readableChars: 500,
+    borderDividerDensity: 20,
+    textDensity: 8,
+    whitespaceRatio: 0.72,
     blueColors: [],
     hoverViolations: [],
     overlayPresent: true,
+    overlayClearanceIssues: [],
     borderRadiusViolations: [],
     ...o,
   });
@@ -258,5 +270,45 @@ describe("minimalism density gate (#9950)", () => {
     const f = finding({ borderDividerCount: 20, viewportArea: 1_000_000 });
     expect(exceedsMinimalismBudget(f, 10)).toBe(true);
     expect(exceedsMinimalismBudget(f, 30)).toBe(false);
+  });
+});
+
+describe("evaluateAestheticMetricBudget (#9950 minimalism gate)", () => {
+  it("reports each over-budget minimalism metric", () => {
+    expect(
+      evaluateAestheticMetricBudget(
+        {
+          borderDividerDensity: 42,
+          textDensity: 18,
+          whitespaceRatio: 0.24,
+        },
+        {
+          maxBorderDividerDensity: 40,
+          maxTextDensity: 12,
+          minWhitespaceRatio: 0.3,
+        },
+      ),
+    ).toEqual([
+      "border/divider density 42.00 > 40.00",
+      "text density 18.00 > 12.00",
+      "whitespace ratio 0.24 < 0.30",
+    ]);
+  });
+
+  it("passes when all minimalism metrics are within budget", () => {
+    expect(
+      evaluateAestheticMetricBudget(
+        {
+          borderDividerDensity: 39.9,
+          textDensity: 12,
+          whitespaceRatio: 0.3,
+        },
+        {
+          maxBorderDividerDensity: 40,
+          maxTextDensity: 12,
+          minWhitespaceRatio: 0.3,
+        },
+      ),
+    ).toEqual([]);
   });
 });

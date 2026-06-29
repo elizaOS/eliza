@@ -1615,9 +1615,8 @@ function packageDesktopBuild() {
     mirrorCanonicalToLegacy("artifacts");
   }
 
-  // Electrobun's built-in rcedit call references a CI-local D:\ path that
-  // doesn't exist on developer machines. Re-embed the icon from a locally
-  // resolved rcedit as a post-build repair step.
+  // Re-embed the icon from a locally resolved rcedit as a post-build repair
+  // step so every Windows helper executable gets the app icon.
   if (process.platform === "win32") {
     embedWindowsIcons();
   }

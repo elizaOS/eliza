@@ -78,16 +78,18 @@ import {
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
 import {
+  formatMobileWebDistProblems,
+  mobileWebDistReuseStatus,
+} from "./lib/mobile-web-build-reuse.mjs";
+import {
   assertStagedRendererMatchesBuild,
   overlayFreshRendererIntoPublic,
-  readRendererBuildManifest,
 } from "./lib/renderer-build-manifest.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   RUNTIME_PROVENANCE_FILENAME,
   stageAndroidAgentRuntime,
 } from "./lib/stage-android-agent.mjs";
-import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 export {
   androidUsesAppDirFor,
@@ -1013,39 +1015,33 @@ async function buildWeb(platform) {
   // mismatched dist simply does not match here and falls through to a rebuild.
   // Explicit ELIZA_MOBILE_SKIP_WEB_BUILD=1 keeps its force-reuse semantics below.
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1") {
-    const autoDistDir = path.join(appDir, "dist");
-    if (fs.existsSync(path.join(autoDistDir, "index.html"))) {
-      const autoPolicy = resolveMobileBuildPolicy(platform);
-      const autoVariant =
-        process.env.ELIZA_BUILD_VARIANT || autoPolicy.buildVariant;
-      const autoManifest = readRendererBuildManifest(autoDistDir);
-      const variantOk =
-        autoManifest != null &&
-        (autoManifest.variant == null || autoManifest.variant === autoVariant);
-      const targetOk =
-        autoManifest != null &&
-        (autoManifest.capacitorTarget == null ||
-          autoManifest.capacitorTarget === autoPolicy.capacitorTarget);
-      if (
-        autoManifest != null &&
-        variantOk &&
-        targetOk &&
-        !viteRendererBuildNeeded(appDir, repoRoot)
-      ) {
-        console.log(
-          "[mobile-build] Auto-skipping web build: existing dist is up-to-date " +
-            `(buildId=${autoManifest.buildId.slice(0, 12)})`,
-        );
-        return;
-      }
+    const autoPolicy = resolveMobileBuildPolicy(platform);
+    const autoStatus = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot,
+      expectedVariant:
+        process.env.ELIZA_BUILD_VARIANT || autoPolicy.buildVariant,
+      expectedTarget: autoPolicy.capacitorTarget,
+    });
+    if (autoStatus.reusable) {
+      console.log(
+        "[mobile-build] Auto-skipping web build: existing dist is up-to-date " +
+          `(buildId=${autoStatus.manifest.buildId.slice(0, 12)})`,
+      );
+      return;
     }
   }
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
-    const distDir = path.join(appDir, "dist");
-    const indexPath = path.join(distDir, "index.html");
-    if (!fs.existsSync(indexPath)) {
+    const policy = resolveMobileBuildPolicy(platform);
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot,
+      expectedVariant: process.env.ELIZA_BUILD_VARIANT || policy.buildVariant,
+      expectedTarget: policy.capacitorTarget,
+    });
+    if (!fs.existsSync(status.indexPath)) {
       throw new Error(
-        `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 but ${indexPath} is missing.`,
+        `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 but ${status.indexPath} is missing.`,
       );
     }
     // Never SILENTLY reuse a stale renderer (issue #9309). The skip flag is an
@@ -1055,41 +1051,8 @@ async function buildWeb(platform) {
     // forced with ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1.
     const allowStale =
       process.env.ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE === "1";
-    const policy = resolveMobileBuildPolicy(platform);
-    const expectedVariant =
-      process.env.ELIZA_BUILD_VARIANT || policy.buildVariant;
-    const expectedTarget = policy.capacitorTarget;
-    const manifest = readRendererBuildManifest(distDir);
-    const problems = [];
-    if (!manifest) {
-      problems.push(
-        `no ${path.join("dist", "eliza-renderer-build.json")} (renderer not built with the build-manifest plugin)`,
-      );
-    } else {
-      if (
-        expectedVariant &&
-        manifest.variant != null &&
-        manifest.variant !== expectedVariant
-      ) {
-        problems.push(
-          `dist built for variant '${manifest.variant}' but this build targets '${expectedVariant}'`,
-        );
-      }
-      if (
-        expectedTarget &&
-        manifest.capacitorTarget != null &&
-        manifest.capacitorTarget !== expectedTarget
-      ) {
-        problems.push(
-          `dist built for capacitor target '${manifest.capacitorTarget}' but this build targets '${expectedTarget}'`,
-        );
-      }
-    }
-    if (viteRendererBuildNeeded(appDir, repoRoot)) {
-      problems.push("dist is older than renderer sources (stale)");
-    }
-    if (problems.length > 0) {
-      const detail = problems.map((p) => `  - ${p}`).join("\n");
+    if (status.problems.length > 0) {
+      const detail = formatMobileWebDistProblems(status.problems);
       if (!allowStale) {
         throw new Error(
           `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 refused — the existing web build is stale or mismatched:\n${detail}\n` +
@@ -1102,8 +1065,10 @@ async function buildWeb(platform) {
       );
     }
     console.log(
-      `[mobile-build] Reusing existing web build: ${path.relative(repoRoot, distDir)}` +
-        (manifest ? ` (buildId=${manifest.buildId.slice(0, 12)})` : ""),
+      `[mobile-build] Reusing existing web build: ${path.relative(repoRoot, status.distDir)}` +
+        (status.manifest
+          ? ` (buildId=${status.manifest.buildId.slice(0, 12)})`
+          : ""),
     );
     return;
   }

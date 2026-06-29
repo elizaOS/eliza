@@ -4,10 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import {
+  type AestheticMetricBudget,
   bucket,
   computeVerdict,
-  MINIMALISM_DENSITY_CEILING,
-  minimalismDensity,
+  evaluateAestheticMetricBudget,
+  OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   parseNavigationTabPaths,
 } from "./aesthetic-audit-rules";
 import {
@@ -38,11 +39,12 @@ const AESTHETIC_VERDICT_DEBT: Record<string, "broken" | "needs-work"> = {};
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
  * cloud-frontend's `audit:cloud`. It walks EVERY view (built-in tabs + plugin
- * view bundles) at desktop + mobile, captures rest + primary-button hover
- * screenshots, runs the blank/one-color analyzer, flags brand-color violations
- * (any blue, orange↔black hover), asserts the floating chat overlay integrates,
- * collects console errors, and writes a per-view `manual-review/<slug>.md`
- * verdict stub + `contact-sheet.html` + `report.json`.
+ * view bundles) across the design-review viewport matrix, captures rest +
+ * primary-button hover screenshots, runs the blank/one-color analyzer, flags
+ * brand-color violations (any blue, orange↔black hover), asserts the floating
+ * chat overlay integrates, collects console errors, and writes a per-view
+ * `manual-review/<slug>.md` verdict stub + `contact-sheet.html` +
+ * `report.json`.
  *
  * It is a REPORTER, not a first-failure gate: it records findings for every
  * view (so the 5-loop grind can drive each to `good`) and only fails the run on
@@ -135,11 +137,131 @@ function buildAuditCases(): AuditCase[] {
 // stay valid; the two added entries cover the previously-unverified orientations
 // (portrait desktop/tablet, landscape phone) — see #9945.
 const VIEWPORTS = [
-  { name: "desktop", width: 1440, height: 1000 },
-  { name: "mobile", width: 390, height: 844 },
-  { name: "desktop-portrait", width: 1024, height: 1366 },
+  { name: "mobile-portrait", width: 390, height: 844 },
   { name: "mobile-landscape", width: 844, height: 390 },
+  { name: "desktop-landscape", width: 1440, height: 900 },
+  { name: "ipad-portrait", width: 820, height: 1180 },
 ] as const;
+
+type AuditViewportName = (typeof VIEWPORTS)[number]["name"];
+
+const SYSTEM_VIEW_SLUGS = [
+  "builtin-chat",
+  "builtin-phone",
+  "builtin-apps",
+  "builtin-character",
+  "builtin-inventory",
+  "builtin-browser",
+  "builtin-stream",
+  "builtin-automations",
+  "builtin-settings",
+] as const;
+
+type SystemViewSlug = (typeof SYSTEM_VIEW_SLUGS)[number];
+
+function budget(
+  maxBorderDividerDensity: number,
+  maxTextDensity: number,
+  minWhitespaceRatio: number,
+): AestheticMetricBudget {
+  return {
+    maxBorderDividerDensity,
+    maxTextDensity,
+    minWhitespaceRatio,
+  };
+}
+
+function viewportBudgets(
+  mobilePortrait: AestheticMetricBudget,
+  mobileLandscape: AestheticMetricBudget,
+  desktopLandscape: AestheticMetricBudget,
+  ipadPortrait: AestheticMetricBudget,
+): Record<AuditViewportName, AestheticMetricBudget> {
+  return {
+    "mobile-portrait": mobilePortrait,
+    "mobile-landscape": mobileLandscape,
+    "desktop-landscape": desktopLandscape,
+    "ipad-portrait": ipadPortrait,
+  };
+}
+
+// #9950 Her-minimal objective gate for the 9 ALL_TAB_GROUPS representatives:
+// Chat, Phone, Springboard, Character, Wallet, Browser, Stream, Automations,
+// Settings. These are intentionally per-view budgets, with conservative seed
+// values from the current rendered tree; they should ratchet downward as the
+// visual pass removes redundant borders/dividers and cramped text.
+const SYSTEM_VIEW_METRIC_BUDGETS: Record<
+  SystemViewSlug,
+  Record<AuditViewportName, AestheticMetricBudget>
+> = {
+  "builtin-chat": viewportBudgets(
+    budget(520, 34, 0.34),
+    budget(560, 36, 0.28),
+    budget(240, 24, 0.48),
+    budget(360, 28, 0.42),
+  ),
+  "builtin-phone": viewportBudgets(
+    budget(820, 28, 0.3),
+    budget(900, 32, 0.26),
+    budget(420, 24, 0.44),
+    budget(560, 26, 0.38),
+  ),
+  "builtin-apps": viewportBudgets(
+    budget(950, 50, 0.24),
+    budget(1100, 60, 0.18),
+    budget(520, 38, 0.38),
+    budget(700, 45, 0.32),
+  ),
+  "builtin-character": viewportBudgets(
+    budget(1150, 64, 0.18),
+    budget(1280, 72, 0.14),
+    budget(620, 48, 0.34),
+    budget(800, 56, 0.28),
+  ),
+  "builtin-inventory": viewportBudgets(
+    budget(900, 48, 0.22),
+    budget(1050, 56, 0.16),
+    budget(520, 36, 0.38),
+    budget(700, 44, 0.32),
+  ),
+  "builtin-browser": viewportBudgets(
+    budget(900, 42, 0.24),
+    budget(1050, 50, 0.18),
+    budget(520, 34, 0.38),
+    budget(700, 40, 0.32),
+  ),
+  "builtin-stream": viewportBudgets(
+    budget(850, 42, 0.24),
+    budget(1000, 50, 0.18),
+    budget(500, 34, 0.38),
+    budget(650, 40, 0.32),
+  ),
+  "builtin-automations": viewportBudgets(
+    budget(1250, 70, 0.16),
+    budget(1400, 80, 0.12),
+    budget(700, 54, 0.3),
+    budget(900, 64, 0.24),
+  ),
+  "builtin-settings": viewportBudgets(
+    budget(1150, 74, 0.16),
+    budget(1300, 86, 0.12),
+    budget(650, 58, 0.3),
+    budget(850, 68, 0.12),
+  ),
+};
+
+function isSystemViewSlug(slug: string): slug is SystemViewSlug {
+  return (SYSTEM_VIEW_SLUGS as readonly string[]).includes(slug);
+}
+
+function systemMetricBudgetFor(
+  slug: string,
+  viewport: AuditViewportName,
+): AestheticMetricBudget | null {
+  return isSystemViewSlug(slug)
+    ? SYSTEM_VIEW_METRIC_BUDGETS[slug][viewport]
+    : null;
+}
 
 // ── Brand-color analysis (ported from cloud-frontend aesthetic-audit) ────────
 interface ViewFinding {
@@ -151,53 +273,19 @@ interface ViewFinding {
   hoverViolations: string[];
   borderRadiusViolations: string[];
   overlayPresent: boolean;
+  overlayClearanceIssues: string[];
   viewType: "gui" | "tui";
   /** Readable text length in the view root; ~0 means the view never painted. */
   readableChars: number;
-  /** Border/divider element count + viewport area for the "Her"-minimal gate (#9950). */
   borderDividerCount: number;
-  viewportArea: number;
+  borderDividerDensity: number;
+  textDensity: number;
+  whitespaceRatio: number;
+  minimalismBudget: AestheticMetricBudget | null;
+  minimalismBudgetViolations: string[];
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
   verdict: "good" | "needs-work" | "needs-eyeball" | "broken";
-}
-
-/**
- * Count rendered border/divider elements for the "Her"-minimal density gate
- * (#9950): an element with a visible border on any side (width ≥ 1px, style not
- * `none`/`hidden`), plus explicit `<hr>` and `role="separator"`. Returns the
- * count and the viewport area (px²) so the verdict policy can normalize.
- */
-async function collectBorderDividerMetrics(
-  page: Page,
-): Promise<{ borderDividerCount: number; viewportArea: number }> {
-  return page.evaluate(() => {
-    const nodes = Array.from(document.querySelectorAll("*")).slice(0, 4000);
-    let count = 0;
-    for (const node of nodes) {
-      const el = node as Element;
-      if (el.tagName === "HR" || el.getAttribute("role") === "separator") {
-        count += 1;
-        continue;
-      }
-      const cs = getComputedStyle(el);
-      const sides = [
-        [cs.borderTopWidth, cs.borderTopStyle],
-        [cs.borderRightWidth, cs.borderRightStyle],
-        [cs.borderBottomWidth, cs.borderBottomStyle],
-        [cs.borderLeftWidth, cs.borderLeftStyle],
-      ] as const;
-      const hasVisibleBorder = sides.some(
-        ([width, style]) =>
-          parseFloat(width) >= 1 && style !== "none" && style !== "hidden",
-      );
-      if (hasVisibleBorder) count += 1;
-    }
-    return {
-      borderDividerCount: count,
-      viewportArea: Math.max(1, window.innerWidth * window.innerHeight),
-    };
-  });
 }
 
 /** Scan the rendered DOM for any blue text/background/border color (banned). */
@@ -293,6 +381,426 @@ async function collectBorderRadiusViolations(page: Page): Promise<string[]> {
   return raw;
 }
 
+interface AestheticDensityMetrics {
+  borderDividerCount: number;
+  borderDividerDensity: number;
+  textDensity: number;
+  whitespaceRatio: number;
+}
+
+function roundMetric(value: number): number {
+  return Number(value.toFixed(4));
+}
+
+async function collectAestheticDensityMetrics(
+  page: Page,
+): Promise<AestheticDensityMetrics> {
+  return page.evaluate(() => {
+    const viewportWidth = Math.max(
+      document.documentElement.clientWidth,
+      window.innerWidth,
+      1,
+    );
+    const viewportHeight = Math.max(
+      document.documentElement.clientHeight,
+      window.innerHeight,
+      1,
+    );
+    const viewportArea = viewportWidth * viewportHeight;
+    const cellSize = 10;
+    const cols = Math.ceil(viewportWidth / cellSize);
+    const rows = Math.ceil(viewportHeight / cellSize);
+    const occupied = new Uint8Array(cols * rows);
+
+    const alphaOf = (color: string): number => {
+      const c = color.trim().toLowerCase();
+      if (!c || c === "transparent") return 0;
+      const rgb = c.match(
+        /^rgba?\(\s*\d+\.?\d*\s*,\s*\d+\.?\d*\s*,\s*\d+\.?\d*(?:\s*,\s*(\d+\.?\d*))?\s*\)$/,
+      );
+      if (rgb) return rgb[1] === undefined ? 1 : Number(rgb[1]);
+      // Computed CSS color functions are already resolved by Chromium for most
+      // values; if one remains, treat it as visible rather than silently missing
+      // a divider/background.
+      return 1;
+    };
+
+    const rectIntersectsViewport = (rect: DOMRect): boolean =>
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.right > 0 &&
+      rect.bottom > 0 &&
+      rect.left < viewportWidth &&
+      rect.top < viewportHeight;
+
+    const markRect = (rect: DOMRect): void => {
+      if (!rectIntersectsViewport(rect)) return;
+      const left = Math.max(0, Math.floor(rect.left / cellSize));
+      const top = Math.max(0, Math.floor(rect.top / cellSize));
+      const right = Math.min(cols - 1, Math.floor((rect.right - 1) / cellSize));
+      const bottom = Math.min(
+        rows - 1,
+        Math.floor((rect.bottom - 1) / cellSize),
+      );
+      for (let y = top; y <= bottom; y += 1) {
+        for (let x = left; x <= right; x += 1) {
+          occupied[y * cols + x] = 1;
+        }
+      }
+    };
+
+    const visibleElement = (element: Element): boolean => {
+      const style = getComputedStyle(element);
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        Number(style.opacity || "1") <= 0.02
+      ) {
+        return false;
+      }
+      return Array.from(element.getClientRects()).some(rectIntersectsViewport);
+    };
+
+    let textChars = 0;
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          const raw = node.textContent?.trim().replace(/\s+/g, " ") ?? "";
+          if (!raw) return NodeFilter.FILTER_REJECT;
+          const parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          const tag = parent.tagName.toLowerCase();
+          if (tag === "script" || tag === "style" || tag === "noscript") {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (!visibleElement(parent)) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      },
+    );
+
+    for (
+      let textNode = walker.nextNode();
+      textNode;
+      textNode = walker.nextNode()
+    ) {
+      const text = textNode.textContent?.trim().replace(/\s+/g, " ") ?? "";
+      if (!text) continue;
+      const range = document.createRange();
+      range.selectNodeContents(textNode);
+      const rects = Array.from(range.getClientRects()).filter(
+        rectIntersectsViewport,
+      );
+      range.detach();
+      if (rects.length === 0) continue;
+      textChars += text.length;
+      for (const rect of rects) markRect(rect);
+    }
+
+    let borderDividerCount = 0;
+    const nodes = Array.from(document.querySelectorAll("*")).slice(0, 4000);
+    for (const node of nodes) {
+      if (!visibleElement(node)) continue;
+      const style = getComputedStyle(node);
+      const rects = Array.from(node.getClientRects()).filter(
+        rectIntersectsViewport,
+      );
+      if (rects.length === 0) continue;
+
+      const sideWidths = [
+        style.borderTopWidth,
+        style.borderRightWidth,
+        style.borderBottomWidth,
+        style.borderLeftWidth,
+      ];
+      const sideStyles = [
+        style.borderTopStyle,
+        style.borderRightStyle,
+        style.borderBottomStyle,
+        style.borderLeftStyle,
+      ];
+      const sideColors = [
+        style.borderTopColor,
+        style.borderRightColor,
+        style.borderBottomColor,
+        style.borderLeftColor,
+      ];
+      let visibleBorderSides = 0;
+      for (let i = 0; i < sideWidths.length; i += 1) {
+        const width = Number.parseFloat(sideWidths[i] || "0");
+        if (
+          width >= 0.5 &&
+          sideStyles[i] !== "none" &&
+          sideStyles[i] !== "hidden" &&
+          alphaOf(sideColors[i]) > 0.02
+        ) {
+          visibleBorderSides += 1;
+        }
+      }
+      borderDividerCount += visibleBorderSides;
+
+      const tag = node.tagName.toLowerCase();
+      const role = node.getAttribute("role");
+      const primaryRect = rects[0];
+      const thinHorizontal = primaryRect.height <= 2 && primaryRect.width >= 24;
+      const thinVertical = primaryRect.width <= 2 && primaryRect.height >= 24;
+      const hasDividerBackground =
+        alphaOf(style.backgroundColor) > 0.02 &&
+        (thinHorizontal || thinVertical);
+      if (tag === "hr" || role === "separator" || hasDividerBackground) {
+        borderDividerCount += 1;
+      }
+
+      const hasVisibleBackground = alphaOf(style.backgroundColor) > 0.02;
+      const hasShadow = style.boxShadow !== "none";
+      const isMedia = /^(canvas|img|picture|svg|video)$/.test(tag);
+      const isControl = node.matches(
+        "button, input, textarea, select, summary, [role='button'], [role='tab'], [role='switch'], [role='checkbox'], [contenteditable='true']",
+      );
+      const largestRectArea = Math.max(
+        ...rects.map((rect) => rect.width * rect.height),
+      );
+      const isPageShell =
+        node === document.body ||
+        node.id === "root" ||
+        tag === "main" ||
+        largestRectArea > viewportArea * 0.72;
+      if (
+        !isPageShell &&
+        (visibleBorderSides > 0 ||
+          hasDividerBackground ||
+          hasShadow ||
+          isMedia ||
+          isControl ||
+          (hasVisibleBackground && largestRectArea <= viewportArea * 0.45))
+      ) {
+        for (const rect of rects) markRect(rect);
+      }
+    }
+
+    let occupiedCells = 0;
+    for (const cell of occupied) occupiedCells += cell;
+    const whitespaceRatio =
+      occupied.length === 0 ? 1 : 1 - occupiedCells / occupied.length;
+
+    return {
+      borderDividerCount,
+      borderDividerDensity: Number(
+        (borderDividerCount / (viewportArea / 1_000_000)).toFixed(4),
+      ),
+      textDensity: Number((textChars / (viewportArea / 10_000)).toFixed(4)),
+      whitespaceRatio: Number(whitespaceRatio.toFixed(4)),
+    };
+  });
+}
+
+async function collectOverlayClearanceIssues(
+  page: Page,
+  overlaySelector: string,
+): Promise<string[]> {
+  return page.evaluate((selector) => {
+    const overlay = document.querySelector(selector);
+    if (!overlay) return [];
+    const viewportWidth =
+      window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight =
+      window.innerHeight || document.documentElement.clientHeight;
+    const issues: string[] = [];
+    const isVisible = (element: Element): boolean => {
+      const style = getComputedStyle(element);
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || "1") > 0.02
+      );
+    };
+    const overlayRects = Array.from(
+      overlay.querySelectorAll(
+        [
+          "[data-testid='chat-sheet']",
+          "[data-testid='chat-pill']",
+          "[data-testid='chat-sheet-grabber']",
+          "[data-testid='chat-suggestions']",
+          "[data-testid='overlay-model-download-status']",
+          "button",
+          "textarea",
+          "input",
+          "[role='button']",
+        ].join(","),
+      ),
+    )
+      .filter((element) => {
+        if (!isVisible(element)) return false;
+        const style = getComputedStyle(element);
+        const testId = element.getAttribute("data-testid");
+        return (
+          style.pointerEvents !== "none" ||
+          testId === "chat-sheet" ||
+          testId === "chat-suggestions" ||
+          testId === "overlay-model-download-status"
+        );
+      })
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    const rects =
+      overlayRects.length > 0
+        ? overlayRects
+        : [overlay.getBoundingClientRect()];
+    const margin = 1;
+    for (const rect of rects) {
+      if (
+        rect.left < -margin ||
+        rect.top < -margin ||
+        rect.right > viewportWidth + margin ||
+        rect.bottom > viewportHeight + margin
+      ) {
+        issues.push(
+          `overlay clipped (${Math.round(rect.left)},${Math.round(
+            rect.top,
+          )} ${Math.round(rect.width)}x${Math.round(
+            rect.height,
+          )} in ${viewportWidth}x${viewportHeight})`,
+        );
+        break;
+      }
+    }
+
+    const overlapArea = (a: DOMRect, b: DOMRect): number => {
+      const width = Math.max(
+        0,
+        Math.min(a.right, b.right) - Math.max(a.left, b.left),
+      );
+      const height = Math.max(
+        0,
+        Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top),
+      );
+      return width * height;
+    };
+    const isUsableRect = (rect: DOMRect): boolean =>
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.right > 0 &&
+      rect.bottom > 0 &&
+      rect.left < viewportWidth &&
+      rect.top < viewportHeight;
+    const intersectRects = (a: DOMRect, b: DOMRect): DOMRect => {
+      const left = Math.max(a.left, b.left);
+      const top = Math.max(a.top, b.top);
+      const right = Math.min(a.right, b.right);
+      const bottom = Math.min(a.bottom, b.bottom);
+      return new DOMRect(
+        left,
+        top,
+        Math.max(0, right - left),
+        Math.max(0, bottom - top),
+      );
+    };
+    const viewportRect = new DOMRect(0, 0, viewportWidth, viewportHeight);
+    const clipRectToVisibleAncestors = (
+      rect: DOMRect,
+      owner: Element,
+    ): DOMRect => {
+      let clipped = intersectRects(rect, viewportRect);
+      let ancestor: Element | null = owner.parentElement;
+      while (ancestor && ancestor !== document.documentElement) {
+        const style = getComputedStyle(ancestor);
+        if (
+          /(auto|scroll|hidden|clip)/.test(
+            `${style.overflowX} ${style.overflowY}`,
+          )
+        ) {
+          clipped = intersectRects(clipped, ancestor.getBoundingClientRect());
+          if (!isUsableRect(clipped)) return clipped;
+        }
+        ancestor = ancestor.parentElement;
+      }
+      return clipped;
+    };
+    const collectControlVisualRects = (control: Element): DOMRect[] => {
+      const rects: DOMRect[] = [];
+      const walker = document.createTreeWalker(control, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node.textContent?.trim()) continue;
+        const owner =
+          node.parentElement && control.contains(node.parentElement)
+            ? node.parentElement
+            : control;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        rects.push(
+          ...Array.from(range.getClientRects()).map((rect) =>
+            clipRectToVisibleAncestors(rect, owner),
+          ),
+        );
+        range.detach();
+      }
+      for (const element of Array.from(
+        control.querySelectorAll(
+          "svg, img, canvas, video, input, textarea, select, [role='switch'], [role='checkbox']",
+        ),
+      )) {
+        if (!isVisible(element)) continue;
+        rects.push(
+          clipRectToVisibleAncestors(element.getBoundingClientRect(), element),
+        );
+      }
+      return rects.filter(isUsableRect);
+    };
+    const controls = Array.from(
+      document.querySelectorAll(
+        "button, a[href], input, textarea, select, summary, [role='button'], [role='link'], [role='tab'], [role='switch'], [role='checkbox'], [contenteditable='true']",
+      ),
+    ).slice(0, 400);
+    for (const control of controls) {
+      if (overlay.contains(control) || control.contains(overlay)) continue;
+      const style = getComputedStyle(control);
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        Number(style.opacity || "1") <= 0.02
+      ) {
+        continue;
+      }
+      const rect = control.getBoundingClientRect();
+      const visibleControlRect = clipRectToVisibleAncestors(rect, control);
+      if (!isUsableRect(visibleControlRect)) continue;
+      const visualRects = collectControlVisualRects(control);
+      const testRects =
+        visualRects.length > 0 ? visualRects : [visibleControlRect];
+      const visualArea = testRects.reduce(
+        (total, visualRect) => total + visualRect.width * visualRect.height,
+        0,
+      );
+      const area = testRects.reduce(
+        (total, visualRect) =>
+          total +
+          rects.reduce(
+            (rectTotal, overlayRect) =>
+              rectTotal + overlapArea(overlayRect, visualRect),
+            0,
+          ),
+        0,
+      );
+      if (area < 96 || area < visualArea * 0.2) continue;
+      const label =
+        (
+          control.getAttribute("aria-label") ||
+          control.textContent?.trim().replace(/\s+/g, " ") ||
+          control.getAttribute("data-testid") ||
+          control.tagName.toLowerCase()
+        )
+          .slice(0, 36)
+          .trim() || control.tagName.toLowerCase();
+      issues.push(`overlay overlaps "${label}" (${Math.round(area)}px²)`);
+      if (issues.length >= 5) break;
+    }
+    return issues;
+  }, overlaySelector);
+}
+
 function renderManualReviewStub(finding: ViewFinding): string {
   const lines = [
     `# ${finding.slug} (${finding.viewport})`,
@@ -304,13 +812,12 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **border-radius violations (off-token):** ${finding.borderRadiusViolations.length ? finding.borderRadiusViolations.join(", ") : "none"}`,
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
+    `- **floating chat overlay clearance:** ${finding.overlayClearanceIssues.length ? finding.overlayClearanceIssues.join("; ") : "clear"}`,
     `- **readable content chars:** ${finding.readableChars}`,
-    `- **minimalism — border/divider density:** ${(() => {
-      const d = minimalismDensity(finding);
-      return d === null
-        ? "n/a"
-        : `${d.toFixed(1)}/Mpx² (${finding.borderDividerCount} dividers; ceiling ${MINIMALISM_DENSITY_CEILING})${d > MINIMALISM_DENSITY_CEILING ? " ⚠ over budget" : ""}`;
-    })()}`,
+    `- **border/divider density:** ${roundMetric(finding.borderDividerDensity)} (${finding.borderDividerCount} edges / 1M px)`,
+    `- **text density:** ${roundMetric(finding.textDensity)} chars / 10K px`,
+    `- **whitespace ratio:** ${roundMetric(finding.whitespaceRatio)}`,
+    `- **minimalism budget:** ${finding.minimalismBudget ? (finding.minimalismBudgetViolations.length ? finding.minimalismBudgetViolations.join("; ") : "pass") : "n/a"}`,
     `- **screenshot quality issues:** ${finding.qualityIssues.length ? finding.qualityIssues.join("; ") : "none"}`,
     "",
     "## Notes",
@@ -412,6 +919,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           .catch(() => {});
         const overlaySelector =
           "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay']";
+        const overlayRequired =
+          view.viewType !== "tui" &&
+          !OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(view.slug);
         const readPaint = async (): Promise<{
           readableChars: number;
           overlayPresent: boolean;
@@ -434,7 +944,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         let paint = await readPaint();
         for (
           let attempt = 0;
-          attempt < 12 && paint.readableChars < 10 && !paint.overlayPresent;
+          attempt < 12 &&
+          (paint.readableChars < 10 ||
+            (overlayRequired && !paint.overlayPresent));
           attempt += 1
         ) {
           await page.waitForTimeout(1000);
@@ -468,11 +980,23 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         const borderRadiusViolations = await collectBorderRadiusViolations(
           page,
         ).catch(() => []);
-        const { borderDividerCount, viewportArea } =
-          await collectBorderDividerMetrics(page).catch(() => ({
+        const overlayClearanceIssues = overlayPresent
+          ? await collectOverlayClearanceIssues(page, overlaySelector).catch(
+              () => [],
+            )
+          : [];
+        const densityMetrics = await collectAestheticDensityMetrics(page).catch(
+          () => ({
             borderDividerCount: 0,
-            viewportArea: 1,
-          }));
+            borderDividerDensity: 0,
+            textDensity: 0,
+            whitespaceRatio: 1,
+          }),
+        );
+        const minimalismBudget = systemMetricBudgetFor(view.slug, vp.name);
+        const minimalismBudgetViolations = minimalismBudget
+          ? evaluateAestheticMetricBudget(densityMetrics, minimalismBudget)
+          : [];
 
         const base = {
           slug: view.slug,
@@ -484,9 +1008,11 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           hoverViolations,
           borderRadiusViolations,
           overlayPresent,
+          overlayClearanceIssues,
           readableChars,
-          borderDividerCount,
-          viewportArea,
+          ...densityMetrics,
+          minimalismBudget,
+          minimalismBudgetViolations,
           quality,
           qualityIssues,
         };
@@ -524,14 +1050,21 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           `<tr><td>${f.slug}</td><td>${f.viewport}</td><td>${f.verdict}</td>` +
           `<td>${f.consoleErrors.length}</td><td>${f.blueColors.length}</td>` +
           `<td>${f.borderRadiusViolations.length}</td>` +
-          `<td>${f.hoverViolations.length}</td><td>${f.overlayPresent ? "✓" : "✗"}</td></tr>`,
+          `<td>${f.hoverViolations.length}</td><td>${f.overlayPresent ? "✓" : "✗"}</td>` +
+          `<td>${f.overlayClearanceIssues.length}</td>` +
+          `<td>${roundMetric(f.borderDividerDensity)}</td>` +
+          `<td>${roundMetric(f.textDensity)}</td>` +
+          `<td>${roundMetric(f.whitespaceRatio)}</td>` +
+          `<td>${f.minimalismBudgetViolations.length ? f.minimalismBudgetViolations.join("<br>") : "✓"}</td></tr>`,
       )
       .join("\n");
     await writeFile(
       path.join(outputDir, "contact-sheet.html"),
       `<!doctype html><meta charset="utf-8"><title>app aesthetic audit</title>` +
         `<table border="1" cellpadding="6"><tr><th>view</th><th>viewport</th>` +
-        `<th>verdict</th><th>console</th><th>blue</th><th>radius</th><th>hover</th><th>overlay</th></tr>` +
+        `<th>verdict</th><th>console</th><th>blue</th><th>radius</th><th>hover</th>` +
+        `<th>overlay</th><th>overlay clearance</th><th>border/divider density</th>` +
+        `<th>text density</th><th>whitespace ratio</th><th>minimalism budget</th></tr>` +
         `${rows}</table>`,
       "utf8",
     );
@@ -540,6 +1073,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     // on any `broken` view not covered by the debt allowlist.
     const broken = findings.filter((f) => f.verdict === "broken");
     const needsWork = findings.filter((f) => f.verdict === "needs-work");
+    const minimalismBudgetFailures = findings.filter(
+      (f) => f.minimalismBudgetViolations.length > 0,
+    );
     const undebtedBroken = broken.filter(
       (f) => AESTHETIC_VERDICT_DEBT[`${f.slug}-${f.viewport}`] !== "broken",
     );
@@ -548,8 +1084,26 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `broken=${broken.length} needs-work=${needsWork.length} ` +
         `needs-eyeball=${findings.filter((f) => f.verdict === "needs-eyeball").length} ` +
         `good=${findings.filter((f) => f.verdict === "good").length} ` +
+        `minimalism-budget-failures=${minimalismBudgetFailures.length} ` +
         `(strict=${AUDIT_STRICT}, undebted-broken=${undebtedBroken.length})`,
     );
+    if (minimalismBudgetFailures.length > 0) {
+      const detail = minimalismBudgetFailures
+        .map(
+          (f) =>
+            `  ${f.slug} @ ${f.viewport}: ${f.minimalismBudgetViolations.join(
+              "; ",
+            )}`,
+        )
+        .join("\n");
+      throw new Error(
+        `[aesthetic-audit] Minimalism metric budget failed for ` +
+          `${minimalismBudgetFailures.length} system view(s):\n${detail}\n` +
+          `Update the UI to reduce divider/text density or increase whitespace; ` +
+          `only adjust SYSTEM_VIEW_METRIC_BUDGETS when intentionally ratcheting ` +
+          `from a fresh clean baseline.`,
+      );
+    }
     if (AUDIT_STRICT && undebtedBroken.length > 0) {
       const detail = undebtedBroken
         .map(
