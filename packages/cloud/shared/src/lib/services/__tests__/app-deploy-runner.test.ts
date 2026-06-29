@@ -81,7 +81,7 @@ describe("resolveImageRef: image allowlist gate", () => {
 
   afterEach(() => {
     delete process.env.APP_DEFAULT_IMAGE;
-    delete process.env.CODING_CONTAINER_IMAGE_ALLOWLIST;
+    delete process.env.APPS_DEPLOY_IMAGE_ALLOWLIST;
   });
 
   test("rejects an imageTag outside the default allowlist", async () => {
@@ -112,7 +112,7 @@ describe("resolveImageRef: image allowlist gate", () => {
   });
 
   test("honors an operator-narrowed allowlist (rejects an off-list image)", async () => {
-    process.env.CODING_CONTAINER_IMAGE_ALLOWLIST = "ghcr.io/onlyme/*";
+    process.env.APPS_DEPLOY_IMAGE_ALLOWLIST = "ghcr.io/onlyme/*";
     await expect(
       resolveImageRef(buildOff, {
         ...baseApp,
@@ -124,6 +124,78 @@ describe("resolveImageRef: image allowlist gate", () => {
       metadata: { imageTag: "ghcr.io/onlyme/app:v1" },
     });
     expect(img).toBe("ghcr.io/onlyme/app:v1");
+  });
+});
+
+// De-personalized apps-deploy allowlist (owner directive: "no personal shit").
+// apps-deploy has its OWN allowlist (APPS_DEPLOY_IMAGE_ALLOWLIST) defaulting to
+// `ghcr.io/elizaos/*` ONLY — the personal `ghcr.io/dexploarer/*` and the
+// side-product `ghcr.io/waifufun/*` namespaces that the shared coding-container
+// allowlist still carries are REJECTED for apps-deploy unless an operator opts
+// them back in via the env. (The shared codingContainerImageAllowlist() default
+// is intentionally left unchanged for the coding-container path.)
+describe("resolveImageRef: apps-deploy allowlist is elizaos-only", () => {
+  const baseApp = { id: "app-1", name: "demo", metadata: {} as Record<string, unknown> };
+  const buildOff = { resolveImage: undefined } as unknown as AppDeployRunnerDeps;
+
+  afterEach(() => {
+    delete process.env.APPS_DEPLOY_IMAGE_ALLOWLIST;
+    delete process.env.CODING_CONTAINER_IMAGE_ALLOWLIST;
+  });
+
+  test("allows a first-party ghcr.io/elizaos/* image by default", async () => {
+    const img = await resolveImageRef(buildOff, {
+      ...baseApp,
+      metadata: { imageTag: "ghcr.io/elizaos/example-edad:showcase" },
+    });
+    expect(img).toBe("ghcr.io/elizaos/example-edad:showcase");
+  });
+
+  test("REJECTS ghcr.io/dexploarer/* by default (personal org)", async () => {
+    await expect(
+      resolveImageRef(buildOff, {
+        ...baseApp,
+        metadata: { imageTag: "ghcr.io/dexploarer/bnancy:latest" },
+      }),
+    ).rejects.toThrow(/is not permitted/);
+  });
+
+  test("REJECTS ghcr.io/waifufun/* by default (side product)", async () => {
+    await expect(
+      resolveImageRef(buildOff, {
+        ...baseApp,
+        metadata: { imageTag: "ghcr.io/waifufun/imagegen:latest" },
+      }),
+    ).rejects.toThrow(/is not permitted/);
+  });
+
+  test("does NOT read CODING_CONTAINER_IMAGE_ALLOWLIST (separate gate)", async () => {
+    // Widening the CODING allowlist must NOT widen apps-deploy: a dexploarer
+    // image stays rejected for apps-deploy even though the coding gate allows it.
+    process.env.CODING_CONTAINER_IMAGE_ALLOWLIST = "ghcr.io/dexploarer/*";
+    await expect(
+      resolveImageRef(buildOff, {
+        ...baseApp,
+        metadata: { imageTag: "ghcr.io/dexploarer/bnancy:latest" },
+      }),
+    ).rejects.toThrow(/is not permitted/);
+  });
+
+  test("opt-in via APPS_DEPLOY_IMAGE_ALLOWLIST re-allows dexploarer + waifufun", async () => {
+    process.env.APPS_DEPLOY_IMAGE_ALLOWLIST =
+      "ghcr.io/elizaos/*,ghcr.io/dexploarer/*,ghcr.io/waifufun/*";
+    expect(
+      await resolveImageRef(buildOff, {
+        ...baseApp,
+        metadata: { imageTag: "ghcr.io/dexploarer/bnancy:latest" },
+      }),
+    ).toBe("ghcr.io/dexploarer/bnancy:latest");
+    expect(
+      await resolveImageRef(buildOff, {
+        ...baseApp,
+        metadata: { imageTag: "ghcr.io/waifufun/imagegen:latest" },
+      }),
+    ).toBe("ghcr.io/waifufun/imagegen:latest");
   });
 });
 

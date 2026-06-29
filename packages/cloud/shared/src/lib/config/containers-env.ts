@@ -149,6 +149,37 @@ export const containersEnv = {
   },
 
   /**
+   * Allowlist of image refs/prefixes permitted for APPS-DEPLOY (Product 2) image
+   * deploys — DELIBERATELY SEPARATE from {@link codingContainerImageAllowlist}.
+   *
+   * Apps-deploy ships ONLY first-party template/app images under
+   * `ghcr.io/elizaos/*`, so its default allowlist is `ghcr.io/elizaos/*` and
+   * nothing else — no personal (`ghcr.io/dexploarer/*`) or side-product
+   * (`ghcr.io/waifufun/*`) namespaces. Those stay on the coding-container
+   * allowlist (its BYO-image path), and an operator can opt them back in for
+   * apps-deploy by setting `APPS_DEPLOY_IMAGE_ALLOWLIST` explicitly.
+   *
+   * Format + matching rules are identical to the coding allowlist
+   * (comma-separated glob prefixes; trailing `*` = prefix match; no `*` = exact;
+   * a bare `*` opts out). Returns the parsed, normalized list; an empty list
+   * disables the gate at parse time, but the call site
+   * (`isCodingContainerImageAllowed`) is fail-closed, so an explicit empty env
+   * denies every apps-deploy image rather than silently opening the gate.
+   */
+  appsDeployImageAllowlist(): string[] {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.APPS_DEPLOY_IMAGE_ALLOWLIST);
+    if (raw === undefined) {
+      // First-party elizaOS images only. Operators widen via env.
+      return ["ghcr.io/elizaos/*"];
+    }
+    return raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  },
+
+  /**
    * Whether image refs must be pinned to a full `@sha256:<64hex>` digest to be
    * accepted by the container image gate (in addition to the allowlist).
    *
