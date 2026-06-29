@@ -641,8 +641,41 @@ function installFakeCapture(): void {
 }
 
 /** Fire a final transcript through the most recent capture. */
-function fireFinalTranscript(text: string): void {
-  lastCaptureOpts?.onTranscript?.({ text, final: true, backend: "browser" });
+function fireFinalTranscript(
+  text: string,
+  extra: Partial<Parameters<NonNullable<CaptureOpts["onTranscript"]>>[0]> = {},
+): void {
+  lastCaptureOpts?.onTranscript?.({
+    text,
+    final: true,
+    backend: "browser",
+    ...extra,
+  });
+}
+
+function makeWav(nSamples: number, sampleRate = 16000): Uint8Array {
+  const dataBytes = nSamples * 2;
+  const buf = new ArrayBuffer(44 + dataBytes);
+  const view = new DataView(buf);
+  const ascii = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  ascii(36, "data");
+  view.setUint32(40, dataBytes, true);
+  return new Uint8Array(buf);
 }
 
 describe("useShellController — voice capture routing", () => {
@@ -1010,12 +1043,14 @@ describe("useShellController — transcription mode", () => {
     const sessions: Array<{
       segments: Array<{ text: string }>;
       startedAt: number;
+      audioWav: Uint8Array | null;
     }> = [];
     act(() =>
-      result.current.setTranscriptSessionSink((segments, startedAt) =>
+      result.current.setTranscriptSessionSink((segments, startedAt, audioWav) =>
         sessions.push({
           segments: segments as Array<{ text: string }>,
           startedAt,
+          audioWav,
         }),
       ),
     );
@@ -1046,6 +1081,43 @@ describe("useShellController — transcription mode", () => {
       "schedule a meeting with",
       "the design team tomorrow",
     ]);
+  });
+
+  it("waits for stop-drained transcript audio before finalizing the session", async () => {
+    const capturedWav = makeWav(1600);
+    createVoiceCaptureMock.mockImplementationOnce((opts: CaptureOpts) => {
+      lastCaptureOpts = opts;
+      const handle = {
+        start: vi.fn(() => Promise.resolve()),
+        stop: vi.fn(async () => {
+          await Promise.resolve();
+          opts.onTranscript?.({
+            text: "captured note",
+            final: true,
+            backend: "local-inference",
+            audioWav: capturedWav,
+          });
+          opts.onStateChange?.("stopped");
+        }),
+        dispose: vi.fn(),
+        getAnalyser: vi.fn(() => null),
+      };
+      captureHandles.push(handle);
+      return handle as never;
+    });
+
+    const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
+    await act(async () => {
+      await result.current.toggleTranscriptionMode();
+    });
+    await act(async () => {
+      await result.current.toggleTranscriptionMode();
+    });
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].segments.map((s) => s.text)).toEqual(["captured note"]);
+    expect(sessions[0].audioWav?.byteLength).toBeGreaterThan(1000);
   });
 
   it("an exit phrase finalizes the session and exits (exit utterance not recorded)", async () => {
