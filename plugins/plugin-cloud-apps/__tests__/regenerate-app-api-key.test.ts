@@ -1,0 +1,154 @@
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import {
+  captureCallback,
+  FakeElizaCloudClient,
+  keyedRuntime,
+  makeApp,
+  makeMessage,
+  resetSdk,
+  setListApps,
+  setRegenerateAppApiKey,
+  unkeyedRuntime,
+} from "./helpers";
+
+mock.module("@elizaos/cloud-sdk", () => ({
+  ElizaCloudClient: FakeElizaCloudClient,
+}));
+
+const { regenerateAppApiKeyAction } = await import(
+  "../src/actions/regenerate-app-api-key.ts"
+);
+
+const APP = makeApp({ id: "id-acme", name: "Acme Bot", slug: "acme-bot" });
+const NEW_KEY = "eliza_app_rotated_secret_value";
+
+/** Track rotate calls; returns the new key once. */
+function trackRotations(): { count: () => number } {
+  let count = 0;
+  setRegenerateAppApiKey(() => {
+    count += 1;
+    return Promise.resolve({ success: true, apiKey: NEW_KEY });
+  });
+  return { count: () => count };
+}
+
+describe("REGENERATE_APP_API_KEY", () => {
+  beforeEach(() => {
+    resetSdk();
+    setListApps(() => Promise.resolve({ success: true, apps: [APP] }));
+  });
+
+  it("validates only when a Cloud API key is present", async () => {
+    expect(
+      await regenerateAppApiKeyAction.validate(
+        keyedRuntime(),
+        makeMessage("x"),
+      ),
+    ).toBe(true);
+    expect(
+      await regenerateAppApiKeyAction.validate(
+        unkeyedRuntime(),
+        makeMessage("x"),
+      ),
+    ).toBe(false);
+  });
+
+  it("first ask: confirms and does NOT rotate", async () => {
+    const rotations = trackRotations();
+    const cb = captureCallback();
+    const result = await regenerateAppApiKeyAction.handler(
+      keyedRuntime(),
+      makeMessage("regenerate the API key for Acme Bot"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
+
+    expect(rotations.count()).toBe(0);
+    expect((result?.data as { rotated: boolean }).rotated).toBe(false);
+    expect(
+      (result?.data as { confirmationRequired: boolean }).confirmationRequired,
+    ).toBe(true);
+    const prompt = cb.calls[0]?.text ?? "";
+    expect(prompt).toContain("Acme Bot");
+    expect(prompt.toLowerCase()).toContain("immediately");
+    // The new key must NOT leak in the confirmation prompt.
+    expect(prompt).not.toContain(NEW_KEY);
+  });
+
+  it("explicit confirmation: rotates once and shows the new key exactly once", async () => {
+    const rotations = trackRotations();
+    const cb = captureCallback();
+    const result = await regenerateAppApiKeyAction.handler(
+      keyedRuntime(),
+      makeMessage("rotate Acme Bot — yes"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
+
+    expect(rotations.count()).toBe(1);
+    expect(result?.success).toBe(true);
+    expect((result?.data as { rotated: boolean }).rotated).toBe(true);
+
+    // The key is shown ONCE in the user-facing reply...
+    const replies = cb.calls.filter((c) => (c.text ?? "").includes(NEW_KEY));
+    expect(replies).toHaveLength(1);
+    expect(cb.calls[0]?.text?.toLowerCase()).toContain("won't be shown again");
+
+    // ...but never placed in the persisted `data` or summary `text`.
+    expect(JSON.stringify(result?.data)).not.toContain(NEW_KEY);
+    expect(result?.text ?? "").not.toContain(NEW_KEY);
+  });
+
+  it("handles a rotate that returns no key", async () => {
+    setRegenerateAppApiKey(() => Promise.resolve({ success: true }));
+    const cb = captureCallback();
+    const result = await regenerateAppApiKeyAction.handler(
+      keyedRuntime(),
+      makeMessage("rotate Acme Bot — yes"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
+    expect(result?.success).toBe(false);
+    expect((result?.data as { reason: string }).reason).toBe("no_key_returned");
+  });
+
+  it("returns not-found for an unknown app (no rotate)", async () => {
+    const rotations = trackRotations();
+    const result = await regenerateAppApiKeyAction.handler(
+      keyedRuntime(),
+      makeMessage("rotate Zephyr — yes"),
+      undefined,
+      undefined,
+      captureCallback().fn,
+    );
+    expect(rotations.count()).toBe(0);
+    expect((result?.data as { reason: string }).reason).toBe("not_found");
+  });
+
+  it("degrades gracefully with no Cloud API key", async () => {
+    const result = await regenerateAppApiKeyAction.handler(
+      unkeyedRuntime(),
+      makeMessage("rotate Acme Bot — yes"),
+      undefined,
+      undefined,
+      captureCallback().fn,
+    );
+    expect((result?.data as { reason: string }).reason).toBe("no_key");
+  });
+
+  it("surfaces a rotate API error", async () => {
+    setRegenerateAppApiKey(() => Promise.reject(new Error("boom")));
+    const result = await regenerateAppApiKeyAction.handler(
+      keyedRuntime(),
+      makeMessage("rotate Acme Bot — yes"),
+      undefined,
+      undefined,
+      captureCallback().fn,
+    );
+    expect(result?.success).toBe(false);
+    expect((result?.data as { reason: string }).reason).toBe("error");
+  });
+});

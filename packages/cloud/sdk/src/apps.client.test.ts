@@ -181,6 +181,21 @@ describe("ElizaCloudClient typed app methods", () => {
     });
   });
 
+  it("regenerateAppApiKey POSTs /api/v1/apps/:id/regenerate-api-key and returns the new key", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      apiKey: "eliza_app_rotated_secret",
+      message:
+        "API key regenerated successfully. Make sure to save it securely.",
+    });
+    const res = await client.regenerateAppApiKey("app_1");
+    expect(res.apiKey).toBe("eliza_app_rotated_secret");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/regenerate-api-key",
+      method: "POST",
+    });
+  });
+
   it("buyAppDomain (deferred stub) POSTs /api/v1/apps/:id/domains/buy with { domain }", async () => {
     const { client, requests } = createClientRecorder({
       success: true,
