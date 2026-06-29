@@ -148,6 +148,32 @@ const HostRpcArgsSchema = {
   composeState: z.object({ message: MemorySchema }).passthrough(),
 } as const;
 
+/**
+ * Envelope-level validation for the worker→host RPC messages this bridge
+ * dispatches. The producer always stamps a string `requestId` on these
+ * envelopes; a message that reaches a handler without its required fields is a
+ * protocol violation that must surface rather than be silently dropped (an
+ * rpc-result with no `requestId` would otherwise no-op against the pending map).
+ */
+const HandledWorkerEnvelopeSchemas: Partial<
+  Record<RemotePluginWorkerMessage["type"], z.ZodTypeAny>
+> = {
+  "worker-rpc-result": z
+    .object({
+      type: z.literal("worker-rpc-result"),
+      requestId: z.string(),
+      ok: z.boolean(),
+    })
+    .passthrough(),
+  "host-rpc": z
+    .object({
+      type: z.literal("host-rpc"),
+      requestId: z.string(),
+      method: z.string(),
+    })
+    .passthrough(),
+};
+
 function toActionResult(
   value: z.infer<typeof ActionHandlerWireResultSchema>,
 ): ActionResult | undefined {
@@ -355,6 +381,13 @@ export class RemotePluginBridge {
     if (isWorkerActionCallbackEnvelope(message)) {
       await this.handleActionCallback(message);
       return;
+    }
+
+    const envelopeSchema = HandledWorkerEnvelopeSchemas[message.type];
+    if (envelopeSchema && !envelopeSchema.safeParse(message).success) {
+      throw new Error(
+        `Invalid remote plugin worker message: ${message.type}`,
+      );
     }
 
     switch (message.type) {
@@ -729,7 +762,9 @@ export class RemotePluginBridge {
       if (result && typeof result === "object" && !Array.isArray(result)) {
         return result as ProviderResult;
       }
-      return { values: {}, data: {}, text: "" } as ProviderResult;
+      throw new Error(
+        `Remote provider ${name} returned invalid ProviderResult`,
+      );
     };
 
     const provider: Provider = {
