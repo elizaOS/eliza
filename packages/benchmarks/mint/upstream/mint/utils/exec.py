@@ -71,10 +71,21 @@ def check_correctness(
             os.rmdir = rmdir
             os.chdir = chdir
 
-    manager = multiprocessing.Manager()
+    # ``unsafe_execute`` is a closure over ``result``/``solution_code``/etc, which
+    # is unpicklable. The default ``spawn`` start method (macOS, Windows) pickles
+    # the target and fails with "Can't pickle local object"; only ``fork`` shares
+    # the parent address space and can run a closure target. This mirrors the
+    # upstream human-eval harness, which implicitly relies on fork. Fall back to
+    # the default context where fork is unavailable.
+    try:
+        ctx = multiprocessing.get_context("fork")
+    except ValueError:
+        ctx = multiprocessing.get_context()
+
+    manager = ctx.Manager()
     result = manager.list()
 
-    p = multiprocessing.Process(target=unsafe_execute)
+    p = ctx.Process(target=unsafe_execute)
     p.start()
     p.join(timeout=timeout + 1)
     if p.is_alive():
