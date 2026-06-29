@@ -52,6 +52,10 @@ import {
 import { ChatTurnStatusCtx } from "./ChatTurnStatusContext.hooks";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
+import {
+  FIRST_RUN_ACTION_PREFIX,
+  tryHandleFirstRunAction,
+} from "../first-run/first-run-action-channel";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext.hooks";
 import {
@@ -1308,7 +1312,7 @@ function AppProviderInner({
     handleNewConversation,
     sendChatText,
     handleChatSend,
-    sendActionMessage,
+    sendActionMessage: rawSendActionMessage,
     handleChatStop,
     handleChatRetry,
     handleChatEdit,
@@ -1318,6 +1322,25 @@ function AppProviderInner({
     handleRenameConversation,
     suggestConversationTitle,
   } = chatCallbacks;
+
+  // In-chat first-run interception: a first-run-scoped choice pick (reserved
+  // `__first_run__:` prefix) is consumed by the active onboarding conductor and
+  // MUST NOT reach the server. Every other value falls through to the real
+  // send funnel unchanged, so normal chat (including during/after onboarding)
+  // is unaffected. Widgets stay 100% display-only — both InlineWidgetText and
+  // MessageContent route picks through this single `sendActionMessage`.
+  const sendActionMessage = useCallback(
+    (text: string): Promise<void> => {
+      if (
+        text.startsWith(FIRST_RUN_ACTION_PREFIX) &&
+        tryHandleFirstRunAction(text)
+      ) {
+        return Promise.resolve();
+      }
+      return rawSendActionMessage(text);
+    },
+    [rawSendActionMessage],
+  );
 
   useEffect(() => {
     triggerRestartRef.current = triggerRestart;
@@ -1894,8 +1917,12 @@ function AppProviderInner({
     [setConversationMessages],
   );
   const conversationMessagesValue = useMemo(
-    () => ({ conversationMessages, removeConversationMessage }),
-    [conversationMessages, removeConversationMessage],
+    () => ({
+      conversationMessages,
+      removeConversationMessage,
+      setConversationMessages,
+    }),
+    [conversationMessages, removeConversationMessage, setConversationMessages],
   );
 
   // Live assistant-turn status (rich status indicator) lives in its own context

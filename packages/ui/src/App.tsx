@@ -56,6 +56,7 @@ import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
+import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
@@ -1566,10 +1567,13 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
-  const { characterData, agentStatus } = useAppSelectorShallow((s) => ({
-    characterData: s.characterData,
-    agentStatus: s.agentStatus,
-  }));
+  const { characterData, agentStatus, firstRunComplete } = useAppSelectorShallow(
+    (s) => ({
+      characterData: s.characterData,
+      agentStatus: s.agentStatus,
+      firstRunComplete: s.firstRunComplete,
+    }),
+  );
   const slash = useSlashCommandController();
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
@@ -1582,6 +1586,7 @@ function ContinuousChatOverlayMount(): ReactNode {
       controller={controller}
       agentName={agentName}
       slash={slash}
+      firstRunOpen={firstRunComplete === false}
     />
   );
 }
@@ -1684,15 +1689,24 @@ export function App() {
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
   // The live shell may MOUNT once the backend is reached and the agent boot is
-  // underway (starting-runtime / hydrating / ready) — first-turn capability then
-  // fades in behind it (see useShellController's agentReady). Only the truly
-  // pre-shell phases (session restore, backend polling, first-run, pairing,
-  // error) keep the full-screen StartupScreen. Runtime-dependent effects and
-  // overlay apps below stay gated on `isCoordinatorReady` and defer safely.
+  // underway (first-run-required / starting-runtime / hydrating / ready) —
+  // first-turn capability then fades in behind it (see useShellController's
+  // agentReady). first-run-required paints the shell so onboarding can run IN
+  // the live chat. Only the truly pre-shell phases (session restore, backend
+  // polling, pairing, error) keep the full-screen StartupScreen.
+  // Runtime-dependent effects and overlay apps below stay gated on
+  // `isCoordinatorReady` and defer safely.
   const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
 
+  // Skip the auth probe during first-run-required: there is no agent/session
+  // yet, so /api/auth/me would spuriously trip server_unavailable/unauthenticated
+  // on top of the in-chat onboarding (see useAuthStatus's own skip-during-first-run
+  // note). The in-chat conductor owns the first-run flow.
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
-    skip: !isShellPaintableNow || isPopout,
+    skip:
+      !isShellPaintableNow ||
+      startupCoordinator.phase === "first-run-required" ||
+      isPopout,
   });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
@@ -2163,7 +2177,11 @@ export function App() {
   // check /api/auth/me. "loading": wait (fall through to the main shell render).
   // "unauthenticated": render LoginView. "authenticated": proceed.
   // "server_unavailable": show a retryable startup failure.
-  if (isShellPaintableNow && !isPopout) {
+  if (
+    isShellPaintableNow &&
+    !isPopout &&
+    startupCoordinator.phase !== "first-run-required"
+  ) {
     if (authState.phase === "server_unavailable") {
       return (
         <BugReportProvider value={bugReport}>
@@ -2308,6 +2326,11 @@ export function App() {
           behind stays live.
         */}
         <ContinuousChatOverlayMount />
+        {/* In-chat first-run conductor (headless) — while firstRunComplete is
+            false it seeds the onboarding greeting + choices into the SAME live
+            transcript the overlay renders and routes first-run picks to the
+            headless finish use case. Renders null. */}
+        <FirstRunConductorMount />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial

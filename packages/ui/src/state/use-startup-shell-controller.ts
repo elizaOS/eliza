@@ -245,10 +245,13 @@ export function useStartupShellController(): StartupShellController {
     phase === "first-run-required" &&
     (showBootstrap ||
       (firstRunCloudProvisionedContainer && needsBootstrapSession()));
-  const showFirstRun =
-    (phase === "first-run-required" && !bootstrapRequired) ||
-    (phase === "ready" && !firstRunComplete);
 
+  // Onboarding now happens IN the live chat (homescreen + auto-opened
+  // ContinuousChatOverlay seeded by the headless first-run conductor), so the
+  // controller no longer forces a full-screen `first-run` view. For
+  // first-run-required (non-bootstrap) we yield `{ kind: "none" }` — the shell
+  // is painted by App.tsx (isShellPaintable now true for first-run-required)
+  // and any stray StartupScreen mount stays inert.
   let view: StartupShellView;
   if (startupErrorState) {
     view = { kind: "error", error: startupErrorState };
@@ -256,9 +259,7 @@ export function useStartupShellController(): StartupShellController {
     view = { kind: "pairing" };
   } else if (bootstrapRequired) {
     view = { kind: "bootstrap", onAdvance: handleBootstrapAdvance };
-  } else if (showFirstRun) {
-    view = { kind: "first-run" };
-  } else if (phase === "ready") {
+  } else if (phase === "ready" || phase === "first-run-required") {
     view = { kind: "none" };
   } else {
     view = {

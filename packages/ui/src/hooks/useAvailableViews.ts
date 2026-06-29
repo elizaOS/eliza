@@ -356,6 +356,10 @@ function useDefaultViewsNetworkEnabled(): boolean {
   const phase = useAppSelector((s) => s.startupCoordinator?.phase);
   if (!supportsFullAppShellRoutes(client.getBaseUrl())) return false;
   if (typeof phase !== "string") return true;
+  // first-run-required is now shell-paintable (onboarding runs in the live
+  // chat), but the agent does not exist yet — don't fetch network view
+  // registries until onboarding completes and the runtime is booting.
+  if (phase === "first-run-required") return false;
   return isShellPaintable(phase as StartupPhaseValue);
 }
 

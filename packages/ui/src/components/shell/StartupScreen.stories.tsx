@@ -23,17 +23,7 @@ export const Default: Story = {};
 // The presentational shell drives every startup state from its `view` prop,
 // so the variants below exercise each branch directly.
 function ShellStory({ view }: { view: StartupShellView }) {
-  return (
-    <StartupShell
-      view={view}
-      firstRun={
-        <div className="flex h-full w-full items-center justify-center text-center text-lg font-medium">
-          Welcome to elizaOS — let's set up your agent.
-        </div>
-      }
-      onRetry={() => {}}
-    />
-  );
+  return <StartupShell view={view} onRetry={() => {}} />;
 }
 
 export const Loading: Story = {
@@ -46,10 +36,6 @@ export const Loading: Story = {
       }}
     />
   ),
-};
-
-export const FirstRun: Story = {
-  render: () => <ShellStory view={{ kind: "first-run" }} />,
 };
 
 export const Pairing: Story = {

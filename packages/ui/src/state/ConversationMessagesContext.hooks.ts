@@ -13,7 +13,7 @@
  * Provider file stays React Fast Refresh-compatible.
  */
 
-import { createContext, useContext } from "react";
+import { createContext, type Dispatch, type SetStateAction, useContext } from "react";
 import type { ConversationMessage } from "../api";
 
 export interface ConversationMessagesValue {
@@ -23,12 +23,20 @@ export interface ConversationMessagesValue {
    * dismiss a proactive suggestion locally without a server round-trip.
    */
   removeConversationMessage: (messageId: string) => void;
+  /**
+   * Mutate the live transcript directly (supports the functional updater form).
+   * Used by the in-chat first-run conductor to seed synthetic onboarding
+   * assistant turns (greeting + CHOICE widgets + the Cloud-OAuth secretRequest)
+   * into the SAME transcript the floating chat renders. Stable identity.
+   */
+  setConversationMessages: Dispatch<SetStateAction<ConversationMessage[]>>;
 }
 
 export const ConversationMessagesCtx = createContext<ConversationMessagesValue>(
   {
     conversationMessages: [],
     removeConversationMessage: () => {},
+    setConversationMessages: () => {},
   },
 );
 
