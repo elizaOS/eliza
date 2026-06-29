@@ -231,7 +231,7 @@ const ClearNotificationsSchema = z
     },
   );
 
-function serializeNotificationForApi(
+export function serializeNotificationForApi(
   n: Record<string, unknown> & {
     actor?: Record<string, unknown> | null;
   },
