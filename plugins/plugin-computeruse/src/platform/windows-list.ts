@@ -16,6 +16,7 @@ import {
   validateWindowId,
 } from "./helpers.js";
 import { psHostAvailable, runPsHost } from "./ps-host.js";
+import { psSpawnTimeoutMs } from "./windows-timeouts.js";
 
 /**
  * Run a PowerShell snippet via the warm host when available (Windows), else a
@@ -33,9 +34,16 @@ async function runWindowsPowerShell(
   ps: string,
   timeoutMs: number,
 ): Promise<string> {
+  // Raise the per-call budget to the `ELIZA_COMPUTERUSE_PS_TIMEOUT_MS` floor so
+  // the operator escape hatch covers EVERY Windows window op centrally (#9581).
+  // The #10107 warm-host refactor routed these ops through here but dropped the
+  // floor #10100 had applied at each call site; reapplying it once here restores
+  // it for the warm-host path AND the cold one-shot fallback below — the latter
+  // is exactly where a Defender-heavy host (~11.6s cold spawn) needs the raise.
+  const budget = psSpawnTimeoutMs(timeoutMs);
   if (psHostAvailable()) {
     try {
-      return await runPsHost(ps, timeoutMs);
+      return await runPsHost(ps, budget);
     } catch (err) {
       // A SCRIPT-level error (the warm host ran the script and it threw, e.g.
       // `Window not found`) is authoritative — re-running it through a cold
@@ -52,7 +60,7 @@ async function runWindowsPowerShell(
       /* host unavailable/errored — fall back to one-shot spawn */
     }
   }
-  return runCommand("powershell", ["-Command", ps], timeoutMs);
+  return runCommand("powershell", ["-Command", ps], budget);
 }
 
 function escapeAppleScriptString(value: string): string {
@@ -230,7 +238,7 @@ const WINDOWS_LIST_PS =
 export async function warmWindowsCache(): Promise<void> {
   if (currentPlatform() !== "win32" || !psHostAvailable()) return;
   try {
-    const output = await runPsHost(WINDOWS_LIST_PS, 10000);
+    const output = await runPsHost(WINDOWS_LIST_PS, psSpawnTimeoutMs(15000));
     windowsCache = parseWindowsWindowList(output);
     windowsCachedAt = Date.now();
   } catch {
@@ -388,9 +396,15 @@ export function parseWindowsWindowList(output: string): WindowInfo[] {
 
 function listWindowsWindows(): WindowInfo[] {
   try {
+    // 15s base (matching the capture/clipboard budgets), raisable via
+    // ELIZA_COMPUTERUSE_PS_TIMEOUT_MS: this synchronous fallback runs when the
+    // warm host hasn't pre-seeded the cache, so it pays the full cold
+    // `powershell.exe` spawn tax (~11.6s under Defender, #9581). A 10s budget
+    // ETIMEDOUTs and is swallowed to [] — the documented "listWindows() returns
+    // 0 on a Defender-heavy host" failure (#9581 finding #2).
     const output = execSync(`powershell -Command "${WINDOWS_LIST_PS}"`, {
       encoding: "utf-8",
-      timeout: 10000,
+      timeout: psSpawnTimeoutMs(15000),
     });
     return parseWindowsWindowList(output);
   } catch {
@@ -1001,7 +1015,7 @@ export async function warmScreenSizeCache(): Promise<void> {
   try {
     const out = await runPsHost(
       "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::PrimaryScreen.Bounds | ConvertTo-Json -Compress",
-      10000,
+      psSpawnTimeoutMs(10000),
     );
     const b = JSON.parse(out);
     if (
@@ -1126,7 +1140,7 @@ function computeScreenSize(): ScreenSize | null {
     try {
       const output = execSync(WINDOWS_PRIMARY_SCREEN_SIZE_COMMAND, {
         encoding: "utf-8",
-        timeout: 5000,
+        timeout: psSpawnTimeoutMs(5000),
       });
       const bounds = JSON.parse(output);
       if (
