@@ -1,6 +1,6 @@
 {
   "benchmark": "recall-bench",
-  "generatedAt": "2026-06-29T18:46:05.716Z",
+  "generatedAt": "2026-06-29T19:35:42.759Z",
   "corpus": {
     "committed": true,
     "tier": "1k",
@@ -15,13 +15,13 @@
       "corpusSize": 1000,
       "queries": 40,
       "k": 5,
-      "precisionAtK": 0.8800000000000002,
-      "recallAtK": 0.8800000000000002,
-      "mrr": 0.8875,
-      "ndcgAtK": 0.863868262740087,
+      "precisionAtK": 0.9500000000000002,
+      "recallAtK": 0.9500000000000002,
+      "mrr": 0.9875,
+      "ndcgAtK": 0.9572638165022521,
       "hitRateAtK": 1,
-      "p50LatencyMs": 7.87350399999923,
-      "p95LatencyMs": 8.733158999999432,
+      "p50LatencyMs": 8.957470999999714,
+      "p95LatencyMs": 9.988763999999719,
       "measured": true
     },
     {
@@ -29,13 +29,13 @@
       "corpusSize": 1000,
       "queries": 40,
       "k": 5,
-      "precisionAtK": 0.7150000000000001,
-      "recallAtK": 0.7150000000000001,
-      "mrr": 0.7274999999999999,
-      "ndcgAtK": 0.6835947682141241,
+      "precisionAtK": 0.9650000000000001,
+      "recallAtK": 0.9650000000000001,
+      "mrr": 1,
+      "ndcgAtK": 0.9738548363300084,
       "hitRateAtK": 1,
-      "p50LatencyMs": 5.489093000000139,
-      "p95LatencyMs": 6.346172999999908,
+      "p50LatencyMs": 5.68361300000106,
+      "p95LatencyMs": 6.836228999998639,
       "measured": true
     },
     {
@@ -48,8 +48,8 @@
       "mrr": 0.6666666666666667,
       "ndcgAtK": 0.4224540926172685,
       "hitRateAtK": 0.775,
-      "p50LatencyMs": 53.38742900000034,
-      "p95LatencyMs": 68.2267869999996,
+      "p50LatencyMs": 54.40570799999841,
+      "p95LatencyMs": 67.8172369999993,
       "measured": true
     },
     {
@@ -62,22 +62,22 @@
       "mrr": 1,
       "ndcgAtK": 0.9738548363300084,
       "hitRateAtK": 1,
-      "p50LatencyMs": 5.904946000000564,
-      "p95LatencyMs": 6.941863000000012,
+      "p50LatencyMs": 6.501757000001817,
+      "p95LatencyMs": 7.770928999998432,
       "measured": true
     },
     {
-      "mode": "keyword-chat-scoreMemoryText",
+      "mode": "keyword-chat-bm25",
       "corpusSize": 1000,
       "queries": 40,
       "k": 5,
-      "precisionAtK": 0.09500000000000001,
-      "recallAtK": 0.09500000000000001,
-      "mrr": 0.30164605575829423,
-      "ndcgAtK": 0.12477920234057101,
-      "hitRateAtK": 0.4,
-      "p50LatencyMs": 0.6530650000004243,
-      "p95LatencyMs": 0.7631700000001729,
+      "precisionAtK": 0.37,
+      "recallAtK": 0.37,
+      "mrr": 0.6666666666666667,
+      "ndcgAtK": 0.4224540926172685,
+      "hitRateAtK": 0.775,
+      "p50LatencyMs": 2.190577999997913,
+      "p95LatencyMs": 2.6733669999994163,
       "measured": true
     },
     {
@@ -90,8 +90,8 @@
       "mrr": 1,
       "ndcgAtK": 1,
       "hitRateAtK": 1,
-      "p50LatencyMs": 6.4611970000005385,
-      "p95LatencyMs": 7.460430999999517,
+      "p50LatencyMs": 6.50785199999882,
+      "p95LatencyMs": 7.7064250000003085,
       "measured": true
     },
     {
@@ -104,61 +104,61 @@
       "mrr": 0.6666666666666667,
       "ndcgAtK": 0.4224540926172685,
       "hitRateAtK": 0.775,
-      "p50LatencyMs": 50.9256549999991,
-      "p95LatencyMs": 68.0599000000002,
+      "p50LatencyMs": 51.396293999998306,
+      "p95LatencyMs": 70.87417899999855,
       "measured": true
     }
   ],
   "failOpen": {
-    "vectorRecallAt5": 0.7150000000000001,
+    "vectorRecallAt5": 0.9650000000000001,
     "failOpenRecallAt5": 0.37,
-    "recallDrop": 0.3450000000000001,
+    "recallDrop": 0.5950000000000001,
     "observable": true
   },
   "metrics": {
-    "overall_recall_at_5": 0.8800000000000002,
-    "overall_ndcg_at_5": 0.863868262740087,
-    "overall_p95_latency_ms": 8.733158999999432
+    "overall_recall_at_5": 0.9500000000000002,
+    "overall_ndcg_at_5": 0.9572638165022521,
+    "overall_p95_latency_ms": 9.988763999999719
   },
   "checks": [
     {
       "name": "document-hybrid.minRecallAt5",
-      "value": 0.8800000000000002,
-      "budget": 0.7,
+      "value": 0.9500000000000002,
+      "budget": 0.85,
       "unit": "ratio",
       "pass": true
     },
     {
       "name": "document-hybrid.minNdcgAt5",
-      "value": 0.863868262740087,
-      "budget": 0.68,
+      "value": 0.9572638165022521,
+      "budget": 0.85,
       "unit": "ratio",
       "pass": true
     },
     {
       "name": "document-hybrid.maxP95LatencyMs",
-      "value": 8.733158999999432,
+      "value": 9.988763999999719,
       "budget": 750,
       "unit": "ms",
       "pass": true
     },
     {
       "name": "document-vector.minRecallAt5",
-      "value": 0.7150000000000001,
-      "budget": 0.55,
+      "value": 0.9650000000000001,
+      "budget": 0.85,
       "unit": "ratio",
       "pass": true
     },
     {
       "name": "document-vector.minNdcgAt5",
-      "value": 0.6835947682141241,
-      "budget": 0.54,
+      "value": 0.9738548363300084,
+      "budget": 0.85,
       "unit": "ratio",
       "pass": true
     },
     {
       "name": "document-vector.maxP95LatencyMs",
-      "value": 6.346172999999908,
+      "value": 6.836228999998639,
       "budget": 750,
       "unit": "ms",
       "pass": true
@@ -172,7 +172,7 @@
     },
     {
       "name": "document-keyword.maxP95LatencyMs",
-      "value": 68.2267869999996,
+      "value": 67.8172369999993,
       "budget": 750,
       "unit": "ms",
       "pass": true
@@ -180,34 +180,34 @@
     {
       "name": "searchMemories-vector.minRecallAt5",
       "value": 0.9650000000000001,
-      "budget": 0.8,
+      "budget": 0.85,
       "unit": "ratio",
       "pass": true
     },
     {
       "name": "searchMemories-vector.minNdcgAt5",
       "value": 0.9738548363300084,
-      "budget": 0.78,
+      "budget": 0.85,
       "unit": "ratio",
       "pass": true
     },
     {
       "name": "searchMemories-vector.maxP95LatencyMs",
-      "value": 6.941863000000012,
+      "value": 7.770928999998432,
       "budget": 750,
       "unit": "ms",
       "pass": true
     },
     {
-      "name": "keyword-chat-scoreMemoryText.minRecallAt5",
-      "value": 0.09500000000000001,
-      "budget": 0.05,
+      "name": "keyword-chat-bm25.minRecallAt5",
+      "value": 0.37,
+      "budget": 0.3,
       "unit": "ratio",
       "pass": true
     },
     {
-      "name": "keyword-chat-scoreMemoryText.maxP95LatencyMs",
-      "value": 0.7631700000001729,
+      "name": "keyword-chat-bm25.maxP95LatencyMs",
+      "value": 2.6733669999994163,
       "budget": 750,
       "unit": "ms",
       "pass": true
@@ -221,15 +221,15 @@
     },
     {
       "name": "facts-provider-keyword.maxP95LatencyMs",
-      "value": 7.460430999999517,
+      "value": 7.7064250000003085,
       "budget": 750,
       "unit": "ms",
       "pass": true
     },
     {
       "name": "failOpen.minObservableRecallDrop",
-      "value": 0.3450000000000001,
-      "budget": 0.15,
+      "value": 0.5950000000000001,
+      "budget": 0.3,
       "unit": "ratio",
       "pass": true
     }

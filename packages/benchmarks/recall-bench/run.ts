@@ -15,7 +15,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { scoreMemoryText } from "@elizaos/agent/api";
+import { rankByKeyword } from "@elizaos/agent/api";
 import type { Memory, State, UUID } from "@elizaos/core";
 // The FACTS provider is internal to @elizaos/core (not on the public barrel);
 // a benchmark legitimately reaches into the same source tree to drive the real
@@ -159,7 +159,7 @@ async function runSearchMemories(
       tableName: FRAGMENTS_TABLE,
       embedding,
       roomId: bench.agentId,
-      count: 20,
+      limit: 20,
     });
     latencies.push(performance.now() - t0);
     results.push({
@@ -177,7 +177,7 @@ async function runSearchMemories(
   };
 }
 
-/** The keyword chat-search scorer (`scoreMemoryText`) over the same corpus. */
+/** The keyword chat-search ranker (`rankByKeyword`, BM25) over the same corpus. */
 async function runKeywordChat(
   bench: BenchRuntime,
   corpus: Corpus,
@@ -196,11 +196,10 @@ async function runKeywordChat(
   const latencies: number[] = [];
   for (const q of corpus.queries) {
     const t0 = performance.now();
-    const ranked = fragments
-      .map((m) => ({ m, score: scoreMemoryText(m.content.text ?? "", q.text) }))
-      .filter((r) => r.score > 0)
+    const ranked = rankByKeyword(q.text, fragments, (m) => m.content.text ?? "")
+      .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
-      .map((r) => r.m);
+      .map(({ item }) => item);
     latencies.push(performance.now() - t0);
     results.push({
       retrieved: rankedDocIds(ranked, docIdByMemId),
@@ -208,7 +207,7 @@ async function runKeywordChat(
     });
   }
   return {
-    mode: "keyword-chat-scoreMemoryText",
+    mode: "keyword-chat-bm25",
     corpusSize: corpus.docs.length,
     ...summarizeRecall(results, K, latencies),
   };

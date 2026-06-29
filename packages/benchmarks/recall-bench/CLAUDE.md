@@ -36,10 +36,14 @@ repo root, or `bun run --cwd packages/benchmarks/recall-bench test` for units.
 - **`addDocument({ content })` must be base64-encoded** (`Buffer.from(text).toString("base64")`).
   The text path base64-decodes `content` as a heuristic; raw text misfires it
   ("File … appears to be corrupted or incorrectly encoded").
-- **`runtime.searchMemories` for the raw-vector slice omits `query`.** Passing a
-  `query` triggers `rerankMemories` (BM25), which *drops* zero-keyword-overlap
-  candidates — that is the right behavior for DocumentService's `vector` mode but
-  would hide pure-vector recall in the `searchMemories-vector` slice.
+- **Passing `query` to `runtime.searchMemories` triggers a BM25 rerank that
+  *drops* zero-keyword-overlap candidates** (`rerankMemories` → `search.ts` BM25,
+  `if (score <= 0) continue`). The raw-vector slice omits `query` to measure pure
+  cosine. This bench *caught* DocumentService's `vector`/`hybrid` modes passing
+  `query` (and `limit`, which the adapter ignores in favour of `count` → a silent
+  10-fragment pool) — two structural bugs that throttled document-vector to 0.715
+  vs the 0.965 cosine ceiling. Both are fixed in `service.ts`; the committed
+  baseline reflects the corrected pipeline.
 - **The fail-open slice calls `runtime.startRun()` before flipping the embedder
   to throw.** `embedRecallQuery` memoizes successful query vectors per run id; a
   fresh run id busts that cache so the throw actually reaches `_vectorSearch` and
