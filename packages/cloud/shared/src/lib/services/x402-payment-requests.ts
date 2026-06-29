@@ -22,6 +22,7 @@ import { apps } from "../../db/schemas/apps";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
+import { callbackRoomBelongsToOrganization } from "./callback-channel-authz";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { x402FacilitatorService } from "./x402-facilitator";
 
@@ -378,6 +379,16 @@ async function triggerChannelCallback(
   const roomId = stringValue(channel, "roomId") ?? stringValue(channel, "room_id");
   const agentId = stringValue(channel, "agentId") ?? stringValue(channel, "agent_id");
   if (!roomId || !agentId) return;
+
+  // The channel's roomId/agentId are attacker-controlled (set by the payment-
+  // request creator). Only write into the room if it belongs to the creator's
+  // org — otherwise a forged settlement message could be injected cross-tenant.
+  const authorized = await callbackRoomBelongsToOrganization({
+    roomId,
+    chargeOrganizationId: payment.organization_id,
+    logContext: "x402-payment-requests",
+  });
+  if (!authorized) return;
 
   const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add ?? 0);
   const source = stringValue(channel, "source") ?? "payment";
