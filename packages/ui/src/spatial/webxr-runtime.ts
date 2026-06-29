@@ -35,9 +35,84 @@
  */
 
 import { type PanelTexel, solidColorTexel } from "./panel-texture.ts";
+import "./webxr-polyfill.types.ts";
 import type { Quat, Vec3 } from "./xr-scene-math.ts";
 // `webxr-polyfill` is untyped; its constructor is declared ambiently in
 // ./webxr-polyfill.types.ts, which types the dynamic import below.
+
+export type WebXRSessionMode = "inline" | "immersive-vr" | "immersive-ar";
+export type WebXRReferenceSpaceType =
+  | "viewer"
+  | "local"
+  | "local-floor"
+  | "bounded-floor"
+  | "unbounded";
+
+export interface WebXRFrame {
+  getViewerPose(referenceSpace: WebXRReferenceSpace): WebXRViewerPose | null;
+}
+
+export interface WebXRSession {
+  requestAnimationFrame(callback: WebXRFrameRequestCallback): number;
+  requestReferenceSpace(
+    type: WebXRReferenceSpaceType,
+  ): Promise<WebXRReferenceSpace>;
+  updateRenderState(state: { baseLayer?: WebXRWebGLLayer }): void;
+  end(): Promise<void>;
+}
+
+interface WebXRSystem {
+  isSessionSupported(mode: WebXRSessionMode): Promise<boolean>;
+  requestSession(
+    mode: WebXRSessionMode,
+    options?: { requiredFeatures?: WebXRReferenceSpaceType[] },
+  ): Promise<WebXRSession>;
+}
+
+type WebXRReferenceSpace = object;
+
+interface WebXRViewerPose {
+  views: WebXRView[];
+}
+
+interface WebXRView {
+  projectionMatrix: Float32Array;
+  transform: {
+    inverse: {
+      matrix: Float32Array;
+    };
+  };
+}
+
+interface WebXRViewport {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+type WebXRFrameRequestCallback = (
+  time: DOMHighResTimeStamp,
+  frame: WebXRFrame,
+) => void;
+
+interface WebXRWebGLLayer {
+  framebuffer: WebGLFramebuffer;
+  getViewport(view: WebXRView): WebXRViewport | null;
+}
+
+interface WebXRWebGLLayerConstructor {
+  new (
+    session: WebXRSession,
+    context: WebGLRenderingContext | WebGL2RenderingContext,
+  ): WebXRWebGLLayer;
+}
+
+function getNavigatorXR(): WebXRSystem | undefined {
+  return (
+    globalThis.navigator as (Navigator & { xr?: WebXRSystem }) | undefined
+  )?.xr;
+}
 
 /** What the active WebXR runtime can do, after {@link ensureWebXR}. */
 export interface WebXRCapability {
@@ -80,10 +155,10 @@ export interface ImmersiveSceneOptions {
   /** The canvas whose WebGL context backs the `XRWebGLLayer`. */
   canvas: HTMLCanvasElement;
   panels: ImmersivePanel[];
-  referenceSpaceType?: XRReferenceSpaceType;
+  referenceSpaceType?: WebXRReferenceSpaceType;
   /** Called once per animation frame after the panels are drawn. */
   onFrame?: (info: {
-    frame: XRFrame;
+    frame: WebXRFrame;
     views: number;
     panelsDrawn: number;
   }) => void;
@@ -91,7 +166,7 @@ export interface ImmersiveSceneOptions {
 }
 
 export interface ImmersiveSceneHandle {
-  session: XRSession;
+  session: WebXRSession;
   /** Frames rendered so far (for tests / telemetry). */
   readonly frames: number;
   /**
@@ -111,9 +186,9 @@ let polyfillInstalled = false;
  * runs only where WebXR is native.
  */
 export async function ensureWebXR(): Promise<WebXRCapability> {
-  const nav = globalThis.navigator as Navigator | undefined;
-  if (nav && "xr" in nav && nav.xr) {
-    return capabilityFrom(nav.xr, /* native */ !polyfillInstalled);
+  const xr = getNavigatorXR();
+  if (xr) {
+    return capabilityFrom(xr, /* native */ !polyfillInstalled);
   }
   // Missing — install the polyfill once.
   try {
@@ -130,9 +205,9 @@ export async function ensureWebXR(): Promise<WebXRCapability> {
       inline: false,
     };
   }
-  const xr = (globalThis.navigator as Navigator | undefined)?.xr;
-  return xr
-    ? capabilityFrom(xr, /* native */ false)
+  const installedXR = getNavigatorXR();
+  return installedXR
+    ? capabilityFrom(installedXR, /* native */ false)
     : {
         present: false,
         native: false,
@@ -145,7 +220,7 @@ export async function ensureWebXR(): Promise<WebXRCapability> {
 
 /** Report the current runtime's capability without installing anything. */
 export async function detectWebXRCapability(): Promise<WebXRCapability> {
-  const xr = (globalThis.navigator as Navigator | undefined)?.xr;
+  const xr = getNavigatorXR();
   if (!xr) {
     return {
       present: false,
@@ -160,10 +235,10 @@ export async function detectWebXRCapability(): Promise<WebXRCapability> {
 }
 
 async function capabilityFrom(
-  xr: XRSystem,
+  xr: WebXRSystem,
   native: boolean,
 ): Promise<WebXRCapability> {
-  const supported = async (mode: XRSessionMode) => {
+  const supported = async (mode: WebXRSessionMode) => {
     try {
       return await xr.isSessionSupported(mode);
     } catch {
@@ -195,7 +270,7 @@ async function capabilityFrom(
 export async function enterImmersiveScene(
   opts: ImmersiveSceneOptions,
 ): Promise<ImmersiveSceneHandle> {
-  const xr = (globalThis.navigator as Navigator | undefined)?.xr;
+  const xr = getNavigatorXR();
   if (!xr)
     throw new Error(
       "[webxr] navigator.xr unavailable — call ensureWebXR() first",
@@ -213,7 +288,11 @@ export async function enterImmersiveScene(
   const session = await xr.requestSession(mode, {
     requiredFeatures: [opts.referenceSpaceType ?? "local"],
   });
-  const layer = new XRWebGLLayer(session, gl);
+  const XRWebGLLayerCtor = (
+    globalThis as { XRWebGLLayer?: WebXRWebGLLayerConstructor }
+  ).XRWebGLLayer;
+  if (!XRWebGLLayerCtor) throw new Error("[webxr] XRWebGLLayer unavailable");
+  const layer = new XRWebGLLayerCtor(session, gl);
   session.updateRenderState({ baseLayer: layer });
   const refSpace = await session.requestReferenceSpace(
     opts.referenceSpaceType ?? "local",
@@ -281,7 +360,7 @@ export async function enterImmersiveScene(
 
   const state = { frames: 0, ended: false };
 
-  const onXRFrame: XRFrameRequestCallback = (_t, frame) => {
+  const onXRFrame: WebXRFrameRequestCallback = (_t, frame) => {
     if (state.ended) return;
     session.requestAnimationFrame(onXRFrame);
     try {
