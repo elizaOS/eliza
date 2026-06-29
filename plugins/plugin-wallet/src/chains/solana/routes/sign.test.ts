@@ -102,18 +102,33 @@ describe("Solana browser signing routes", () => {
     }
   });
 
-  it("handles OPTIONS and mirrors the caller origin in CORS headers", async () => {
+  it("never reflects an arbitrary cross-origin or sends credentialed CORS", async () => {
     const response = res();
     await route("wallet-solana-sign-message").handler(
-      req({ method: "OPTIONS", origin: "https://dapp.example" }),
+      req({ method: "OPTIONS", origin: "https://attacker.example" }),
       response,
       runtime("1234567890abcdef")
     );
 
     expect(response.statusCode).toBe(204);
     expect(response.body).toEqual({});
-    expect(response.headers["Access-Control-Allow-Origin"]).toBe("https://dapp.example");
+    // ACAO must NOT echo the attacker origin, and credentials must be absent.
+    expect(response.headers["Access-Control-Allow-Origin"]).toBeUndefined();
+    expect(response.headers["Access-Control-Allow-Credentials"]).not.toBe("true");
     expect(response.headers["Access-Control-Allow-Headers"]).toContain("X-Wallet-Sign-Token");
+  });
+
+  it("allows a loopback origin without credentialed CORS", async () => {
+    const response = res();
+    await route("wallet-solana-sign-message").handler(
+      req({ method: "OPTIONS", origin: "http://127.0.0.1:2138" }),
+      response,
+      runtime("1234567890abcdef")
+    );
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["Access-Control-Allow-Origin"]).toBe("http://127.0.0.1:2138");
+    expect(response.headers["Access-Control-Allow-Credentials"]).toBeUndefined();
   });
 
   it("validates message body shape before resolving wallet backend", async () => {
