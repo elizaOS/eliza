@@ -31,6 +31,7 @@ import {
   SessionCwdService,
 } from "@elizaos/plugin-coding-tools";
 import { initializeAgent } from "./lib/agent.js";
+import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import {
   ensureSessionIdentity,
@@ -65,6 +66,24 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= cwd;
       process.env.SHELL_ALLOWED_DIRECTORY ??= cwd;
     }
+    // Drop-in for the opencode coding sub-agent: when the host configured
+    // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no
+    // explicit OPENAI_*, inherit that provider config so eliza-code runs on the
+    // same backend with zero extra setup. The orchestrator forwards the parent
+    // env to this spawned process.
+    applyOpencodeProviderEnv(process.env);
+    // Isolated, ephemeral database for this coding sub-agent. PGlite is
+    // single-process: the parent bot (and any other concurrently-spawned
+    // eliza-code sub-agent) holds the PGlite dir under ELIZA_STATE_DIR, so a
+    // spawned eliza-code that inherits the same dir crashes on init with
+    // "this.adapter is undefined" → the orchestrator reports state_lost and the
+    // respawn fails (observed live: intermittent app-build failures under
+    // concurrent/overlapping requests). A coding agent works on the filesystem,
+    // not the DB, so force an in-memory DB and don't inherit the parent's
+    // Postgres/PGlite connection. (Force-set: this must win over inherited env.)
+    process.env.PGLITE_DATA_DIR = ":memory:";
+    process.env.DATABASE_URL = "";
+    process.env.POSTGRES_URL = "";
     runtimePromise = (async () => {
       // Resolve the session identity FIRST and mark its user as the runtime OWNER
       // — the coding tools are role-gated (FILE=ADMIN, SHELL=OWNER), so without

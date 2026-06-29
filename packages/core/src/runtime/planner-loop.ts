@@ -338,10 +338,7 @@ export async function runPlannerLoop(
 							status: "finished",
 							trajectory,
 							finalMessage: userSafeFinalMessage(
-								preferredFinalMessageFromToolOrModel(
-									trajectory,
-									plannerOutput.messageToUser,
-								),
+								codingFinalMessage(trajectory, plannerOutput.messageToUser),
 								trajectory,
 							),
 						};
@@ -640,7 +637,15 @@ export async function runPlannerLoop(
 				trajectory,
 				finalMessage: suppressReply
 					? ""
-					: userSafeFinalMessage(latestResult.text, trajectory),
+					: userSafeFinalMessage(
+							// Coding mode: drop a junk/empty terminal reply and fall back to
+							// a synthesized "what I did" summary so the sub-agent never
+							// relays garbage or an empty reply after doing real work.
+							codingDrainQueue
+								? codingFinalMessage(trajectory, latestResult.text)
+								: latestResult.text,
+							trajectory,
+						),
 			};
 		}
 
@@ -2681,6 +2686,111 @@ export function singleVerifiedUserFacingToolResultText(
 	if (result?.verifiedUserFacing !== true) return undefined;
 	const text = result.userFacingText?.trim();
 	return text || undefined;
+}
+
+/**
+ * Synthesize a short "here's what I did" summary from the coding tools a turn
+ * executed (FILE writes/edits, SHELL runs). Used as the LAST-resort fallback for
+ * the eliza-code coding sub-agent so it always relays a result — a weak model can
+ * edit files correctly then end the turn with no final text, which would otherwise
+ * surface as an EMPTY reply even though the work succeeded (observed: a SWE-bench
+ * fix applied perfectly but relayed nothing). Returns undefined when no coding
+ * tool ran (so chat turns are unaffected).
+ */
+function codingActionSummary(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	const parts: string[] = [];
+	for (const step of trajectory.steps) {
+		if (step.result?.success === false) continue;
+		const name = step.toolCall?.name?.toUpperCase();
+		const params = (step.toolCall?.params ?? {}) as Record<string, unknown>;
+		if (name === "FILE") {
+			const action = String(params.action ?? "").toLowerCase();
+			const rawPath = params.file_path ?? params.path;
+			const path =
+				typeof rawPath === "string"
+					? (rawPath.split("/").pop() ?? rawPath)
+					: undefined;
+			if (path && (action === "write" || action === "create")) {
+				parts.push(`wrote ${path}`);
+			} else if (path && action === "edit") {
+				parts.push(`edited ${path}`);
+			}
+		} else if (name === "SHELL") {
+			const cmd = params.command;
+			if (typeof cmd === "string" && cmd.trim()) {
+				parts.push(`ran \`${compactText(cmd.trim(), 60)}\``);
+			}
+		} else if (name === "WORKTREE") {
+			parts.push("managed a git worktree");
+		}
+	}
+	if (parts.length === 0) return undefined;
+	const unique = [...new Set(parts)].slice(0, 8);
+	const summary = unique.join("; ");
+	return `Done — ${summary.charAt(0).toUpperCase()}${summary.slice(1)}.`;
+}
+
+/**
+ * In coding mode a weak model sometimes ends a successful turn with a junk
+ * "reply" — the literal word "None"/"null", or a tool-call emitted as text
+ * (`<tool_call>…`, a raw JSON action blob). Treating those as a real
+ * user-facing message surfaces garbage to the user even though the build
+ * succeeded. Detect them so the caller can fall back to a synthesized summary.
+ */
+function isJunkCodingReply(text: unknown): boolean {
+	if (typeof text !== "string") return true;
+	const t = text.trim();
+	if (t.length === 0) return true;
+	const lower = t.toLowerCase();
+	if (
+		lower === "none" ||
+		lower === "null" ||
+		lower === "n/a" ||
+		lower === "undefined"
+	) {
+		return true;
+	}
+	if (/^(<tool_call|<arg_key|<arg_value|```json|\[?\s*\{.*"(action|decision|tool_calls|thought)"\s*:)/.test(t)) {
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Strip reasoning-model scaffolding that leaks into a final reply: a
+ * `<think>…</think>` block, or a stray closing `</think>` with the chain-of-
+ * thought before it (keep only the answer after the last `</think>`). Observed
+ * with glm-4.7 on Cerebras: "…Let me verify.</think>I've fixed both validators…".
+ */
+function stripReasoningArtifacts(text: string): string {
+	let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+	const lastClose = out.toLowerCase().lastIndexOf("</think>");
+	if (lastClose >= 0) out = out.slice(lastClose + "</think>".length);
+	return out.replace(/<\/?think>/gi, "").trim();
+}
+
+/**
+ * Coding-mode user-facing reply: strip reasoning artifacts, drop a junk model
+ * message, and fall back to a synthesized "what I did" summary — so the
+ * eliza-code sub-agent always relays a clean result for successful work
+ * (matching a polished coding agent's output).
+ */
+function codingFinalMessage(
+	trajectory: PlannerTrajectory,
+	modelMessage: unknown,
+): string | undefined {
+	const cleaned =
+		typeof modelMessage === "string"
+			? stripReasoningArtifacts(modelMessage)
+			: modelMessage;
+	const clean = isJunkCodingReply(cleaned) ? undefined : cleaned;
+	return preferredFinalMessageFromToolOrModel(
+		trajectory,
+		clean,
+		codingActionSummary(trajectory),
+	);
 }
 
 function preferredFinalMessageFromToolOrModel(
