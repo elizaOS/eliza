@@ -10,6 +10,13 @@ on:
   workflow_dispatch:
 
 # Default to least privilege. Override per-job where needed.
+# cancel superseded in-flight runs for the same PR to free hosted-runner
+# capacity. only cancels pull_request runs; push runs on protected branches
+# (main/develop) are never cancelled mid-flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
