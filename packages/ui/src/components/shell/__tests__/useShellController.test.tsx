@@ -279,6 +279,58 @@ describe("useShellController — conversation loading watchdog", () => {
     expect(appMock.value.handleSelectConversation).toHaveBeenCalledWith("b");
     expect(result.current.conversationLoading).toBe(false);
   });
+
+  it("drops stale swipe callbacks while a conversation switch is pending", async () => {
+    let resolveSwitch: (() => void) | undefined;
+    appMock.value.conversations = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    appMock.value.activeConversationId = "b";
+    appMock.value.handleSelectConversation = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSwitch = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() => useShellController());
+    const staleNav = result.current.conversationNav;
+
+    act(() => {
+      staleNav.goNext();
+      staleNav.goPrev();
+    });
+
+    expect(
+      appMock.value.handleSelectConversation,
+    ).toHaveBeenCalledExactlyOnceWith("c");
+    expect(result.current.conversationLoading).toBe(true);
+
+    await act(async () => {
+      resolveSwitch?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+  });
+
+  it("re-resolves a stale swipe callback against the latest active conversation", async () => {
+    appMock.value.conversations = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    appMock.value.activeConversationId = "b";
+
+    const { result, rerender } = renderHook(() => useShellController());
+    const staleNav = result.current.conversationNav;
+
+    appMock.value.activeConversationId = "a";
+    rerender();
+
+    await act(async () => {
+      staleNav.goNext();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(
+      appMock.value.handleSelectConversation,
+    ).toHaveBeenCalledExactlyOnceWith("b");
+    expect(result.current.conversationLoading).toBe(false);
+  });
 });
 
 // ── Rich turn status derivation (#8813) ──────────────────────────────────────
