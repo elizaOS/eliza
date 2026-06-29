@@ -107,6 +107,21 @@ export type {
 } from "./planner-types";
 
 const DEFAULT_PLANNER_MAX_TOKENS = 1024;
+// A chat planner turn emits a short structured envelope, so 1024 is plenty. A
+// CODING turn emits the full content of a file inside the FILE tool call — a
+// single-file web app is easily 1.5k-4k tokens — so the 1024 cap truncates the
+// generation mid-file, producing a malformed/incomplete tool call that lands
+// nothing on disk. (Root cause of eliza-code's HTML-app failures on Cerebras:
+// small files succeeded, dice ~1k tokens was a coin-flip, tip-calc ~1.8k always
+// failed.) opencode lets the model use its full output budget; mirror that for
+// coding turns. Overridable via ELIZA_CODING_PLANNER_MAX_TOKENS.
+const CODING_PLANNER_MAX_TOKENS = ((): number => {
+	const raw = Number(process.env.ELIZA_CODING_PLANNER_MAX_TOKENS);
+	return Number.isFinite(raw) && raw > 0 ? raw : 16384;
+})();
+const PLANNER_FULL_ACTION_SURFACE_ON =
+	process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase() === "1" ||
+	process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase() === "true";
 
 interface RawPlannerOutput {
 	action?: unknown;
@@ -1221,7 +1236,9 @@ async function callPlanner(params: {
 			}),
 			modelInputBudget,
 		),
-		maxTokens: DEFAULT_PLANNER_MAX_TOKENS,
+		maxTokens: PLANNER_FULL_ACTION_SURFACE_ON
+			? CODING_PLANNER_MAX_TOKENS
+			: DEFAULT_PLANNER_MAX_TOKENS,
 	};
 	modelParams.providerOptions = {
 		...modelParams.providerOptions,
