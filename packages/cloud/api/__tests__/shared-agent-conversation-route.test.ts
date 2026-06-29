@@ -32,11 +32,13 @@ function patchConversation(body: unknown, origin?: string): Promise<Response> {
     "Content-Type": "application/json",
   };
   if (origin) headers.Origin = origin;
-  return conversationRoute.request("/", {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify(body),
-  });
+  return Promise.resolve(
+    conversationRoute.request("/", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 function deleteConversation(origin?: string): Promise<Response> {
@@ -44,7 +46,9 @@ function deleteConversation(origin?: string): Promise<Response> {
     Authorization: "Bearer user-api-key",
   };
   if (origin) headers.Origin = origin;
-  return conversationRoute.request("/", { method: "DELETE", headers });
+  return Promise.resolve(
+    conversationRoute.request("/", { method: "DELETE", headers }),
+  );
 }
 
 describe("shared agent conversation route", () => {
