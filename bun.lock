@@ -3415,21 +3415,6 @@
         "typescript": "^6.0.3",
       },
     },
-    "plugins/plugin-eliza-classic": {
-      "name": "@elizaos/plugin-eliza-classic",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-      "devDependencies": {
-        "tsup": "8.5.1",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.18",
-      },
-      "peerDependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-    },
     "plugins/plugin-elizacloud": {
       "name": "@elizaos/plugin-elizacloud",
       "version": "2.0.3-beta.7",
@@ -6369,8 +6354,6 @@
     "@elizaos/plugin-edge-tts": ["@elizaos/plugin-edge-tts@workspace:plugins/plugin-edge-tts"],
 
     "@elizaos/plugin-elevenlabs": ["@elizaos/plugin-elevenlabs@workspace:plugins/plugin-elevenlabs"],
-
-    "@elizaos/plugin-eliza-classic": ["@elizaos/plugin-eliza-classic@workspace:plugins/plugin-eliza-classic"],
 
     "@elizaos/plugin-elizacloud": ["@elizaos/plugin-elizacloud@workspace:plugins/plugin-elizacloud"],
 
