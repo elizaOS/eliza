@@ -713,8 +713,15 @@ export async function persistConversationRoomTitle(
 // Wallet context augmentation
 // ---------------------------------------------------------------------------
 
+// Wallet-context augmentation should only fire on genuine wallet/crypto intent.
+// Bare words like "token", "send", "sol", "eth", or "address" often appear in
+// normal developer tasks and should not inject wallet context by themselves.
 const WALLET_CONTEXT_INTENT_RE =
-  /\b(wallet|address|balance|swap|trade|transfer|send|token|bnb|eth|sol|onchain|on-chain)\b/i;
+  /\b(wallet|on-?chain)\b|\b(swap|trade|transfer|buy|sell|approve)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))|(?:\b(?:token|eth|sol|t?bnb)\b(?=[\s\S]{0,40}\b(?:wallet|balance|swap|trade|transfer|address|crypto|coin|on-?chain)\b))|(?:\b(?:balance|holdings|portfolio|funds)\b(?=[\s\S]{0,40}\b(?:wallet|crypto|coin|on-?chain|address)\b))/i;
+
+export function isWalletContextAugmentationIntent(prompt: string): boolean {
+  return WALLET_CONTEXT_INTENT_RE.test(prompt);
+}
 
 function buildWalletContextPrompt(
   runtime: AgentRuntime,
@@ -766,7 +773,7 @@ export function maybeAugmentChatMessageWithWalletContext(
 ): ReturnType<typeof createMessageMemory> {
   const userPrompt = extractCompatTextContent(message.content).trim();
   if (!userPrompt) return message;
-  if (!WALLET_CONTEXT_INTENT_RE.test(userPrompt)) return message;
+  if (!isWalletContextAugmentationIntent(userPrompt)) return message;
   return {
     ...message,
     content: {
