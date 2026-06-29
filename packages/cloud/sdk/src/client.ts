@@ -9,9 +9,14 @@ import {
   type ApiKeyCreateResponse,
   type ApiKeyListResponse,
   type AppCreditsBalanceResponse,
+  type AppDeployStatusResponse,
   type AppEarningsHistoryResponse,
   type AppEarningsResponse,
+  type AppMonetizationResponse,
+  type AppResponse,
   type AuthPairResponse,
+  type BuyAppDomainInput,
+  type BuyAppDomainResponse,
   type ChatCompletionRequest,
   type ChatCompletionResponse,
   type CliLoginPollResponse,
@@ -31,6 +36,8 @@ import {
   type CreateAppChargeResponse,
   type CreateAppCreditsCheckoutRequest,
   type CreateAppCreditsCheckoutResponse,
+  type CreateAppInput,
+  type CreateAppResponse,
   type CreateContainerRequest,
   type CreateContainerResponse,
   type CreateCreditsCheckoutRequest,
@@ -44,6 +51,9 @@ import {
   DEFAULT_ELIZA_CLOUD_API_BASE_URL,
   DEFAULT_ELIZA_CLOUD_API_ORIGIN,
   DEFAULT_ELIZA_CLOUD_BASE_URL,
+  type DeleteAppResponse,
+  type DeployAppInput,
+  type DeployAppResponse,
   type ElizaCloudClientOptions,
   type EmbeddingsRequest,
   type EmbeddingsResponse,
@@ -59,6 +69,7 @@ import {
   type LinkAffiliateRequest,
   type LinkAffiliateResponse,
   type ListAppChargesResponse,
+  type ListAppsResponse,
   type ListRedemptionsResponse,
   type ListX402PaymentRequestsResponse,
   type ModelListResponse,
@@ -74,6 +85,8 @@ import {
   type SettleX402PaymentRequestResponse,
   type SnapshotListResponse,
   type SnapshotType,
+  type UpdateAppInput,
+  type UpdateAppMonetizationInput,
   type UpdateContainerRequest,
   type UpsertAffiliateCodeRequest,
   type UserProfileResponse,
@@ -711,6 +724,95 @@ export class ElizaCloudClient {
   ): Promise<ListRedemptionsResponse> {
     return this.request<ListRedemptionsResponse>("GET", "/api/v1/redemptions", {
       query: options.limit === undefined ? undefined : { limit: options.limit },
+    });
+  }
+
+  // ─── Apps (Eliza Cloud Apps product) ──────────────────────────────────────
+  // Typed wrappers over the generated `routes.*` app endpoints. These are the
+  // foundation the agent plugin builds on: every method returns a concrete DTO
+  // (no `unknown` in the public signature) and targets the same route + verb the
+  // server exposes.
+
+  /** `GET /api/v1/apps` — list apps for the authenticated org. */
+  listApps(): Promise<ListAppsResponse> {
+    return this.routes.getApiV1Apps<ListAppsResponse>();
+  }
+
+  /** `GET /api/v1/apps/:id` — fetch a single app. */
+  getApp(appId: string): Promise<AppResponse> {
+    return this.routes.getApiV1AppsById<AppResponse>({
+      pathParams: { id: appId },
+    });
+  }
+
+  /** `POST /api/v1/apps` — create an app (provisions its API key + optional repo). */
+  createApp(input: CreateAppInput): Promise<CreateAppResponse> {
+    return this.routes.postApiV1Apps<CreateAppResponse>({ json: input });
+  }
+
+  /** `PATCH /api/v1/apps/:id` — partially update an app. */
+  updateApp(appId: string, patch: UpdateAppInput): Promise<AppResponse> {
+    return this.routes.patchApiV1AppsById<AppResponse>({
+      pathParams: { id: appId },
+      json: patch,
+    });
+  }
+
+  /** `PUT /api/v1/apps/:id/monetization` — update an app's monetization settings. */
+  updateMonetization(
+    appId: string,
+    settings: UpdateAppMonetizationInput,
+  ): Promise<AppMonetizationResponse> {
+    return this.routes.putApiV1AppsByIdMonetization<AppMonetizationResponse>({
+      pathParams: { id: appId },
+      json: settings,
+    });
+  }
+
+  /**
+   * `POST /api/v1/apps/:id/deploy` — kick off a container deploy (202 Accepted).
+   * Body is optional: defaults pull from the app's linked repo + stored env.
+   */
+  deployApp(
+    appId: string,
+    input: DeployAppInput = {},
+  ): Promise<DeployAppResponse> {
+    return this.routes.postApiV1AppsByIdDeploy<DeployAppResponse>({
+      pathParams: { id: appId },
+      json: input,
+    });
+  }
+
+  /** `GET /api/v1/apps/:id/deploy/status` — latest deploy status (poll target). */
+  getAppDeployStatus(appId: string): Promise<AppDeployStatusResponse> {
+    return this.routes.getApiV1AppsByIdDeployStatus<AppDeployStatusResponse>({
+      pathParams: { id: appId },
+    });
+  }
+
+  /** `DELETE /api/v1/apps/:id` — delete an app and clean up its resources. */
+  deleteApp(appId: string): Promise<DeleteAppResponse> {
+    return this.routes.deleteApiV1AppsById<DeleteAppResponse>({
+      pathParams: { id: appId },
+    });
+  }
+
+  /**
+   * `POST /api/v1/apps/:id/domains/buy` — buy + attach a custom domain.
+   *
+   * DEFERRED: domain purchase is the last slice of the apps launch. The method
+   * is typed and wired so the agent plugin can compile against it, but the
+   * server response envelope is not yet finalized ({@link BuyAppDomainResponse}
+   * captures only the stable fields) — treat as experimental until the domain
+   * branch lands.
+   */
+  buyAppDomain(
+    appId: string,
+    input: BuyAppDomainInput,
+  ): Promise<BuyAppDomainResponse> {
+    return this.routes.postApiV1AppsByIdDomainsBuy<BuyAppDomainResponse>({
+      pathParams: { id: appId },
+      json: input,
     });
   }
 
