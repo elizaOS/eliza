@@ -96,7 +96,8 @@ describe("plugin-ainex integration", () => {
       runtime as unknown as { __state: TestRuntimeState }
     ).__state.settings.ELIZA_AINEX_BRIDGE_URL = server.url;
     const service = await AinexService.start(runtime);
-    (runtime as unknown as { __state: TestRuntimeState }).__state.service = service;
+    (runtime as unknown as { __state: TestRuntimeState }).__state.service =
+      service;
     // Give the session.hello + telemetry replay a moment to settle.
     await new Promise((r) => setTimeout(r, 30));
   });

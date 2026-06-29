@@ -278,6 +278,6 @@ describe("REMOTE_DESKTOP action (local mode, real session service)", () => {
     expect(result?.success).toBe(false);
     const values = result?.values as { error?: string; missing?: string[] };
     expect(values.error).toBe("MISSING_REMOTE_DESKTOP_ARGUMENTS");
-    expect((values.missing?.length ?? 0)).toBeGreaterThan(0);
+    expect(values.missing?.length ?? 0).toBeGreaterThan(0);
   });
 });

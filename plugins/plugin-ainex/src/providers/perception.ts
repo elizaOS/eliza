@@ -26,7 +26,7 @@ export const perceptionProvider: Provider = {
   ): Promise<ProviderResult> => {
     const service = runtime.getService<AinexService>(AinexService.serviceType);
     const perception = service?.getPerception();
-    if (!service || !service.isConnected() || !perception) {
+    if (!service?.isConnected() || !perception) {
       return _disconnectedResult();
     }
     if (perception.entities.length === 0) {
@@ -43,7 +43,9 @@ export const perceptionProvider: Provider = {
         const dy = e.y.toFixed(2);
         const dz = e.z.toFixed(2);
         const dist =
-          typeof e.distance === "number" ? `, distance=${e.distance.toFixed(2)}m` : "";
+          typeof e.distance === "number"
+            ? `, distance=${e.distance.toFixed(2)}m`
+            : "";
         return `- ${e.label} (id=${e.entity_id}, conf=${e.confidence.toFixed(2)}, rel=[${dx}, ${dy}, ${dz}]${dist})`;
       })
       .join("\n");

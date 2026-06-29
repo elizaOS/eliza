@@ -85,11 +85,6 @@ export class AinexService extends Service {
   private perception: PerceptionSnapshot | null = null;
   private policy: PolicyStatusSnapshot | null = null;
   private safety: SafetySnapshot | null = null;
-  private connectedAt: number | null = null;
-
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
 
   static async start(runtime: IAgentRuntime): Promise<AinexService> {
     const service = new AinexService(runtime);
@@ -125,7 +120,7 @@ export class AinexService extends Service {
     format: string;
     camera: string;
   }> {
-    if (!this.bridge || !this.bridge.isConnected()) {
+    if (!this.bridge?.isConnected()) {
       throw new Error("AinexService.snapshotCamera: bridge not connected");
     }
     const payload: Record<string, string> = {};
@@ -179,7 +174,6 @@ export class AinexService extends Service {
   async stop(): Promise<void> {
     const bridge = this.bridge;
     this.bridge = null;
-    this.connectedAt = null;
     if (bridge) {
       await bridge.disconnect();
     }
@@ -215,7 +209,6 @@ export class AinexService extends Service {
     try {
       await client.connect();
       this.bridge = client;
-      this.connectedAt = Date.now();
       logger.info(`[AinexService] connected to bridge ${url}`);
       this.profile = await loadProfileFromBridge(client);
     } catch (err) {

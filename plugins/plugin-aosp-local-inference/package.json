@@ -41,8 +41,8 @@
     "build": "tsc --noCheck -p tsconfig.json --noEmit",
     "typecheck": "tsgo -p tsconfig.json --noEmit",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo node_modules",
-    "lint": "echo \"Lint skipped\"",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "test": "bun test __tests__"
   },
   "dependencies": {

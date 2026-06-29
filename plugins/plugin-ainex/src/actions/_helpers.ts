@@ -12,9 +12,7 @@ import { AinexService } from "../service";
 import type { BridgeCommand, JsonDict } from "../types";
 
 export function getService(runtime: IAgentRuntime): AinexService | null {
-  return (
-    runtime.getService<AinexService>(AinexService.serviceType) ?? null
-  );
+  return runtime.getService<AinexService>(AinexService.serviceType) ?? null;
 }
 
 export function getBridge(runtime: IAgentRuntime): AinexBridgeClient | null {
@@ -45,7 +43,7 @@ export async function sendOne(
   preempt = false,
 ): Promise<ActionResult> {
   const bridge = getBridge(runtime);
-  if (!bridge || !bridge.isConnected()) {
+  if (!bridge?.isConnected()) {
     return notConnected(callback, failContext);
   }
   const response = await bridge.send(command, payload, { preempt });
@@ -66,27 +64,30 @@ export async function sendOne(
 export async function startWalking(
   runtime: IAgentRuntime,
   callback: HandlerCallback | undefined,
-  velocity: { x: number; y: number; yaw: number; speed?: number; height?: number },
+  velocity: {
+    x: number;
+    y: number;
+    yaw: number;
+    speed?: number;
+    height?: number;
+  },
   okText: string,
   context: string,
 ): Promise<ActionResult> {
   const bridge = getBridge(runtime);
-  if (!bridge || !bridge.isConnected()) {
+  if (!bridge?.isConnected()) {
     return notConnected(callback, context);
   }
   const speed = velocity.speed ?? 2;
   const height = velocity.height ?? 0.036;
 
-  const setResponse = await bridge.send(
-    "walk.set",
-    {
-      speed,
-      height,
-      x: velocity.x,
-      y: velocity.y,
-      yaw: velocity.yaw,
-    },
-  );
+  const setResponse = await bridge.send("walk.set", {
+    speed,
+    height,
+    x: velocity.x,
+    y: velocity.y,
+    yaw: velocity.yaw,
+  });
   if (!setResponse.ok) {
     const text = `AiNex ${context} (walk.set) failed: ${setResponse.message}`;
     await callback?.({ text });
