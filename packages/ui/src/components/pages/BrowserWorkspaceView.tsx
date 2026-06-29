@@ -1836,6 +1836,24 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     [loadWorkspace, selectedTabId],
   );
 
+  const closeAllBrowserWorkspaceTabs = useCallback(async () => {
+    const closableTabs = workspace.tabs.filter(
+      (tab) => !isInternalBrowserWorkspaceTab(tab),
+    );
+    for (const tab of closableTabs) {
+      await client.closeBrowserWorkspaceTab(tab.id);
+    }
+    const snapshot = await client.getBrowserWorkspace();
+    const nextId = snapshot.tabs[0]?.id ?? null;
+    if (nextId) {
+      await client.showBrowserWorkspaceTab(nextId);
+    }
+    setSelectedTabId(nextId);
+    setLocationInput(snapshot.tabs.find((tab) => tab.id === nextId)?.url ?? "");
+    setLocationDirty(false);
+    await loadWorkspace({ preferTabId: nextId, silent: true });
+  }, [loadWorkspace, workspace.tabs]);
+
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
@@ -2413,6 +2431,37 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       >
         <RefreshCw className="h-4 w-4" />
       </BrowserNavButton>
+      <BrowserNavButton
+        agentId="close-all-tabs"
+        agentLabel={t("browserworkspace.CloseAllTabs", {
+          defaultValue: "Close all tabs",
+        })}
+        agentDescription="Close every user browser tab"
+        group="browser-nav"
+        onActivate={() =>
+          void runBrowserWorkspaceAction("close:all", async () => {
+            await closeAllBrowserWorkspaceTabs();
+          })
+        }
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label={t("browserworkspace.CloseAllTabs", {
+          defaultValue: "Close all tabs",
+        })}
+        disabled={
+          busyAction !== null ||
+          !workspace.tabs.some((tab) => !isInternalBrowserWorkspaceTab(tab))
+        }
+        onClick={() =>
+          void runBrowserWorkspaceAction("close:all", async () => {
+            await closeAllBrowserWorkspaceTabs();
+          })
+        }
+        data-testid="browser-workspace-close-all-tabs"
+      >
+        <X className="h-4 w-4" />
+      </BrowserNavButton>
       <BrowserAddressInput
         agentLabel={t("browserworkspace.AddressPlaceholder", {
           defaultValue: selectedTabIsInternal
@@ -2551,7 +2600,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center">
+          <div className="flex h-full flex-col items-center justify-center pb-[calc(var(--eliza-continuous-chat-clearance,5.25rem)+2rem)]">
             <ChatEmptyStateWithRecommendations
               icon={Globe}
               recommendations={[
@@ -2593,8 +2642,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             {workspace.mode === "web" &&
             browserBridgeSupported &&
             !browserBridgeUnsupportedInNativeLocalMode ? (
-              <div className="-mt-4 flex w-full max-w-xs flex-col items-stretch gap-2 px-6 pb-10">
-                <div className="text-center text-[11px] text-muted/70">
+              <div className="-mt-4 grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 sm:grid-cols-3">
+                <div className="text-center text-[11px] text-muted/70 sm:col-span-3">
                   {browserBridgeConnected
                     ? t("browserworkspace.BrowserBridgeConnected", {
                         defaultValue: "Browser Bridge connected",
@@ -2613,6 +2662,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   variant="outline"
                   disabled={busyAction !== null}
                   onClick={() => void installBrowserBridgeExtension()}
+                  className="sm:col-span-3"
                 >
                   {t("browserworkspace.InstallBrowserBridge", {
                     defaultValue: "Install Agent Browser Bridge",
@@ -2626,32 +2676,41 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                     !browserBridgePackageStatus?.chromeBuildPath
                   }
                   onClick={() => void revealBrowserBridgeFolder()}
+                  className="min-w-0"
                 >
                   <FolderOpen className="h-4 w-4" />
-                  {t("browserworkspace.OpenBrowserBridgeFolder", {
-                    defaultValue: "Open extension folder",
-                  })}
+                  <span className="truncate">
+                    {t("browserworkspace.OpenBrowserBridgeFolder", {
+                      defaultValue: "Open extension folder",
+                    })}
+                  </span>
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   disabled={busyAction !== null}
                   onClick={() => void openBrowserBridgeChromeExtensions()}
+                  className="min-w-0"
                 >
-                  {t("browserworkspace.OpenChromeExtensions", {
-                    defaultValue: "Open Chrome extensions",
-                  })}
+                  <span className="truncate">
+                    {t("browserworkspace.OpenChromeExtensions", {
+                      defaultValue: "Open Chrome extensions",
+                    })}
+                  </span>
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   disabled={browserBridgeLoading || busyAction !== null}
                   onClick={() => void refreshBrowserBridgeConnection()}
+                  className="min-w-0"
                 >
                   <RefreshCw className="h-4 w-4" />
-                  {t("browserworkspace.RefreshBrowserBridge", {
-                    defaultValue: "Refresh connection",
-                  })}
+                  <span className="truncate">
+                    {t("browserworkspace.RefreshBrowserBridge", {
+                      defaultValue: "Refresh connection",
+                    })}
+                  </span>
                 </Button>
               </div>
             ) : null}

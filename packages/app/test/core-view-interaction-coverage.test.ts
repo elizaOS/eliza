@@ -121,6 +121,16 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
           "uniqueBio",
         ],
       },
+      {
+        spec: "packages/app/test/ui-smoke/character-editor.spec.ts",
+        proves:
+          "Runs the live-only CharacterHubView style-rule save->reload->read-back path against the real backend.",
+        signals: [
+          "style rule save returns 2xx and persists across reload",
+          "style-add-input-all",
+          "2xx PUT /api/character",
+        ],
+      },
     ],
   },
   settings: {
@@ -169,6 +179,20 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
       },
     ],
   },
+  automations: {
+    owners: [
+      {
+        spec: "packages/app/test/ui-smoke/workflow-editor.spec.ts",
+        proves:
+          "Opens the Automations WorkflowEditor, saves a connected graph, and reloads the persisted definition.",
+        signals: [
+          "workflow editor saves a connected graph",
+          "workflow save should receive a 2xx POST",
+          "matrix smoke digest",
+        ],
+      },
+    ],
+  },
   orchestrator: {
     owners: [
       PLUGIN_AGENT_BRIDGE_OWNER,
@@ -214,6 +238,16 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
           "Open RPC settings",
         ],
       },
+      {
+        spec: "packages/app/test/ui-smoke/wallet-inventory.spec.ts",
+        proves:
+          "Exercises wallet chain badges, deterministic token rows, copy controls, NFT/DeFi tabs, and hidden-token persistence.",
+        signals: [
+          "wallet inventory exposes chain badges",
+          "wallet-copy-evm-address",
+          "wallet-token-hide-ethereum-native-usdc",
+        ],
+      },
     ],
   },
   browser: {
@@ -221,11 +255,11 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
       {
         spec: "packages/app/test/ui-smoke/browser-workspace.spec.ts",
         proves:
-          "Creates live browser tabs from the address box and switches selected tabs.",
+          "Drives browser tab creation, address navigation, selected-tab switching, and closing every browser tab.",
         signals: [
-          "browser workspace can create live tabs",
+          "browser workspace can create, navigate, switch, and close tabs",
+          "browser-workspace-close-all-tabs",
           "browser-workspace-nav-new-tab",
-          "browser-workspace-address-input",
         ],
       },
       {

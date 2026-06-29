@@ -6,6 +6,10 @@ import { defineConfig, devices } from "@playwright/test";
 // (a real omnivoice.cpp speech clip). Binary .wav fixtures are gitignored, so
 // derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
+import {
+  ASSERTION_GRADE_DASHBOARD_SPECS,
+  DASHBOARD_E2E_DEVICE_MATRIX,
+} from "./test/ui-smoke/device-matrix";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, "../..");
@@ -87,6 +91,19 @@ export default defineConfig({
           : {}),
       },
     },
+    ...DASHBOARD_E2E_DEVICE_MATRIX.map((viewport) => ({
+      name: `dashboard-${viewport.id}`,
+      testMatch: ASSERTION_GRADE_DASHBOARD_SPECS,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: viewport.viewport,
+        isMobile: viewport.isMobile,
+        hasTouch: viewport.hasTouch,
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
+    })),
     {
       name: "chromium-voice-mic",
       testMatch: VOICE_MIC_SPEC,
