@@ -4269,6 +4269,18 @@ export class ElizaSandboxService {
       };
     }
 
+    // Capture a restore point on the OLD (still-live) container before the
+    // cutover. This is the snapshot `executeDowngrade` replays when rolling
+    // back. Like every snapshot path, an image that does not serve
+    // /api/snapshot is a benign skip (SNAPSHOT_ENDPOINT_UNSUPPORTED), not an
+    // upgrade failure — the digest swap below is still the real rollback lever.
+    await this.snapshot(agentId, orgId, "pre-upgrade").catch((err) => {
+      logger.warn("[agent-sandbox] Pre-upgrade snapshot failed; continuing upgrade", {
+        agentId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
+
     try {
       const swapped = await dbWrite.transaction(async (tx) => {
         await this.lockLifecycle(tx, agentId, orgId);
@@ -4296,6 +4308,8 @@ export class ElizaSandboxService {
             web_ui_port = ${blueMeta.webUiPort},
             headscale_ip = ${blueMeta.headscaleIp ?? null},
             image_digest = ${toDigest},
+            previous_image_digest = ${fromDigest},
+            previous_docker_image = ${current.docker_image ?? dockerImage},
             last_heartbeat_at = NOW(),
             updated_at = NOW()
           WHERE id = ${agentId}
@@ -4339,6 +4353,314 @@ export class ElizaSandboxService {
       newContainerName: blueMeta.containerName,
       newDigest: toDigest,
       requestedDigest: toDigest,
+    });
+
+    return {
+      success: true,
+      oldNodeId,
+      oldContainerName,
+      newNodeId: blueMeta.nodeId,
+      newContainerName: blueMeta.containerName,
+      newDigest: toDigest,
+    };
+  }
+
+  /**
+   * Operator-gated rollback of the most recent fleet upgrade. Symmetric to
+   * `executeUpgrade`: a blue/green swap back onto `previous_image_digest`, the
+   * digest captured at the last upgrade's swap.
+   *
+   * Flow:
+   *   1. Resolve the rollback target from `previous_image_digest` /
+   *      `previous_docker_image`. If there is none, there is nothing to roll
+   *      back to — bail without touching the live agent.
+   *   2. Provision a fresh container (blue) on the prior image, on a different
+   *      node, and health-check it (same guarantees as upgrade).
+   *   3. Restore the `pre-upgrade` snapshot onto blue BEFORE cutover so the
+   *      rolled-back agent comes up with the state it had before the upgrade.
+   *      The bridge push is guarded: an image without /api/restore (custom
+   *      tier) is a benign skip, mirroring how snapshot no-ops on
+   *      SNAPSHOT_ENDPOINT_UNSUPPORTED.
+   *   4. Atomic CAS swap: point the row at blue, set `image_digest` to the
+   *      prior digest, and clear the previous-image columns (the upgrade we
+   *      just undid is no longer the rollback target).
+   *   5. Best-effort teardown of the old (post-upgrade) container.
+   *
+   * This is invoked only behind an explicit operator action — it never runs
+   * automatically (image-rollout-status reports `rollback` as a gated,
+   * operator-approved action, not an automatic one).
+   */
+  async executeDowngrade(
+    agentId: string,
+    orgId: string,
+    dockerImage: string,
+    fromDigest: string,
+  ): Promise<{
+    success: boolean;
+    oldNodeId?: string;
+    oldContainerName?: string;
+    newNodeId?: string;
+    newContainerName?: string;
+    newDigest?: string | null;
+    error?: string;
+  }> {
+    const agent = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!agent) return { success: false, error: "Agent not found" };
+    if (agent.status !== "running") {
+      return {
+        success: false,
+        error: `Agent not running (status: ${agent.status})`,
+      };
+    }
+    if (!agent.node_id || !agent.container_name) {
+      return {
+        success: false,
+        error: "Agent has no node_id or container_name to roll back from",
+      };
+    }
+    if (agent.docker_image && agent.docker_image !== dockerImage) {
+      return {
+        success: false,
+        error: "Agent uses a custom docker image; refusing fleet rollback",
+      };
+    }
+    const toDigest = agent.previous_image_digest;
+    if (!toDigest) {
+      return {
+        success: false,
+        error: "No previous image digest persisted; nothing to roll back to",
+      };
+    }
+    if (agent.image_digest !== fromDigest) {
+      return {
+        success: false,
+        error: `Agent is not on the expected post-upgrade digest (expected ${fromDigest}, found ${agent.image_digest})`,
+      };
+    }
+
+    const oldNodeId = agent.node_id;
+    const oldContainerName = agent.container_name;
+    const oldSandboxId = agent.sandbox_id;
+    const oldNode = await dockerNodesRepository.findByNodeId(oldNodeId);
+    if (!oldNode) {
+      return {
+        success: false,
+        error: `Old node ${oldNodeId} not registered in docker_nodes`,
+      };
+    }
+
+    const provider = await this.getProvider();
+    const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
+    if (!(provider instanceof DockerSandboxProvider)) {
+      return {
+        success: false,
+        error: "Fleet rollback only supported on docker provider",
+      };
+    }
+
+    const rollbackImage = agent.previous_docker_image ?? dockerImage;
+    const config = {
+      agentId,
+      agentName: agent.agent_name ?? "",
+      organizationId: orgId,
+      environmentVars: {
+        ...((agent.environment_vars as Record<string, string>) ?? {}),
+        ...applyManagedAgentInferenceEnvDefaults(
+          (agent.environment_vars as Record<string, string>) ?? {},
+        ),
+      },
+      dockerImage: digestPinnedImageRef(rollbackImage, toDigest),
+      excludeNodeId: oldNodeId,
+    };
+
+    let blueHandle: Awaited<ReturnType<typeof provider.create>>;
+    try {
+      blueHandle = await provider.create(config);
+    } catch (err) {
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: `Blue provision failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+
+    if (!(await provider.checkHealth(blueHandle))) {
+      await provider.stop(blueHandle.sandboxId).catch((err) =>
+        logger.warn("[agent-sandbox] Failed to tear down unhealthy blue during rollback", {
+          agentId,
+          err: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: "Blue health check failed; kept agent on current image",
+      };
+    }
+
+    const blueMeta = isDockerSandboxMetadata(blueHandle.metadata) ? blueHandle.metadata : undefined;
+    if (!blueMeta) {
+      await provider.stop(blueHandle.sandboxId).catch((err) =>
+        logger.warn(
+          "[agent-sandbox] Failed to tear down blue with non-docker metadata in rollback",
+          {
+            agentId,
+            err: err instanceof Error ? err.message : String(err),
+          },
+        ),
+      );
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: "Blue provisioner returned non-docker metadata",
+      };
+    }
+    if (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest) {
+      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+        logger.warn("[agent-sandbox] Failed to tear down blue after rollback digest mismatch", {
+          agentId,
+          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+        }),
+      );
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest}`,
+      };
+    }
+
+    // Restore the pre-upgrade state onto blue BEFORE cutover. A missing
+    // restore point is not fatal — blue still serves the prior IMAGE, it just
+    // starts from whatever persisted state it has. An image without
+    // /api/restore (custom tier) is a benign skip, mirroring the snapshot path.
+    const preUpgradeBackup = await agentSandboxesRepository.getLatestBackupByType(
+      agent.id,
+      "pre-upgrade",
+    );
+    if (preUpgradeBackup) {
+      const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
+        preUpgradeBackup.id,
+      );
+      if (restoreState) {
+        try {
+          await this.pushState(blueHandle.bridgeUrl, restoreState, { trusted: true });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (
+            agent.execution_tier !== "custom" ||
+            !message.startsWith("State restore failed: HTTP 404")
+          ) {
+            await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+              logger.warn(
+                "[agent-sandbox] Failed to tear down blue after rollback restore failure",
+                {
+                  agentId,
+                  err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+                },
+              ),
+            );
+            return {
+              success: false,
+              oldNodeId,
+              oldContainerName,
+              error: `Pre-upgrade state restore failed: ${message}`,
+            };
+          }
+          logger.info(
+            "[agent-sandbox] Rollback restore skipped: custom image has no restore endpoint",
+            { agentId, backupId: preUpgradeBackup.id },
+          );
+        }
+      } else {
+        logger.warn("[agent-sandbox] Rollback restore skipped: reconstructed state was null", {
+          agentId,
+          backupId: preUpgradeBackup.id,
+        });
+      }
+    } else {
+      logger.warn("[agent-sandbox] Rollback proceeding without a pre-upgrade snapshot", {
+        agentId,
+      });
+    }
+
+    try {
+      const swapped = await dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, agentId, orgId);
+        const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+        if (!current) return false;
+        if (
+          current.status !== "running" ||
+          current.node_id !== oldNodeId ||
+          current.container_name !== oldContainerName ||
+          current.sandbox_id !== oldSandboxId ||
+          current.image_digest !== fromDigest ||
+          (current.docker_image && current.docker_image !== dockerImage)
+        ) {
+          return false;
+        }
+        const result = await tx.execute<{ id: string }>(sql`
+          UPDATE ${agentSandboxes}
+          SET
+            sandbox_id = ${blueHandle.sandboxId},
+            bridge_url = ${blueHandle.bridgeUrl},
+            health_url = ${blueHandle.healthUrl},
+            node_id = ${blueMeta.nodeId},
+            container_name = ${blueMeta.containerName},
+            bridge_port = ${blueMeta.bridgePort},
+            web_ui_port = ${blueMeta.webUiPort},
+            headscale_ip = ${blueMeta.headscaleIp ?? null},
+            image_digest = ${toDigest},
+            previous_image_digest = NULL,
+            previous_docker_image = NULL,
+            last_heartbeat_at = NOW(),
+            updated_at = NOW()
+          WHERE id = ${agentId}
+            AND organization_id = ${orgId}
+            AND status = 'running'
+          RETURNING id
+        `);
+        return result.rows.length === 1;
+      });
+      if (!swapped) {
+        throw new Error("Agent changed during rollback; abandoned stale swap");
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error(
+        "[agent-sandbox] Rollback atomic swap UPDATE failed; tearing down orphaned blue",
+        {
+          agentId,
+          err: errMsg,
+        },
+      );
+      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+        logger.warn("[agent-sandbox] Failed to tear down blue after rollback swap UPDATE failure", {
+          agentId,
+          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+        }),
+      );
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: `Rollback atomic swap UPDATE failed: ${errMsg}`,
+      };
+    }
+
+    // Old (post-upgrade) container teardown is best-effort: traffic is on blue.
+    await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+
+    logger.info("[agent-sandbox] Fleet rollback completed", {
+      agentId,
+      oldNodeId,
+      oldContainerName,
+      newNodeId: blueMeta.nodeId,
+      newContainerName: blueMeta.containerName,
+      newDigest: toDigest,
     });
 
     return {

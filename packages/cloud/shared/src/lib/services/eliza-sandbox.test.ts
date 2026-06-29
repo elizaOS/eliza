@@ -99,6 +99,8 @@ function customSandbox(): AgentSandbox {
     headscale_ip: "100.64.0.10",
     docker_image: "ghcr.io/example/bnancy:latest",
     image_digest: null,
+    previous_image_digest: null,
+    previous_docker_image: null,
     billing_status: "active",
     last_billed_at: null,
     hourly_rate: "0.0100",
@@ -1716,6 +1718,15 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    // A pre-upgrade restore point MUST be captured before the swap. Stub the
+    // snapshot itself (its own DB/bridge path is covered elsewhere) so we can
+    // assert it ran with the "pre-upgrade" type before any swap params.
+    const snapshotSpy = spyOn(
+      svc as unknown as {
+        snapshot: (...a: unknown[]) => Promise<{ success: boolean }>;
+      },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
     // Capture the raw UPDATE the swap issues so we can assert the new values
     // bound into it (drizzle SQL chunks carry the bound params).
     let executedSql: unknown;
@@ -1734,13 +1745,19 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.newNodeId).toBe("node-new");
       expect(res.newContainerName).toBe("agent-new-1");
       expect(res.newDigest).toBe(TO_DIGEST);
-      // The swap's UPDATE binds blue's identity + the target digest.
+      // A pre-upgrade snapshot was taken BEFORE the swap transaction ran.
+      expect(snapshotSpy).toHaveBeenCalledTimes(1);
+      expect(snapshotSpy).toHaveBeenCalledWith(AGENT, ORG, "pre-upgrade");
+      // The swap's UPDATE binds blue's identity + the target digest + the prior
+      // image as the rollback target.
       const params = sqlBoundParams(executedSql);
       expect(params).toContain("sandbox-new-1"); // blue sandbox id
       expect(params).toContain("https://new-bridge.example"); // blue bridge_url
       expect(params).toContain("node-new"); // blue node_id
       expect(params).toContain("agent-new-1"); // blue container_name
       expect(params).toContain(TO_DIGEST); // image_digest := toDigest
+      expect(params).toContain(FROM_DIGEST); // previous_image_digest := fromDigest
+      expect(params).toContain(DOCKER_IMAGE); // previous_docker_image (agent.docker_image is null → dockerImage)
       // The old container is best-effort torn down on its specific node; the
       // blue is the live one and is NOT stopped.
       expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
@@ -1752,6 +1769,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      snapshotSpy.mockRestore();
     }
   });
 
@@ -1782,6 +1800,12 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(movedRow);
+    const snapshotSpy = spyOn(
+      svc as unknown as {
+        snapshot: (...a: unknown[]) => Promise<{ success: boolean }>;
+      },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
     let executeCalled = false;
     upgradeTransactionImpl = async (fn) => {
       const tx: UpgradeTx = {
@@ -1808,6 +1832,206 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     } finally {
       findSpy.mockRestore();
       nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  });
+});
+
+// #9964 — executeDowngrade() symmetric blue/green rollback onto the persisted
+// previous_image_digest. Mirrors the executeUpgrade harness: a real
+// DockerSandboxProvider with spied I/O so `instanceof` holds, a genuine
+// DockerSandboxMetadata for blue, and the swap driven through
+// upgradeTransactionImpl + spies on the private lifecycle seams. The pre-upgrade
+// restore point and its reconstruction are stubbed on the repository.
+describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_digest (#9964)", () => {
+  const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const ORG = "22222222-2222-4222-8222-222222222222";
+  const DOCKER_IMAGE = "ghcr.io/elizaos/eliza-agent:latest";
+  // The agent currently runs on the post-upgrade digest; rollback targets PREV.
+  const CURRENT_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
+  const PREV_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000aaa";
+
+  // A live fleet agent that HAS a persisted rollback target.
+  function upgradedAgentRow(): AgentSandbox {
+    return {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      status: "running",
+      sandbox_id: "sandbox-cur-1",
+      node_id: "node-cur",
+      container_name: "agent-cur-1",
+      bridge_url: "https://cur-bridge.example",
+      health_url: "https://cur-bridge.example/health",
+      docker_image: null,
+      image_digest: CURRENT_DIGEST,
+      previous_image_digest: PREV_DIGEST,
+      previous_docker_image: DOCKER_IMAGE,
+    };
+  }
+
+  function curNode(): DockerNode {
+    return {
+      node_id: "node-cur",
+      hostname: "node-cur.internal",
+      ssh_port: 22,
+      ssh_user: "root",
+      host_key_fingerprint: null,
+    } as unknown as DockerNode;
+  }
+
+  function blueMetadata(imageDigest: string | null) {
+    return {
+      provider: "docker" as const,
+      nodeId: "node-rb",
+      hostname: "node-rb.internal",
+      containerName: "agent-rb-1",
+      bridgePort: 21090,
+      webUiPort: 23960,
+      agentId: AGENT,
+      volumePath: "/var/lib/eliza/agent-rb-1",
+      dockerImage: DOCKER_IMAGE,
+      imageDigest,
+    };
+  }
+
+  function blueHandle(imageDigest: string | null) {
+    return {
+      sandboxId: "sandbox-rb-1",
+      bridgeUrl: "https://rb-bridge.example",
+      healthUrl: "https://rb-bridge.example/health",
+      metadata: blueMetadata(imageDigest),
+    };
+  }
+
+  async function makeDockerProvider(overrides: {
+    create: () => Promise<unknown>;
+    checkHealth: () => Promise<boolean>;
+  }) {
+    const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
+    const provider = new DockerSandboxProvider();
+    const create = mock(overrides.create);
+    const checkHealth = mock(overrides.checkHealth);
+    const stop = mock(async () => {});
+    const stopOnSpecificNode = mock(async () => {});
+    Object.assign(provider, { create, checkHealth, stop, stopOnSpecificNode });
+    return {
+      provider: provider as unknown as SandboxProvider,
+      create,
+      checkHealth,
+      stop,
+      stopOnSpecificNode,
+    };
+  }
+
+  afterEach(() => {
+    upgradeTransactionImpl = null;
+  });
+
+  test("no previous_image_digest → refuses, never touches the live agent", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const agent: AgentSandbox = { ...upgradedAgentRow(), previous_image_digest: null };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const { provider, create } = await makeDockerProvider({
+      create: async () => blueHandle(PREV_DIGEST),
+      checkHealth: async () => true,
+    });
+    try {
+      const res = await new ElizaSandboxService(provider).executeDowngrade(
+        AGENT,
+        ORG,
+        DOCKER_IMAGE,
+        CURRENT_DIGEST,
+      );
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("nothing to roll back to");
+      // No blue is ever provisioned — there is no rollback target.
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
+  test("happy path → restores pre-upgrade snapshot then swaps back onto PREV_DIGEST + clears prior columns", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const agent = upgradedAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
+    // The pre-upgrade restore point + its reconstruction.
+    const preUpgradeBackup = {
+      id: "backup-preupgrade-1",
+      sandbox_record_id: AGENT,
+      snapshot_type: "pre-upgrade",
+    } as unknown as AgentSandboxBackup;
+    const byTypeSpy = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      preUpgradeBackup,
+    );
+    const reconstructSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue({ memories: [], config: { restored: true }, workspaceFiles: {} });
+    const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(PREV_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    // The pre-cutover state push lands on blue's /api/restore — stub the private
+    // pushState so the test stays offline; assert it received blue's bridge URL.
+    const pushSpy = spyOn(
+      svc as unknown as { pushState: (...a: unknown[]) => Promise<void> },
+      "pushState",
+    ).mockResolvedValue(undefined);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    let executedSql: unknown;
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async (query: unknown) => {
+          executedSql = query;
+          return { rows: [{ id: AGENT }] };
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const res = await svc.executeDowngrade(AGENT, ORG, DOCKER_IMAGE, CURRENT_DIGEST);
+      expect(res.success).toBe(true);
+      expect(res.newNodeId).toBe("node-rb");
+      expect(res.newContainerName).toBe("agent-rb-1");
+      // Rolls the agent back ONTO the prior digest.
+      expect(res.newDigest).toBe(PREV_DIGEST);
+      // The pre-upgrade snapshot was looked up and reconstructed before cutover.
+      expect(byTypeSpy).toHaveBeenCalledWith(AGENT, "pre-upgrade");
+      expect(reconstructSpy).toHaveBeenCalledWith("backup-preupgrade-1");
+      // ...and pushed onto BLUE (the rollback container) before the swap.
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+      expect(pushSpy.mock.calls[0]?.[0]).toBe("https://rb-bridge.example");
+      // The swap binds blue's identity + PREV_DIGEST and NULLs the prior columns.
+      const params = sqlBoundParams(executedSql);
+      expect(params).toContain("sandbox-rb-1");
+      expect(params).toContain("node-rb");
+      expect(params).toContain(PREV_DIGEST); // image_digest := previous
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(checkHealth).toHaveBeenCalledTimes(1);
+      // The old (post-upgrade) container is torn down; blue stays.
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stop).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+      byTypeSpy.mockRestore();
+      reconstructSpy.mockRestore();
+      pushSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
     }
