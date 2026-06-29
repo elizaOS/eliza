@@ -204,22 +204,25 @@ export function augmentTaskWithDeployGuidance(
     return task;
   }
   const resolved = config ?? resolveAppDeployConfig();
-  // agent-home: the publish convention is a cheap, always-correct capability note
-  // (it self-gates on "if this is a web app … else ignore"), so attach it to
-  // EVERY coding task instead of using a keyword regex to guess which tasks are
-  // app builds. The regex mis-fired on real phrasings — "add a dark mode toggle
-  // … and redeploy it" never matched the build-verb pattern, so the agent got no
-  // apps-dir context and could not find or edit the deployed app. Letting the
-  // model decide from an always-present note is both cleaner and general.
-  if (resolved.target === "agent-home") {
-    return `${task.trimEnd()}\n\n${agentHomeGuidance(resolved, task)}`;
-  }
-  // cloud/view paths retain their existing (heavier, cloud-gated) guidance for
-  // now — a separate follow-up tracks removing those keyword gates too.
+  // View/plugin tasks are a distinct surface (#8918) with their own cloud-vs-local
+  // sandbox contract — they are NOT hosted web apps, so they must be routed before
+  // the agent-home app note (which would otherwise wrongly tell the agent to
+  // publish a plugin as a static page). This check stays keyword-gated for now;
+  // a separate follow-up tracks removing that gate too.
   if (isViewPluginTask(task) && !isAppBuildTask(task)) {
     return `${task.trimEnd()}\n\n${viewPluginGuidance(resolved, {
       sourceDir: extractViewPluginSourceDir(task),
     })}`;
+  }
+  // agent-home: the publish convention is a cheap, always-correct capability note
+  // (it self-gates on "if this is a web app … else ignore"), so attach it to
+  // EVERY remaining coding task instead of using a keyword regex to guess which
+  // tasks are app builds. The regex mis-fired on real phrasings — "add a dark mode
+  // toggle … and redeploy it" never matched the build-verb pattern, so the agent
+  // got no apps-dir context and could not find or edit the deployed app. Letting
+  // the model decide from an always-present note is both cleaner and general.
+  if (resolved.target === "agent-home") {
+    return `${task.trimEnd()}\n\n${agentHomeGuidance(resolved, task)}`;
   }
   if (!isAppBuildTask(task)) {
     return task;
