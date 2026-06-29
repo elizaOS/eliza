@@ -133,6 +133,19 @@ export default defineConfig({
     // Worker forks emitted error). In Vitest 4 the former forks.singleFork
     // setting is represented by maxWorkers: 1 plus isolate: false.
     isolate: false,
+    // Coverage floor — established at a conservative 1% to wire the mechanism
+    // (issue #9943). Inert in normal CI: run-vitest.mjs never passes --coverage,
+    // so thresholds only evaluate when a run explicitly opts in, at which point a
+    // full-suite run clears 1% trivially. Raise toward the measured baseline as a
+    // follow-up; see .github/workflows/coverage-gate.yml.
+    coverage: {
+      thresholds: {
+        lines: 1,
+        functions: 1,
+        branches: 1,
+        statements: 1,
+      },
+    },
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [

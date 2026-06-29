@@ -38,9 +38,11 @@ const mockDb = {
       createChainableThenable(mockSelectResult, {
         where: mock(() =>
           createChainableThenable(mockSelectResult, {
-            orderBy: mock(() => ({
-              limit: mock(() => Promise.resolve(mockSelectResult)),
-            })),
+            orderBy: mock(() =>
+              createChainableThenable(mockSelectResult, {
+                limit: mock(() => Promise.resolve(mockSelectResult)),
+              }),
+            ),
           }),
         ),
       }),
