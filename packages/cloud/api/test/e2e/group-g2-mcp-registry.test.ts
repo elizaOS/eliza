@@ -114,7 +114,12 @@ afterAll(async () => {
 // not a schema bug. Skipped so it stops blocking the cloud-api Worker deploy
 // (which also carries the public-token-path auth fixes). Create-path errors are
 // now logged (v1/mcps/route.ts) for verification against Railway.
-describe.skip("Group G2 — user MCP registry CRUD", () => {
+// Auth gates + validation + catalog read: these do NOT depend on a successful
+// INSERT...RETURNING, so they run normally — the PGlite-over-TCP write bug only
+// affects the CRUD-write group below. Un-skipped (#9943) so the MCP-registry
+// auth/validation surface is actually exercised in CI instead of being entirely
+// skipped along with the broken writes.
+describe("Group G2 — MCP registry auth gates + validation", () => {
   test("auth gate: POST /api/v1/mcps without credentials is rejected", async () => {
     if (!serverReachable) return;
     const res = await api.post("/api/v1/mcps", {
@@ -129,15 +134,6 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     if (!serverReachable) return;
     const res = await api.get("/api/v1/mcps");
     expect([401, 403]).toContain(res.status);
-  });
-
-  test("create -> creates a draft MCP with computed revenue split", async () => {
-    if (!shouldRunAuthed()) return;
-    const mcp = await createMcp({ creatorSharePercentage: 70 });
-    expect(mcp.status).toBe("draft");
-    expect(mcp.creator_share_percentage).toBe("70.00");
-    expect(mcp.platform_share_percentage).toBe("30.00");
-    expect(mcp.tools).toHaveLength(1);
   });
 
   test("create -> rejects an invalid body (400)", async () => {
@@ -165,6 +161,46 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect(res.status).toBe(400);
   });
 
+  test("get one -> 404 for an unknown id", async () => {
+    if (!shouldRunAuthed()) return;
+    const res = await api.get(
+      "/api/v1/mcps/00000000-0000-4000-8000-000000000000",
+      { headers: bearerHeaders() },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test("registry catalog -> /api/mcp/registry returns platform + community entries", async () => {
+    if (!serverReachable) return;
+    const res = await api.get("/api/mcp/registry");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      registry?: Array<{ source?: string }>;
+      platformMcps?: number;
+    };
+    expect(Array.isArray(body.registry)).toBe(true);
+    // The platform built-ins (crypto, time, weather, eliza-platform, ...) are
+    // always present even with zero community MCPs.
+    expect(body.platformMcps ?? 0).toBeGreaterThan(0);
+    expect(body.registry?.some((e) => e.source === "platform")).toBe(true);
+  });
+});
+
+// CRUD writes only. Every test here calls createMcp() (INSERT...RETURNING over
+// 48 cols), which 500s ONLY under the workerd + PGlite-over-TCP e2e harness
+// ("Broken pipe") — the same drizzle insert succeeds on real Postgres/Railway.
+// Kept `describe.skip` until the harness handles workerd writes (or this group
+// runs against a real Railway DB); see TODO(mcp) above.
+describe.skip("Group G2 — user MCP registry CRUD writes", () => {
+  test("create -> creates a draft MCP with computed revenue split", async () => {
+    if (!shouldRunAuthed()) return;
+    const mcp = await createMcp({ creatorSharePercentage: 70 });
+    expect(mcp.status).toBe("draft");
+    expect(mcp.creator_share_percentage).toBe("70.00");
+    expect(mcp.platform_share_percentage).toBe("30.00");
+    expect(mcp.tools).toHaveLength(1);
+  });
+
   test("get one -> returns the MCP with owner stats", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createMcp();
@@ -180,15 +216,6 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect(body.mcp?.id).toBe(created.id);
     expect(body.isOwner).toBe(true);
     expect(body.stats).not.toBeNull();
-  });
-
-  test("get one -> 404 for an unknown id", async () => {
-    if (!shouldRunAuthed()) return;
-    const res = await api.get(
-      "/api/v1/mcps/00000000-0000-4000-8000-000000000000",
-      { headers: bearerHeaders() },
-    );
-    expect(res.status).toBe(404);
   });
 
   test("list (own) -> includes a created MCP", async () => {
@@ -275,20 +302,5 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
       headers: bearerHeaders(),
     });
     expect(getRes.status).toBe(404);
-  });
-
-  test("registry catalog -> /api/mcp/registry returns platform + community entries", async () => {
-    if (!serverReachable) return;
-    const res = await api.get("/api/mcp/registry");
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      registry?: Array<{ source?: string }>;
-      platformMcps?: number;
-    };
-    expect(Array.isArray(body.registry)).toBe(true);
-    // The platform built-ins (crypto, time, weather, eliza-platform, ...) are
-    // always present even with zero community MCPs.
-    expect(body.platformMcps ?? 0).toBeGreaterThan(0);
-    expect(body.registry?.some((e) => e.source === "platform")).toBe(true);
   });
 });
