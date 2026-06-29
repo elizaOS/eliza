@@ -1,0 +1,237 @@
+{
+  "benchmark": "recall-bench",
+  "generatedAt": "2026-06-29T18:46:05.716Z",
+  "corpus": {
+    "committed": true,
+    "tier": "1k",
+    "topics": 40,
+    "documents": 1000,
+    "queries": 40
+  },
+  "k": 5,
+  "modes": [
+    {
+      "mode": "document-hybrid",
+      "corpusSize": 1000,
+      "queries": 40,
+      "k": 5,
+      "precisionAtK": 0.8800000000000002,
+      "recallAtK": 0.8800000000000002,
+      "mrr": 0.8875,
+      "ndcgAtK": 0.863868262740087,
+      "hitRateAtK": 1,
+      "p50LatencyMs": 7.87350399999923,
+      "p95LatencyMs": 8.733158999999432,
+      "measured": true
+    },
+    {
+      "mode": "document-vector",
+      "corpusSize": 1000,
+      "queries": 40,
+      "k": 5,
+      "precisionAtK": 0.7150000000000001,
+      "recallAtK": 0.7150000000000001,
+      "mrr": 0.7274999999999999,
+      "ndcgAtK": 0.6835947682141241,
+      "hitRateAtK": 1,
+      "p50LatencyMs": 5.489093000000139,
+      "p95LatencyMs": 6.346172999999908,
+      "measured": true
+    },
+    {
+      "mode": "document-keyword",
+      "corpusSize": 1000,
+      "queries": 40,
+      "k": 5,
+      "precisionAtK": 0.37,
+      "recallAtK": 0.37,
+      "mrr": 0.6666666666666667,
+      "ndcgAtK": 0.4224540926172685,
+      "hitRateAtK": 0.775,
+      "p50LatencyMs": 53.38742900000034,
+      "p95LatencyMs": 68.2267869999996,
+      "measured": true
+    },
+    {
+      "mode": "searchMemories-vector",
+      "corpusSize": 1000,
+      "queries": 40,
+      "k": 5,
+      "precisionAtK": 0.9650000000000001,
+      "recallAtK": 0.9650000000000001,
+      "mrr": 1,
+      "ndcgAtK": 0.9738548363300084,
+      "hitRateAtK": 1,
+      "p50LatencyMs": 5.904946000000564,
+      "p95LatencyMs": 6.941863000000012,
+      "measured": true
+    },
+    {
+      "mode": "keyword-chat-scoreMemoryText",
+      "corpusSize": 1000,
+      "queries": 40,
+      "k": 5,
+      "precisionAtK": 0.09500000000000001,
+      "recallAtK": 0.09500000000000001,
+      "mrr": 0.30164605575829423,
+      "ndcgAtK": 0.12477920234057101,
+      "hitRateAtK": 0.4,
+      "p50LatencyMs": 0.6530650000004243,
+      "p95LatencyMs": 0.7631700000001729,
+      "measured": true
+    },
+    {
+      "mode": "facts-provider-keyword",
+      "corpusSize": 70,
+      "queries": 40,
+      "k": 5,
+      "precisionAtK": 0.2000000000000001,
+      "recallAtK": 1,
+      "mrr": 1,
+      "ndcgAtK": 1,
+      "hitRateAtK": 1,
+      "p50LatencyMs": 6.4611970000005385,
+      "p95LatencyMs": 7.460430999999517,
+      "measured": true
+    },
+    {
+      "mode": "document-vector-failopen",
+      "corpusSize": 1000,
+      "queries": 40,
+      "k": 5,
+      "precisionAtK": 0.37,
+      "recallAtK": 0.37,
+      "mrr": 0.6666666666666667,
+      "ndcgAtK": 0.4224540926172685,
+      "hitRateAtK": 0.775,
+      "p50LatencyMs": 50.9256549999991,
+      "p95LatencyMs": 68.0599000000002,
+      "measured": true
+    }
+  ],
+  "failOpen": {
+    "vectorRecallAt5": 0.7150000000000001,
+    "failOpenRecallAt5": 0.37,
+    "recallDrop": 0.3450000000000001,
+    "observable": true
+  },
+  "metrics": {
+    "overall_recall_at_5": 0.8800000000000002,
+    "overall_ndcg_at_5": 0.863868262740087,
+    "overall_p95_latency_ms": 8.733158999999432
+  },
+  "checks": [
+    {
+      "name": "document-hybrid.minRecallAt5",
+      "value": 0.8800000000000002,
+      "budget": 0.7,
+      "unit": "ratio",
+      "pass": true
+    },
+    {
+      "name": "document-hybrid.minNdcgAt5",
+      "value": 0.863868262740087,
+      "budget": 0.68,
+      "unit": "ratio",
+      "pass": true
+    },
+    {
+      "name": "document-hybrid.maxP95LatencyMs",
+      "value": 8.733158999999432,
+      "budget": 750,
+      "unit": "ms",
+      "pass": true
+    },
+    {
+      "name": "document-vector.minRecallAt5",
+      "value": 0.7150000000000001,
+      "budget": 0.55,
+      "unit": "ratio",
+      "pass": true
+    },
+    {
+      "name": "document-vector.minNdcgAt5",
+      "value": 0.6835947682141241,
+      "budget": 0.54,
+      "unit": "ratio",
+      "pass": true
+    },
+    {
+      "name": "document-vector.maxP95LatencyMs",
+      "value": 6.346172999999908,
+      "budget": 750,
+      "unit": "ms",
+      "pass": true
+    },
+    {
+      "name": "document-keyword.minRecallAt5",
+      "value": 0.37,
+      "budget": 0.25,
+      "unit": "ratio",
+      "pass": true
+    },
+    {
+      "name": "document-keyword.maxP95LatencyMs",
+      "value": 68.2267869999996,
+      "budget": 750,
+      "unit": "ms",
+      "pass": true
+    },
+    {
+      "name": "searchMemories-vector.minRecallAt5",
+      "value": 0.9650000000000001,
+      "budget": 0.8,
+      "unit": "ratio",
+      "pass": true
+    },
+    {
+      "name": "searchMemories-vector.minNdcgAt5",
+      "value": 0.9738548363300084,
+      "budget": 0.78,
+      "unit": "ratio",
+      "pass": true
+    },
+    {
+      "name": "searchMemories-vector.maxP95LatencyMs",
+      "value": 6.941863000000012,
+      "budget": 750,
+      "unit": "ms",
+      "pass": true
+    },
+    {
+      "name": "keyword-chat-scoreMemoryText.minRecallAt5",
+      "value": 0.09500000000000001,
+      "budget": 0.05,
+      "unit": "ratio",
+      "pass": true
+    },
+    {
+      "name": "keyword-chat-scoreMemoryText.maxP95LatencyMs",
+      "value": 0.7631700000001729,
+      "budget": 750,
+      "unit": "ms",
+      "pass": true
+    },
+    {
+      "name": "facts-provider-keyword.minRecallAt5",
+      "value": 1,
+      "budget": 0.8,
+      "unit": "ratio",
+      "pass": true
+    },
+    {
+      "name": "facts-provider-keyword.maxP95LatencyMs",
+      "value": 7.460430999999517,
+      "budget": 750,
+      "unit": "ms",
+      "pass": true
+    },
+    {
+      "name": "failOpen.minObservableRecallDrop",
+      "value": 0.3450000000000001,
+      "budget": 0.15,
+      "unit": "ratio",
+      "pass": true
+    }
+  ]
+}
