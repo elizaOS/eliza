@@ -8,11 +8,14 @@
     ".": "./src/index.ts",
     "./billing": "./src/billing/index.ts",
     "./db": "./src/db/index.ts",
-    "./db/*": "./src/db/*",
+    "./db/*.ts": "./src/db/*.ts",
+    "./db/*": "./src/db/*.ts",
     "./lib": "./src/lib/index.ts",
-    "./lib/*": "./src/lib/*",
+    "./lib/*.ts": "./src/lib/*.ts",
+    "./lib/*": "./src/lib/*.ts",
     "./types": "./src/types/index.ts",
-    "./types/*": "./src/types/*",
+    "./types/*.ts": "./src/types/*.ts",
+    "./types/*": "./src/types/*.ts",
     "./package.json": "./package.json"
   },
   "scripts": {

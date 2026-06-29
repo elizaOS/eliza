@@ -45,6 +45,7 @@ import {
   useState,
 } from "react";
 import { client, type RegistryAppInfo } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import type { AccountsListResponse } from "../../../api/client-agent";
 import type {
   AppRunSummary,
@@ -373,6 +374,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   const setTab = appSetTab ?? (() => undefined);
   const setState = appSetState ?? (() => undefined);
   const t = appT ?? fallbackTranslate;
+  const currentBaseUrl = useAppSelectorShallow(() => client.getBaseUrl());
   const [catalogApps, setCatalogApps] = useState<RegistryAppInfo[]>([]);
   const [runs, setRuns] = useState<AppRunSummary[]>(() =>
     Array.isArray(appRuns) ? appRuns : [],
@@ -428,6 +430,16 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   }, []);
 
   useEffect(() => {
+    if (!supportsFullAppShellRoutes(currentBaseUrl)) {
+      startTransition(() => {
+        setRuns([]);
+        setState("appRuns", []);
+      });
+      setError(null);
+      setLoading(false);
+      return undefined;
+    }
+
     let cancelled = false;
     // The 5s poll pushes appRuns into the global AppContext, which re-renders
     // every useApp() consumer. Only push when the run set actually changed so a
@@ -473,7 +485,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [setState, t]);
+  }, [currentBaseUrl, setState, t]);
 
   if (shouldHideWidget) {
     return null;
