@@ -819,3 +819,60 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("useChatSend empty-reply failure surfacing (#10231)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("surfaces a failureKind gate (not a silent drop) when the streamed terminal reply is empty", async () => {
+    // Regression: the empty-text terminal handler dropped any empty reply
+    // unconditionally, so an empty-text + failureKind response (e.g. the
+    // "Connect a provider" gate) vanished with no error. It must stamp the
+    // failureKind onto the assistant turn instead.
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => ({
+      text: "",
+      completed: true,
+      failureKind: "no_provider",
+    }));
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant.length).toBe(1);
+    expect(assistant[0]?.failureKind).toBe("no_provider");
+  });
+
+  it("still drops an empty terminal reply that carries no failureKind", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => ({
+      text: "",
+      completed: true,
+    }));
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant.length).toBe(0);
+  });
+});

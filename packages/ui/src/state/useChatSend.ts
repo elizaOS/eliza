@@ -971,10 +971,22 @@ export function useChatSend(deps: UseChatSendDeps) {
         flushStreamingText();
 
         if (!data.text.trim()) {
-          applyStreamingTextModification(setConversationMessages, {
-            messageId: assistantMsgId,
-            mode: "drop",
-          });
+          if (data.failureKind) {
+            // Empty reply but the server flagged a failure class — surface the
+            // gate UI (e.g. "Connect a provider") instead of silently dropping
+            // the turn. The failure branch below is an `else if`, unreachable
+            // once the text is empty, so it must be handled here.
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "fail",
+              failureKind: data.failureKind,
+            });
+          } else {
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "drop",
+            });
+          }
         } else if (
           shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
           data.reasoning
@@ -1490,10 +1502,22 @@ export function useChatSend(deps: UseChatSendDeps) {
           flushStreamingText();
 
           if (!data.text.trim()) {
-            applyStreamingTextModification(setConversationMessages, {
-              messageId: assistantMsgId,
-              mode: "drop",
-            });
+            if (data.failureKind) {
+              // Empty reply but the server flagged a failure class — surface the
+              // gate UI instead of silently dropping the turn (the failure
+              // branch below is an `else if`, unreachable once the text is
+              // empty). Mirrors the non-terminal handler above.
+              applyStreamingTextModification(setConversationMessages, {
+                messageId: assistantMsgId,
+                mode: "fail",
+                failureKind: data.failureKind,
+              });
+            } else {
+              applyStreamingTextModification(setConversationMessages, {
+                messageId: assistantMsgId,
+                mode: "drop",
+              });
+            }
           } else if (
             shouldApplyFinalStreamText(streamedAssistantText, data.text)
           ) {
