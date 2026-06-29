@@ -802,11 +802,16 @@ export class CacheClient {
       cursor = String(result[0]);
       const keys = result[1];
 
+      // Count every scan iteration toward the runaway guard, including empty
+      // pages. A backend that returns many empty pages with a non-terminal
+      // cursor would otherwise never trip the guard and loop unbounded.
+      iterations++;
+
       if (keys.length > 0) {
         await redis.del(...keys);
         totalDeleted += keys.length;
         logger.debug(
-          `[Cache] DEL_PATTERN iteration ${++iterations}: deleted ${keys.length} keys (total: ${totalDeleted})`,
+          `[Cache] DEL_PATTERN iteration ${iterations}: deleted ${keys.length} keys (total: ${totalDeleted})`,
         );
       }
 
