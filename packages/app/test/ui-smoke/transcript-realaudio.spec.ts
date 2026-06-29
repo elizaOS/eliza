@@ -31,6 +31,10 @@ import {
   seedAppStorage,
 } from "./helpers";
 
+// Real fake-device audio plus ui-smoke live-stack setup can exceed the default
+// smoke timeout on loaded developer machines.
+test.setTimeout(360_000);
+
 const TRANSCRIPT_TEXT = "what time is it";
 const TRANSCRIPT_ID = "transcript-realaudio-e2e";
 const MEDIA_PATH = "/api/media/transcript-realaudio.wav";
@@ -228,6 +232,17 @@ async function installTranscriptBackendMocks(
       return;
     }
     await route.fallback();
+  });
+  await page.route("**/api/conversations/*", async (route) => {
+    if (!["PATCH", "PUT"].includes(route.request().method())) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ conversation: CONVO }),
+    });
   });
   // The post-turn history reload replaces the optimistic bubble with the server's
   // persisted messages. Serve a user turn that carries the transcript attachment
@@ -641,23 +656,68 @@ async function stopVoiceAndSettle(page: Page): Promise<void> {
  * visible viewer locator.
  */
 async function openTranscriptViewer(page: Page): Promise<Locator> {
-  const tile = page.getByTestId("transcript-attachment").first();
   const viewer = page.getByTestId("transcript-viewer");
+  const visibleTile = page
+    .getByRole("button", { name: /Voice transcript\.md/i })
+    .last();
   // The thread churns (auto-scroll + the optimistic->persisted swap), so the tile
   // can detach mid-click and a freshly-opened viewer can be torn down by a late
-  // remount. Retry: force-click the (re-resolved) tile and confirm the viewer
-  // stays open across a short settle; re-open if a remount closed it.
+  // remount. Retry: click the currently visible tile in the DOM and confirm the
+  // rich viewer content loaded; re-open if a remount closed it.
   await expect
     .poll(
       async () => {
-        if (await viewer.isVisible().catch(() => false)) {
+        if (
+          (await page
+            .getByTestId("transcript-audio")
+            .isVisible()
+            .catch(() => false)) &&
+          (await page
+            .getByTestId("transcript-text")
+            .isVisible()
+            .catch(() => false))
+        ) {
           // Confirm it survives a brief window (no pending remount-close).
           await page.waitForTimeout(600);
-          if (await viewer.isVisible().catch(() => false)) return true;
+          if (
+            (await viewer.isVisible().catch(() => false)) &&
+            (await page
+              .getByTestId("transcript-audio")
+              .isVisible()
+              .catch(() => false))
+          ) {
+            return true;
+          }
         }
-        if (await tile.isVisible().catch(() => false)) {
-          await tile.click({ force: true }).catch(() => {});
+        if (await visibleTile.isVisible().catch(() => false)) {
+          await visibleTile.click({ timeout: 1000 }).catch(async () => {
+            await visibleTile.focus({ timeout: 1000 }).catch(() => {});
+            await page.keyboard.press("Enter").catch(() => {});
+          });
         }
+        await page.evaluate((expectedTitle) => {
+          const isVisible = (el: HTMLElement) => {
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            return (
+              rect.width > 0 &&
+              rect.height > 0 &&
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              style.pointerEvents !== "none"
+            );
+          };
+          const tiles = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              '[data-testid="transcript-attachment"]',
+            ),
+          );
+          const tile =
+            tiles.find(
+              (el) => isVisible(el) && el.textContent?.includes(expectedTitle),
+            ) ?? tiles.find(isVisible);
+          tile?.click();
+        }, "Voice transcript.md");
         return false;
       },
       { timeout: 45_000, intervals: [400] },

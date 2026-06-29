@@ -1,11 +1,11 @@
 # Voice Live Matrix
 
-Generated: 2026-06-29T21:45:41.259Z
+Generated: 2026-06-29T23:17:01.230Z
 Host: darwin arm64 (Shaws-MacBook-Pro.local)
 
 | Cell | Status | Platform | Class | Probe / Result | Command |
 |---|---:|---|---|---|---|
-| `web.fake-mic.roundtrip` | pending | web | live-client-audio | Chromium fake-device mic lane is host-runnable | `bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts` |
+| `web.fake-mic.roundtrip` | pending | web | live-client-audio-barge-in | Chromium fake-device mic lane is host-runnable | `bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts` |
 | `web.fake-mic.transcript-roundtrip` | pending | web | transcripts-roundtrip-agent-action-parity | Chromium fake-device mic lane is host-runnable | `bun run --cwd packages/app test:e2e test/ui-smoke/transcript-realaudio.spec.ts` |
 | `web.workbench.respond-no-respond` | pending | web | chime-in-matrix | Chromium fake-device mic lane is host-runnable | `bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-respond-no-respond.spec.ts` |
 | `linux.fused-acoustic.workbench-real` | skip | linux | real-acoustic-workbench | requires Linux runner; current=darwin | `bun run --cwd plugins/plugin-local-inference voice:workbench --real` |

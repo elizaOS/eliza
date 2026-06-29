@@ -12,9 +12,31 @@
  *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts
  */
 import { expect, type Page, test } from "@playwright/test";
-import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 
 const EXPECTED_PHRASE = "what time is it";
+const CHAT_CONVERSATION_ID = "voice-realaudio-convo";
+const CHAT_ROOM_ID = "voice-realaudio-room";
+const SPOKEN_REPLY =
+  "It is exactly noon in the real audio barge in test. I am still speaking this long local inference response so the user can interrupt me with the microphone.";
+
+interface AudioProbeEvent {
+  type: "start" | "stop" | "disconnect" | "ended";
+  id: number;
+  at: number;
+}
+
+interface AudioProbeSnapshot {
+  starts: number;
+  stops: number;
+  disconnects: number;
+  ended: number;
+  events: AudioProbeEvent[];
+}
 
 function tinyWav(seconds = 0.2, sampleRate = 16000): Buffer {
   const n = Math.floor(sampleRate * seconds);
@@ -42,7 +64,190 @@ function tinyWav(seconds = 0.2, sampleRate = 16000): Buffer {
   return Buffer.concat([h, pcm]);
 }
 
+function appConfigWithLocalVoice(): Record<string, unknown> {
+  return {
+    meta: { firstRunComplete: true },
+    agents: {
+      list: [
+        {
+          id: "ui-smoke-agent",
+          name: "Playwright Smoke",
+          status: "running",
+        },
+      ],
+      defaults: {
+        workspace: "ui-smoke-workspace",
+        adminEntityId: "owner-ui-smoke",
+      },
+    },
+    messages: {
+      tts: {
+        provider: "local-inference",
+        asr: { provider: "local-inference" },
+      },
+    },
+  };
+}
+
+async function installLocalVoiceConfig(page: Page): Promise<void> {
+  await page.unroute("**/api/status").catch(() => {});
+  await page.route("**/api/status**", async (route) => {
+    if (route.request().method() !== "GET") {
+      return route.fallback();
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        state: "running",
+        agentName: "Playwright Smoke",
+        model: "ui-smoke",
+        canRespond: true,
+        startedAt: Date.now() - 60_000,
+        uptime: 60_000,
+      }),
+    });
+  });
+
+  await page.unroute("**/api/config").catch(() => {});
+  await page.route("**/api/config", async (route) => {
+    if (!["GET", "PATCH", "PUT"].includes(route.request().method())) {
+      return route.fallback();
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(appConfigWithLocalVoice()),
+    });
+  });
+}
+
+async function installAudioSourceProbe(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type ProbeEvent = {
+      type: "start" | "stop" | "disconnect" | "ended";
+      id: number;
+      at: number;
+    };
+    type Probe = {
+      starts: number;
+      stops: number;
+      disconnects: number;
+      ended: number;
+      events: ProbeEvent[];
+    };
+    type ProbeWindow = Window & {
+      __voiceAudioProbe?: Probe;
+      __voiceAudioProbeInstalled?: boolean;
+      webkitAudioContext?: typeof AudioContext;
+    };
+    const w = window as ProbeWindow;
+    if (w.__voiceAudioProbeInstalled) return;
+    w.__voiceAudioProbeInstalled = true;
+    const probe: Probe = {
+      starts: 0,
+      stops: 0,
+      disconnects: 0,
+      ended: 0,
+      events: [],
+    };
+    w.__voiceAudioProbe = probe;
+    let nextId = 0;
+
+    const patch = (Ctor: typeof AudioContext | undefined) => {
+      const proto = Ctor?.prototype as
+        | (AudioContext & { __elizaVoiceAudioProbePatched?: boolean })
+        | undefined;
+      if (!proto || proto.__elizaVoiceAudioProbePatched) return;
+      proto.__elizaVoiceAudioProbePatched = true;
+      const originalCreateBufferSource = proto.createBufferSource;
+      proto.createBufferSource = function createBufferSourceWithProbe() {
+        const source = originalCreateBufferSource.call(this);
+        nextId += 1;
+        const id = nextId;
+        const originalStart = source.start.bind(source) as (
+          ...args: unknown[]
+        ) => void;
+        const originalStop = source.stop.bind(source) as (
+          ...args: unknown[]
+        ) => void;
+        const originalDisconnect = source.disconnect.bind(source) as (
+          ...args: unknown[]
+        ) => void;
+
+        source.start = ((...args: unknown[]) => {
+          probe.starts += 1;
+          probe.events.push({ type: "start", id, at: performance.now() });
+          return originalStart(...args);
+        }) as AudioBufferSourceNode["start"];
+        source.stop = ((...args: unknown[]) => {
+          probe.stops += 1;
+          probe.events.push({ type: "stop", id, at: performance.now() });
+          return originalStop(...args);
+        }) as AudioBufferSourceNode["stop"];
+        source.disconnect = ((...args: unknown[]) => {
+          probe.disconnects += 1;
+          probe.events.push({
+            type: "disconnect",
+            id,
+            at: performance.now(),
+          });
+          return originalDisconnect(...args);
+        }) as AudioBufferSourceNode["disconnect"];
+        source.addEventListener("ended", () => {
+          probe.ended += 1;
+          probe.events.push({ type: "ended", id, at: performance.now() });
+        });
+        return source;
+      };
+    };
+
+    patch(w.AudioContext);
+    patch(w.webkitAudioContext);
+  });
+}
+
+async function readAudioProbe(page: Page): Promise<AudioProbeSnapshot> {
+  return page.evaluate(() => {
+    const probe = (
+      window as Window & {
+        __voiceAudioProbe?: AudioProbeSnapshot;
+      }
+    ).__voiceAudioProbe;
+    return (
+      probe ?? {
+        starts: 0,
+        stops: 0,
+        disconnects: 0,
+        ended: 0,
+        events: [],
+      }
+    );
+  });
+}
+
+async function dispatchVoiceControl(
+  page: Page,
+  command: "start" | "stop",
+): Promise<void> {
+  await page.evaluate((nextCommand) => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:voice-control", {
+        detail: { command: nextCommand },
+      }),
+    );
+  }, command);
+}
+
 async function installVoiceBackendMocks(page: Page): Promise<void> {
+  let conversationCreated = false;
+  const messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number;
+  }> = [];
+
   await page.route("**/api/asr/local-inference/status", async (route) => {
     await route.fulfill({
       status: 200,
@@ -65,35 +270,144 @@ async function installVoiceBackendMocks(page: Page): Promise<void> {
     });
   });
   await page.route("**/api/conversations", async (route) => {
+    const timestamp = new Date().toISOString();
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          conversations: conversationCreated
+            ? [
+                {
+                  id: CHAT_CONVERSATION_ID,
+                  roomId: CHAT_ROOM_ID,
+                  title: "Real audio chat",
+                  createdAt: timestamp,
+                  updatedAt: timestamp,
+                },
+              ]
+            : [],
+        }),
+      });
+      return;
+    }
     if (route.request().method() !== "POST") return route.fallback();
+    conversationCreated = true;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        conversation: { id: "voice-selftest-convo", roomId: "voice-selftest" },
+        conversation: {
+          id: CHAT_CONVERSATION_ID,
+          roomId: CHAT_ROOM_ID,
+          title: "Real audio chat",
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
       }),
     });
   });
   await page.route(
-    "**/api/conversations/voice-selftest-convo/messages/stream",
+    `**/api/conversations/${CHAT_CONVERSATION_ID}/messages`,
     async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ messages }),
+      });
+    },
+  );
+  await page.route(
+    `**/api/conversations/${CHAT_CONVERSATION_ID}/messages/stream`,
+    async (route) => {
+      const reqBody = JSON.parse(route.request().postData() ?? "{}") as {
+        text?: string;
+      };
+      const now = Date.now();
+      messages.push({
+        id: `real-audio-user-${messages.length + 1}`,
+        role: "user",
+        text: reqBody.text?.trim() || EXPECTED_PHRASE,
+        timestamp: now,
+      });
+      messages.push({
+        id: `real-audio-assistant-${messages.length + 1}`,
+        role: "assistant",
+        text: SPOKEN_REPLY,
+        timestamp: now + 1,
+      });
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
         body:
-          `data: ${JSON.stringify({ type: "token", text: "It is", fullText: "It is" })}\n\n` +
-          `data: ${JSON.stringify({ type: "done", fullText: "It is noon.", agentName: "Eliza" })}\n\n`,
+          `data: ${JSON.stringify({ type: "token", text: SPOKEN_REPLY, fullText: SPOKEN_REPLY })}\n\n` +
+          `data: ${JSON.stringify({ type: "done", fullText: SPOKEN_REPLY, agentName: "Eliza" })}\n\n`,
       });
     },
   );
+  await page.route(
+    `**/api/conversations/${CHAT_CONVERSATION_ID}/greeting**`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          text: "Ready for real audio.",
+          localInference: null,
+        }),
+      });
+    },
+  );
+  await page.route(
+    `**/api/conversations/${CHAT_CONVERSATION_ID}`,
+    async (route) => {
+      if (route.request().method() !== "PATCH") return route.fallback();
+      const timestamp = new Date().toISOString();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          conversation: {
+            id: CHAT_CONVERSATION_ID,
+            roomId: CHAT_ROOM_ID,
+            title: "Real audio chat",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        }),
+      });
+    },
+  );
+  await page.route(`**/api/turns/${CHAT_ROOM_ID}/abort`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        aborted: true,
+        roomId: CHAT_ROOM_ID,
+        reason: "ui-chat-abort",
+      }),
+    });
+  });
+  await page.route("**/api/voice/playback-frames", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true }),
+    });
+  });
   const wav = tinyWav();
+  const longWav = tinyWav(8);
   for (const r of ["**/api/tts/cloud", "**/api/tts/local-inference"]) {
     await page.route(r, async (route) => {
       if (route.request().method() !== "POST") return route.fallback();
       await route.fulfill({
         status: 200,
         headers: { "content-type": "audio/wav" },
-        body: wav,
+        body: route.request().url().includes("/api/tts/local-inference")
+          ? longWav
+          : wav,
       });
     });
   }
@@ -169,4 +483,89 @@ test("pressing the mic button captures REAL injected audio and completes the voi
   const asr = report.stages?.find((s) => s.stage === "asr");
   expect(asr?.status).toBe("pass");
   expect(Number(asr?.detail?.wer ?? 1)).toBeLessThanOrEqual(0.34);
+});
+
+test("REAL audio: transcription start during spoken local TTS barges in and silences playback", async ({
+  page,
+}) => {
+  await installLocalVoiceConfig(page);
+  await installAudioSourceProbe(page);
+
+  const asrPosts: number[] = [];
+  page.on("request", (req) => {
+    if (
+      req.method() === "POST" &&
+      req.url().includes("/api/asr/local-inference") &&
+      !req.url().includes("/status")
+    ) {
+      asrPosts.push(req.postDataBuffer()?.byteLength ?? 0);
+    }
+  });
+
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    timeout: 30_000,
+  });
+  const mic = page.getByTestId("chat-composer-mic");
+  await expect(mic).toHaveAttribute("aria-label", "talk", {
+    timeout: 15_000,
+  });
+
+  // First drive a real fake-device voice turn so the next assistant message is
+  // genuinely voice-originated and therefore spoken aloud by the shell.
+  await mic.click();
+  await expect(mic).toHaveAttribute("aria-label", "end conversation", {
+    timeout: 15_000,
+  });
+  await page.waitForTimeout(1500);
+  await mic.click();
+
+  await expect
+    .poll(() => asrPosts.length, {
+      timeout: 25_000,
+      message: "stopping the first voice turn must POST captured WAV to ASR",
+    })
+    .toBeGreaterThanOrEqual(1);
+
+  await expect
+    .poll(async () => (await readAudioProbe(page)).starts, {
+      timeout: 25_000,
+      message: "assistant local TTS must start real Web Audio playback",
+    })
+    .toBeGreaterThan(0);
+
+  const beforeBarge = await readAudioProbe(page);
+
+  // This is the same window event used by the agent-action bridge for
+  // START_TRANSCRIPTION. It opens the real local-ASR capture while the long TTS
+  // clip is still playing; the shell's recording-driven barge-in effect must
+  // silence the in-flight Web Audio source immediately.
+  await dispatchVoiceControl(page, "start");
+  await expect(mic).toHaveAttribute("aria-label", "stop transcription", {
+    timeout: 15_000,
+  });
+  await expect
+    .poll(
+      async () => {
+        const probe = await readAudioProbe(page);
+        return probe.disconnects + probe.stops;
+      },
+      {
+        timeout: 10_000,
+        message:
+          "starting transcription during TTS must disconnect/stop the active audio source",
+      },
+    )
+    .toBeGreaterThan(beforeBarge.disconnects + beforeBarge.stops);
+
+  await page.waitForTimeout(1200);
+  await dispatchVoiceControl(page, "stop");
+  await expect
+    .poll(() => asrPosts.length, {
+      timeout: 25_000,
+      message:
+        "the barge-in transcription capture must also drain a real WAV to ASR",
+    })
+    .toBeGreaterThanOrEqual(2);
+  expect(Math.min(...asrPosts)).toBeGreaterThan(1000);
 });
