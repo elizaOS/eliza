@@ -1,6 +1,9 @@
 import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import firstPartyRegistry from "@elizaos/registry/first-party/generated.json" with {
+  type: "json",
+};
 import {
   type EdgeTtsHandler,
   wrapEdgeTtsHandlerWithFirstLineCache,
@@ -31,6 +34,12 @@ type TtsPluginModule = {
   edgeTTSPlugin?: { models?: Record<string, TtsModelHandler> };
 };
 
+type FirstPartyRegistryEntry = {
+  id?: string;
+  npmName?: string;
+  subtype?: string;
+};
+
 function readHandler(
   plugin: TtsPluginModule["default"],
 ): TtsModelHandler | undefined {
@@ -38,16 +47,29 @@ function readHandler(
   return typeof handler === "function" ? handler : undefined;
 }
 
+function resolveDefaultTtsPluginName(): string {
+  const entries = (
+    firstPartyRegistry as { entries?: FirstPartyRegistryEntry[] }
+  ).entries;
+  const entry = entries?.find(
+    (candidate) => candidate.id === "edge-tts" && candidate.subtype === "voice",
+  );
+  if (!entry?.npmName) {
+    throw new Error(
+      "First-party registry entry edge-tts did not expose a voice plugin package name",
+    );
+  }
+  return entry.npmName;
+}
+
 export const DEFAULT_TEXT_TO_SPEECH_PROVIDER: TextToSpeechProviderRegistration =
   {
-    pluginName: "@elizaos/plugin-edge-tts",
+    pluginName: resolveDefaultTtsPluginName(),
     pluginConfigKey: "edge-tts",
     providerName: "edge-tts",
     priority: 0,
     async loadHandler(): Promise<TtsModelHandler> {
-      const nodeModule = (await import(
-        "@elizaos/plugin-edge-tts"
-      )) as TtsPluginModule;
+      const nodeModule = (await import(this.pluginName)) as TtsPluginModule;
       const handler = readHandler(nodeModule.default);
       if (!handler) {
         throw new Error(

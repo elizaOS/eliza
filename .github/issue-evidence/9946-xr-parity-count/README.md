@@ -5,6 +5,7 @@
 - Updated `plugins/plugin-xr/src/__tests__/xr-functional-parity.test.ts` so the summary assertion matches the current XR plugin registry size.
 - The focused parity suite still checks the stronger contract: every listed XR view shares the GUI bundle/component, has functional source content, exports the declared component, and keeps TUI capabilities present in shared source.
 - Removed fictional SSH naming from the agent terminal TUI conversation/test fixtures; terminal-originated conversations now use the `Terminal TUI` title and `terminal-tui` source metadata.
+- Documented the actual TUI auth contract in `packages/agent/docs/terminal-tui.md`: local loopback sessions can use backend loopback trust, while proxied/tunneled sessions require `ELIZA_API_TOKEN` so the TUI sends `Authorization: Bearer <token>`.
 - Added a real PTY regression test for the agent terminal TUI. The test spawns the actual Bun CLI through `@lydell/node-pty`, registers a child-process terminal view through a preload, drives view open, resize, focus toggle, and chat submit, and asserts the mock backend received the expected `/api/views/:id/navigate` and `/api/conversations/:id/messages` calls.
 - Added `packages/tui` to the root `test:server` package filter so its test suite runs in the PR server lane.
 - Added `packages/ui test:xr-sim` and wired the XR sim Playwright spec into the client workflow.
@@ -15,6 +16,9 @@
 - `agent-terminal-tui-vitest.log`
   - `bunx vitest run --config packages/agent/vitest.config.ts packages/agent/src/__tests__/agent-terminal-tui.test.ts --coverage.enabled=false`
   - Result: 1 file passed, 6 tests passed.
+- `tui-client-auth-vitest.log`
+  - `bunx vitest run --config packages/agent/vitest.config.ts packages/agent/src/__tests__/tui-client-auth.test.ts --coverage.enabled=false`
+  - Result: 1 file passed, 2 tests passed.
 - `packages-tui-test.log`
   - `bun run --cwd packages/tui test`
   - Result: 25 files passed, 468 tests passed, 11 skipped.

@@ -3,14 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { resolveElizaWorkspaceRootFromImportMeta } from "../lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
   resolveAndroidNdkHostDir,
   resolveDefaultAndroidAssetsDir,
   resolveHomebrewFormulaIncludeDirs,
 } from "./compile-libllama-paths.mjs";
 
-const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",

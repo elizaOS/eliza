@@ -670,33 +670,31 @@ function normalizePlannerProviders(
 		}
 		providerLookup.set(normalized, provider.name);
 	}
-	const normalizedProviders = providerNames
-		.map((providerName) => {
-			const normalizedProviderName = normalizeActionIdentifier(providerName);
-			const canonicalProvider =
-				providerLookup.get(normalizedProviderName) ??
-				(() => {
-					const aliasedProvider = PLANNER_PROVIDER_ALIASES.get(
-						normalizedProviderName,
-					);
-					if (!aliasedProvider) {
-						return undefined;
-					}
-					return providerLookup.get(normalizeActionIdentifier(aliasedProvider));
-				})();
-			if (canonicalProvider) {
-				return canonicalProvider;
-			}
-			runtime.logger.warn(
-				{
-					src: "service:message",
-					providerName,
-				},
-				"Dropping unknown planner provider",
-			);
-			return "";
-		})
-		.filter((providerName) => providerName.length > 0);
+	const normalizedProviders = providerNames.flatMap((providerName) => {
+		const normalizedProviderName = normalizeActionIdentifier(providerName);
+		const canonicalProvider =
+			providerLookup.get(normalizedProviderName) ??
+			(() => {
+				const aliasedProvider = PLANNER_PROVIDER_ALIASES.get(
+					normalizedProviderName,
+				);
+				if (!aliasedProvider) {
+					return undefined;
+				}
+				return providerLookup.get(normalizeActionIdentifier(aliasedProvider));
+			})();
+		if (canonicalProvider) {
+			return canonicalProvider;
+		}
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				providerName,
+			},
+			"Dropping unknown planner provider",
+		);
+		return [];
+	});
 
 	if (normalizedProviders.length === 0) {
 		return normalizedProviders;
@@ -2139,7 +2137,7 @@ function getRecentConversationSearchText(
 		return [];
 	}
 	return recentMessages
-		.filter((memory): memory is Memory => {
+		.filter((memory): memory is Memory & { content: { text: string } } => {
 			if (!memory || typeof memory !== "object") return false;
 			if (memory.id && currentMessage.id && memory.id === currentMessage.id) {
 				return false;
@@ -2149,7 +2147,7 @@ function getRecentConversationSearchText(
 		})
 		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
 		.slice(0, 8)
-		.map((memory) => memory.content.text?.trim() ?? "")
+		.map((memory) => memory.content.text.trim())
 		.filter(Boolean);
 }
 
@@ -2590,9 +2588,21 @@ function buildV5PlannerActionSurface(params: {
 		params.localizedExamples,
 	);
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
+	const messageText = getUserMessageText(params.message);
+	if (typeof messageText !== "string") {
+		params.logger?.warn(
+			{
+				src: "service:message",
+				messageId: params.message.id,
+			},
+			"Planner action retrieval received message without text",
+		);
+	}
+	const retrievalMessageText =
+		typeof messageText === "string" ? messageText : "";
 	const retrieval = retrieveActions({
 		catalog,
-		messageText: getUserMessageText(params.message) ?? "",
+		messageText: retrievalMessageText,
 		recentConversationText: getRecentConversationSearchText(
 			params.state,
 			params.message,
@@ -2668,7 +2678,7 @@ function buildV5PlannerActionSurface(params: {
 				latencyMs: toolSearchEndedAt - toolSearchStartedAt,
 				toolSearch: {
 					query: {
-						text: getUserMessageText(params.message) ?? "",
+						text: retrievalMessageText,
 						tokens: retrieval.query.tokens,
 						candidateActions: [...candidateActions],
 						parentActionHints: [...parentActionHints],

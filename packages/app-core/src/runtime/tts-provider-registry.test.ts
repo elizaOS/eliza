@@ -53,4 +53,16 @@ describe("TTS provider registry", () => {
     expect(elizaSource).not.toContain("@elizaos/plugin-edge-tts");
     expect(ensureSource).not.toContain("@elizaos/plugin-edge-tts");
   });
+
+  it("keeps the default TTS package literal owned by the registry entry", () => {
+    const registrySource = readFileSync(
+      resolve(appCoreRoot, "src/runtime/tts-provider-registry.ts"),
+      "utf8",
+    );
+
+    expect(registrySource).not.toContain("@elizaos/plugin-edge-tts");
+    expect(registrySource).toContain(
+      "@elizaos/registry/first-party/generated.json",
+    );
+  });
 });
