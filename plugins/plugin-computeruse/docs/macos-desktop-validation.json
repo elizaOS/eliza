@@ -1,21 +1,18 @@
 {
   "schemaVersion": 1,
   "platform": "macos-desktop",
-  "status": "requires_device_evidence",
+  "status": "passed",
   "target": {
     "minimumMacos": "macOS 13 or newer",
-    "requiredPermissions": [
-      "Screen Recording",
-      "Accessibility"
-    ],
+    "requiredPermissions": ["Screen Recording", "Accessibility"],
     "driver": "nutjs preferred; legacy cliclick/AppleScript fallback allowed"
   },
   "evidence": {
     "machineModel": "Mac16,5",
     "macosVersion": "26.2",
     "buildId": "25C56",
-    "validatedAt": "2026-06-25T06:22:49.821Z",
-    "validator": "bun scripts/capture-macos-desktop-evidence.mjs (028afc134c)",
+    "validatedAt": "2026-06-26T22:47:17.507Z",
+    "validator": "bun scripts/capture-macos-desktop-evidence.mjs (08255e4731)",
     "artifacts": [
       ".github/issue-evidence/9581-macos-desktop-cua/screenshot-primary.png",
       ".github/issue-evidence/9581-macos-desktop-cua/browser-evidence.png",
@@ -52,7 +49,7 @@
       "method": "captureDisplay/capturePrimaryDisplay",
       "status": "passed",
       "requiredEvidence": [
-        "primary display capture returned 2745277 PNG bytes",
+        "primary display capture returned 2502814 PNG bytes",
         "captured dimensions 3456x2234 match display 0",
         "screenshot artifact .github/issue-evidence/9581-macos-desktop-cua/screenshot-primary.png"
       ]
@@ -60,28 +57,32 @@
     {
       "id": "accessibilityPermission",
       "method": "Accessibility/TCC gate",
-      "status": "requires_device_evidence",
+      "status": "passed",
       "requiredEvidence": [
-        "requires a macOS host with Accessibility (TCC) permission granted to the runner; ungranted on this M4 Max run so window-list/focus + input + Accessibility could not be exercised (the other 6 checks passed on real hardware)",
-        "Accessibility-gated input/window proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
+        "granted Accessibility permission allowed TextEdit focus, window bounds, click, key_combo, and type operations",
+        "missing Accessibility permission is classified by desktop service errors when TCC blocks input or System Events access"
       ]
     },
     {
       "id": "mouseKeyboardInput",
       "method": "ComputerUseService desktop actions",
-      "status": "requires_device_evidence",
+      "status": "passed",
       "requiredEvidence": [
-        "requires a macOS host with Accessibility (TCC) permission granted to the runner; ungranted on this M4 Max run so window-list/focus + input + Accessibility could not be exercised (the other 6 checks passed on real hardware)",
-        "controlled TextEdit input proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
+        "mouse_move succeeded at 1348,581 on display 0",
+        "click succeeded on a controlled TextEdit document",
+        "key_combo cmd+a succeeded in the controlled text field",
+        "type wrote and verified marker macos-cua-1782514041177",
+        "post-action screenshots were requested by service configuration"
       ]
     },
     {
       "id": "windowListFocus",
       "method": "listWindows/focusWindow",
-      "status": "requires_device_evidence",
+      "status": "passed",
       "requiredEvidence": [
-        "requires a macOS host with Accessibility (TCC) permission granted to the runner; ungranted on this M4 Max run so window-list/focus + input + Accessibility could not be exercised (the other 6 checks passed on real hardware)",
-        "windowListFocus requires rerun with macOS Accessibility permission granted: list_windows returned only placeholder window metadata."
+        "listWindows returned 15 visible window(s)",
+        "focusWindow/switchWindow succeeded for Simulator:iPhone 16 Pro",
+        "window operation errors retain permission guidance through service failure results"
       ]
     },
     {
@@ -101,8 +102,8 @@
       "method": "readClipboard/writeClipboard",
       "status": "passed",
       "requiredEvidence": [
-        "pbcopy wrote test token macos-clipboard-1782368614059",
-        "pbpaste read the same test token",
+        "pbcopy wrote test marker macos-clipboard-1782514118884",
+        "pbpaste read the same test marker",
         "large payload cap and command failures remain covered by unit tests"
       ]
     },
