@@ -1,14 +1,16 @@
 /**
  * OAuth/connector auth-success callback page (public). Shows a connection-
- * successful card and auto-closes the popup. Ported from
+ * successful card and routes the user back into Cloud. Ported from
  * `@elizaos/cloud-frontend/src/pages/auth/success/page.tsx`.
  */
 
-import { CheckCircle, MessageCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CheckCircle } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
+import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
+
+const CLOUD_DASHBOARD_PATH = "/dashboard";
 
 const platformNames: Record<string, string> = {
   google: "Google",
@@ -26,7 +28,6 @@ function capitalize(str: string): string {
 
 export default function AuthSuccessPage() {
   const t = useCloudT();
-  const [canClose, setCanClose] = useState(false);
   const [searchParams] = useSearchParams();
 
   usePageTitle(
@@ -45,19 +46,6 @@ export default function AuthSuccessPage() {
   const platformDisplay = platform
     ? platformNames[platform.toLowerCase()] || capitalize(platform)
     : null;
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        window.close();
-      } catch {
-        setCanClose(true);
-      }
-      setCanClose(true);
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-black p-4">
@@ -92,30 +80,13 @@ export default function AuthSuccessPage() {
             </p>
           </div>
 
-          <div className="w-full p-4 bg-white/[0.04] border border-white/14">
-            <div className="flex items-center gap-3 text-left">
-              <MessageCircle className="h-5 w-5 text-neutral-400 flex-shrink-0" />
-              <p className="text-sm text-neutral-300">
-                {t("cloud.authSuccess.returnPrefix", {
-                  defaultValue: "Return to your chat and say",
-                })}{" "}
-                <span className="text-white font-medium">
-                  {t("cloud.authSuccess.doneWord", { defaultValue: '"done"' })}
-                </span>{" "}
-                {t("cloud.authSuccess.returnSuffix", {
-                  defaultValue: "to verify the connection.",
-                })}
-              </p>
-            </div>
-          </div>
-
-          {canClose && (
-            <p className="text-xs text-neutral-600">
-              {t("cloud.authSuccess.canClose", {
-                defaultValue: "You can close this window.",
+          <a href={CLOUD_DASHBOARD_PATH} className="w-full">
+            <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
+              {t("cloud.authSuccess.openCloud", {
+                defaultValue: "Open Eliza Cloud",
               })}
-            </p>
-          )}
+            </Button>
+          </a>
         </div>
       </div>
     </div>
