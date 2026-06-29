@@ -303,7 +303,14 @@ export function useHorizontalPager<
       }
       if (state.axis !== "horizontal") return;
 
-      if (!state.captured) {
+      // Touch pointers are IMPLICITLY captured to the target on pointerdown, so
+      // an explicit setPointerCapture is redundant — and on Android WebView it
+      // makes the browser fire `pointercancel` + `lostpointercapture` the instant
+      // it is called mid-gesture, which `onLostPointerCapture` then turns into an
+      // aborted drag (the launcher flick silently snaps back). Capture explicitly
+      // only for mouse/pen, where it is needed to keep receiving moves once the
+      // pointer leaves the element.
+      if (!state.captured && event.pointerType !== "touch") {
         try {
           event.currentTarget.setPointerCapture(event.pointerId);
           state.captured = true;
