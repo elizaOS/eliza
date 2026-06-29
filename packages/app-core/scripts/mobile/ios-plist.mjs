@@ -2,11 +2,69 @@
  * Pure iOS Info.plist / project.pbxproj string transformers.
  *
  * Each function takes file content (and options) and returns transformed
- * content — no filesystem or module state. The build spine
+ * content -- no filesystem or module state. The build spine
  * (`run-mobile-build.mjs`) reads/writes the files and calls these to mutate
  * the text.
  */
+import { ensurePlistUrlScheme } from "../lib/ios-plist-url-scheme.mjs";
 import { escapeRegExp, escapeXmlText } from "./escape.mjs";
+
+export const IOS_BONJOUR_SERVICES = [
+  "_eliza-gw._tcp",
+  "_elizaos-gw._tcp",
+  "_eliza._tcp",
+];
+
+const IOS_BACKGROUND_MODES = ["fetch", "processing", "remote-notification"];
+const IOS_BG_TASK_IDENTIFIERS = [
+  "ai.eliza.tasks.refresh",
+  "ai.eliza.tasks.processing",
+];
+
+export function resolveIosPermissionKeys({ appName }) {
+  return [
+    [
+      "NSCameraUsageDescription",
+      "This app uses your camera to capture photos and video when you ask it to.",
+    ],
+    [
+      "NSMicrophoneUsageDescription",
+      "This app needs microphone access for voice wake, talk mode, and video capture.",
+    ],
+    [
+      "NSLocationWhenInUseUsageDescription",
+      "This app uses your location to provide location-aware responses when you allow it.",
+    ],
+    [
+      "NSLocationAlwaysAndWhenInUseUsageDescription",
+      "This app can share your location in the background so it stays up to date even when the app is not in use.",
+    ],
+    [
+      "NSPhotoLibraryUsageDescription",
+      "This app accesses your photo library to attach and share photos or videos.",
+    ],
+    [
+      "NSPhotoLibraryAddUsageDescription",
+      "This app saves captured photos and videos to your photo library.",
+    ],
+    [
+      "NSHealthShareUsageDescription",
+      "This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.",
+    ],
+    [
+      "NSHealthUpdateUsageDescription",
+      "This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.",
+    ],
+    [
+      "NSSpeechRecognitionUsageDescription",
+      "This app uses on-device speech recognition to listen for voice commands and wake words.",
+    ],
+    [
+      "NSLocalNetworkUsageDescription",
+      `This app discovers and connects to your ${appName} gateway on the local network.`,
+    ],
+  ];
+}
 
 /** Set (or insert before `</dict>`) a `<key>`/`<string>` pair in a plist. */
 export function replaceOrInsertPlistString(content, key, value) {
@@ -80,4 +138,43 @@ export function removePbxListEntries(content, ids) {
     );
   }
   return next;
+}
+
+export function mergeIosInfoPlist(
+  content,
+  { appName, urlScheme, displayName = "$(ELIZA_DISPLAY_NAME)" },
+) {
+  let nextContent = content;
+  for (const [key, desc] of resolveIosPermissionKeys({ appName })) {
+    if (!nextContent.includes(key)) {
+      nextContent = nextContent.replace(
+        "</dict>",
+        `\t<key>${key}</key>\n\t<string>${desc}</string>\n</dict>`,
+      );
+    }
+  }
+  nextContent = ensurePlistUrlScheme(
+    ensurePlistArrayStrings(
+      ensurePlistArrayStrings(
+        ensurePlistArrayStrings(
+          replaceOrInsertPlistString(
+            nextContent,
+            "CFBundleDisplayName",
+            displayName,
+          ),
+          "NSBonjourServices",
+          IOS_BONJOUR_SERVICES,
+        ),
+        "UIBackgroundModes",
+        IOS_BACKGROUND_MODES,
+      ),
+      "BGTaskSchedulerPermittedIdentifiers",
+      IOS_BG_TASK_IDENTIFIERS,
+    ),
+    urlScheme,
+  );
+  return {
+    changed: nextContent !== content,
+    content: nextContent,
+  };
 }
