@@ -42,9 +42,7 @@ FALSE_CLAIM_FLAGS = {
     "production_readiness_claim_allowed": False,
 }
 CAPTURE_SCRIPT = "packages/research/chip/scripts/android/capture_simulated_peripheral_evidence.py"
-RECHECK_COMMAND = (
-    "python3 packages/research/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only"
-)
+RECHECK_COMMAND = "python3 packages/research/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only"
 ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
 ADB_HOSTPORT_SENTINEL = "$CHIP_ANDROID_ADB_HOSTPORT"
 REQUIRED_COMPONENTS = {

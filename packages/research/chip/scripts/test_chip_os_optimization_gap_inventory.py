@@ -388,7 +388,10 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_command_plan_harvests_nested_runtime_logging_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/research/chip/build/reports/android_release_readiness_contract.json"
+            artifact = (
+                repo
+                / "packages/research/chip/build/reports/android_release_readiness_contract.json"
+            )
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(
@@ -499,7 +502,10 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
     def test_command_plan_sanitizes_host_local_aosp_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            artifact = repo / "packages/research/chip/build/reports/android_release_readiness_contract.json"
+            artifact = (
+                repo
+                / "packages/research/chip/build/reports/android_release_readiness_contract.json"
+            )
             artifact.parent.mkdir(parents=True)
             artifact.write_text(
                 json.dumps(

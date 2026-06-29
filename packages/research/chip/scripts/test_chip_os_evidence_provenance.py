@@ -247,7 +247,9 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
             finding for finding in data["findings"] if finding["category"] == "host_local_path"
         ]
         self.assertEqual(len(host_findings), 1)
-        self.assertEqual(host_findings[0]["path"], "packages/research/chip/docs/evidence/qemu-raw.log")
+        self.assertEqual(
+            host_findings[0]["path"], "packages/research/chip/docs/evidence/qemu-raw.log"
+        )
 
     def test_keyword_inventory_excerpts_do_not_expand_marker_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
