@@ -215,7 +215,8 @@ async function dispatchOrchestratorRoutes(
   // Returns 200 when ≥1 healthy Codex AND ≥1 healthy Claude are connected
   // (≥2 each with ?rotation=1), or 503 with the per-provider problems when not,
   // so CI/ops catches a degraded pool instead of the silent single-account
-  // fallback. (#9960)
+  // fallback. The dashboard account-health panel reads the verdict body on
+  // either status (allowNonOk). (#9960)
   if (method === "GET" && pathname === `${PREFIX}/accounts/readiness`) {
     const rotation =
       query.get("rotation") === "1" || query.get("rotation") === "true";

@@ -214,6 +214,7 @@ describe("GET /api/orchestrator/accounts/readiness", () => {
         );
         expect(res.statusCode).toBe(503);
         expect(res.json().required).toBe(2);
+        expect(res.json().ready).toBe(false);
       },
     );
   });

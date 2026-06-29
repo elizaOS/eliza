@@ -86,6 +86,7 @@ import type {
   LogsFilter,
   LogsResponse,
   OrchestratorAccountOverview,
+  OrchestratorAccountReadiness,
   OrchestratorRoomRosterOverview,
   PluginInfo,
   PluginMutationResult,
@@ -1007,6 +1008,9 @@ declare module "./client-base" {
     reopenCodingAgentTaskThread(threadId: string): Promise<boolean>;
     getOrchestratorStatus(): Promise<CodingAgentOrchestratorStatus | null>;
     getOrchestratorAccounts(): Promise<OrchestratorAccountOverview>;
+    getOrchestratorAccountReadiness(opts?: {
+      rotation?: boolean;
+    }): Promise<OrchestratorAccountReadiness>;
     getOrchestratorRooms(): Promise<OrchestratorRoomRosterOverview>;
     createOrchestratorTask(
       input: CodingAgentCreateTaskInput,
@@ -3767,6 +3771,21 @@ ElizaClient.prototype.getOrchestratorAccounts = async function (
   this: ElizaClient,
 ) {
   return this.fetch<OrchestratorAccountOverview>("/api/orchestrator/accounts");
+};
+
+ElizaClient.prototype.getOrchestratorAccountReadiness = async function (
+  this: ElizaClient,
+  opts,
+) {
+  const qs = opts?.rotation ? "?rotation=1" : "";
+  // The route returns 503 when the pool is degraded — but that 503 body IS the
+  // verdict the panel renders, not an error. allowNonOk skips the throw so we
+  // read the body on both 200 (ready) and 503 (degraded).
+  return this.fetch<OrchestratorAccountReadiness>(
+    `/api/orchestrator/accounts/readiness${qs}`,
+    undefined,
+    { allowNonOk: true },
+  );
 };
 
 ElizaClient.prototype.getOrchestratorRooms = async function (
