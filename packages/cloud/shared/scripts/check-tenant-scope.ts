@@ -67,8 +67,6 @@ function primaryKeyPredicateTable(where: ts.Expression): string | undefined {
   return TENANT_DATA_PLANE_TABLES.has(lhs.expression.text) ? lhs.expression.text : undefined;
 }
 
-type ConstArrayInitializers = Map<string, ts.ArrayLiteralExpression>;
-
 function isConstArrayDeclaration(node: ts.VariableDeclaration): boolean {
   return (
     ts.isIdentifier(node.name) &&
@@ -79,21 +77,48 @@ function isConstArrayDeclaration(node: ts.VariableDeclaration): boolean {
   );
 }
 
-function collectConstArrayInitializers(source: ts.SourceFile): ConstArrayInitializers {
-  const arrays: ConstArrayInitializers = new Map();
-  const visit = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) && isConstArrayDeclaration(node)) {
-      arrays.set(node.name.text, node.initializer);
+function constArrayInitializerFromStatement(
+  statement: ts.Statement,
+  name: string,
+): ts.ArrayLiteralExpression | undefined {
+  if (!ts.isVariableStatement(statement)) return undefined;
+  let found: ts.ArrayLiteralExpression | undefined;
+  for (const declaration of statement.declarationList.declarations) {
+    if (isConstArrayDeclaration(declaration) && declaration.name.text === name) {
+      found = declaration.initializer;
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return arrays;
+  }
+  return found;
+}
+
+function statementScope(node: ts.Node): ts.NodeArray<ts.Statement> | undefined {
+  if (ts.isBlock(node) || ts.isSourceFile(node) || ts.isModuleBlock(node)) {
+    return node.statements;
+  }
+  return undefined;
+}
+
+function findVisibleConstArrayInitializer(
+  name: string,
+  from: ts.Node,
+): ts.ArrayLiteralExpression | undefined {
+  for (let scope: ts.Node | undefined = from.parent; scope; scope = scope.parent) {
+    const statements = statementScope(scope);
+    if (!statements) continue;
+
+    let found: ts.ArrayLiteralExpression | undefined;
+    for (const statement of statements) {
+      if (statement.pos >= from.pos) break;
+      if (statement.end > from.pos) continue;
+      found = constArrayInitializerFromStatement(statement, name) ?? found;
+    }
+    if (found) return found;
+  }
+  return undefined;
 }
 
 function expandedExpressions(
   expression: ts.Expression,
-  arrays: ConstArrayInitializers,
   seenArrays: Set<string>,
 ): ts.Expression[] | undefined {
   if (!ts.isSpreadElement(expression)) return [expression];
@@ -106,7 +131,7 @@ function expandedExpressions(
     return undefined;
   }
 
-  const initializer = arrays.get(spread.text);
+  const initializer = findVisibleConstArrayInitializer(spread.text, expression);
   if (!initializer) return undefined;
   seenArrays.add(spread.text);
   const expanded = [...initializer.elements];
@@ -122,7 +147,6 @@ function expandedExpressions(
  */
 function primaryKeyOnlyTables(
   where: ts.Expression,
-  arrays: ConstArrayInitializers,
   seenArrays = new Set<string>(),
 ): Set<string> | undefined {
   const direct = primaryKeyPredicateTable(where);
@@ -135,10 +159,10 @@ function primaryKeyOnlyTables(
   const tables = new Set<string>();
   let sawPkPredicate = false;
   for (const arg of where.arguments) {
-    const expanded = expandedExpressions(arg, arrays, seenArrays);
+    const expanded = expandedExpressions(arg, seenArrays);
     if (!expanded?.length) return undefined;
     for (const expr of expanded) {
-      const childTables = primaryKeyOnlyTables(expr, arrays, seenArrays);
+      const childTables = primaryKeyOnlyTables(expr, seenArrays);
       if (!childTables) return undefined;
       sawPkPredicate = true;
       for (const table of childTables) tables.add(table);
@@ -195,11 +219,10 @@ export function findUnscopedTenantReads(repoFiles: string[]): TenantScopeViolati
   const violations: TenantScopeViolation[] = [];
   for (const file of repoFiles) {
     const source = parse(file);
-    const arrays = collectConstArrayInitializers(source);
     const visit = (node: ts.Node): void => {
       const where = whereExpression(node);
       if (where) {
-        const tables = primaryKeyOnlyTables(where, arrays);
+        const tables = primaryKeyOnlyTables(where);
         if (tables) {
           const fn = enclosingFunction(node);
           if (!ALLOW_ANNOTATION.test(fn.text)) {
