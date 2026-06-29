@@ -1,4 +1,7 @@
 import "./core-augmentation.js";
+import { walletRouteRegistration } from "./register-routes.js";
+
+void walletRouteRegistration;
 
 export * from "./actions/index.js";
 export { BirdeyeService } from "./analytics/birdeye/service.js";

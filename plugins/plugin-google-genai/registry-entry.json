@@ -13,7 +13,26 @@
       "sensitive": true,
       "label": "Generative Ai Api Key",
       "help": "API key for Google Generative AI (Gemini) obtained from Google AI Studio.",
-      "advanced": false
+      "advanced": false,
+      "autoEnableProvider": true
+    },
+    "GOOGLE_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Google Api Key",
+      "help": "Compatibility auto-enable key for Google Generative AI.",
+      "advanced": false,
+      "autoEnableProvider": true
+    },
+    "GEMINI_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Gemini Api Key",
+      "help": "Compatibility auto-enable key for Gemini.",
+      "advanced": false,
+      "autoEnableProvider": true
     },
     "GOOGLE_EMBEDDING_MODEL": {
       "type": "string",

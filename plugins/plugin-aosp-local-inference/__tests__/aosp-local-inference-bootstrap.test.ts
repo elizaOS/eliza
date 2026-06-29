@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -16,6 +16,7 @@ import {
   makeAospTextToSpeechHandler,
   parseMemAvailableMb,
   readAssignedBundledModels,
+  removeAospGeneratedStagingDir,
   shouldEvictChatForAvailMb,
   VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
@@ -446,6 +447,38 @@ describe("readAssignedBundledModels", () => {
     );
 
     expect(readAssignedBundledModels(modelsDir).chat).toBe(defaultModel);
+  });
+});
+
+describe("removeAospGeneratedStagingDir", () => {
+  it("removes only generated staging directories under the active bundle", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-staging-cleanup-"));
+    const bundleRoot = path.join(root, "local-inference", "models", "2b");
+    const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
+    mkdirSync(stagingDir, { recursive: true });
+    writeFileSync(path.join(stagingDir, "partial.gguf"), "partial");
+
+    removeAospGeneratedStagingDir(stagingDir, bundleRoot);
+
+    expect(existsSync(stagingDir)).toBe(false);
+  });
+
+  it("refuses non-staging, bundle-root, cwd, root, and escaped paths", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-staging-guard-"));
+    const bundleRoot = path.join(root, "bundle");
+    mkdirSync(bundleRoot, { recursive: true });
+
+    for (const candidate of [
+      path.join(bundleRoot, "tts"),
+      bundleRoot,
+      process.cwd(),
+      path.parse(bundleRoot).root,
+      path.join(root, "outside.staging"),
+    ]) {
+      expect(() =>
+        removeAospGeneratedStagingDir(candidate, bundleRoot),
+      ).toThrow(/Refusing to remove unsafe staging directory/);
+    }
   });
 });
 
