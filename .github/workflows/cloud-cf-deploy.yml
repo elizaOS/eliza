@@ -109,6 +109,12 @@ jobs:
 
       - name: Run Worker e2e
         run: bun run --cwd packages/cloud/api test:e2e
+        env:
+          # The deploy runner is a shared self-hosted box running wrangler dev,
+          # PGlite, and the full Worker suite. Keep release gating tolerant of
+          # runner load without enabling live external Steward side effects.
+          TEST_REQUEST_TIMEOUT_MS: "60000"
+          RUN_STEWARD_WALLET_E2E: "0"
 
       - name: Build
         run: bun run --cwd packages/cloud/api build
