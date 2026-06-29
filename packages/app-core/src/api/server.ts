@@ -39,6 +39,7 @@ import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
+  ensureRouteMinRole,
 } from "./auth.ts";
 import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
@@ -794,7 +795,7 @@ async function handleCompatRouteInner(
   if (await handleWorkbenchCompatRoutes(req, res, state)) return true;
 
   if (url.pathname.startsWith("/api/secrets/")) {
-    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
     if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) {
       return true;
     }
