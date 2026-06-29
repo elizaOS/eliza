@@ -106,6 +106,7 @@ const ALLOWED_EXACT = new Set([
   "pre-commit",
   "audit:scripts",
   "audit:scripts:self-test",
+  "audit:tee-secret-leak:self-test",
 ]);
 
 const NOOP_GATE_KEYS = /^(lint|typecheck|test|build)(:|$)/;

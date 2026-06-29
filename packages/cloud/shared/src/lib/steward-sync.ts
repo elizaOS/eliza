@@ -433,7 +433,7 @@ export async function syncUserFromSteward(
     try {
       // The cap check and the grant run under a per-IP advisory lock so
       // concurrent same-IP signups cannot each pass the cap before any commits.
-      await runWithSignupGrantIpCap(signupIp, async () => {
+      await runWithSignupGrantIpCap(signupIp, async (tx) => {
         await creditsService.addCredits({
           organizationId: organization.id,
           amount: initialCredits,
@@ -443,6 +443,7 @@ export async function syncUserFromSteward(
             source: "signup",
             ip_address: signupIp,
           },
+          db: tx,
         });
       });
     } catch (error) {

@@ -1,11 +1,14 @@
 import type { SQLWrapper } from "drizzle-orm";
-import type { Database } from "./client";
+
+export interface SqlExecutor {
+  execute(query: SQLWrapper): Promise<unknown>;
+}
 
 /**
  * `Database#execute` resolves to a driver-specific shape; with `PgQueryResultHKT` it is typed as unknown.
  * This helper validates the Neon/Node `{ rows }` shape used across the repo.
  */
-export async function sqlRows<T extends object>(db: Database, query: SQLWrapper): Promise<T[]> {
+export async function sqlRows<T extends object>(db: SqlExecutor, query: SQLWrapper): Promise<T[]> {
   const result = await db.execute(query);
   if (typeof result !== "object" || result === null || !("rows" in result)) {
     throw new Error("[sqlRows] execute() did not return an object with rows");

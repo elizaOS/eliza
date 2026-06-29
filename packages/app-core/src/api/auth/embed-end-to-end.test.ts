@@ -13,7 +13,8 @@ import { describe, expect, it, vi } from "vitest";
 
 const { hasRoleAccess } = vi.hoisted(() => ({
   hasRoleAccess: vi.fn(
-    async (_runtime: unknown, _message: unknown, _role: string) => true,
+    async (_runtime: unknown, _message: unknown, role: string) =>
+      role === "OWNER",
   ),
 }));
 

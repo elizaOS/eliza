@@ -17,10 +17,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
+  createWorkThreadStore: vi.fn(),
+  createApprovalQueue: vi.fn(),
 }));
 
 vi.mock("@elizaos/agent", () => ({
   hasOwnerAccess: mocks.hasOwnerAccess,
+}));
+
+vi.mock("../src/lifeops/work-threads/index.js", () => ({
+  createWorkThreadStore: mocks.createWorkThreadStore,
+}));
+
+vi.mock("../src/lifeops/approval-queue.js", () => ({
+  createApprovalQueue: mocks.createApprovalQueue,
 }));
 
 import {
@@ -32,8 +42,10 @@ import {
 function makeRuntime(
   options: {
     useModel?: (modelType: string, args: { prompt: string }) => Promise<string>;
+    services?: Record<string, unknown>;
   } = {},
 ): IAgentRuntime {
+  const services = options.services ?? {};
   return {
     agentId: "agent-prioritize-test" as UUID,
     logger: {
@@ -42,6 +54,7 @@ function makeRuntime(
       error: () => undefined,
       debug: () => undefined,
     },
+    getService: (name: string) => services[name] ?? null,
     useModel:
       options.useModel ??
       (async () =>
@@ -81,6 +94,12 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
   beforeEach(() => {
     __resetPrioritizeLoadersForTests();
     mocks.hasOwnerAccess.mockReset().mockResolvedValue(true);
+    mocks.createWorkThreadStore.mockReset().mockReturnValue({
+      list: vi.fn(async () => []),
+    });
+    mocks.createApprovalQueue.mockReset().mockReturnValue({
+      list: vi.fn(async () => []),
+    });
   });
 
   describe("metadata", () => {
@@ -159,8 +178,7 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
       );
       expect(result.success).toBe(true);
       expect(useModel).toHaveBeenCalledTimes(1);
-      const [modelType] = useModel.mock.calls[0]!;
-      expect(modelType).toBe(ModelType.TEXT_LARGE);
+      expect(useModel.mock.calls[0]?.[0]).toBe(ModelType.TEXT_LARGE);
       const data = result.data as {
         ranked: {
           id: string;
@@ -176,6 +194,60 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
         score: 0.95,
       });
       expect(data.ranked[1]).toMatchObject({ id: "todo-3", rank: 2 });
+    });
+
+    it("loads pending todos from the registered production service", async () => {
+      const listTodos = vi.fn(async () => [
+        {
+          id: "todo-prod-1",
+          content: "Send partner proposal",
+          activeForm: "Sending partner proposal",
+          status: "pending",
+          metadata: {
+            dueAt: "2026-07-01T09:00:00.000Z",
+            priority: 1,
+          },
+          createdAt: new Date("2026-06-29T08:00:00.000Z"),
+          updatedAt: new Date("2026-06-29T08:30:00.000Z"),
+        },
+      ]);
+      const useModel = vi.fn(async (_modelType, args) => {
+        expect(args.prompt).toContain("Sending partner proposal");
+        return JSON.stringify({
+          ranked: [
+            {
+              id: "todo-prod-1",
+              score: 0.88,
+              reasoning: "near deadline",
+            },
+          ],
+        });
+      });
+      const runtime = makeRuntime({
+        useModel,
+        services: {
+          todos: { list: listTodos },
+        },
+      });
+      const result = await callPrioritize(runtime, makeMessage(), {
+        subaction: "rank_todos",
+      });
+      expect(result.success).toBe(true);
+      expect(listTodos).toHaveBeenCalledWith({
+        entityId: "owner-1",
+        agentId: "agent-prioritize-test",
+        status: ["pending", "in_progress"],
+        includeCompleted: false,
+        limit: 50,
+      });
+      const data = result.data as {
+        ranked: { id: string; title: string; dueAt?: string | null }[];
+      };
+      expect(data.ranked[0]).toMatchObject({
+        id: "todo-prod-1",
+        title: "Sending partner proposal",
+        dueAt: "2026-07-01T09:00:00.000Z",
+      });
     });
 
     it("respects topN by truncating the model's ranked list", async () => {
@@ -220,6 +292,69 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
   });
 
   describe("rank_decisions", () => {
+    it("loads pending approvals from the production queue by owner", async () => {
+      const listApprovals = vi.fn(async () => [
+        {
+          id: "approve-prod-1",
+          createdAt: new Date("2026-06-29T08:00:00.000Z"),
+          updatedAt: new Date("2026-06-29T08:00:00.000Z"),
+          state: "pending",
+          requestedBy: "PERSONAL_ASSISTANT",
+          subjectUserId: "owner-1",
+          action: "send_email",
+          payload: {
+            action: "send_email",
+            to: ["partner@example.com"],
+            cc: [],
+            bcc: [],
+            subject: "NDA follow-up",
+            body: "Following up.",
+            threadId: null,
+          },
+          channel: "email",
+          reason: "Owner must approve outbound NDA follow-up.",
+          expiresAt: new Date("2026-06-29T18:00:00.000Z"),
+          resolvedAt: null,
+          resolvedBy: null,
+          resolutionReason: null,
+        },
+      ]);
+      mocks.createApprovalQueue.mockReturnValue({ list: listApprovals });
+      const useModel = vi.fn(async () =>
+        JSON.stringify({
+          ranked: [
+            {
+              id: "approve-prod-1",
+              score: 0.93,
+              reasoning: "blocks partner",
+            },
+          ],
+        }),
+      );
+      const runtime = makeRuntime({ useModel });
+      const result = await callPrioritize(runtime, makeMessage(), {
+        subaction: "rank_decisions",
+      });
+      expect(result.success).toBe(true);
+      expect(mocks.createApprovalQueue).toHaveBeenCalledWith(runtime, {
+        agentId: "agent-prioritize-test",
+      });
+      expect(listApprovals).toHaveBeenCalledWith({
+        subjectUserId: "owner-1",
+        state: "pending",
+        action: null,
+        limit: 50,
+      });
+      const data = result.data as {
+        ranked: { id: string; title: string; dueAt?: string | null }[];
+      };
+      expect(data.ranked[0]).toMatchObject({
+        id: "approve-prod-1",
+        title: "Send email: NDA follow-up",
+        dueAt: "2026-06-29T18:00:00.000Z",
+      });
+    });
+
     it("calls the decisions loader and returns ranking from the model", async () => {
       setPrioritizeLoaders({
         loadDecisions: async () => [
@@ -245,6 +380,70 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
       };
       expect(data.subaction).toBe("rank_decisions");
       expect(data.ranked[0]?.id).toBe("approve-1");
+    });
+  });
+
+  describe("rank_threads", () => {
+    it("loads open owner work threads from the production store", async () => {
+      const listThreads = vi.fn(async () => [
+        {
+          id: "thread-prod-1",
+          agentId: "agent-prioritize-test",
+          ownerEntityId: "owner-1",
+          status: "waiting",
+          title: "Vendor contract thread",
+          summary: "Waiting on vendor contract redlines.",
+          currentPlanSummary: "Review vendor redlines before replying.",
+          primarySourceRef: {
+            connector: "gmail",
+            channelName: "Inbox",
+            canRead: true,
+            canMutate: true,
+          },
+          sourceRefs: [],
+          participantEntityIds: ["owner-1"],
+          currentScheduledTaskId: null,
+          workflowRunId: null,
+          approvalId: null,
+          lastMessageMemoryId: "msg-1",
+          version: 1,
+          createdAt: "2026-06-29T07:00:00.000Z",
+          updatedAt: "2026-06-29T08:00:00.000Z",
+          lastActivityAt: "2026-06-29T08:00:00.000Z",
+          metadata: {},
+        },
+      ]);
+      mocks.createWorkThreadStore.mockReturnValue({ list: listThreads });
+      const useModel = vi.fn(async () =>
+        JSON.stringify({
+          ranked: [
+            {
+              id: "thread-prod-1",
+              score: 0.76,
+              reasoning: "needs reply",
+            },
+          ],
+        }),
+      );
+      const runtime = makeRuntime({ useModel });
+      const result = await callPrioritize(runtime, makeMessage(), {
+        subaction: "rank_threads",
+      });
+      expect(result.success).toBe(true);
+      expect(mocks.createWorkThreadStore).toHaveBeenCalledWith(runtime);
+      expect(listThreads).toHaveBeenCalledWith({
+        statuses: ["active", "waiting", "paused"],
+        ownerEntityId: "owner-1",
+        limit: 50,
+      });
+      const data = result.data as {
+        ranked: { id: string; title: string; summary?: string }[];
+      };
+      expect(data.ranked[0]).toMatchObject({
+        id: "thread-prod-1",
+        title: "Vendor contract thread",
+        summary: "Review vendor redlines before replying.",
+      });
     });
   });
 
