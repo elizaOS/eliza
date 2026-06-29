@@ -409,6 +409,43 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     ],
   );
 
+  // Replace the active thread with a window CENTERED on a specific message so a
+  // keyword-search jump can scroll to a hit older than the most-recent window
+  // (#9955). The conversation must already be selected (the jump path awaits
+  // handleSelectConversation first); the active-id guard drops the result if the
+  // user navigated away before it landed. Best-effort — a failure leaves the
+  // current thread untouched and the caller simply doesn't scroll.
+  const loadConversationMessagesAround = useCallback(
+    async (convId: string, messageId: string): Promise<boolean> => {
+      try {
+        const { messages } = await client.getConversationMessages(convId, {
+          around: messageId,
+        });
+        if (activeConversationIdRef.current !== convId) return false;
+        const nextMessages = filterRenderableConversationMessages(messages);
+        cacheConversationMessages(convId, nextMessages);
+        greetingFiredRef.current =
+          hasConversationBootstrapMessage(nextMessages);
+        conversationMessagesRef.current = nextMessages;
+        setConversationMessages(nextMessages);
+        return true;
+      } catch (error) {
+        logger.debug(
+          { error },
+          `[useDataLoaders] around-window load failed for ${convId}`,
+        );
+        return false;
+      }
+    },
+    [
+      activeConversationIdRef,
+      cacheConversationMessages,
+      conversationMessagesRef,
+      greetingFiredRef,
+      setConversationMessages,
+    ],
+  );
+
   // Warm the prefetch cache for adjacent conversations so a horizontal swipe
   // paints instantly. Best-effort + abortable: an id already cached or already
   // in flight is skipped, and a miss just means the eventual select does a
@@ -729,6 +766,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     // Conversations
     loadConversations,
     loadConversationMessages,
+    loadConversationMessagesAround,
     prefetchConversationMessages,
     // BSC / Steward / Trading
     getBscTradePreflight,

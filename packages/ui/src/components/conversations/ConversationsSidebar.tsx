@@ -134,6 +134,7 @@ export function ConversationsSidebar({
     unreadConversations,
     handleNewConversation,
     handleSelectConversation,
+    loadConversationMessagesAround,
     handleDeleteConversation,
     ensurePluginsLoaded = async () => {},
     setActionNotice,
@@ -149,6 +150,7 @@ export function ConversationsSidebar({
     unreadConversations: s.unreadConversations,
     handleNewConversation: s.handleNewConversation,
     handleSelectConversation: s.handleSelectConversation,
+    loadConversationMessagesAround: s.loadConversationMessagesAround,
     handleDeleteConversation: s.handleDeleteConversation,
     ensurePluginsLoaded: s.ensurePluginsLoaded,
     setActionNotice: s.setActionNotice,
@@ -432,39 +434,81 @@ export function ConversationsSidebar({
     [],
   );
 
+  // Scroll a now-mounted message into view and flash it (brand accent).
+  // Self-contained — no external CSS rule needed.
+  const scrollAndFlashAnchor = useCallback((el: HTMLElement) => {
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.style.transition = "outline-color 0.5s ease-out";
+    el.style.outline = "2px solid var(--primary)";
+    el.style.outlineOffset = "2px";
+    el.style.borderRadius = "8px";
+    window.setTimeout(() => {
+      el.style.outline = "2px solid transparent";
+    }, 1200);
+    window.setTimeout(() => {
+      el.style.removeProperty("outline");
+      el.style.removeProperty("outline-offset");
+      el.style.removeProperty("transition");
+    }, 1800);
+  }, []);
+
+  // Poll a bounded number of animation frames for the anchor to mount (the
+  // thread re-renders asynchronously after a selection / window reload).
+  // Resolves the element once present, or null once the frame budget is spent.
+  const waitForAnchor = useCallback(
+    (anchorId: string, maxFrames: number): Promise<HTMLElement | null> =>
+      new Promise((resolve) => {
+        let frames = 0;
+        const step = () => {
+          const el = document.getElementById(anchorId);
+          if (el) {
+            resolve(el);
+            return;
+          }
+          if (frames++ < maxFrames) {
+            requestAnimationFrame(step);
+            return;
+          }
+          resolve(null);
+        };
+        requestAnimationFrame(step);
+      }),
+    [],
+  );
+
   const jumpToMessage = useCallback(
     (result: ConversationMessageSearchResult) => {
-      void handleSelectConversation(result.conversationId);
-      // The thread re-renders after selection; wait a frame, then scroll the
-      // matched message into view and flash it. Tolerant of not-yet-mounted
-      // (a far-back message may still be loading) — best-effort highlight.
       const anchorId = getChatMessageAnchorId(result.messageId);
-      let tries = 0;
-      const reveal = () => {
-        const el = document.getElementById(anchorId);
-        if (el) {
-          el.scrollIntoView({ block: "center", behavior: "smooth" });
-          // Self-contained flash (brand accent) — no external CSS rule needed.
-          el.style.transition = "outline-color 0.5s ease-out";
-          el.style.outline = "2px solid var(--primary)";
-          el.style.outlineOffset = "2px";
-          el.style.borderRadius = "8px";
-          window.setTimeout(() => {
-            el.style.outline = "2px solid transparent";
-          }, 1200);
-          window.setTimeout(() => {
-            el.style.removeProperty("outline");
-            el.style.removeProperty("outline-offset");
-            el.style.removeProperty("transition");
-          }, 1800);
-          return;
+      void (async () => {
+        // Select the conversation and let its recent window load first, so the
+        // in-window case (the common one) scrolls without a second fetch.
+        await handleSelectConversation(result.conversationId);
+        let el = await waitForAnchor(anchorId, 20);
+        if (!el) {
+          // The hit is older than the loaded recent window (#9955): load the
+          // window CENTERED on it, let the thread re-render, then scroll.
+          const loaded = await loadConversationMessagesAround(
+            result.conversationId,
+            result.messageId,
+          );
+          if (loaded) {
+            el = await waitForAnchor(anchorId, 20);
+          }
         }
-        if (tries++ < 20) requestAnimationFrame(reveal);
-      };
-      requestAnimationFrame(reveal);
+        if (el) {
+          scrollAndFlashAnchor(el);
+        }
+      })();
       if (mobile) onClose?.();
     },
-    [handleSelectConversation, mobile, onClose],
+    [
+      handleSelectConversation,
+      loadConversationMessagesAround,
+      waitForAnchor,
+      scrollAndFlashAnchor,
+      mobile,
+      onClose,
+    ],
   );
 
   const handleRowSelect = (row: ConversationsSidebarRow) => {
