@@ -51,10 +51,10 @@ const { clientMock } = vi.hoisted(() => ({
 }));
 vi.mock("../../api/client", () => ({ client: clientMock }));
 
+import { __renderThreadLineForParity } from "../shell/ContinuousChatOverlay";
 // MessageContent (ChatView path) and ThreadLine (overlay path) both render real
 // inline widgets; import them after the mocks are in place.
 import { MessageContent } from "./MessageContent";
-import { __renderThreadLineForParity } from "../shell/ContinuousChatOverlay";
 // Side effect: register the built-in inline widgets so both surfaces resolve them.
 import "./widgets/inline-builtins";
 import { registerTaskWidget } from "./widgets/task-widget";
@@ -72,7 +72,9 @@ function withApp(node: React.ReactElement) {
     handleChatRetry: vi.fn(),
   } as never;
   __setAppValueForTests(appValue);
-  return render(<AppContext.Provider value={appValue}>{node}</AppContext.Provider>);
+  return render(
+    <AppContext.Provider value={appValue}>{node}</AppContext.Provider>,
+  );
 }
 
 /**
@@ -157,10 +159,15 @@ function assistant(
 
 // A shared corpus exercising every structural affordance both surfaces render.
 const CORPUS: Array<{ name: string; message: ConversationMessage }> = [
-  { name: "plain prose", message: assistant("Just a normal reply, nothing rich.") },
+  {
+    name: "plain prose",
+    message: assistant("Just a normal reply, nothing rich."),
+  },
   {
     name: "fenced code block",
-    message: assistant("Here is the patch:\n```ts\nconst x = 1;\n```\nApply it."),
+    message: assistant(
+      "Here is the patch:\n```ts\nconst x = 1;\n```\nApply it.",
+    ),
   },
   {
     name: "two code blocks",
