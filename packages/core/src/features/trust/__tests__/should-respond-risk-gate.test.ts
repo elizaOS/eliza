@@ -222,6 +222,27 @@ describe("runShouldRespondInjectionGate", () => {
 		expect(useModel).toHaveBeenCalledTimes(1);
 	});
 
+	it("reuses a completed adjudication for the same text and role", async () => {
+		const { runtime, useModel } = mkRuntime(
+			() => "VERDICT: ALLOW\nREASON: false positive",
+		);
+		const message = mkMessage(injection);
+		const first = await runShouldRespondInjectionGate({
+			runtime,
+			message,
+			resolveSenderRole: () => "USER",
+		});
+		const second = await runShouldRespondInjectionGate({
+			runtime,
+			message,
+			resolveSenderRole: () => "USER",
+		});
+		expect(first.blocked).toBe(false);
+		expect(second.blocked).toBe(false);
+		expect(second.verified).toBe(true);
+		expect(useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("never calls the model for OWNER (trusted bypass)", async () => {
 		const { runtime, useModel } = mkRuntime();
 		const result = await runShouldRespondInjectionGate({

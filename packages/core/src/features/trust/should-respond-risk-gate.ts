@@ -173,6 +173,7 @@ export function extractRiskFactors(text: string): RiskFactors {
 }
 
 const METADATA_KEY = "injectionRisk";
+const ADJUDICATION_METADATA_KEY = "injectionRiskAdjudication";
 
 function writeRiskFactors(message: Memory, factors: RiskFactors): void {
 	const existing =
@@ -200,10 +201,14 @@ function readRiskFactors(message: Memory): RiskFactors | undefined {
 }
 
 /** OWNER/ADMIN are trusted and never gated; everything else is untrusted. */
-function isTrustedRole(role: string | undefined): boolean {
-	const normalized = String(role ?? "")
+function roleKey(role: string | undefined): string {
+	return String(role ?? "unknown")
 		.trim()
 		.toUpperCase();
+}
+
+function isTrustedRole(role: string | undefined): boolean {
+	const normalized = roleKey(role);
 	return normalized === "OWNER" || normalized === "ADMIN";
 }
 
@@ -338,6 +343,61 @@ export interface InjectionGateResult {
 	score: number;
 }
 
+interface CachedInjectionGateResult extends InjectionGateResult {
+	role: string;
+	text: string;
+}
+
+function writeCachedGateResult(
+	message: Memory,
+	result: CachedInjectionGateResult,
+): void {
+	const existing =
+		typeof message.content.metadata === "object" &&
+		message.content.metadata !== null
+			? message.content.metadata
+			: {};
+	message.content.metadata = {
+		...existing,
+		[ADJUDICATION_METADATA_KEY]: {
+			blocked: result.blocked,
+			verified: result.verified,
+			reason: result.reason,
+			score: result.score,
+			role: result.role,
+			text: result.text,
+		},
+	} as { [key: string]: ContentValue };
+}
+
+function readCachedGateResult(
+	message: Memory,
+	text: string,
+	role: string,
+): InjectionGateResult | undefined {
+	const metadata = message.content.metadata;
+	if (typeof metadata !== "object" || metadata === null) return undefined;
+	const raw = (metadata as Record<string, unknown>)[ADJUDICATION_METADATA_KEY];
+	if (typeof raw !== "object" || raw === null) return undefined;
+	const candidate = raw as Partial<CachedInjectionGateResult>;
+	if (
+		candidate.text !== text ||
+		candidate.role !== role ||
+		typeof candidate.blocked !== "boolean" ||
+		typeof candidate.verified !== "boolean" ||
+		typeof candidate.reason !== "string" ||
+		typeof candidate.score !== "number"
+	) {
+		return undefined;
+	}
+	return {
+		blocked: candidate.blocked,
+		verified: candidate.verified,
+		reason: candidate.reason,
+		score: candidate.score,
+	};
+}
+
 /**
  * The full gate, called from the message service only when `shouldRespond === true`.
  * Reads the deterministic `RiskFactors` (or computes them if the hook did not run),
@@ -363,6 +423,12 @@ export async function runShouldRespondInjectionGate(args: {
 	}
 
 	const role = await resolveSenderRole();
+	const normalizedRole = roleKey(role);
+	const text = textOf(message);
+	const cached = readCachedGateResult(message, text, normalizedRole);
+	if (cached) {
+		return cached;
+	}
 	const decision = evaluateRoleKeyedRisk(role, factors, args.threshold);
 	if (!decision.shouldVerify) {
 		return {
@@ -373,16 +439,21 @@ export async function runShouldRespondInjectionGate(args: {
 		};
 	}
 
-	const { verdict, reason } = await adjudicateInjectionRisk(
-		runtime,
-		textOf(message),
-	);
+	const { verdict, reason } = await adjudicateInjectionRisk(runtime, text);
 	const blocked = verdict === "block";
+	writeCachedGateResult(message, {
+		blocked,
+		verified: true,
+		reason,
+		score: factors.score,
+		role: normalizedRole,
+		text,
+	});
 	runtime.logger?.warn?.(
 		{
 			src: "should-respond-risk-gate",
 			agentId: runtime.agentId,
-			role: String(role ?? "unknown").toUpperCase(),
+			role: normalizedRole,
 			score: factors.score,
 			factors,
 			verdict,
