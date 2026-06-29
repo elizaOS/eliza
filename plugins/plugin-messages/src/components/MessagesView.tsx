@@ -13,9 +13,9 @@
 import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
-import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { consumePendingMessageRecipient } from "@elizaos/ui/app-navigate-view";
+import { Button } from "@elizaos/ui/components/ui/button";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {

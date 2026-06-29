@@ -14,6 +14,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { SpatialSurface } from "@elizaos/ui/spatial";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -199,7 +200,16 @@ afterEach(() => {
 describe("TrajectoryLoggerView — unified GUI/XR wrapper", () => {
   it("renders the SpatialSurface-wrapped spatial view", async () => {
     installFetch();
-    render(React.createElement(TrajectoryLoggerView));
+    // The view bundle host (DynamicViewLoader) mounts the registered wrapper
+    // inside a SpatialSurface — mirror that here, as the *SpatialView tests do,
+    // so the surface attribute the host provides is present for the assertion.
+    render(
+      React.createElement(
+        SpatialSurface,
+        { modality: "gui" },
+        React.createElement(TrajectoryLoggerView),
+      ),
+    );
     expect(document.querySelector("[data-spatial-surface]")).toBeTruthy();
     expect(screen.getByText("Back")).toBeTruthy();
   });

@@ -24,8 +24,8 @@ import {
   selectLatestRunForApp,
 } from "@elizaos/app-core/ui-compat";
 
-import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
