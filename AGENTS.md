@@ -210,6 +210,12 @@ be able to confirm it works **without reading the code**. Full standard:
   - **Before/after full-page screenshots** + a **video walkthrough** of the
     flow — `bun run test:e2e:record`; for app UI,
     `bun run --cwd packages/app audit:app`.
+  - **Capture evidence is required per platform.** Screenshot + recording +
+    logs are default-required on **every platform the change runs on** — see the
+    per-platform matrix in `PR_EVIDENCE.md`. The capture commands are
+    `bun run capture:android` / `capture:ios-sim` / `capture:linux` /
+    `capture:windows` (or `capture:all`); each auto-skips with a reason when its
+    tooling/device is absent.
   - **Audio + narrated walkthrough** for voice/transcript/TTS/STT changes.
   - Artifacts land in `.github/issue-evidence/<issue#>-<slug>.<ext>` (see that
     dir's `README.md`). Each evidence type is attached **or** explicitly marked

@@ -65,6 +65,36 @@ The point of all six is the same: **prove the real thing happened.** Real model
 calls, real log lines, real pixels, real audio — not a description of what
 should happen, not a unit test asserting a mock.
 
+### Per-platform capture matrix — screenshot + recording + logs are DEFAULT-REQUIRED
+
+The **Full-page screenshots** and **Video walkthrough** rows above are not a
+single web flow — they apply to **whichever platform surface your change runs
+on**. For every surface your change touches, attach a screenshot **and** a
+screen recording **and** the platform logs, produced by the one command named
+here. These three are **default-required** per touched platform; marking a
+platform **N/A** requires a written reason in the PR (e.g. "change is iOS-only,
+Android untouched").
+
+| Surface the change touches | One command → screenshot + recording + logs | Artifacts land in |
+| --- | --- | --- |
+| **web** (browser dashboard / marketing) | `bun run test:e2e:record` | `e2e-recordings/` + `.github/issue-evidence/` |
+| **cloud-frontend** (hosted dashboard) | `bun run --cwd packages/cloud-frontend audit:cloud` (or `bun run --cwd packages/app audit:app` for the app shell) | `aesthetic-audit-output/` |
+| **desktop (electrobun)** | `bun run capture:linux` / `bun run capture:windows` grabs the host desktop incl. the Electrobun window. _A window-scoped Electrobun capture is TODO: tooling tracked in #9944._ | `.github/issue-evidence/<issue>-<slug>/<platform>/` |
+| **ios-sim** | `bun run capture:ios-sim` | `.github/issue-evidence/<issue>-<slug>/ios/` |
+| **android-emu / device** | `bun run capture:android` | `.github/issue-evidence/<issue>-<slug>/android/` |
+| **linux-desktop** | `bun run capture:linux` | `.github/issue-evidence/<issue>-<slug>/linux/` |
+| **windows-desktop** | `bun run capture:windows` | `.github/issue-evidence/<issue>-<slug>/windows/` |
+
+Each `capture:*` helper writes `screen.png` + `screen.{mp4,mov}` + a log tail
+(`logcat.log` / `simctl.log` / `desktop.log`) and **skips with a reason** (clean
+exit) when its platform, tooling (adb / xcrun / ffmpeg), or device/simulator is
+absent — so a deviceless CI run is a clean no-op, but a real run on the target
+platform produces real artifacts. Run all available platforms at once with
+`bun run capture:all` (or fold them into `test:e2e:record` via `--capture` /
+`E2E_CAPTURE=1`). Override the issue/slug/duration with
+`--issue=<n> --slug=<s> --seconds=<n>` (defaults: `9944` / `evidence-capture` /
+`7`).
+
 ### The tools that produce this evidence (all already in the repo)
 
 ```bash
@@ -82,6 +112,17 @@ bun run test:e2e:audit-ui                # coverage of which routes are recorded
 # Cloud-frontend per-route screenshots (desktop + mobile, rest + hover), with a
 # manual-review verdict stub per page — REQUIRED for cloud-frontend UI changes:
 bun run --cwd packages/cloud-frontend audit:cloud
+
+# Per-platform native capture (screenshot + recording + logs) — issue #9944.
+# Each helper auto-detects its platform/tooling and skips with a reason when
+# absent (so CI without a device is a clean no-op):
+bun run capture:android   # adb screencap + screenrecord + logcat (device/emulator)
+bun run capture:ios-sim   # xcrun simctl screenshot + recordVideo + log (booted sim, macOS)
+bun run capture:linux     # ffmpeg x11grab screenshot + recording + info log
+bun run capture:windows   # ffmpeg gdigrab screenshot + recording + info log
+bun run capture:all       # run every available platform capture, skipping the rest
+#   src: scripts/e2e-recordings/capture/*.mjs — artifacts land in
+#   .github/issue-evidence/<issue>-<slug>/<platform>/
 ```
 
 ### Where artifacts live
@@ -109,7 +150,7 @@ so the proof survives even if the link rots.
 - [ ] Relevant tests pass (`bun run test`, or the scoped `--cwd <pkg> test`).
 - [ ] For agent/LLM behavior: a **real-LLM** trajectory is attached and matches the claim.
 - [ ] Backend and/or frontend logs attached, showing the actual code path.
-- [ ] For UI: before/after full-page screenshots + a video walkthrough.
+- [ ] For UI: before/after full-page screenshots + a video walkthrough, captured on **every platform the change runs on** via the per-platform capture matrix above (screenshot + recording + logs each; `N/A` carries a written reason).
 - [ ] For voice/audio: captured audio of the real round-trip + a narrated walkthrough.
 - [ ] Every evidence row above is either attached **or** explicitly marked N/A with a reason.
 - [ ] The PR description tells a reviewer exactly what to watch/read to confirm it — no code-reading required.
