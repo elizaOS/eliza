@@ -40,7 +40,9 @@ function makeRuntime(
 
 /**
  * Settings that satisfy every reply-enabling condition: passive mode explicitly
- * off, autoReply on, DMs not ignored.
+ * off, autoReply on, DMs not ignored, and DM policy open. `dmPolicy` must be set
+ * to "open" because its default is "pairing", which would otherwise suppress DM
+ * replies (issue #10216 root cause #1) and trip the DM-suppression diagnostic.
  */
 function repliesEnabled(): SettingMap {
 	return {
@@ -50,6 +52,7 @@ function repliesEnabled(): SettingMap {
 		ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
 		DISCORD_AUTO_REPLY: "true",
 		DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES: "false",
+		DISCORD_DM_POLICY: "open",
 	};
 }
 
@@ -117,12 +120,16 @@ describe("warnIfRepliesSuppressed", () => {
 
 	it("stays silent when a per-account autoReply re-enables replies", () => {
 		// Base autoReply is off, but a per-account config turns it on for that
-		// account, mirroring resolveDiscordSettingsForAccount. The bot is not
-		// globally silent, so the diagnostic must NOT warn.
+		// account, mirroring resolveDiscordSettingsForAccount. DMs are explicitly
+		// opened (policy open + DMs not ignored) so this case isolates the
+		// channel/global dimension. The bot is not globally silent and DMs are
+		// open, so the diagnostic must NOT warn.
 		const { runtime, warn } = makeRuntime(
 			{
 				ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
 				DISCORD_AUTO_REPLY: "false",
+				DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES: "false",
+				DISCORD_DM_POLICY: "open",
 			},
 			{
 				discord: {
@@ -134,5 +141,80 @@ describe("warnIfRepliesSuppressed", () => {
 		);
 		warnIfRepliesSuppressed(runtime);
 		expect(warn).not.toHaveBeenCalled();
+	});
+
+	it("stays silent for a fully reply-enabled, DM-open account", () => {
+		// autoReply on, passive off, DMs not ignored, dmPolicy open: nothing
+		// suppresses replies in channels OR DMs, so neither warning fires.
+		const { runtime, warn } = makeRuntime({
+			DISCORD_API_TOKEN: "test-token",
+			ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
+			DISCORD_AUTO_REPLY: "true",
+			DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES: "false",
+			DISCORD_DM_POLICY: "open",
+		});
+		warnIfRepliesSuppressed(runtime);
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	it("warns about DM suppression (naming DISCORD_DM_POLICY) when the default pairing policy gates a reply-enabled account", () => {
+		// Channels reply (autoReply on, passive off, DMs not ignored), but the
+		// DEFAULT dmPolicy 'pairing' silently drops unpaired DM senders. This is
+		// issue #10216 root cause #1 and must surface as a DM-specific warning,
+		// NOT the global "ANY messages" one.
+		const { runtime, warn } = makeRuntime({
+			DISCORD_API_TOKEN: "test-token",
+			ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
+			DISCORD_AUTO_REPLY: "true",
+			DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES: "false",
+			// DISCORD_DM_POLICY intentionally unset -> defaults to "pairing".
+		});
+		warnIfRepliesSuppressed(runtime);
+		expect(warn).toHaveBeenCalledTimes(1);
+		const message = String(warn.mock.calls[0]?.[1] ?? "");
+		expect(message).toContain("DM replies will be suppressed");
+		expect(message).toContain("DISCORD_DM_POLICY");
+		expect(message).toContain("pairing");
+		// The bot DOES reply in channels, so the global warning must NOT fire.
+		expect(message).not.toContain("will NOT auto-reply to any messages");
+	});
+
+	it("warns about DM suppression when shouldIgnoreDirectMessages is true while channels reply", () => {
+		// Channels reply, but DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES drops DMs.
+		// dmPolicy is open here so the ONLY surfaced reason is the ignore flag,
+		// and the global "ANY messages" warning must stay silent.
+		const { runtime, warn } = makeRuntime({
+			DISCORD_API_TOKEN: "test-token",
+			ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
+			DISCORD_AUTO_REPLY: "true",
+			DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES: "true",
+			DISCORD_DM_POLICY: "open",
+		});
+		warnIfRepliesSuppressed(runtime);
+		expect(warn).toHaveBeenCalledTimes(1);
+		const message = String(warn.mock.calls[0]?.[1] ?? "");
+		expect(message).toContain("DM replies will be suppressed");
+		expect(message).toContain("DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES=false");
+		// Remediation must also point at DISCORD_DM_POLICY (default pairing still
+		// gates DMs), not the misleading "flip one var and DMs work".
+		expect(message).toContain("DISCORD_DM_POLICY");
+		// Global warning must NOT fire — the bot still replies in channels.
+		expect(message).not.toContain("will NOT auto-reply to any messages");
+	});
+
+	it("notes the allowFrom/allowlist exception in the DM-ignore wording", () => {
+		// shouldIgnoreDirectMessages does NOT drop DMs from allowlisted/paired
+		// users (messages.ts), so the wording must call out that exception.
+		const { runtime, warn } = makeRuntime({
+			DISCORD_API_TOKEN: "test-token",
+			ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
+			DISCORD_AUTO_REPLY: "true",
+			DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES: "true",
+			DISCORD_DM_POLICY: "open",
+		});
+		warnIfRepliesSuppressed(runtime);
+		const message = String(warn.mock.calls[0]?.[1] ?? "");
+		expect(message).toContain("DISCORD_ALLOW_FROM");
+		expect(message).toContain("allowlist");
 	});
 });
