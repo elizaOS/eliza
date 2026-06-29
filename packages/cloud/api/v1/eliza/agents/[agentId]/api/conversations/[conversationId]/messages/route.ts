@@ -5,6 +5,7 @@ import {
   sharedRestMessageSend,
   sharedRestMessagesGet,
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
@@ -66,13 +67,39 @@ app.post("/", async (c) => {
       origin,
     );
   }
-  const result = await sharedRestMessageSend(
-    r.agentId,
-    r.orgId,
-    conversationId,
-    text,
-    r.agentName,
-  );
+  let result: { text: string; agentName: string };
+  try {
+    result = await sharedRestMessageSend(
+      r.agentId,
+      r.orgId,
+      conversationId,
+      text,
+      r.agentName,
+    );
+  } catch (error) {
+    // A shared-bridge / inference failure (transient: cold sandbox, provider
+    // 429/5xx, timeout) would otherwise surface as a bare 500 on the
+    // launch-critical first chat turn. Return a structured, retryable error so
+    // the app can show a "try again" affordance instead of a hard failure. The
+    // message is sanitized (no internal/provider details leak to the client).
+    logger.warn("[shared-runtime REST] message.send failed", {
+      agentId: r.agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return applyCorsHeaders(
+      Response.json(
+        {
+          success: false,
+          error: "The agent is temporarily unavailable. Please try again.",
+          code: "inference_unavailable",
+          retryable: true,
+        },
+        { status: 503 },
+      ),
+      CORS_METHODS,
+      origin,
+    );
+  }
   return applyCorsHeaders(Response.json(result), CORS_METHODS, origin);
 });
 
