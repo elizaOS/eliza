@@ -408,9 +408,10 @@ describe("models map gating (large-tier only)", () => {
     expect(keys.sort()).toEqual([...LARGE_TIER_MODEL_TYPES].sort());
   });
 
-  it("resolveCliBackend accepts only claude|codex (case-insensitive)", () => {
+  it("resolveCliBackend accepts claude|codex|claude-sdk (case-insensitive)", () => {
     expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "Claude" })).toBe("claude");
     expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "CODEX" })).toBe("codex");
+    expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "Claude-SDK" })).toBe("claude-sdk");
     expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "gemini" })).toBeUndefined();
     expect(resolveCliBackend({ ELIZA_CHAT_VIA_CLI: "" })).toBeUndefined();
   });
