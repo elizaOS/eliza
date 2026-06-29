@@ -187,7 +187,16 @@ async function handleCheckoutSessionCompleted(
     );
   }
 
-  if (isAppPurchase && !isDuplicate) {
+  // App purchases ALWAYS go through processPurchase — NOT gated on the org-credit
+  // `isDuplicate`. processPurchase is internally idempotent (its own app-earnings
+  // dedup via appEarningsRepository.findTransactionByPaymentIntent + addCredits'
+  // ON CONFLICT(stripe_payment_intent_id)), so this is safe on true duplicates
+  // AND lets a retry after a PARTIAL failure — org credit committed but creator
+  // earnings not yet written — re-enter and record the missing earnings. Gating
+  // on the org-credit dedup skipped that re-entry, permanently losing the
+  // creator's purchase-share earnings (org-credit and creator-earnings are
+  // written non-atomically; the org credit alone flips isDuplicate to true).
+  if (isAppPurchase) {
     logger.info(
       `[Stripe Queue] Processing app-specific credit purchase for app ${appId}`,
     );
