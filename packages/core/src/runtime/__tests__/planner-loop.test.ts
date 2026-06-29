@@ -427,6 +427,45 @@ describe("v5 planner loop skeleton", () => {
 			},
 		],
 	};
+	const codingPlannerTools = [
+		{ name: "FILE", description: "Write a file." },
+		{ name: "REPLY", description: "Reply to the user." },
+	];
+	const codingReply = (id: string, text: string) => ({
+		text: "",
+		toolCalls: [{ id, name: "REPLY", arguments: { text } }],
+	});
+	const codingFileWrite = () => ({
+		text: "",
+		toolCalls: [
+			{
+				id: "file-1",
+				name: "FILE",
+				arguments: {
+					path: "dice.html",
+					content: "<button>Roll</button>",
+				},
+			},
+		],
+	});
+	const withCodingRequiredToolDefaults = async <T>(
+		run: () => Promise<T>,
+	): Promise<T> => {
+		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+		const prevMisses = process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
+		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+		delete process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
+		try {
+			return await run();
+		} finally {
+			if (prevSurface === undefined)
+				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
+			if (prevMisses === undefined)
+				delete process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
+			else process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES = prevMisses;
+		}
+	};
 
 	it("raises the planner output-token cap in coding/full-surface mode (#10132)", async () => {
 		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
@@ -486,6 +525,88 @@ describe("v5 planner loop skeleton", () => {
 				delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
 			else process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = prevMax;
 		}
+	});
+
+	it("requires a non-terminal tool before accepting terminal REPLY in coding mode (#10132)", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(
+						codingReply("reply-1", "Creating the app now."),
+					)
+					.mockResolvedValueOnce(codingFileWrite())
+					.mockResolvedValueOnce(codingReply("reply-2", "Built dice.html.")),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "wrote dice.html",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "Built dice.html.",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				tools: codingPlannerTools,
+				executeToolCall,
+				evaluate,
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(3);
+			expect(executeToolCall).toHaveBeenCalledWith(
+				{
+					id: "file-1",
+					name: "FILE",
+					params: { path: "dice.html", content: "<button>Roll</button>" },
+				},
+				expect.objectContaining({ iteration: 2 }),
+			);
+			expect(result.finalMessage).toBe("Built dice.html.");
+		});
+	});
+
+	it("lifts the required-tool miss budget in coding mode (#10132)", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const terminalReply = codingReply("reply-1", "Creating the app now.");
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(terminalReply)
+					.mockResolvedValueOnce(terminalReply)
+					.mockResolvedValueOnce(codingFileWrite())
+					.mockResolvedValueOnce(codingReply("reply-2", "Built dice.html.")),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "wrote dice.html",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "Built dice.html.",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				tools: codingPlannerTools,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall,
+				evaluate,
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(4);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+			expect(result.finalMessage).toBe("Built dice.html.");
+		});
 	});
 
 	it("evaluates terminal-only planner output without executing tools", async () => {
