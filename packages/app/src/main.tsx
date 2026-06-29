@@ -134,6 +134,7 @@ import {
 } from "./app-config";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { isTrustedAppLink } from "./deep-link-handler";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 import {
   apiBaseToDeviceBridgeUrl,
@@ -1791,6 +1792,11 @@ async function initializeNetworkListener(): Promise<void> {
   }
 }
 
+// Universal/App-Link hosts whose `https://<host>/<path>` links route into the
+// app (paired with the iOS associated-domains entitlement + the Android/web
+// `assetlinks.json` + `apple-app-site-association` served from eliza.app).
+const APP_LINK_HOSTS = ["eliza.app"];
+
 function handleDeepLink(url: string): void {
   if (routeFirstRunDeepLink(url, APP_URL_SCHEME)) {
     return;
@@ -1803,8 +1809,14 @@ function handleDeepLink(url: string): void {
     return;
   }
 
-  if (parsed.protocol !== `${APP_URL_SCHEME}:`) return;
-  const path = getDeepLinkPath(parsed);
+  // Accept both the custom `<scheme>://` links and `https://eliza.app/<path>`
+  // universal/App links (iOS associated-domains + Android assetlinks hand these
+  // to the installed app); both route into the same hash routes below.
+  const isAppLink = isTrustedAppLink(parsed, APP_LINK_HOSTS);
+  if (parsed.protocol !== `${APP_URL_SCHEME}:` && !isAppLink) return;
+  const path = isAppLink
+    ? parsed.pathname.replace(/^\/+|\/+$/g, "")
+    : getDeepLinkPath(parsed);
 
   // eliza://settings/connectors/<provider> — open Settings → Connectors.
   // The new Connectors section renders one inline expansion per connector;
