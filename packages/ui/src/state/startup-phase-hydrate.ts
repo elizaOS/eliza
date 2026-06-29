@@ -462,6 +462,10 @@ export function bindReadyPhase(
           ? data.viewType
           : undefined;
       const action = typeof data.action === "string" ? data.action : undefined;
+      const subview =
+        typeof data.subview === "string" && data.subview.length > 0
+          ? data.subview
+          : undefined;
       const alwaysOnTop = data.alwaysOnTop === true;
       window.dispatchEvent(
         new CustomEvent("eliza:navigate:view", {
@@ -471,6 +475,7 @@ export function bindReadyPhase(
             viewLabel,
             viewType,
             action,
+            subview,
             alwaysOnTop,
           },
         }),

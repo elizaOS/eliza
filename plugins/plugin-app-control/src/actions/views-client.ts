@@ -40,6 +40,8 @@ export interface CurrentViewSummary {
 	views?: string[];
 	layout?: string;
 	placement?: string;
+	/** Sub-section the view is focused on (Settings = its section id, e.g. "voice"). */
+	subview?: string;
 	/** ISO timestamp of the navigate that switched into this view. */
 	switchedAt?: string;
 	/** Who initiated the switch — the agent (default) or the user clicking the UI. */
@@ -239,6 +241,10 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 		typeof currentView.switchedAt === "string"
 			? currentView.switchedAt
 			: undefined;
+	const subview =
+		typeof currentView.subview === "string" && currentView.subview.length > 0
+			? currentView.subview
+			: undefined;
 	const source =
 		currentView.source === "agent" || currentView.source === "user"
 			? currentView.source
@@ -255,6 +261,7 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 		views,
 		layout,
 		placement,
+		subview,
 		switchedAt,
 		source,
 		justSwitched,

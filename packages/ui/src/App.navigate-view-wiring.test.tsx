@@ -390,6 +390,24 @@ describe("App navigate-view event wiring", () => {
     expect(desktopTabsMock.openTab).not.toHaveBeenCalled();
   });
 
+  it("routes a settings subview navigate to the settings tab (#9945)", async () => {
+    render(<App />);
+
+    navigateView({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "voice",
+    });
+
+    // A settings deep-link with a subview switches to the settings tab (the
+    // section itself is applied via SettingsView's initialSection prop) and
+    // does NOT fall through to a desktop-tab open.
+    await waitFor(() => {
+      expect(appState.setTab).toHaveBeenCalledWith("settings");
+    });
+    expect(desktopTabsMock.openTab).not.toHaveBeenCalled();
+  });
+
   it("pins remote views and opens remote view windows through App wiring", async () => {
     render(<App />);
 

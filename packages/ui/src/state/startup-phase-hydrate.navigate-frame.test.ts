@@ -138,6 +138,25 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     teardown();
   });
 
+  it("forwards a settings subview from the raw frame into the DOM event (#9945)", () => {
+    clientMock.deliverFrame(
+      JSON.stringify({
+        type: "shell:navigate:view",
+        viewId: "settings",
+        viewPath: "/settings",
+        viewLabel: "Settings",
+        viewType: "gui",
+        subview: "voice",
+      }),
+    );
+
+    expect(navHandler).toHaveBeenCalledTimes(1);
+    const detail = (navHandler.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail.viewId).toBe("settings");
+    expect(detail.subview).toBe("voice");
+    teardown();
+  });
+
   it("fills defaults when the backend omits action and alwaysOnTop", () => {
     // The backend spreads `action`/`alwaysOnTop` only when truthy
     // (views-routes.ts:794-795), so a plain `show` navigation omits both keys.
