@@ -1,7 +1,7 @@
 /**
  * Wake-word tests — openWakeWord streaming detector.
  *
- *   - `OpenWakeWordDetector`: refractory debounce + threshold gating,
+ *   - `OpenWakeWordDetector`: refractory debounce + sustained threshold gating,
  *     driven by a deterministic scripted `WakeWordModel`.
  *   - `resolveWakeWordModel`: returns null when the bundle has no
  *     `wake/openwakeword.gguf` (optional asset).
@@ -66,20 +66,43 @@ function zeroFrame(): Float32Array {
 }
 
 describe("OpenWakeWordDetector", () => {
-	it("fires onWake once when probability crosses the threshold", async () => {
-		const model = new ScriptedWakeWordModel([0.1, 0.2, 0.9, 0.95, 0.1]);
+	it("fires onWake once after the configured activation streak clears threshold", async () => {
+		const model = new ScriptedWakeWordModel([0.1, 0.2, 0.9, 0.95, 0.91, 0.1]);
 		let fired = 0;
 		const det = new OpenWakeWordDetector({
 			model,
-			config: { threshold: 0.5, refractoryFrames: 10 },
+			config: {
+				threshold: 0.5,
+				minActivationFrames: 3,
+				refractoryFrames: 10,
+			},
 			onWake: () => fired++,
 		});
 		const hits: boolean[] = [];
-		for (let i = 0; i < 5; i++) hits.push(await det.pushFrame(zeroFrame()));
+		for (let i = 0; i < 6; i++) hits.push(await det.pushFrame(zeroFrame()));
 		expect(fired).toBe(1);
-		expect(hits).toEqual([false, false, true, false, false]);
+		expect(hits).toEqual([false, false, false, false, true, false]);
 		// Scored every frame, including during the refractory window.
-		expect(model.scored).toBe(5);
+		expect(model.scored).toBe(6);
+	});
+
+	it("rejects transient spikes below the default eight-frame activation gate", async () => {
+		const model = new ScriptedWakeWordModel([
+			...new Array(7).fill(0.9),
+			0.1,
+			...new Array(8).fill(0.9),
+		]);
+		let fired = 0;
+		const det = new OpenWakeWordDetector({
+			model,
+			config: { threshold: 0.5, refractoryFrames: 25 },
+			onWake: () => fired++,
+		});
+		const hits: boolean[] = [];
+		for (let i = 0; i < 16; i++) hits.push(await det.pushFrame(zeroFrame()));
+		expect(fired).toBe(1);
+		expect(hits.slice(0, 15)).toEqual(new Array(15).fill(false));
+		expect(hits[15]).toBe(true);
 	});
 
 	it("debounces a sustained detection during the refractory window", async () => {
@@ -87,11 +110,15 @@ describe("OpenWakeWordDetector", () => {
 		let fired = 0;
 		const det = new OpenWakeWordDetector({
 			model,
-			config: { threshold: 0.5, refractoryFrames: 25 },
+			config: {
+				threshold: 0.5,
+				minActivationFrames: 2,
+				refractoryFrames: 25,
+			},
 			onWake: () => fired++,
 		});
 		for (let i = 0; i < 5; i++) await det.pushFrame(zeroFrame());
-		expect(fired).toBe(1); // fire@0, then 4 frames all inside the 25-frame refractory window
+		expect(fired).toBe(1); // fire@1, then 3 frames all inside the 25-frame refractory window
 	});
 
 	it("re-arms after the refractory window elapses", async () => {
@@ -99,7 +126,7 @@ describe("OpenWakeWordDetector", () => {
 		let fired = 0;
 		const det = new OpenWakeWordDetector({
 			model,
-			config: { threshold: 0.5, refractoryFrames: 2 },
+			config: { threshold: 0.5, minActivationFrames: 1, refractoryFrames: 2 },
 			onWake: () => fired++,
 		});
 		for (let i = 0; i < 4; i++) await det.pushFrame(zeroFrame());
@@ -119,7 +146,7 @@ describe("OpenWakeWordDetector", () => {
 		let fired = 0;
 		const det = new OpenWakeWordDetector({
 			model,
-			config: { threshold: 0.5, refractoryFrames: 50 },
+			config: { threshold: 0.5, minActivationFrames: 1, refractoryFrames: 50 },
 			onWake: () => fired++,
 		});
 		await det.pushFrame(zeroFrame()); // fires, long cooldown

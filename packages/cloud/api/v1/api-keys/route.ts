@@ -59,7 +59,18 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
-    const body = await c.req.json();
+    // Guard a malformed/empty body to a 400 instead of a 500 — the ZodError
+    // branch in the catch only handles bad FIELDS, not an unparseable body.
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return c.json(
+        {
+          error: "Invalid JSON body",
+          details: "Request body must be a valid JSON object",
+        },
+        400,
+      );
+    }
     const { name, description, rate_limit, expires_at } =
       createApiKeySchema.parse(body);
 

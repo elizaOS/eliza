@@ -796,6 +796,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		roomId?: UUID;
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
+		textContains?: string;
+		orderBy?: "createdAt";
+		orderDirection?: "asc" | "desc";
+		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
@@ -838,17 +842,35 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
+		// Keyword filter — same case-insensitive `includes` semantics the SQL
+		// adapter pushes down as ILIKE.
+		const textContains = params.textContains?.trim().toLowerCase();
+		if (textContains) {
+			all = all.filter((memory) => {
+				const text = (memory.content as { text?: unknown } | undefined)?.text;
+				return (
+					typeof text === "string" && text.toLowerCase().includes(textContains)
+				);
+			});
+		}
+
 		// Match plugin-sql ordering: newest first, then id desc as tiebreaker.
 		// Without this, `count: N` returns the N oldest instead of the N newest,
 		// which silently diverges from plugin-sql once a room exceeds N memories.
+		// `orderDirection: "asc"` flips it for around-message paging.
+		const direction = params.orderDirection ?? "desc";
 		all = all.slice().sort((a, b) => {
-			const ta = a.createdAt ?? 0;
-			const tb = b.createdAt ?? 0;
-			if (ta !== tb) return tb - ta;
-			return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+			const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
+			const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
+			if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
+			const aId = typeof a.id === "string" ? a.id : "";
+			const bId = typeof b.id === "string" ? b.id : "";
+			return direction === "asc"
+				? aId.localeCompare(bId)
+				: bId.localeCompare(aId);
 		});
 
-		const offset = params.offset ?? 0;
+		const offset = typeof params.offset === "number" ? params.offset : 0;
 		return all.slice(
 			offset,
 			offset + (effectiveLimit === Infinity ? all.length : effectiveLimit),

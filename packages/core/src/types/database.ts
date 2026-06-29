@@ -910,6 +910,13 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		/**
+		 * Case-insensitive keyword predicate over `Memory.content.text`. SQL
+		 * adapters push this into the database (`ILIKE`); in-memory adapters apply
+		 * the same `includes` semantics. Used by keyword message search so the
+		 * filter runs in the store, not by scanning every room in the process.
+		 */
+		textContains?: string;
+		/**
 		 * Order by column (currently only 'createdAt' supported for security).
 		 * Whitelisted to prevent SQL injection. Default behavior: ORDER BY created_at DESC.
 		 */

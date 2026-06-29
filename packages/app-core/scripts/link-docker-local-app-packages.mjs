@@ -42,7 +42,6 @@ const localPackages = [
   // resolve inside local Docker app packages.
   "eliza/packages/plugin-worker-runtime",
   "eliza/plugins/plugin-companion",
-  "eliza/plugins/plugin-elizamaker",
   "eliza/plugins/plugin-documents",
   "eliza/plugins/plugin-personal-assistant",
   "eliza/plugins/plugin-task-coordinator",

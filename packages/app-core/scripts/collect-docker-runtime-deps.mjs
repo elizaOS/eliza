@@ -72,7 +72,6 @@ const LINKED_WORKSPACE_PACKAGES = [
   // workspace package in Docker images.
   "packages/plugin-worker-runtime",
   "plugins/plugin-companion",
-  "plugins/plugin-elizamaker",
   "plugins/plugin-documents",
   "plugins/plugin-personal-assistant",
   "plugins/plugin-task-coordinator",

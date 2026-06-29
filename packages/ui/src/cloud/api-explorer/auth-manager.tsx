@@ -6,9 +6,9 @@
  * endpoints.
  */
 
-import { copyApiKeyToClipboard } from "@elizaos/cloud-shared/lib/client/api-keys";
 import { Check, Copy, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useState } from "react";
+import { copyApiKeyToClipboard } from "../api-keys/copy-api-key";
 import { toast } from "./toast";
 import type { ExplorerApiKey } from "./use-explorer-api-key";
 

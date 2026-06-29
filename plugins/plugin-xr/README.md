@@ -1,5 +1,13 @@
 # @elizaos/plugin-xr
 
+> **Superseded by [`@elizaos/plugin-facewear`](../plugin-facewear/).** Facewear is
+> the unified VR/AR/smartglasses surface — it carries this plugin's WebXR streaming
+> (the same `XRSessionService` + view-host) **plus** the device registry (Quest /
+> XReal / Even Realities / Apple Vision Pro), BLE smartglasses, the desktop OpenXR
+> runtime detector/installer (`SETUP_XR_RUNTIME`, `setup:openxr`), and the immersive
+> DOM→texture renderer seam. New VR/AR/smartglasses work — and all device/runtime
+> **setup** — belongs in plugin-facewear. This package remains for compatibility.
+
 WebXR audio/video streaming for elizaOS — connects Quest 3, XReal glasses, or
 any WebXR-capable browser to an Eliza agent.
 

@@ -165,7 +165,28 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
     receivedAt: Date.now(),
   };
 
-  await enqueue(STRIPE_QUEUE_KEY, message);
+  // The dedup marker (tryCreate) is already committed to Postgres. If the
+  // durable enqueue to Redis fails (e.g. an Upstash blip), we MUST roll the
+  // marker back — otherwise Stripe's retry hits `created:false` above, returns
+  // 200 {duplicate}, and the paid event is dropped forever (card charged, no
+  // credits). Roll back, then rethrow so Stripe gets a 5xx and retries.
+  try {
+    await enqueue(STRIPE_QUEUE_KEY, message);
+  } catch (enqueueError) {
+    await webhookEventsRepository
+      .deleteByEventId(event.id, "stripe")
+      .catch((rollbackError) => {
+        logger.error(
+          "[Stripe Webhook] enqueue failed AND dedup-marker rollback failed — event may be dropped",
+          { eventId: event.id, rollbackError },
+        );
+      });
+    logger.error(
+      "[Stripe Webhook] enqueue failed — rolled back dedup marker so Stripe retries",
+      { eventId: event.id },
+    );
+    throw enqueueError;
+  }
 
   return c.json({ received: true, queued: true }, 200);
 }

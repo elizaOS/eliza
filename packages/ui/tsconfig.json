@@ -73,9 +73,6 @@
       "@elizaos/plugin-companion": [
         "../../plugins/plugin-companion/src/index.ts"
       ],
-      "@elizaos/plugin-elizamaker": [
-        "../../plugins/plugin-elizamaker/src/index.ts"
-      ],
       "@capacitor/app": [
         "../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
       ],

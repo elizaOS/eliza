@@ -29,7 +29,7 @@ const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
   try {
-    const identity = await requireServiceKey(c);
+    await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
     const agent = await elizaSandboxService.getAgentById(agentId);
 
@@ -45,8 +45,8 @@ app.get("/", async (c) => {
 
     const enqueueResult = await provisioningJobService.enqueueAgentLogsOnce({
       agentId,
-      organizationId: identity.organizationId,
-      userId: identity.userId,
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
       tail,
     });
 

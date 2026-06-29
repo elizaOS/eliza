@@ -1634,7 +1634,18 @@ export class DocumentService extends Service {
 		let vectors: number[][];
 		try {
 			// Text source matches addEmbeddingToMemory exactly: memory.content.text.
-			const texts = fragments.map((fragment) => fragment.content.text ?? "");
+			// Document fragments are built from text chunks, so text is always a
+			// string; surface a genuinely-malformed fragment explicitly rather than
+			// silently embedding "" (the try/catch below then falls back to serial).
+			const texts = fragments.map((fragment) => {
+				const text = fragment.content.text;
+				if (typeof text !== "string") {
+					throw new Error(
+						"[DocumentService] document fragment missing text; cannot batch-embed",
+					);
+				}
+				return text;
+			});
 			vectors = await this.runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
 				texts,
 			});

@@ -84,6 +84,12 @@ export interface PaymentRequestsService {
   cancel(id: string, organizationId: string, reason?: string): Promise<PaymentRequestRow>;
   expirePast(now?: Date): Promise<string[]>;
   /**
+   * Org-scoped expire used by the authed per-request route: only sweeps the
+   * caller's own past-due rows, so it can never touch another tenant's data.
+   * The unscoped {@link expirePast} is reserved for the system cron janitor.
+   */
+  expirePastForOrg(organizationId: string, now?: Date): Promise<string[]>;
+  /**
    * Settlement is provider-driven and called by provider webhook routes before
    * they fan out notifications on PaymentCallbackBus.
    */
@@ -310,6 +316,28 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
 
   async expirePast(now: Date = new Date()): Promise<string[]> {
     const expiredIds = await this.repository.expirePastPaymentRequests(now);
+    await this.recordExpiredEvents(expiredIds);
+    if (expiredIds.length > 0) {
+      logger.info("[PaymentRequests] Expired payment requests", {
+        count: expiredIds.length,
+      });
+    }
+    return expiredIds;
+  }
+
+  async expirePastForOrg(organizationId: string, now: Date = new Date()): Promise<string[]> {
+    const expiredIds = await this.repository.expirePastPaymentRequestsForOrg(organizationId, now);
+    await this.recordExpiredEvents(expiredIds);
+    if (expiredIds.length > 0) {
+      logger.info("[PaymentRequests] Expired payment requests", {
+        organizationId,
+        count: expiredIds.length,
+      });
+    }
+    return expiredIds;
+  }
+
+  private async recordExpiredEvents(expiredIds: string[]): Promise<void> {
     for (const id of expiredIds) {
       const row = await this.repository.getPaymentRequest(id);
       if (!row) continue;
@@ -322,12 +350,6 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
         }),
       });
     }
-    if (expiredIds.length > 0) {
-      logger.info("[PaymentRequests] Expired payment requests", {
-        count: expiredIds.length,
-      });
-    }
-    return expiredIds;
   }
 
   async markSettled(

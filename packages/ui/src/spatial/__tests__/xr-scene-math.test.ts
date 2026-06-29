@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  arrangeOnArc,
   billboardOrientation,
   type Camera,
   deviceRay,
@@ -23,6 +24,28 @@ import {
   type Viewport,
   vec3,
 } from "../xr-scene-math.ts";
+
+describe("arrangeOnArc", () => {
+  it("places a single panel straight ahead at the arc distance", () => {
+    const [p] = arrangeOnArc(1, { distance: 2.4, center: vec3(0, 1.6, 0) });
+    expect(p.x).toBeCloseTo(0, 6);
+    expect(p.y).toBeCloseTo(1.6, 6);
+    expect(p.z).toBeCloseTo(-2.4, 6); // straight down −Z
+  });
+
+  it("fans multiple panels symmetrically across the frontal arc", () => {
+    const arc = arrangeOnArc(3, { distance: 2, center: vec3(0, 1.6, 0) });
+    expect(arc).toHaveLength(3);
+    // Left panel mirrors the right; centre sits on the axis.
+    expect(arc[0].x).toBeCloseTo(-arc[2].x, 6);
+    expect(arc[1].x).toBeCloseTo(0, 6);
+    // Every panel is the same distance from the centre.
+    for (const p of arc) {
+      expect(Math.hypot(p.x, p.z)).toBeCloseTo(2, 6);
+      expect(p.z).toBeLessThan(0); // in front
+    }
+  });
+});
 
 const VIEWPORT: Viewport = { width: 1280, height: 720 };
 
@@ -131,11 +154,11 @@ describe("rayPlaneHit", () => {
       quatLookAt(vec3(0, 1.5, 0), panel.position),
     );
     const hit = rayPlaneHit(ray, panel);
-    expect(hit).not.toBeNull();
-    expect(hit!.inside).toBe(true);
-    expect(hit!.u).toBeCloseTo(0, 5);
-    expect(hit!.v).toBeCloseTo(0, 5);
-    expectVecClose(hit!.world, panel.position);
+    if (!hit) throw new Error("Expected ray to hit panel centre");
+    expect(hit.inside).toBe(true);
+    expect(hit.u).toBeCloseTo(0, 5);
+    expect(hit.v).toBeCloseTo(0, 5);
+    expectVecClose(hit.world, panel.position);
   });
 
   it("aiming at the panel's top-right corner lands near (u=+0.5, v=+0.5)", () => {
@@ -143,9 +166,10 @@ describe("rayPlaneHit", () => {
     const eye = vec3(0, 1.5, 0);
     const ray = deviceRay(eye, quatLookAt(eye, corner));
     const hit = rayPlaneHit(ray, panel);
-    expect(hit?.inside).toBe(true);
-    expect(hit!.u).toBeCloseTo(0.49, 2);
-    expect(hit!.v).toBeCloseTo(0.49, 2);
+    if (!hit) throw new Error("Expected ray to hit panel corner");
+    expect(hit.inside).toBe(true);
+    expect(hit.u).toBeCloseTo(0.49, 2);
+    expect(hit.v).toBeCloseTo(0.49, 2);
   });
 
   it("a ray aimed past the panel edge misses (inside=false)", () => {

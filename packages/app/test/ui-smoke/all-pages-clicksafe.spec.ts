@@ -1408,11 +1408,7 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(page.locator("body")).not.toContainText(
     /(?:404\s+not\s+found|page not found|route not found)/i,
   );
-  if (
-    route.path === "/" ||
-    route.path === "/chat" ||
-    route.path === "/apps/elizamaker"
-  ) {
+  if (route.path === "/" || route.path === "/chat") {
     return;
   }
   if (route.path === "/apps/companion") {

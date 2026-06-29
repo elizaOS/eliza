@@ -176,8 +176,12 @@ describe("platform evidence validator", () => {
     expect(result.stdout).toContain(
       "[linux-desktop-evidence] 9 checks validated (requires_device_evidence)",
     );
+    // Windows desktop CUA is fully device-verified (#9581 — real Windows 11 host,
+    // 9/9 passed; see .github/issue-evidence/9581-windows-cua/). Its release
+    // manifest is promoted to `passed`, like macOS evidence fields were promoted
+    // when that on-device evidence landed.
     expect(result.stdout).toContain(
-      "[windows-desktop-evidence] 9 checks validated (requires_device_evidence)",
+      "[windows-desktop-evidence] 9 checks validated (passed)",
     );
   });
 
@@ -205,17 +209,15 @@ describe("platform evidence validator", () => {
     expect(result.stderr).toContain(
       "linux-desktop-validation.json: --require-complete needs evidence.machineId",
     );
-    expect(result.stderr).toContain(
-      "windows-desktop-validation.json: --require-complete needs evidence.machineModel",
-    );
+    // windows-desktop is intentionally NOT asserted here: it is fully
+    // device-verified (#9581, 9/9 passed) and its release manifest is promoted to
+    // `passed`, so it no longer trips the complete gate. The gate still fails
+    // overall on iOS/Android/macOS/Linux below.
     expect(result.stderr).toContain(
       "--require-complete: check mediaProjectionCapture is requires_device_evidence",
     );
     expect(result.stderr).toContain(
       "--require-complete: check dependencyProbe is requires_device_evidence",
-    );
-    expect(result.stderr).toContain(
-      "--require-complete: check windowsHardeningRegression is requires_device_evidence",
     );
   });
 

@@ -129,18 +129,22 @@ function elizaCloudGuidance(task?: string): string {
   return lines.join("\n");
 }
 
-function agentHomeGuidance(config: AppDeployConfig, task?: string): string {
+function agentHomeGuidance(config: AppDeployConfig, _task?: string): string {
   const dir = config.agentHomeAppsDir ?? "";
   const base = config.agentHomeBaseUrl ?? "";
+  // A capability note, NOT an assertion that the current task is an app — it is
+  // always available and the agent applies it by judgment. So it must stay
+  // correct for a request to BUILD a new app, to EDIT an existing one, OR for a
+  // non-web task (which ignores it). No keyword gate decides app-vs-not.
   return [
-    "--- App Deployment (agent-home) ---",
-    isMonetizedAppTask(task)
-      ? "Host the app's static files on the operator's agent-home host, but this is a MONETIZED app, so you MUST also register it with Eliza Cloud. START FROM THE TEMPLATE — do NOT re-derive the sign-in/proxy/registration flow from scratch: the working pattern is in this checkout at `packages/examples/cloud/edad`. Use `packages/examples/cloud/edad/public/index.html` as your frontend skeleton (it has the Cloud OAuth sign-in + chat-forwarding pattern) — adapt the SYSTEM_PROMPT/MODEL/brand/placeholder, and point its API calls at THIS host's same-origin proxy (`GET api/config/`, `POST api/chat/`). Register the app via `POST /api/v1/apps` (monetization enabled + a markup) using the owner's `ELIZAOS_CLOUD_API_KEY`, and write the returned appId into `cloud.json` next to index.html so sign-in + per-call billing work. Do NOT skip or defer registration, and do NOT tell the operator that steps remain."
-      : "This is a quick static/fun app for the operator's personal agent-home host. Do NOT use Eliza Cloud for this one.",
-    "- Pick a fresh, short kebab-case `<slug>` from the request.",
-    `- Write the app's static files (index.html + css/js — there is NO per-app build step) into \`${dir}/<slug>/\`.`,
-    `- It is then served immediately at \`${base}/apps/<slug>/\` — load that URL to confirm it works, then report it as the live link.`,
-    "- Do NOT run `deploy.sh` (operator-only; only needed when adding a new Next.js backend route). Static apps need no build/restart.",
+    "--- Publishing web apps (agent-home) ---",
+    "If (and only if) your task is to build OR edit a web app, page, or site for the operator — not a script, CLI, library, or backend service — publish it here:",
+    `- Published apps are plain static files under \`${dir}/<slug>/\` (index.html plus any css/js — there is NO per-app build step), served live at \`${base}/apps/<slug>/\`.`,
+    `- To CREATE a new app: pick a fresh, short kebab-case \`<slug>\`, write the files into \`${dir}/<slug>/\`, then open \`${base}/apps/<slug>/\` to confirm it works and report that URL.`,
+    `- To EDIT an existing app: the \`<slug>\` is the app's existing folder name under \`${dir}/\` — read its files there, modify them in place, then re-open \`${base}/apps/<slug>/\` to confirm. Do not create a new slug for an edit.`,
+    "- If the app must earn money / be monetized: also register it with Eliza Cloud — follow the `build-monetized-app` skill (Cloud SDK registration, an inference markup, per-call billing). Otherwise do not involve Eliza Cloud.",
+    "- Do NOT run `deploy.sh` (operator-only; only for a new Next.js backend route). Static apps need no build/restart.",
+    "If your task is not a web app, ignore this section.",
   ].join("\n");
 }
 
@@ -190,26 +194,38 @@ export function augmentTaskWithDeployGuidance(
   task: string,
   config?: AppDeployConfig,
 ): string {
-  // Idempotent: if either deploy block is already present, no-op. Checked first
-  // because each guidance block itself contains app/view keywords that would
-  // otherwise re-trigger detection on a second pass.
+  // Idempotent: if a deploy block is already present, no-op.
   if (
     task.includes("--- View/Plugin Deployment") ||
     task.includes("--- View Plugin Deployment") ||
-    task.includes("--- App Deployment")
+    task.includes("--- App Deployment") ||
+    task.includes("--- Publishing web apps")
   ) {
     return task;
   }
-  // View/plugin tasks get the cloud-vs-local sandbox contract (#8918), checked
-  // before the hosted-app contract so a "build a view plugin" task isn't
-  // mis-routed to "deploy + report a live URL".
+  const resolved = config ?? resolveAppDeployConfig();
+  // View/plugin tasks are a distinct surface (#8918) with their own cloud-vs-local
+  // sandbox contract — they are NOT hosted web apps, so they must be routed before
+  // the agent-home app note (which would otherwise wrongly tell the agent to
+  // publish a plugin as a static page). This check stays keyword-gated for now;
+  // a separate follow-up tracks removing that gate too.
   if (isViewPluginTask(task) && !isAppBuildTask(task)) {
-    return `${task.trimEnd()}\n\n${viewPluginGuidance(config, {
+    return `${task.trimEnd()}\n\n${viewPluginGuidance(resolved, {
       sourceDir: extractViewPluginSourceDir(task),
     })}`;
+  }
+  // agent-home: the publish convention is a cheap, always-correct capability note
+  // (it self-gates on "if this is a web app … else ignore"), so attach it to
+  // EVERY remaining coding task instead of using a keyword regex to guess which
+  // tasks are app builds. The regex mis-fired on real phrasings — "add a dark mode
+  // toggle … and redeploy it" never matched the build-verb pattern, so the agent
+  // got no apps-dir context and could not find or edit the deployed app. Letting
+  // the model decide from an always-present note is both cleaner and general.
+  if (resolved.target === "agent-home") {
+    return `${task.trimEnd()}\n\n${agentHomeGuidance(resolved, task)}`;
   }
   if (!isAppBuildTask(task)) {
     return task;
   }
-  return `${task.trimEnd()}\n\n${buildAppDeployGuidance(config, task)}`;
+  return `${task.trimEnd()}\n\n${buildAppDeployGuidance(resolved, task)}`;
 }

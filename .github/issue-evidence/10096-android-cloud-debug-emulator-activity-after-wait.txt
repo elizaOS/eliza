@@ -1,0 +1,1 @@
+    topResumedActivity=ActivityRecord{753a214 u0 ai.elizaos.app/.MainActivity t34}

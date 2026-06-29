@@ -156,12 +156,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "elizamaker app window",
-    path: "/apps/elizamaker",
-    selector: "#root",
-    timeoutMs: 90_000,
-  },
-  {
     name: "logs app window",
     path: "/apps/logs",
     selector: '[data-testid="logs-view"]',

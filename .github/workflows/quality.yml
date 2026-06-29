@@ -185,3 +185,50 @@ jobs:
 
       - name: Run biome format check
         run: bun run format:check
+
+  # Develop-gate extension (#10104): the canonical `ci.yaml` quality job — which
+  # runs the prompt-secret scan and the UI-determinism gate — fires only on PRs
+  # to `main` (`ci.yaml` `pull_request: branches: [main]`), while the default
+  # merge target is `develop`. So these two checks never gated a develop PR.
+  # This job re-runs them on develop (and main) PRs. Both are static scans (no
+  # build step needed), mirroring the lean install used by `format-check`.
+  #
+  # NOTE: `bun run lint` (biome) is the third develop-gate gap from #10104 but is
+  # intentionally NOT included here — under turbo it depends on `build`, so it
+  # needs the heavier build-enabled lane rather than this lean static gate. Wire
+  # it into a build-enabled develop lane as the follow-up.
+  develop-static-gate:
+    name: Develop Gate (secret scan + UI determinism)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          # Both gates are static AST/text scans over source — no Python/protoc,
+          # Rust, or postinstall artifacts needed (same lean install as the
+          # format gate above).
+          setup-python: "false"
+          install-protoc: "false"
+          run-postinstall: "false"
+
+      - name: Prompt secret scan
+        run: cd packages/prompts && bun run check:secrets
+
+      - name: UI determinism self-test
+        run: bun run audit:ui-determinism:self-test
+
+      - name: UI determinism gate
+        run: bun run audit:ui-determinism

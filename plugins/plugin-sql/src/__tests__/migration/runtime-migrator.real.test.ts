@@ -472,10 +472,18 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
   describe("Production Readiness", () => {
     it("should use transactions for atomicity", async () => {
-      // Transactions are built into our implementation
-      // This test verifies the infrastructure is there
-      testResults.passed.push("Transactions: Built-in atomicity via Drizzle transactions");
-      expect(true).toBe(true);
+      // The initial plugin-sql migration earlier in this suite ran inside a single
+      // BEGIN/COMMIT transaction. If that transaction committed atomically, the
+      // migration record, journal, and snapshot must all be present together —
+      // a non-atomic implementation could leave any one of them missing.
+      const status = await migrator.getStatus("plugin-sql");
+
+      expect(status.hasRun).toBe(true);
+      expect(status.lastMigration).not.toBeNull();
+      expect(status.lastMigration?.hash).toBeTruthy();
+      expect(status.snapshots).toBeGreaterThan(0);
+
+      testResults.passed.push("Transactions: migration recorded with snapshot atomically");
     });
 
     it("should handle errors gracefully", async () => {

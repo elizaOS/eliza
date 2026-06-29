@@ -84,7 +84,7 @@ src/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-ainex build      # tsdown build → dist/
+bun run --cwd plugins/plugin-ainex build      # build.ts: Bun.build + tsc d.ts emit → dist/
 bun run --cwd plugins/plugin-ainex typecheck  # tsgo --noEmit
 bun run --cwd plugins/plugin-ainex test       # vitest run
 bun run --cwd plugins/plugin-ainex clean      # rm dist/ .turbo/

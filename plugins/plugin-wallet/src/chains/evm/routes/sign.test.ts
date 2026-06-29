@@ -164,6 +164,30 @@ describe("EVM browser signing routes", () => {
     expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
   });
 
+  it("gates every EVM signing route behind the browser signing token", async () => {
+    // These routes are public: true so the cross-origin browser signing surface
+    // can reach them, so the central session gate does NOT protect them — their
+    // own WALLET_BROWSER_SIGN_TOKEN check must. Assert each one is closed (503)
+    // before any backend work when no signing token is configured.
+    const signingRouteNames = [
+      "wallet-evm-personal-sign",
+      "wallet-evm-sign-typed-data",
+      "wallet-evm-sign-transaction",
+      "wallet-evm-send-transaction",
+    ];
+
+    for (const routeName of signingRouteNames) {
+      const response = res();
+      await route(routeName).handler(
+        req({ authorization: "Bearer caller-token", body: {} }),
+        response,
+        runtime(null),
+      );
+      expect(response.statusCode).toBe(503);
+      expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
+    }
+  });
+
   it("rejects malformed chain ids before resolving the backend", async () => {
     const response = res();
     await route("wallet-evm-sign-transaction").handler(

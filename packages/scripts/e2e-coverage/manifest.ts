@@ -191,9 +191,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-discord-local": covered(
     "plugins/plugin-discord-local/src/__tests__/routes-e2e.test.ts",
   ),
-  "plugin-elizamaker": covered(
-    "plugins/plugin-elizamaker/src/__tests__/routes-e2e.test.ts",
-  ),
   "plugin-facewear": covered(
     "plugins/plugin-facewear/src/__tests__/routes-e2e.test.ts",
   ),

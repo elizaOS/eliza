@@ -13,6 +13,7 @@ import {
   facewearSwitchViewAction,
 } from "./actions/view-actions.ts";
 import { facewearQueryVisionAction } from "./actions/vision-query.ts";
+import { facewearSetupRuntimeAction } from "./actions/xr-runtime-setup.ts";
 import { facewearContextProvider } from "./providers/facewear-context.ts";
 import { smartglassesStatusProvider } from "./providers/smartglasses-status.ts";
 import { connectRoute } from "./routes/connect.ts";
@@ -25,6 +26,7 @@ import { simulatorRoute } from "./routes/simulator-route.ts";
 import { statusRoute } from "./routes/status.ts";
 import { viewHostRoute } from "./routes/view-host.ts";
 import { viewsRoute } from "./routes/views.ts";
+import { facewearXrRuntimeRoute } from "./routes/xr-runtime.ts";
 import { FacewearService } from "./services/facewear-service.ts";
 import { SmartglassesService } from "./services/smartglasses-service.ts";
 import { XRSessionService } from "./services/xr-session-service.ts";
@@ -48,6 +50,7 @@ export const facewearPlugin: Plugin = {
     facewearListViewsAction,
     facewearResizeViewAction,
     facewearQueryVisionAction,
+    facewearSetupRuntimeAction,
   ],
   providers: [facewearContextProvider, smartglassesStatusProvider],
   routes: [
@@ -59,6 +62,7 @@ export const facewearPlugin: Plugin = {
     facewearDevicesRoute,
     facewearDeviceRoute,
     facewearStatusRoute,
+    facewearXrRuntimeRoute,
   ],
 
   views: [
@@ -190,6 +194,7 @@ export { facewearMicrophoneAction as smartglassesMicrophoneAction } from "./acti
 // re-exported here — that drags React/@elizaos/ui into the Node agent bundle and
 // fails plugin load. The app loads them via the browser entry (src/register.ts)
 // + the Vite view bundle (componentExport from dist/views/bundle.js).
+export { facewearSetupRuntimeAction } from "./actions/xr-runtime-setup.ts";
 export type {
   FacewearDeviceProfile,
   FacewearDeviceType,
@@ -202,6 +207,17 @@ export {
 export * from "./protocol/smartglasses.ts";
 export type * from "./protocol/xr.ts";
 export { smartglassesStatusProvider } from "./providers/smartglasses-status.ts";
+// Desktop OpenXR runtime detection + install planning (the WebXR-on-desktop seam).
+export { detectOpenXrRuntimeNow } from "./runtime/node-probe.ts";
+export {
+  detectOpenXrRuntime,
+  type OpenXrInstallPlan,
+  type OpenXrInstallStep,
+  type OpenXrRuntimeName,
+  type OpenXrRuntimeStatus,
+  planOpenXrInstall,
+  type RuntimeProbe,
+} from "./runtime/openxr-runtime.ts";
 export { AudioPipeline } from "./services/audio-pipeline.ts";
 export {
   FACEWEAR_SERVICE_TYPE,

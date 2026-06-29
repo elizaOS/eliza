@@ -1155,6 +1155,27 @@ export interface OrchestratorAccountOverview {
   assignments: OrchestratorAccountAssignment[];
 }
 
+/** Per-provider readiness verdict from `GET /api/orchestrator/accounts/readiness`. */
+export interface OrchestratorProviderReadiness {
+  agentType: string;
+  total: number;
+  enabled: number;
+  healthy: number;
+  required: number;
+  ok: boolean;
+}
+
+/** Payload for `GET /api/orchestrator/accounts/readiness`: whether the pool has
+ * enough healthy accounts (≥1 Codex AND ≥1 Claude; ≥2 each under rotation) to
+ * run the multi-account orchestrator, with the human-readable problems when not. */
+export interface OrchestratorAccountReadiness {
+  ready: boolean;
+  rotation: boolean;
+  required: number;
+  providers: OrchestratorProviderReadiness[];
+  problems: string[];
+}
+
 export type OrchestratorRoomParticipantKind =
   | "orchestrator"
   | "user"

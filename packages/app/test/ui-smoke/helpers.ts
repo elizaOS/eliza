@@ -353,7 +353,7 @@ async function expectMainShellReadyForRoute(
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
   if (!options.allowOnboardingToast) {
-    await expect(page.getByTestId("onboarding-toast")).toHaveCount(0, {
+    await expect(page.getByTestId("first-run-chat")).toHaveCount(0, {
       timeout: STARTUP_SETTLED_TIMEOUT_MS,
     });
   }

@@ -133,19 +133,6 @@ export default defineConfig({
     // Worker forks emitted error). In Vitest 4 the former forks.singleFork
     // setting is represented by maxWorkers: 1 plus isolate: false.
     isolate: false,
-    // Coverage floor — established at a conservative 1% to wire the mechanism
-    // (issue #9943). Inert in normal CI: run-vitest.mjs never passes --coverage,
-    // so thresholds only evaluate when a run explicitly opts in, at which point a
-    // full-suite run clears 1% trivially. Raise toward the measured baseline as a
-    // follow-up; see .github/workflows/coverage-gate.yml.
-    coverage: {
-      thresholds: {
-        lines: 1,
-        functions: 1,
-        branches: 1,
-        statements: 1,
-      },
-    },
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
@@ -168,6 +155,7 @@ export default defineConfig({
       // Uses Node.js built-in test runner (node:test), not vitest.
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
+      "scripts/build-helpers/arm64-simd.test.mjs",
       // Uses bun:test, not vitest.
       "scripts/aosp/stage-default-models.test.mjs",
       // Uses bun:test, not vitest.

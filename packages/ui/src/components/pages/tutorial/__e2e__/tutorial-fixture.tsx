@@ -15,6 +15,11 @@
  */
 import * as React from "react";
 import { createRoot } from "react-dom/client";
+import {
+  isNavAllowed,
+  isNavLocked,
+  setNavLock,
+} from "../../../../navigation/nav-lock";
 import { TutorialSpotlight } from "../TutorialSpotlight";
 import { buildTutorialSteps, type TutorialStep } from "../tutorial-steps";
 
@@ -123,6 +128,14 @@ function Harness(): React.JSX.Element {
   setStepId = setS;
   const step: TutorialStep =
     STEPS.find((s) => s.id === stepId) ?? STEPS[0];
+  // Apply the real per-frame capability lock the live tour applies
+  // (TutorialOverlay does `setNavLock(step.lockTabs ?? ["chat"])`), so the e2e
+  // can assert nav-lock actually blocks an off-path tab on every frame — not
+  // just that the frame declares a lockTabs array (#9957).
+  React.useEffect(() => {
+    setNavLock(step.lockTabs ?? ["chat"]);
+    return () => setNavLock(null);
+  }, [step]);
   return (
     <>
       <ChatScaffold />
@@ -153,6 +166,9 @@ declare global {
         lockTabs: string[];
       }>;
       show: (id: string) => void;
+      // Live nav-lock state for the currently-shown frame, so the runner can
+      // assert the capability lock actually blocks an off-path tab per frame.
+      navLock: { isLocked: () => boolean; isAllowed: (tab: string) => boolean };
     };
   }
 }
@@ -165,6 +181,7 @@ window.__tutorial = {
     lockTabs: s.lockTabs ?? ["chat"],
   })),
   show: (id) => setStepId(id),
+  navLock: { isLocked: () => isNavLocked(), isAllowed: (tab) => isNavAllowed(tab) },
 };
 
 const root = document.getElementById("root");

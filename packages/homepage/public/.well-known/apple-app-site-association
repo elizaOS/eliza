@@ -1,0 +1,22 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.ai.elizaos.app"],
+        "components": [
+          { "/": "/chat*" },
+          { "/": "/wallet" },
+          { "/": "/inventory" },
+          { "/": "/messages*" },
+          { "/": "/contacts" },
+          { "/": "/phone*" },
+          { "/": "/browser" },
+          { "/": "/settings*" },
+          { "/": "/connect*" },
+          { "/": "/share*" },
+          { "/": "/api/*", "exclude": true }
+        ]
+      }
+    ]
+  }
+}

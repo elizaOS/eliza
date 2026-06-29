@@ -22,6 +22,7 @@ import {
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { safeFetch } from "@/lib/security/safe-fetch";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { emailService } from "@/lib/services/email";
 import { logger } from "@/lib/utils/logger";
@@ -348,7 +349,9 @@ async function notifyWaifuCreditWebhook(
     .digest("hex")}`;
 
   try {
-    const response = await fetch(webhookUrl, {
+    // SECURITY (#9853): webhookUrl is DB-stored per-agent config — IP-pin it so
+    // a malicious receiver URL can't pivot into internal/metadata networks.
+    const response = await safeFetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

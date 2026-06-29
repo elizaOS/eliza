@@ -2,6 +2,7 @@ import { Target } from "lucide-react";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
@@ -158,6 +159,11 @@ export function GoalsAttentionWidget(_props: Partial<WidgetProps>) {
   const nav = useWidgetNavigation();
 
   const load = useCallback(async () => {
+    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+      setGoals([]);
+      return;
+    }
+
     try {
       const next = await fetchGoals();
       // Skip the state update (and the re-render) when the poll is unchanged.

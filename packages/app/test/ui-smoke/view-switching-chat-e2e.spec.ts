@@ -114,9 +114,8 @@ type ViewSwitchCase = {
   expectedPath: string;
   /**
    * Optional on-view marker proving the renderer actually mounted the view (not
-   * just changed the URL). Omitted for elizamaker, which mounts the chat surface
-   * by design (APPS_SUB_TABS.elizamaker === "chat") — URL is the only honest
-   * assertion there.
+   * just changed the URL). Omitted for apps that mount a shared shell tab (e.g.
+   * the chat surface) where the URL is the only honest assertion.
    */
   onView?: (page: Page) => Locator;
 };

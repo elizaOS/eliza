@@ -79,13 +79,6 @@ const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
     hasDetailsPage: false,
   },
   {
-    slug: "elizamaker",
-    name: "@elizaos/plugin-elizamaker",
-    displayName: "ElizaMaker",
-    windowPath: "/apps/elizamaker",
-    hasDetailsPage: true,
-  },
-  {
     slug: "log-viewer",
     name: "@elizaos/app-log-viewer",
     displayName: "Log Viewer",

@@ -106,7 +106,47 @@ const ALLOWED_EXACT = new Set([
   "pre-commit",
   "audit:scripts",
   "audit:scripts:self-test",
+  "audit:tee-secret-leak",
+  "audit:scripts:inventory",
+  "audit:type-duplication:self-test",
   "audit:tee-secret-leak:self-test",
+]);
+
+/**
+ * (d) ORPHAN script files inside packages/scripts/ — a `.mjs` referenced by
+ * nothing (no root alias, no CI workflow, no docs, no other reachable script).
+ * This is the file-level twin of the root-script orphan check and stops the
+ * report-builder slop cluster (issue #10194) from silently regrowing.
+ *
+ * Allowlist: standalone diagnostic / guard utilities that are intentionally run
+ * by hand and need no automated caller. Each entry carries a written reason.
+ */
+const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
+  [
+    "audit-bin-export-subpaths.mjs",
+    "static guard for the #8000 bin/exports bug class; run by hand during release review",
+  ],
+  [
+    "benchmark-to-training-dataset.mjs",
+    "one-shot benchmark→training-dataset converter, invoked manually with explicit paths",
+  ],
+  [
+    "check-i18n.mjs",
+    "strict i18n linter run on demand; not yet wired into verify",
+  ],
+  [
+    "check-secret-hygiene.mjs",
+    "standalone secret-hygiene scanner run by hand / in ad-hoc security sweeps",
+  ],
+  [
+    "dev-health-check.mjs",
+    "interactive dev-stack smoke launcher run by hand during local debugging",
+  ],
+  ["triage-tests.mjs", "human-run test-stack triage report generator"],
+  [
+    "run-live-test-with-artifacts.mjs",
+    "standalone live-test runner (writes gitignored reports/live-test-runs); the producer that check-live-test-artifact-coverage.mjs validates",
+  ],
 ]);
 
 const NOOP_GATE_KEYS = /^(lint|typecheck|test|build)(:|$)/;
@@ -255,6 +295,69 @@ function existsAsDirFrom(bases, token) {
   });
 }
 
+/**
+ * Reference corpus for the packages/scripts file-orphan check (d). Unlike
+ * buildReferenceCorpus it excludes the packages/scripts source itself; cross
+ * references between script files are evaluated per-file (excluding a file's own
+ * body) so a script naming itself in a usage comment does not look "referenced".
+ */
+function buildNonScriptCorpus(root) {
+  const chunks = [];
+  walk(path.join(root, ".github", "workflows"), (file) => {
+    if (/\.(ya?ml)$/.test(file)) chunks.push(readTextIfReadable(file));
+  });
+  const seenPkg = new Set([path.join(root, "package.json")]);
+  for (const base of ["packages", "plugins", "apps"]) {
+    walk(path.join(root, base), (file) => {
+      if (path.basename(file) === "package.json") seenPkg.add(file);
+    });
+  }
+  for (const file of seenPkg) {
+    if (!existsSync(file)) continue;
+    const scripts = readJson(file).scripts;
+    if (scripts) chunks.push(Object.values(scripts).join("\n"));
+  }
+  for (const base of ["docs", "packages", "plugins", "apps", ".github"]) {
+    walk(path.join(root, base), (file) => {
+      if (file.endsWith(".md")) chunks.push(readTextIfReadable(file));
+    });
+  }
+  walk(path.join(root, "scripts"), (file) => {
+    if (/\.(mjs|cjs|js|ts|mts|cts)$/.test(file))
+      chunks.push(readTextIfReadable(file));
+  });
+  return chunks.join("\n");
+}
+
+/** Flag packages/scripts/*.mjs that nothing references (issue #10194). */
+function auditScriptFiles(root) {
+  const dir = path.join(root, "packages", "scripts");
+  if (!existsSync(dir)) return [];
+  const files = readdirSync(dir).filter((name) => name.endsWith(".mjs"));
+  const bodies = new Map(
+    files.map((name) => [name, readTextIfReadable(path.join(dir, name))]),
+  );
+  const nonScriptCorpus = buildNonScriptCorpus(root);
+
+  const failures = [];
+  for (const name of files) {
+    if (ORPHAN_SCRIPT_FILE_ALLOWLIST.has(name)) continue;
+    if (nonScriptCorpus.includes(name)) continue;
+    // Referenced by any OTHER script file (spawn/exec/import/string mention)?
+    const referencedBySibling = files.some(
+      (other) => other !== name && bodies.get(other).includes(name),
+    );
+    if (referencedBySibling) continue;
+    failures.push(
+      `[orphan-file] packages/scripts/${name} is referenced by nothing (no ` +
+        `root script, CI workflow, docs, or other reachable script). Wire it ` +
+        `to a caller, add it to ORPHAN_SCRIPT_FILE_ALLOWLIST with a reason, or ` +
+        `delete it.`,
+    );
+  }
+  return failures;
+}
+
 function auditScripts(root) {
   const failures = [];
   const corpus = buildReferenceCorpus(root);
@@ -318,6 +421,9 @@ function auditScripts(root) {
       }
     }
   }
+
+  // (d) Orphan script files inside packages/scripts/.
+  failures.push(...auditScriptFiles(root));
 
   return failures;
 }

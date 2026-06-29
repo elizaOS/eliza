@@ -954,6 +954,150 @@ function applyUsageToDetails(
 // ============================================================================
 
 /**
+ * Whether a thrown model-call error is a transient provider hiccup that is
+ * worth retrying. The AI SDK already retries clear-cut retryables (408/409/429/
+ * 5xx) via its own `maxRetries`, but Cerebras under load returns its transient
+ * "Encountered a server error, please try again" as an HTTP **400**, which the
+ * SDK classifies as non-retryable and surfaces immediately — failing a coding
+ * build that the very same request would complete on a second attempt (observed
+ * live: large multi-tool requests 400 intermittently under fleet load, succeed
+ * on retry). We treat such a 400 as transient ONLY when its body/message looks
+ * like an overload, never when it looks like a genuine validation error, so we
+ * don't mask real malformed-request bugs.
+ */
+function isTransientProviderError(error: unknown): boolean {
+  const e = error as
+    | { statusCode?: number; status?: number; message?: string; data?: unknown }
+    | undefined;
+  if (!e) return false;
+  const status = e.statusCode ?? e.status;
+  if (status === 408 || status === 409 || status === 429) return true;
+  if (typeof status === "number" && status >= 500 && status < 600) return true;
+  const msg = `${e.message ?? ""} ${JSON.stringify(e.data ?? "")} ${
+    (e as { type?: string }).type ?? ""
+  }`.toLowerCase();
+  // No HTTP status: either a network-level failure OR a provider that returns
+  // its transient error as a bare object (Cerebras passes
+  // `{message:"Encountered a server error, please try again", type:"server_error"}`
+  // straight to the AI SDK's onError with no statusCode). Retry both — but never
+  // a genuine validation error that merely lacks a status.
+  if (status === undefined) {
+    if (/invalid|unsupported|must be|required field|malformed|not allowed|json schema/.test(msg)) {
+      return false;
+    }
+    return /timeout|timed out|econnreset|econnrefused|socket|network|fetch failed|terminated|server error|server_error|try again|overload|capacity|temporarily|unavailable|busy|rate ?limit|please retry/.test(
+      msg
+    );
+  }
+  // Transient 400: overload/server-error wording. Do NOT retry genuine
+  // validation failures (invalid/unsupported/schema/required/malformed).
+  if (status === 400) {
+    if (/invalid|unsupported|must be|required|malformed|not allowed|schema/.test(msg)) {
+      return false;
+    }
+    return /server error|try again|overload|capacity|temporarily|busy|rate/.test(msg);
+  }
+  return false;
+}
+
+/**
+ * Call `generateText` with bounded retry + exponential backoff on transient
+ * provider errors (see {@link isTransientProviderError}). Mirrors opencode's
+ * resilience posture (it sets `retries: 2` on its coding LLM call) but also
+ * covers Cerebras's non-standard transient-400 that the AI SDK won't retry.
+ * Non-transient errors propagate immediately on the first attempt.
+ */
+async function generateTextWithTransientRetry(
+  generateParams: NativeGenerateTextParams,
+  maxRetries = 3
+): Promise<Awaited<ReturnType<typeof generateText<ToolSet>>>> {
+  let attempt = 0;
+  // biome-ignore lint/suspicious/noExplicitAny: AI SDK's generateText overloads can't infer our NativeGenerateTextParams across the generic boundary.
+  for (;;) {
+    try {
+      return (await generateText(
+        generateParams as Parameters<typeof generateText>[0]
+        // biome-ignore lint/suspicious/noExplicitAny: see above.
+      )) as any;
+    } catch (error) {
+      if (attempt >= maxRetries || !isTransientProviderError(error)) throw error;
+      attempt++;
+      const backoffMs = Math.min(3000, 300 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
+      logger.warn(
+        `[OpenAI] transient model error (attempt ${attempt}/${maxRetries}), retrying in ${backoffMs}ms: ${
+          (error as { message?: string })?.message ?? String(error)
+        }`
+      );
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+  }
+}
+
+interface BufferedStreamResult {
+  text: string;
+  toolCalls: Awaited<ReturnType<typeof streamText<ToolSet>>["toolCalls"]> | undefined;
+  usage: LanguageModelUsage | undefined;
+  finishReason: string | undefined;
+}
+
+/**
+ * Consume a `streamText` call to completion with bounded transient-error retry.
+ *
+ * Coding/structured planner calls stream, but Cerebras under fleet load returns
+ * intermittent transient 400s on large multi-tool requests — and for a stream
+ * that error surfaces only while the stream is *consumed*, so the AI SDK's
+ * `maxRetries` (which also won't retry a 400) never helps and the build fails on
+ * an error the very same request would survive on a second attempt. We buffer
+ * the stream and re-issue the whole call on a transient failure. Token streaming
+ * is not user-visible for coding (the sub-agent relays a final summary), so
+ * buffering loses nothing there. Used only in coding mode; chat keeps live
+ * streaming.
+ */
+async function consumeStreamWithTransientRetry(
+  generateParams: NativeGenerateTextParams,
+  onChunk: ((chunk: string) => void) | undefined,
+  maxRetries = 5
+): Promise<BufferedStreamResult> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      // The AI SDK does NOT throw on a request failure during streaming — it
+      // routes the error to `onError` and ends the stream empty (an empty
+      // result then reads as "model called no tool" upstream). Capture it here
+      // and rethrow after consumption so the retry below can act on it. (This
+      // is the same reason opencode attaches an onError to its streamText.)
+      let capturedError: unknown;
+      const result = streamText({
+        ...(generateParams as Parameters<typeof streamText>[0]),
+        onError: ({ error }: { error: unknown }) => {
+          capturedError = error;
+        },
+      });
+      let text = "";
+      for await (const chunk of result.textStream) {
+        onChunk?.(chunk);
+        text += chunk;
+      }
+      const toolCalls = await result.toolCalls;
+      const usage = await result.usage;
+      const finishReason = (await result.finishReason) as string | undefined;
+      if (capturedError) throw capturedError;
+      return { text, toolCalls, usage, finishReason };
+    } catch (error) {
+      if (attempt >= maxRetries || !isTransientProviderError(error)) throw error;
+      attempt++;
+      const backoffMs = Math.min(3000, 300 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
+      logger.warn(
+        `[OpenAI] transient stream error (attempt ${attempt}/${maxRetries}), retrying in ${backoffMs}ms: ${
+          (error as { message?: string })?.message ?? String(error)
+        }`
+      );
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+  }
+}
+
+/**
  * Generates text using the specified model type.
  *
  * @param runtime - The agent runtime
@@ -1062,6 +1206,48 @@ async function generateTextByModelType(
 
   // Handle streaming mode
   if (params.stream) {
+    // Coding/structured planner calls prioritise reliability over live token
+    // streaming: buffer the stream to completion with transient-error retry so a
+    // Cerebras-under-load 400 doesn't fail an otherwise-good build (see
+    // consumeStreamWithTransientRetry). Token streaming isn't user-visible for
+    // coding. Regular chat falls through to the live-streaming path below.
+    const fullActionSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+    if (
+      fullActionSurface === "1" ||
+      fullActionSurface === "true" ||
+      fullActionSurface === "yes" ||
+      fullActionSurface === "on"
+    ) {
+      const details = createLlmCallDetails(
+        modelName,
+        params,
+        systemPrompt,
+        "ai.streamText",
+        modelType,
+        providerOptions,
+        generateParams
+      );
+      details.response = "";
+      const buffered = await recordLlmCall(runtime, details, () =>
+        consumeStreamWithTransientRetry(generateParams, params.onStreamChunk)
+      );
+      details.response = buffered.text;
+      details.toolCalls = buffered.toolCalls;
+      details.finishReason = buffered.finishReason;
+      if (buffered.usage) {
+        applyUsageToDetails(details, buffered.usage);
+        emitModelUsageEvent(runtime, modelType, params.prompt ?? "", buffered.usage);
+      }
+      return {
+        textStream: (async function* replayBufferedStream() {
+          if (buffered.text) yield buffered.text;
+        })(),
+        text: Promise.resolve(buffered.text),
+        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(buffered.toolCalls) } : {}),
+        usage: Promise.resolve(convertUsage(buffered.usage)),
+        finishReason: Promise.resolve(buffered.finishReason),
+      };
+    }
     const details = createLlmCallDetails(
       modelName,
       params,
@@ -1099,7 +1285,7 @@ async function generateTextByModelType(
     generateParams
   );
   const result = await recordLlmCall(runtime, details, async () => {
-    const result = await generateText(generateParams);
+    const result = await generateTextWithTransientRetry(generateParams);
     details.response = result.text;
     details.toolCalls = result.toolCalls;
     details.finishReason = result.finishReason as string | undefined;

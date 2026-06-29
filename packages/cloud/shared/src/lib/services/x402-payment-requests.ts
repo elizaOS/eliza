@@ -20,6 +20,7 @@ import {
 } from "../../db/repositories/crypto-payments";
 import { apps } from "../../db/schemas/apps";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { x402FacilitatorService } from "./x402-facilitator";
@@ -320,7 +321,10 @@ async function triggerCallback(payment: CryptoPayment, event: Record<string, unk
   const callbackUrl = metadataOf(payment).callbackUrl;
   if (typeof callbackUrl !== "string") return;
   try {
-    const res = await fetch(callbackUrl, {
+    // SECURITY (#9853): the callbackUrl is caller-supplied (payment metadata) and
+    // only scheme-validated — route it through the IP-pinned SSRF guard so it
+    // cannot pivot into the metadata/cloud/headscale network via DNS rebinding.
+    const res = await safeFetch(callbackUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

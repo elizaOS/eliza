@@ -25,12 +25,14 @@ describe("facewear visual copy", () => {
           glyph,
         );
       }
-      // The spatial source uses the @elizaos/ui/spatial primitives, never raw
-      // HTML tags it would have to style itself.
-      expect(source, `${file} renders via spatial primitives`).toContain(
-        "@elizaos/ui/spatial",
-      );
     }
+    // FacewearView is a thin GUI/XR wrapper that delegates to FacewearSpatialView;
+    // the spatial primitives (and thus the @elizaos/ui/spatial import) live in
+    // the spatial view, never in raw HTML the wrapper would have to style itself.
+    expect(
+      readSource("components/FacewearSpatialView.tsx"),
+      "FacewearSpatialView renders via spatial primitives",
+    ).toContain("@elizaos/ui/spatial");
   });
 
   it("does not render redundant helper copy under the Facewear header", () => {

@@ -56,22 +56,12 @@ async function clickIfVisible(
   }
 }
 
-// Drive whichever cloud entry point the onboarding surface presents — the compact
-// toast offers "Connect"/"Eliza Cloud"; the detailed shell offers the cloud card
-// then a "Start"/"Connect" primary; both may show a "Sign in with Eliza Cloud".
+// Drive the cloud entry point of the in-chat first-run flow: the runtime
+// ChoiceWidget's "Log in with Eliza Cloud" option, then the in-chat
+// CredentialRequestWidget "Connect Eliza Cloud" authorize affordance if shown.
 async function chooseCloudRuntime(page: Page): Promise<void> {
-  const cloudCard = page
-    .getByTestId("first-run-runtime-cloud")
-    .or(page.getByTestId("onboarding-option-cloud"));
-  await clickIfVisible(cloudCard, 30_000);
-  await clickIfVisible(
-    page.getByRole("button", { name: /^(Start|Connect)$/ }),
-    5_000,
-  );
-  await clickIfVisible(
-    page.getByRole("button", { name: /sign in with eliza cloud/i }),
-    5_000,
-  );
+  await clickIfVisible(page.getByTestId("choice-cloud"), 30_000);
+  await clickIfVisible(page.getByTestId("credential-oauth-authorize"), 5_000);
 }
 
 async function readActiveServer(page: Page): Promise<{
@@ -102,13 +92,10 @@ test.describe("real cloud login + provisioning + chat", () => {
     await seedAppStorage(page, { "eliza:first-run-complete": "" });
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    // Wait for any onboarding surface (compact toast or detailed shell).
-    await expect(
-      page
-        .getByTestId("first-run-shell")
-        .or(page.getByTestId("onboarding-toast"))
-        .or(page.getByTestId("onboarding-overlay-shell")),
-    ).toBeVisible({ timeout: 60_000 });
+    // Wait for the in-chat first-run surface (the seeded greeting + widgets).
+    await expect(page.getByTestId("first-run-chat")).toBeVisible({
+      timeout: 60_000,
+    });
 
     await chooseCloudRuntime(page);
 

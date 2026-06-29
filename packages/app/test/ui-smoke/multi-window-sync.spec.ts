@@ -35,9 +35,17 @@ async function openSyncedWindow(context: BrowserContext): Promise<Page> {
   return page;
 }
 
-test.skip("a synced preference toggled in window A propagates to window B", async ({
-  browser,
-}) => {
+// Skipped: the BroadcastChannel cross-window sync feature (useTabSync) is not
+// yet shipped, so there is nothing to propagate between windows. Also tracked on
+// the ui-smoke .pr-deny-list.json ("BroadcastChannel cross-window sync feature
+// not shipped"). Un-skip once same-origin tab sync ships.
+test.skip("a synced preference toggled in window A propagates to window B", {
+  annotation: {
+    type: "skip",
+    description:
+      "BroadcastChannel cross-window sync feature not shipped (see ui-smoke .pr-deny-list.json)",
+  },
+}, async ({ browser }) => {
   // Two windows = two pages in the SAME browser context so they share the
   // same-origin BroadcastChannel that useTabSync will use.
   const context = await browser.newContext();

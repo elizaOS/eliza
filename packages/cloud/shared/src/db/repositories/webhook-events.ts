@@ -75,6 +75,18 @@ export class WebhookEventsRepository {
   }
 
   /**
+   * Delete a single webhook event's dedup marker by event id. Used to roll the
+   * marker back when the durable enqueue fails AFTER tryCreate committed, so the
+   * provider's retry re-processes the event instead of hitting `created:false`
+   * and silently dropping a paid event.
+   */
+  async deleteByEventId(eventId: string, provider: string): Promise<void> {
+    await dbWrite
+      .delete(webhookEvents)
+      .where(and(eq(webhookEvents.event_id, eventId), eq(webhookEvents.provider, provider)));
+  }
+
+  /**
    * Delete old webhook events to prevent table growth.
    * Keeps events from the last `retentionDays` days.
    */

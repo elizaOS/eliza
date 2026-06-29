@@ -3,11 +3,14 @@ import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureRouteMinRole } from "../auth.js";
 
-const mocks = vi.hoisted(() => ({
-  findActiveSession: vi.fn(),
-  findIdentity: vi.fn(),
-  verifyCsrfToken: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  vi.resetModules();
+  return {
+    findActiveSession: vi.fn(),
+    findIdentity: vi.fn(),
+    verifyCsrfToken: vi.fn(),
+  };
+});
 
 vi.mock("@elizaos/core", () => ({
   roleRank: (role: string | undefined) =>

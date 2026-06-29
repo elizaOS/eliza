@@ -163,13 +163,6 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       defaultWidget: "activity",
       signalKinds: ["approval", "workflow", "activity"],
     },
-    {
-      pluginId: "elizamaker",
-      label: "Elizamaker",
-      icon: "Bot",
-      defaultWidget: "activity",
-      signalKinds: ["workflow", "activity"],
-    },
     // The `feed` plugin owns the real `feed.agent-activity` home tile (declared
     // below), so it no longer opts into the shared messages sink here.
     {

@@ -12,6 +12,5 @@ export default defineConfig({
       "**/*.live.test.ts",
       "**/*.harness.test.ts",
     ],
-    passWithNoTests: true,
   },
 });

@@ -86,6 +86,12 @@ async function handleTransfer(c: AppContext) {
   }
 
   // Debit first so a crash can never transfer more than was reserved.
+  // requireSufficientBalance makes the debit fail CLOSED (no floor-and-pass)
+  // under the row lock on the primary, so a stale getBalance pre-check, a
+  // concurrent double-submit (distinct idempotency keys), or read-replica lag
+  // can never let us transfer more fiat than the creator actually earned. On
+  // success exactly `amount` is debited, so the compensation below (which
+  // re-credits `amount`) is also exact.
   const debit = await redeemableEarningsService.reduceEarnings({
     userId: user_id,
     amount,
@@ -93,6 +99,7 @@ async function handleTransfer(c: AppContext) {
     sourceId: idempotency_key,
     description: "Stripe Connect fiat payout",
     metadata: { payout_method: "stripe_connect" },
+    requireSufficientBalance: true,
   });
   if (!debit.success) {
     return Response.json(

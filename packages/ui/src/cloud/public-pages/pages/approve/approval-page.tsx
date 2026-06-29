@@ -180,7 +180,7 @@ export default function ApprovalPage() {
   }, [approvalId, signature, t]);
 
   const handleDeny = useCallback(async () => {
-    if (!approvalId) return;
+    if (!approvalId || !signature.trim()) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -188,7 +188,10 @@ export default function ApprovalPage() {
         `/api/v1/approval-requests/${encodeURIComponent(approvalId)}/deny`,
         {
           method: "POST",
-          json: { reason: "denied by signer" },
+          json: {
+            reason: "denied by signer",
+            signature: signature.trim(),
+          },
           skipAuth: true,
         },
       );
@@ -205,7 +208,7 @@ export default function ApprovalPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [approvalId, t]);
+  }, [approvalId, signature, t]);
 
   if (loading) {
     return (
@@ -367,7 +370,7 @@ export default function ApprovalPage() {
             <button
               type="button"
               onClick={handleDeny}
-              disabled={submitting}
+              disabled={submitting || signature.trim().length === 0}
               className="inline-flex items-center gap-2 rounded border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700"
             >
               {t("cloud.approval.deny", { defaultValue: "Deny" })}

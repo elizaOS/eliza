@@ -8,10 +8,15 @@
  * the ring is inspectable in dev. Keep it dependency-free and side-effect-light.
  */
 
+import type { FrameBudgetSummary } from "./hooks/frame-budget";
+
 export const VIEW_INTERACTION_TELEMETRY_EVENT =
   "eliza:view-interaction-telemetry";
 
-export type ViewInteractionSource = "launcher" | "view-catalog";
+export type ViewInteractionSource =
+  | "launcher"
+  | "view-catalog"
+  | "conversation-swipe";
 
 export type ViewInteractionAction =
   | "launch"
@@ -25,7 +30,13 @@ export type ViewInteractionAction =
   | "search-zero-results"
   | "hero-image-error"
   | "dynamic-view-edit"
-  | "dynamic-view-delete";
+  | "dynamic-view-delete"
+  // Frame-budget summary for a single conversation-swipe gesture (#9954). Until
+  // this action existed, swipe jank only surfaced through the dev-only PerfOverlay
+  // HUD; emitting it here makes dropped-frame/fps data observable in the same
+  // bounded ring every other interaction lands in, so a swipe-jank regression is
+  // visible to a harness/test without the HUD.
+  | "conversation-swipe-jank";
 
 export interface ViewInteractionEvent {
   source: ViewInteractionSource;
@@ -36,6 +47,13 @@ export interface ViewInteractionEvent {
   query?: string;
   /** Result count (for search) or page index (for page-swipe/reorder). */
   count?: number;
+  /**
+   * Frame-budget summary for a `conversation-swipe-jank` event (#9954) — the
+   * same {@link FrameBudgetSummary} the frame-budget HUD reads, so the dropped-
+   * frame %, p95 frame time, and long-task counts are computed by one source of
+   * truth. Present only on `conversation-swipe-jank`.
+   */
+  frameBudget?: FrameBudgetSummary;
   at: number;
   route?: string;
 }
@@ -92,4 +110,19 @@ export function emitViewInteraction(
 export function readViewInteractions(): ViewInteractionEvent[] {
   const g = globalThis as TelemetryGlobal;
   return g.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? [];
+}
+
+/**
+ * Record the frame-budget summary captured over a single conversation-swipe
+ * gesture (#9954). The `count` field carries the dropped-frame count so a reader
+ * scanning the ring sees the headline number without unpacking `frameBudget`;
+ * the full summary (p95 frame time, fps, long tasks) rides in `frameBudget`.
+ */
+export function emitConversationSwipeJank(summary: FrameBudgetSummary): void {
+  emitViewInteraction({
+    source: "conversation-swipe",
+    action: "conversation-swipe-jank",
+    count: summary.droppedFrames,
+    frameBudget: summary,
+  });
 }

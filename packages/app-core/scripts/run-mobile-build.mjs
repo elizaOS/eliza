@@ -70,7 +70,6 @@ import {
   resolvePlatformTemplateRoot as resolvePlatformTemplateRootImpl,
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
-import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
 import {
   androidUsesAppDirFor,
   MTP_FORK_SRC_CANDIDATES,
@@ -90,6 +89,39 @@ import {
   RUNTIME_PROVENANCE_FILENAME,
   stageAndroidAgentRuntime,
 } from "./lib/stage-android-agent.mjs";
+import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
+import {
+  appendMissingAndroidManifestBlock,
+  appendMissingApplicationBlock,
+  applyAndroidCleartextPolicy,
+  ensureAndroidMainActivityShortcutsMetadata,
+  ensureAndroidMainActivityUrlSchemeFilter,
+  ensureAndroidPermissionRemovalMarkers,
+  ensureElizaOsActivityFilters,
+  ensureManifestApplicationClosedBeforeTopLevelEntries,
+  hasAndroidPermissionRequest,
+  patchAndroidAppActionsXmlResource,
+  removeAndroidPermissionRequests,
+  removeApplicationComponentBlock,
+  removeApplicationComponentClassBlock,
+  removeXmlCommentsContaining,
+  stripXmlComments,
+  validateAndroidAppActionsXmlResource,
+} from "./mobile/android-manifest.mjs";
+import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
+import {
+  mergeIosInfoPlist,
+  removePbxListEntries,
+  replaceIosAppGroupPlaceholders,
+} from "./mobile/ios-plist.mjs";
+import {
+  ANDROID_OFFICIAL_CAPACITOR_PACKAGES,
+  IOS_COCOAPODS_OWNED_SPM_PLUGINS,
+  IOS_INCOMPATIBLE_SPM_PLUGINS,
+  IOS_OFFICIAL_PODS,
+  resolveIosCustomPods,
+} from "./mobile/ios-pods.mjs";
+import { resolveAndroidBuildTarget } from "./mobile/targets/android.mjs";
 
 export {
   androidUsesAppDirFor,
@@ -98,6 +130,39 @@ export {
   mtpForceRebuildRequested,
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
+export {
+  ANDROID_APP_ACTION_CAPABILITIES,
+  ANDROID_APP_ACTION_FORBIDDEN_MARKERS,
+  ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS,
+  ANDROID_APP_ACTION_SHORTCUT_IDS,
+  appendMissingAndroidManifestBlock,
+  appendMissingApplicationBlock,
+  applyAndroidCleartextPolicy,
+  ensureAndroidMainActivityShortcutsMetadata,
+  ensureAndroidMainActivityUrlSchemeFilter,
+  ensureAndroidPermissionRemovalMarkers,
+  ensureElizaOsActivityFilters,
+  ensureManifestApplicationClosedBeforeTopLevelEntries,
+  hasAndroidPermissionRequest,
+  patchAndroidAppActionsXmlResource,
+  removeAndroidPermissionRequests,
+  removeApplicationComponentBlock,
+  removeApplicationComponentClassBlock,
+  removeXmlCommentsContaining,
+  stripXmlComments,
+  validateAndroidAppActionsXmlResource,
+} from "./mobile/android-manifest.mjs";
+export {
+  ANDROID_OFFICIAL_CAPACITOR_PACKAGES,
+  IOS_COCOAPODS_OWNED_SPM_PLUGINS,
+  IOS_OFFICIAL_PODS,
+  MOBILE_CAPACITOR_PLUGIN_MANIFEST,
+  resolveIosCustomPods,
+} from "./mobile/ios-pods.mjs";
+export {
+  ANDROID_BUILD_TARGETS,
+  resolveAndroidBuildTarget,
+} from "./mobile/targets/android.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -447,14 +512,14 @@ function resolveBunExecutable() {
   return resolveExecutable("bun");
 }
 
-function resolveAndroidSdkRoot() {
+function resolveAndroidSdkRoot(env = process.env) {
   return firstExisting([
-    process.env.ANDROID_SDK_ROOT,
-    process.env.ANDROID_HOME,
+    env.ANDROID_SDK_ROOT,
+    env.ANDROID_HOME,
     path.join(os.homedir(), "Library", "Android", "sdk"),
     path.join(os.homedir(), "Android", "Sdk"),
     path.join(
-      process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+      env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
       "Android",
       "Sdk",
     ),
@@ -501,9 +566,9 @@ function javaMajorVersion(javaHome) {
 // JAVA_HOME juggling. JAVA_HOME is honored ONLY when it actually is >= 21;
 // otherwise we fall through to the well-known JDK 21 install paths and finally
 // scan /usr/lib/jvm. (AGP 9 + the Android toolchain require 21.)
-function resolveJavaHome() {
+function resolveJavaHome(env = process.env) {
   const candidates = [
-    process.env.JAVA_HOME,
+    env.JAVA_HOME,
     "/opt/homebrew/opt/openjdk@21",
     "/usr/local/opt/openjdk@21",
     "/usr/lib/jvm/temurin-21-jdk-amd64",
@@ -521,7 +586,7 @@ function resolveJavaHome() {
     }
   }
   if (process.platform === "win32") {
-    const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+    const programFiles = env.ProgramFiles || "C:\\Program Files";
     for (const vendor of ["Eclipse Adoptium", "Microsoft", "Java", "Zulu"]) {
       const vendorRoot = path.join(programFiles, vendor);
       if (!fs.existsSync(vendorRoot)) continue;
@@ -548,66 +613,8 @@ function escapeJavaString(value) {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function escapeXmlText(value) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 function escapeXcodeBuildSetting(value) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-function replaceOrInsertPlistString(content, key, value) {
-  const escapedValue = escapeXmlText(value);
-  const keyRe = escapeRegExp(key);
-  const existingRe = new RegExp(
-    `(<key>${keyRe}</key>\\s*<string>)[^<]*(</string>)`,
-  );
-  if (existingRe.test(content)) {
-    return content.replace(existingRe, `$1${escapedValue}$2`);
-  }
-  return content.replace(
-    "</dict>",
-    `\t<key>${key}</key>\n\t<string>${escapedValue}</string>\n</dict>`,
-  );
-}
-
-function ensurePlistArrayStrings(content, key, values) {
-  const escapedValues = values.map(escapeXmlText);
-  const keyRe = escapeRegExp(key);
-  const arrayRe = new RegExp(
-    `(<key>${keyRe}</key>\\s*<array>)([\\s\\S]*?)(\\s*</array>)`,
-  );
-  const match = content.match(arrayRe);
-  if (!match) {
-    const body = escapedValues
-      .map((value) => `\t\t<string>${value}</string>`)
-      .join("\n");
-    return insertBeforeRootPlistDictClose(
-      content,
-      `\t<key>${key}</key>\n\t<array>\n${body}\n\t</array>\n</dict>`,
-    );
-  }
-  let body = match[2];
-  for (const value of escapedValues) {
-    if (!body.includes(`<string>${value}</string>`)) {
-      body += `\n\t\t<string>${value}</string>`;
-    }
-  }
-  return content.replace(arrayRe, `$1${body}$3`);
-}
-
-function insertBeforeRootPlistDictClose(content, insertion) {
-  const rootClose = "\n</dict>\n</plist>";
-  const index = content.lastIndexOf(rootClose);
-  if (index >= 0) {
-    return `${content.slice(0, index)}\n${insertion}${content.slice(index + "\n</dict>".length)}`;
-  }
-  const fallbackIndex = content.lastIndexOf("</dict>");
-  if (fallbackIndex < 0) return content;
-  return `${content.slice(0, fallbackIndex)}${insertion}${content.slice(fallbackIndex + "</dict>".length)}`;
 }
 
 /**
@@ -721,13 +728,6 @@ function replaceInFile(filePath, replacements) {
   return true;
 }
 
-function replaceIosAppGroupPlaceholders(content, appGroup) {
-  return content.replace(
-    /(^|[^A-Za-z0-9_.-])group\.(ai\.elizaos\.app|app\.eliza|com\.elizaai\.eliza)(?![A-Za-z0-9_.-])/g,
-    `$1${appGroup}`,
-  );
-}
-
 function replaceIosAppGroupPlaceholdersInFile(filePath, appGroup) {
   if (!fs.existsSync(filePath)) return false;
   const content = fs.readFileSync(filePath, "utf8");
@@ -753,17 +753,6 @@ function writeIosPersonalTeamEntitlements(filePath) {
   }
   fs.writeFileSync(filePath, IOS_PERSONAL_TEAM_ENTITLEMENTS, "utf8");
   return true;
-}
-
-function removePbxListEntries(content, ids) {
-  let next = content;
-  for (const id of ids) {
-    next = next.replace(
-      new RegExp(`\\n\\t+${escapeRegExp(id)} /\\* [^\\n]+ \\*/,`, "g"),
-      "",
-    );
-  }
-  return next;
 }
 
 function stripIosPrivilegedExtensionTargets({
@@ -2200,19 +2189,6 @@ export function injectAospAssetThinning(content) {
   return ensureCloudBuildAssetThinning(content);
 }
 
-const ANDROID_OFFICIAL_CAPACITOR_PACKAGES = [
-  "@capacitor/app",
-  "@capacitor/barcode-scanner",
-  "@capacitor/background-runner",
-  "@capacitor-community/background-runner",
-  "@capacitor/browser",
-  "@capacitor/haptics",
-  "@capacitor/keyboard",
-  "@capacitor/preferences",
-  "@capacitor/push-notifications",
-  "@capacitor/status-bar",
-];
-
 function patchInstalledCapacitorPluginGradleForAgp9(pkgName) {
   for (const pkgRoot of resolvePackageAbsolutePathCandidates(pkgName)) {
     patchGradleFileForAgp9(
@@ -2346,133 +2322,6 @@ function patchNativePluginGradleForAgp9() {
   }
 }
 
-function appendMissingAndroidManifestBlock(xml, marker, block) {
-  if (xml.includes(marker)) return xml;
-  return xml.replace("</manifest>", `${block}\n</manifest>`);
-}
-
-function appendMissingApplicationBlock(xml, marker, block) {
-  if (xml.includes(marker)) return xml;
-  return xml.replace("</application>", `${block}\n    </application>`);
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function removeApplicationComponentBlock(xml, componentName) {
-  const escapedName = escapeRegExp(componentName);
-  const pairedRe = new RegExp(
-    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
-    "g",
-  );
-  const selfClosingRe = new RegExp(
-    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="${escapedName}")[^>]*/>\\s*`,
-    "g",
-  );
-  return xml.replace(selfClosingRe, "\n").replace(pairedRe, "\n");
-}
-
-function removeApplicationComponentClassBlock(xml, className) {
-  const escapedName = escapeRegExp(className);
-  const pairedRe = new RegExp(
-    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="[^"]*\\.?${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
-    "g",
-  );
-  const selfClosingRe = new RegExp(
-    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="[^"]*\\.?${escapedName}")[^>]*/>\\s*`,
-    "g",
-  );
-  return xml.replace(selfClosingRe, "\n").replace(pairedRe, "\n");
-}
-
-function stripXmlComments(source) {
-  return source.replace(/<!--[\s\S]*?-->/g, "");
-}
-
-function removeXmlCommentsContaining(xml, markers) {
-  let patched = xml;
-  for (const marker of markers) {
-    const escapedMarker = escapeRegExp(marker);
-    patched = patched.replace(
-      new RegExp(
-        `\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`,
-        "g",
-      ),
-      "\n",
-    );
-  }
-  return patched;
-}
-
-function ensureManifestToolsNamespace(xml) {
-  if (/\bxmlns:tools=/.test(xml)) return xml;
-  return xml.replace(
-    /<manifest\b([^>]*)>/,
-    '<manifest$1 xmlns:tools="http://schemas.android.com/tools">',
-  );
-}
-
-function hasAndroidPermissionRequest(xml, fullPermissionName) {
-  const escaped = escapeRegExp(fullPermissionName);
-  const re = new RegExp(
-    `<uses-permission\\b(?=[^>]*android:name="${escaped}")[^>]*>`,
-    "g",
-  );
-  for (const match of xml.matchAll(re)) {
-    if (!/\btools:node\s*=\s*"remove"/.test(match[0])) return true;
-  }
-  return false;
-}
-
-function removeAndroidPermissionRequests(xml, permissions) {
-  let patched = xml;
-  for (const perm of permissions) {
-    const escaped = escapeRegExp(`android.permission.${perm}`);
-    const re = new RegExp(
-      `\\n\\s*<uses-permission\\b(?=[^>]*android:name="${escaped}")(?![^>]*tools:node="remove")[^>]*/>\\s*`,
-      "g",
-    );
-    patched = patched.replace(re, "\n");
-  }
-  return patched;
-}
-
-function ensureAndroidPermissionRemovalMarkers(xml, permissions) {
-  let patched = ensureManifestToolsNamespace(xml);
-  for (const perm of permissions) {
-    const full = `android.permission.${perm}`;
-    const escaped = escapeRegExp(full);
-    const removalRe = new RegExp(
-      `<uses-permission\\b(?=[^>]*android:name="${escaped}")(?=[^>]*tools:node="remove")[^>]*/>`,
-      "m",
-    );
-    if (removalRe.test(patched)) continue;
-    patched = patched.replace(
-      "</manifest>",
-      `    <uses-permission android:name="${full}" tools:node="remove" />\n</manifest>`,
-    );
-  }
-  return patched;
-}
-
-function ensureManifestApplicationClosedBeforeTopLevelEntries(xml) {
-  if (xml.includes("</application>")) return xml;
-  const appStart = xml.indexOf("<application");
-  if (appStart === -1) return xml;
-  const afterApplicationStart = xml.indexOf(">", appStart);
-  if (afterApplicationStart === -1) return xml;
-  const afterApplication = xml.slice(afterApplicationStart + 1);
-  const topLevelEntry = afterApplication.search(
-    /\n\s*<(?:uses-permission|uses-feature)\b/,
-  );
-  if (topLevelEntry !== -1) {
-    const insertAt = afterApplicationStart + 1 + topLevelEntry;
-    return `${xml.slice(0, insertAt)}\n    </application>\n${xml.slice(insertAt)}`;
-  }
-  return xml.replace("</manifest>", "    </application>\n</manifest>");
-}
-
 export function shouldRemoveAndroidJavaSourceRoot(
   candidate,
   dstJava,
@@ -2533,32 +2382,6 @@ function injectBrandUserAgentMarkers(javaSource, markers) {
   return javaSource.replace(arrayRe, `$1\n${lines.join("\n")}\n    $3`);
 }
 
-function removeElizaOsHomeActivityFilter(xml) {
-  return xml.replace(
-    /\n\s*<intent-filter>\s*<action\s+android:name="android\.intent\.action\.MAIN"\s*\/>\s*<category\s+android:name="android\.intent\.category\.HOME"\s*\/>\s*<category\s+android:name="android\.intent\.category\.DEFAULT"\s*\/>\s*<\/intent-filter>\s*/g,
-    "\n",
-  );
-}
-
-function ensureElizaOsActivityFilters(xml, { enabled = true } = {}) {
-  if (!enabled) {
-    return removeElizaOsHomeActivityFilter(xml);
-  }
-  if (xml.includes("android.intent.category.HOME")) {
-    return xml;
-  }
-  const mainActivityRe =
-    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
-  const homeFilter = `
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-`;
-  return xml.replace(mainActivityRe, `$1${homeFilter}$2`);
-}
-
 export function androidAospRoleLauncherIntentFilter({
   enabled = false,
   category = null,
@@ -2572,227 +2395,6 @@ export function androidAospRoleLauncherIntentFilter({
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />${extraCategory}
             </intent-filter>`;
-}
-
-function ensureAndroidMainActivityUrlSchemeFilter(xml) {
-  const mainActivityRe =
-    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
-  const match = xml.match(mainActivityRe);
-  if (!match) return xml;
-
-  const mainActivity = `${match[1]}${match[2]}`;
-  const hasCustomSchemeFilter =
-    mainActivity.includes("android.intent.action.VIEW") &&
-    mainActivity.includes("android.intent.category.BROWSABLE") &&
-    (mainActivity.includes('android:scheme="@string/custom_url_scheme"') ||
-      mainActivity.includes(`android:scheme="${APP.urlScheme}"`));
-  if (hasCustomSchemeFilter) return xml;
-
-  const authFilter = `
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="@string/custom_url_scheme" />
-            </intent-filter>
-`;
-  return xml.replace(mainActivityRe, `$1${authFilter}$2`);
-}
-
-export function ensureAndroidMainActivityShortcutsMetadata(xml) {
-  const mainActivityRe =
-    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
-  const match = xml.match(mainActivityRe);
-  if (!match) return xml;
-
-  const mainActivity = `${match[1]}${match[2]}`;
-  if (
-    mainActivity.includes('android:name="android.app.shortcuts"') &&
-    mainActivity.includes('android:resource="@xml/shortcuts"')
-  ) {
-    return xml;
-  }
-
-  const shortcutsMetadata = `
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-`;
-  return xml.replace(mainActivityRe, `$1${shortcutsMetadata}$2`);
-}
-
-export function patchAndroidAppActionsXmlResource(
-  xml,
-  { androidPackage, urlScheme },
-) {
-  let patched = xml
-    .replace(
-      /\bandroid:targetPackage="[^"]+"/g,
-      `android:targetPackage="${androidPackage}"`,
-    )
-    .replace(
-      /\bandroid:targetClass="[^"]*\.MainActivity"/g,
-      `android:targetClass="${androidPackage}.MainActivity"`,
-    );
-
-  const escapedSchemes = [
-    "eliza",
-    "elizaos",
-    "ai.elizaos.app",
-    "app.eliza",
-    androidPackage,
-  ].filter(Boolean);
-  for (const scheme of escapedSchemes) {
-    patched = patched.replace(
-      new RegExp(`${escapeRegExp(scheme)}://`, "g"),
-      `${urlScheme}://`,
-    );
-  }
-
-  return patched;
-}
-
-export const ANDROID_APP_ACTION_CAPABILITIES = [
-  "actions.intent.OPEN_APP_FEATURE",
-  "actions.intent.CREATE_MESSAGE",
-  "actions.intent.GET_THING",
-];
-
-export const ANDROID_APP_ACTION_SHORTCUT_IDS = [
-  "eliza_app_action_chat",
-  "eliza_app_action_voice",
-  "eliza_app_action_daily_brief",
-  "eliza_app_action_new_task",
-  "eliza_app_action_tasks",
-];
-
-export const ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS = [
-  "feature/open?source=android-app-actions",
-  "chat?source=android-app-actions&amp;action=ask",
-  "chat?source=android-app-actions&amp;action=chat",
-  "voice?source=android-static-shortcut",
-  "lifeops/daily-brief?source=android-static-shortcut",
-  "lifeops/task/new?source=android-static-shortcut",
-  "lifeops/tasks?source=android-static-shortcut",
-];
-
-export const ANDROID_APP_ACTION_FORBIDDEN_MARKERS = [
-  "actions.intent.CREATE_THING",
-  "android.intent.action.ASSIST",
-  "android.intent.action.VOICE_COMMAND",
-  "android.app.role.ASSISTANT",
-  "android.permission.BIND_VOICE_INTERACTION",
-  "assistant/open",
-];
-
-function extractAndroidAppActionCapabilityBlocks(xml) {
-  const blocks = new Map();
-  const capabilityRe =
-    /<capability\b[^>]*android:name="(actions\.intent\.[^"]+)"[^>]*>([\s\S]*?)<\/capability>/g;
-  for (const match of xml.matchAll(capabilityRe)) {
-    blocks.set(match[1], match[2]);
-  }
-  return blocks;
-}
-
-export function validateAndroidAppActionsXmlResource(
-  xml,
-  { androidPackage, urlScheme },
-) {
-  const failures = [];
-  const capabilityBlocks = extractAndroidAppActionCapabilityBlocks(xml);
-
-  for (const capability of ANDROID_APP_ACTION_CAPABILITIES) {
-    if (!xml.includes(`android:name="${capability}"`)) {
-      failures.push(`shortcuts.xml is missing ${capability}`);
-    }
-    const block = capabilityBlocks.get(capability);
-    if (!block) continue;
-    const intentBlocks = [
-      ...block.matchAll(/<intent\b[^>]*\/>|<intent\b[\s\S]*?<\/intent>/g),
-    ].map((match) => match[0]);
-    const hasFallbackIntent = intentBlocks.some(
-      (intent) => !/android:required="true"/.test(intent),
-    );
-    if (!hasFallbackIntent) {
-      failures.push(
-        `shortcuts.xml ${capability} is missing a no-required-parameter fallback intent`,
-      );
-    }
-  }
-
-  for (const match of xml.matchAll(
-    /\bandroid:name="(actions\.intent\.[^"]+)"/g,
-  )) {
-    const action = match[1];
-    if (!ANDROID_APP_ACTION_CAPABILITIES.includes(action)) {
-      failures.push(`shortcuts.xml declares unsupported App Action ${action}`);
-    }
-  }
-
-  for (const shortcutId of ANDROID_APP_ACTION_SHORTCUT_IDS) {
-    if (!xml.includes(`android:shortcutId="${shortcutId}"`)) {
-      failures.push(`shortcuts.xml is missing ${shortcutId}`);
-    }
-  }
-
-  for (const source of ["android-app-actions", "android-static-shortcut"]) {
-    if (!xml.includes(`source=${source}`)) {
-      failures.push(`shortcuts.xml is missing source=${source} deep links`);
-    }
-  }
-
-  for (const deepLink of ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS) {
-    if (!xml.includes(`${urlScheme}://${deepLink}`)) {
-      failures.push(`shortcuts.xml is missing ${urlScheme}://${deepLink}`);
-    }
-  }
-
-  for (const marker of ANDROID_APP_ACTION_FORBIDDEN_MARKERS) {
-    if (xml.includes(marker)) {
-      failures.push(`shortcuts.xml contains forbidden marker ${marker}`);
-    }
-  }
-
-  for (const match of xml.matchAll(/\bandroid:targetPackage="([^"]+)"/g)) {
-    if (match[1] !== androidPackage) {
-      failures.push(
-        `shortcuts.xml targetPackage ${match[1]} was not rewritten to ${androidPackage}`,
-      );
-    }
-  }
-
-  const expectedTargetClass = `${androidPackage}.MainActivity`;
-  for (const match of xml.matchAll(/\bandroid:targetClass="([^"]+)"/g)) {
-    if (match[1] !== expectedTargetClass) {
-      failures.push(
-        `shortcuts.xml targetClass ${match[1]} was not rewritten to ${expectedTargetClass}`,
-      );
-    }
-  }
-
-  if (!xml.includes(`${urlScheme}://`)) {
-    failures.push(
-      `shortcuts.xml URL templates were not rewritten to ${urlScheme}://`,
-    );
-  }
-
-  const staleLiterals = [
-    androidPackage === "app.eliza" ? null : 'android:targetPackage="app.eliza"',
-    androidPackage === "ai.elizaos.app"
-      ? null
-      : 'android:targetClass="ai.elizaos.app.MainActivity"',
-    urlScheme === "eliza" ? null : "eliza://",
-    urlScheme === "ai.elizaos.app" ? null : "ai.elizaos.app://",
-    urlScheme === "app.eliza" ? null : "app.eliza://",
-  ].filter(Boolean);
-  for (const stale of staleLiterals) {
-    if (xml.includes(stale)) {
-      failures.push(`shortcuts.xml still contains stale literal ${stale}`);
-    }
-  }
-
-  return failures;
 }
 
 function assertSharedTreeOnlyForEliza(what) {
@@ -2891,20 +2493,6 @@ function syncAndroidAppActionsResources() {
       "[mobile-build] Rewrote Android App Actions package and scheme.",
     );
   }
-}
-
-export function applyAndroidCleartextPolicy(xml, { allowCleartext }) {
-  const value = allowCleartext ? "true" : "false";
-  if (/android:usesCleartextTraffic="(?:true|false)"/.test(xml)) {
-    return xml.replace(
-      /android:usesCleartextTraffic="(?:true|false)"/g,
-      `android:usesCleartextTraffic="${value}"`,
-    );
-  }
-  return xml.replace(
-    "<application",
-    `<application\n        android:usesCleartextTraffic="${value}"`,
-  );
 }
 
 function writeAndroidCleartextPolicy({ allowCleartext, label }) {
@@ -3149,7 +2737,9 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       xml = withElizaOsActivityFilters;
       dirty = true;
     }
-    const withUrlSchemeFilter = ensureAndroidMainActivityUrlSchemeFilter(xml);
+    const withUrlSchemeFilter = ensureAndroidMainActivityUrlSchemeFilter(xml, {
+      urlScheme: APP.urlScheme,
+    });
     if (withUrlSchemeFilter !== xml) {
       xml = withUrlSchemeFilter;
       dirty = true;
@@ -3715,126 +3305,6 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
 
 // ── Phase 4: iOS native overlay ─────────────────────────────────────────
 
-const IOS_PERMISSION_KEYS = [
-  [
-    "NSCameraUsageDescription",
-    "This app uses your camera to capture photos and video when you ask it to.",
-  ],
-  [
-    "NSMicrophoneUsageDescription",
-    "This app needs microphone access for voice wake, talk mode, and video capture.",
-  ],
-  [
-    "NSLocationWhenInUseUsageDescription",
-    "This app uses your location to provide location-aware responses when you allow it.",
-  ],
-  [
-    "NSLocationAlwaysAndWhenInUseUsageDescription",
-    "This app can share your location in the background so it stays up to date even when the app is not in use.",
-  ],
-  [
-    "NSPhotoLibraryUsageDescription",
-    "This app accesses your photo library to attach and share photos or videos.",
-  ],
-  [
-    "NSPhotoLibraryAddUsageDescription",
-    "This app saves captured photos and videos to your photo library.",
-  ],
-  [
-    "NSHealthShareUsageDescription",
-    "This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.",
-  ],
-  [
-    "NSHealthUpdateUsageDescription",
-    "This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.",
-  ],
-  [
-    "NSSpeechRecognitionUsageDescription",
-    "This app uses on-device speech recognition to listen for voice commands and wake words.",
-  ],
-  [
-    "NSLocalNetworkUsageDescription",
-    `This app discovers and connects to your ${APP.appName} gateway on the local network.`,
-  ],
-];
-
-export const IOS_OFFICIAL_PODS = [
-  ["CapacitorApp", "@capacitor/app"],
-  ["CapacitorBarcodeScanner", "@capacitor/barcode-scanner"],
-  ["CapacitorBackgroundRunner", "@capacitor/background-runner"],
-  // Preferences is intentionally installed through CocoaPods on iOS because
-  // Capacitor's generated SPM package is stripped below for this plugin.
-  ["CapacitorPreferences", "@capacitor/preferences"],
-  ["CapacitorHaptics", "@capacitor/haptics"],
-  ["CapacitorKeyboard", "@capacitor/keyboard"],
-  ["CapacitorNetwork", "@capacitor/network"],
-  ["CapacitorPushNotifications", "@capacitor/push-notifications"],
-  ["CapacitorBrowser", "@capacitor/browser"],
-  ["CapacitorStatusBar", "@capacitor/status-bar"],
-];
-
-export function resolveIosCustomPods({
-  includeLlama = false,
-  includeCompatBunRuntime = false,
-  includeFullBunEngine = false,
-  appStoreBuild = false,
-  includeMobileAgentBridge = false,
-} = {}) {
-  const includeBunRuntime = includeCompatBunRuntime || includeFullBunEngine;
-  const includeTunnelBridge =
-    !appStoreBuild && (includeFullBunEngine || includeMobileAgentBridge);
-  return [
-    ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
-    ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
-    ["ElizaosCapacitorCamera", "@elizaos/capacitor-camera"],
-    ["ElizaosCapacitorCalendar", "@elizaos/capacitor-calendar"],
-    ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
-    ["ElizaosCapacitorElizaTasks", "@elizaos/capacitor-eliza-tasks"],
-    ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
-    ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
-    ["ElizaosCapacitorMobileSignals", "@elizaos/capacitor-mobile-signals"],
-    ["ElizaosCapacitorScreencapture", "@elizaos/capacitor-screencapture"],
-    ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
-    ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
-    ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
-    ...(includeBunRuntime
-      ? [["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"]]
-      : []),
-    ...(includeTunnelBridge
-      ? [
-          [
-            "ElizaosCapacitorMobileAgentBridge",
-            "@elizaos/capacitor-mobile-agent-bridge",
-          ],
-        ]
-      : []),
-    ...(includeLlama && !appStoreBuild
-      ? [
-          ["LlamaCpp", "llama-cpp-capacitor"],
-          ["LlamaCppCapacitor", "llama-cpp-capacitor"],
-        ]
-      : []),
-    ...(includeFullBunEngine
-      ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
-      : []),
-  ];
-}
-
-const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set(
-  IOS_OFFICIAL_PODS.map(([name]) => name),
-);
-
-const IOS_COCOAPODS_OWNED_SPM_PLUGINS = new Set([
-  "LlamaCpp",
-  "LlamaCppCapacitor",
-]);
-
-const IOS_BONJOUR_SERVICES = [
-  "_eliza-gw._tcp",
-  "_elizaos-gw._tcp",
-  "_eliza._tcp",
-];
-
 function overlayIos() {
   const targetAppDir = path.join(appDir, "ios", "App", "App");
 
@@ -3843,15 +3313,6 @@ function overlayIos() {
   if (fs.existsSync(plistPath)) {
     let plist = fs.readFileSync(plistPath, "utf8");
     let dirty = false;
-    for (const [key, desc] of IOS_PERMISSION_KEYS) {
-      if (!plist.includes(key)) {
-        plist = plist.replace(
-          "</dict>",
-          `\t<key>${key}</key>\n\t<string>${desc}</string>\n</dict>`,
-        );
-        dirty = true;
-      }
-    }
     // UIBackgroundModes and BGTaskSchedulerPermittedIdentifiers are MERGED,
     // not force-set: the template Info.plist already declares the modes the
     // ElizaTasks plugin needs (`processing`, `remote-notification`) and the
@@ -3859,28 +3320,12 @@ function overlayIos() {
     // `ai.eliza.tasks.processing`). The overlay only guarantees the baseline
     // `fetch` mode is present and that the ElizaTasks identifiers survive a
     // regeneration where a downstream embedder forgot to copy them.
-    const nextPlist = ensurePlistUrlScheme(
-      ensurePlistArrayStrings(
-        ensurePlistArrayStrings(
-          ensurePlistArrayStrings(
-            replaceOrInsertPlistString(
-              plist,
-              "CFBundleDisplayName",
-              "$(ELIZA_DISPLAY_NAME)",
-            ),
-            "NSBonjourServices",
-            IOS_BONJOUR_SERVICES,
-          ),
-          "UIBackgroundModes",
-          ["fetch", "processing", "remote-notification"],
-        ),
-        "BGTaskSchedulerPermittedIdentifiers",
-        ["ai.eliza.tasks.refresh", "ai.eliza.tasks.processing"],
-      ),
-      APP.urlScheme,
-    );
-    if (nextPlist !== plist) {
-      plist = nextPlist;
+    const nextPlist = mergeIosInfoPlist(plist, {
+      appName: APP.appName,
+      urlScheme: APP.urlScheme,
+    });
+    if (nextPlist.changed) {
+      plist = nextPlist.content;
       dirty = true;
     }
     if (dirty) {
@@ -6721,13 +6166,13 @@ function stripAndroidForSmsGateway() {
   );
 }
 
-async function buildAndroid() {
+function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
   // Hard refusal: the default `android` target is sideload-only and will be
   // rejected by Play. If CI or a contributor signals Play-Store intent via
   // env vars, fail loudly and point them at the right target.
   const playStoreFlagged =
-    process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store";
+    env.ELIZA_PLAY_STORE_BUILD === "1" ||
+    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store";
   if (playStoreFlagged) {
     console.error(
       "[mobile-build] Refusing target `android` under ELIZA_PLAY_STORE_BUILD / " +
@@ -6740,14 +6185,6 @@ async function buildAndroid() {
     process.exit(2);
   }
 
-  const sdk = resolveAndroidSdkRoot();
-  const jdk = resolveJavaHome();
-  if (!sdk)
-    throw new Error(
-      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
-    );
-  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-
   console.warn(
     "[mobile-build] WARNING: target `android` produces an APK that embeds " +
       "the on-device agent runtime (libeliza_bun.so disguise) and requests " +
@@ -6756,9 +6193,140 @@ async function buildAndroid() {
       "`build:android:cloud` for a Play-Store-compliant thin client, or " +
       "`build:android:system` for the AOSP privileged platform-signed APK.",
   );
+}
 
-  await buildWeb("android");
-  await buildMobileAgentBundle();
+function requireAndroidSmsGatewaySecret({ env = process.env } = {}) {
+  if (!env.ELIZA_ANDROID_SMS_GATEWAY_SECRET) {
+    throw new Error(
+      "ELIZA_ANDROID_SMS_GATEWAY_SECRET is required for android-sms-gateway.",
+    );
+  }
+}
+
+const ANDROID_PREFLIGHTS = Object.freeze({
+  sideload: enforceAndroidSideloadBuildPolicy,
+});
+
+const ANDROID_AFTER_TOOLCHAIN = Object.freeze({
+  smsGatewaySecret: requireAndroidSmsGatewaySecret,
+});
+
+const ANDROID_SOURCE_STRIPS = Object.freeze({
+  cloud: stripAndroidForCloud,
+  smsGateway: stripAndroidForSmsGateway,
+});
+
+const ANDROID_SOURCE_AUDITS = Object.freeze({
+  cloud: auditAndroidCloudSource,
+  smsGateway: auditAndroidSmsGatewaySource,
+  system: auditAndroidSystemSource,
+});
+
+const ANDROID_ARTIFACT_AUDITS = Object.freeze({
+  sideload: ({ javaHome }) => auditAndroidSideloadArtifact({ javaHome }),
+  cloud: ({ javaHome }) => auditAndroidCloudArtifact({ javaHome }),
+  cloudDebug: ({ javaHome }) =>
+    auditAndroidCloudArtifact({ debug: true, javaHome }),
+  smsGateway: ({ androidSdkRoot, javaHome }) =>
+    auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
+  system: ({ javaHome }) => auditAndroidSystemArtifact({ javaHome }),
+});
+
+const ANDROID_POST_BUILDS = Object.freeze({
+  logCloudRelease: ({ artifact }) =>
+    console.log(`[mobile-build] android-cloud release AAB: ${artifact}`),
+  preserveSmsGateway: ({ artifact }) => {
+    preserveAndroidSmsGatewayArtifact(artifact);
+    console.log(`[mobile-build] android-sms-gateway debug APK: ${artifact}`);
+  },
+  stageSystemApk: stageAndroidSystemApk,
+});
+
+function runAndroidTargetPhase(target, registry, keyField, ...args) {
+  const key = target[keyField];
+  if (!key) return undefined;
+  const fn = registry[key];
+  if (!fn) {
+    throw new Error(
+      `[mobile-build] Android target ${target.target} references unknown ${keyField}: ${key}`,
+    );
+  }
+  return fn(...args);
+}
+
+export function resolveAndroidGradleCommands(
+  targetName,
+  { debug = false, env = process.env, settingsGradle = "" } = {},
+) {
+  const target = resolveAndroidBuildTarget(targetName, { debug });
+  return resolveAndroidGradleCommandsForTarget(target, {
+    env,
+    settingsGradle,
+  });
+}
+
+function resolveAndroidSmsGatewayEnvDefaults(env) {
+  return {
+    ELIZA_ANDROID_SMS_GATEWAY_ENABLED:
+      env.ELIZA_ANDROID_SMS_GATEWAY_ENABLED ?? "true",
+    ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL:
+      env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ??
+      "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
+    ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER:
+      env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510",
+    ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL:
+      env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
+      "Eliza Cloud Gateway (+14159611510)",
+  };
+}
+
+function createAndroidBuildEnv(target, { androidSdkRoot, env, javaHome }) {
+  return {
+    ...env,
+    ...target.env,
+    ...(target.includeSmsGatewayEnvDefaults
+      ? resolveAndroidSmsGatewayEnvDefaults(env)
+      : {}),
+    ANDROID_HOME: androidSdkRoot,
+    ANDROID_SDK_ROOT: androidSdkRoot,
+    JAVA_HOME: javaHome,
+    PATH: prependPath(env, [
+      path.join(javaHome, "bin"),
+      path.join(androidSdkRoot, "platform-tools"),
+    ]),
+  };
+}
+
+function readAndroidSettingsGradle() {
+  return fs.readFileSync(
+    path.join(androidDir, "capacitor.settings.gradle"),
+    "utf8",
+  );
+}
+
+export async function runAndroidBuild(
+  targetName,
+  { debug = false, env = process.env } = {},
+) {
+  const target = resolveAndroidBuildTarget(targetName, { debug });
+  runAndroidTargetPhase(target, ANDROID_PREFLIGHTS, "preflightKey", { env });
+
+  const sdk = resolveAndroidSdkRoot(env);
+  const jdk = resolveJavaHome(env);
+  if (!sdk)
+    throw new Error(
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
+    );
+  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+  runAndroidTargetPhase(
+    target,
+    ANDROID_AFTER_TOOLCHAIN,
+    "afterToolchainResolvedKey",
+    { env },
+  );
+
+  await buildWeb(target.webTarget);
+  if (target.buildMobileAgentBundle) await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
   ensureBunRuntimeRegistered();
@@ -6766,60 +6334,68 @@ async function buildAndroid() {
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
-  overlayAndroid({ includeAospRoleLaunchers: false });
+  overlayAndroid(target.overlayOptions);
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  writeAndroidCleartextPolicy({
-    allowCleartext: true,
-    label: "sideload",
-  });
-  await stageAndroidAgentRuntime({
-    androidDir,
-    spikeDir: androidAgentSpikeDir,
-    bunChannel: "stable",
-  });
-
-  const env = {
-    ...process.env,
-    ANDROID_HOME: sdk,
-    ANDROID_SDK_ROOT: sdk,
-    JAVA_HOME: jdk,
-    PATH: prependPath(process.env, [
-      path.join(jdk, "bin"),
-      path.join(sdk, "platform-tools"),
-    ]),
-  };
-
-  // Mirror the AOSP gradle property forwarding from buildAndroidSystem so
-  // a developer iterating with `bun run build:android` under ELIZA_AOSP_BUILD=1
-  // gets BuildConfig.AOSP_BUILD=true in the debug APK as well.
-  const settingsGradle = fs.readFileSync(
-    path.join(androidDir, "capacitor.settings.gradle"),
-    "utf8",
+  writeAndroidCleartextPolicy(target.cleartextPolicy);
+  if (target.agentRuntime) {
+    await stageAndroidAgentRuntime({
+      androidDir,
+      spikeDir: androidAgentSpikeDir,
+      ...target.agentRuntime,
+    });
+  }
+  runAndroidTargetPhase(target, ANDROID_SOURCE_STRIPS, "stripSourceKey");
+  runAndroidTargetPhase(
+    target,
+    ANDROID_SOURCE_AUDITS,
+    "auditSourceKey",
+    "pre-gradle",
   );
-  const gradleArgs = [];
-  if (settingsGradle.includes(":elizaos-capacitor-websiteblocker")) {
-    gradleArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
-  }
-  gradleArgs.push(":app:assembleDebug");
-  if (
-    process.env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
-    process.env.ELIZA_GRADLE_AOSP_BUILD === "1"
-  ) {
-    gradleArgs.unshift("-PelizaAospBuild=true");
-  }
-  await run(
-    "./gradlew",
-    [":capacitor-cordova-android-plugins:writeDebugAarMetadata"],
+
+  const buildEnv = createAndroidBuildEnv(target, {
+    androidSdkRoot: sdk,
+    env,
+    javaHome: jdk,
+  });
+  const { buildArgs, metadataArgs } = resolveAndroidGradleCommands(
+    target.target,
     {
-      cwd: androidDir,
       env,
+      settingsGradle: readAndroidSettingsGradle(),
     },
   );
-  await run("./gradlew", gradleArgs, {
+  await run("./gradlew", metadataArgs, {
     cwd: androidDir,
-    env,
+    env: buildEnv,
   });
-  auditAndroidSideloadArtifact({ javaHome: jdk });
+  await run("./gradlew", buildArgs, {
+    cwd: androidDir,
+    env: buildEnv,
+  });
+  runAndroidTargetPhase(
+    target,
+    ANDROID_SOURCE_AUDITS,
+    "auditSourceKey",
+    "post-gradle",
+  );
+  const artifact = runAndroidTargetPhase(
+    target,
+    ANDROID_ARTIFACT_AUDITS,
+    "artifactAuditKey",
+    {
+      androidSdkRoot: sdk,
+      javaHome: jdk,
+    },
+  );
+  runAndroidTargetPhase(target, ANDROID_POST_BUILDS, "postBuildKey", {
+    artifact,
+    androidSdkRoot: sdk,
+    javaHome: jdk,
+  });
+}
+
+async function buildAndroid() {
+  await runAndroidBuild("android");
 }
 
 /**
@@ -7177,171 +6753,11 @@ function preserveAndroidSmsGatewayArtifact(artifact) {
 }
 
 async function buildAndroidCloud({ debug = false } = {}) {
-  const sdk = resolveAndroidSdkRoot();
-  const jdk = resolveJavaHome();
-  if (!sdk)
-    throw new Error(
-      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
-    );
-  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-
-  await buildWeb(debug ? "android-cloud-debug" : "android-cloud");
-  await ensurePlatform("android");
-  await runCapacitor(["sync", "android"]);
-  ensureBunRuntimeRegistered();
-  mirrorCapacitorWebPayloadIntoAndroidDir();
-
-  patchAndroidGradle();
-  await generateAndroidBrandAssets();
-  overlayAndroid({ includeAospRoleLaunchers: false });
-  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  writeAndroidCleartextPolicy({
-    allowCleartext: false,
-    label: debug ? "cloud-debug" : "cloud",
-  });
-  // The cloud target is a thin Capacitor client backed by Eliza Cloud.
-  // It must NOT embed the on-device agent runtime, NOT declare default
-  // role activities (dialer, SMS, browser, contacts, camera, calendar,
-  // clock, assistant, in-call), NOT register a BootReceiver, and NOT
-  // request system-only permissions (MANAGE_APP_OPS_MODES,
-  // PACKAGE_USAGE_STATS) or sensitive runtime permissions
-  // (READ/SEND/RECEIVE_SMS, CALL_PHONE, ACCESS_BACKGROUND_LOCATION).
-  // overlayAndroid() injects all of these unconditionally; we strip them
-  // here as a post-overlay pass so the merge logic remains a single
-  // source of truth across all three Android targets.
-  stripAndroidForCloud();
-  auditAndroidCloudSource("pre-gradle");
-
-  const env = {
-    ...process.env,
-    ELIZA_ANDROID_CLOUD_BUILD: "1",
-    ANDROID_HOME: sdk,
-    ANDROID_SDK_ROOT: sdk,
-    JAVA_HOME: jdk,
-    PATH: prependPath(process.env, [
-      path.join(jdk, "bin"),
-      path.join(sdk, "platform-tools"),
-    ]),
-  };
-
-  // The Play-Store target intentionally builds without `-PelizaAospBuild`,
-  // so BuildConfig.AOSP_BUILD = false at runtime. It does pass the cloud
-  // flags, which make injected Gradle hooks skip MTP/native restaging and
-  // strip any merged assets/agent tree that an older generated project kept.
-  const settingsGradle = fs.readFileSync(
-    path.join(androidDir, "capacitor.settings.gradle"),
-    "utf8",
-  );
-  const cloudGradleFlags = [
-    "-PelizaCloudBuild=true",
-    "-PelizaStripAgentAssets=true",
-  ];
-  const gradleArgs = [...cloudGradleFlags];
-  if (debug && settingsGradle.includes(":elizaos-capacitor-websiteblocker")) {
-    gradleArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
-  }
-  gradleArgs.push(debug ? ":app:assembleDebug" : ":app:bundleRelease");
-  await run(
-    "./gradlew",
-    [
-      ...cloudGradleFlags,
-      debug
-        ? ":capacitor-cordova-android-plugins:writeDebugAarMetadata"
-        : ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",
-    ],
-    {
-      cwd: androidDir,
-      env,
-    },
-  );
-  await run("./gradlew", gradleArgs, {
-    cwd: androidDir,
-    env,
-  });
-  auditAndroidCloudSource("post-gradle");
-  const artifact = auditAndroidCloudArtifact({ debug, javaHome: jdk });
-  if (!debug)
-    console.log(`[mobile-build] android-cloud release AAB: ${artifact}`);
+  await runAndroidBuild("android-cloud", { debug });
 }
 
 async function buildAndroidSmsGateway() {
-  const sdk = resolveAndroidSdkRoot();
-  const jdk = resolveJavaHome();
-  if (!sdk)
-    throw new Error(
-      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
-    );
-  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-  if (!process.env.ELIZA_ANDROID_SMS_GATEWAY_SECRET) {
-    throw new Error(
-      "ELIZA_ANDROID_SMS_GATEWAY_SECRET is required for android-sms-gateway.",
-    );
-  }
-
-  await buildWeb("android-cloud-debug");
-  await ensurePlatform("android");
-  await runCapacitor(["sync", "android"]);
-  ensureBunRuntimeRegistered();
-  mirrorCapacitorWebPayloadIntoAndroidDir();
-
-  patchAndroidGradle();
-  await generateAndroidBrandAssets();
-  overlayAndroid();
-  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  writeAndroidCleartextPolicy({
-    allowCleartext: false,
-    label: "sms-gateway",
-  });
-  stripAndroidForSmsGateway();
-  auditAndroidSmsGatewaySource("pre-gradle");
-
-  const env = {
-    ...process.env,
-    ELIZA_ANDROID_CLOUD_BUILD: "1",
-    ELIZA_ANDROID_SMS_GATEWAY_ENABLED:
-      process.env.ELIZA_ANDROID_SMS_GATEWAY_ENABLED ?? "true",
-    ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL:
-      process.env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ??
-      "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
-    ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER:
-      process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510",
-    ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL:
-      process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
-      "Eliza Cloud Gateway (+14159611510)",
-    ANDROID_HOME: sdk,
-    ANDROID_SDK_ROOT: sdk,
-    JAVA_HOME: jdk,
-    PATH: prependPath(process.env, [
-      path.join(jdk, "bin"),
-      path.join(sdk, "platform-tools"),
-    ]),
-  };
-  const gradleFlags = [
-    "-PelizaCloudBuild=true",
-    "-PelizaStripAgentAssets=true",
-  ];
-  await run(
-    "./gradlew",
-    [
-      ...gradleFlags,
-      ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
-    ],
-    {
-      cwd: androidDir,
-      env,
-    },
-  );
-  await run("./gradlew", [...gradleFlags, ":app:assembleDebug"], {
-    cwd: androidDir,
-    env,
-  });
-  auditAndroidSmsGatewaySource("post-gradle");
-  const artifact = auditAndroidSmsGatewayArtifact({
-    androidSdkRoot: sdk,
-    javaHome: jdk,
-  });
-  preserveAndroidSmsGatewayArtifact(artifact);
-  console.log(`[mobile-build] android-sms-gateway debug APK: ${artifact}`);
+  await runAndroidBuild("android-sms-gateway");
 }
 
 function findAndroidSystemApk() {
@@ -7467,67 +6883,7 @@ function stageAndroidSystemApk() {
 }
 
 async function buildAndroidSystem() {
-  const sdk = resolveAndroidSdkRoot();
-  const jdk = resolveJavaHome();
-  if (!sdk)
-    throw new Error(
-      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
-    );
-  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
-
-  await buildWeb("android-system");
-  await buildMobileAgentBundle();
-  await ensurePlatform("android");
-  await runCapacitor(["sync", "android"]);
-  ensureBunRuntimeRegistered();
-  mirrorCapacitorWebPayloadIntoAndroidDir();
-
-  patchAndroidGradle();
-  await generateAndroidBrandAssets();
-  overlayAndroid({ includeAospRoleLaunchers: true });
-  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  writeAndroidCleartextPolicy({
-    allowCleartext: true,
-    label: "AOSP",
-  });
-  await stageAndroidAgentRuntime({
-    androidDir,
-    spikeDir: androidAgentSpikeDir,
-    bunChannel: "canary",
-    // Objective AOSP/chip image: riscv64 bun stays fail-closed (it ships it).
-    objective: true,
-  });
-  auditAndroidSystemSource("pre-gradle");
-
-  const env = {
-    ...process.env,
-    ANDROID_HOME: sdk,
-    ANDROID_SDK_ROOT: sdk,
-    JAVA_HOME: jdk,
-    PATH: prependPath(process.env, [
-      path.join(jdk, "bin"),
-      path.join(sdk, "platform-tools"),
-    ]),
-  };
-
-  // This target always produces the privileged AOSP APK, so bake the local
-  // agent flag into BuildConfig and preserve assets/agent. The regular
-  // Capacitor target leaves this property unset and strips those assets.
-  const gradleArgs = ["-PelizaAospBuild=true", ":app:assembleRelease"];
-  await run(
-    "./gradlew",
-    [":capacitor-cordova-android-plugins:writeReleaseAarMetadata"],
-    {
-      cwd: androidDir,
-      env,
-    },
-  );
-  await run("./gradlew", gradleArgs, {
-    cwd: androidDir,
-    env,
-  });
-  auditAndroidSystemArtifact({ javaHome: jdk });
-  stageAndroidSystemApk();
+  await runAndroidBuild("android-system");
 }
 
 function setDefaultProcessEnv(key, value) {

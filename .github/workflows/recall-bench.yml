@@ -1,0 +1,83 @@
+name: recall-bench
+
+# Memory-recall + knowledge-retrieval quality benchmark + regression gate (#9956).
+#
+# Drives the REAL @elizaos/core recall path — DocumentService.searchDocuments
+# (hybrid/vector/keyword), AgentRuntime.searchMemories, the FACTS provider, and
+# the scoreMemoryText keyword chat-search — over a committed, document-scale,
+# labeled corpus ingested through the real DocumentService. The embedding is a
+# deterministic in-bench function, so the harness needs NO model bundle and NO
+# credentials and is fully reproducible on a hosted runner.
+#
+# The harness exits:
+#   0  measured rows present, all committed budgets pass                  → green
+#   1  a Recall@5 / nDCG / p95 / fail-open budget REGRESSED               → red (gate)
+#   2  nothing measurable                                                 → skip
+# so a healthy baseline is green and a real recall regression (e.g. a bad
+# hybrid-weight change, or semantic recall silently collapsing to keyword) is red.
+
+on:
+  pull_request:
+    paths:
+      - "packages/benchmarks/recall-bench/**"
+      - "packages/benchmarks/registry/**"
+      - "packages/core/src/features/documents/**"
+      - "packages/core/src/features/advanced-capabilities/providers/facts.ts"
+      - "packages/core/src/runtime.ts"
+      - "packages/agent/src/api/memory-routes.ts"
+      - ".github/workflows/recall-bench.yml"
+  schedule:
+    # 05:50 UTC — alongside the other nightly benchmark lanes.
+    - cron: "50 5 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: recall-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recall-gate:
+    name: recall quality + budget regression gate (no models)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Match local dev's moving canary channel (historical canary tags can
+          # disappear from GitHub releases and break scheduled runs).
+          bun-version: canary
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install workspace
+        run: bun install
+      - name: Generate shared i18n assets
+        # The bench imports @elizaos/core source, which expects the generated
+        # keyword data to exist in a fresh checkout.
+        run: bun run --cwd packages/shared build:i18n
+      - name: recall-bench unit tests (metrics + embedding + corpus invariants)
+        run: bun run --cwd packages/benchmarks/recall-bench test
+      - name: registry score-extractor contract
+        run: python3 packages/benchmarks/recall-bench/scripts/check-registry.py
+      - name: recall-bench harness + budget regression gate (1k tier)
+        run: |
+          set +e
+          bun run bench:recall:1k
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "recall-bench: all budgets pass" ;;
+            2) echo "recall-bench: skipped (nothing measurable on this runner)" ;;
+            1) echo "::error::recall-bench Recall@5 / nDCG / p95 / fail-open budget regression (exit 1)"; exit 1 ;;
+            *) echo "::error::recall-bench harness errored (exit $code)"; exit "$code" ;;
+          esac
+      - name: Upload recall-bench results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recall-bench-results
+          path: packages/benchmarks/recall-bench/results/recall-bench-results.json
+          if-no-files-found: ignore

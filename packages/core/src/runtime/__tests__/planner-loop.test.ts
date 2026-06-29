@@ -401,6 +401,214 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Done.");
 	});
 
+	// #10132: in chat mode the planner's 1024-token output cap is fine, but a
+	// coding sub-agent (ELIZA_PLANNER_FULL_ACTION_SURFACE=1) must emit a whole
+	// file as a single FILE/WRITE tool-call argument — a real single-file app is
+	// ~4.6k+ tokens once JSON-escaped, so 1024 truncates it mid-stream and the
+	// build silently fails. Coding mode lifts the cap.
+	const buildCodingPlannerRuntime = () => ({
+		useModel: vi.fn(async () => ({
+			text: "",
+			toolCalls: [
+				{ id: "call-1", name: "REPLY", arguments: { text: "Built it." } },
+			],
+		})),
+	});
+	const codingPlannerContext = {
+		id: "ctx",
+		events: [
+			{
+				id: "msg",
+				type: "message" as const,
+				message: {
+					role: "user" as const,
+					content: { text: "Build a tip calculator app." },
+				},
+			},
+		],
+	};
+	const codingPlannerTools = [
+		{ name: "FILE", description: "Write a file." },
+		{ name: "REPLY", description: "Reply to the user." },
+	];
+	const codingReply = (id: string, text: string) => ({
+		text: "",
+		toolCalls: [{ id, name: "REPLY", arguments: { text } }],
+	});
+	const codingFileWrite = () => ({
+		text: "",
+		toolCalls: [
+			{
+				id: "file-1",
+				name: "FILE",
+				arguments: {
+					path: "dice.html",
+					content: "<button>Roll</button>",
+				},
+			},
+		],
+	});
+	const withCodingRequiredToolDefaults = async <T>(
+		run: () => Promise<T>,
+	): Promise<T> => {
+		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+		const prevMisses = process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
+		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+		delete process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
+		try {
+			return await run();
+		} finally {
+			if (prevSurface === undefined)
+				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
+			if (prevMisses === undefined)
+				delete process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
+			else process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES = prevMisses;
+		}
+	};
+
+	it("raises the planner output-token cap in coding/full-surface mode (#10132)", async () => {
+		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+		const prevMax = process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+		delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+		try {
+			const runtime = buildCodingPlannerRuntime();
+			await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				executeToolCall: vi.fn(async () => ({ success: true, text: "ok" })),
+				evaluate: vi.fn(async () => ({
+					success: true,
+					decision: "FINISH" as const,
+					thought: "Done.",
+					messageToUser: "Done.",
+				})),
+			});
+			const plannerParams = runtime.useModel.mock.calls[0][1];
+			expect(plannerParams.maxTokens).toBe(16384);
+		} finally {
+			if (prevSurface === undefined)
+				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
+			if (prevMax === undefined)
+				delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+			else process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = prevMax;
+		}
+	});
+
+	it("honors ELIZA_CODING_PLANNER_MAX_TOKENS in coding mode (#10132)", async () => {
+		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+		const prevMax = process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+		process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = "32768";
+		try {
+			const runtime = buildCodingPlannerRuntime();
+			await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				executeToolCall: vi.fn(async () => ({ success: true, text: "ok" })),
+				evaluate: vi.fn(async () => ({
+					success: true,
+					decision: "FINISH" as const,
+					thought: "Done.",
+					messageToUser: "Done.",
+				})),
+			});
+			const plannerParams = runtime.useModel.mock.calls[0][1];
+			expect(plannerParams.maxTokens).toBe(32768);
+		} finally {
+			if (prevSurface === undefined)
+				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
+			if (prevMax === undefined)
+				delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+			else process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = prevMax;
+		}
+	});
+
+	it("requires a non-terminal tool before accepting terminal REPLY in coding mode (#10132)", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(
+						codingReply("reply-1", "Creating the app now."),
+					)
+					.mockResolvedValueOnce(codingFileWrite())
+					.mockResolvedValueOnce(codingReply("reply-2", "Built dice.html.")),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "wrote dice.html",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "Built dice.html.",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				tools: codingPlannerTools,
+				executeToolCall,
+				evaluate,
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(3);
+			expect(executeToolCall).toHaveBeenCalledWith(
+				{
+					id: "file-1",
+					name: "FILE",
+					params: { path: "dice.html", content: "<button>Roll</button>" },
+				},
+				expect.objectContaining({ iteration: 2 }),
+			);
+			expect(result.finalMessage).toBe("Built dice.html.");
+		});
+	});
+
+	it("lifts the required-tool miss budget in coding mode (#10132)", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const terminalReply = codingReply("reply-1", "Creating the app now.");
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(terminalReply)
+					.mockResolvedValueOnce(terminalReply)
+					.mockResolvedValueOnce(codingFileWrite())
+					.mockResolvedValueOnce(codingReply("reply-2", "Built dice.html.")),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "wrote dice.html",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "Built dice.html.",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				tools: codingPlannerTools,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall,
+				evaluate,
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(4);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+			expect(result.finalMessage).toBe("Built dice.html.");
+		});
+	});
+
 	it("evaluates terminal-only planner output without executing tools", async () => {
 		const runtime = {
 			useModel: vi.fn(

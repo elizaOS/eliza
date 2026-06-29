@@ -171,20 +171,8 @@ import {
   resolvePrimaryModel,
 } from "./model-resolution.ts";
 
-const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
-
-type ElizaMakerModule = {
-  initializeOGCode?: () => void;
-};
-
 type E2BCapabilityRouterModule =
   typeof import("../services/e2b-capability-router.ts");
-
-async function loadElizaMakerModule(): Promise<ElizaMakerModule> {
-  return (await import(
-    /* @vite-ignore */ ELIZAMAKER_MODULE
-  )) as ElizaMakerModule;
-}
 
 async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModule> {
   const moduleId = "../services/e2b-capability-router.ts";
@@ -3749,16 +3737,6 @@ export async function startEliza(
           ? ` | connection: ${(postgresUrl.length > 4096 ? postgresUrl.slice(0, 4096) : postgresUrl).replace(/:\/\/([^:@]{1,1024}):([^@]{1,1024})@/, "://$1:***@")}`
           : ""),
     );
-  }
-
-  // 2d-iii. OG tracking code initialization
-  if (!isMobilePlatform()) {
-    try {
-      const { initializeOGCode } = await loadElizaMakerModule();
-      initializeOGCode?.();
-    } catch {
-      // Silent — OG tracking is non-critical
-    }
   }
 
   // 2d-ii. Allow destructive migrations (e.g. dropping tables removed between

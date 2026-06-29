@@ -64,8 +64,18 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
     // packages (a different cwd resolves stale/broken builds from the bun cache).
     // The build target is conveyed purely through the workspace-root env.
     if (cwd) {
-      process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= cwd;
-      process.env.SHELL_ALLOWED_DIRECTORY ??= cwd;
+      // The sub-agent's own task workspace is always reachable. ALSO grant
+      // access to the published-apps directory (when the host configured one)
+      // so the agent can read/edit/republish an EXISTING deployed app — not just
+      // build new ones into a throwaway workspace. Without this, "edit the
+      // coinflip app" lands in an empty workspace, the app dir is sandbox-blocked,
+      // and nothing happens. Roots are comma-separated; the agent picks the path
+      // (its workspace for scripts, the apps dir for web apps) by the task.
+      const appsDir = process.env.ELIZA_AGENT_HOME_APPS_DIR?.trim();
+      const roots =
+        appsDir && appsDir !== cwd ? `${cwd},${appsDir}` : cwd;
+      process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= roots;
+      process.env.SHELL_ALLOWED_DIRECTORY ??= roots;
     }
     // Drop-in for the opencode coding sub-agent: when the host configured
     // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no
@@ -255,6 +265,21 @@ const _connection = new AgentSideConnection(
         const preamble: string[] = [];
         const manual = await readWorkspaceManual(session.cwd);
         if (manual) preamble.push(manual);
+        // Execution contract: weaker coding models (e.g. Cerebras glm-4.7) tend
+        // to NARRATE a plan ("I'll create the app...") and end the turn instead
+        // of emitting the FILE/SHELL action, especially on larger tasks — which
+        // leaves nothing on disk. Make the act-don't-describe requirement
+        // explicit so a build actually happens before the agent reports done.
+        preamble.push(
+          "Execution contract: DO the work by calling tools — use the FILE " +
+            "action to actually write/edit each file and the SHELL action to run " +
+            "commands. Do NOT reply with a description of what you are about to " +
+            "do; a turn that only says \"I'll create...\" or \"Creating the app " +
+            'now" without an accompanying FILE/SHELL tool call is a failure. For ' +
+            "a multi-file or large build, write the full content of each file " +
+            "with a FILE action first, then verify, and only then report what you " +
+            "did. Never claim a file exists unless you wrote it this session.",
+        );
         if (session.cwd) {
           // The coding tools (FILE/EDIT) require ABSOLUTE paths. Tell the agent
           // its workspace root up front so it writes absolute paths directly

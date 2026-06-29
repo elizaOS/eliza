@@ -137,8 +137,7 @@ test("selecting on-device inference drops the user into chat while the model dow
     }
     if (
       route.request().method() === "POST" &&
-      (url.pathname.endsWith("/downloads") ||
-        url.pathname.endsWith("/active"))
+      (url.pathname.endsWith("/downloads") || url.pathname.endsWith("/active"))
     ) {
       backgroundDownloadStarted = true;
       await fulfillJson(route, 200, {
@@ -153,12 +152,12 @@ test("selecting on-device inference drops the user into chat while the model dow
   await seedAppStorage(page, { "eliza:first-run-complete": "" });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const onboarding = page.getByTestId("onboarding-toast");
+  const onboarding = page.getByTestId("first-run-chat");
   await expect(onboarding).toBeVisible({ timeout: 20_000 });
 
   // This device → on-device inference.
-  await page.getByTestId("onboarding-option-local").click();
-  const onDevice = page.getByTestId("onboarding-inference-local");
+  await page.getByTestId("choice-local").click();
+  const onDevice = page.getByTestId("choice-on-device");
   await expect(onDevice).toBeVisible({ timeout: 10_000 });
   await onDevice.click();
 

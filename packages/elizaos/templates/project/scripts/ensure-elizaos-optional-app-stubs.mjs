@@ -14,7 +14,6 @@ const cleanupHelperPath = path.join(scriptDir, "rm-path-recursive.mjs");
 
 const optionalPackages = [
   "@elizaos/plugin-companion",
-  "@elizaos/plugin-elizamaker",
   "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-documents",
   "@elizaos/plugin-personal-assistant",
@@ -51,9 +50,6 @@ export const trainingRoutes = Object.freeze([]);
 export function clearBackendCache() {}
 export async function detectAvailableBackends() {
   return { available: false, backends: [] };
-}
-export function getElizaMakerRegistryService() {
-  return null;
 }
 export function getSelfControlPermissionState() {
   return { granted: false, status: "unavailable" };

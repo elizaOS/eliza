@@ -74,6 +74,13 @@ const publicPathPrefixes = [
   "/api/v1/market/preview",
   "/api/stripe/credit-packs",
   "/api/stripe/webhook",
+  // Unified payment_requests settlement webhook. Public like the legacy
+  // /api/stripe/webhook above; the handler enforces the stripe-signature and
+  // fails closed (400) without it. The `=== p || startsWith(p+"/")` match keeps
+  // this from exposing the authed /api/v1/stripe/checkout sibling. Without this
+  // entry the session gate 401s every Stripe delivery → a checkout would charge
+  // the card but never settle (payment_request stuck "pending").
+  "/api/v1/stripe/webhook",
   "/api/crypto/webhook",
   "/api/crypto/status",
   "/api/crypto/direct-payments/config",

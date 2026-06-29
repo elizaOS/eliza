@@ -245,6 +245,45 @@ async function pointerDrag(
   await page.mouse.up();
 }
 
+/**
+ * Drive a REAL touch drag via CDP `Input.dispatchTouchEvent` — the same touch
+ * input `page.touchscreen` uses. Unlike `pointerDrag` above (`page.mouse` →
+ * pointerType "mouse"), this produces genuine touch input (pointerType "touch"),
+ * so the gesture is verified the way a finger drives it, not a desktop mouse
+ * (issue #9943 item 6: "swipe gesture simulated via page.mouse, not real touch").
+ */
+async function touchDrag(
+  page: import("@playwright/test").Page,
+  selector: string,
+  dx: number,
+  dy: number,
+  steps = 12,
+) {
+  const box = await page.locator(selector).first().boundingBox();
+  if (!box) throw new Error(`no bounding box for ${selector}`);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const client = await page.context().newCDPSession(page);
+  try {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: cx, y: cy }],
+    });
+    for (let i = 1; i <= steps; i += 1) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: cx + (dx * i) / steps, y: cy + (dy * i) / steps }],
+      });
+    }
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await client.detach();
+  }
+}
+
 let store: Store;
 
 test.beforeEach(async ({ page }) => {
@@ -279,6 +318,36 @@ test("collapsed chat grabber horizontal swipe opens the launcher rail without op
     page.getByTestId("home-launcher-launcher-page"),
   ).toBeVisible();
   await expectNoPageDiagnostics(page, testInfo.title);
+});
+
+test.describe("real touch input (CDP dispatchTouchEvent) — #9943 item 6", () => {
+  test.use({ hasTouch: true });
+
+  test("collapsed chat grabber swipe under REAL TOUCH (not desktop mouse) opens the launcher rail", async ({
+    page,
+  }, testInfo) => {
+    await openAppPath(page, "/chat");
+    const overlay = page.getByTestId("continuous-chat-overlay");
+    await expect(overlay).toBeVisible({ timeout: 60_000 });
+
+    const surface = page.getByTestId("home-launcher-surface");
+    await expect(surface).toHaveAttribute("data-page", "home", {
+      timeout: 15_000,
+    });
+    await expect(overlay).not.toHaveAttribute("data-open", "true");
+
+    // Genuine finger swipe (touch input), not page.mouse.
+    await touchDrag(page, '[data-testid="chat-sheet-grabber"]', -180, -6, 12);
+
+    await expect(surface).toHaveAttribute("data-page", "launcher", {
+      timeout: 10_000,
+    });
+    await expect(overlay).not.toHaveAttribute("data-open", "true");
+    await expect(
+      page.getByTestId("home-launcher-launcher-page"),
+    ).toBeVisible();
+    await expectNoPageDiagnostics(page, testInfo.title);
+  });
 });
 
 test("swipe navigates conversations; clear lands on a fresh greeted chat with no undo toast", async ({

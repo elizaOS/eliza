@@ -1,6 +1,7 @@
 import { CalendarClock, CalendarPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useNow } from "../../../hooks/useNow";
 import { withTimeout } from "../../../utils/with-timeout";
@@ -42,7 +43,7 @@ interface CalendarFeedEventWire {
 }
 
 /** The connection probe outcome: not yet known, no account, or connected. */
-type ConnectionState = "unknown" | "disconnected" | "connected";
+type ConnectionState = "unknown" | "unsupported" | "disconnected" | "connected";
 
 function isCalendarFeedEvent(value: unknown): value is CalendarFeedEventWire {
   if (typeof value !== "object" || value === null) return false;
@@ -130,6 +131,13 @@ export function CalendarUpcomingWidget({
   const nav = useWidgetNavigation();
 
   const probeConnection = useCallback(async () => {
+    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+      setConnection("unsupported");
+      setFeedLoaded(true);
+      setEvents([]);
+      return false;
+    }
+
     try {
       const res = await withTimeout(
         client.listConnectorAccounts(GOOGLE_PROVIDER),
@@ -221,6 +229,8 @@ export function CalendarUpcomingWidget({
     CALENDAR_WIDGET_KEY,
     onHome && urgent ? HOME_SIGNAL_WEIGHTS.reminder : null,
   );
+
+  if (connection === "unsupported") return null;
 
   // No Google account linked → show a connect affordance (never null), so the
   // user can tap through to the connectors settings and wire it up.

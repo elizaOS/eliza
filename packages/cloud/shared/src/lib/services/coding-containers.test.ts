@@ -55,6 +55,22 @@ describe("request schema", () => {
     expect(parsed.agent).toBe("codex");
   });
 
+  it("accepts elizaos (the eliza-code cloud coding agent, #10059)", () => {
+    const parsed = RequestCodingAgentContainerRequestSchema.parse({ agent: "elizaos" });
+    expect(parsed.agent).toBe("elizaos");
+    const payload = buildCodingContainerCreatePayload({ agent: parsed.agent });
+    // The agent value is injected into the runner env so the container picks
+    // eliza-code; nothing else keys off it, so widening the enum is additive.
+    expect(payload.environment_vars.ELIZA_CODING_AGENT).toBe("elizaos");
+    expect(payload.environment_vars.ELIZA_CLOUD_CODING_AGENT).toBe("elizaos");
+  });
+
+  it("rejects an unknown coding agent", () => {
+    expect(() =>
+      RequestCodingAgentContainerRequestSchema.parse({ agent: "totally-made-up" }),
+    ).toThrow();
+  });
+
   it("rejects dropped container fields instead of silently ignoring them", () => {
     expect(() =>
       RequestCodingAgentContainerRequestSchema.parse({ container: { cpu: 2 } }),

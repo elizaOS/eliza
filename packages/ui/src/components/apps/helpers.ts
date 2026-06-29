@@ -68,7 +68,6 @@ const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
 ]);
 
 const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-elizamaker",
   "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-polymarket",
   "@elizaos/plugin-shopify",
@@ -329,10 +328,6 @@ export function getAppCatalogSectionKey(
 ): AppCatalogSectionKey {
   if (isFeaturedAppName(app.name)) {
     return "featured";
-  }
-
-  if (app.name === "@elizaos/plugin-elizamaker") {
-    return "finance";
   }
 
   if (isInternalToolApp(app.name)) {

@@ -466,4 +466,57 @@ export const containersEnv = {
     const parsed = raw ? Number(raw) : Number.NaN;
     return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 1;
   },
+
+  // ── Node disk clean manager ───────────────────────────────────────────────
+
+  /**
+   * High-water mark (percent of the docker data-root filesystem used) at which
+   * the disk clean manager reclaims space on a node: `docker system prune -af`
+   * (no `--volumes`) + clear stuck containerd ingest + buildkit prune.
+   *
+   * ON by default — this is the missing self-management that keeps a node from
+   * silently filling up on retried failed pulls. Default 80: leaves headroom
+   * below the unhealthy threshold so prune runs (and usually recovers the node)
+   * before disk-full ever flaps it unhealthy. Clamped to [50, 99].
+   */
+  nodeDiskPruneThresholdPct(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.NODE_DISK_PRUNE_THRESHOLD_PCT);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? Math.min(99, Math.max(50, Math.floor(parsed))) : 80;
+  },
+
+  /**
+   * Critical mark (percent used) at/above which a node is flagged UNHEALTHY by
+   * the disk-aware health check so the autoscaler drains/replaces it rather than
+   * trusting a `docker info` that still answers on a full disk.
+   *
+   * Sits ABOVE the prune threshold so a node only flaps unhealthy when prune
+   * alone could not pull it back under water — conservative, no flapping.
+   * Default 92. Clamped to [60, 99] and never below the prune threshold + 1.
+   */
+  nodeDiskUnhealthyThresholdPct(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.NODE_DISK_UNHEALTHY_THRESHOLD_PCT);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    const value = Number.isFinite(parsed) ? Math.min(99, Math.max(60, Math.floor(parsed))) : 92;
+    // Keep the unhealthy mark strictly above the prune mark so a node is always
+    // given a chance to self-reclaim before being flapped unhealthy.
+    return Math.max(value, this.nodeDiskPruneThresholdPct() + 1);
+  },
+
+  /**
+   * Cooldown (ms) between consecutive prunes of the SAME node, so a node above
+   * the threshold while a large pull is legitimately in flight is not pruned
+   * every infra-maintenance tick. Default 30 min. Clamped to [60s, 6h].
+   */
+  nodeDiskPruneCooldownMs(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.NODE_DISK_PRUNE_COOLDOWN_MS);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    const defaultMs = 30 * 60_000;
+    return Number.isFinite(parsed)
+      ? Math.min(6 * 60 * 60_000, Math.max(60_000, Math.floor(parsed)))
+      : defaultMs;
+  },
 };

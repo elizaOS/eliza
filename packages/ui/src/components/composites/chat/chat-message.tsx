@@ -113,7 +113,11 @@ function useSupportsHover(): boolean {
   );
 }
 
-function getChatMessageAnchorId(messageId: string): string {
+/**
+ * The DOM id a rendered chat message carries, so keyword-search jump-to-message
+ * can scroll a result into view. Shared with the message-search UI.
+ */
+export function getChatMessageAnchorId(messageId: string): string {
   return `chat-message-${messageId}`;
 }
 

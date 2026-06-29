@@ -56,9 +56,18 @@ async function sendMessage(page: Page, text: string): Promise<void> {
   ).toBeVisible({ timeout: 30_000 });
 }
 
-test.skip("two clients on the same agent converge and do not desync", async ({
-  browser,
-}) => {
+// Skipped: convergence between two independent clients needs a shared
+// message-store backend, which is not yet wired up — without it the second
+// client has no channel to observe the first client's messages. Also tracked on
+// the ui-smoke .pr-deny-list.json ("no shared message store backend"). Un-skip
+// once a shared store lands.
+test.skip("two clients on the same agent converge and do not desync", {
+  annotation: {
+    type: "skip",
+    description:
+      "No shared message store backend (see ui-smoke .pr-deny-list.json)",
+  },
+}, async ({ browser }) => {
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
   try {

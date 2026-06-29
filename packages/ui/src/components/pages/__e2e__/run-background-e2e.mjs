@@ -5,11 +5,11 @@
  * whole consolidated system through real UI + real agent events:
  *
  *   1. default warm-orange shader
- *   2. click the "Blue" swatch        → background recolors live (color change)
+ *   2. click the "Green" swatch       → background recolors live (color change)
  *   3. upload an image                → cover-image background (upload a picture)
  *   4. agent emits background:apply   → recolors from chat (chat → background)
  *   5. agent emits {op:"undo"}        → reverts to the previous (image)
- *   6. click the Undo control         → reverts again (UI undo)
+ *   6. click the Undo control         → reverts again to the Green swatch (UI undo)
  *
  * Captures a screenshot per step + a video walkthrough.
  *
@@ -136,9 +136,11 @@ try {
   );
   await snap(p, "uploaded-image");
 
-  // 4. Agent chat path: emit background:apply (shader teal) → recolors.
+  // 4. Agent chat path: emit background:apply with an arbitrary (non-preset)
+  // teal so we prove the chat→background bridge can apply any color, not just a
+  // swatch. #0891b2 === rgb(8, 145, 178).
   await p.evaluate(() =>
-    window.__emitBgApply?.({ op: "set", mode: "shader", color: "#059669" }),
+    window.__emitBgApply?.({ op: "set", mode: "shader", color: "#0891b2" }),
   );
   await settle(p);
   assert(
@@ -156,14 +158,16 @@ try {
   );
   await snap(p, "chat-undo-to-image");
 
-  // 6. Click the Undo control in the view → reverts again (to blue).
+  // 6. Click the Undo control in the view → reverts again, popping the image
+  // back off to the prior shader color: the Green swatch from step 2.
+  // #059669 === rgb(5, 150, 105).
   await p.getByLabel("Undo background change").click();
   await settle(p);
   assert(
-    (await shaderColor(p)) === "rgb(37, 99, 235)",
+    (await shaderColor(p)) === "rgb(5, 150, 105)",
     "the Undo control reverts to the prior shader color",
   );
-  await snap(p, "ui-undo-to-blue");
+  await snap(p, "ui-undo-to-green");
 } finally {
   await context.close(); // flush the video
   await browser.close();

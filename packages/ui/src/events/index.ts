@@ -135,6 +135,8 @@ export interface CloudHandoffRetryDetail {
 export const TUTORIAL_CHAT_CONTROL_EVENT =
   "eliza:tutorial:chat-control" as const;
 export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
+/** Open the keyword message-search panel (fired by the chat search affordance). */
+export const CHAT_MESSAGE_SEARCH_EVENT = "eliza:chat:message-search" as const;
 
 export interface TutorialChatControlDetail {
   /**

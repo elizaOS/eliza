@@ -1,11 +1,12 @@
 import crypto from "node:crypto";
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 import { findReservedEnvKeys, RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
 
-const DEFAULT_ELIZA_APP_URL = "https://eliza.app";
+const DEFAULT_ELIZA_APP_URL = EXTERNAL_URLS.app;
 const DEFAULT_CLOUD_PUBLIC_URL = "https://www.elizacloud.ai";
 const DEV_ELIZA_APP_ORIGINS = [
   "http://localhost:5173",
