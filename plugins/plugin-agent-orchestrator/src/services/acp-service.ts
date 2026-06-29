@@ -1430,6 +1430,12 @@ export class AcpService extends Service {
         this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
         "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
       );
+    // The elizaos native agent is the eliza-code ACP server
+    // (packages/examples/code, bin `eliza-code-acp`). The elizaos CLI has no
+    // ACP mode, so the bare-name fallback below would spawn the wrong binary —
+    // resolve to the eliza-code bin unless an explicit command is configured.
+    if (normalizedAgentType === "elizaos")
+      return this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ?? "eliza-code-acp";
     return String(normalizedAgentType);
   }
 
