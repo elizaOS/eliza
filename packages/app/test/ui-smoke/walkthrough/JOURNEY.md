@@ -41,10 +41,20 @@ journey.
   - Composer: `[data-testid="chat-composer-textarea"]`
   - Send: `[data-testid="chat-composer-action"]`
   - Chat thread lines: `[data-testid="thread-line"]`
-  - First-run chat (current in-chat onboarding, replaced the old
-    `onboarding-toast`): `[data-testid="first-run-chat"]` +
-    `[data-testid="first-run-greeting"]`; runtime choices
-    `[data-choice-scope="first-run-runtime"] [data-testid="choice-cloud|local|remote"]`
+  - In-chat onboarding (#9952): the fresh-profile shell auto-opens the REAL
+    `[data-testid="continuous-chat-overlay"]` and seeds the greeting + runtime
+    CHOICE into it (no dedicated full-screen surface — the legacy
+    `first-run-chat` is absent). Enable via `localStorage` seed
+    `eliza:in-chat-onboarding="1"`. Greeting asserted by text
+    (`/hey there! I'm Eliza/i`, `/How would you like to run me/i`); the runtime
+    CHOICE is `[data-choice-scope="first-run"] [data-testid="choice-cloud|local|other"]`;
+    the provider sub-choice is `choice-provider:on-device|elizacloud`; the
+    post-provision tutorial offer is `choice-tutorial:take|skip`. Custom path:
+    `choice-custom-open → choice-custom-input → choice-custom-send`.
+  - Tutorial frames: the spotlight card stamps `data-tutorial-step-id` (welcome,
+    open-chat, resize-chat, ask-to-navigate, use-voice, new-chat,
+    swipe-between-chats, done); `tutorial-continue` advances manual/stalled
+    frames, `tutorial-skip` ends the tour.
   - Tutorial: `/tutorial` route → `[data-testid="tutorial-launcher"]` →
     `[data-testid="tutorial-start"]` → `[data-testid="tutorial-card"]`
   - Launcher: `[data-testid="launcher"]`
@@ -55,8 +65,11 @@ journey.
 
 ## Existing Coverage To Reuse
 
-- `first-run-startup.spec.ts` covers fresh first-run onboarding and runtime
-  choice rendering.
+- `in-chat-onboarding.spec.ts` covers the flag-ON in-chat first-run in isolation:
+  the real overlay auto-opens, the greeting + runtime CHOICE seed in, and a
+  `choice-local` pick is intercepted into the headless use case (no agent send).
+- `first-run-startup.spec.ts` covers the legacy full-screen onboarding surface
+  (flag OFF — the default until #9952 P3 flips it).
 - `cloud-provisioning-startup.spec.ts` and `warming-shell-startup.spec.ts`
   cover startup/provisioning readiness.
 - `tts-stt-e2e.spec.ts` covers browser STT and cloud TTS wiring with mocks.
@@ -138,37 +151,41 @@ extends the original 22 states with the asked-for **tutorial / help / settings /
 wallet / settings-edit** rows so no captured state is accepted "on sight."
 
 Lanes: the **mock** lane (default, keyless) page-mocks the conversation store so
-chat is deterministic; the **live** lane (`--live`,
-`ELIZA_UI_SMOKE_LIVE_STACK=1`) installs no conversation mock, so step 08 drives
-the real backend agent + model and writes the trajectory to
-`reports/walkthrough/<runId>/<viewport>/trajectory/chat-step.json`. Rows marked
-**live-persist** assert real persistence (`PUT /api/character` / `PUT /api/config`
-+ reload read-back) only in the live lane; the mock lane still captures them.
+chat is deterministic and stubs the single onboarding `POST /api/first-run` so
+the REAL in-chat onboarding completes with no provider key; the **live** lane
+(`--live`, `ELIZA_UI_SMOKE_LIVE_STACK=1`) installs no conversation mock, so step
+09 drives the real backend agent + model and writes the trajectory to
+`reports/walkthrough/<runId>/<viewport>/trajectory/chat-step.json`. In **both**
+lanes the onboarding choices and the tutorial are exercised for real — nothing
+flips first-run complete to skip onboarding. Rows marked **live-persist** assert
+real persistence (`PUT /api/character` / `PUT /api/config` + reload read-back)
+only in the live lane; the mock lane still captures them.
 
 | Step | Action | Expected state | Required assertions | Capture |
 | --- | --- | --- | --- | --- |
-| 01 | Cold app launch | `/` loads with first-run incomplete; the in-chat first-run greeting renders over the startup background. | No page error / no `console.error` / no 5xx; `first-run-chat` + `first-run-greeting` visible ≤20s. | `01-cold-launch.png` |
-| 02 | Onboarding runtime choice | The in-chat first-run asks how to run Eliza with the runtime choices. | Runtime question text visible; `[data-choice-scope="first-run-runtime"]` `choice-cloud` / `choice-local` / `choice-remote` all visible. | `02-onboarding-runtime.png` |
-| 03 | Choose runtime → ready | Clicking the local choice advances first-run (provider step), then resolves to a ready agent. | `choice-local` clicked; first-run flips complete; `continuous-chat-overlay` + `chat-composer-textarea` reachable. | `03-provisioning-ready.png` |
-| 04 | Interactive tutorial | The `/tutorial` launcher starts the tour spotlight. | `tutorial-launcher` → `tutorial-start` → `tutorial-card`; "Meet Eliza" text visible; tour dismissed via `tutorial-skip`. | `04-tutorial.png` |
-| 05 | Help search | The Help view searches the KB. | `help-view` visible; search "change the model" → `help-entry-change-model` references "AI Model". | `05-help.png` |
-| 06 | Open settings | The Settings shell opens. | `settings-shell` visible; "Models & Providers" section opened. | `06-settings-open.png` |
-| 07 | Wallet view | The Wallet view renders. | `wallet-shell` (or Wallet heading) visible at `/wallet`. | `07-wallet.png` |
-| 08 | Chat a conversation | A real round-trip: user line + assistant reply. | user `thread-line` visible; assistant `thread-line` visible & non-empty; **live**: reply from the real model (trajectory captured). | `08-chat-round-trip.png` |
-| 09 | Maximize chat | Overlay expands to full detent. | desktop: `chat-sheet` `data-detent=full` + `data-maximized=true`; mobile: overlay `data-open=true` (no separate maximize). | `09-chat-full-detent.png` |
-| 10 | Navigate to character editor | Chat-driven navigation reaches `/character`. | URL `/character`; `character-editor-view` visible. | `10-chat-navigate-character.png` |
-| 11 | Edit character personality | Personality panel opens; About Me edited. | field filled; **live-persist**: `PUT /api/character` + reload read-back matches. | `11-character-edit.png` |
-| 12 | Start a new chat | Fresh conversation; composer empty. | new conversation created; composer value empty for the new thread. | `12-new-chat.png` |
-| 13 | Return home from chat | Home/dashboard shows, chat collapsed. | `widget-host-home` / `home-launcher-surface` visible; overlay not `data-open=true`. | `13-home-from-chat.png` |
-| 14 | Restore the conversation | Reopening chat restores the prior thread. | `continuous-chat-overlay` visible; prior `thread-line` restored. | `14-restore-chat.png` |
-| 15 | Copy a message | A message exposes selectable/copyable text. | `data-chat-selectable="true"` (or message text) captured. | `15-copy-message.png` |
-| 16 | Paste large text → attachment | Large paste collapses to a `pasted-text.md` chip. | clipboard paste event dispatched; `pasted-text.md` chip visible; composer value stays short. | `16-paste-large.png` |
-| 17 | Clear the draft | Draft cleared, no pending chip. | composer value empty. | `17-clear-draft.png` |
-| 18 | Collapse chat to the pill | Overlay collapses to rest while composer stays reachable. | overlay no longer `data-open=true` (or composer reachable at rest). | `18-chat-pill.png` |
-| 19 | Re-open chat to full | Overlay expands back to open. | overlay `data-open=true`. | `19-chat-full-again.png` |
-| 20 | Focus the composer | Clicking the composer focuses it. | `document.activeElement` is the composer textarea. | `20-input-focused.png` |
-| 21 | Open the view launcher | Launcher grid shows. | `launcher` visible; ≥1 `launcher-tile-*`. | `21-launcher.png` |
-| 22 | Launch a view | A tile launches a real view. | first tile clicked; URL leaves `/views`. | `22-launch-view.png` |
-| 23 | Open chat over the view | Focusing the composer opens chat over the launched view without remounting it. | composer reachable over the view; `continuous-chat-overlay` present; route still on the view. | `23-chat-over-view.png` |
-| 24 | Edit a setting (persist + read-back) | A settings toggle changes and persists. | Capabilities → `capability-wallet` `aria-checked` flips; **live-persist**: `PUT /api/config` + reload read-back. | `24-settings-edit.png` |
-| 25 | Back to dashboard | App returns home; no diagnostics accumulated. | home surface visible; gate (page/console errors + 5xx) clean over the whole journey. | `25-dashboard-rest.png` |
+| 01 | Cold app launch | `/` loads with first-run incomplete + in-chat onboarding flag ON; the REAL floating chat auto-opens and seeds the greeting. | No page error / no `console.error` / no 5xx; `continuous-chat-overlay` visible ≤30s; legacy `first-run-chat` count 0; greeting text `/hey there! I'm Eliza/i` + `/How would you like to run me/i`. | `01-cold-launch.png` |
+| 02 | Onboarding runtime choice | The seeded runtime CHOICE renders as real buttons in the live chat. | `[data-choice-scope="first-run"]` `choice-cloud` / `choice-local` / `choice-other` all visible. | `02-onboarding-runtime.png` |
+| 03 | Pick local → provider choice | Clicking `choice-local` is intercepted (no agent send) and seeds the provider sub-choice. | `choice-provider:on-device` + `choice-provider:elizacloud` visible. | `03-onboarding-provider.png` |
+| 04 | Provision local agent → ready | Choosing on-device runs the real headless local setup (one `POST /api/first-run`) and offers the tutorial. | `choice-tutorial:take` + `choice-tutorial:skip` visible ≤60s; `chat-composer-textarea` reachable. | `04-provisioning-ready.png` |
+| 05 | Interactive tutorial (all 8 frames) | Taking the tour walks every frame and completes. | `tutorial-card` starts; frames welcome→open-chat→resize-chat→ask-to-navigate→use-voice→new-chat→swipe-between-chats→done all walked (real controls + stalled-frame skip); `tutorial-card` count 0 at the end. | `05-tutorial.png` |
+| 06 | Help search | The Help view searches the KB. | `help-view` visible; search "change the model" → `help-entry-change-model` references "AI Model". | `06-help.png` |
+| 07 | Open settings | The Settings shell opens. | `settings-shell` visible; "Models & Providers" section opened. | `07-settings-open.png` |
+| 08 | Wallet view | The Wallet view renders. | `wallet-shell` (or Wallet heading) visible at `/wallet`. | `08-wallet.png` |
+| 09 | Chat a conversation | A real round-trip: user line + assistant reply. | user `thread-line` visible; assistant `thread-line` visible & non-empty; **live**: reply from the real model (trajectory captured). | `09-chat-round-trip.png` |
+| 10 | Maximize chat | Overlay expands to full detent. | desktop: `chat-sheet` `data-detent=full` + `data-maximized=true`; mobile: overlay `data-open=true` (no separate maximize). | `10-chat-full-detent.png` |
+| 11 | Navigate to character editor | Chat-driven navigation reaches `/character`. | URL `/character`; `character-editor-view` visible. | `11-chat-navigate-character.png` |
+| 12 | Edit character personality | Personality panel opens; About Me edited. | field filled; **live-persist**: `PUT /api/character` + reload read-back matches. | `12-character-edit.png` |
+| 13 | Start a new chat | Fresh conversation; composer empty. | new conversation created; composer value empty for the new thread. | `13-new-chat.png` |
+| 14 | Return home from chat | Home/dashboard shows, chat collapsed. | `widget-host-home` / `home-launcher-surface` visible; overlay not `data-open=true`. | `14-home-from-chat.png` |
+| 15 | Restore the conversation | Reopening chat restores the prior thread. | `continuous-chat-overlay` visible; prior `thread-line` restored. | `15-restore-chat.png` |
+| 16 | Copy a message | A message exposes selectable/copyable text. | `data-chat-selectable="true"` (or message text) captured. | `16-copy-message.png` |
+| 17 | Paste large text → attachment | Large paste collapses to a `pasted-text.md` chip. | clipboard paste event dispatched; `pasted-text.md` chip visible; composer value stays short. | `17-paste-large.png` |
+| 18 | Clear the draft | Draft cleared, no pending chip. | composer value empty. | `18-clear-draft.png` |
+| 19 | Collapse chat to the pill | Overlay collapses to rest while composer stays reachable. | overlay no longer `data-open=true` (or composer reachable at rest). | `19-chat-pill.png` |
+| 20 | Re-open chat to full | Overlay expands back to open. | overlay `data-open=true`. | `20-chat-full-again.png` |
+| 21 | Focus the composer | Clicking the composer focuses it. | `document.activeElement` is the composer textarea. | `21-input-focused.png` |
+| 22 | Open the view launcher | Launcher grid shows. | `launcher` visible; ≥1 `launcher-tile-*`. | `22-launcher.png` |
+| 23 | Launch a view | A tile launches a real view. | first tile clicked; URL leaves `/views`. | `23-launch-view.png` |
+| 24 | Open chat over the view | Focusing the composer opens chat over the launched view without remounting it. | composer reachable over the view; `continuous-chat-overlay` present; route still on the view. | `24-chat-over-view.png` |
+| 25 | Edit a setting (persist + read-back) | A settings toggle changes and persists. | Capabilities → `capability-wallet` `aria-checked` flips; **live-persist**: `PUT /api/config` + reload read-back. | `25-settings-edit.png` |
+| 26 | Back to dashboard | App returns home; no diagnostics accumulated. | home surface visible; gate (page/console errors + 5xx) clean over the whole journey. | `26-dashboard-rest.png` |

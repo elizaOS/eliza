@@ -523,7 +523,13 @@ export async function installJourneyRoutes(
   lane: Lane,
 ): Promise<JourneyRoutes> {
   await injectFullCapabilityHost(page);
-  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+  // Fresh device + in-chat onboarding flag ON (the e2e localStorage override
+  // flips the flag without a host rebuild — see in-chat-onboarding.ts). The
+  // onboarding steps drive the REAL in-chat first-run; nothing fakes completion.
+  await seedAppStorage(page, {
+    "eliza:first-run-complete": "",
+    "eliza:in-chat-onboarding": "1",
+  });
   await installDefaultAppRoutes(page);
   // The agent's TTS playback (e.g. the tutorial tour narrating) posts far-end
   // reference frames to this OPTIONAL echo-cancellation route. The keyless stub
@@ -557,6 +563,18 @@ async function installMockLaneWrites(page: Page): Promise<void> {
   await page.route("**/api/character", async (route) => {
     const method = route.request().method();
     if (method === "PUT" || method === "PATCH") {
+      await fulfillJson(route, 200, { ok: true });
+      return;
+    }
+    await route.fallback();
+  });
+  // The headless first-run use case submits the profile exactly once via
+  // `POST /api/first-run` (server sets meta.firstRunComplete). The keyless stub
+  // stack 501s unmocked writes; ack it so the REAL on-device onboarding path
+  // (start → await agent → submit) completes deterministically with no key. The
+  // live lane installs none of this — its onboarding POST hits the real backend.
+  await page.route("**/api/first-run", async (route) => {
+    if (route.request().method() === "POST") {
       await fulfillJson(route, 200, { ok: true });
       return;
     }
@@ -616,15 +634,155 @@ async function navigateViaAgentEvent(
   }, detail);
 }
 
+/**
+ * Re-enter chat after the REAL in-chat onboarding has already completed (steps
+ * 01–05). This never fakes first-run — onboarding ran for real and flipped the
+ * mutable `/api/first-run/status` mock to complete (step 05), so a navigation to
+ * `/chat` lands on the ready chat surface. Used by the later chat steps.
+ */
 async function reachChatReady(ctx: StepContext): Promise<void> {
-  ctx.routes.firstRun.setComplete(true);
-  await ctx.page.evaluate(() => {
-    localStorage.setItem("eliza:first-run-complete", "1");
-  });
   await openAppPath(ctx.page, "/chat");
   await expect(ctx.page.getByTestId("continuous-chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
+}
+
+// --- tutorial driving -------------------------------------------------------
+
+/** The interactive tour's eight frames, in order (tutorial-steps.ts). */
+const TUTORIAL_FRAME_ORDER = [
+  "welcome",
+  "open-chat",
+  "resize-chat",
+  "ask-to-navigate",
+  "use-voice",
+  "new-chat",
+  "swipe-between-chats",
+  "done",
+] as const;
+
+/** The active tour frame id, stamped on the spotlight card, or null when the
+ * tour is not showing a card. */
+async function currentTutorialStepId(page: Page): Promise<string | null> {
+  const card = page.getByTestId("tutorial-card");
+  if (!(await card.isVisible().catch(() => false))) return null;
+  return card.getAttribute("data-tutorial-step-id").catch(() => null);
+}
+
+/** Resolve true once the active frame id differs from `fromStepId` (advanced)
+ * or the tour has ended (card gone), within `timeoutMs`. */
+async function pollTutorialAdvance(
+  page: Page,
+  fromStepId: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  try {
+    await expect
+      .poll(async () => (await currentTutorialStepId(page)) ?? "__ended__", {
+        timeout: timeoutMs,
+        intervals: [250],
+      })
+      .not.toBe(fromStepId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Perform the real per-frame action. Manual frames (welcome/done) click the
+ * spotlight's continue button; interactive frames drive the actual chat control
+ * the frame points at so the tour auto-advances on its own success signal. */
+async function performTutorialAction(
+  page: Page,
+  stepId: string,
+): Promise<void> {
+  const clickIfVisible = async (testId: string) => {
+    const el = page.getByTestId(testId).first();
+    if (await el.isVisible().catch(() => false))
+      await el.click().catch(() => undefined);
+  };
+  switch (stepId) {
+    case "welcome":
+    case "done":
+      // manualContinue frames — the spotlight's primary button advances.
+      await clickIfVisible("tutorial-continue");
+      return;
+    case "open-chat":
+      await clickIfVisible("chat-pill");
+      return;
+    case "resize-chat": {
+      const grabber = page.getByTestId("chat-sheet-grabber");
+      if (await grabber.isVisible().catch(() => false)) {
+        await grabber.focus().catch(() => undefined);
+        await page.keyboard.press("ArrowUp").catch(() => undefined); // expand (beat 1)
+        await page.keyboard.press("ArrowDown").catch(() => undefined); // shrink (beat 2)
+        await page.keyboard.press("ArrowDown").catch(() => undefined);
+      }
+      return;
+    }
+    case "ask-to-navigate":
+      // The frame pre-fills "open settings"; sending it satisfies the frame and
+      // navigates to Settings for real (navigateOnDone).
+      await clickIfVisible("chat-composer-action");
+      return;
+    case "use-voice":
+      // No real microphone in headless Chromium — engage the mic, then let the
+      // tour's stalled-frame skip affordance advance the frame.
+      await clickIfVisible("chat-composer-mic");
+      return;
+    case "new-chat":
+      await clickIfVisible("shell-new-chat");
+      return;
+    case "swipe-between-chats": {
+      // Best-effort horizontal swipe across the chat sheet; the stalled-frame
+      // skip advances if a single conversation makes the swipe a no-op.
+      const sheet = page.getByTestId("chat-sheet");
+      const box = await sheet.boundingBox().catch(() => null);
+      if (box) {
+        const y = box.y + box.height / 2;
+        await page.mouse.move(box.x + box.width * 0.8, y);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width * 0.2, y, { steps: 12 });
+        await page.mouse.up();
+      }
+      return;
+    }
+  }
+}
+
+/**
+ * Drive the interactive tour through every frame and return the ordered frame
+ * ids actually walked. Each frame: perform its real action; if the tour does not
+ * auto-advance (a frame that needs a real mic/swipe signal headless can't
+ * produce), use the tour's own stalled-frame "Skip" control — the real skip
+ * affordance — to advance. Forward progress is always guaranteed, so the tour
+ * reaches `done` and completes.
+ */
+async function driveTutorial(page: Page): Promise<string[]> {
+  await expect(page.getByTestId("tutorial-card")).toBeVisible({
+    timeout: 15_000,
+  });
+  const seen: string[] = [];
+  for (let i = 0; i < TUTORIAL_FRAME_ORDER.length + 4; i++) {
+    const stepId = await currentTutorialStepId(page);
+    if (!stepId) break;
+    if (seen[seen.length - 1] !== stepId) seen.push(stepId);
+    await performTutorialAction(page, stepId);
+    if (await pollTutorialAdvance(page, stepId, 6_000)) continue;
+    // Frame stalled (a real mic/swipe signal isn't available headless): wait for
+    // the late "Skip" control to surface, then advance through it.
+    const cont = page.getByTestId("tutorial-continue");
+    await cont
+      .waitFor({ state: "visible", timeout: 16_000 })
+      .catch(() => undefined);
+    if (await cont.isVisible().catch(() => false)) {
+      await cont.click().catch(() => undefined);
+      await pollTutorialAdvance(page, stepId, 6_000);
+    } else {
+      break;
+    }
+  }
+  return seen;
 }
 
 async function domMarkers(
@@ -650,23 +808,31 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "cold-launch",
     title: "Cold app launch",
     expectation:
-      "First app load from / with first-run incomplete: the in-chat first-run greeting ('hey there! I'm Eliza.') renders over the startup background. No render failure, no stack trace.",
+      "First load from / with first-run incomplete and the in-chat onboarding flag ON: the REAL floating chat (ContinuousChatOverlay) auto-opens and seeds the onboarding greeting ('hey there! I'm Eliza…'). The legacy full-screen onboarding never appears.",
     async run({ page }) {
       await page.goto("/", { waitUntil: "domcontentloaded" });
-      await expect(page.getByTestId("first-run-chat")).toBeVisible({
+      await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+        timeout: 30_000,
+      });
+      // The legacy full-screen first-run surface must NOT mount.
+      await expect(page.getByTestId("first-run-chat")).toHaveCount(0);
+      await expect(page.getByText(/hey there! I'm Eliza/i)).toBeVisible({
         timeout: 20_000,
       });
-      await expect(page.getByTestId("first-run-greeting")).toBeVisible({
-        timeout: 10_000,
-      });
+      await expect(page.getByText(/How would you like to run me/i)).toBeVisible(
+        {
+          timeout: 10_000,
+        },
+      );
       return {
         assertions: [
-          "Loaded / with first-run incomplete",
-          "first-run-chat + greeting became visible within 20s",
+          "Loaded / with first-run incomplete + in-chat onboarding flag ON",
+          "continuous-chat-overlay auto-opened with the seeded greeting",
+          "legacy full-screen first-run surface absent",
         ],
         dom: await domMarkers(page, {
-          firstRunChat: '[data-testid="first-run-chat"]',
-          firstRunGreeting: '[data-testid="first-run-greeting"]',
+          overlay: '[data-testid="continuous-chat-overlay"]',
+          choiceScope: '[data-choice-scope="first-run"]',
           root: "#root",
         }),
       };
@@ -677,97 +843,119 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "onboarding-runtime",
     title: "Onboarding runtime choice",
     expectation:
-      "The in-chat first-run asks how to run Eliza and offers the cloud, local, and remote runtime choices.",
+      "The seeded runtime CHOICE renders as real buttons in the live chat (scope first-run): Log in with Eliza Cloud / Run locally / Something else.",
     async run({ page }) {
-      await expect(
-        page.getByText(/log in with your Eliza Cloud account/i),
-      ).toBeVisible({ timeout: 15_000 });
-      const runtime = page.locator('[data-choice-scope="first-run-runtime"]');
-      await expect(runtime.getByTestId("choice-cloud")).toBeVisible();
-      await expect(runtime.getByTestId("choice-local")).toBeVisible();
-      await expect(runtime.getByTestId("choice-remote")).toBeVisible();
+      const scope = page.locator('[data-choice-scope="first-run"]').first();
+      await expect(scope.getByTestId("choice-cloud")).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(scope.getByTestId("choice-local")).toBeVisible();
+      await expect(scope.getByTestId("choice-other")).toBeVisible();
       return {
         assertions: [
-          "Runtime question visible (Eliza Cloud vs local vs own agent)",
-          "choice-cloud / choice-local / choice-remote all visible",
+          "first-run runtime CHOICE rendered in the real chat transcript",
+          "choice-cloud / choice-local / choice-other all visible",
         ],
         dom: await domMarkers(page, {
-          cloud:
-            '[data-choice-scope="first-run-runtime"] [data-testid="choice-cloud"]',
-          local:
-            '[data-choice-scope="first-run-runtime"] [data-testid="choice-local"]',
-          remote:
-            '[data-choice-scope="first-run-runtime"] [data-testid="choice-remote"]',
+          cloud: '[data-choice-scope="first-run"] [data-testid="choice-cloud"]',
+          local: '[data-choice-scope="first-run"] [data-testid="choice-local"]',
+          other: '[data-choice-scope="first-run"] [data-testid="choice-other"]',
         }),
       };
     },
   },
   {
     n: "03",
-    id: "provisioning-ready",
-    title: "Choose runtime → ready",
+    id: "onboarding-provider",
+    title: "Pick local runtime → provider choice",
     expectation:
-      "Choosing the local runtime advances first-run (the 'Where should I run my AI?' provider step) and resolves to a ready agent: the chat overlay + composer are reachable.",
-    async run(ctx) {
-      const { page } = ctx;
-      // Drive the real local-runtime selection (advances to the provider step),
-      // then resolve first-run so the journey lands on a ready agent (real cloud
-      // provisioning is out of scope per JOURNEY.md's surface decision).
-      const local = page
-        .locator('[data-choice-scope="first-run-runtime"]')
-        .getByTestId("choice-local");
-      if (await local.isVisible().catch(() => false)) {
-        await local.click().catch(() => undefined);
-      }
-      await reachChatReady(ctx);
-      await expect(composer(page)).toBeVisible({ timeout: 30_000 });
+      "Clicking 'Run locally' is intercepted by the headless first-run use case (no agent send) and seeds the provider sub-choice: On-device vs Eliza Cloud inference.",
+    async run({ page }) {
+      await page.getByTestId("choice-local").click();
+      await expect(page.getByTestId("choice-provider:on-device")).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(
+        page.getByTestId("choice-provider:elizacloud"),
+      ).toBeVisible();
       return {
         assertions: [
-          "Selected the local runtime choice",
-          "first-run resolved to complete",
-          "chat overlay + composer reachable (ready agent)",
+          "choice-local picked → intercepted by consumeFirstRunChoice (no agent send)",
+          "provider sub-choice seeded (on-device / elizacloud)",
         ],
         dom: await domMarkers(page, {
-          overlay: '[data-testid="continuous-chat-overlay"]',
-          composer: '[data-testid="chat-composer-textarea"]',
+          onDevice: '[data-testid="choice-provider:on-device"]',
+          cloudInference: '[data-testid="choice-provider:elizacloud"]',
         }),
       };
     },
   },
   {
     n: "04",
-    id: "tutorial",
-    title: "Interactive tutorial",
+    id: "provisioning-ready",
+    title: "Provision local agent → ready + tutorial offer",
     expectation:
-      "The /tutorial launcher starts the interactive tour and the 'Meet Eliza' spotlight card renders.",
-    async run({ page }) {
-      await openAppPath(page, "/tutorial");
-      await expect(page.getByTestId("tutorial-launcher")).toBeVisible({
-        timeout: 20_000,
+      "Choosing on-device runs the REAL headless local setup (start → await agent → exactly one POST /api/first-run), resolves to a ready agent, then offers the tutorial-or-skip choice. The chat composer is reachable.",
+    async run(ctx) {
+      const { page } = ctx;
+      await page.getByTestId("choice-provider:on-device").click();
+      // The real local-setup completes, then the conductor seeds the
+      // tutorial-or-skip choice — proof provisioning resolved end to end.
+      await expect(page.getByTestId("choice-tutorial:take")).toBeVisible({
+        timeout: 60_000,
       });
-      await page.getByTestId("tutorial-start").click();
-      await expect(page.getByTestId("tutorial-card")).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(page.getByText(/Meet Eliza/i)).toBeVisible({
-        timeout: 10_000,
-      });
-      // NOTE: do not dismiss the spotlight here — the per-step screenshot is
-      // taken right after this returns, so the 'Meet Eliza' card must still be on
-      // screen to be captured. The next step's full navigation unmounts the tour.
+      await expect(page.getByTestId("choice-tutorial:skip")).toBeVisible();
+      await expect(composer(page)).toBeVisible({ timeout: 30_000 });
       return {
         assertions: [
-          "/tutorial launcher started the tour",
-          "tutorial-card 'Meet Eliza' spotlight visible (captured before dismissal)",
+          "choice-provider:on-device picked → real local setup ran (one POST /api/first-run)",
+          "tutorial-or-skip choice offered after provisioning",
+          "chat composer reachable (ready agent)",
         ],
         dom: await domMarkers(page, {
-          tutorialCard: '[data-testid="tutorial-card"]',
+          tutorialTake: '[data-testid="choice-tutorial:take"]',
+          composer: '[data-testid="chat-composer-textarea"]',
         }),
       };
     },
   },
   {
     n: "05",
+    id: "tutorial",
+    title: "Interactive tutorial (all 8 frames)",
+    expectation:
+      "Taking the tour starts the interactive spotlight and walks every frame in order (welcome → open-chat → resize-chat → ask-to-navigate → use-voice → new-chat → swipe-between-chats → done), exercising the real chat controls and the stalled-frame skip affordance, then completes.",
+    async run(ctx) {
+      const { page } = ctx;
+      await page.getByTestId("choice-tutorial:take").click();
+      // Onboarding is now complete for real (finalizeFirstRun → completeFirstRun
+      // + startTutorial). Flip the mutable first-run status mock to complete so
+      // later reloads stay on the ready chat surface — NOT a fake of onboarding,
+      // which already ran end to end above.
+      ctx.routes.firstRun.setComplete(true);
+      const seen = await driveTutorial(page);
+      await expect(page.getByTestId("tutorial-card")).toHaveCount(0, {
+        timeout: 15_000,
+      });
+      const droppedFrames = TUTORIAL_FRAME_ORDER.filter(
+        (f) => !seen.includes(f),
+      );
+      expect(
+        droppedFrames,
+        `tour skipped frames: ${droppedFrames.join(", ")}`,
+      ).toEqual([]);
+      return {
+        assertions: [
+          "choice-tutorial:take started the interactive tour",
+          `walked all ${seen.length} tour frames: ${seen.join(" → ")}`,
+          "tour completed (no spotlight card remaining)",
+        ],
+        dom: { framesSeen: seen },
+      };
+    },
+  },
+  {
+    n: "06",
     id: "help",
     title: "Help search",
     expectation:
@@ -797,7 +985,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "06",
+    n: "07",
     id: "settings-open",
     title: "Open settings",
     expectation:
@@ -820,7 +1008,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "07",
+    n: "08",
     id: "wallet",
     title: "Wallet view",
     expectation:
@@ -840,7 +1028,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "08",
+    n: "09",
     id: "chat-round-trip",
     title: "Chat a conversation",
     expectation:
@@ -917,7 +1105,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "09",
+    n: "10",
     id: "chat-full-detent",
     title: "Maximize chat",
     expectation:
@@ -957,7 +1145,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "10",
+    n: "11",
     id: "chat-navigate-character",
     title: "Navigate to character editor",
     expectation:
@@ -988,7 +1176,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "11",
+    n: "12",
     id: "character-edit",
     title: "Edit character personality",
     expectation:
@@ -1063,7 +1251,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "12",
+    n: "13",
     id: "new-chat",
     title: "Start a new chat",
     expectation:
@@ -1104,7 +1292,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "13",
+    n: "14",
     id: "home-from-chat",
     title: "Return home from chat",
     expectation:
@@ -1130,7 +1318,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "14",
+    n: "15",
     id: "restore-chat",
     title: "Restore the conversation",
     expectation:
@@ -1162,7 +1350,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "15",
+    n: "16",
     id: "copy-message",
     title: "Copy a message",
     desktopOnly: false,
@@ -1197,7 +1385,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "16",
+    n: "17",
     id: "paste-large",
     title: "Paste large text → attachment",
     expectation:
@@ -1245,7 +1433,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "17",
+    n: "18",
     id: "clear-draft",
     title: "Clear the draft",
     expectation:
@@ -1269,7 +1457,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "18",
+    n: "19",
     id: "chat-pill",
     title: "Collapse chat to the pill",
     expectation:
@@ -1296,7 +1484,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "19",
+    n: "20",
     id: "chat-full-again",
     title: "Re-open chat to full",
     expectation:
@@ -1322,7 +1510,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "20",
+    n: "21",
     id: "input-focused",
     title: "Focus the composer",
     expectation:
@@ -1345,7 +1533,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "21",
+    n: "22",
     id: "launcher",
     title: "Open the view launcher",
     expectation:
@@ -1373,7 +1561,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "22",
+    n: "23",
     id: "launch-view",
     title: "Launch a view",
     expectation:
@@ -1409,7 +1597,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "23",
+    n: "24",
     id: "chat-over-view",
     title: "Open chat over the view",
     expectation:
@@ -1453,7 +1641,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "24",
+    n: "25",
     id: "settings-edit",
     title: "Edit a setting (persist + read-back)",
     expectation:
@@ -1522,7 +1710,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     },
   },
   {
-    n: "25",
+    n: "26",
     id: "dashboard-rest",
     title: "Back to dashboard",
     expectation:
