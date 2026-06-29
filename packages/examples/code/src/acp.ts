@@ -289,6 +289,18 @@ const _connection = new AgentSideConnection(
       // Best-effort: the runtime turn isn't externally cancellable here; the next
       // prompt simply starts a new turn. (Hook into runtime abort when available.)
     },
+    // The elizaOS orchestrator's native ACP transport sends `session/close` on
+    // teardown. It IS a standard ACP method (schema.AGENT_METHODS.session_close),
+    // so the SDK only routes it when the agent implements `closeSession`;
+    // otherwise it returns JSON-RPC "Method not found" (-32601), which the
+    // orchestrator surfaces to the user as a failed task ("Couldn't finish —
+    // Method not found: session/close"). Drop the session entry and ack.
+    async closeSession(params: { sessionId?: string }) {
+      const sessionId = params?.sessionId;
+      if (sessionId) sessions.delete(sessionId);
+      log("session closed", { sessionId });
+      return {};
+    },
   }),
   stream,
 );
