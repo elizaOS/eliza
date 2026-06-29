@@ -114,6 +114,13 @@ export interface Bindings {
   // ---- Stripe ----
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  /**
+   * Optional dedicated signing secret for the Stripe Connect webhook endpoint
+   * (`/api/v1/earnings/payout/stripe-connect/webhook`). Set this only if
+   * Connect events are delivered to a separate Stripe endpoint with its own
+   * `whsec_`; otherwise the handler falls back to STRIPE_WEBHOOK_SECRET.
+   */
+  STRIPE_CONNECT_WEBHOOK_SECRET?: string;
   STRIPE_CURRENCY?: string;
 
   // ---- Crypto payments ----
