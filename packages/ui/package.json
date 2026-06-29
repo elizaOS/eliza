@@ -206,6 +206,11 @@
       "import": "./dist/spatial/tui/index.js",
       "default": "./dist/spatial/tui/index.js"
     },
+    "./spatial/immersive": {
+      "types": "./dist/spatial/xr-immersive.d.ts",
+      "import": "./dist/spatial/xr-immersive.js",
+      "default": "./dist/spatial/xr-immersive.js"
+    },
     "./first-run/*": {
       "types": "./dist/first-run/*.d.ts",
       "import": "./dist/first-run/*.js",

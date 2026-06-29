@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  arrangeOnArc,
   billboardOrientation,
   type Camera,
   deviceRay,
@@ -23,6 +24,28 @@ import {
   type Viewport,
   vec3,
 } from "../xr-scene-math.ts";
+
+describe("arrangeOnArc", () => {
+  it("places a single panel straight ahead at the arc distance", () => {
+    const [p] = arrangeOnArc(1, { distance: 2.4, center: vec3(0, 1.6, 0) });
+    expect(p.x).toBeCloseTo(0, 6);
+    expect(p.y).toBeCloseTo(1.6, 6);
+    expect(p.z).toBeCloseTo(-2.4, 6); // straight down −Z
+  });
+
+  it("fans multiple panels symmetrically across the frontal arc", () => {
+    const arc = arrangeOnArc(3, { distance: 2, center: vec3(0, 1.6, 0) });
+    expect(arc).toHaveLength(3);
+    // Left panel mirrors the right; centre sits on the axis.
+    expect(arc[0].x).toBeCloseTo(-arc[2].x, 6);
+    expect(arc[1].x).toBeCloseTo(0, 6);
+    // Every panel is the same distance from the centre.
+    for (const p of arc) {
+      expect(Math.hypot(p.x, p.z)).toBeCloseTo(2, 6);
+      expect(p.z).toBeLessThan(0); // in front
+    }
+  });
+});
 
 const VIEWPORT: Viewport = { width: 1280, height: 720 };
 

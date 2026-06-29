@@ -61,6 +61,16 @@ export type {
   SpatialTone,
 } from "./ir.ts";
 export { isContainer, resolvePadding } from "./ir.ts";
+// Panel → texture — draw panel content to an origin-clean 2D canvas the immersive
+// renderer uploads as a textured quad (foreignObject DOM snapshots taint WebGL).
+export {
+  type PanelContent,
+  type PanelTexel,
+  type RasterizeOptions,
+  rasterizePanelToCanvas,
+  solidColorTexel,
+  wrapText,
+} from "./panel-texture.ts";
 // Authoring vocabulary (the primitives + sugar).
 export {
   Button,
