@@ -238,8 +238,8 @@ def resolveAndroidLibompForAbi = { String abi ->
 // TTS/Kokoro, ASR, VAD, vision; see verify-fused-symbols.mjs for the symbol gate.)
 task copyForkLlamaLib {
     doLast {
-        if (project.findProperty('elizaCloudBuild') == 'true') {
-            println "[copyForkLlamaLib] skipped for cloud build"
+        if (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {
+            println "[copyForkLlamaLib] skipped for cloud/smoke build"
             return
         }
         boolean stagedArm64 = false

@@ -7,16 +7,21 @@
 import {
   type AndroidDevice,
   _android as android,
+  type Browser,
   test as base,
+  chromium,
   expect,
   type Page,
 } from "@playwright/test";
 // The shared device lib is plain ESM (.mjs); import the values we need.
 import {
   APP_ID,
+  adbRemoveForward,
   appPid,
   connectPlaywrightDevice,
+  discoverWebViewTarget,
   foregroundApp,
+  forwardWebViewCdp,
   resolveAdb,
 } from "../../scripts/lib/android-device.mjs";
 
@@ -95,35 +100,80 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   appPage: [
     async ({ device }, use) => {
       const adb = resolveAdb();
+      let cdpBrowser: Browser | null = null;
+      let cdpPort: number | null = null;
       // Foreground (don't force-stop) so an already-connected agent/device-bridge
       // session survives; force-stopping resets it and the shell never recovers.
       foregroundApp(adb, device.serial());
       for (let i = 0; i < 30 && !appPid(adb, device.serial()); i += 1) {
         await delay(500);
       }
-      const webview = await device.webView(
-        { pkg: APP_ID },
-        { timeout: 60_000 },
-      );
-      const page = await webview.page();
-      await page.waitForLoadState("domcontentloaded").catch(() => {});
-      await page.evaluate((seed: Record<string, string>) => {
-        for (const [key, value] of Object.entries(seed)) {
-          localStorage.setItem(key, value);
+
+      let page: Page;
+      try {
+        const webview = await device.webView(
+          { pkg: APP_ID },
+          { timeout: 60_000 },
+        );
+        page = await webview.page();
+      } catch (error) {
+        cdpPort = Number(process.env.ELIZA_ANDROID_WEBVIEW_CDP_PORT ?? 9222);
+        try {
+          forwardWebViewCdp(adb, device.serial(), cdpPort);
+          const target = await discoverWebViewTarget(cdpPort, {
+            timeoutMs: 60_000,
+          });
+          cdpBrowser = await chromium.connectOverCDP(
+            `http://127.0.0.1:${cdpPort}`,
+          );
+          const pages = cdpBrowser
+            .contexts()
+            .flatMap((context) => context.pages());
+          page =
+            pages.find((candidate) => candidate.url() === target.url) ??
+            pages.find((candidate) => candidate.url().startsWith(ORIGIN)) ??
+            pages[0];
+          if (!page) {
+            throw new Error(
+              `Connected to Android WebView CDP on ${cdpPort}, but no page target was available after _android.webView() failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        } catch (fallbackError) {
+          await cdpBrowser?.close().catch(() => {});
+          adbRemoveForward(adb, device.serial(), cdpPort);
+          cdpPort = null;
+          cdpBrowser = null;
+          throw fallbackError;
         }
-      }, SEED_STORAGE);
-      // Only reload into a clean shell if the app isn't already rendered — a
-      // reload re-bootstraps the connection and can dead-end on a stock device.
-      if (!(await isShellReady(page))) {
-        await page
-          .goto(`${ORIGIN}/`, {
-            waitUntil: "domcontentloaded",
-            timeout: 20_000,
-          })
-          .catch(() => {});
-        await waitForShellReady(page);
       }
-      await use(page);
+
+      try {
+        await page.waitForLoadState("domcontentloaded").catch(() => {});
+        await page.evaluate((seed: Record<string, string>) => {
+          for (const [key, value] of Object.entries(seed)) {
+            localStorage.setItem(key, value);
+          }
+        }, SEED_STORAGE);
+        // Only reload into a clean shell if the app isn't already rendered — a
+        // reload re-bootstraps the connection and can dead-end on a stock device.
+        if (!(await isShellReady(page))) {
+          await page
+            .goto(`${ORIGIN}/`, {
+              waitUntil: "domcontentloaded",
+              timeout: 20_000,
+            })
+            .catch(() => {});
+          await waitForShellReady(page);
+        }
+        await use(page);
+      } finally {
+        await cdpBrowser?.close().catch(() => {});
+        if (cdpPort !== null) {
+          adbRemoveForward(adb, device.serial(), cdpPort);
+        }
+      }
     },
     { scope: "worker" },
   ],

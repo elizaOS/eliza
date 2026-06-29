@@ -57,8 +57,8 @@ leave it blank.
 | **Real LLM-call trajectory** | agent behavior, actions, providers, prompts, models | `scenario-runner` against a **live** LLM (not the deterministic proxy) — JSON report + run viewer + native jsonl | scenario report path + `.github/issue-evidence/` |
 | **Backend logs** | runtime, API, services, schedulers | structured logger output (`[ClassName] …`) showing the code path firing end to end | paste in PR + file in `.github/issue-evidence/` |
 | **Frontend logs** | any UI / client | browser console + network trace showing the request/response and state change | paste in PR + screenshot |
-| **Full-page screenshots** | any UI change | `audit:cloud` (cloud-frontend) or `test:e2e:record` sheets; before **and** after | `.github/issue-evidence/` |
-| **Video walkthrough** | any user-facing flow | `bun run test:e2e:record` (records the run) — a full click-through of the feature | `.github/issue-evidence/` (link if large) |
+| **Full-page screenshots** | any UI / client surface | the per-platform matrix below; before **and** after for the touched surface | `.github/issue-evidence/` |
+| **Video walkthrough** | any user-facing flow | the per-platform matrix below; a full click-through of the feature | `.github/issue-evidence/` (link if large) |
 | **Audio/voice walkthrough** | voice, transcript, TTS/STT, omnivoice | captured audio of the real round-trip + a narrated walkthrough of what's happening | `.github/issue-evidence/` (link if large) |
 
 The point of all six is the same: **prove the real thing happened.** Real model
@@ -79,6 +79,10 @@ bun run test:e2e:record                  # scripts/e2e-recordings/run-all.mjs
 bun run test:e2e:record:sheets           # regenerate contact sheets + viewer
 bun run test:e2e:audit-ui                # coverage of which routes are recorded
 
+# Native mobile simulator/emulator captures (screenshots + recordings + logs):
+EVIDENCE_ISSUE=<issue#> bun run test:e2e:record -- --packages=ios-sim
+EVIDENCE_ISSUE=<issue#> bun run test:e2e:record -- --packages=android-emu
+
 # Cloud-frontend per-route screenshots (desktop + mobile, rest + hover), with a
 # manual-review verdict stub per page — REQUIRED for cloud-frontend UI changes:
 bun run --cwd packages/cloud-frontend audit:cloud
@@ -89,8 +93,8 @@ bun run --cwd packages/cloud-frontend audit:cloud
 Screenshot **+** recording **+** logs are the default-required set for any change
 that touches a runnable surface — pick the row(s) for the platform(s) your change
 actually runs on. "N/A" is allowed only with an explicit reason (a platform you
-did not touch), never a blank. Rows marked **TODO** have no orchestrated tooling
-yet; capture manually and say so until the tooling lands.
+did not touch), never a blank. Rows marked **partial** still need the missing
+evidence captured manually and called out in the PR until full tooling lands.
 
 | Platform | One command (screenshot + recording + logs) | Status |
 | --- | --- | --- |
@@ -140,6 +144,10 @@ versionName`) before trusting any on-device screenshot.
   proof.
 - E2E recordings/sheets: under the recordings dir produced by
   `test:e2e:record`; link or embed the relevant frames.
+- Native mobile capture helpers also copy canonical PR artifacts under
+  `.github/issue-evidence/<issue#>-ios-sim-capture/` or
+  `.github/issue-evidence/<issue#>-android-emu-capture/`, and mirror a compact
+  bundle under `e2e-recordings/<platform>/test-results/native-capture/`.
 - Cloud-frontend audit: `packages/cloud-frontend/aesthetic-audit-output/`
   (fill `manual-review/<slug>.md` per page — no page may stay `needs-work` /
   `broken`).
@@ -155,7 +163,6 @@ so the proof survives even if the link rots.
 - [ ] Relevant tests pass (`bun run test`, or the scoped `--cwd <pkg> test`).
 - [ ] For agent/LLM behavior: a **real-LLM** trajectory is attached and matches the claim.
 - [ ] Backend and/or frontend logs attached, showing the actual code path.
-- [ ] For UI: before/after full-page screenshots + a video walkthrough.
 - [ ] For each platform the change runs on (web/cloud-frontend/app/desktop/ios-sim/android-emu/linux/windows): screenshot **+** recording **+** logs are attached via the [per-platform matrix](#per-platform-capture-matrix) command, or N/A with a reason.
 - [ ] For voice/audio: captured audio of the real round-trip + a narrated walkthrough.
 - [ ] Every evidence row above is either attached **or** explicitly marked N/A with a reason.

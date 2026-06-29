@@ -13,6 +13,7 @@ import {
   ANDROID_CLOUD_STRIPPED_JAVA_FILES,
   androidAospRoleLauncherIntentFilter,
   ensureAndroidMainActivityShortcutsMetadata,
+  injectCopyForkLlamaLibTask,
   patchAndroidAppActionsXmlResource,
   removeInactiveAndroidJavaSourceRoots,
   validateAndroidAppActionsXmlResource,
@@ -115,6 +116,30 @@ test("Android cloud strip removes voice capture plugin with its service", () => 
   assert.ok(
     ANDROID_CLOUD_STRIPPED_JAVA_FILES.includes("VoiceCapturePlugin.java"),
   );
+});
+
+test("Android fork llama copy task honors the CI smoke opt-out", () => {
+  const gradle = `plugins { id 'com.android.application' }
+
+android {
+    namespace "ai.elizaos.app"
+}
+`;
+
+  const patched = injectCopyForkLlamaLibTask(gradle);
+
+  assert.match(patched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
+  assert.match(patched, /skipped for cloud\/smoke build/);
+
+  const repatched = injectCopyForkLlamaLibTask(
+    patched.replace(
+      "project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'",
+      "project.findProperty('elizaCloudBuild') == 'true'",
+    ).replace("skipped for cloud/smoke build", "skipped for cloud build"),
+  );
+
+  assert.match(repatched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
+  assert.doesNotMatch(repatched, /skipped for cloud build/);
 });
 
 test("Android App Actions shortcuts are rewritten to the configured package and URL scheme", () => {

@@ -78,20 +78,30 @@ export const UI_E2E_SUITES = [
       "Runs the standalone Feed DAG visualizer browser e2e with screenshots, traces, and videos.",
   },
   {
-    name: "ios-sim",
-    displayName: "iOS simulator capture",
+    name: "android-emu",
+    displayName: "Android emulator app capture",
     configDir: "packages/app",
-    script: "capture:ios-sim",
+    command: ["node", "scripts/e2e-recordings/capture-android-emu.mjs"],
+    checkCommand: [
+      "node",
+      "scripts/e2e-recordings/capture-android-emu.mjs",
+      "--check",
+    ],
     coverage:
-      "Captures a booted iOS simulator (simctl screenshot + recordVideo + best-effort backend log) into .github/issue-evidence/. Skips with a reason (exit 0) off macOS or when no simulator is booted, so it is safe in the sweep on Linux CI.",
+      "Boots or reuses an Android emulator, starts the deterministic host agent, drives the real Capacitor onboarding flow, and writes emulator screenshot, screenrecord, logcat, and capture logs to issue evidence.",
   },
   {
-    name: "android-emu",
-    displayName: "Android emulator capture",
+    name: "ios-sim",
+    displayName: "iOS simulator app capture",
     configDir: "packages/app",
-    script: "capture:android-emu",
+    command: ["node", "scripts/e2e-recordings/capture-ios-sim.mjs"],
+    checkCommand: [
+      "node",
+      "scripts/e2e-recordings/capture-ios-sim.mjs",
+      "--check",
+    ],
     coverage:
-      "Captures an attached Android emulator/device (adb screencap + screenrecord + logcat tail) into .github/issue-evidence/. Skips with a reason (exit 0) when adb is missing or no device is attached.",
+      "Boots or reuses an iOS Simulator, starts the deterministic host agent, drives first-run onboarding, and writes simulator screenshots, recordVideo output, smoke result JSON, and capture logs to issue evidence.",
   },
 ];
 
