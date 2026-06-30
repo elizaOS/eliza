@@ -115,15 +115,25 @@ function changeSet(): WorkspaceChangeSet {
 
 describe("auto-verify completion evidence pipeline", () => {
   const prevFlag = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+  const prevIndependent = process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY;
 
   beforeEach(() => {
     process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "1";
+    // Isolate the TEXT-JUDGE evidence path: the #8898 independent verifier is a
+    // separate gate that precedes the judge for code-change tasks; turn it off
+    // here so these assertions exercise the evidence assembly the judge sees.
+    process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY = "0";
   });
   afterEach(() => {
     if (prevFlag === undefined) {
       delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
     } else {
       process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = prevFlag;
+    }
+    if (prevIndependent === undefined) {
+      delete process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY;
+    } else {
+      process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY = prevIndependent;
     }
   });
 

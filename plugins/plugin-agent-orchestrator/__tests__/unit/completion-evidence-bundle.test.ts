@@ -176,10 +176,15 @@ describe("classifyToolOutput", () => {
 
 describe("completion-evidence bundle assembly + trajectory persistence", () => {
   const prevFlag = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+  const prevIndependent = process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY;
   let workdir: string;
 
   beforeEach(async () => {
     process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "1";
+    // Isolate the TEXT-JUDGE evidence path: the #8898 independent verifier is a
+    // separate gate that precedes the judge for code-change tasks; turn it off
+    // here so these assertions exercise the evidence bundle the judge sees.
+    process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY = "0";
     workdir = await mkdtemp(join(tmpdir(), "evidence-bundle-"));
   });
   afterEach(() => {
@@ -187,6 +192,11 @@ describe("completion-evidence bundle assembly + trajectory persistence", () => {
       delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
     } else {
       process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = prevFlag;
+    }
+    if (prevIndependent === undefined) {
+      delete process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY;
+    } else {
+      process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY = prevIndependent;
     }
   });
 

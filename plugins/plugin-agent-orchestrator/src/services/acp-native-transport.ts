@@ -559,6 +559,13 @@ export class NativeAcpClient {
     if (this.opts.approvalPreset === "standard") {
       return kind === "read" || kind === "search";
     }
+    // Independent verifier (#8898): may read, search, and EXECUTE (run tests /
+    // build / git diff) but is hard-blocked from edit/write/delete — writeTextFile
+    // throws PermissionDeniedError off this gate, so read-only is enforced at the
+    // transport, not by prompt text.
+    if (this.opts.approvalPreset === "verifier") {
+      return kind === "read" || kind === "search" || kind === "execute";
+    }
     return false;
   }
 
