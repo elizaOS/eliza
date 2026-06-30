@@ -2,7 +2,7 @@
  * Signal connector setup HTTP routes.
  *
  * Implements the shared setup contract defined in
- * `@elizaos/app-core/api/setup-contract.ts`:
+ * `@elizaos/core` (`packages/core/src/types/connector-setup.ts`):
  *
  *   GET  /api/setup/signal/status   check current connection / pairing state
  *   POST /api/setup/signal/start    start (or restart) a QR device-linking session

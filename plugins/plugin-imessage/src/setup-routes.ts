@@ -2,7 +2,7 @@
  * iMessage connector setup routes.
  *
  * Implements the shared setup contract defined in
- * `@elizaos/app-core/api/setup-contract.ts`:
+ * `@elizaos/core` (`packages/core/src/types/connector-setup.ts`):
  *
  *   GET  /api/setup/imessage/status   service health + connection state
  *   POST /api/setup/imessage/start    mark iMessage as enabled in connector config

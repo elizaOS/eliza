@@ -2,7 +2,7 @@
  * BlueBubbles connector HTTP setup routes.
  *
  * Implements the shared setup contract defined in
- * `@elizaos/app-core/api/setup-contract.ts`:
+ * `@elizaos/core` (`packages/core/src/types/connector-setup.ts`):
  *
  *   GET  /api/setup/bluebubbles/status   service health + webhook path
  *   POST /api/setup/bluebubbles/start    save server URL + password and reconnect
