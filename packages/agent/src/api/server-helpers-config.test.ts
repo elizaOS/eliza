@@ -12,7 +12,9 @@ describe("isSafeResetStateDir", () => {
   const home = "/home/user";
 
   it("allows a state dir under home that carries an 'eliza' segment", () => {
-    expect(isSafeResetStateDir("/home/user/.local/state/eliza", home)).toBe(true);
+    expect(isSafeResetStateDir("/home/user/.local/state/eliza", home)).toBe(
+      true,
+    );
     expect(isSafeResetStateDir("/home/user/eliza", home)).toBe(true);
   });
 
@@ -35,6 +37,8 @@ describe("isSafeResetStateDir", () => {
 
   it("refuses a dir under home that lacks the allowed segment", () => {
     expect(isSafeResetStateDir("/home/user/Documents", home)).toBe(false);
-    expect(isSafeResetStateDir("/home/user/.local/state/milady", home)).toBe(false);
+    expect(isSafeResetStateDir("/home/user/.local/state/milady", home)).toBe(
+      false,
+    );
   });
 });
