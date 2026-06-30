@@ -33,8 +33,11 @@
  * Exits non-zero on any real glitch or a failed canary.
  */
 
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -232,6 +235,74 @@ function crop(png, w, h) {
   return o;
 }
 
+// Resolve an ffmpeg binary: PATH first (CI ubuntu via `playwright install
+// --with-deps`), else Playwright's bundled win64 binary on this box.
+function resolveFfmpeg() {
+  const tryRun = (bin) => {
+    try {
+      execFileSync(bin, ["-version"], { stdio: "ignore" });
+      return bin;
+    } catch {
+      return null;
+    }
+  };
+  if (process.env.FFMPEG_PATH && existsSync(process.env.FFMPEG_PATH)) {
+    return process.env.FFMPEG_PATH;
+  }
+  const onPath = tryRun("ffmpeg");
+  if (onPath) return onPath;
+  const pwDir = join(homedir(), "AppData", "Local", "ms-playwright");
+  if (existsSync(pwDir)) {
+    for (const d of readdirSync(pwDir)) {
+      if (!d.startsWith("ffmpeg")) continue;
+      const exe = join(pwDir, d, "ffmpeg-win64.exe");
+      if (existsSync(exe)) return exe;
+    }
+  }
+  return null;
+}
+
+// Assemble the full frame burst into an animated GIF — a real "screen recording"
+// of the transition for the issue. Best-effort: if ffmpeg is unavailable the run
+// still passes (the per-frame PNGs + summary remain the primary evidence).
+async function recordTransition(allFrames, gifPath) {
+  const ffmpeg = resolveFfmpeg();
+  if (!ffmpeg) {
+    console.log("  (ffmpeg not found — skipping GIF recording)");
+    return false;
+  }
+  const tmp = join(outDir, "gif-frames");
+  await mkdir(tmp, { recursive: true });
+  for (let i = 0; i < allFrames.length; i += 1) {
+    await writeFile(
+      join(tmp, `f-${String(i).padStart(4, "0")}.png`),
+      Buffer.from(allFrames[i].data, "base64"),
+    );
+  }
+  try {
+    // 12fps, scaled to 360px wide with lanczos + a generated palette for clean
+    // colors. Two-pass (palettegen → paletteuse) keeps the GIF small + sharp.
+    const palette = join(tmp, "palette.png");
+    execFileSync(
+      ffmpeg,
+      ["-y", "-framerate", "12", "-i", join(tmp, "f-%04d.png"),
+       "-vf", "scale=360:-1:flags=lanczos,palettegen", palette],
+      { stdio: "ignore" },
+    );
+    execFileSync(
+      ffmpeg,
+      ["-y", "-framerate", "12", "-i", join(tmp, "f-%04d.png"), "-i", palette,
+       "-lavfi", "scale=360:-1:flags=lanczos[x];[x][1:v]paletteuse", gifPath],
+      { stdio: "ignore" },
+    );
+    console.log(`  🎬 recording → ${gifPath}`);
+    return true;
+  } catch (err) {
+    console.log(`  (ffmpeg GIF failed: ${err.message} — skipping)`);
+    return false;
+  }
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 const browser = await chromium.launch();
 const sink = { logs: [], errors: [], requests: [] };
@@ -423,6 +494,9 @@ await writeFile(
   join(evidenceDir, `diff-overlay-peak-${peak}-${peak + 1}.png`),
   PNG.sync.write(pairDiff[peak].out),
 );
+// The full burst as an animated GIF — a real recording of the transition.
+const gifPath = join(evidenceDir, "transition.gif");
+const recorded = await recordTransition(frames, gifPath);
 const summary = {
   issue: 9142,
   part: 2,
@@ -431,6 +505,7 @@ const summary = {
   endState,
   frames: frames.length,
   samples: samples.length,
+  recording: recorded ? "transition.gif" : null,
   crossfade: { pillMax, grabberMax },
   pairDiffs: pairDiff.map((d) => d.n),
   flashes,
