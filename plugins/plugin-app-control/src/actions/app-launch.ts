@@ -27,7 +27,7 @@ export async function runLaunch({
 	const target = extractLaunchTarget(message, options);
 	if (!target) {
 		const text =
-			'I need the app name to launch. Try: "launch shopify" or pass { app: "companion" }.';
+			'I need the app name to launch. Try: "launch shopify" or pass { app: "feed" }.';
 		await callback?.({ text });
 		return { success: false, text };
 	}

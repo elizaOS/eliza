@@ -29,7 +29,6 @@ export const CONTEXT_VIEWS = [
 	"documents",
 	"relationships",
 	"focus",
-	"companion",
 	"task-coordinator",
 ] as const;
 

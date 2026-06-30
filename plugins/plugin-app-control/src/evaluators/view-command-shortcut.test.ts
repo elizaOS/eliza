@@ -114,10 +114,6 @@ describe("viewCommandShortcutEvaluator — does NOT fire", () => {
 		expect(await run("i need to fix the login bug")).toBeNull();
 		expect(await run("I want to add a new feature to my app")).toBeNull();
 	});
-	it("on companion emote commands", async () => {
-		expect(await run("run the companion avatar wave emote action")).toBeNull();
-		expect(await run("make my avatar wave")).toBeNull();
-	});
 	it("on XR camera perception requests owned by XR_QUERY_VISION", async () => {
 		expect(
 			await run(

@@ -40,7 +40,6 @@ const VIEW_IDS = [
   "todos",
   "documents",
   "relationships",
-  "companion",
   "task-coordinator",
   "help",
   "character",
@@ -79,7 +78,6 @@ const CASES: Case[] = [
   { prompt: "open my todos", expected: "todos", kind: "direct" },
   { prompt: "take me to my documents", expected: "documents", kind: "direct" },
   { prompt: "open my goals", expected: "goals", kind: "direct" },
-  { prompt: "show my companion", expected: "companion", kind: "direct" },
   // passive intent (no show-verb)
   {
     prompt: "what's on my schedule today",

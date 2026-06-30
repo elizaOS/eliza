@@ -2045,8 +2045,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"relationships",
 			"people",
 			"network",
-			"companion",
-			"avatar",
 			"settings",
 			"preferences",
 			"coding",

@@ -20,7 +20,6 @@ const REGISTERED_VIEW_IDS = [
 	"documents",
 	"relationships",
 	"focus",
-	"companion",
 	"task-coordinator",
 ];
 
