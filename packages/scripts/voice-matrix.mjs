@@ -992,6 +992,11 @@ async function main() {
       args.platforms.has(cell.platform) ||
       args.platforms.has(cell.id),
   );
+  const platformFilters = Array.from(args.platforms).sort();
+  const selectionError =
+    args.platforms.size > 0 && selected.length === 0
+      ? `no voice matrix cells matched --platform=${platformFilters.join(",")}`
+      : null;
   const cells = [];
   for (const cell of selected) {
     const probe = probeCell(cell);
@@ -1034,6 +1039,11 @@ async function main() {
     generatedAt: new Date().toISOString(),
     mode: args.run ? "run" : "probe",
     dimensions: DIMENSIONS,
+    selection: {
+      platformFilters,
+      matched: selected.length,
+      error: selectionError,
+    },
     host: {
       platform: process.platform,
       arch: process.arch,
@@ -1061,8 +1071,10 @@ async function main() {
   console.log(
     `[voice:matrix] pass=${summary.pass} fail=${summary.fail} pending=${summary.pending} skip=${summary.skip}`,
   );
+  if (selectionError) console.error(`[voice:matrix] ${selectionError}`);
 
   if (
+    selectionError ||
     summary.fail > 0 ||
     (args.requireGreen && (summary.pending > 0 || summary.skip > 0))
   ) {

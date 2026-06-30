@@ -50,6 +50,9 @@ bun run voice:matrix -- --run --platform linux
 Use `--require-green` on any opted-in hardware lane; it turns `pending` or
 `skip` into a failing exit so a readiness variable cannot produce green evidence
 while a device, app install, model, or reviewed report is missing.
+`--platform` accepts a platform value or exact cell ID; a supplied filter that
+matches no cells is a failing configuration and is recorded in
+`selection.error`.
 
 To validate the Stage-B STT benchmark cell, point the matrix at the reviewed
 report:
