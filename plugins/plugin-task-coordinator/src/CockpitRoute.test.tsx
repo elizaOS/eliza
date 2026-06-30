@@ -30,6 +30,7 @@ vi.mock("@elizaos/ui", () => ({
   CockpitView: (props: {
     rooms: { rooms: unknown[] } | null;
     onCreateSession: (i: unknown) => void;
+    onSelectRoom?: (id: string) => void;
     busy?: boolean;
     error?: string | null;
   }) => (
@@ -53,6 +54,26 @@ vi.mock("@elizaos/ui", () => ({
         }
       >
         spawn
+      </button>
+      <button
+        type="button"
+        data-testid="drill-in"
+        onClick={() => props.onSelectRoom?.("task-1")}
+      >
+        open
+      </button>
+    </div>
+  ),
+}));
+
+// Stub the (separately-tested) heavy session pane — the container test only
+// proves the drill-in ROUTING (deck ⇄ pane), not the pane internals.
+vi.mock("./CockpitSessionPane", () => ({
+  CockpitSessionPane: (props: { taskId: string; onBack: () => void }) => (
+    <div>
+      <span data-testid="pane-task">{props.taskId}</span>
+      <button type="button" data-testid="pane-back" onClick={props.onBack}>
+        back
       </button>
     </div>
   ),
@@ -110,6 +131,21 @@ describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)",
         }),
       ),
     );
+  });
+
+  it("drills into a room and back (deck ⇄ session pane)", async () => {
+    render(<CockpitRoute />);
+    await waitFor(() => expect(mocks.getOrchestratorRooms).toHaveBeenCalled());
+    // tap a deck room → the focused session pane replaces the deck
+    fireEvent.click(screen.getByTestId("drill-in"));
+    await waitFor(() =>
+      expect(screen.getByTestId("pane-task").textContent).toBe("task-1"),
+    );
+    expect(screen.queryByTestId("rooms-count")).toBeNull();
+    // back → the deck returns
+    fireEvent.click(screen.getByTestId("pane-back"));
+    await waitFor(() => expect(screen.getByTestId("rooms-count")).toBeTruthy());
+    expect(screen.queryByTestId("pane-task")).toBeNull();
   });
 
   it("surfaces a roster-fetch error", async () => {

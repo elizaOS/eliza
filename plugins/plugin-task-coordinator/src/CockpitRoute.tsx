@@ -5,6 +5,7 @@ import {
   type OrchestratorRoomRosterOverview,
 } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
+import { CockpitSessionPane } from "./CockpitSessionPane";
 
 /** How often the deck re-polls the live task-room roster. */
 const ROOMS_POLL_INTERVAL_MS = 4_000;
@@ -22,6 +23,8 @@ export function CockpitRoute() {
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Drill-in: which task room is focused (its session pane replaces the deck).
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -73,12 +76,24 @@ export function CockpitRoute() {
     [refresh],
   );
 
+  // Drilled into a room → its focused session pane (transcript + controls +
+  // the bubble drives THIS task). Back returns to the deck.
+  if (selectedTaskId) {
+    return (
+      <CockpitSessionPane
+        taskId={selectedTaskId}
+        onBack={() => setSelectedTaskId(null)}
+      />
+    );
+  }
+
   return (
     <CockpitView
       rooms={rooms}
       onCreateSession={onCreateSession}
       busy={busy}
       error={error}
+      onSelectRoom={setSelectedTaskId}
     />
   );
 }
