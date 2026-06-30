@@ -1,0 +1,6 @@
+▲ [WARNING] The condition "types" here will never be used as it comes after "default" [package.json]
+ RUN  v4.1.5 C:/Users/Administrator/Documents/eliza/.claude/worktrees/nifty-vaughan-c68363/packages/agent
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+   Start at  23:05:22
+   Duration  8.89s (transform 6.64s, setup 124ms, import 7.71s, tests 673ms, environment 32ms)
