@@ -99,18 +99,23 @@ export async function deployApp(
   const mode = req.databaseMode ?? DEFAULT_APP_DATABASE_MODE;
   const dsn = mode === "isolated" ? await deps.ensureTenantDb(req.appId) : undefined;
   // Strip caller-supplied platform-reserved keys (managed DB DSN, cloud API
-  // token, metered-identity keys) BEFORE injecting platform values. Without this
-  // a stateless ("none"-mode) app could set DATABASE_URL/POSTGRES_URL to point at
-  // an arbitrary DB, or pre-empt a managed identity key. The agent path already
-  // enforces this denylist (findReservedManagedElizaEnvKeys); the app path must
-  // too. POSTGRES_URL is added to the shared platform list because it is the
-  // app-container DB var (DATABASE_URL is already reserved).
+  // token, metered-identity keys, app attribution id) BEFORE injecting platform
+  // values. Without this a stateless ("none"-mode) app could set
+  // DATABASE_URL/POSTGRES_URL to point at an arbitrary DB, pre-empt a managed
+  // identity key, or spoof the app id used for monetization attribution. The
+  // agent path already enforces this denylist (findReservedManagedElizaEnvKeys);
+  // the app path must too. POSTGRES_URL is added to the shared platform list
+  // because it is the app-container DB var (DATABASE_URL is already reserved).
   const safeCallerEnv = stripReservedEnvKeys(req.env ?? {}, [
     ...RESERVED_PLATFORM_ENV_KEYS,
+    "ELIZA_APP_ID",
     "POSTGRES_URL",
   ]);
   const environmentVars = {
     ...safeCallerEnv,
+    // Platform-owned app attribution. Injected for both stateless and isolated
+    // apps so in-container SDK calls can identify the deployed app.
+    ELIZA_APP_ID: req.appId,
     // Platform-owned DB values are injected last so they always win for isolated
     // apps; stateless apps get neither var (and can no longer inject one).
     ...(dsn ? { DATABASE_URL: dsn, POSTGRES_URL: dsn } : {}),
@@ -123,11 +128,12 @@ export async function deployApp(
     containerName: req.containerName,
     image: req.image,
     port: req.port ?? 3000,
-    // Isolated apps get their OWN per-tenant DSN under BOTH `DATABASE_URL` (the
-    // de-facto standard most apps read) and `POSTGRES_URL` (what plugin-sql /
-    // eliza-based images read) — never the shared agent DATABASE_URL, and never a
-    // silent fallback to a throwaway local/PGlite store. Stateless ("none") apps
-    // get neither var.
+    // Every app gets the platform-owned ELIZA_APP_ID for attribution. Isolated
+    // apps additionally get their OWN per-tenant DSN under BOTH `DATABASE_URL`
+    // (the de-facto standard most apps read) and `POSTGRES_URL` (what plugin-sql
+    // / eliza-based images read) — never the shared agent DATABASE_URL, and
+    // never a silent fallback to a throwaway local/PGlite store. Stateless
+    // ("none") apps get no DB vars.
     environmentVars,
   });
 
