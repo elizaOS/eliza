@@ -8,23 +8,14 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import { sunoGenerateMusicHandler } from "@elizaos/plugin-suno";
-import { isPlaybackTransportControlOnlyMessage } from "../utils/playbackTransportIntent";
 import { mergedOptions } from "./confirmation";
 import { manageRouting } from "./manageRouting";
 import { manageZones } from "./manageZones";
-import {
-  inferMusicLibraryOp,
-  MUSIC_LIBRARY_OP_ALIASES,
-  musicLibraryAction,
-} from "./musicLibrary";
+import { MUSIC_LIBRARY_OP_ALIASES, musicLibraryAction } from "./musicLibrary";
 import { playAudio } from "./playAudio";
-import {
-  inferOpFromText,
-  normalizeOp,
-  playbackOp,
-  validatePlaybackControl,
-} from "./playbackOp";
+import { normalizeOp, playbackOp } from "./playbackOp";
 
 function jsonHandlerOptions(
   record: Record<string, unknown>,
@@ -209,6 +200,131 @@ function readExplicitSubaction(
   return null;
 }
 
+function readParsedAction(parsed: Record<string, unknown>): unknown {
+  const response = parsed.response;
+  if (response && typeof response === "object" && !Array.isArray(response)) {
+    return (response as Record<string, unknown>).action;
+  }
+  return parsed.action;
+}
+
+function getMessageText(message: Memory): string {
+  return typeof message.content.text === "string" ? message.content.text : "";
+}
+
+function readString(merged: Record<string, unknown>, key: string): string {
+  const value = merged[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readStringArray(
+  merged: Record<string, unknown>,
+  key: string,
+): string[] {
+  const value = merged[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function hasDirectUrl(merged: Record<string, unknown>): boolean {
+  const candidates = [readString(merged, "url"), readString(merged, "query")];
+  return candidates.some((value) => /^https?:\/\/\S+$/i.test(value));
+}
+
+function hasRoutingParams(merged: Record<string, unknown>): boolean {
+  return (
+    readString(merged, "routingAction").length > 0 ||
+    readString(merged, "mode").length > 0 ||
+    readString(merged, "sourceId").length > 0 ||
+    readStringArray(merged, "targetIds").length > 0
+  );
+}
+
+function hasZoneParams(merged: Record<string, unknown>): boolean {
+  const operation = readString(merged, "operation").toLowerCase();
+  return (
+    (operation === "create" ||
+      operation === "delete" ||
+      operation === "show" ||
+      operation === "list" ||
+      operation === "add" ||
+      operation === "remove") &&
+    (operation === "list" ||
+      readString(merged, "zoneName").length > 0 ||
+      readStringArray(merged, "targetIds").length > 0)
+  );
+}
+
+function hasGenerationParams(merged: Record<string, unknown>): boolean {
+  return Boolean(
+    readString(merged, "audio_id") ||
+      readString(merged, "reference_audio") ||
+      readString(merged, "style") ||
+      typeof merged.bpm === "number" ||
+      readString(merged, "key") ||
+      readString(merged, "prompt"),
+  );
+}
+
+/**
+ * Pick the MUSIC subaction via model structured extraction when the planner did
+ * not already provide an explicit action/op/subaction. This replaces the old
+ * English regex fallback in the umbrella dispatcher (#10470); explicit enum
+ * parameters and structural machine-format checks still take precedence.
+ */
+async function extractMusicSubactionFromText(
+  runtime: IAgentRuntime,
+  text: string,
+): Promise<MusicSubaction | null> {
+  if (!text.trim()) return null;
+  const prompt = `A user asked the agent for a music operation. Pick the single MUSIC action enum that should handle the request. This must work in any language, so infer intent semantically instead of matching English words.
+
+Allowed actions:
+- play: play a direct URL or already-resolved audio item
+- pause: pause current playback
+- resume: resume paused playback
+- skip: skip the current track
+- stop: stop playback and clear the queue
+- queue_view: show the current queue
+- queue_add: add a requested track to the queue
+- queue_clear: clear the queue
+- playlist_play: load or play a saved playlist
+- playlist_save: save the current queue or songs as a playlist
+- search: search YouTube/music results without necessarily playing
+- play_query: research/find music and play or queue the best match
+- download: download/fetch music into the local library
+- play_audio: play a direct media URL from the request
+- set_routing: configure music routing/mode/source/targets
+- set_zone: configure music zones
+- generate: generate new music
+- extend: extend an existing generated audio track
+- custom_generate: generate music from custom style/reference/BPM/key settings
+
+Request:
+${text}
+
+Return ONLY:
+<response><action>play|pause|resume|skip|stop|queue_view|queue_add|queue_clear|playlist_play|playlist_save|search|play_query|download|play_audio|set_routing|set_zone|generate|extend|custom_generate</action></response>`;
+
+  try {
+    const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const cleaned = raw.replace(/```(?:xml)?/gi, "").trim();
+    const wrapped = cleaned.includes("<response>")
+      ? cleaned
+      : `<response>${cleaned}</response>`;
+    const parsed = parseKeyValueXml(wrapped) ?? {};
+    return normalizeSubaction(readParsedAction(parsed));
+  } catch (error) {
+    logger.warn(
+      `[MUSIC] subaction extraction failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
 function resolvePlaylistOpFromOptions(
   merged: Record<string, unknown>,
   subaction: MusicSubaction,
@@ -283,76 +399,22 @@ function dispatchKindFor(
 
 async function inferSubactionFromText(
   runtime: IAgentRuntime,
-  message: Memory,
-  state: State | undefined,
   merged: Record<string, unknown>,
 ): Promise<MusicSubaction | null> {
-  const text = message.content.text ?? "";
-
-  if (isPlaybackTransportControlOnlyMessage(text)) {
-    const playbackInferred = inferOpFromText(text);
-    if (playbackInferred === "queue") return "queue_add";
-    if (playbackInferred) return playbackInferred;
-  }
-
-  const transportInferred = inferOpFromText(text);
-  if (transportInferred) {
-    return transportInferred === "queue" ? "queue_add" : transportInferred;
-  }
-
-  const playState = (state ?? {}) as State;
-  if (await playAudio.validate(runtime, message, playState)) {
+  if (hasDirectUrl(merged)) {
     return "play_audio";
   }
 
-  if (await validatePlaybackControl(runtime, message, state, merged)) {
-    return "play";
-  }
-
-  if (
-    runtime.getService("musicLibrary") &&
-    (await inferMusicLibraryOp(runtime, message, state, merged))
-  ) {
-    const libraryOp = await inferMusicLibraryOp(
-      runtime,
-      message,
-      state,
-      merged,
-    );
-    if (libraryOp === "playlist") {
-      const playlistOp = resolvePlaylistOpFromOptions(merged, "playlist_play");
-      return playlistOp === "save" ? "playlist_save" : "playlist_play";
-    }
-    if (libraryOp === "search_youtube") return "search";
-    if (libraryOp === "play_query") return "play_query";
-    if (libraryOp === "download") return "download";
-  }
-
-  if (
-    await manageRouting.validate(
-      runtime,
-      message,
-      state,
-      jsonHandlerOptions(merged),
-    )
-  ) {
-    return "set_routing";
-  }
-
-  if (
-    await manageZones.validate(
-      runtime,
-      message,
-      state,
-      jsonHandlerOptions(merged),
-    )
-  ) {
+  if (hasZoneParams(merged)) {
     return "set_zone";
   }
 
-  if (runtime.getSetting("SUNO_API_KEY")) {
-    const lower = text.toLowerCase();
-    if (merged.audio_id || /\b(extend|lengthen|longer)\b/.test(lower)) {
+  if (hasRoutingParams(merged)) {
+    return "set_routing";
+  }
+
+  if (runtime.getSetting("SUNO_API_KEY") && hasGenerationParams(merged)) {
+    if (merged.audio_id) {
       return "extend";
     }
     if (
@@ -360,16 +422,11 @@ async function inferSubactionFromText(
       merged.style ||
       merged.bpm ||
       merged.key ||
-      merged.mode ||
-      /\b(custom\s+(generate|music|song)|style|reference\s+audio)\b/.test(lower)
+      (merged.mode && merged.prompt)
     ) {
       return "custom_generate";
     }
-    if (
-      /\b(generate|create|make|compose)\s+(music|song|track|audio|melody|tune)\b/.test(
-        lower,
-      )
-    ) {
+    if (merged.prompt) {
       return "generate";
     }
   }
@@ -380,18 +437,22 @@ async function inferSubactionFromText(
 async function resolveSubaction(
   runtime: IAgentRuntime,
   message: Memory,
-  state: State | undefined,
+  _state: State | undefined,
   merged: Record<string, unknown>,
+  options: { allowModelExtraction: boolean },
 ): Promise<MusicSubaction | null> {
-  return (
-    readExplicitSubaction(merged) ??
-    (await inferSubactionFromText(runtime, message, state, merged))
-  );
+  const explicit = readExplicitSubaction(merged);
+  if (explicit) return explicit;
+
+  const structural = await inferSubactionFromText(runtime, merged);
+  if (structural) return structural;
+
+  if (!options.allowModelExtraction) return null;
+  return extractMusicSubactionFromText(runtime, getMessageText(message));
 }
 
 function ensurePlaybackMerged(
   merged: Record<string, unknown>,
-  message: Memory,
   forcedOp?: "pause" | "resume" | "skip" | "stop",
 ): Record<string, unknown> {
   const out = { ...merged };
@@ -403,9 +464,8 @@ function ensurePlaybackMerged(
     normalizeOp(out.op) ??
     normalizeOp(out.playback_op) ??
     normalizeOp(out.action);
-  const resolved = op ?? inferOpFromText(message.content.text ?? "");
-  if (resolved) {
-    out.op = resolved;
+  if (op) {
+    out.op = op;
   }
   return out;
 }
@@ -598,14 +658,13 @@ export const musicAction: Action = {
     },
   ],
   validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
+    _runtime: IAgentRuntime,
+    _message: Memory,
     state?: State,
     options?: Record<string, unknown>,
   ): Promise<boolean> => {
     const merged = mergedOptions(options);
-    const subaction = await resolveSubaction(runtime, message, state, merged);
-    if (subaction) return true;
+    if (readExplicitSubaction(merged)) return true;
     return selectedContextMatches(state, MUSIC_CONTEXTS);
   },
   handler: async (
@@ -616,7 +675,9 @@ export const musicAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const merged = mergedOptions(options);
-    const subaction = await resolveSubaction(runtime, message, state, merged);
+    const subaction = await resolveSubaction(runtime, message, state, merged, {
+      allowModelExtraction: true,
+    });
 
     if (!subaction) {
       const text =
@@ -640,7 +701,6 @@ export const musicAction: Action = {
       case "playback": {
         const dispatchMerged = ensurePlaybackMerged(
           merged,
-          message,
           dispatch.playbackOp,
         );
         return playbackOp.handler(

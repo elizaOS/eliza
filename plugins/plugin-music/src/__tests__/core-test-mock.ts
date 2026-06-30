@@ -26,6 +26,13 @@ vi.mock("@elizaos/core", () => {
       TEXT_LARGE: "TEXT_LARGE",
       TEXT_SMALL: "TEXT_SMALL",
     },
+    parseKeyValueXml: (xml: string) => {
+      const result: Record<string, string> = {};
+      for (const match of xml.matchAll(/<([a-zA-Z0-9_:-]+)>([^<]*)<\/\1>/g)) {
+        result[match[1]] = match[2];
+      }
+      return result;
+    },
     promoteSubactionsToActions: (action: unknown) => [action],
     Service,
     logger,

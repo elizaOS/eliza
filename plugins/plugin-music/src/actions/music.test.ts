@@ -11,6 +11,7 @@ function runtime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
   return {
     getService: vi.fn(() => null),
     getSetting: vi.fn(() => undefined),
+    useModel: vi.fn(),
     ...overrides,
   } as unknown as IAgentRuntime;
 }
@@ -34,6 +35,39 @@ function resolved(
 }
 
 describe("MUSIC umbrella action dispatch", () => {
+  it("validates explicit structured action without model extraction", async () => {
+    const useModel = vi.fn();
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message(""),
+        undefined,
+        { parameters: { action: "pause" } },
+      ),
+    ).resolves.toBe(true);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("validates by selected music context without classifying natural language", async () => {
+    const useModel = vi.fn();
+    const state = {
+      values: { selectedContexts: ["media"] },
+    };
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message("pause the music"),
+        state as never,
+        undefined,
+      ),
+    ).resolves.toBe(true);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["next", "skip"],
     ["unpause", "resume"],
@@ -63,6 +97,117 @@ describe("MUSIC umbrella action dispatch", () => {
       expect.objectContaining({ op: expectedOp }),
       expect.any(Function),
     );
+
+    handler.mockRestore();
+  });
+
+  it("uses model structured extraction when action params are absent", async () => {
+    const handler = vi
+      .spyOn(playbackOp, "handler")
+      .mockResolvedValue(resolved("playback pause"));
+    const playAudioHandler = vi.spyOn(playAudio, "handler");
+    const useModel = vi
+      .fn()
+      .mockResolvedValue("<response><action>pause</action></response>");
+    const callback = vi.fn();
+    const state = {
+      values: { selectedContexts: ["media"] },
+    };
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("pausa la música"),
+      state as never,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      text: "playback pause",
+    });
+    expect(useModel).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        prompt: expect.stringContaining("pausa la música"),
+      }),
+    );
+    expect(handler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      state,
+      expect.objectContaining({ op: "pause" }),
+      expect.any(Function),
+    );
+    expect(playAudioHandler).not.toHaveBeenCalled();
+
+    handler.mockRestore();
+    playAudioHandler.mockRestore();
+  });
+
+  it("does not use sub-handler English regexes before model extraction", async () => {
+    const handler = vi.spyOn(musicLibraryAction, "handler");
+    const useModel = vi
+      .fn()
+      .mockResolvedValue(
+        "<response><action>not_a_music_action</action></response>",
+      );
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({
+        getService: vi.fn((serviceName: string) =>
+          serviceName === "musicLibrary" ? {} : null,
+        ),
+        useModel,
+      } as unknown as Partial<IAgentRuntime>),
+      message("find the YouTube link for Surefire by Wilderado"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Could not classify a music subaction"),
+    });
+    expect(useModel).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        prompt: expect.stringContaining("Surefire by Wilderado"),
+      }),
+    );
+    expect(handler).not.toHaveBeenCalled();
+
+    handler.mockRestore();
+  });
+
+  it("does not fall back to English regex routing when model extraction fails", async () => {
+    const handler = vi.spyOn(playbackOp, "handler");
+    const useModel = vi
+      .fn()
+      .mockResolvedValue(
+        "<response><action>not_a_music_action</action></response>",
+      );
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("pause the music"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Could not classify a music subaction"),
+    });
+    expect(handler).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith({
+      text: result?.text,
+      source: "test",
+    });
 
     handler.mockRestore();
   });
