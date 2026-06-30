@@ -1,6 +1,5 @@
 package ai.eliza.plugins.mobileagentbridge
 
-import android.net.Uri
 import android.content.pm.PackageManager
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -50,14 +49,14 @@ class MobileAgentBridgePlugin : Plugin() {
         localAgentApiBase = if (localBase == null) {
             DEFAULT_LOCAL_AGENT_API_BASE
         } else {
-            normalizeLocalAgentApiBase(localBase) ?: run {
+            MobileAgentBridgeUrls.normalizeLocalAgentApiBase(localBase, DEFAULT_LOCAL_AGENT_API_BASE) ?: run {
                 transition("error", "Invalid localAgentApiBase: $localBase")
                 call.resolve(status())
                 return
             }
         }
 
-        val url = buildRelayUrl(relay, id, pairingToken)
+        val url = MobileAgentBridgeUrls.buildRelayUrl(relay, id, pairingToken)
         if (url == null) {
             transition("error", "Invalid relay URL: $relay")
             call.resolve(status())
@@ -139,31 +138,6 @@ class MobileAgentBridgePlugin : Plugin() {
         }
     }
 
-    private fun buildRelayUrl(raw: String, id: String, token: String?): String? {
-        return try {
-            val uri = Uri.parse(raw)
-            val scheme = when (uri.scheme) {
-                "https" -> "wss"
-                "http" -> "ws"
-                "wss", "ws" -> uri.scheme
-                else -> return null
-            }
-            val builder = uri.buildUpon().scheme(scheme)
-                .clearQuery()
-                .appendQueryParameter("deviceId", id)
-            for (name in uri.queryParameterNames) {
-                if (name != "deviceId" && name != "token") {
-                    for (value in uri.getQueryParameters(name)) {
-                        builder.appendQueryParameter(name, value)
-                    }
-                }
-            }
-            if (token != null) builder.appendQueryParameter("token", token)
-            builder.build().toString()
-        } catch (_: Exception) {
-            null
-        }
-    }
 
     private fun handleFrame(text: String) {
         val frame = try {
@@ -264,19 +238,6 @@ class MobileAgentBridgePlugin : Plugin() {
         socket?.send(frame.toString())
     }
 
-    private fun normalizeLocalAgentApiBase(raw: String): String? {
-        return try {
-            if (raw == DEFAULT_LOCAL_AGENT_API_BASE) return DEFAULT_LOCAL_AGENT_API_BASE
-            val uri = Uri.parse(raw)
-            val scheme = uri.scheme?.lowercase(Locale.US)
-            val host = uri.host?.lowercase(Locale.US)
-            if (scheme != "http") return null
-            if (host !in setOf("127.0.0.1", "localhost", "10.0.2.2")) return null
-            DEFAULT_LOCAL_AGENT_API_BASE
-        } catch (_: Exception) {
-            null
-        }
-    }
 
     private companion object {
         private const val DEFAULT_LOCAL_AGENT_API_BASE = "eliza-local-agent://ipc"
