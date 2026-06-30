@@ -256,7 +256,9 @@ describe("createSubAgentCredentialBridgeAdapter", () => {
       deliveryTarget: "dm",
     });
 
-    expect(scope.sensitiveRequestIds).toEqual([`req_${scope.credentialScopeId}`]);
+    expect(scope.sensitiveRequestIds).toEqual([
+      `req_${scope.credentialScopeId}`,
+    ]);
     expect(dispatch.calls[0]).toMatchObject({
       actorPolicy: "owner_or_linked_identity",
       deliveryTarget: "dm",

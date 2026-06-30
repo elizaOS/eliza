@@ -1,9 +1,10 @@
-import type { AgentRuntime, Service } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
 import type {
+  AgentRuntime,
+  Service,
   SubAgentCredentialBridge,
   SubAgentCredentialScope,
 } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.ts";
 
 type ServiceClassLike = {
@@ -59,9 +60,9 @@ describe("registerSubAgentCredentialBridge — parent runtime", () => {
 
     await registerSubAgentCredentialBridge(runtime);
 
-    const adapter = runtime.getService<Service & { requestCredentials: unknown }>(
-      "SubAgentCredentialBridgeAdapter",
-    );
+    const adapter = runtime.getService<
+      Service & { requestCredentials: unknown }
+    >("SubAgentCredentialBridgeAdapter");
     const bridge = runtime.getService<Service & SubAgentCredentialBridge>(
       "SubAgentCredentialBridge",
     );
@@ -93,21 +94,25 @@ describe("registerSubAgentCredentialBridge — parent runtime", () => {
       }
     >("SubAgentCredentialBridgeAdapter");
 
-    const scope: SubAgentCredentialScope = await bridge!.declareScope({
+    if (!bridge || !adapter) throw new Error("bridge not registered on parent");
+
+    const scope: SubAgentCredentialScope = await bridge.declareScope({
       childSessionId: "pty-1-abc",
       credentialKeys: ["OPENAI_API_KEY"],
     });
     expect(scope.credentialScopeId).toMatch(/^cred_scope_[0-9a-f]{16}$/);
-    expect(scope.sensitiveRequestIds).toEqual([`cred_${scope.credentialScopeId}`]);
+    expect(scope.sensitiveRequestIds).toEqual([
+      `cred_${scope.credentialScopeId}`,
+    ]);
 
-    await bridge!.tunnelCredential({
+    await bridge.tunnelCredential({
       childSessionId: "pty-1-abc",
       credentialScopeId: scope.credentialScopeId,
       key: "OPENAI_API_KEY",
       value: "sk-secret",
     });
 
-    const outcome = await adapter!.tryRetrieveCredential({
+    const outcome = await adapter.tryRetrieveCredential({
       childSessionId: "pty-1-abc",
       key: "OPENAI_API_KEY",
       scopedToken: scope.scopedToken,
@@ -133,9 +138,7 @@ describe("registerSubAgentCredentialBridge — sandboxed child runtime", () => {
     await registerSubAgentCredentialBridge(runtime);
 
     expect(registerSpy).not.toHaveBeenCalled();
-    expect(
-      runtime.getService("SubAgentCredentialBridgeAdapter"),
-    ).toBeNull();
+    expect(runtime.getService("SubAgentCredentialBridgeAdapter")).toBeNull();
     expect(runtime.getService("SubAgentCredentialBridge")).toBeNull();
     expect(registeredPlugins).toHaveLength(0);
   });

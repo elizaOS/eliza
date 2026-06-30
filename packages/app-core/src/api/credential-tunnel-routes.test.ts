@@ -1,8 +1,8 @@
 import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
+import { CredentialScopeError } from "../services/credential-tunnel-service.ts";
 import type { CompatRuntimeState } from "./compat-route-shared.ts";
 import { handleCredentialTunnelRoute } from "./credential-tunnel-routes.ts";
-import { CredentialScopeError } from "../services/credential-tunnel-service.ts";
 
 function fakeReq(body: unknown): http.IncomingMessage {
   // readCompatJsonBody honours a pre-parsed `req.body` object.
@@ -107,9 +107,14 @@ describe("handleCredentialTunnelRoute", () => {
   });
 
   it("rejects an out-of-scope key with 403 (key_not_in_scope)", async () => {
-    const tunnelCredential = vi.fn().mockRejectedValue(
-      new CredentialScopeError("key_not_in_scope", "key AWS_SECRET not declared"),
-    );
+    const tunnelCredential = vi
+      .fn()
+      .mockRejectedValue(
+        new CredentialScopeError(
+          "key_not_in_scope",
+          "key AWS_SECRET not declared",
+        ),
+      );
     const { res, status, body } = fakeRes();
 
     await handleCredentialTunnelRoute(

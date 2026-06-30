@@ -366,8 +366,10 @@ function makeOneShotAdapter(): BridgeCredentialAdapter & {
       };
     },
     async tryRetrieveCredential({ key }) {
-      if (redeemed.has(key)) return { status: "rejected", reason: "already_redeemed" };
-      if (!declared.has(key)) return { status: "rejected", reason: "key_not_in_scope" };
+      if (redeemed.has(key))
+        return { status: "rejected", reason: "already_redeemed" };
+      if (!declared.has(key))
+        return { status: "rejected", reason: "key_not_in_scope" };
       const value = staged.get(key);
       if (value === undefined) return { status: "pending" };
       redeemed.add(key);
@@ -391,7 +393,10 @@ function makeCtxWithOrigin(adapter: BridgeCredentialAdapter): {
         name === "SubAgentCredentialBridgeAdapter" ? adapter : null,
       getSetting: () => undefined,
       // emitCredentialPrompt / emitCredentialResolved post here.
-      sendMessageToTarget: async (_target: unknown, content: { text?: string }) => {
+      sendMessageToTarget: async (
+        _target: unknown,
+        content: { text?: string },
+      ) => {
         sent.push(content);
       },
     } as unknown as RouteContext["runtime"],
@@ -400,7 +405,10 @@ function makeCtxWithOrigin(adapter: BridgeCredentialAdapter): {
         id,
         status: "running",
         name: "build-feature",
-        metadata: { roomId: "11111111-1111-1111-1111-111111111111", source: "app" },
+        metadata: {
+          roomId: "11111111-1111-1111-1111-111111111111",
+          source: "app",
+        },
       }),
     } as unknown as RouteContext["acpService"],
     workspaceService: null,

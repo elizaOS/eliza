@@ -325,9 +325,7 @@ describe("MessageContent sensitive requests", () => {
     fireEvent.change(screen.getByLabelText("OPENAI_API_KEY"), {
       target: { value: rawSecret },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Provide credential" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Provide credential" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("sensitive-request-status").textContent).toBe(

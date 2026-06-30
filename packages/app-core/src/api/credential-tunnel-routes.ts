@@ -22,9 +22,9 @@
 import type http from "node:http";
 import type { Service, SubAgentCredentialBridge } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { CredentialScopeError } from "../services/credential-tunnel-service.js";
 import type { CompatRuntimeState } from "./compat-route-shared.js";
 import { readCompatJsonBody } from "./compat-route-shared.js";
-import { CredentialScopeError } from "../services/credential-tunnel-service.js";
 import { sendJson } from "./response.js";
 
 const SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE = "SubAgentCredentialBridge";
