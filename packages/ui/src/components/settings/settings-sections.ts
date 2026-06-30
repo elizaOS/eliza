@@ -25,6 +25,7 @@ import {
   CLOUD_SETTINGS_GROUP_ID,
   registerSettingsGroup,
 } from "../../cloud/settings/cloud-settings-group";
+import { MyRuntimesContainer } from "../cockpit/MyRuntimesContainer";
 import { ReleaseCenterView } from "../pages/ReleaseCenterView";
 import { AdvancedSection } from "./AdvancedSection";
 import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
@@ -294,6 +295,24 @@ registerSettingsSection({
   defaultTitle: "Eliza Cloud Agents",
   order: 1.55,
   Component: CloudAgentsSection,
+});
+
+// "My Runtimes" — manage + switch between local / cloud-dedicated / VPS-remote
+// runtimes (the cockpit's runtime registry). Contributed through the registry
+// (not the pinned META list) so it doesn't change the built-in section count the
+// dev-route-catalog test pins.
+registerSettingsSection({
+  id: "my-runtimes",
+  label: "settings.sections.myRuntimes.label",
+  defaultLabel: "My Runtimes",
+  icon: Server,
+  tone: "neutral",
+  hue: "slate",
+  group: "system",
+  titleKey: "settings.sections.myRuntimes.title",
+  defaultTitle: "My Runtimes",
+  order: 3.5,
+  Component: MyRuntimesContainer,
 });
 
 registerCloudConnectorsSettingsSection();

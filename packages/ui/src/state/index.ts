@@ -16,6 +16,8 @@ export * from "./internal";
 export * from "./PtySessionsContext.hooks";
 export * from "./parsers";
 export * from "./persistence";
+export { switchRuntimeNonDestructive } from "./switch-runtime";
+export type { SwitchRuntimeResult } from "./switch-runtime";
 export * from "./TranslationContext.hooks";
 export { TranslationProvider } from "./TranslationProvider";
 export * from "./types";

@@ -204,6 +204,15 @@ export type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "./components/chat/widgets/types";
+export {
+  buildCockpitCreateTaskInput,
+  type CockpitModeConfig,
+  CockpitModePicker,
+  CockpitNewSessionForm,
+  CockpitView,
+  type CockpitViewProps,
+  cockpitModeToProviderPolicy,
+} from "./components/cockpit/index";
 // Surfaced directly on the root barrel (also reachable via the composites/hooks
 // chains) so dist-mapped consumers resolve them by name.
 export {

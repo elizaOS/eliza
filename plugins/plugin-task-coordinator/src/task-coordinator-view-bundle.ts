@@ -10,6 +10,7 @@
 // export. `CodingAgentTasksPanel` reaches its mount through the app-core slot
 // registry (register-slots.ts → the built-in /apps/tasks page), so it is
 // intentionally absent here.
+export { CockpitRoute } from "./CockpitRoute";
 export { interact } from "./CodingAgentTasksPanel.interact";
 export { OrchestratorView } from "./OrchestratorView";
 export { TaskCoordinatorView } from "./TaskCoordinatorView";

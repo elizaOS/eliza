@@ -273,6 +273,25 @@ const taskCoordinatorPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    // The coding cockpit: shaw's live task-room deck + a per-session mode
+    // picker, composed into one mobile-first GUI view. Dev-gated (normies never
+    // see it). The CockpitRoute container wires it to the live orchestrator.
+    {
+      id: "cockpit",
+      viewKind: "developer",
+      developerOnly: true,
+      label: "Cockpit",
+      description: "Mobile-first coding cockpit — your agents on one screen",
+      icon: "TerminalSquare",
+      path: "/cockpit",
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "CockpitRoute",
+      capabilities: [],
+      tags: ["developer", "coding-agent", "cockpit"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };
 
