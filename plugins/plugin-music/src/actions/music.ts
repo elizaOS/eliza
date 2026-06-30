@@ -201,10 +201,9 @@ function readExplicitSubaction(
 }
 
 function readParsedAction(parsed: Record<string, unknown>): unknown {
-  const response = parsed.response;
-  if (response && typeof response === "object" && !Array.isArray(response)) {
-    return (response as Record<string, unknown>).action;
-  }
+  // parseKeyValueXml strips the <response> wrapper and returns its direct
+  // children flat, so the action is always read from the top-level `action`
+  // key — there is never a nested `response` object.
   return parsed.action;
 }
 
@@ -237,6 +236,7 @@ function hasRoutingParams(merged: Record<string, unknown>): boolean {
     readString(merged, "routingAction").length > 0 ||
     readString(merged, "mode").length > 0 ||
     readString(merged, "sourceId").length > 0 ||
+    readString(merged, "targetId").length > 0 ||
     readStringArray(merged, "targetIds").length > 0
   );
 }
@@ -252,6 +252,7 @@ function hasZoneParams(merged: Record<string, unknown>): boolean {
       operation === "remove") &&
     (operation === "list" ||
       readString(merged, "zoneName").length > 0 ||
+      readString(merged, "targetId").length > 0 ||
       readStringArray(merged, "targetIds").length > 0)
   );
 }
@@ -308,7 +309,7 @@ Return ONLY:
 <response><action>play|pause|resume|skip|stop|queue_view|queue_add|queue_clear|playlist_play|playlist_save|search|play_query|download|play_audio|set_routing|set_zone|generate|extend|custom_generate</action></response>`;
 
   try {
-    const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const raw = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const cleaned = raw.replace(/```(?:xml)?/gi, "").trim();
     const wrapped = cleaned.includes("<response>")
       ? cleaned
@@ -417,13 +418,10 @@ async function inferSubactionFromText(
     if (merged.audio_id) {
       return "extend";
     }
-    if (
-      merged.reference_audio ||
-      merged.style ||
-      merged.bpm ||
-      merged.key ||
-      (merged.mode && merged.prompt)
-    ) {
+    // `mode` is intentionally not consulted here: any non-empty `mode` string is
+    // already classified as set_routing by hasRoutingParams above, so it can
+    // never reach this generation branch.
+    if (merged.reference_audio || merged.style || merged.bpm || merged.key) {
       return "custom_generate";
     }
     if (merged.prompt) {

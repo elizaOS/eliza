@@ -331,4 +331,88 @@ describe("MUSIC umbrella action dispatch", () => {
       source: "test",
     });
   });
+
+  it("returns a terminal failure (no crash) when model extraction rejects", async () => {
+    const playbackHandler = vi.spyOn(playbackOp, "handler");
+    const useModel = vi.fn().mockRejectedValue(new Error("model offline"));
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("pon música de fondo"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Could not classify a music subaction"),
+    });
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(playbackHandler).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith({
+      text: result?.text,
+      source: "test",
+    });
+
+    playbackHandler.mockRestore();
+  });
+
+  it("returns a terminal failure when the model returns a blank response", async () => {
+    const useModel = vi.fn().mockResolvedValue("   \n  ");
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("メディアを再生して"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Could not classify a music subaction"),
+    });
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith({
+      text: result?.text,
+      source: "test",
+    });
+  });
+
+  it("strips markdown code fences from the model response before parsing", async () => {
+    const handler = vi
+      .spyOn(playbackOp, "handler")
+      .mockResolvedValue(resolved("playback pause"));
+    const useModel = vi
+      .fn()
+      .mockResolvedValue(
+        "```xml\n<response><action>pause</action></response>\n```",
+      );
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("일시 정지"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      text: "playback pause",
+    });
+    expect(handler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      expect.objectContaining({ op: "pause" }),
+      expect.any(Function),
+    );
+
+    handler.mockRestore();
+  });
 });

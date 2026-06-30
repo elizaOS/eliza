@@ -3,14 +3,15 @@
 ## Change proven
 
 - Replaced the MUSIC umbrella playback fallback that routed natural-language text through `inferOpFromText` / English transport regexes.
-- When no explicit `action` / `op` / `subaction` is supplied, the dispatcher now asks `runtime.useModel(ModelType.TEXT_LARGE)` for a structured `<response><action>...</action></response>` enum and parses it with `parseKeyValueXml`.
+- When no explicit `action` / `op` / `subaction` is supplied, the dispatcher now asks `runtime.useModel(ModelType.TEXT_SMALL)` for a structured `<response><action>...</action></response>` enum and parses it with `parseKeyValueXml`.
 - `validate()` remains structural only: explicit action parameters or selected music context. It does not call the model or classify natural-language text.
 - Explicit params and structural machine-format checks still take precedence over the model extraction fallback.
+- Scope: this de-Englishes the **umbrella routing decision** only. The sub-handlers it dispatches to (playAudio / playbackOp / musicLibrary / playlistOp) still contain their own English keyword logic and are out of scope for this change.
 
 ## Validation
 
-- `focused-music-action-test.log`: `bun run --cwd plugins/plugin-music test src/actions/music.test.ts` — passed, 12 tests.
-- `plugin-music-test.log`: `bun run --cwd plugins/plugin-music test` — passed, 45 tests.
+- `focused-music-action-test.log`: `bun run --cwd plugins/plugin-music test src/actions/music.test.ts` — passed, 15 tests (incl. model-extraction error/edge paths: reject, blank response, markdown-fenced response).
+- `plugin-music-test.log`: `bun run --cwd plugins/plugin-music test` — passed.
 - `plugin-music-typecheck.log`: `bun run --cwd plugins/plugin-music typecheck` — passed.
 - `plugin-music-lint-check.log`: `bun run --cwd plugins/plugin-music lint:check` — passed.
 - `git-diff-check.log`: `git diff --check` — passed.
