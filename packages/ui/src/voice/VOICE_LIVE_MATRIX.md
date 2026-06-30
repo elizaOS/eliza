@@ -59,8 +59,8 @@ known to be present; it turns `pending` or `skip` into a failing exit.
 | `web.workbench.respond-no-respond` | headful workbench Playwright scenario | chime-in should-respond/should-not-respond UI behavior |
 | `linux.fused-acoustic.workbench-real` | `plugins/plugin-local-inference voice:workbench --real` | fused ASR, diarization, VAD, Kokoro TTS, noisy and multi-speaker workbench report |
 | `linux.fused-acoustic.barge-in` | `plugins/plugin-local-inference voice:bargein-bench` | cancellation/latency harness for barge-in |
-| `macos.electrobun.live-roundtrip` | headed Electrobun runner plus `capture:macos-desktop` | screen/video/log artifact when `ELIZA_VOICE_MACOS_ELECTROBUN_READY=1` |
-| `windows.electrobun.live-roundtrip` | headed Electrobun runner plus `capture:windows-desktop` | screen/video/log artifact when `ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1` |
+| `macos.electrobun.live-roundtrip` | packaged Electrobun voice self-test via `packages/app test:desktop:voice` | real desktop `voice-selftest` ASR -> agent SSE -> local TTS report plus screenshot/log artifact when `ELIZA_VOICE_MACOS_ELECTROBUN_READY=1` and `ELIZA_VOICE_DESKTOP_API_BASE` points at a real app-core API |
+| `windows.electrobun.live-roundtrip` | packaged Electrobun voice self-test via `packages/app test:desktop:voice` | real desktop `voice-selftest` ASR -> agent SSE -> local TTS report plus screenshot/log artifact when `ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1` and `ELIZA_VOICE_DESKTOP_API_BASE` points at a real app-core API |
 | `ios.sim-or-device.voice-roundtrip` | installed iOS simulator/device build plus `capture:ios-sim` | simulator screenshot/video/log when `ELIZA_VOICE_IOS_READY=1` |
 | `ios.talkmode.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-talkmode/ios` | TalkMode transcript/permission/state/barge-in bridge tests |
 | `ios.swabble.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-swabble/ios` | Swabble wake-firing -> JS bridge event tests |
@@ -79,6 +79,7 @@ developer laptop:
 | --- | --- |
 | `ELIZA_VOICE_MACOS_ELECTROBUN_READY=1` | current macOS runner has a built Electrobun app, loopback mic/audio capture, and permission grants |
 | `ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1` | current Windows runner has a built Electrobun app, loopback mic/audio capture, and permission grants |
+| `ELIZA_VOICE_DESKTOP_API_BASE` | real app-core API base used by packaged desktop voice self-test; required for macOS/Windows Electrobun live cells |
 | `ELIZA_VOICE_IOS_READY=1` | current macOS runner has a freshly installed iOS simulator/device build with voice assets |
 | `ELIZA_VOICE_ANDROID_READY=1` | current runner has an attached Android device/emulator, current APK, voice assets, and granted mic permissions |
 | `ELIZA_OPENWAKEWORD_REAL_READY=1` | current runner has the real openWakeWord head and audio fixture/device path |

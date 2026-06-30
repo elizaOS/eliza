@@ -49,7 +49,12 @@ import {
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
-import { appendKioskShellModeParam, isKioskShellMode } from "./kiosk-mode";
+import {
+  appendKioskShellModeParam,
+  appendShellModeParam,
+  isKioskShellMode,
+  readRendererShellMode,
+} from "./kiosk-mode";
 import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
@@ -991,10 +996,13 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   // Opt-in and mutually exclusive with kiosk.
   const bottomBar = presentation.mode === "bottom-bar";
   const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
+  const requestedShellMode = readRendererShellMode();
   const rendererUrl = kiosk
     ? appendKioskShellModeParam(baseRendererUrl)
     : bottomBar
       ? appendChatOverlayShellModeParam(baseRendererUrl)
+      : requestedShellMode && requestedShellMode !== "full"
+        ? appendShellModeParam(baseRendererUrl, requestedShellMode)
       : baseRendererUrl;
   const buildInfo = await BuildConfig.get();
   const mainWindowPartition = resolveMainWindowPartition(process.env, {

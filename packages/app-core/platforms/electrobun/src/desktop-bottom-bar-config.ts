@@ -13,7 +13,7 @@
  * kiosk shell mode (kiosk wants a fullscreen view-manager surface).
  */
 
-import { isKioskShellMode } from "./kiosk-mode";
+import { appendShellModeParam, isKioskShellMode } from "./kiosk-mode";
 
 function parseTruthy(value: string | undefined): boolean {
   if (!value) return false;
@@ -50,14 +50,7 @@ export function shouldStartBottomBar(
  * background. Preserves any existing query string and hash routing.
  */
 export function appendChatOverlayShellModeParam(rendererUrl: string): string {
-  try {
-    const url = new URL(rendererUrl);
-    url.searchParams.set("shellMode", "chat-overlay");
-    return url.href;
-  } catch {
-    const separator = rendererUrl.includes("?") ? "&" : "?";
-    return `${rendererUrl}${separator}shellMode=chat-overlay`;
-  }
+  return appendShellModeParam(rendererUrl, "chat-overlay");
 }
 
 export interface ScreenWorkArea {
