@@ -900,6 +900,11 @@ async function withPackagedHarness(
       tempRoot,
       launcherPath: launcherPath as string,
       apiBase: api.baseUrl,
+      // These regressions assert the legacy full-window vibrancy/tray/resize
+      // behaviour. Since #10350 flipped the default resting surface to the
+      // chromeless bottom bar, opt out here so they keep testing the full window
+      // (the bottom-bar default is covered by electrobun-bottom-bar.e2e.spec.ts).
+      extraEnv: { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
     });
     debugPackagedPhase("starting initial packaged launch");
     await harness.start({
