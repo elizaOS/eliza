@@ -69,16 +69,9 @@ app.post("/", async (c) => {
         403,
       );
     }
-    if (!authenticatedUser.organization_id) {
-      return c.json(
-        { success: false, error: "Authenticated wallet has no organization" },
-        403,
-      );
-    }
 
     const result = await executeServerWalletRpc({
       clientAddress: validated.clientAddress,
-      organizationId: authenticatedUser.organization_id,
       payload: {
         ...validated.payload,
         timestamp: validated.timestamp,

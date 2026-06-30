@@ -1,5 +1,6 @@
+import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk/wallet-provision-challenge";
 import { StewardApiError } from "@stwd/sdk";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { verifyMessage } from "viem";
 import { db } from "../../db/client";
 import { type AgentServerWallet, agentServerWallets } from "../../db/schemas/agent-server-wallets";
@@ -49,9 +50,41 @@ class ServerWalletNotFoundError extends Error {
   }
 }
 
+class ProvisionProofExpiredError extends Error {
+  constructor() {
+    super("Provision proof expired: timestamp must be within 5 minutes of server time");
+    this.name = "ProvisionProofExpiredError";
+  }
+}
+
+class ProvisionProofInvalidError extends Error {
+  constructor() {
+    super("Invalid provision proof: signature does not prove control of clientAddress");
+    this.name = "ProvisionProofInvalidError";
+  }
+}
+
+class ProvisionProofReplayError extends Error {
+  constructor() {
+    super("Provision proof nonce already used: request appears to be a replay");
+    this.name = "ProvisionProofReplayError";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/**
+ * Proof that the caller controls the `clientAddress` private key: a signature
+ * over {@link buildWalletProvisionChallenge}, bound to a freshness window
+ * (`timestamp`) and single-use (`nonce`).
+ */
+export interface ProvisionControlProof {
+  signature: `0x${string}`;
+  timestamp: number;
+  nonce: string;
+}
 
 export interface ProvisionWalletParams {
   organizationId: string;
@@ -59,6 +92,7 @@ export interface ProvisionWalletParams {
   characterId: string | null;
   clientAddress: string;
   chainType: "evm" | "solana";
+  controlProof: ProvisionControlProof;
 }
 
 export interface RpcPayload {
@@ -70,7 +104,6 @@ export interface RpcPayload {
 
 export interface ExecuteParams {
   clientAddress: string;
-  organizationId: string;
   payload: RpcPayload;
   signature: `0x${string}`;
 }
@@ -94,10 +127,80 @@ function isStewardConflictError(error: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Proof-of-control
+// ---------------------------------------------------------------------------
+
+const PROVISION_PROOF_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * Proves the caller controls the `clientAddress` private key before a wallet is
+ * provisioned under it. Provision is otherwise authenticated only by the org's
+ * API key, so without this any org could claim an arbitrary address: the
+ * globally-unique row then blocks the true key-holder's own provision (a
+ * permanent DoS) and captures that address's RPC routing (`#10279`).
+ *
+ * The caller signs {@link buildWalletProvisionChallenge} with the clientAddress
+ * key; we rebuild the identical message, verify the signature, enforce a
+ * freshness window, and reject nonce replays.
+ *
+ * Nonce replay is enforced only while the cache is reachable. Unlike RPC —
+ * where a replayed payload re-executes a transaction and so must fail closed —
+ * re-running a provision is idempotent (same org + clientAddress returns the
+ * existing wallet), so degrading to signature + freshness during a cache outage
+ * costs no real safety and keeps provisioning available.
+ */
+async function assertProvisionControlProof(params: {
+  clientAddress: string;
+  chainType: "evm" | "solana";
+  proof: ProvisionControlProof;
+}): Promise<void> {
+  const { clientAddress, chainType, proof } = params;
+
+  if (!proof.timestamp || Math.abs(Date.now() - proof.timestamp) > PROVISION_PROOF_WINDOW_MS) {
+    throw new ProvisionProofExpiredError();
+  }
+
+  const message = buildWalletProvisionChallenge({
+    clientAddress,
+    chainType,
+    timestamp: proof.timestamp,
+    nonce: proof.nonce,
+  });
+
+  let isValid = false;
+  try {
+    isValid = await verifyMessage({
+      address: clientAddress as `0x${string}`,
+      message,
+      signature: proof.signature,
+    });
+  } catch {
+    // A malformed address/signature is a failed proof, never a 500.
+    isValid = false;
+  }
+  if (!isValid) {
+    throw new ProvisionProofInvalidError();
+  }
+
+  if (cache.isAvailable()) {
+    const nonceKey = `wallet-provision-nonce:${clientAddress.toLowerCase()}:${proof.nonce}`;
+    const nonceClaimed = await cache.setIfNotExists(nonceKey, "1", PROVISION_PROOF_WINDOW_MS);
+    if (!nonceClaimed) {
+      throw new ProvisionProofReplayError();
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Provision — top-level router
 // ---------------------------------------------------------------------------
 
 export async function provisionServerWallet(params: ProvisionWalletParams) {
+  await assertProvisionControlProof({
+    clientAddress: params.clientAddress,
+    chainType: params.chainType,
+    proof: params.controlProof,
+  });
   return provisionStewardWallet(params);
 }
 
@@ -177,36 +280,10 @@ async function provisionStewardWallet({
 }
 
 // ---------------------------------------------------------------------------
-// Organization lookup
-// ---------------------------------------------------------------------------
-
-/** Returns the organization_id that owns the server wallet for this client address, or null if none. */
-export async function getOrganizationIdForClientAddress(
-  clientAddress: string,
-  organizationId?: string,
-): Promise<string | null> {
-  const conditions = [eq(agentServerWallets.client_address, clientAddress)];
-  if (organizationId) {
-    conditions.push(eq(agentServerWallets.organization_id, organizationId));
-  }
-  const row = await db
-    .select({ organization_id: agentServerWallets.organization_id })
-    .from(agentServerWallets)
-    .where(and(...conditions))
-    .limit(1);
-  return row[0]?.organization_id ?? null;
-}
-
-// ---------------------------------------------------------------------------
 // RPC execution — top-level (validates signature, routes by provider)
 // ---------------------------------------------------------------------------
 
-export async function executeServerWalletRpc({
-  clientAddress,
-  organizationId,
-  payload,
-  signature,
-}: ExecuteParams) {
+export async function executeServerWalletRpc({ clientAddress, payload, signature }: ExecuteParams) {
   // Timestamp check
   const now = Date.now();
   const RPC_TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
@@ -232,12 +309,14 @@ export async function executeServerWalletRpc({
     throw new RpcReplayError();
   }
 
-  // Look up wallet record
+  // Look up wallet record. Global by client_address: the wallet-signature auth
+  // above already proves control of the key, and client_address is globally
+  // unique (proof-of-control at provision), so this is unambiguous. Scoping it
+  // to the RPC-signer's org would never match — provision stores the row under
+  // the API-key owner's org, the RPC signer resolves to a separate
+  // wallet-derived org (#10279).
   const walletRecord = await db.query.agentServerWallets.findFirst({
-    where: and(
-      eq(agentServerWallets.client_address, clientAddress),
-      eq(agentServerWallets.organization_id, organizationId),
-    ),
+    where: eq(agentServerWallets.client_address, clientAddress),
   });
   if (!walletRecord) {
     throw new ServerWalletNotFoundError();

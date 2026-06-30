@@ -1,5 +1,5 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentSandboxes } from "./agent-sandboxes";
 import { organizations } from "./organizations";
 import { userCharacters } from "./user-characters";
@@ -39,7 +39,10 @@ export const agentServerWallets = pgTable(
     chain_type: text("chain_type").notNull(),
 
     // The EVM address of the local agent used to authenticate RPC calls.
-    client_address: text("client_address").notNull(),
+    // Globally unique: proof-of-control at provision (assertProvisionControlProof)
+    // guarantees only the true key-holder can claim an address, so one row per
+    // address is correct and the RPC lookup stays an unambiguous global lookup.
+    client_address: text("client_address").notNull().unique(),
 
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
@@ -51,9 +54,6 @@ export const agentServerWallets = pgTable(
     sandbox_agent_idx: index("agent_server_wallets_sandbox_agent_idx").on(table.sandbox_agent_id),
     address_idx: index("agent_server_wallets_address_idx").on(table.address),
     client_address_idx: index("agent_server_wallets_client_address_idx").on(table.client_address),
-    organization_client_address_chain_unique: uniqueIndex(
-      "agent_server_wallets_org_client_chain_unique",
-    ).on(table.organization_id, table.client_address, table.chain_type),
     steward_agent_idx: index("agent_server_wallets_steward_agent_idx").on(table.steward_agent_id),
   }),
 );

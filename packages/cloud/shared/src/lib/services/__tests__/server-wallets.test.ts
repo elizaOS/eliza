@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 const walletRecord = {
   id: "wallet-1",
@@ -49,22 +51,6 @@ mock.module("../steward-client", () => ({
 
 const { executeServerWalletRpc } = await import("../server-wallets");
 
-function containsValue(root: unknown, expected: string): boolean {
-  const seen = new Set<unknown>();
-  const visit = (value: unknown): boolean => {
-    if (value === expected) return true;
-    if (typeof value === "string") return value.includes(expected);
-    if (typeof value !== "object" || value === null || seen.has(value)) return false;
-    seen.add(value);
-    for (const key of Reflect.ownKeys(value)) {
-      if (typeof key === "string" && key.includes(expected)) return true;
-      if (visit((value as Record<PropertyKey, unknown>)[key])) return true;
-    }
-    return false;
-  };
-  return visit(root);
-}
-
 beforeEach(() => {
   capturedWhere = undefined;
   findFirst.mockClear();
@@ -73,12 +59,9 @@ beforeEach(() => {
 });
 
 describe("server wallet RPC lookup", () => {
-  test("scopes wallet lookup to the authenticated organization", async () => {
-    const organizationId = "00000000-0000-4000-8000-0000000000aa";
-
+  test("looks the wallet up globally by client_address, not org-scoped", async () => {
     await executeServerWalletRpc({
       clientAddress: "0x0000000000000000000000000000000000000001",
-      organizationId,
       payload: {
         method: "personal_sign",
         params: ["hello"],
@@ -89,8 +72,15 @@ describe("server wallet RPC lookup", () => {
     });
 
     expect(findFirst).toHaveBeenCalledTimes(1);
-    expect(containsValue(capturedWhere, "organization_id")).toBe(true);
-    expect(containsValue(capturedWhere, "client_address")).toBe(true);
+    // Render the WHERE to SQL — walking the object graph is unreliable because a
+    // column back-references its table (which exposes every column name).
+    const sql = new PgDialect().sqlToQuery(capturedWhere as SQL).sql;
+    expect(sql).toContain("client_address");
+    // Must NOT org-scope: provision stores the row under the API-key owner's
+    // org, the RPC signer resolves to a separate wallet-derived org, so an
+    // org-scoped lookup would 404 every legitimate call (#10279). client_address
+    // is globally unique (proof-of-control at provision), so this is unambiguous.
+    expect(sql).not.toContain("organization_id");
     expect(signMessage).toHaveBeenCalledWith("steward-agent-1", "hello");
   });
 });

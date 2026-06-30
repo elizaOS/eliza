@@ -39,6 +39,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   api,
@@ -82,6 +83,24 @@ async function signedWalletHeaders(
     "X-Wallet-Signature": signature,
     "Content-Type": "application/json",
   };
+}
+
+/** A valid provision control-proof signed by `TEST_WALLET_ACCOUNT`. */
+async function signedProvisionProof(
+  clientAddress: string,
+  chainType: "evm" | "solana",
+): Promise<{ signature: string; timestamp: number; nonce: string }> {
+  const timestamp = Date.now();
+  const nonce = `prov-${timestamp}-${Math.trunc(timestamp / 7)}`;
+  const signature = await TEST_WALLET_ACCOUNT.signMessage({
+    message: buildWalletProvisionChallenge({
+      clientAddress,
+      chainType,
+      timestamp,
+      nonce,
+    }),
+  });
+  return { signature, timestamp, nonce };
 }
 
 beforeAll(async () => {
@@ -393,22 +412,62 @@ describe("POST /api/v1/user/wallets/provision", () => {
     // validating Steward wallet provisioning.
     if (!shouldRunLiveStewardWalletE2E()) return;
 
+    const clientAddress = TEST_WALLET_ACCOUNT.address;
     const res = await api.post(
       "/api/v1/user/wallets/provision",
       {
         chainType: "evm",
-        clientAddress: "0x0000000000000000000000000000000000000001",
+        clientAddress,
+        controlProof: await signedProvisionProof(clientAddress, "evm"),
       },
       { headers: bearerHeaders() },
     );
+    // Proof verified → reaches Steward (200) or its downstream failure modes.
     expect([200, 403, 500, 503]).toContain(res.status);
+  });
+
+  test("proof required: 400 when controlProof is absent", async () => {
+    if (!shouldRunAuthed()) return;
+    const res = await api.post(
+      "/api/v1/user/wallets/provision",
+      { chainType: "evm", clientAddress: TEST_WALLET_ACCOUNT.address },
+      { headers: bearerHeaders() },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { success?: boolean; error?: string };
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("Validation error");
+  });
+
+  test("proof rejected: 401 when the proof is not signed by clientAddress", async () => {
+    if (!shouldRunAuthed()) return;
+    // clientAddress the caller does NOT control; proof signed by TEST_WALLET.
+    const squattedAddress = "0x000000000000000000000000000000000000dEaD";
+    const res = await api.post(
+      "/api/v1/user/wallets/provision",
+      {
+        chainType: "evm",
+        clientAddress: squattedAddress,
+        controlProof: await signedProvisionProof(squattedAddress, "evm"),
+      },
+      { headers: bearerHeaders() },
+    );
+    // The signer (TEST_WALLET) != squattedAddress → signature fails to recover.
+    expect(res.status).toBe(401);
   });
 
   test("validation: 400 on invalid clientAddress for chainType=evm", async () => {
     if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/user/wallets/provision",
-      { chainType: "evm", clientAddress: "not-an-address" },
+      {
+        chainType: "evm",
+        clientAddress: "not-an-address",
+        controlProof: await signedProvisionProof(
+          "0x0000000000000000000000000000000000000001",
+          "evm",
+        ),
+      },
       { headers: bearerHeaders() },
     );
     expect(res.status).toBe(400);
