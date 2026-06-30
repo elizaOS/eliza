@@ -85,10 +85,10 @@ read, and RSSI present-iff-connected with a plausible dBm value.
 
 ## Scope
 
-These are two columns of the #9967 work-order (System + Wi-Fi). They establish
+These are three columns of the #9967 work-order (System + Wi-Fi + Phone/dialer — the headline "dialer renders the web stub" risk). They establish
 the reusable pattern — extract a `Context`-backed reader, add `src/androidTest` +
 the instrumentation runner, run `connectedDebugAndroidTest` — that the remaining
-native plugins (phone/messages/contacts/location/camera/mobile-signals) can
+native plugins (messages/contacts/location/camera/mobile-signals) can
 follow to reach the "every native plugin has ≥1 androidTest" acceptance criterion.
 App-surface screenshots/recordings of the rendered views require the device to be
 unlocked (this device is secure-locked; instrumented system-state tests run
