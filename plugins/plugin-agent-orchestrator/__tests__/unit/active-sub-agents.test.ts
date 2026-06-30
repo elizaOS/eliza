@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { activeSubAgentsProvider } from "../../src/providers/active-sub-agents.js";
+import { TASK_WATCHDOG_SERVICE_TYPE } from "../../src/services/task-watchdog-service.js";
 import type { SessionInfo } from "../../src/services/types.js";
 import {
   memory,
@@ -167,5 +169,49 @@ describe("activeSubAgentsProvider", () => {
     const texts = await Promise.all(runs);
     expect(texts[0]).toBe(texts[1]);
     expect(texts[1]).toBe(texts[2]);
+  });
+
+  it("surfaces approachingCap from the watchdog alongside stalled (#8901)", async () => {
+    const hot = sub({
+      id: "00000000-cccc-bbbb-aaaa-000000000010",
+      status: "running",
+    });
+    const quiet = sub({
+      id: "00000000-cccc-bbbb-aaaa-000000000011",
+      status: "running",
+    });
+    const acpService = serviceMock({ listSessions: () => [hot, quiet] });
+    const watchdog = {
+      getStalledSessionIds: () => [quiet.id],
+      getApproachingCapSessionIds: () => [{ id: hot.id, kind: "round-trip" }],
+    };
+    const runtime = {
+      getService: vi.fn((t: string) =>
+        t === "ACP_SERVICE" || t === "ACP_SUBPROCESS_SERVICE"
+          ? acpService
+          : t === TASK_WATCHDOG_SERVICE_TYPE
+            ? watchdog
+            : null,
+      ),
+      hasService: vi.fn(() => true),
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    } as never as IAgentRuntime;
+
+    const result = await activeSubAgentsProvider.get(runtime, memory(), state);
+    expect(result.text).toContain("approachingCap=round-trip");
+
+    const data = result.data as {
+      sessions: Array<{
+        sessionId: string;
+        stalled: boolean;
+        approachingCap: string | null;
+      }>;
+    };
+    const hotRow = data.sessions.find((s) => s.sessionId === hot.id);
+    const quietRow = data.sessions.find((s) => s.sessionId === quiet.id);
+    expect(hotRow?.approachingCap).toBe("round-trip");
+    expect(hotRow?.stalled).toBe(false);
+    expect(quietRow?.stalled).toBe(true);
+    expect(quietRow?.approachingCap).toBeNull();
   });
 });

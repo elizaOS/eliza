@@ -412,6 +412,22 @@ export class SubAgentRouter extends Service {
       this.bestResultForOrigin.delete(oldest);
     }
   }
+
+  /**
+   * The per-session round-trip count the loop guard has accumulated so far
+   * (0 when the session has not round-tripped yet). Read-only: the count is
+   * owned by the loop-guard reducer; this only exposes it so the watchdog can
+   * warn the user before a runaway session hits the force-stop cap (#8901).
+   */
+  getRoundTripCount(sessionId: string): number {
+    return this.loopState.roundTripCounts.get(sessionId) ?? 0;
+  }
+
+  /** The configured per-session round-trip cap (the runaway-loop force-stop limit). */
+  getRoundTripCap(): number {
+    return this.loopState.roundTripCap;
+  }
+
   private started = false;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;
