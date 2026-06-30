@@ -90,7 +90,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
     steps:
       - name: Checkout repository
-        timeout-minutes: 15
+        timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -99,9 +99,24 @@ jobs:
           git init "$CHECKOUT_DIR"
           git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
             || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"
+          # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
+          # Worker suite): a single shallow fetch can stall for minutes or wedge
+          # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
+          # retries instead of burning the whole step budget (the #10310 stuck-checkout).
+          fetched=
+          for attempt in 1 2; do
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+              fetched=1
+              break
+            fi
+            echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
+            sleep 10
+          done
+          [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
+          # checkout --force --detach fully materializes the working tree from the
+          # fetched commit; the prior extra `git reset --hard` re-wrote the entire
+          # tree a second time, doubling the slowest part on this large repo.
           git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
-          git -C "$CHECKOUT_DIR" reset --hard FETCH_HEAD
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -258,7 +273,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
     steps:
       - name: Checkout repository
-        timeout-minutes: 15
+        timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -267,9 +282,24 @@ jobs:
           git init "$CHECKOUT_DIR"
           git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
             || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"
+          # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
+          # Worker suite): a single shallow fetch can stall for minutes or wedge
+          # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
+          # retries instead of burning the whole step budget (the #10310 stuck-checkout).
+          fetched=
+          for attempt in 1 2; do
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+              fetched=1
+              break
+            fi
+            echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
+            sleep 10
+          done
+          [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
+          # checkout --force --detach fully materializes the working tree from the
+          # fetched commit; the prior extra `git reset --hard` re-wrote the entire
+          # tree a second time, doubling the slowest part on this large repo.
           git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
-          git -C "$CHECKOUT_DIR" reset --hard FETCH_HEAD
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -448,7 +478,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
     steps:
       - name: Checkout repository
-        timeout-minutes: 15
+        timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -457,9 +487,24 @@ jobs:
           git init "$CHECKOUT_DIR"
           git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
             || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"
+          # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
+          # Worker suite): a single shallow fetch can stall for minutes or wedge
+          # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
+          # retries instead of burning the whole step budget (the #10310 stuck-checkout).
+          fetched=
+          for attempt in 1 2; do
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+              fetched=1
+              break
+            fi
+            echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
+            sleep 10
+          done
+          [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
+          # checkout --force --detach fully materializes the working tree from the
+          # fetched commit; the prior extra `git reset --hard` re-wrote the entire
+          # tree a second time, doubling the slowest part on this large repo.
           git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
-          git -C "$CHECKOUT_DIR" reset --hard FETCH_HEAD
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
