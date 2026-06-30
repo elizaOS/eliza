@@ -146,12 +146,7 @@ function AppProviderInner({
   // --- Display preferences (extracted to useDisplayPreferences) ---
   const displayPrefs = useDisplayPreferences();
   const {
-    state: {
-      uiTheme,
-      uiThemeMode,
-      backgroundConfig,
-      canUndoBackground,
-    },
+    state: { uiTheme, uiThemeMode, backgroundConfig, canUndoBackground },
     setUiTheme,
     setUiThemeMode,
     setBackgroundConfig,
@@ -2784,20 +2779,20 @@ function AppProviderInner({
     <AppBootContext.Provider value={bootConfigValue}>
       <BrandingContext.Provider value={mergedBranding}>
         <PtySessionsCtx.Provider value={ptySessionsValue}>
-            <ConversationMessagesCtx.Provider value={conversationMessagesValue}>
-              <ChatTurnStatusCtx.Provider value={chatTurnStatusValue}>
-                <ChatInputRefCtx.Provider value={chatInputRef}>
-                  <ChatComposerCtx.Provider value={composerValue}>
-                    <AppContext.Provider value={value}>
-                      {children}
-                      <ConfirmDialog {...modalProps} />
-                      <PromptDialog {...promptModalProps} />
-                    </AppContext.Provider>
-                  </ChatComposerCtx.Provider>
-                </ChatInputRefCtx.Provider>
-              </ChatTurnStatusCtx.Provider>
-            </ConversationMessagesCtx.Provider>
-          </PtySessionsCtx.Provider>
+          <ConversationMessagesCtx.Provider value={conversationMessagesValue}>
+            <ChatTurnStatusCtx.Provider value={chatTurnStatusValue}>
+              <ChatInputRefCtx.Provider value={chatInputRef}>
+                <ChatComposerCtx.Provider value={composerValue}>
+                  <AppContext.Provider value={value}>
+                    {children}
+                    <ConfirmDialog {...modalProps} />
+                    <PromptDialog {...promptModalProps} />
+                  </AppContext.Provider>
+                </ChatComposerCtx.Provider>
+              </ChatInputRefCtx.Provider>
+            </ChatTurnStatusCtx.Provider>
+          </ConversationMessagesCtx.Provider>
+        </PtySessionsCtx.Provider>
       </BrandingContext.Provider>
     </AppBootContext.Provider>
   );

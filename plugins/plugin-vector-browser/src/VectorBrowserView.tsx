@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@elizaos/ui/components/ui/select";
 import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
-import { getBootConfig } from "@elizaos/ui/config";
+import { getBootConfig, type AppBootConfig } from "@elizaos/ui/config";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { WorkspaceLayout } from "@elizaos/ui/layouts";
 import { Escape } from "@elizaos/ui/spatial";
@@ -51,12 +51,17 @@ type VectorBrowserRuntime = {
   createVectorBrowserRenderer: () => Promise<Three.WebGLRenderer>;
 };
 
+type VectorBrowserBootConfig = AppBootConfig & {
+  companionVectorBrowser?: VectorBrowserRuntime;
+};
+
 function resolveConfiguredVectorBrowserRuntime(): VectorBrowserRuntime | null {
-  const runtime = getBootConfig().companionVectorBrowser;
+  const runtime = (getBootConfig() as VectorBrowserBootConfig)
+    .companionVectorBrowser;
   if (!runtime) {
     return null;
   }
-  return runtime as VectorBrowserRuntime;
+  return runtime;
 }
 
 let defaultVectorBrowserRuntimePromise: Promise<VectorBrowserRuntime> | null =
