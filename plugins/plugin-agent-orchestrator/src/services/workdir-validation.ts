@@ -68,11 +68,7 @@ export async function resolveAllowedWorkdir(
     configuredRoots.push(rootReal);
   }
 
-  const allowedPrefixes = [
-    workspaceBaseDirReal,
-    cwdReal,
-    ...configuredRoots,
-  ];
+  const allowedPrefixes = [workspaceBaseDirReal, cwdReal, ...configuredRoots];
   if (!allowedPrefixes.some((prefix) => isInside(prefix, resolvedReal))) {
     throw new Error("workdir must be within workspace base directory or cwd");
   }
