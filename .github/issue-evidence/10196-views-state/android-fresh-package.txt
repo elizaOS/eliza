@@ -1,0 +1,649 @@
+Activity Resolver Table:
+  Full MIME Types:
+      vnd.android.cursor.item/person:
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter fbd7afe
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/contact"
+          StaticType: "vnd.android.cursor.item/person"
+      vnd.android.cursor.dir/event:
+        1290e2d ai.elizaos.app/.ElizaCalendarActivity filter 2b3f8f3
+          Action: "android.intent.action.INSERT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.dir/event"
+      vnd.android.cursor.dir/person:
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter 7ae56b9
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.dir/contact"
+          StaticType: "vnd.android.cursor.dir/person"
+      vnd.android.cursor.item/contact:
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter fbd7afe
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/contact"
+          StaticType: "vnd.android.cursor.item/person"
+      text/plain:
+        a70bc68 ai.elizaos.app/.ElizaShareActivity filter bd81881
+          Action: "android.intent.action.SEND"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+        a70bc68 ai.elizaos.app/.ElizaShareActivity filter 73fed26
+          Action: "android.intent.action.PROCESS_TEXT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+      vnd.android.cursor.item/event:
+        1290e2d ai.elizaos.app/.ElizaCalendarActivity filter 49aef62
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/event"
+        1290e2d ai.elizaos.app/.ElizaCalendarActivity filter b6d39b0
+          Action: "android.intent.action.EDIT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/event"
+      vnd.android.cursor.dir/contact:
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter 7ae56b9
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.dir/contact"
+          StaticType: "vnd.android.cursor.dir/person"
+
+  Base MIME Types:
+      vnd.android.cursor.dir:
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter 7ae56b9
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.dir/contact"
+          StaticType: "vnd.android.cursor.dir/person"
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter 7ae56b9
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.dir/contact"
+          StaticType: "vnd.android.cursor.dir/person"
+        1290e2d ai.elizaos.app/.ElizaCalendarActivity filter 2b3f8f3
+          Action: "android.intent.action.INSERT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.dir/event"
+      vnd.android.cursor.item:
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter fbd7afe
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/contact"
+          StaticType: "vnd.android.cursor.item/person"
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter fbd7afe
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/contact"
+          StaticType: "vnd.android.cursor.item/person"
+        1290e2d ai.elizaos.app/.ElizaCalendarActivity filter 49aef62
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/event"
+        1290e2d ai.elizaos.app/.ElizaCalendarActivity filter b6d39b0
+          Action: "android.intent.action.EDIT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/event"
+      text:
+        a70bc68 ai.elizaos.app/.ElizaShareActivity filter bd81881
+          Action: "android.intent.action.SEND"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+        a70bc68 ai.elizaos.app/.ElizaShareActivity filter 73fed26
+          Action: "android.intent.action.PROCESS_TEXT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+
+  Schemes:
+      elizaos:
+        3be7513 ai.elizaos.app/.MainActivity filter b6d8949
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          Category: "android.intent.category.BROWSABLE"
+          Scheme: "elizaos"
+      mms:
+        1ddbd67 ai.elizaos.app/.ElizaSmsComposeActivity filter fc93714
+          Action: "android.intent.action.SENDTO"
+          Category: "android.intent.category.DEFAULT"
+          Scheme: "sms"
+          Scheme: "smsto"
+          Scheme: "mms"
+          Scheme: "mmsto"
+      sms:
+        1ddbd67 ai.elizaos.app/.ElizaSmsComposeActivity filter fc93714
+          Action: "android.intent.action.SENDTO"
+          Category: "android.intent.category.DEFAULT"
+          Scheme: "sms"
+          Scheme: "smsto"
+          Scheme: "mms"
+          Scheme: "mmsto"
+      tel:
+        4ede24e ai.elizaos.app/.ElizaDialActivity filter 4ecd47c
+          Action: "android.intent.action.DIAL"
+          Category: "android.intent.category.DEFAULT"
+          Scheme: "tel"
+      http:
+        4ecbbbd ai.elizaos.app/.ElizaBrowserActivity filter b2db5b2
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          Category: "android.intent.category.BROWSABLE"
+          Scheme: "http"
+          Scheme: "https"
+      https:
+        4ecbbbd ai.elizaos.app/.ElizaBrowserActivity filter b2db5b2
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          Category: "android.intent.category.BROWSABLE"
+          Scheme: "http"
+          Scheme: "https"
+      mmsto:
+        1ddbd67 ai.elizaos.app/.ElizaSmsComposeActivity filter fc93714
+          Action: "android.intent.action.SENDTO"
+          Category: "android.intent.category.DEFAULT"
+          Scheme: "sms"
+          Scheme: "smsto"
+          Scheme: "mms"
+          Scheme: "mmsto"
+      smsto:
+        1ddbd67 ai.elizaos.app/.ElizaSmsComposeActivity filter fc93714
+          Action: "android.intent.action.SENDTO"
+          Category: "android.intent.category.DEFAULT"
+          Scheme: "sms"
+          Scheme: "smsto"
+          Scheme: "mms"
+          Scheme: "mmsto"
+
+  Non-Data Actions:
+      android.media.action.IMAGE_CAPTURE:
+        d9af25f ai.elizaos.app/.ElizaCameraActivity filter c54a575
+          Action: "android.media.action.IMAGE_CAPTURE"
+          Category: "android.intent.category.DEFAULT"
+      android.intent.action.DIAL:
+        4ede24e ai.elizaos.app/.ElizaDialActivity filter a914f6f
+          Action: "android.intent.action.DIAL"
+          Category: "android.intent.category.DEFAULT"
+      android.intent.action.MAIN:
+        3be7513 ai.elizaos.app/.MainActivity filter f75d350
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.LAUNCHER"
+      android.intent.action.VOICE_COMMAND:
+        57c7105 ai.elizaos.app/.ElizaAssistActivity filter f0d738b
+          Action: "android.intent.action.VOICE_COMMAND"
+          Category: "android.intent.category.DEFAULT"
+      android.intent.action.DISMISS_ALARM:
+        c26557b ai.elizaos.app/.ElizaClockActivity filter 6328d44
+          Action: "android.intent.action.DISMISS_ALARM"
+          Category: "android.intent.category.DEFAULT"
+      android.intent.action.SET_ALARM:
+        c26557b ai.elizaos.app/.ElizaClockActivity filter 2800f98
+          Action: "android.intent.action.SET_ALARM"
+          Category: "android.intent.category.DEFAULT"
+      android.intent.action.SET_TIMER:
+        c26557b ai.elizaos.app/.ElizaClockActivity filter 1f3ebd6
+          Action: "android.intent.action.SET_TIMER"
+          Category: "android.intent.category.DEFAULT"
+      android.media.action.STILL_IMAGE_CAMERA:
+        d9af25f ai.elizaos.app/.ElizaCameraActivity filter 54c54ac
+          Action: "android.media.action.STILL_IMAGE_CAMERA"
+          Category: "android.intent.category.DEFAULT"
+      android.media.action.VIDEO_CAPTURE:
+        d9af25f ai.elizaos.app/.ElizaCameraActivity filter 7f2490a
+          Action: "android.media.action.VIDEO_CAPTURE"
+          Category: "android.intent.category.DEFAULT"
+      android.intent.action.SHOW_ALARMS:
+        c26557b ai.elizaos.app/.ElizaClockActivity filter cd723f1
+          Action: "android.intent.action.SHOW_ALARMS"
+          Category: "android.intent.category.DEFAULT"
+      android.intent.action.ASSIST:
+        57c7105 ai.elizaos.app/.ElizaAssistActivity filter f49d55a
+          Action: "android.intent.action.ASSIST"
+          Category: "android.intent.category.DEFAULT"
+      android.intent.action.SHOW_TIMERS:
+        c26557b ai.elizaos.app/.ElizaClockActivity filter 43ace57
+          Action: "android.intent.action.SHOW_TIMERS"
+          Category: "android.intent.category.DEFAULT"
+      android.intent.action.WEB_SEARCH:
+        4ecbbbd ai.elizaos.app/.ElizaBrowserActivity filter 97ec903
+          Action: "android.intent.action.WEB_SEARCH"
+          Category: "android.intent.category.DEFAULT"
+
+  MIME Typed Actions:
+      android.intent.action.EDIT:
+        1290e2d ai.elizaos.app/.ElizaCalendarActivity filter b6d39b0
+          Action: "android.intent.action.EDIT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/event"
+      android.intent.action.SEND:
+        a70bc68 ai.elizaos.app/.ElizaShareActivity filter bd81881
+          Action: "android.intent.action.SEND"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+      android.intent.action.VIEW:
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter 7ae56b9
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.dir/contact"
+          StaticType: "vnd.android.cursor.dir/person"
+        78cb080 ai.elizaos.app/.ElizaContactsActivity filter fbd7afe
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/contact"
+          StaticType: "vnd.android.cursor.item/person"
+        1290e2d ai.elizaos.app/.ElizaCalendarActivity filter 49aef62
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.item/event"
+      android.intent.action.PROCESS_TEXT:
+        a70bc68 ai.elizaos.app/.ElizaShareActivity filter 73fed26
+          Action: "android.intent.action.PROCESS_TEXT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+      android.intent.action.INSERT:
+        1290e2d ai.elizaos.app/.ElizaCalendarActivity filter 2b3f8f3
+          Action: "android.intent.action.INSERT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "vnd.android.cursor.dir/event"
+
+Receiver Resolver Table:
+  Full MIME Types:
+      application/vnd.wap.mms-message:
+        69ad5e5 ai.elizaos.app/.ElizaMmsReceiver filter 13708ba
+          Action: "android.provider.Telephony.WAP_PUSH_DELIVER"
+          StaticType: "application/vnd.wap.mms-message"
+
+  Base MIME Types:
+      application:
+        69ad5e5 ai.elizaos.app/.ElizaMmsReceiver filter 13708ba
+          Action: "android.provider.Telephony.WAP_PUSH_DELIVER"
+          StaticType: "application/vnd.wap.mms-message"
+
+  Non-Data Actions:
+      android.intent.action.QUICKBOOT_POWERON:
+        27eb61 ai.elizaos.app/com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver filter 8bcf686
+          Action: "android.intent.action.QUICKBOOT_POWERON"
+          Action: "android.intent.action.LOCKED_BOOT_COMPLETED"
+          Action: "android.intent.action.BOOT_COMPLETED"
+      androidx.profileinstaller.action.SAVE_PROFILE:
+        c410c3f ai.elizaos.app/androidx.profileinstaller.ProfileInstallReceiver filter c3146a
+          Action: "androidx.profileinstaller.action.SAVE_PROFILE"
+      android.intent.action.LOCKED_BOOT_COMPLETED:
+        2f3936b ai.elizaos.app/.ElizaBootReceiver filter 8628ec8
+          Action: "android.intent.action.LOCKED_BOOT_COMPLETED"
+          Action: "android.intent.action.BOOT_COMPLETED"
+        27eb61 ai.elizaos.app/com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver filter 8bcf686
+          Action: "android.intent.action.QUICKBOOT_POWERON"
+          Action: "android.intent.action.LOCKED_BOOT_COMPLETED"
+          Action: "android.intent.action.BOOT_COMPLETED"
+        d35fb47 ai.elizaos.app/ai.eliza.plugins.websiteblocker.WebsiteBlockerBootReceiver filter 275cf74
+          Action: "android.intent.action.LOCKED_BOOT_COMPLETED"
+          Action: "android.intent.action.BOOT_COMPLETED"
+          Action: "android.intent.action.MY_PACKAGE_REPLACED"
+      android.provider.Telephony.SMS_DELIVER:
+        c8b314f ai.elizaos.app/.ElizaSmsReceiver filter 26440dc
+          Action: "android.provider.Telephony.SMS_DELIVER"
+      androidx.profileinstaller.action.INSTALL_PROFILE:
+        c410c3f ai.elizaos.app/androidx.profileinstaller.ProfileInstallReceiver filter 127990c
+          Action: "androidx.profileinstaller.action.INSTALL_PROFILE"
+      com.google.android.c2dm.intent.RECEIVE:
+        a09a599 ai.elizaos.app/com.google.firebase.iid.FirebaseInstanceIdReceiver filter 3e6505e
+          Action: "com.google.android.c2dm.intent.RECEIVE"
+      androidx.profileinstaller.action.SKIP_FILE:
+        c410c3f ai.elizaos.app/androidx.profileinstaller.ProfileInstallReceiver filter 9c60255
+          Action: "androidx.profileinstaller.action.SKIP_FILE"
+      androidx.profileinstaller.action.BENCHMARK_OPERATION:
+        c410c3f ai.elizaos.app/androidx.profileinstaller.ProfileInstallReceiver filter 7442d5b
+          Action: "androidx.profileinstaller.action.BENCHMARK_OPERATION"
+      android.intent.action.BOOT_COMPLETED:
+        2f3936b ai.elizaos.app/.ElizaBootReceiver filter 8628ec8
+          Action: "android.intent.action.LOCKED_BOOT_COMPLETED"
+          Action: "android.intent.action.BOOT_COMPLETED"
+        27eb61 ai.elizaos.app/com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver filter 8bcf686
+          Action: "android.intent.action.QUICKBOOT_POWERON"
+          Action: "android.intent.action.LOCKED_BOOT_COMPLETED"
+          Action: "android.intent.action.BOOT_COMPLETED"
+        d35fb47 ai.elizaos.app/ai.eliza.plugins.websiteblocker.WebsiteBlockerBootReceiver filter 275cf74
+          Action: "android.intent.action.LOCKED_BOOT_COMPLETED"
+          Action: "android.intent.action.BOOT_COMPLETED"
+          Action: "android.intent.action.MY_PACKAGE_REPLACED"
+        916dc9d ai.elizaos.app/androidx.work.impl.background.systemalarm.RescheduleReceiver filter 461f512
+          Action: "android.intent.action.BOOT_COMPLETED"
+      android.appwidget.action.APPWIDGET_UPDATE:
+        3356029 ai.elizaos.app/.ElizaQuickActionsWidgetProvider filter 9bc9fae
+          Action: "android.appwidget.action.APPWIDGET_UPDATE"
+      androidx.work.diagnostics.REQUEST_DIAGNOSTICS:
+        44d04e3 ai.elizaos.app/androidx.work.impl.diagnostics.DiagnosticsReceiver filter 6da6ee0
+          Action: "androidx.work.diagnostics.REQUEST_DIAGNOSTICS"
+      android.intent.action.MY_PACKAGE_REPLACED:
+        d35fb47 ai.elizaos.app/ai.eliza.plugins.websiteblocker.WebsiteBlockerBootReceiver filter 275cf74
+          Action: "android.intent.action.LOCKED_BOOT_COMPLETED"
+          Action: "android.intent.action.BOOT_COMPLETED"
+          Action: "android.intent.action.MY_PACKAGE_REPLACED"
+
+  MIME Typed Actions:
+      android.provider.Telephony.WAP_PUSH_DELIVER:
+        69ad5e5 ai.elizaos.app/.ElizaMmsReceiver filter 13708ba
+          Action: "android.provider.Telephony.WAP_PUSH_DELIVER"
+          StaticType: "application/vnd.wap.mms-message"
+
+Service Resolver Table:
+  Schemes:
+      mms:
+        c575010 ai.elizaos.app/.ElizaRespondViaMessageService filter 7f22709 permission android.permission.SEND_RESPOND_VIA_MESSAGE
+          Action: "android.intent.action.RESPOND_VIA_MESSAGE"
+          Scheme: "sms"
+          Scheme: "smsto"
+          Scheme: "mms"
+          Scheme: "mmsto"
+      sms:
+        c575010 ai.elizaos.app/.ElizaRespondViaMessageService filter 7f22709 permission android.permission.SEND_RESPOND_VIA_MESSAGE
+          Action: "android.intent.action.RESPOND_VIA_MESSAGE"
+          Scheme: "sms"
+          Scheme: "smsto"
+          Scheme: "mms"
+          Scheme: "mmsto"
+      mmsto:
+        c575010 ai.elizaos.app/.ElizaRespondViaMessageService filter 7f22709 permission android.permission.SEND_RESPOND_VIA_MESSAGE
+          Action: "android.intent.action.RESPOND_VIA_MESSAGE"
+          Scheme: "sms"
+          Scheme: "smsto"
+          Scheme: "mms"
+          Scheme: "mmsto"
+      smsto:
+        c575010 ai.elizaos.app/.ElizaRespondViaMessageService filter 7f22709 permission android.permission.SEND_RESPOND_VIA_MESSAGE
+          Action: "android.intent.action.RESPOND_VIA_MESSAGE"
+          Scheme: "sms"
+          Scheme: "smsto"
+          Scheme: "mms"
+          Scheme: "mmsto"
+
+  Non-Data Actions:
+      android.telecom.InCallService:
+        a8dc6c2 ai.elizaos.app/.ElizaInCallService filter cf8ecd3 permission android.permission.BIND_INCALL_SERVICE
+          Action: "android.telecom.InCallService"
+      android.service.quicksettings.action.QS_TILE:
+        d3b39f8 ai.elizaos.app/.ElizaVoiceTileService filter bb16ed1 permission android.permission.BIND_QUICK_SETTINGS_TILE
+          Action: "android.service.quicksettings.action.QS_TILE"
+      android.net.VpnService:
+        9495d3c ai.elizaos.app/ai.eliza.plugins.websiteblocker.WebsiteBlockerVpnService filter 70d2ac5 permission android.permission.BIND_VPN_SERVICE
+          Action: "android.net.VpnService"
+      com.google.firebase.MESSAGING_EVENT:
+        3f58d0e ai.elizaos.app/com.capacitorjs.plugins.pushnotifications.MessagingService filter 75b832f
+          Action: "com.google.firebase.MESSAGING_EVENT"
+        ed1128 ai.elizaos.app/com.google.firebase.messaging.FirebaseMessagingService filter d1aae41
+          Action: "com.google.firebase.MESSAGING_EVENT"
+          mPriority=-500, mOrder=0, mHasStaticPartialTypes=false, mHasDynamicPartialTypes=false
+      android.service.notification.NotificationListenerService:
+        4e5fda4 ai.elizaos.app/.ElizaNotificationListenerService filter a0d270d permission android.permission.BIND_NOTIFICATION_LISTENER_SERVICE
+          Action: "android.service.notification.NotificationListenerService"
+      android.accessibilityservice.AccessibilityService:
+        f60d36 ai.elizaos.app/.ElizaAccessibilityService filter e8e4437 permission android.permission.BIND_ACCESSIBILITY_SERVICE
+          Action: "android.accessibilityservice.AccessibilityService"
+      androidx.health.platform.client.ACTION_BIND_SDK_SERVICE:
+        d016c1a ai.elizaos.app/androidx.health.platform.client.impl.sdkservice.HealthDataSdkService filter ea7234b
+          Action: "androidx.health.platform.client.ACTION_BIND_SDK_SERVICE"
+
+Domain verification status:
+
+Permissions:
+  Permission [ai.elizaos.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION] (e900931):
+    sourcePackage=ai.elizaos.app
+    uid=10192 gids=[] type=0 prot=signature
+    perm=PermissionInfo{78bc965 ai.elizaos.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION}
+    flags=0x0
+
+Registered ContentProviders:
+  ai.elizaos.app/androidx.core.content.FileProvider:
+    Provider{6ffb63a ai.elizaos.app/androidx.core.content.FileProvider}
+  ai.elizaos.app/com.google.mlkit.common.internal.MlKitInitProvider:
+    Provider{f4272eb ai.elizaos.app/com.google.mlkit.common.internal.MlKitInitProvider}
+  ai.elizaos.app/com.google.firebase.provider.FirebaseInitProvider:
+    Provider{b10b848 ai.elizaos.app/com.google.firebase.provider.FirebaseInitProvider}
+  ai.elizaos.app/androidx.startup.InitializationProvider:
+    Provider{df496e1 ai.elizaos.app/androidx.startup.InitializationProvider}
+
+ContentProvider Authorities:
+  [ai.elizaos.app.fileprovider]:
+    Provider{6ffb63a ai.elizaos.app/androidx.core.content.FileProvider}
+      applicationInfo=ApplicationInfo{3070816 ai.elizaos.app}
+  [ai.elizaos.app.androidx-startup]:
+    Provider{df496e1 ai.elizaos.app/androidx.startup.InitializationProvider}
+      applicationInfo=ApplicationInfo{5795597 ai.elizaos.app}
+  [ai.elizaos.app.mlkitinitprovider]:
+    Provider{f4272eb ai.elizaos.app/com.google.mlkit.common.internal.MlKitInitProvider}
+      applicationInfo=ApplicationInfo{687a384 ai.elizaos.app}
+  [ai.elizaos.app.firebaseinitprovider]:
+    Provider{b10b848 ai.elizaos.app/com.google.firebase.provider.FirebaseInitProvider}
+      applicationInfo=ApplicationInfo{7ab076d ai.elizaos.app}
+
+Key Set Manager:
+  [ai.elizaos.app]
+      Signing KeySets: 56
+
+Packages:
+  Package [ai.elizaos.app] (e71d6aa):
+    appId=10192
+    pkg=Package{a85463 ai.elizaos.app}
+    codePath=/data/app/~~WZ5E2HwUWhzlHoAOSJVZeQ==/ai.elizaos.app-hAsyjYlNsnxp9ONkMGYvbg==
+    resourcePath=/data/app/~~WZ5E2HwUWhzlHoAOSJVZeQ==/ai.elizaos.app-hAsyjYlNsnxp9ONkMGYvbg==
+    legacyNativeLibraryDir=/data/app/~~WZ5E2HwUWhzlHoAOSJVZeQ==/ai.elizaos.app-hAsyjYlNsnxp9ONkMGYvbg==/lib
+    extractNativeLibs=true
+    primaryCpuAbi=x86_64
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=1 minSdk=26 targetSdk=35
+    minExtensionVersions=[]
+    versionName=1.0.0
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=2
+    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE HAS_DOMAIN_URLS PARTIALLY_DIRECT_BOOT_AWARE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    forceQueryable=false
+    queriesPackages=[com.google.android.apps.healthdata]
+    queriesIntents=[Intent { act=android.speech.RecognitionService }, Intent { act=android.support.customtabs.action.CustomTabsService }, Intent { act=androidx.camera.extensions.action.VENDOR_ACTION }]
+    dataDir=/data/user/0/ai.elizaos.app
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    usesOptionalLibraries:
+      androidx.camera.extensions.impl
+      androidx.window.extensions
+      androidx.window.sidecar
+    usesLibraryFiles:
+      /system_ext/framework/androidx.window.extensions.jar
+      /system_ext/framework/androidx.window.sidecar.jar
+    timeStamp=2026-06-30 15:43:07
+    lastUpdateTime=2026-06-30 15:43:10
+    installerPackageName=null
+    installerPackageUid=-1
+    initiatingPackageName=com.android.shell
+    originatingPackageName=null
+    packageSource=1
+    appMetadataFilePath=null
+    signatures=PackageSignatures{ebed3b version:2, signatures:[d55f48d1], past signatures:[]}
+    installPermissionsFixed=true
+    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE HAS_DOMAIN_URLS PARTIALLY_DIRECT_BOOT_AWARE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    apexModuleName=null
+    declared permissions:
+      ai.elizaos.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: prot=signature
+    requested permissions:
+      android.permission.INTERNET
+      android.permission.RECORD_AUDIO
+      android.permission.MODIFY_AUDIO_SETTINGS
+      android.permission.CAMERA
+      android.permission.READ_SMS
+      android.permission.SEND_SMS
+      android.permission.RECEIVE_SMS
+      android.permission.RECEIVE_MMS
+      android.permission.RECEIVE_WAP_PUSH
+      android.permission.ACCESS_FINE_LOCATION
+      android.permission.ACCESS_COARSE_LOCATION
+      android.permission.ACCESS_BACKGROUND_LOCATION
+      android.permission.FOREGROUND_SERVICE
+      android.permission.FOREGROUND_SERVICE_DATA_SYNC
+      android.permission.FOREGROUND_SERVICE_SPECIAL_USE
+      android.permission.FOREGROUND_SERVICE_MICROPHONE
+      android.permission.POST_NOTIFICATIONS
+      android.permission.WAKE_LOCK
+      android.permission.RECEIVE_BOOT_COMPLETED
+      android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+      android.permission.READ_CONTACTS
+      android.permission.WRITE_CONTACTS
+      android.permission.CALL_PHONE
+      android.permission.READ_PHONE_STATE
+      android.permission.ANSWER_PHONE_CALLS
+      android.permission.MANAGE_OWN_CALLS
+      android.permission.READ_CALL_LOG
+      android.permission.WRITE_CALL_LOG
+      android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION
+      android.permission.SYSTEM_ALERT_WINDOW
+      android.permission.PACKAGE_USAGE_STATS
+      android.permission.MANAGE_APP_OPS_MODES
+      android.permission.MANAGE_VIRTUAL_MACHINE
+      android.permission.READ_FRAME_BUFFER
+      android.permission.INJECT_EVENTS
+      android.permission.REAL_GET_TASKS
+      android.permission.ACCESS_NETWORK_STATE
+      android.permission.SCHEDULE_EXACT_ALARM
+      android.permission.VIBRATE
+      android.permission.WRITE_SETTINGS
+      android.permission.ACCESS_WIFI_STATE
+      android.permission.CHANGE_WIFI_STATE
+      android.permission.CHANGE_NETWORK_STATE
+      com.google.android.c2dm.permission.RECEIVE
+      ai.elizaos.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+    install permissions:
+      android.permission.REAL_GET_TASKS: granted=false
+      android.permission.WRITE_SETTINGS: granted=false
+      com.google.android.c2dm.permission.RECEIVE: granted=true
+      android.permission.MODIFY_AUDIO_SETTINGS: granted=true
+      android.permission.SYSTEM_ALERT_WINDOW: granted=false
+      android.permission.CHANGE_NETWORK_STATE: granted=true
+      android.permission.FOREGROUND_SERVICE: granted=true
+      android.permission.RECEIVE_BOOT_COMPLETED: granted=true
+      android.permission.FOREGROUND_SERVICE_SPECIAL_USE: granted=true
+      android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: granted=true
+      ai.elizaos.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.INTERNET: granted=true
+      android.permission.PACKAGE_USAGE_STATS: granted=false
+      android.permission.CHANGE_WIFI_STATE: granted=true
+      android.permission.FOREGROUND_SERVICE_DATA_SYNC: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+      android.permission.MANAGE_OWN_CALLS: granted=true
+      android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION: granted=true
+      android.permission.MANAGE_VIRTUAL_MACHINE: granted=false
+      android.permission.FOREGROUND_SERVICE_MICROPHONE: granted=true
+      android.permission.SCHEDULE_EXACT_ALARM: granted=false
+      android.permission.VIBRATE: granted=true
+      android.permission.ACCESS_WIFI_STATE: granted=true
+      android.permission.MANAGE_APP_OPS_MODES: granted=false
+      android.permission.READ_FRAME_BUFFER: granted=false
+      android.permission.WAKE_LOCK: granted=true
+      android.permission.INJECT_EVENTS: granted=false
+    User 0: ceDataInode=328048 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false
+      installReason=0
+      firstInstallTime=2026-06-30 03:35:21
+      uninstallReason=0
+      overlay paths:
+        /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk
+        /data/resource-cache/com.android.systemui-neutral-uizE.frro
+        /data/resource-cache/com.android.systemui-accent-K1YS.frro
+        /data/resource-cache/com.android.systemui-dynamic-drOB.frro
+      legacy overlay paths:
+        /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk
+      gids=[3003]
+      runtime permissions:
+        android.permission.READ_SMS: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.POST_NOTIFICATIONS: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_CALL_LOG: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.ACCESS_FINE_LOCATION: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.ANSWER_PHONE_CALLS: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.RECEIVE_WAP_PUSH: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.RECEIVE_MMS: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.RECEIVE_SMS: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.ACCESS_COARSE_LOCATION: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_PHONE_STATE: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.SEND_SMS: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.CALL_PHONE: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.WRITE_CONTACTS: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.CAMERA: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.WRITE_CALL_LOG: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+        android.permission.RECORD_AUDIO: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_CONTACTS: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.ACCESS_BACKGROUND_LOCATION: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+      enabledComponents:
+        androidx.work.impl.background.systemalarm.RescheduleReceiver
+        androidx.work.impl.background.systemjob.SystemJobService
+
+Queries:
+  system apps queryable: false
+  queries via forceQueryable:
+  queries via package name:
+  queries via component:
+    com.google.android.settings.intelligence:
+      ai.elizaos.app
+    com.google.android.apps.wellbeing:
+      ai.elizaos.app
+    com.google.android.apps.restore:
+      ai.elizaos.app
+    [com.google.android.gsf,com.google.android.gms]:
+      ai.elizaos.app
+    com.google.android.dialer:
+      ai.elizaos.app
+    com.google.android.apps.messaging:
+      ai.elizaos.app
+    com.google.android.youtube:
+      ai.elizaos.app
+    com.google.android.apps.photos:
+      ai.elizaos.app
+    com.google.android.gm:
+      ai.elizaos.app
+    com.google.android.calendar:
+      ai.elizaos.app
+    com.google.android.apps.maps:
+      ai.elizaos.app
+    com.google.android.contacts:
+      ai.elizaos.app
+    com.google.android.apps.youtube.music:
+      ai.elizaos.app
+    com.google.android.apps.docs:
+      ai.elizaos.app
+    com.google.android.apps.wallpaper:
+      ai.elizaos.app
+    com.android.emergency:
+      ai.elizaos.app
+    com.android.systemui.accessibility.accessibilitymenu:
+      ai.elizaos.app
+    ai.elizaos.app:
+      com.google.android.as
+      com.google.android.googlequicksearchbox
+      com.android.chrome
+  queryable via interaction:
+    User 0:
+      [com.android.keychain,com.android.server.telecom,com.android.localtransport,com.android.inputdevices,android,com.android.emulator.multidisplay,com.android.location.fused,com.android.wallpaperbackup,com.android.settings,com.android.providers.settings,com.android.dynsystem]:
+        ai.elizaos.app
+      com.google.android.as:
+        ai.elizaos.app
+      [com.google.android.gsf,com.google.android.gms]:
+        ai.elizaos.app
+      com.google.android.webview:
+        ai.elizaos.app
+      com.google.android.inputmethod.latin:
+        ai.elizaos.app
+      com.android.chrome:
+        ai.elizaos.app
+      com.google.android.apps.nexuslauncher:
+        ai.elizaos.app
+      com.android.systemui:
+        ai.elizaos.app
+      ai.elizaos.app:
+        com.google.android.webview
+  queryable via uses-library:
+
+Dexopt state:
+  [ai.elizaos.app]
+    path: /data/app/~~WZ5E2HwUWhzlHoAOSJVZeQ==/ai.elizaos.app-hAsyjYlNsnxp9ONkMGYvbg==/base.apk
+      x86_64: [status=run-from-apk] [reason=unknown] [primary-abi]
+        [location is error]
+
+Compiler stats:
+  [ai.elizaos.app]
+    (No recorded stats)
