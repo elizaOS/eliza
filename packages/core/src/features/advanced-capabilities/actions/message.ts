@@ -248,69 +248,23 @@ function normalizeOp(value: unknown): MessageOperation | undefined {
 	return OP_ALIASES[normalized];
 }
 
-function inferOp(message: Memory, params: ParamRecord): MessageOperation {
+export function inferOp(params: ParamRecord): MessageOperation {
 	const explicit = normalizeOp(params.action);
 	if (explicit) return explicit;
 
-	const text = `${message.content.text ?? ""}`.toLowerCase();
-
+	// #10471: no English natural-language keyword inference. The planner emits
+	// `action` (MESSAGE_OPS enum) directly for any language; here we only honor
+	// STRUCTURED params, then default to the safe primary op (send). A wrong
+	// `send` default is recoverable, unlike e.g. delete/leave, so deferring an
+	// unspecified op to send is the conservative choice. Ops without a
+	// structured signal (edit/delete/pin/join/leave/triage/draft_*/list_*/
+	// read_channel/get_user/respond/read_with_contact/search_inbox/list_inbox)
+	// are reached via the `action` enum the planner selects explicitly.
 	if (params.draftId && params.sendAt) return "schedule_draft_send";
 	if (params.draftId) return "send_draft";
-	if (
-		params.manageOperation ||
-		/\b(unsubscribe|archive|trash|spam|mark read|label)\b/.test(text)
-	) {
-		return "manage";
-	}
-	if (/\bdraft\b.*(reply|response)\b/.test(text)) return "draft_reply";
-	if (/\b(draft|compose)\b.*(follow.?up|check.?in|bump)\b/.test(text))
-		return "draft_followup";
-	if (/\b(respond|reply)\b.*(email|inbox|message)\b/.test(text))
-		return "respond";
-	if (/\b(send|confirm)\b.*\bdraft\b/.test(text)) return "send_draft";
-	if (/\b(schedule|defer|send later)\b/.test(text) && /\bdraft\b/.test(text))
-		return "schedule_draft_send";
-	if (/\b(triage|prioritize|priority|needs reply|needs answer)\b/.test(text))
-		return "triage";
-	if (
-		/\b(inbox|unread|digest)\b/.test(text) &&
-		/\b(list|show|what'?s|summary|summarize)\b/.test(text)
-	) {
-		return "list_inbox";
-	}
-
-	const hasContact = textParam(params.contact) || textParam(params.entityId);
-	if (
-		hasContact &&
-		/\b(read|recent|history|conversation|messages with|chat with|dms? with)\b/.test(
-			text,
-		)
-	) {
-		return "read_with_contact";
-	}
-
-	if (
-		(params.query || /\b(search|find)\b/.test(text)) &&
-		/\b(inbox|email|gmail|mail)\b/.test(text)
-	) {
-		return "search_inbox";
-	}
-	if (params.query || /\b(search|find)\b/.test(text)) return "search";
-	if (params.emoji || /\b(react|reaction)\b/.test(text)) return "react";
-	if (/\b(edit|update)\b/.test(text)) return "edit";
-	if (/\b(delete|remove|unsend)\b/.test(text)) return "delete";
-	if (/\b(unpin|pin)\b/.test(text)) return "pin";
-	if (/\bjoin\b/.test(text)) return "join";
-	if (/\bleave\b/.test(text)) return "leave";
-	if (/\b(user info|lookup user|get user)\b/.test(text)) return "get_user";
-	// list_connections is intentionally NOT inferred from free text: it is a
-	// meta-query the planner selects explicitly via the op schema, aliases, and
-	// param description, so a message merely mentioning "platform"/"connection"
-	// can never misroute here.
-	if (/\blist\b.*(server|workspace|guild)\b/.test(text)) return "list_servers";
-	if (/\blist\b.*(channel|room|chat|group)\b/.test(text))
-		return "list_channels";
-	if (/\b(read|recent|history)\b/.test(text)) return "read_channel";
+	if (params.manageOperation) return "manage";
+	if (params.query) return "search";
+	if (params.emoji) return "react";
 	return "send";
 }
 
@@ -3759,7 +3713,7 @@ export const messageAction: Action = {
 	handler: async (runtime, message, state, options, callback, responses) => {
 		refreshDescriptions(messageAction, runtime);
 		const params = paramsFromOptions(options);
-		const op = inferOp(message, params);
+		const op = inferOp(params);
 		const lifeOpsHook = (
 			runtime as IAgentRuntime & {
 				lifeOpsMessageActionHook?: {

@@ -125,41 +125,6 @@ async function resolveBuiltInFallbackAction(
   return ownerBlockFallbackPromise;
 }
 
-export function inferBalanceChainFromText(
-  input: string,
-): "all" | "solana" | "bsc" | "base" | "ethereum" {
-  const normalized = input.toLowerCase();
-  if (/\bsol(?:ana)?\b/.test(normalized)) return "solana";
-  if (/\b(bsc|bnb|binance)\b/.test(normalized)) return "bsc";
-  if (/\bbase\b/.test(normalized)) return "base";
-  if (/\b(eth|ethereum)\b/.test(normalized)) return "ethereum";
-  return "all";
-}
-
-export function shouldForceCheckBalanceFallback(
-  parsedActions: FallbackParsedAction[],
-  userText: string,
-  responseText: string,
-): boolean {
-  const nonReplyActions = parsedActions.filter(
-    (a) => a.name !== "REPLY" && a.name !== "NONE" && a.name !== "IGNORE",
-  );
-  if (nonReplyActions.length > 0) return false;
-
-  const combined = `${userText}\n${responseText}`.toLowerCase();
-  const balanceIntent =
-    /\b(balance|wallet|holdings|portfolio|funds|how much)\b/.test(combined) ||
-    /\b(check(ing)?|look(ing)? up|fetch(ing)?)\b/.test(combined);
-  return balanceIntent;
-}
-
-export function isBalanceIntent(input: string): boolean {
-  const normalized = input.toLowerCase();
-  return /\b(balance|wallet|holdings|portfolio|funds|how much)\b/.test(
-    normalized,
-  );
-}
-
 export function parseFallbackActionBlocks(
   value: unknown,
   _responseText?: string,

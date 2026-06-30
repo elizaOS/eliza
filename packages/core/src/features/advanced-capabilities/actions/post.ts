@@ -56,14 +56,14 @@ function normalizeOp(value: unknown): PostOp | undefined {
 	return undefined;
 }
 
-function resolveOp(message: Memory, options?: HandlerOptions): PostOp {
+export function resolveOp(options?: HandlerOptions): PostOp {
 	const params = paramsFromOptions(options);
 	const explicit = normalizeOp(params.action);
 	if (explicit) return explicit;
-	const text = `${message.content.text ?? ""}`.toLowerCase();
-	if (params.query || /\b(search|find)\b/.test(text)) return "search";
-	if (params.feed || /\b(read|recent|timeline|feed)\b/.test(text))
-		return "read";
+	// The planner emits `action` (POST_OPS enum) directly for any language;
+	// fall back only to structured params, never to English text matching (#10471).
+	if (params.query) return "search";
+	if (params.feed) return "read";
 	return "send";
 }
 
@@ -663,7 +663,7 @@ export const postAction: Action = {
 		options?: HandlerOptions,
 	): Promise<ActionResult> => {
 		refreshDescriptions(postAction, runtime);
-		const op = resolveOp(message, options);
+		const op = resolveOp(options);
 		switch (op) {
 			case "send":
 				return handleSend(runtime, message, options);
