@@ -36,14 +36,11 @@ function hasDownloadMusicContext(message: Memory, state?: State): boolean {
   return DOWNLOAD_MUSIC_CONTEXTS.some((context) => active.has(context));
 }
 
-function readDownloadQuery(
-  message: Memory,
-  options?: Record<string, unknown>,
-): string {
+function readDownloadQuery(options?: Record<string, unknown>): string {
   const maxQueryLength = 200;
   const direct = readDirectDownloadQuery(options);
   if (direct) return direct.slice(0, maxQueryLength);
-  return (message.content.text || "").trim().slice(0, maxQueryLength);
+  return "";
 }
 
 function readDirectDownloadQuery(
@@ -88,7 +85,7 @@ export async function handleDownloadMusic(
   if (!callback) return { success: false, error: "Missing callback" };
 
   const timeoutMs = 120_000;
-  const query = readDownloadQuery(message, options);
+  const query = readDownloadQuery(options);
 
   if (!query || query.length < 3) {
     await callback({
