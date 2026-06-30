@@ -31,9 +31,10 @@
   "scripts": {
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:real-chromium": "vitest run --config vitest.real.config.ts src/benchmark/__tests__/miniwob-chromium.real.test.ts",
+    "test:real-chromium": "vitest run --config vitest.real.config.ts",
     "bench:miniwob": "bun scripts/run-miniwob-benchmark.mjs",
     "bench:miniwob:chromium": "bun scripts/run-miniwob-chromium-benchmark.mjs",
+    "bench:grounding:chromium": "bun scripts/run-web-grounding-benchmark.mjs",
     "build": "bun run build:js && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",

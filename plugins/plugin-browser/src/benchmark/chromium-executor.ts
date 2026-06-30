@@ -123,7 +123,11 @@ function noChromiumError(): Error {
 function chromiumLaunchOptions(executablePath: string) {
   return {
     executablePath,
-    headless: true as const,
+    // Old ("shell") headless: new-headless `Page.captureScreenshot` crashes the
+    // renderer ("Target closed") on an intercepted/navigated page in this
+    // environment, which the grounding lane needs; shell headless screenshots
+    // reliably and drives request interception + navigation the same way.
+    headless: "shell" as const,
     // The default 30s browser-start / protocol timeouts are too tight on a
     // loaded CI box; bump them so a slow Chromium start isn't a flake.
     timeout: 60_000,
@@ -225,7 +229,13 @@ export async function createChromiumBenchmarkExecutor(
         .catch(() => {});
       return;
     }
-    void request.abort().catch(() => {});
+    // Seal external network with a graceful empty 404 rather than `abort()`:
+    // aborting an in-flight request while the renderer is compositing can crash
+    // the page on `captureScreenshot` ("Target closed"). A 404 blocks the
+    // content just as effectively without destabilising the renderer.
+    void request
+      .respond({ status: 404, contentType: "text/plain", body: "" })
+      .catch(() => {});
   });
 
   async function resolveHandle(
@@ -294,6 +304,64 @@ export async function createChromiumBenchmarkExecutor(
           title: await page.title(),
           bodyText: normalizeText(bodyText).slice(0, SNAPSHOT_BODY_TEXT_CAP),
         });
+      }
+
+      case "screenshot": {
+        // Real PNG bytes from the real browser — the grounding lane's image. The
+        // viewport dims are returned so a grounder can reason in image pixels.
+        // `Page.captureScreenshot` crashes the renderer ("Target closed") while
+        // request interception is ENABLED in this Chromium, so toggle it off
+        // across the capture (no page request fires during a static screenshot)
+        // and restore it after — the `request` handler stays attached.
+        await page.setRequestInterception(false).catch(() => {});
+        let data = "";
+        try {
+          data = (await page.screenshot({
+            encoding: "base64",
+            fullPage: false,
+          })) as string;
+        } finally {
+          await page.setRequestInterception(true).catch(() => {});
+        }
+        const viewport = page.viewport();
+        return {
+          mode: "chromium",
+          subaction: command.subaction,
+          snapshot: { data },
+          value: {
+            width: viewport?.width ?? 0,
+            height: viewport?.height ?? 0,
+          },
+        };
+      }
+
+      case "mouse": {
+        // Coordinate-level pointer ops for the grounding lane's click path: a
+        // grounder predicts (x, y) in image pixels, we click there for real.
+        const action = command.mouseAction ?? "move";
+        const x = command.x ?? 0;
+        const y = command.y ?? 0;
+        if (action === "click") {
+          // A coordinate click may land on a navigating element; wait for the
+          // navigation to settle (bounded) so a follow-up `get url` is accurate.
+          // No navigation (a miss / non-nav target) resolves null after the
+          // short timeout.
+          const nav = page
+            .waitForNavigation({
+              waitUntil: "domcontentloaded",
+              timeout: navigationTimeoutMs,
+            })
+            .catch(() => null);
+          await page.mouse.click(x, y);
+          await nav;
+        } else if (action === "down") {
+          await page.mouse.down();
+        } else if (action === "up") {
+          await page.mouse.up();
+        } else {
+          await page.mouse.move(x, y);
+        }
+        return result(command.subaction, { action, x, y, url: page.url() });
       }
 
       case "click":
@@ -392,6 +460,14 @@ export async function createChromiumBenchmarkExecutor(
             const handles = await page.$$(selector);
             await Promise.all(handles.map((h) => h.dispose()));
             return result(command.subaction, handles.length);
+          }
+          case "box": {
+            const handle = await resolveHandle(requireSelector(command));
+            // page-pixel bounding box {x, y, width, height} — the grounding
+            // lane's ground-truth target, in the same frame as a mouse click.
+            const box = await handle.boundingBox();
+            await handle.dispose();
+            return result(command.subaction, box);
           }
           case "value": {
             const handle = await resolveHandle(requireSelector(command));

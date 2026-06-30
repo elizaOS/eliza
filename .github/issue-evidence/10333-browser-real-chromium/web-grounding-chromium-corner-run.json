@@ -1,0 +1,58 @@
+{
+  "generatedAt": "2026-06-30T06:48:19.820Z",
+  "benchmark": "web-element-grounding",
+  "engine": "chromium",
+  "grounder": "corner",
+  "total": 5,
+  "inBox": 0,
+  "clickHits": 0,
+  "accuracy": 0,
+  "clickAccuracy": 0,
+  "results": [
+    {
+      "sampleId": "#g-0",
+      "predicted": {
+        "x": 1,
+        "y": 1
+      },
+      "inBox": false,
+      "clickHit": false
+    },
+    {
+      "sampleId": "#g-1",
+      "predicted": {
+        "x": 1,
+        "y": 1
+      },
+      "inBox": false,
+      "clickHit": false
+    },
+    {
+      "sampleId": "#g-2",
+      "predicted": {
+        "x": 1,
+        "y": 1
+      },
+      "inBox": false,
+      "clickHit": false
+    },
+    {
+      "sampleId": "#g-3",
+      "predicted": {
+        "x": 1,
+        "y": 1
+      },
+      "inBox": false,
+      "clickHit": false
+    },
+    {
+      "sampleId": "#g-4",
+      "predicted": {
+        "x": 1,
+        "y": 1
+      },
+      "inBox": false,
+      "clickHit": false
+    }
+  ]
+}

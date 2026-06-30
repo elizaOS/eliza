@@ -1,5 +1,9 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../vitest.config.ts";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Dedicated config for the real-engine lanes (#10333). The root
@@ -16,9 +20,17 @@ import baseConfig from "../../vitest.config.ts";
 export default defineConfig({
   resolve: baseConfig.resolve,
   test: {
+    // Pin the root to this package so `src/**` resolves regardless of the cwd
+    // the runner is invoked from (the package script runs from here; CI runs
+    // from the repo root with `--config <this file>`).
+    root: here,
     environment: "node",
     testTimeout: 300_000,
     hookTimeout: 120_000,
+    // Each real lane drives its own Chromium; running test files in parallel
+    // workers launches multiple browsers at once and starves them on a loaded
+    // box. Run the lanes one at a time.
+    fileParallelism: false,
     include: ["src/**/*.real.test.ts"],
     exclude: [
       "**/node_modules/**",

@@ -15,6 +15,20 @@ export {
   resolveChromiumExecutablePath,
 } from "./chromium-executor.js";
 export {
+  buildGroundingPage,
+  buildWebGroundingSamples,
+  cornerGrounder,
+  type GroundingBox,
+  type GroundingPage,
+  type GroundingPrediction,
+  oracleGrounder,
+  pointInBbox,
+  scoreWebGrounding,
+  type WebGrounder,
+  type WebGroundingSample,
+  type WebGroundingScore,
+} from "./grounding.js";
+export {
   type BenchmarkPolicy,
   type BenchmarkPolicyInput,
   NoopPolicy,
