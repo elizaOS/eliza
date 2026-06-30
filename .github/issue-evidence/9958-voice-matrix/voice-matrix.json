@@ -1,7 +1,7 @@
 {
   "schema": "eliza_voice_live_matrix_v1",
   "issue": 9958,
-  "generatedAt": "2026-06-30T00:39:27.069Z",
+  "generatedAt": "2026-06-30T07:13:48.071Z",
   "mode": "probe",
   "dimensions": {
     "platform": [
@@ -48,7 +48,7 @@
   "summary": {
     "pass": 0,
     "fail": 0,
-    "pending": 7,
+    "pending": 8,
     "skip": 8
   },
   "cells": [
@@ -244,22 +244,20 @@
         "run",
         "--cwd",
         "packages/app",
-        "capture:macos-desktop",
-        "--",
-        "--issue",
-        "9958",
-        "--slug",
-        "voice-macos-electrobun"
+        "test:desktop:voice"
       ],
+      "env": {
+        "ELIZA_VOICE_DESKTOP_SELFTEST": "1"
+      },
       "evidence": [
-        ".github/issue-evidence/9958-voice-macos-electrobun-macos-desktop.*"
+        "$ELIZA_VOICE_MATRIX_OUT/macos.electrobun.live-roundtrip",
+        "packages/app/test-results"
       ],
       "probe": {
         "available": false,
         "reason": "set ELIZA_VOICE_MACOS_ELECTROBUN_READY=1 on a macOS Electrobun voice runner with loopback mic/audio capture"
       },
       "cwd": ".",
-      "env": {},
       "execution": null,
       "status": "skip"
     },
@@ -280,22 +278,20 @@
         "run",
         "--cwd",
         "packages/app",
-        "capture:windows-desktop",
-        "--",
-        "--issue",
-        "9958",
-        "--slug",
-        "voice-windows-electrobun"
+        "test:desktop:voice"
       ],
+      "env": {
+        "ELIZA_VOICE_DESKTOP_SELFTEST": "1"
+      },
       "evidence": [
-        ".github/issue-evidence/9958-voice-windows-electrobun-windows-desktop.*"
+        "$ELIZA_VOICE_MATRIX_OUT/windows.electrobun.live-roundtrip",
+        "packages/app/test-results"
       ],
       "probe": {
         "available": false,
         "reason": "requires Windows runner; current=darwin"
       },
       "cwd": ".",
-      "env": {},
       "execution": null,
       "status": "skip"
     },
@@ -328,7 +324,7 @@
       ],
       "probe": {
         "available": false,
-        "reason": "set ELIZA_VOICE_IOS_READY=1 after installing a current iOS simulator/device build with voice assets"
+        "reason": "set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets"
       },
       "cwd": ".",
       "env": {},
@@ -502,19 +498,16 @@
       },
       "class": "wakeword-device-gap",
       "command": [
-        "bun",
-        "run",
-        "--cwd",
-        "plugins/plugin-local-inference",
-        "voice:workbench",
-        "--real"
+        "node",
+        "packages/scripts/voice-openwakeword-eval.mjs"
       ],
       "evidence": [
-        "$VOICE_REAL_MATRIX_OUT/voice-workbench-real"
+        "$ELIZA_VOICE_MATRIX_OUT/wake.openwakeword.real-head/openwakeword-eval.json",
+        "$ELIZA_VOICE_OPENWAKEWORD_REPORT"
       ],
       "probe": {
         "available": false,
-        "reason": "ELIZA_OPENWAKEWORD_REAL_READY is not set for a real wake-word head run"
+        "reason": "ELIZA_VOICE_OPENWAKEWORD_REPORT is not set to a reviewed real-head openWakeWord JSON report"
       },
       "cwd": ".",
       "env": {},
@@ -522,8 +515,36 @@
       "status": "skip"
     },
     {
+      "id": "stt.stage-b.apple-sfspeech",
+      "title": "Stage-B STT Apple arm: real on-device SFSpeechRecognizer latency/WER over synthesised speech (quiet + 10dB noise)",
+      "platform": "macos-electrobun",
+      "dimensions": {
+        "transcriptionState": "on",
+        "chimeIn": "should-respond",
+        "wakewordContext": "idle-wake",
+        "noiseRejection": "noisy-reverberant",
+        "voices": "owner"
+      },
+      "class": "stt-evaluation",
+      "command": [
+        "node",
+        "packages/scripts/stage-b-stt-bench.mjs"
+      ],
+      "evidence": [
+        ".github/issue-evidence/9958-stt-stage-b-eval"
+      ],
+      "probe": {
+        "available": true,
+        "reason": "macOS on-device SFSpeechRecognizer + say/afconvert available for a real Stage-B latency/WER measurement"
+      },
+      "cwd": ".",
+      "env": {},
+      "execution": null,
+      "status": "pending"
+    },
+    {
       "id": "stt.stage-b.evaluation",
-      "title": "Stage-B STT evaluation: iOS SFSpeechRecognizer vs Android SpeechRecognizer vs fused ASR",
+      "title": "Stage-B STT evaluation: iOS battery/energy + Android SpeechRecognizer (NNAPI) vs fused ASR",
       "platform": "android",
       "dimensions": {
         "transcriptionState": "on",
@@ -534,16 +555,16 @@
       },
       "class": "stt-evaluation",
       "command": [
-        "bun",
-        "packages/scripts/voice-matrix.mjs",
-        "--stage-b-eval-placeholder"
+        "node",
+        "packages/scripts/voice-stage-b-eval.mjs"
       ],
       "evidence": [
-        ".github/issue-evidence/9147-voice-asr-m4max.md"
+        "$ELIZA_VOICE_MATRIX_OUT/stt.stage-b.evaluation/stage-b-eval.json",
+        "$ELIZA_VOICE_STAGE_B_REPORT"
       ],
       "probe": {
         "available": false,
-        "reason": "Stage-B STT battery/latency evaluation needs paired iOS+Android device runners and power telemetry"
+        "reason": "ELIZA_VOICE_STAGE_B_REPORT is not set to a reviewed iOS+Android+fused ASR Stage-B JSON report"
       },
       "cwd": ".",
       "env": {},
