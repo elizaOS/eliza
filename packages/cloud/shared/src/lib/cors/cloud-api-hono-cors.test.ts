@@ -41,6 +41,8 @@ describe("isFirstPartyOrigin", () => {
     // The Eliza agent app on its own subdomain is first-party.
     expect(isFirstPartyOrigin("https://app.elizacloud.ai")).toBe(true);
     expect(isFirstPartyOrigin("https://app-staging.elizacloud.ai")).toBe(true);
+    expect(isFirstPartyOrigin("https://develop.eliza-app.pages.dev")).toBe(true);
+    expect(isFirstPartyOrigin("https://random.eliza-app.pages.dev")).toBe(false);
     expect(isFirstPartyOrigin("http://localhost:5173")).toBe(true);
     expect(isFirstPartyOrigin("https://supakan.nubs.site")).toBe(false);
     expect(isFirstPartyOrigin("https://evil.example.com")).toBe(false);

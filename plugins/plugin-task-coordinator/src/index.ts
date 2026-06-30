@@ -287,7 +287,11 @@ const taskCoordinatorPlugin: Plugin = {
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "CockpitRoute",
-      capabilities: [],
+      // The cockpit drives the same orchestrator interact protocol (list /
+      // open-task / create-task / add-agent / stop-agent …) as /orchestrator,
+      // so it advertises the same capabilities — this is what lets app-control
+      // route session-control intents ("stop that agent") to the cockpit.
+      capabilities: ORCHESTRATOR_CAPABILITIES,
       tags: ["developer", "coding-agent", "cockpit"],
       visibleInManager: true,
       desktopTabEnabled: true,

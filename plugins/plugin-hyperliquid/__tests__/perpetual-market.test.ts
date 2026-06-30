@@ -129,17 +129,17 @@ describe("perpetualMarketAction validation gating", () => {
     expect(result).toBe(true);
   });
 
-  it("validates when message text contains a hyperliquid keyword", async () => {
+  it("does NOT keyword-gate: a hyperliquid mention without the context no longer validates (#10470 — relevance is the model's job via semantic retrieval, not an English keyword list)", async () => {
     const runtime = makeRuntime(null);
     const result = await perpetualMarketAction.validate?.(
       runtime,
       makeMessage("what are the funding rates on hyperliquid"),
       makeState([]),
     );
-    expect(result).toBe(true);
+    expect(result).toBe(false);
   });
 
-  it("rejects when neither context nor keyword intent is present", async () => {
+  it("rejects when the finance/crypto/trading/payments context is not active", async () => {
     const runtime = makeRuntime(null);
     const result = await perpetualMarketAction.validate?.(
       runtime,
@@ -147,6 +147,18 @@ describe("perpetualMarketAction validation gating", () => {
       makeState([]),
     );
     expect(result).toBe(false);
+  });
+
+  it("validates regardless of phrasing or language when the context is active", async () => {
+    const runtime = makeRuntime(null);
+    for (const text of ["mercados perpetuos", "ポジションを見せて", "随便什么"]) {
+      const result = await perpetualMarketAction.validate?.(
+        runtime,
+        makeMessage(text),
+        makeState(["crypto"]),
+      );
+      expect(result).toBe(true);
+    }
   });
 });
 

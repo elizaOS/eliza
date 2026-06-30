@@ -5,9 +5,7 @@ import type {
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
-  Memory,
   ProviderDataRecord,
-  State,
 } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
@@ -35,58 +33,6 @@ const HYPERLIQUID_PLACE_ORDER_COMPAT_NAME = "HYPERLIQUID_PLACE_ORDER";
 function toCallbackData(data: ProviderDataRecord): Content["data"] {
   return data as Content["data"];
 }
-const HYPERLIQUID_READ_KEYWORDS = [
-  "hyperliquid",
-  "perp",
-  "perps",
-  "perpetual",
-  "perpetuals",
-  "funding",
-  "funding rate",
-  "futures",
-  "leverage",
-  "liquidation",
-  "perpétuel",
-  "perpetuo",
-  "perpetuelle",
-  "ewig",
-  "永続",
-  "永久",
-  "永续",
-  "선물",
-  "무기한",
-] as const;
-const HYPERLIQUID_TRADE_KEYWORDS = [
-  ...HYPERLIQUID_READ_KEYWORDS,
-  "buy",
-  "sell",
-  "trade",
-  "order",
-  "long",
-  "short",
-  "open position",
-  "close position",
-  "comprar",
-  "vender",
-  "orden",
-  "acheter",
-  "vendre",
-  "ordre",
-  "kaufen",
-  "verkaufen",
-  "auftrag",
-  "comprare",
-  "vendere",
-  "注文",
-  "買う",
-  "売る",
-  "买入",
-  "卖出",
-  "订单",
-  "매수",
-  "매도",
-] as const;
-
 const READ_KINDS = [
   "status",
   "markets",
@@ -226,51 +172,6 @@ function readOp(
     return "place_order";
   }
   return null;
-}
-
-function hasSelectedContext(
-  state: State | undefined,
-  contexts: readonly string[] = HYPERLIQUID_ACTION_CONTEXTS,
-): boolean {
-  const selected = new Set<string>();
-  const collect = (value: unknown) => {
-    if (!Array.isArray(value)) return;
-    for (const item of value) {
-      if (typeof item === "string") selected.add(item);
-    }
-  };
-  collect(
-    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  collect(
-    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  const contextObject = (state?.data as Record<string, unknown> | undefined)
-    ?.contextObject as
-    | {
-        trajectoryPrefix?: { selectedContexts?: unknown };
-        metadata?: { selectedContexts?: unknown };
-      }
-    | undefined;
-  collect(contextObject?.trajectoryPrefix?.selectedContexts);
-  collect(contextObject?.metadata?.selectedContexts);
-  return contexts.some((context) => selected.has(context));
-}
-
-function hasKeywordIntent(
-  message: Memory,
-  state: State | undefined,
-  keywords: readonly string[],
-): boolean {
-  const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 async function fetchHyperliquidJson<T>(path: string): Promise<T> {
@@ -826,10 +727,9 @@ export const perpetualMarketAction: Action = {
       schema: { type: "number" },
     },
   ],
-  validate: async (_runtime, message: Memory, state?: State) =>
-    hasSelectedContext(state) ||
-    hasKeywordIntent(message, state, HYPERLIQUID_READ_KEYWORDS) ||
-    hasKeywordIntent(message, state, HYPERLIQUID_TRADE_KEYWORDS),
+  // Applicability is enforced by contextGate. Keep validate non-semantic so
+  // planner state-shape drift cannot hide the action after routing selected it.
+  validate: async () => true,
   handler: async (runtime, _message, _state, options, callback) => {
     const op = readOp(options);
     if (!op) {

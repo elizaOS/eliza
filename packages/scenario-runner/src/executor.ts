@@ -449,15 +449,40 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
       actions: [mod.appAction, mod.backgroundAction, mod.viewsAction],
     };
   }
+  if (pkg === "@elizaos/plugin-hyperliquid") {
+    const mod = (await import(
+      "../../../plugins/plugin-hyperliquid/src/plugin.ts"
+    )) as {
+      hyperliquidPlugin?: Plugin;
+    };
+    return mod.hyperliquidPlugin ?? null;
+  }
 
   const mod = (await import(pkg)) as Record<string, unknown>;
+  const isPlugin = (value: unknown): value is Plugin => {
+    if (value === null || typeof value !== "object") return false;
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.name !== "string") return false;
+    // A Plugin carries at least one registrable surface; this distinguishes it
+    // from unrelated named exports that merely happen to have a `name` field.
+    return (
+      Array.isArray(obj.actions) ||
+      Array.isArray(obj.providers) ||
+      Array.isArray(obj.services) ||
+      Array.isArray(obj.evaluators) ||
+      Array.isArray(obj.routes) ||
+      typeof obj.init === "function" ||
+      typeof obj.models === "object"
+    );
+  };
+  // Known export names first, then any Plugin-shaped named export: roughly half
+  // of first-party plugins export only `const <name>Plugin` with no default,
+  // which the fixed-name lookup alone would fail to resolve.
   const candidate =
-    mod.default ?? mod.elizaPlugin ?? mod.plugin ?? mod.schedulingPlugin;
-  return candidate !== null &&
-    typeof candidate === "object" &&
-    typeof (candidate as { name?: unknown }).name === "string"
-    ? (candidate as Plugin)
-    : null;
+    [mod.default, mod.elizaPlugin, mod.plugin, mod.schedulingPlugin].find(
+      isPlugin,
+    ) ?? Object.values(mod).find(isPlugin);
+  return candidate ? (candidate as Plugin) : null;
 }
 
 function normalizeChannelType(value: unknown): ChannelType {
@@ -1145,6 +1170,8 @@ async function clearSelfControlBlocks(): Promise<string | undefined> {
 
 async function runScenarioCleanups(
   scenario: ScenarioDefinition,
+  runtime: AgentRuntime,
+  ctx: RunnerContext,
 ): Promise<string[]> {
   const cleanups = (scenario as { cleanup?: unknown }).cleanup;
   if (!Array.isArray(cleanups)) {
@@ -1155,13 +1182,29 @@ async function runScenarioCleanups(
     if (!cleanup || typeof cleanup !== "object") {
       continue;
     }
-    const step = cleanup as { type?: unknown; name?: unknown };
+    const step = cleanup as {
+      type?: unknown;
+      name?: unknown;
+      apply?: unknown;
+    };
     let result: string | undefined;
     try {
       if (step.type === "gmailDeleteDrafts") {
         result = await deleteMockGmailDrafts();
       } else if (step.type === "selfControlClearBlocks") {
         result = await clearSelfControlBlocks();
+      } else if (step.type === "custom" && typeof step.apply === "function") {
+        const scenarioCtx: ScenarioContext = {
+          ...ctx,
+          runtime,
+        };
+        const customResult = await (
+          step.apply as (c: ScenarioContext) => unknown
+        )(scenarioCtx);
+        result =
+          typeof customResult === "string" && customResult.length > 0
+            ? customResult
+            : undefined;
       } else {
         continue;
       }
@@ -1901,6 +1944,11 @@ export async function runScenario(
     // Seeds may register fixture plugins, so check declared plugin requirements
     // after seeding and try to load package-named requirements that are present.
     const requiredPlugins = resolveRequiredPlugins(scenario);
+    // Track packages we successfully auto-loaded: a plugin's internal
+    // `plugin.name` often differs from its package name (e.g. "plugin-health",
+    // "@elizaos/plugin-linear-ts"), so a post-load name check can falsely report
+    // it as missing and skip a scenario whose required plugin is in fact loaded.
+    const autoLoaded = new Set<string>();
     for (const pkg of requiredPlugins) {
       if (!pkg.startsWith("@")) continue;
       if (pluginIsRegistered(runtime, pkg)) continue;
@@ -1908,6 +1956,7 @@ export async function runScenario(
         const candidate = await loadRequiredPlugin(pkg);
         if (candidate) {
           await runtime.registerPlugin(candidate);
+          autoLoaded.add(pkg);
         }
       } catch (err) {
         logger.debug(
@@ -1916,7 +1965,7 @@ export async function runScenario(
       }
     }
     const missing = requiredPlugins.filter(
-      (p) => !pluginIsRegistered(runtime, p),
+      (p) => !pluginIsRegistered(runtime, p) && !autoLoaded.has(p),
     );
     if (missing.length > 0) {
       report.status = "skipped";
@@ -2121,19 +2170,18 @@ export async function runScenario(
         detail: fixtureFailure,
       });
     }
-
-    const cleanupFailures = await runScenarioCleanups(scenario);
+  } catch (err) {
+    report.status = "failed";
+    report.error = err instanceof Error ? err.message : String(err);
+    logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
+  } finally {
+    const cleanupFailures = await runScenarioCleanups(scenario, runtime, ctx);
     if (cleanupFailures.length > 0) {
       report.status = "failed";
       for (const detail of cleanupFailures) {
         report.failedAssertions.push({ label: "cleanup", detail });
       }
     }
-  } catch (err) {
-    report.status = "failed";
-    report.error = err instanceof Error ? err.message : String(err);
-    logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
-  } finally {
     (
       runtime as {
         getService: AgentRuntime["getService"];

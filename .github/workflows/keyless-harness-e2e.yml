@@ -14,7 +14,8 @@ name: Keyless Harness E2E
 #
 # This is intentionally a NEW, additive lane (not an edit to the load-bearing
 # scenario-pr / test workflows) so a change here can never red-X the broader PR
-# gate. It runs in seconds: install with scripts skipped, then the vitest config.
+# gate. It runs in seconds: install with scripts skipped, then the central
+# vitest config plus a small set of per-plugin harness adoption proofs.
 
 on:
   pull_request:
@@ -79,3 +80,13 @@ jobs:
       - name: Keyless harness e2e (mock-LLM + recorded fixtures)
         working-directory: packages
         run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/
+
+      # Issue #8801 follow-up: the central harness proves the substrate, but the
+      # per-plugin adoption proofs are excluded from default vitest runs. Keep a
+      # representative model-provider and connector harness in this keyless PR
+      # lane so those proofs cannot drift while still avoiding live provider
+      # credentials.
+      - name: Per-plugin keyless harness adoption proofs
+        run: |
+          bun run --cwd plugins/plugin-anthropic test:harness
+          bun run --cwd plugins/plugin-discord test:harness

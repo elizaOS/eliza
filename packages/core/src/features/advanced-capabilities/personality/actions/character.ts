@@ -1306,22 +1306,6 @@ function parseEvolutionData(
 	}
 }
 
-function inferPreferenceCategory(text: string): string {
-	if (/\b(verbose|concise|brief|shorter|detailed)\b/i.test(text))
-		return "verbosity";
-	if (/\b(formal|casual|professional|polite)\b/i.test(text)) return "formality";
-	if (/\b(warm|direct|skeptical|encouraging|supportive|friendly)\b/i.test(text))
-		return "tone";
-	if (
-		/\b(chime|jump in|follow-up question|emoji|language|mentioned|directly addressed|messaged directly)\b/i.test(
-			text,
-		)
-	) {
-		return "style";
-	}
-	return "other";
-}
-
 async function parseUserPreference(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -1374,10 +1358,13 @@ Set action: none only if the request truly does not specify any interaction pref
 		if (typeof raw.text !== "string") return null;
 		const text = raw.text.trim();
 		if (!text) return null;
+		// #10471: the category comes from the model's structured `category`
+		// field; no English-keyword inference fallback (it was i18n-hostile and
+		// the stored category is not read for behavior). Default to "other".
 		const category =
 			typeof raw.category === "string" && raw.category.trim().length > 0
 				? raw.category.trim()
-				: inferPreferenceCategory(text);
+				: "other";
 		return { text, category, action };
 	} catch {
 		return null;

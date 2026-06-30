@@ -1,13 +1,17 @@
 /**
- * Client-side cockpit mode descriptors and the lowering from a picked mode to
- * the orchestrator create-task body. This is the single source of truth for the
- * cockpit's mode → `providerPolicy` mapping (the UI library owns it; the picker
- * must not import a plugin).
+ * Cockpit mode descriptors + the single source for the cockpit's mode →
+ * `providerPolicy` lowering. The picker lives in the UI library (it must not
+ * import a node plugin), and the orchestrator create-task route accepts the
+ * `{preferredFramework, providerSource, model}` policy this file emits — so the
+ * lowering and the display metadata both live here, unambiguously. (There is no
+ * separate "canonical" server copy; that earlier duplicate was unused and was
+ * removed to avoid two-sources-of-truth drift.)
  *
- * The three sanctioned modes:
+ * The four modes (locked product vision):
  *   1. Eliza Cloud = eliza-code on Cerebras, fast/smart tier (gpt-oss-120b / zai-glm-4.7)
  *   2. OpenCode on Cerebras
  *   3. Claude / Codex via the TOS-safe subscription connector
+ *   4. Experimental TOS-unsafe Claude / Codex (gated)
  */
 
 import type {
@@ -33,6 +37,12 @@ export type CockpitModeConfig =
       agentType: "claude" | "codex";
       auth?: "subscription" | "api_keys";
       model?: string;
+    }
+  | {
+      mode: "experimental";
+      agentType: "claude" | "codex";
+      proxy: "anthropic-proxy" | "codex-cli";
+      model?: string;
     };
 
 /** Stable id for one selectable picker option (tier is chosen separately). */
@@ -40,10 +50,12 @@ export type CockpitModeOptionId =
   | "eliza-cloud"
   | "opencode"
   | "claude"
-  | "codex";
+  | "codex"
+  | "claude-experimental"
+  | "codex-experimental";
 
 /** Badge kind → drives the chip's accent styling. */
-export type CockpitModeBadge = "cloud" | "sub";
+export type CockpitModeBadge = "cloud" | "sub" | "exp";
 
 /** A selectable option shown in the picker. */
 export interface CockpitModeOption {
@@ -51,12 +63,14 @@ export interface CockpitModeOption {
   title: string;
   subtitle: string;
   badge: CockpitModeBadge;
+  /** TOS-unsafe — only shown when the experimental gate is armed. */
+  experimental?: boolean;
   /** Build the concrete config for this option at the given Eliza Cloud tier
    * (tier is ignored by non-cloud options). */
   toConfig: (tier: ElizaCloudTier) => CockpitModeConfig;
 }
 
-/** The picker's options, in display order. */
+/** The picker's options, in display order. Experimental ones are gated. */
 export const COCKPIT_MODE_OPTIONS: readonly CockpitModeOption[] = [
   {
     id: "eliza-cloud",
@@ -86,7 +100,40 @@ export const COCKPIT_MODE_OPTIONS: readonly CockpitModeOption[] = [
     badge: "sub",
     toConfig: () => ({ mode: "subscription", agentType: "codex" }),
   },
+  {
+    id: "claude-experimental",
+    title: "Claude",
+    subtitle: "Replay proxy · TOS-unsafe",
+    badge: "exp",
+    experimental: true,
+    toConfig: () => ({
+      mode: "experimental",
+      agentType: "claude",
+      proxy: "anthropic-proxy",
+    }),
+  },
+  {
+    id: "codex-experimental",
+    title: "Codex",
+    subtitle: "Replay proxy · TOS-unsafe",
+    badge: "exp",
+    experimental: true,
+    toConfig: () => ({
+      mode: "experimental",
+      agentType: "codex",
+      proxy: "codex-cli",
+    }),
+  },
 ];
+
+/** The picker options visible given whether the experimental gate is armed. */
+export function visibleCockpitModeOptions(
+  experimentalEnabled: boolean,
+): CockpitModeOption[] {
+  return COCKPIT_MODE_OPTIONS.filter(
+    (o) => experimentalEnabled || !o.experimental,
+  );
+}
 
 /** Map a concrete config back to the picker option id it represents. */
 export function optionIdForConfig(
@@ -99,6 +146,10 @@ export function optionIdForConfig(
       return "opencode";
     case "subscription":
       return config.agentType;
+    case "experimental":
+      return config.agentType === "claude"
+        ? "claude-experimental"
+        : "codex-experimental";
   }
 }
 
@@ -124,6 +175,7 @@ export function cockpitModeProviderSource(
       // Both run on Eliza Cloud / Cerebras.
       return "eliza-cloud";
     case "subscription":
+    case "experimental":
       return config.agentType === "claude" ? "user-claude" : "user-openai";
   }
 }

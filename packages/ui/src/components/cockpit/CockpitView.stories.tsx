@@ -87,6 +87,10 @@ export const Empty: Story = {
   args: { rooms: { rooms: [] }, onCreateSession: noop },
 };
 
+export const ExperimentalArmed: Story = {
+  args: { rooms: ROSTER, onCreateSession: noop, experimentalEnabled: true },
+};
+
 export const WithError: Story = {
   args: {
     rooms: { rooms: [] },

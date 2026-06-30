@@ -20,6 +20,19 @@ for consistent dependency versions across benchmark subprocesses.
 
 This verifies adapter coverage for all benchmark directories under `benchmarks/`.
 
+## Generate the static operator inventory
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator inventory --format markdown
+/opt/miniconda3/bin/python -m benchmarks.orchestrator inventory --format json
+```
+
+`inventory` emits the registry/adapter checklist without running benchmarks:
+registry entries, discovered adapters, directory coverage, harness compatibility,
+required environment variables, result locators, and trajectory expectations. It
+exits with code `2` when static gaps exist so the drift is visible before a live
+`run --all` or `validate-matrix` pass.
+
 ## Run benchmarks idempotently
 
 Run one benchmark:

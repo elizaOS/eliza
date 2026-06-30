@@ -85,14 +85,11 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-api:
     name: Deploy API Worker
-    # GitHub-hosted (ephemeral, plentiful) instead of the shared hetzner-robot
-    # pool: under a hot develop push stream the self-hosted autoscaler recycles
-    # runner VMs mid-job, cancelling deploy-api right after "Set up job" (verified
-    # on an unsuperseded workflow_dispatch run; not concurrency, not checkout).
-    # A fresh ubuntu-latest VM per run sidesteps both the preemption and the
-    # stuck shared-workspace checkout. The Worker build/deploy are scoped to
-    # @elizaos/core + packages/cloud/api and fit a standard 16 GB hosted runner.
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    # Keep the deploy fleet configurable while Cloud ops converges on the
+    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
+    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
+    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     if: github.event_name != 'pull_request'
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -101,7 +98,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
     steps:
       - name: Checkout repository
-        timeout-minutes: 30
+        timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -110,12 +107,24 @@ jobs:
           git init "$CHECKOUT_DIR"
           git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
             || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"
-          git -C "$CHECKOUT_DIR" \
-            -c advice.detachedHead=false \
-            -c checkout.workers=8 \
-            -c checkout.thresholdForParallelism=100 \
-            checkout --force --detach FETCH_HEAD
+          # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
+          # Worker suite): a single shallow fetch can stall for minutes or wedge
+          # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
+          # retries instead of burning the whole step budget (the #10310 stuck-checkout).
+          fetched=
+          for attempt in 1 2; do
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+              fetched=1
+              break
+            fi
+            echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
+            sleep 10
+          done
+          [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
+          # checkout --force --detach fully materializes the working tree from the
+          # fetched commit; the prior extra `git reset --hard` re-wrote the entire
+          # tree a second time, doubling the slowest part on this large repo.
+          git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -126,14 +135,12 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
-        timeout-minutes: 20
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS workspaces
-        timeout-minutes: 45
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun run build:core -- --concurrency=4
+        run: bun run build:core
 
       - name: Verify Worker
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -142,8 +149,8 @@ jobs:
       - name: Run Worker e2e
         # Non-blocking: the avatar-upload e2e flakes intermittently against the
         # self-hosted wrangler-dev box and was the ORIGINAL gate that stalled the
-        # release (22:04). Build + typecheck stay the hard gates; don't block the
-        # deploy on a flaky test.
+        # release. Build + typecheck stay the hard gates; don't block deploy on a
+        # flaky test. (Mirrors the main hotfix #10398 that unwedged prod.)
         continue-on-error: true
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run --cwd packages/cloud/api test:e2e
@@ -271,9 +278,11 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-console:
     name: Deploy Console (Pages · elizacloud.ai)
-    # Match deploy-api: the shared hetzner-robot pool is cancelling Pages
-    # checkouts mid-fetch before any build/deploy code runs.
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    # Keep the deploy fleet configurable while Cloud ops converges on the
+    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
+    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
+    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -281,7 +290,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
     steps:
       - name: Checkout repository
-        timeout-minutes: 30
+        timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -290,12 +299,24 @@ jobs:
           git init "$CHECKOUT_DIR"
           git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
             || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"
-          git -C "$CHECKOUT_DIR" \
-            -c advice.detachedHead=false \
-            -c checkout.workers=8 \
-            -c checkout.thresholdForParallelism=100 \
-            checkout --force --detach FETCH_HEAD
+          # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
+          # Worker suite): a single shallow fetch can stall for minutes or wedge
+          # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
+          # retries instead of burning the whole step budget (the #10310 stuck-checkout).
+          fetched=
+          for attempt in 1 2; do
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 --filter=blob:none origin "$GITHUB_SHA"; then
+              fetched=1
+              break
+            fi
+            echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
+            sleep 10
+          done
+          [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
+          # checkout --force --detach fully materializes the working tree from the
+          # fetched commit; the prior extra `git reset --hard` re-wrote the entire
+          # tree a second time, doubling the slowest part on this large repo.
+          git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -306,14 +327,12 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
-        timeout-minutes: 20
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
-        timeout-minutes: 45
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun run build:core -- --concurrency=4
+        run: bun run build:core
 
       # The cloud console origin, built from packages/app. The vite build is the
       # gate (it resolves @elizaos/* to source); typecheck is enforced by the
@@ -325,6 +344,7 @@ jobs:
         env:
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           # The console's own canonical origin (OG/canonical tags, returnTo base).
           VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
@@ -468,9 +488,11 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
-    # Match deploy-api: the shared hetzner-robot pool is cancelling Pages
-    # checkouts mid-fetch before any build/deploy code runs.
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    # Keep the deploy fleet configurable while Cloud ops converges on the
+    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
+    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
+    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -478,7 +500,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
     steps:
       - name: Checkout repository
-        timeout-minutes: 30
+        timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -487,12 +509,24 @@ jobs:
           git init "$CHECKOUT_DIR"
           git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
             || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"
-          git -C "$CHECKOUT_DIR" \
-            -c advice.detachedHead=false \
-            -c checkout.workers=8 \
-            -c checkout.thresholdForParallelism=100 \
-            checkout --force --detach FETCH_HEAD
+          # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
+          # Worker suite): a single shallow fetch can stall for minutes or wedge
+          # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
+          # retries instead of burning the whole step budget (the #10310 stuck-checkout).
+          fetched=
+          for attempt in 1 2; do
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 --filter=blob:none origin "$GITHUB_SHA"; then
+              fetched=1
+              break
+            fi
+            echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
+            sleep 10
+          done
+          [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
+          # checkout --force --detach fully materializes the working tree from the
+          # fetched commit; the prior extra `git reset --hard` re-wrote the entire
+          # tree a second time, doubling the slowest part on this large repo.
+          git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -503,14 +537,12 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
-        timeout-minutes: 20
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
-        timeout-minutes: 45
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun run build:core -- --concurrency=4
+        run: bun run build:core
 
       # The Eliza agent app. The vite build is the gate (it resolves @elizaos/*
       # to source); typecheck is enforced by the separate verify workflow.
@@ -520,6 +552,7 @@ jobs:
         env:
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           # The app's own canonical origin — its own subdomain, NOT the apex.
           NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
           # Steward tenant pin (same tenant as the console; one identity across

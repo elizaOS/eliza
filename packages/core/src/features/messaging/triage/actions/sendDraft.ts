@@ -11,6 +11,8 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import { ModelType } from "../../../../types/index.ts";
+import { parseKeyValueXml } from "../../../../utils.ts";
 import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import type { DraftRecord, DraftRequest } from "../types.ts";
@@ -79,76 +81,90 @@ function normalizeSource(value: unknown): string | undefined {
 	return raw;
 }
 
-function inferSourceFromText(text: string): string | undefined {
-	const lower = text.toLowerCase();
-	if (/\btelegram\b/.test(lower)) return "telegram";
-	if (/\bdiscord\b/.test(lower)) return "discord";
-	if (/\bsignal\b/.test(lower)) return "signal";
-	if (/\bwhatsapp\b/.test(lower)) return "whatsapp";
-	if (/\b(imessage|sms|text)\b/.test(lower)) return "imessage";
-	if (/\b(email|gmail|mail)\b/.test(lower)) return "gmail";
-	if (/\b(twitter|x)\b/.test(lower)) return "twitter";
-	return undefined;
-}
+/**
+ * Extract the outbound-draft fields (platform, recipient, message body) the user
+ * asked to send, using the model's structured output instead of English-only
+ * regex/keyword parsing (#10470). Fields the request doesn't specify come back
+ * empty; the caller still enforces that a body + recipient are present. Falls
+ * back to `{}` (no extraction) if the model call fails — the action then reports
+ * the missing details, never a wrong guess.
+ */
+async function extractOutboundDraftFromText(
+	runtime: IAgentRuntime,
+	text: string,
+): Promise<{ source?: string; recipient?: string; body?: string }> {
+	if (!text.trim()) return {};
+	const prompt = `A user asked the agent to send an outbound message. Extract the parts of the request — this must work in any language, so do not rely on English keywords.
 
-function inferBodyFromText(text: string): string | undefined {
-	const quoted = text.match(/['"]([^'"]{1,1000})['"]/);
-	if (quoted?.[1]) return quoted[1].trim();
-	const saying = text.match(/\b(?:saying|that|with the message)\b\s+(.+)$/i);
-	return saying?.[1]?.trim();
-}
+Request:
+${text}
 
-function cleanRecipient(value: string): string {
-	return value
-		.replace(
-			/\b(on|via|using)\s+(telegram|discord|signal|whatsapp|gmail|email|twitter|x|imessage|sms)\b/gi,
-			"",
-		)
-		.replace(
-			/\b(discord|telegram|signal|whatsapp|gmail|email|twitter|x|imessage|sms)\s+(channel|room|dm|message)\b/gi,
-			"",
-		)
-		.replace(/\b(channel|room|dm|message)\b/gi, "")
-		.trim();
-}
-
-function inferRecipientFromText(text: string): string | undefined {
-	const patterns = [
-		/\bto\s+(.+?)\s+\b(?:saying|that|with the message)\b/i,
-		/\bto\s+the\s+(.+?)\s+\b(?:discord|telegram|signal|whatsapp|gmail|email|twitter|x|imessage|sms)\b/i,
-		/\bto\s+(.+?)$/i,
-		/\bdm\s+(.+?)\s+\bon\b/i,
-	];
-	for (const pattern of patterns) {
-		const match = text.match(pattern);
-		const value = match?.[1] ? cleanRecipient(match[1]) : "";
-		if (value) return value;
+Return ONLY this XML, leaving a field empty when the request does not specify it:
+<response>
+<source>the platform/app to send on — one of telegram, discord, signal, whatsapp, imessage, gmail, twitter — or empty</source>
+<recipient>who to send to (a name, @handle, or contact), or empty</recipient>
+<body>the exact message text to send, or empty</body>
+</response>`;
+	let raw: string;
+	try {
+		raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+	} catch (error) {
+		logger.warn(
+			`[SendDraft] outbound-draft extraction failed: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+		return {};
 	}
-	return undefined;
+	// Tolerate models that omit the wrapper or wrap the XML in a code fence —
+	// parseKeyValueXml reads the direct children of a <response> block.
+	const cleaned = raw.replace(/```(?:xml)?/gi, "").trim();
+	const wrapped = cleaned.includes("<response>")
+		? cleaned
+		: `<response>${cleaned}</response>`;
+	const parsed = parseKeyValueXml(wrapped) ?? {};
+	return {
+		source: nonEmptyString(parsed.source),
+		recipient: nonEmptyString(parsed.recipient),
+		body: nonEmptyString(parsed.body),
+	};
 }
 
-function outboundDraftOptionsFromMessage(
+export async function outboundDraftOptionsFromMessage(
+	runtime: IAgentRuntime,
 	message: Memory,
 	options: HandlerOptions | undefined,
-): HandlerOptions | undefined {
+): Promise<HandlerOptions | undefined> {
 	const params = getParameters(options);
 	const text =
 		typeof message.content.text === "string" ? message.content.text : "";
-	const source =
-		normalizeSource(
-			params.source ?? params.platform ?? params.connector ?? params.service,
-		) ?? inferSourceFromText(text);
-	const body =
-		nonEmptyString(
-			params.body ?? params.text ?? params.message ?? params.content,
-		) ?? inferBodyFromText(text);
-	const rawTo =
+
+	// Structured params from the planner/tool-call win; only invoke the model to
+	// fill the gaps (cheap no-LLM fast path when they are already complete).
+	const paramSource = normalizeSource(
+		params.source ?? params.platform ?? params.connector ?? params.service,
+	);
+	const paramBody = nonEmptyString(
+		params.body ?? params.text ?? params.message ?? params.content,
+	);
+	const paramTo =
 		params.to ??
 		params.recipient ??
 		params.target ??
 		params.channel ??
-		params.room ??
-		inferRecipientFromText(text);
+		params.room;
+	const haveParamTo = Array.isArray(paramTo)
+		? paramTo.length > 0
+		: nonEmptyString(paramTo) !== undefined;
+
+	const extracted =
+		paramSource && paramBody && haveParamTo
+			? {}
+			: await extractOutboundDraftFromText(runtime, text);
+
+	const source = paramSource ?? normalizeSource(extracted.source);
+	const body = paramBody ?? extracted.body;
+	const rawTo = paramTo ?? extracted.recipient;
 	const to = Array.isArray(rawTo)
 		? rawTo
 		: nonEmptyString(rawTo)
@@ -271,7 +287,7 @@ export const sendDraftAction: Action = {
 		const service = getDefaultTriageService();
 		if ("error" in parsed) {
 			const draftParsed = parseDraftFollowupParams(
-				outboundDraftOptionsFromMessage(_message, options),
+				await outboundDraftOptionsFromMessage(runtime, _message, options),
 			);
 			if ("error" in draftParsed) {
 				const text = `Could not create outbound draft: ${draftParsed.error}.`;

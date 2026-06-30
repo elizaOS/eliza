@@ -16,18 +16,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getOrchestratorRooms: vi.fn(),
   createOrchestratorTask: vi.fn(),
+  addOrchestratorAgent: vi.fn(),
 }));
 
 vi.mock("@elizaos/ui", () => ({
   client: {
     getOrchestratorRooms: mocks.getOrchestratorRooms,
     createOrchestratorTask: mocks.createOrchestratorTask,
+    addOrchestratorAgent: mocks.addOrchestratorAgent,
   },
   // Stub the presentational view: surface the deck count + a spawn button that
   // fires onCreateSession with a representative create-task input.
   CockpitView: (props: {
     rooms: { rooms: unknown[] } | null;
     onCreateSession: (i: unknown) => void;
+    onSelectRoom?: (id: string) => void;
     busy?: boolean;
     error?: string | null;
   }) => (
@@ -52,6 +55,26 @@ vi.mock("@elizaos/ui", () => ({
       >
         spawn
       </button>
+      <button
+        type="button"
+        data-testid="drill-in"
+        onClick={() => props.onSelectRoom?.("task-1")}
+      >
+        open
+      </button>
+    </div>
+  ),
+}));
+
+// Stub the (separately-tested) heavy session pane — the container test only
+// proves the drill-in ROUTING (deck ⇄ pane), not the pane internals.
+vi.mock("./CockpitSessionPane", () => ({
+  CockpitSessionPane: (props: { taskId: string; onBack: () => void }) => (
+    <div>
+      <span data-testid="pane-task">{props.taskId}</span>
+      <button type="button" data-testid="pane-back" onClick={props.onBack}>
+        back
+      </button>
     </div>
   ),
 }));
@@ -66,7 +89,8 @@ afterEach(() => {
 describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)", () => {
   beforeEach(() => {
     mocks.getOrchestratorRooms.mockResolvedValue({ rooms: [{ taskId: "t1" }] });
-    mocks.createOrchestratorTask.mockResolvedValue({});
+    mocks.createOrchestratorTask.mockResolvedValue({ id: "task-1" });
+    mocks.addOrchestratorAgent.mockResolvedValue({ id: "task-1" });
   });
 
   it("polls the room roster and renders the deck", async () => {
@@ -77,10 +101,11 @@ describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)",
     );
   });
 
-  it("spawning POSTs createOrchestratorTask with the mode's providerPolicy", async () => {
+  it("spawning creates the task AND spawns the agent with the picked mode", async () => {
     render(<CockpitRoute />);
     await waitFor(() => expect(mocks.getOrchestratorRooms).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId("spawn"));
+    // 1. the durable task is created with the providerPolicy
     await waitFor(() =>
       expect(mocks.createOrchestratorTask).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -92,6 +117,35 @@ describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)",
         }),
       ),
     );
+    // 2. and the coding agent is ACTUALLY spawned into it with the picked mode
+    // (regression guard for the "create writes an idle row that spawns nothing"
+    // bug — create alone is not enough).
+    await waitFor(() =>
+      expect(mocks.addOrchestratorAgent).toHaveBeenCalledWith(
+        "task-1",
+        expect.objectContaining({
+          framework: "elizaos",
+          providerSource: "eliza-cloud",
+          model: "gpt-oss-120b",
+          task: "fix the auth bug",
+        }),
+      ),
+    );
+  });
+
+  it("drills into a room and back (deck ⇄ session pane)", async () => {
+    render(<CockpitRoute />);
+    await waitFor(() => expect(mocks.getOrchestratorRooms).toHaveBeenCalled());
+    // tap a deck room → the focused session pane replaces the deck
+    fireEvent.click(screen.getByTestId("drill-in"));
+    await waitFor(() =>
+      expect(screen.getByTestId("pane-task").textContent).toBe("task-1"),
+    );
+    expect(screen.queryByTestId("rooms-count")).toBeNull();
+    // back → the deck returns
+    fireEvent.click(screen.getByTestId("pane-back"));
+    await waitFor(() => expect(screen.getByTestId("rooms-count")).toBeTruthy());
+    expect(screen.queryByTestId("pane-task")).toBeNull();
   });
 
   it("surfaces a roster-fetch error", async () => {

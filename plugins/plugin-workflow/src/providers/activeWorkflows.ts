@@ -1,6 +1,13 @@
 import { type IAgentRuntime, logger, type Memory, type Provider, type State } from '@elizaos/core';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/index';
 
+function getWorkflowSearchQuery(message: Memory): string | null {
+  const text = typeof message.content.text === 'string' ? message.content.text.trim() : '';
+  if (!text) return null;
+
+  return /\b(workflow|workflows|automation|automations)\b/i.test(text) ? text : null;
+}
+
 /**
  * Provider that enriches state with user's active workflows
  *
@@ -12,9 +19,9 @@ import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/index';
 export const activeWorkflowsProvider: Provider = {
   name: 'ACTIVE_WORKFLOWS',
   description: "User's active workflows with IDs and descriptions",
-  contexts: ['automation', 'connectors'],
-  contextGate: { anyOf: ['automation', 'connectors'] },
-  cacheScope: 'agent',
+  contexts: ['general', 'automation', 'tasks', 'connectors'],
+  contextGate: { anyOf: ['general', 'automation', 'tasks', 'connectors'] },
+  cacheScope: 'turn',
   roleGate: { minRole: 'ADMIN' },
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
@@ -30,13 +37,18 @@ export const activeWorkflowsProvider: Provider = {
       }
 
       const userId = _message.entityId;
-      const workflows = await service.listWorkflows(userId);
+      const searchQuery = getWorkflowSearchQuery(_message);
+      const workflows = searchQuery
+        ? await service.searchWorkflows(searchQuery, userId)
+        : await service.listWorkflows(userId);
 
       if (workflows.length === 0) {
         return {
-          text: '',
-          data: { workflows: [] },
-          values: { hasWorkflows: false },
+          text: searchQuery ? `# Matching Workflows\n\nNo workflows match "${searchQuery}".` : '',
+          data: searchQuery ? { workflows: [], searchQuery } : { workflows: [] },
+          values: searchQuery
+            ? { hasWorkflows: false, workflowCount: 0, workflowSearchQuery: searchQuery }
+            : { hasWorkflows: false },
         };
       }
 
@@ -49,7 +61,7 @@ export const activeWorkflowsProvider: Provider = {
         })
         .join('\n');
 
-      const text = `# Available Workflows\n\n${workflowList}`;
+      const text = `${searchQuery ? '# Matching Workflows' : '# Available Workflows'}\n\n${workflowList}`;
 
       return {
         text,
@@ -60,10 +72,12 @@ export const activeWorkflowsProvider: Provider = {
             active: wf.active || false,
             nodeCount: wf.nodes.length || 0,
           })),
+          ...(searchQuery ? { searchQuery } : {}),
         },
         values: {
           hasWorkflows: true,
           workflowCount: workflows.length,
+          ...(searchQuery ? { workflowSearchQuery: searchQuery } : {}),
         },
       };
     } catch (error) {
