@@ -41,4 +41,39 @@ class WiFiStateReader(private val context: Context) {
             rssi = if (connected && info != null) info.rssi else null,
         )
     }
+
+    /**
+     * Pure parsing of scan-result fields, shared with [WiFiPlugin]'s scan path.
+     * These need no permissions or `Context`, so they are exercised directly by
+     * the instrumented test even though the scan call itself stays in the plugin
+     * (it requires location). Keeping them here keeps one definition of "what is
+     * a secured network" / "what is the display SSID" (issue #9967).
+     */
+    companion object {
+        /**
+         * `WifiInfo.getSsid()` / some scan results wrap the SSID in quotes
+         * (e.g. `"home-wifi"`). Strip them for display.
+         */
+        fun trimQuotes(ssid: String?): String {
+            if (ssid.isNullOrEmpty()) return ""
+            if (ssid.length >= 2 && ssid.startsWith("\"") && ssid.endsWith("\"")) {
+                return ssid.substring(1, ssid.length - 1)
+            }
+            return ssid
+        }
+
+        /**
+         * Treat any capability string mentioning a security suite as "secured".
+         * Open networks report capabilities like "[ESS]" with no auth marker.
+         */
+        fun isSecured(capabilities: String): Boolean {
+            if (capabilities.isEmpty()) return false
+            val upper = capabilities.uppercase()
+            return upper.contains("WPA") ||
+                upper.contains("WEP") ||
+                upper.contains("PSK") ||
+                upper.contains("EAP") ||
+                upper.contains("SAE")
+        }
+    }
 }

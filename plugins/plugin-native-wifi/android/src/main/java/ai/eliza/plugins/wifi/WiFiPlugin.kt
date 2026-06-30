@@ -82,7 +82,7 @@ class WiFiPlugin : Plugin() {
             return
         }
         val network = JSObject()
-        network.put("ssid", trimQuotes(info.ssid))
+        network.put("ssid", WiFiStateReader.trimQuotes(info.ssid))
         network.put("bssid", info.bssid ?: "")
         network.put("rssi", info.rssi)
         network.put("frequency", info.frequency)
@@ -137,7 +137,7 @@ class WiFiPlugin : Plugin() {
             entry.put("rssi", result.level)
             entry.put("frequency", result.frequency)
             entry.put("capabilities", capabilities)
-            entry.put("secured", isSecured(capabilities))
+            entry.put("secured", WiFiStateReader.isSecured(capabilities))
             networks.put(entry)
             if (limit > 0 && networks.length() >= limit) break
         }
@@ -270,32 +270,6 @@ class WiFiPlugin : Plugin() {
         val enabled = manager.enableNetwork(networkId, true)
         manager.reconnect()
         return enabled
-    }
-
-    /**
-     * `WifiInfo.getSsid()` returns the SSID wrapped in quotes
-     * (e.g. `"home-wifi"`). Strip them for display.
-     */
-    private fun trimQuotes(ssid: String?): String {
-        if (ssid.isNullOrEmpty()) return ""
-        if (ssid.length >= 2 && ssid.startsWith("\"") && ssid.endsWith("\"")) {
-            return ssid.substring(1, ssid.length - 1)
-        }
-        return ssid
-    }
-
-    /**
-     * Treat any capability string mentioning a security suite as "secured".
-     * Open networks report capabilities like "[ESS]" with no auth marker.
-     */
-    private fun isSecured(capabilities: String): Boolean {
-        if (capabilities.isEmpty()) return false
-        val upper = capabilities.uppercase()
-        return upper.contains("WPA") ||
-            upper.contains("WEP") ||
-            upper.contains("PSK") ||
-            upper.contains("EAP") ||
-            upper.contains("SAE")
     }
 
     /** Empty callback for the `requestNetwork` call — connection state is queried separately. */
