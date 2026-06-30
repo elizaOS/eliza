@@ -199,6 +199,71 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
+	it("forces planning when simple-path text narrates unexecuted action", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "Spawning the sub-agent now.",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+
+		expect(parsed).toMatchObject({
+			processMessage: "RESPOND",
+			plan: { contexts: ["general"], reply: "" },
+		});
+		expect(parsed).not.toBeNull();
+		if (!parsed) return;
+		const route = routeMessageHandlerOutput(parsed);
+		expect(route.type).toBe("planning_needed");
+	});
+
+	it("forces planning when simple-path text claims live verification without a tool result", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "Verified live: App loads HTTP 200 and 401/402 is enforced.",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+
+		expect(parsed).toMatchObject({
+			processMessage: "RESPOND",
+			plan: { contexts: ["general"], reply: "" },
+		});
+		expect(parsed).not.toBeNull();
+		if (!parsed) return;
+		const route = routeMessageHandlerOutput(parsed);
+		expect(route.type).toBe("planning_needed");
+	});
+
+	it("does not force planning for explanatory gerunds that are substantive answers", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText:
+					"Checking accounts are bank accounts designed for frequent deposits and withdrawals.",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+
+		expect(parsed).toMatchObject({
+			processMessage: "RESPOND",
+			plan: {
+				contexts: ["simple"],
+				reply:
+					"Checking accounts are bank accounts designed for frequent deposits and withdrawals.",
+			},
+		});
+		expect(parsed).not.toBeNull();
+		if (!parsed) return;
+		const route = routeMessageHandlerOutput(parsed);
+		expect(route.type).toBe("final_reply");
+	});
+
 	it("does not parse retired requiresTool from the model envelope", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
