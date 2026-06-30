@@ -50,7 +50,74 @@ describe("MUSIC umbrella action dispatch", () => {
     expect(useModel).not.toHaveBeenCalled();
   });
 
-  it("validates by selected music context without classifying natural language", async () => {
+  it("validates from the production __contextRouting primary context (planner shape)", async () => {
+    // The v5 planner writes its routing decision to
+    // `state.values.__contextRouting`, never to `selectedContexts`. This is the
+    // exact shape present when validate() runs at action-exposure time.
+    const useModel = vi.fn();
+    const state = {
+      values: { __contextRouting: { primaryContext: "media" } },
+    };
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message("pause the music"),
+        state as never,
+        undefined,
+      ),
+    ).resolves.toBe(true);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("validates from a __contextRouting secondary music context", async () => {
+    const useModel = vi.fn();
+    const state = {
+      values: {
+        __contextRouting: {
+          primaryContext: "social",
+          secondaryContexts: ["files"],
+        },
+      },
+    };
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message("queue something"),
+        state as never,
+        undefined,
+      ),
+    ).resolves.toBe(true);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("does NOT validate when __contextRouting selects a non-music context and no action param is set", async () => {
+    const useModel = vi.fn();
+    const state = {
+      values: {
+        __contextRouting: {
+          primaryContext: "social",
+          secondaryContexts: ["wallet"],
+        },
+      },
+    };
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message("pause the music"),
+        state as never,
+        undefined,
+      ),
+    ).resolves.toBe(false);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("still validates from the legacy selectedContexts state shape", async () => {
     const useModel = vi.fn();
     const state = {
       values: { selectedContexts: ["media"] },

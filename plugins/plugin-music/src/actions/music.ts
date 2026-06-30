@@ -8,7 +8,12 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
+import {
+  CONTEXT_ROUTING_STATE_KEY,
+  logger,
+  ModelType,
+  parseKeyValueXml,
+} from "@elizaos/core";
 import { sunoGenerateMusicHandler } from "@elizaos/plugin-suno";
 import { mergedOptions } from "./confirmation";
 import { manageRouting } from "./manageRouting";
@@ -473,11 +478,12 @@ function selectedContextMatches(
   contexts: readonly string[],
 ): boolean {
   const selected = new Set<string>();
+  const collectOne = (value: unknown) => {
+    if (typeof value === "string") selected.add(value);
+  };
   const collect = (value: unknown) => {
     if (!Array.isArray(value)) return;
-    for (const item of value) {
-      if (typeof item === "string") selected.add(item);
-    }
+    for (const item of value) collectOne(item);
   };
   collect(
     (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
@@ -494,6 +500,15 @@ function selectedContextMatches(
     | undefined;
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
+  // The v5 planner writes its routing decision to `state.values.__contextRouting`
+  // ({ primaryContext, secondaryContexts }) — never to `selectedContexts` — so
+  // this is the only context signal present when `validate()` runs at planner
+  // action-exposure time. See @elizaos/core CONTEXT_ROUTING_STATE_KEY.
+  const routing = (state?.values as Record<string, unknown> | undefined)?.[
+    CONTEXT_ROUTING_STATE_KEY
+  ] as { primaryContext?: unknown; secondaryContexts?: unknown } | undefined;
+  collectOne(routing?.primaryContext);
+  collect(routing?.secondaryContexts);
   return contexts.some((context) => selected.has(context));
 }
 

@@ -19,6 +19,7 @@ vi.mock("@elizaos/core", () => {
   }
 
   return {
+    CONTEXT_ROUTING_STATE_KEY: "__contextRouting",
     ChannelType: {
       DM: "DM",
     },
