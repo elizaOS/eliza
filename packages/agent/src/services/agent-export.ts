@@ -273,7 +273,7 @@ export function verifyExportManifest(
   payload: AgentExportPayload,
 ): ManifestVerification {
   const manifest = payload.manifest;
-  if (!manifest || manifest.algorithm !== "sha256") {
+  if (manifest?.algorithm !== "sha256") {
     return { present: false, ok: true, mismatches: [] };
   }
   const collections = manifestCollectionsOf(payload);
