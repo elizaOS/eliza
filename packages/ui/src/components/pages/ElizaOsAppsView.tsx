@@ -724,24 +724,46 @@ export function PhonePageView() {
     setError(null);
     try {
       const plugins = getPlugins();
-      if (typeof plugins.phone.plugin.getStatus !== "function") {
+      const phonePlugin = plugins.phone.plugin;
+      const contactsPlugin = plugins.contacts.plugin;
+      if (typeof phonePlugin.getStatus !== "function") {
         throw new Error("ElizaPhone plugin is unavailable");
       }
-      if (typeof plugins.phone.plugin.listRecentCalls !== "function") {
+      if (typeof phonePlugin.listRecentCalls !== "function") {
         throw new Error("ElizaPhone call log API is unavailable");
       }
       if (typeof plugins.system.plugin.getStatus !== "function") {
         throw new Error("ElizaSystem plugin is unavailable");
       }
-      if (typeof plugins.contacts.plugin.listContacts !== "function") {
+      if (typeof contactsPlugin.listContacts !== "function") {
         throw new Error("ElizaContacts plugin is unavailable");
       }
-      const [phone, system, recentCalls, contactResult] = await Promise.all([
-        plugins.phone.plugin.getStatus(),
+      // Gate the permission-bearing reads (#10196): the call log needs phone
+      // permission and the address book needs contacts permission; getStatus
+      // needs neither. Resolving access first means we never invoke a native
+      // call we know will reject (which Capacitor would console.error).
+      const phoneCheck = phonePlugin.checkPermissions;
+      const phoneReq = phonePlugin.requestPermissions;
+      const contactsCheck = contactsPlugin.checkPermissions;
+      const contactsReq = contactsPlugin.requestPermissions;
+      const [phone, system, callsGranted, contactsGranted] = await Promise.all([
+        phonePlugin.getStatus(),
         plugins.system.plugin.getStatus(),
-        plugins.phone.plugin.listRecentCalls({ limit: 100 }),
-        plugins.contacts.plugin.listContacts(contactListOptions),
+        ensureNativeReadGranted(
+          phoneCheck ? async () => (await phoneCheck()).phone : null,
+          phoneReq ? async () => (await phoneReq()).phone : null,
+        ),
+        ensureNativeReadGranted(
+          contactsCheck ? async () => (await contactsCheck()).contacts : null,
+          contactsReq ? async () => (await contactsReq()).contacts : null,
+        ),
       ]);
+      const recentCalls = callsGranted
+        ? await phonePlugin.listRecentCalls({ limit: 100 })
+        : { calls: [] };
+      const contactResult = contactsGranted
+        ? await contactsPlugin.listContacts(contactListOptions)
+        : { contacts: [] };
       setStatus([
         `telecom: ${phone.hasTelecom ? "available" : "unavailable"}`,
         `default dialer: ${phone.defaultDialerPackage ?? "none"}`,
@@ -754,6 +776,15 @@ export function PhonePageView() {
       setSelectedCallId(
         (current) => current ?? recentCalls.calls[0]?.id ?? null,
       );
+      if (!callsGranted || !contactsGranted) {
+        setError(
+          !callsGranted && !contactsGranted
+            ? "Phone and Contacts permissions are required to load recent calls and your address book."
+            : callsGranted
+              ? "Contacts permission is required to load your address book."
+              : "Phone permission is required to load recent calls.",
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
