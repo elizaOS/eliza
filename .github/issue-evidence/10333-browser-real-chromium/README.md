@@ -30,8 +30,10 @@ through real BROWSER `get` commands. No mock stands in for the browser.
 | `src/benchmark/__tests__/miniwob-chromium.real.test.ts` | Gated MiniWoB++ engine-parity lane — oracle solves every task, noop scores 0, on real Chromium |
 | `src/benchmark/grounding.ts` | Web-element grounding harness — `pointInBbox`, `buildWebGroundingSamples` (real render → screenshot → real bboxes), `scoreWebGrounding` (point-in-bbox + real click-path verify), oracle/corner grounders |
 | `src/benchmark/__tests__/web-grounding-chromium.real.test.ts` | Gated grounding lane — oracle grounds + clicks every target, corner baseline none |
+| `src/benchmark/mind2web.ts` | Mind2Web replay seam — `replayMind2WebTask` (route per-step snapshot → execute CLICK/TYPE/SELECT → verify via `get`), embedded fixture, `loadMind2WebTasks` (gated `MIND2WEB_DATA_DIR` corpus) |
+| `src/benchmark/__tests__/mind2web-chromium.real.test.ts` | Gated Mind2Web lane — every step executes + verifies; a wrong selector fails the step |
 | `vitest.real.config.ts` | Dedicated config that opts the `*.real.test.ts` lanes back in (the root config excludes them); runs them sequentially (one browser at a time) |
-| `scripts/run-miniwob-chromium-benchmark.mjs` / `run-web-grounding-benchmark.mjs` | Artifact runners (`bench:miniwob:chromium`, `bench:grounding:chromium`) |
+| `scripts/run-{miniwob-chromium,web-grounding,mind2web}-benchmark.mjs` | Artifact runners (`bench:miniwob:chromium`, `bench:grounding:chromium`, `bench:mind2web:chromium`) |
 | `.github/workflows/browser-real-bench.yml` | CI gating — installs Chromium, runs both lanes + uploads the run artifacts (nightly + dispatch + on benchmark changes) |
 
 The executor is engine-agnostic by construction: the runner's `makeExecutor`
@@ -85,14 +87,33 @@ bun run --cwd plugins/plugin-browser bench:miniwob:chromium --policy noop   --se
 Without a Chromium binary the lane self-skips (the `describe.skipIf` guard) and
 the runner script is a clean no-op, so the un-gated path stays green.
 
-## Still deferred (tracked on #10333)
+**Mind2Web replay lane** (the external-dataset lane — `src/benchmark/mind2web.ts`):
 
-- **External-dataset benchmark (Mind2Web / WebArena)** through real
-  plugin-browser BROWSER actions. This is the one remaining lane that needs a
-  multi-GB external dataset (Mind2Web's cached step HTML) or a dockerized site
-  environment (WebArena), so the full run stays genuinely CI-infra-gated. It
-  extends through the same `BrowserCommandExecutor` seam these two lanes already
-  exercise.
+| Artifact | engine | source | tasks solved | step accuracy |
+|----------|--------|--------|--------------|---------------|
+| `mind2web-chromium-run.json` | chromium | fixture | **1 / 1** | **3 / 3** (100%) |
 
-This PR lands the **real-Chromium engine lane**, the **web-element grounding
-lane**, and the CI gate — two of #10333's three deferred items.
+`packages/benchmarks/mind2web/eliza_agent.py` scored Mind2Web through the
+inference layer and never executed the action through plugin-browser. This lane
+replays a Mind2Web-format `CLICK → TYPE → SELECT` sequence (the schema in that
+package's `dataset.py`) through the REAL BROWSER command surface — each step's
+own cached snapshot is `network route`d, the operation runs through a real
+BROWSER command, and the effect is verified via a real `get` read. The embedded
+fixture runs by default; the full `osunlp/Mind2Web` corpus drives the lane when
+`MIND2WEB_DATA_DIR` points at a converted task set (`loadMind2WebTasks`).
+
+## All four #10333 items landed
+
+| #10333 checklist item | status |
+|-----------------------|--------|
+| Real-Chromium engine lane | ✅ MiniWoB++ on real Chromium |
+| External-dataset benchmark (Mind2Web) through plugin-browser | ✅ Mind2Web replay (CLICK/TYPE/SELECT) — fixture + gated `MIND2WEB_DATA_DIR` corpus |
+| Web-element grounding benchmark | ✅ ScreenSpot-Web-style point-in-bbox + real click path |
+| Gate the heavy lanes in CI | ✅ `browser-real-bench.yml` |
+
+The full external corpora (the multi-GB HF `osunlp/Mind2Web` cached HTML, a
+dockerized WebArena) stay gated behind `MIND2WEB_DATA_DIR` / their own
+environments — the lanes self-skip / run the embedded fixtures without them, so
+the un-gated path is a self-contained, reproducible check while the corpus run
+lights up wherever the data is mounted. Every lane drives the same
+`BrowserCommandExecutor` seam.

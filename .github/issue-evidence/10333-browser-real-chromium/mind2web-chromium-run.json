@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-06-30T07:37:53.551Z",
+  "benchmark": "mind2web",
+  "engine": "chromium",
+  "source": "fixture",
+  "tasks": [
+    {
+      "taskId": "fixture_search_001",
+      "website": "m2w.test",
+      "engine": "chromium",
+      "totalSteps": 3,
+      "executedSteps": 3,
+      "verifiedSteps": 3,
+      "stepAccuracy": 1,
+      "success": true,
+      "steps": [
+        {
+          "actionUid": "a001",
+          "operation": "CLICK",
+          "executed": true,
+          "verified": true,
+          "error": null
+        },
+        {
+          "actionUid": "a002",
+          "operation": "TYPE",
+          "executed": true,
+          "verified": true,
+          "error": null
+        },
+        {
+          "actionUid": "a003",
+          "operation": "SELECT",
+          "executed": true,
+          "verified": true,
+          "error": null
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "tasks": 1,
+    "solved": 1,
+    "totalSteps": 3,
+    "verifiedSteps": 3,
+    "stepAccuracy": 1
+  }
+}

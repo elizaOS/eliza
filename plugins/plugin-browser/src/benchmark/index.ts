@@ -29,6 +29,18 @@ export {
   type WebGroundingScore,
 } from "./grounding.js";
 export {
+  loadMind2WebTasks,
+  MIND2WEB_FIXTURE,
+  type Mind2WebOperation,
+  type Mind2WebStep,
+  type Mind2WebStepResult,
+  type Mind2WebSuiteReport,
+  type Mind2WebTask,
+  type Mind2WebTaskResult,
+  replayMind2WebTask,
+  runMind2WebSuite,
+} from "./mind2web.js";
+export {
   type BenchmarkPolicy,
   type BenchmarkPolicyInput,
   NoopPolicy,

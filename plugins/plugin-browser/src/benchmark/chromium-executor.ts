@@ -429,6 +429,31 @@ export async function createChromiumBenchmarkExecutor(
         return result(command.subaction, { checked });
       }
 
+      case "select": {
+        // Mirror web mode: match an <option> by value OR visible text, set it,
+        // dispatch change. Used by the Mind2Web SELECT op.
+        const handle = await resolveHandle(requireSelector(command));
+        const want = command.value ?? "";
+        const value = await handle.evaluate((el, target) => {
+          const select = el as HTMLSelectElement;
+          const option = Array.from(select.options).find(
+            (o) => o.value === target || (o.textContent ?? "").trim() === target,
+          );
+          if (!option) {
+            return null;
+          }
+          select.value = option.value;
+          option.selected = true;
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          return select.value;
+        }, want);
+        await handle.dispose();
+        if (value === null) {
+          throw new Error(`Select option was not found: ${want}`);
+        }
+        return result(command.subaction, { value });
+      }
+
       case "press": {
         if (command.selector?.trim()) {
           const handle = await resolveHandle(command.selector.trim());

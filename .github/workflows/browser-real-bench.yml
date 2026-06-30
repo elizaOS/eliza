@@ -63,14 +63,15 @@ jobs:
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
 
-      - name: Run real-Chromium lanes (MiniWoB++ engine parity + web grounding)
+      - name: Run real-Chromium lanes (MiniWoB++ parity + web grounding + Mind2Web replay)
         run: bunx vitest run --config plugins/plugin-browser/vitest.real.config.ts
 
-      - name: Generate run-report artifacts (MiniWoB++ oracle + noop, grounding)
+      - name: Generate run-report artifacts (MiniWoB++, grounding, Mind2Web)
         run: |
           bun run --cwd plugins/plugin-browser bench:miniwob:chromium --policy oracle --seeds 3
           bun run --cwd plugins/plugin-browser bench:miniwob:chromium --policy noop --seeds 2
           bun run --cwd plugins/plugin-browser bench:grounding:chromium
+          bun run --cwd plugins/plugin-browser bench:mind2web:chromium
 
       - name: Upload benchmark artifacts
         if: always()

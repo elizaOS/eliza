@@ -35,6 +35,7 @@
     "bench:miniwob": "bun scripts/run-miniwob-benchmark.mjs",
     "bench:miniwob:chromium": "bun scripts/run-miniwob-chromium-benchmark.mjs",
     "bench:grounding:chromium": "bun scripts/run-web-grounding-benchmark.mjs",
+    "bench:mind2web:chromium": "bun scripts/run-mind2web-benchmark.mjs",
     "build": "bun run build:js && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
