@@ -1,4 +1,19 @@
-# #10197 — on-device JS-heap soak across background/foreground cycles
+# #10197 / #10203 — on-device app stability cells (background-cycle heap soak, memory-pressure, renderer-crash recovery)
+
+Three on-device stability cells the in-flight PRs (#10397 agent-restart, #10480
+watchdog) don't cover, captured against the real running app (`ai.elizaos.app`,
+API-34 emulator) — see `bg-memory-soak.txt`, `memory-pressure-trim.txt`,
+`renderer-crash-recovery.txt`:
+
+1. **Background/foreground JS-heap soak** — heap bounded (~26–36 MB, no leak).
+2. **Memory-pressure (`onTrimMemory`)** — app survives + releases ~57% of RSS (119→51 MB).
+3. **WebView renderer-crash recovery** — `Page.crash` → app restarts and the WebView
+   recovers to the app URL (no permanent white-screen). UI-layer crash, distinct from
+   #10397's agent-backend restart.
+
+---
+
+## (1) JS-heap soak across background/foreground cycles
 
 A small stability cell the in-flight PRs (#10397 restart recovery, #10480
 watchdog) don't cover: does the app's JS heap stay bounded when it is repeatedly
