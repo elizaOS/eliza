@@ -104,6 +104,18 @@ export const tokenRedemptions = pgTable(
     processing_started_at: timestamp("processing_started_at"),
     processing_worker_id: text("processing_worker_id"), // For distributed locking
 
+    // Hash of the payout transaction recorded at BROADCAST time — the moment the
+    // transaction is broadcast to the chain, BEFORE on-chain confirmation. This
+    // is distinct from `tx_hash`, which is only written once the transaction is
+    // confirmed (status = completed).
+    //
+    // It is the load-bearing signal for crash-recovery: a stale `processing` row
+    // with a NULL `broadcast_tx_hash` provably never broadcast a transaction and
+    // is safe to re-approve for retry. A non-NULL value means a transaction may
+    // already be in flight on-chain, so the row must NEVER be re-approved
+    // (re-broadcasting would double-pay); it requires on-chain reconciliation.
+    broadcast_tx_hash: text("broadcast_tx_hash"),
+
     // Completion details
     tx_hash: text("tx_hash"),
     completed_at: timestamp("completed_at"),
