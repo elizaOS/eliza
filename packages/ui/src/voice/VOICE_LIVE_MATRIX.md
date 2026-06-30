@@ -58,6 +58,14 @@ ELIZA_VOICE_STAGE_B_REPORT=.github/issue-evidence/9958-stage-b/report.json \
   bun run voice:matrix -- --run --platform stt.stage-b.evaluation
 ```
 
+To validate the real openWakeWord head wake-context cell, point the matrix at the
+reviewed report:
+
+```bash
+ELIZA_VOICE_OPENWAKEWORD_REPORT=.github/issue-evidence/9958-openwakeword/report.json \
+  bun run voice:matrix -- --run --platform wake.openwakeword.real-head
+```
+
 ## Cells
 
 | Cell | Existing runner | Evidence |
@@ -75,7 +83,7 @@ ELIZA_VOICE_STAGE_B_REPORT=.github/issue-evidence/9958-stage-b/report.json \
 | `android.device.voice-roundtrip` | `packages/app test:e2e:android:local` | real WebView on-device STT -> agent -> TTS self-test |
 | `android.talkmode.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest` | TalkMode capture lifecycle/transcript/permission/barge-in bridge tests |
 | `android.swabble.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest` | Swabble wake-firing -> JS bridge event tests |
-| `wake.openwakeword.real-head` | gated real openWakeWord head run | idle wake, always-on inert wake, and mid-transcription non-corruption evidence |
+| `wake.openwakeword.real-head` | `packages/scripts/voice-openwakeword-eval.mjs` validating a reviewed real-head report | idle wake opens the listen window, always-on wake is inert, and mid-transcription wake does not corrupt the transcript |
 | `stt.stage-b.apple-sfspeech` | `node packages/scripts/stage-b-stt-bench.mjs` (macOS) | **measured** on-device `SFSpeechRecognizer` latency/RTF/WER over on-device-synthesised speech (quiet + 10 dB noise), `.github/issue-evidence/9958-stt-stage-b-eval/` |
 | `stt.stage-b.evaluation` | `packages/scripts/voice-stage-b-eval.mjs` validating a paired device benchmark report | iOS `SFSpeechRecognizer`, Android `SpeechRecognizer`, and fused ASR latency/battery/accept matrix with reviewed artifacts |
 
@@ -91,12 +99,19 @@ developer laptop:
 | `ELIZA_VOICE_DESKTOP_API_BASE` | real app-core API base used by packaged desktop voice self-test; required for macOS/Windows Electrobun live cells |
 | `ELIZA_VOICE_IOS_READY=1` | current macOS runner has a freshly installed iOS simulator/device build with voice assets |
 | `ELIZA_VOICE_ANDROID_READY=1` | current runner has an attached Android device/emulator, current APK, voice assets, and granted mic permissions |
-| `ELIZA_OPENWAKEWORD_REAL_READY=1` | current runner has the real openWakeWord head and audio fixture/device path |
+| `ELIZA_VOICE_OPENWAKEWORD_REPORT` | reviewed openWakeWord real-head JSON report using schema `eliza_voice_openwakeword_eval_v1`; required cases are `idle-wake`, `already-listening-wake-inert`, and `mid-transcription-wake` |
 | `ELIZA_INFERENCE_LIBRARY` + `ELIZA_ASR_BUNDLE` | Linux fused real-service runner has the provisioned local-inference bundle |
 | `ELIZA_VOICE_STAGE_B_REPORT` | reviewed Stage-B JSON report using schema `eliza_voice_stage_b_stt_eval_v1`; required backends are `ios-sfspeechrecognizer`, `android-speechrecognizer`, and `fused-asr` |
 
 The matrix report records these gates in the `probe.reason` field. This keeps
 Linux green separate from missing macOS/iOS/Android evidence.
+
+The openWakeWord report must mark `realHardware: true` and `realHead: true`.
+Each required case must identify the device/build/openWakeWord model, record the
+real audio source and duration, include manually reviewed artifacts, and prove
+the case-specific observation: idle wake opened the listen window, wake while
+already listening did not open a duplicate window, and wake during transcription
+did not corrupt or drop transcript tokens.
 
 The Stage-B report is intentionally stricter than a plain benchmark dump. Each
 backend run must mark `realHardware: true`, identify the build and device, record
