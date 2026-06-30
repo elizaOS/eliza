@@ -178,6 +178,13 @@ function buildCreateBody(intent: CreateAppIntent): CreateAppInput {
   const body: CreateAppInput = {
     name: intent.name as string,
     app_url: DRAFT_APP_URL,
+    // Create a TEMPLATE app (no GitHub repo). The agent has no build-from-repo
+    // flow, and build-from-repo is intentionally OFF, so a repo-backed app would
+    // have no image and DEPLOY_APP would throw "build-from-repo is disabled / no
+    // image to deploy". With skipGitHubRepo the server stamps a first-party,
+    // allowlisted template image onto metadata.imageTag at create time, so the
+    // create -> deploy loop resolves a real image instead of failing.
+    skipGitHubRepo: true,
   };
   if (intent.description) body.description = intent.description;
   if (intent.monetization) body.monetization_enabled = true;
