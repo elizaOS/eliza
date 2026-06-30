@@ -4,11 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentProfile } from "../../state/agent-profile-types";
+import type { SwitchRuntimeResult } from "../../state/switch-runtime";
 
 const mocks = vi.hoisted(() => ({
   loadAgentProfileRegistry: vi.fn(),
   addAgentProfile: vi.fn(),
-  switchRuntimeNonDestructive: vi.fn(() => ({ ok: true })),
+  switchRuntimeNonDestructive: vi.fn(
+    (_id: string): SwitchRuntimeResult => ({
+      ok: true,
+      profile: { id: _id } as AgentProfile,
+    }),
+  ),
 }));
 
 vi.mock("../../state", () => ({
@@ -46,7 +52,10 @@ describe("MyRuntimesContainer", () => {
   beforeEach(() => {
     for (const f of Object.values(mocks)) f.mockClear();
     mocks.loadAgentProfileRegistry.mockReturnValue(REG);
-    mocks.switchRuntimeNonDestructive.mockReturnValue({ ok: true });
+    mocks.switchRuntimeNonDestructive.mockReturnValue({
+      ok: true,
+      profile: PROFILES[1],
+    });
   });
 
   it("renders the runtimes from the registry", () => {
