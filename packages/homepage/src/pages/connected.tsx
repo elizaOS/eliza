@@ -371,7 +371,7 @@ export default function ConnectedPage() {
                       defaultValue: "Telegram",
                     })}
                   </span>
-                  <span className="text-sm text-black/60 group-hover:text-white/60">
+                  <span className="text-sm text-black/70 group-hover:text-white/80">
                     @{getTelegramBotUsername()}
                   </span>
                 </div>
@@ -384,7 +384,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   handleCopyTelegram();
                 }}
-                className="shrink-0 text-black/50 group-hover:text-white/50 hover:text-white hover:bg-white/10"
+                className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
                 title={t("homepage_eliza.connected.copyTelegramTitle", {
                   defaultValue: "Copy Telegram link",
                 })}
@@ -434,7 +434,7 @@ export default function ConnectedPage() {
                       defaultValue: "iMessage",
                     })}
                   </span>
-                  <span className="text-sm text-black/60 group-hover:text-white/60">
+                  <span className="text-sm text-black/70 group-hover:text-white/80">
                     {ELIZA_PHONE_FORMATTED}
                   </span>
                 </div>
@@ -447,7 +447,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   handleCopyPhone();
                 }}
-                className="shrink-0 text-black/50 group-hover:text-white/50 hover:text-white hover:bg-white/10"
+                className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
                 title={t("homepage_eliza.connected.copyNumberTitle", {
                   defaultValue: "Copy number",
                 })}
@@ -519,7 +519,7 @@ export default function ConnectedPage() {
                         setPhoneError(null);
                         setPhoneValue("");
                       }}
-                      className="h-10 text-white/70 hover:text-white hover:bg-white/10 text-sm"
+                      className="h-10 text-white/80 hover:text-white hover:bg-white/10 text-sm"
                     >
                       {t("homepage_eliza.connected.cancel", {
                         defaultValue: "Cancel",
@@ -547,7 +547,7 @@ export default function ConnectedPage() {
                       defaultValue: "WhatsApp",
                     })}
                   </span>
-                  <span className="text-sm text-black/60 group-hover:text-white/60">
+                  <span className="text-sm text-black/70 group-hover:text-white/80">
                     {user.whatsapp_name ||
                       t("homepage_eliza.connected.openWhatsapp", {
                         defaultValue: "Open WhatsApp",
@@ -563,7 +563,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   handleCopyWhatsApp();
                 }}
-                className="shrink-0 text-black/50 group-hover:text-white/50 hover:text-white hover:bg-white/10"
+                className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
                 title={t("homepage_eliza.connected.copyWhatsappTitle", {
                   defaultValue: "Copy WhatsApp link",
                 })}
@@ -610,7 +610,7 @@ export default function ConnectedPage() {
                       defaultValue: "Discord",
                     })}
                   </span>
-                  <span className="text-sm text-black/60 group-hover:text-white/60">
+                  <span className="text-sm text-black/70 group-hover:text-white/80">
                     @{user.discord_username || "Eliza"}
                   </span>
                 </div>
@@ -623,7 +623,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   navigate("/get-started?guide=discord");
                 }}
-                className="shrink-0 text-black/50 group-hover:text-white/50 hover:text-white hover:bg-white/10"
+                className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
                 title={t("homepage_eliza.connected.discordSetupGuideTitle", {
                   defaultValue: "Setup guide",
                 })}
