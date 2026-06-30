@@ -141,6 +141,48 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.reply).toBe("");
 	});
 
+	it("forces planning for simple-path unexecuted sub-agent narration", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: [],
+				replyText: "Spawning the sub-agent now.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: REAL_ACTIONS },
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.reply).toBe("");
+	});
+
+	it("forces planning for simple-path live-verification claims without tool evidence", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: [],
+				replyText: "Verified live: App loads HTTP 200 and 401/402 is enforced.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: REAL_ACTIONS },
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.reply).toBe("");
+	});
+
 	it("still promotes to planning when candidateActions contains AT LEAST ONE real action even with simple context", () => {
 		const handler = messageHandlerFromFieldResult(
 			{
