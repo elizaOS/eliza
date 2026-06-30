@@ -21,22 +21,15 @@
  * and creditsService boundaries are spied (no `mock.module`, so nothing leaks).
  */
 
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  spyOn,
-  test,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   adAccountsRepository,
   adCampaignsRepository,
   adTransactionsRepository,
 } from "../../../db/repositories";
-import { creditsService } from "../credits";
-import type { AdProvider } from "../advertising/types";
 import { advertisingService } from "../advertising";
+import type { AdProvider } from "../advertising/types";
+import { creditsService } from "../credits";
 
 const ORG_ID = "org-1";
 const CAMPAIGN_ID = "campaign-1";
@@ -98,9 +91,7 @@ describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
         success: true,
       } as never),
     );
-    track(
-      spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never),
-    );
+    track(spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never));
 
     await advertisingService.deleteCampaign(CAMPAIGN_ID, ORG_ID);
 
@@ -121,9 +112,7 @@ describe("deleteCampaign — refunds only the UNUSED budget fraction", () => {
         success: true,
       } as never),
     );
-    track(
-      spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never),
-    );
+    track(spyOn(adTransactionsRepository, "create").mockResolvedValue({} as never));
 
     await advertisingService.deleteCampaign(CAMPAIGN_ID, ORG_ID);
 
@@ -165,9 +154,7 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
     );
     const provider = stubProvider();
     const providerUpdate = track(spyOn(provider, "updateCampaign"));
-    track(
-      spyOn(advertisingService, "getProvider").mockReturnValue(provider),
-    );
+    track(spyOn(advertisingService, "getProvider").mockReturnValue(provider));
 
     await expect(
       // 100 → 200 budget: delta = 220 - 110 = 110 credits.
@@ -177,10 +164,7 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
     ).rejects.toThrow("Insufficient credit balance for the budget increase");
 
     expect(deduct).toHaveBeenCalledTimes(1);
-    expect((deduct.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(
-      110,
-      9,
-    );
+    expect((deduct.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
     // Fail-closed: the increase is charged BEFORE the platform push, so the
     // platform must never have been called.
     expect(providerUpdate).not.toHaveBeenCalled();
@@ -223,14 +207,8 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
     // rejected — net zero, no leak.
     expect(deduct).toHaveBeenCalledTimes(1);
     expect(refund).toHaveBeenCalledTimes(1);
-    expect((deduct.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(
-      110,
-      9,
-    );
-    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(
-      110,
-      9,
-    );
+    expect((deduct.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
+    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
   });
 
   test("a name-only update charges and refunds nothing", async () => {
@@ -249,9 +227,7 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
         success: true,
       } as never),
     );
-    track(
-      spyOn(advertisingService, "getProvider").mockReturnValue(stubProvider()),
-    );
+    track(spyOn(advertisingService, "getProvider").mockReturnValue(stubProvider()));
     track(
       spyOn(adCampaignsRepository, "update").mockResolvedValue(
         makeCampaign({
@@ -261,11 +237,9 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
       ),
     );
 
-    const updated = await advertisingService.updateCampaign(
-      CAMPAIGN_ID,
-      ORG_ID,
-      { name: "Renamed" },
-    );
+    const updated = await advertisingService.updateCampaign(CAMPAIGN_ID, ORG_ID, {
+      name: "Renamed",
+    });
 
     expect(updated.name).toBe("Renamed");
     // No budgetAmount in the input → no budget delta → no credit movement.

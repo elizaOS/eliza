@@ -18,6 +18,7 @@ import {
 } from "@elizaos/core";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import { beginDelivery } from "./delivery-dedupe.ts";
 import type {
   CoordinationLLMResponse,
   PTYService,
@@ -28,7 +29,6 @@ import {
 } from "./parse-action-block.ts";
 import { resolveAppUserName } from "./server-helpers.ts";
 import type { ConversationMeta, ServerState } from "./server-types.ts";
-import { beginDelivery } from "./delivery-dedupe.ts";
 import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.ts";
 
 interface TaskContext {

@@ -2,7 +2,7 @@
  * Discord local connector setup HTTP routes.
  *
  * Implements the shared setup contract defined in
- * `@elizaos/app-core/api/setup-contract.ts`:
+ * `@elizaos/core` (`packages/core/src/types/connector-setup.ts`):
  *
  *   GET  /api/setup/discord/status   connection + auth status
  *   POST /api/setup/discord/start    start OAuth authorize flow

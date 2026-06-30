@@ -5,13 +5,21 @@
 // state. Source PNGs are generated via codex CLI (see scripts/gen-view-icons).
 //
 // Usage: node scripts/bake-view-icons.mjs [srcDir]   (default /tmp/view-icons)
-import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const srcDir = process.argv[2] || "/tmp/view-icons";
-const out = join(here, "..", "src", "components", "views", "view-icons.generated.ts");
+const out = join(
+  here,
+  "..",
+  "src",
+  "components",
+  "views",
+  "view-icons.generated.ts",
+);
 
 const files = existsSync(srcDir)
   ? readdirSync(srcDir)
@@ -43,4 +51,23 @@ export function viewIconDataUri(id: string): string {
 `;
 
 writeFileSync(out, ts);
+
+// Emit Biome-conformant output so the committed file is idempotent across re-bakes.
+// Biome format-checks this file, but its preferred style (unquoted keys, wrapped
+// long lines) differs from the quoted single-line literal written above, so a raw
+// write reintroduces format drift that fails CI until someone hand-fixes it. Format
+// the file in place to close that loop. Best-effort: the emitted TS is already valid
+// without the pass, so a missing/excluded Biome is not fatal to the bake.
+const repoRoot = join(here, "..", "..", "..");
+const bunx = process.platform === "win32" ? "bunx.cmd" : "bunx";
+try {
+  execFileSync(bunx, ["@biomejs/biome", "format", "--write", out], {
+    stdio: "ignore",
+    cwd: repoRoot,
+    shell: false,
+  });
+} catch {
+  // Biome unavailable or excluding this path — the generated TS is still valid.
+}
+
 console.log(`baked ${files.length} icons -> ${out}`);

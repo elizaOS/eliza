@@ -44,10 +44,7 @@ function approachingCapBySession(
       }>;
     }
   >(TASK_WATCHDOG_SERVICE_TYPE);
-  if (
-    !watchdog ||
-    typeof watchdog.getApproachingCapSessionIds !== "function"
-  ) {
+  if (!watchdog || typeof watchdog.getApproachingCapSessionIds !== "function") {
     return map;
   }
   try {

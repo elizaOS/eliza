@@ -125,10 +125,11 @@ describe("detectCapWarnings (#8901)", () => {
       { id: "rt", status: "running", roundTripCount: 8, roundTripCap: 10 },
       { id: "sp", status: "running", spendUsd: 0.8, spendCapUsd: 1 },
     ];
-    expect(detectCapWarnings(views, 0.8).map((w) => w.kind).sort()).toEqual([
-      "round-trip",
-      "spend",
-    ]);
+    expect(
+      detectCapWarnings(views, 0.8)
+        .map((w) => w.kind)
+        .sort(),
+    ).toEqual(["round-trip", "spend"]);
   });
 
   it("flags both kinds when one session crosses both caps", () => {
@@ -166,7 +167,12 @@ describe("detectCapWarnings (#8901)", () => {
   it("does not flag when a cap is absent/zero or spend is zero", () => {
     const views: CapWarningView[] = [
       { id: "no-cap", status: "running", roundTripCount: 99 },
-      { id: "zero-cap", status: "running", roundTripCount: 99, roundTripCap: 0 },
+      {
+        id: "zero-cap",
+        status: "running",
+        roundTripCount: 99,
+        roundTripCap: 0,
+      },
       { id: "spend-off", status: "running", spendUsd: 5, spendCapUsd: 0 },
       { id: "no-spend", status: "running", spendUsd: 0, spendCapUsd: 1 },
     ];
@@ -284,9 +290,9 @@ describe("TaskWatchdogService cap warnings (#8901)", () => {
     await svc.runOnce(NOW);
     expect(sendToSession).not.toHaveBeenCalled(); // active, not stalled
     expect(posts).toHaveLength(2);
-    expect(posts.every((p) => p.roomId === "room-b" && p.source === "discord")).toBe(
-      true,
-    );
+    expect(
+      posts.every((p) => p.roomId === "room-b" && p.source === "discord"),
+    ).toBe(true);
     expect(posts.some((p) => p.text.includes("round-trips"))).toBe(true);
     expect(posts.some((p) => p.text.includes("budget"))).toBe(true);
     expect(

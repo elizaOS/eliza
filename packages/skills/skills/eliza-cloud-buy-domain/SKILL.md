@@ -9,6 +9,14 @@ Use this skill when an Eliza Cloud app needs a real custom domain (e.g. `myapp.c
 
 The cloud handles everything: domain availability check, registration through cloudflare, DNS pointing at your app's container, and attachment to your app record. You pay from your existing cloud credit balance — no separate cloudflare account, no manual DNS config, no credit card paste.
 
+> **Status — the last-mile slice of the apps launch.** Custom-domain buy layers
+> on top of the live app build + monetize flow and is offered only *after* an app
+> is live (never as the first step). The buy money-path is hardened — atomic with
+> refund-on-registration-failure and purchase idempotency (#10244, #10247) — and
+> the CNAME origin last-mile (#10245) and renewal billing cron (#10246) are
+> tracked there. Always confirm the price and get an explicit user "yes" before
+> any buy; never auto-buy.
+
 ## Prerequisites
 
 - An app registered on Eliza Cloud (use `build-monetized-app` first if you haven't shipped one yet)

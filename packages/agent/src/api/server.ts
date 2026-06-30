@@ -417,6 +417,7 @@ import {
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
+import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import { computeCanRespond } from "./health-routes.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
@@ -428,7 +429,6 @@ import {
   patchTouchesProviderSelection,
 } from "./server-helpers.ts";
 import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
-import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import {
   createConnectorHealthMonitor,
   extractConversationMetadataFromRoom,

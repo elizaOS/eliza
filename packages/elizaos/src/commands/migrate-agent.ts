@@ -87,7 +87,9 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   const agentId = opts.agentId?.trim();
   if (!from) fail("--from <ocplatform-home> is required (e.g. ~/.moltbot).");
   if (!agentId) fail("--agent-id <slug> is required (e.g. sol).");
-  if (!fs.existsSync(from!)) fail(`Home not found: ${from}`);
+  const sourceHome = from;
+  const targetAgentId = agentId;
+  if (!fs.existsSync(sourceHome)) fail(`Home not found: ${sourceHome}`);
 
   const firewall = opts.noFirewall ? false : (opts.firewall ?? true);
   const memoryDays = opts.memoryDays ? Number(opts.memoryDays) : 14;
@@ -95,11 +97,11 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
     fail("--memory-days must be a non-negative number.");
   }
 
-  if (!quiet) clack.intro(pc.cyan(`migrate-agent: ${agentId}`));
+  if (!quiet) clack.intro(pc.cyan(`migrate-agent: ${targetAgentId}`));
 
   const plan = buildMigrationPlan({
-    from: from!,
-    agentId: agentId!,
+    from: sourceHome,
+    agentId: targetAgentId,
     memoryDays,
     firewall,
     currentContext: opts.currentContext,
@@ -127,7 +129,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
     return;
   }
 
-  printPlan(plan, agentId!);
+  printPlan(plan, targetAgentId);
 
   if (opts.dryRun) {
     if (!quiet) clack.outro(pc.dim("dry-run: nothing written."));
@@ -163,6 +165,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
         "--password (min 8 chars) is required to write an encrypted --out archive.",
       );
     }
+    const archivePassword = password;
     if (!firewall) {
       clack.log.warn(
         pc.yellow(
@@ -171,7 +174,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
         ),
       );
     }
-    const buf = await archiveFromPlan(plan, agentId!, password!);
+    const buf = await archiveFromPlan(plan, targetAgentId, archivePassword);
     fs.mkdirSync(path.dirname(path.resolve(opts.out)), { recursive: true });
     fs.writeFileSync(opts.out, buf);
     clack.log.success(`archive → ${opts.out} (${buf.length} bytes)`);

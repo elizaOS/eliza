@@ -212,8 +212,7 @@ function shouldVerifyCompletionUrls(
     userTaskUrls.some(
       (ru) =>
         isRoutedArtifactUrl(ru, routeVerification) ||
-        (routeVerification !== undefined &&
-          routeVerification.mappings.some((m) => ru.startsWith(m.urlPrefix))),
+        routeVerification?.mappings.some((m) => ru.startsWith(m.urlPrefix)),
     );
   if (userNamedDeliverableUrl) {
     return true;

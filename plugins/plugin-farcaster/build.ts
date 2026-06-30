@@ -16,6 +16,8 @@
  */
 import { buildPlugin } from "../plugin-build";
 
+const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
+
 await buildPlugin({
   name: "@elizaos/plugin-farcaster",
   clean: true,
@@ -55,34 +57,9 @@ await buildPlugin({
   ],
   dtsProject: "tsconfig.build.json",
   dtsShims: [
-    // Package exports point types at dist/{node,browser,cjs}/index.d.ts;
-    // declarations for entry graphs live at dist/index.{node,browser}.d.ts
-    // from `tsc`.
-    {
-      path: "node/index.d.ts",
-      content: `export * from "../index.node";
-export { default } from "../index.node";
-`,
-    },
-    // Adjacent to index.node.js: some TS (bundler + dynamic import) only look
-    // for index.node.d.ts here, not package.json "types".
-    {
-      path: "node/index.node.d.ts",
-      content: `export * from "../index.node";
-export { default } from "../index.node";
-`,
-    },
-    {
-      path: "browser/index.d.ts",
-      content: `export * from "../index.browser";
-export { default } from "../index.browser";
-`,
-    },
-    {
-      path: "cjs/index.d.ts",
-      content: `export * from "../index.node";
-export { default } from "../index.node";
-`,
-    },
+    { path: "node/index.d.ts", content: reexport("../index.node") },
+    { path: "node/index.node.d.ts", content: reexport("../index.node") },
+    { path: "browser/index.d.ts", content: reexport("../index.browser") },
+    { path: "cjs/index.d.ts", content: reexport("../index.node") },
   ],
 });

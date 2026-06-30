@@ -322,7 +322,10 @@ describe("auto goal verification on task_complete", () => {
 /** Runner-agnostic poll (Bun's vitest shim lacks `vi.waitFor`). */
 async function until(
   predicate: () => boolean | Promise<boolean>,
-  { timeoutMs = 3000, stepMs = 10 }: { timeoutMs?: number; stepMs?: number } = {},
+  {
+    timeoutMs = 3000,
+    stepMs = 10,
+  }: { timeoutMs?: number; stepMs?: number } = {},
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -413,7 +416,9 @@ describe("completion envelope gate (#8895)", () => {
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
-    await until(async () => (await store.getTask(taskId))?.task.status === "done");
+    await until(
+      async () => (await store.getTask(taskId))?.task.status === "done",
+    );
 
     const doc = await store.getTask(taskId);
     const envelope = doc?.task.metadata.completionEnvelope as
@@ -452,7 +457,9 @@ describe("completion envelope gate (#8895)", () => {
       true,
     );
     const lastSent = fake.sent.at(-1);
-    expect(lastSent?.text).toContain("did not include a valid CompletionEnvelope");
+    expect(lastSent?.text).toContain(
+      "did not include a valid CompletionEnvelope",
+    );
     expect(lastSent?.text).toContain("testResults must be an array");
     expect(doc?.task.status).toBe("active");
     expect(doc?.task.metadata.autoVerifyAttempts).toBe(1);
@@ -473,7 +480,9 @@ describe("completion envelope gate (#8895)", () => {
     fake.emit(sessionId, "task_complete", {
       response: "I finished the work and all tests pass.",
     });
-    await until(async () => (await store.getTask(taskId))?.task.status === "done");
+    await until(
+      async () => (await store.getTask(taskId))?.task.status === "done",
+    );
 
     // No envelope present → the existing text-judge path still runs.
     expect(useModel).toHaveBeenCalledTimes(1);
@@ -629,7 +638,9 @@ describe("independent read-only verifier (#8898)", () => {
   it("spawns a read-only verifier with approvalPreset 'verifier'; a falsely-green completion is BLOCKED", async () => {
     const fake = makeVerifierAcp(() => FAILING_VERIFIER_ENVELOPE);
     const store = new OrchestratorTaskStore({ backend: "memory" });
-    const { taskId, sessionId } = await seedCodeChangeTask(store, ["tests pass"]);
+    const { taskId, sessionId } = await seedCodeChangeTask(store, [
+      "tests pass",
+    ]);
     const useModel = vi.fn(async () =>
       JSON.stringify({ passed: true, summary: "should not be reached" }),
     );
@@ -670,7 +681,9 @@ describe("independent read-only verifier (#8898)", () => {
   it("an inconclusive verifier verdict keeps the task validating (no false promotion)", async () => {
     const fake = makeVerifierAcp(() => INCONCLUSIVE_VERIFIER_ENVELOPE);
     const store = new OrchestratorTaskStore({ backend: "memory" });
-    const { taskId, sessionId } = await seedCodeChangeTask(store, ["tests pass"]);
+    const { taskId, sessionId } = await seedCodeChangeTask(store, [
+      "tests pass",
+    ]);
     const useModel = vi.fn(async () =>
       JSON.stringify({ passed: true, summary: "should not be reached" }),
     );
@@ -704,7 +717,9 @@ describe("independent read-only verifier (#8898)", () => {
     const fake = makeVerifierAcp(() => FAILING_VERIFIER_ENVELOPE);
     const store = new OrchestratorTaskStore({ backend: "memory" });
     // No lastChangeSet seeded → hasCodeChanges false → verifier gated off.
-    const { taskId, sessionId } = await seedTaskWithSession(store, ["tests pass"]);
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
     const useModel = vi.fn(async () =>
       JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
     );
@@ -721,7 +736,9 @@ describe("independent read-only verifier (#8898)", () => {
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done, all tests pass" });
-    await until(async () => (await store.getTask(taskId))?.task.status === "done");
+    await until(
+      async () => (await store.getTask(taskId))?.task.status === "done",
+    );
 
     expect(fake.spawned).toHaveLength(0);
     expect(useModel).toHaveBeenCalledTimes(1);
@@ -790,7 +807,11 @@ describe("attempt reflection persistence (#8899)", () => {
   it("records a post-mortem for the first failed verification", async () => {
     const { store, taskId } = await driveOneVerify({
       acceptanceCriteria: ["tests pass"],
-      verdict: { passed: false, summary: "tests not run", missing: ["tests pass"] },
+      verdict: {
+        passed: false,
+        summary: "tests not run",
+        missing: ["tests pass"],
+      },
     });
     await vi.waitFor(async () => {
       expect(await reflectionsOf(store, taskId)).toEqual([

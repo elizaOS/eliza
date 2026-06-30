@@ -1,5 +1,13 @@
-import { execSync } from "node:child_process";
+#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-google-chat.
+ * tsc-only (non-bundled) plugin: no Bun.build step — the shared driver runs
+ * `tsc --project tsconfig.json --noCheck` via the empty-targets path.
+ */
+import { buildPlugin } from "../plugin-build";
 
-console.log("Building Google Chat plugin (TypeScript)...");
-execSync("bunx tsc -p tsconfig.json --noCheck", { stdio: "inherit" });
-console.log("Build complete.");
+await buildPlugin({
+  name: "@elizaos/plugin-google-chat",
+  targets: [],
+  dtsProject: "tsconfig.json",
+});

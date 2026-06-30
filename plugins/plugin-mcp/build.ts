@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-
 /**
  * Build script for @elizaos/plugin-mcp (TypeScript package).
  *
@@ -7,105 +6,54 @@
  * - ESM (Node): dist/node/index.js
  * - CJS (Node): dist/cjs/index.cjs
  * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
+ *
+ * Migrated onto the shared `buildPlugin` driver (issue #10078). The CJS bundle
+ * is renamed `index.js` -> `index.cjs` with a plain rename (its sibling
+ * `index.js.map` is intentionally left unrenamed so the emitted
+ * `//# sourceMappingURL=index.js.map` reference stays valid), byte-identical to
+ * the prior hand-rolled build.
  */
+import { buildPlugin } from "../plugin-build";
 
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
 
-const RM_RECURSIVE_SCRIPT = fileURLToPath(
-  new URL("../../packages/scripts/rm-path-recursive.mjs", import.meta.url)
-);
-
-function rmRecursive(target: string) {
-  const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, target], {
-    stdio: "inherit",
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`rm-path-recursive failed for ${target} with status ${result.status}`);
-  }
-}
-
-const externalDeps = await externalsFromPackageJson("./package.json", {
-  // Transitive workspace + native deps the hand-list relied on.
-  extra: ["@elizaos/shared", "@elizaos/agent", "@node-llama-cpp", "node-llama-cpp"],
-});
-
-async function build(): Promise<void> {
-  const totalStart = Date.now();
-
-  // Wipe dist first so leftover .d.ts files from prior runs don't get
-  // picked up by tsc as inputs (TS5055).
-  rmRecursive("dist");
-
-  const nodeStart = Date.now();
-  console.log("🔨 Building @elizaos/plugin-mcp for Node (ESM)...");
-  const nodeResult = await Bun.build({
-    entrypoints: ["src/index.ts"],
-    outdir: "dist/node",
-    target: "node",
-    format: "esm",
-    sourcemap: "external",
-    minify: false,
-    external: externalDeps,
-  });
-  if (!nodeResult.success) {
-    console.error("Node ESM build failed:", nodeResult.logs);
-    throw new Error("Node ESM build failed");
-  }
-  console.log(`✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
-
-  const cjsStart = Date.now();
-  console.log("🧱 Building @elizaos/plugin-mcp for Node (CJS)...");
-  const cjsResult = await Bun.build({
-    entrypoints: ["src/index.ts"],
-    outdir: "dist/cjs",
-    target: "node",
-    format: "cjs",
-    sourcemap: "external",
-    minify: false,
-    external: externalDeps,
-  });
-  if (!cjsResult.success) {
-    console.error("Node CJS build failed:", cjsResult.logs);
-    throw new Error("Node CJS build failed");
-  }
-
-  const { rename, access, mkdir, writeFile } = await import("node:fs/promises");
-  const { $ } = await import("bun");
-
-  // Rename Bun's CJS output to .cjs to be loadable under "type": "module".
-  await access("dist/cjs/index.js");
-  await rename("dist/cjs/index.js", "dist/cjs/index.cjs");
-
-  console.log(`✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
-
-  const dtsStart = Date.now();
-  console.log("📝 Generating TypeScript declarations...");
-  // --noCheck because plugin-mcp transitively imports @elizaos/agent
-  // which has pre-existing migration debt outside our scope.
-  await $`tsc --noCheck --project tsconfig.build.json`;
-
-  await mkdir("dist/node", { recursive: true });
-  await mkdir("dist/cjs", { recursive: true });
-
-  const rootReexport = `export * from "./node/index";
-export { default } from "./node/index";
-`;
-  const cjsReexport = `export * from "../node/index";
-export { default } from "../node/index";
-`;
-
-  await writeFile("dist/index.d.ts", rootReexport);
-  await writeFile("dist/cjs/index.d.ts", cjsReexport);
-
-  console.log(`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
-
-  console.log(`🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
-}
-
-build().catch((err) => {
-  console.error("Build failed:", err);
-  process.exit(1);
+await buildPlugin({
+  name: "@elizaos/plugin-mcp",
+  // Wipe dist first so leftover .d.ts files from prior runs don't get picked up
+  // by tsc as inputs (TS5055).
+  clean: true,
+  externals: "auto",
+  externalsOptions: {
+    // Transitive workspace + native deps the hand-list relied on.
+    extra: ["@elizaos/shared", "@elizaos/agent", "@node-llama-cpp", "node-llama-cpp"],
+  },
+  targets: [
+    {
+      label: "Node (ESM)",
+      entry: "src/index.ts",
+      outSubdir: "node",
+      target: "node",
+      format: "esm",
+      sourcemap: "external",
+      minify: false,
+    },
+    {
+      label: "Node (CJS)",
+      entry: "src/index.ts",
+      outSubdir: "cjs",
+      target: "node",
+      format: "cjs",
+      sourcemap: "external",
+      minify: false,
+      // Rename Bun's CJS output to .cjs to be loadable under "type": "module".
+      renames: [["index.js", "index.cjs"]],
+    },
+  ],
+  // --noCheck because plugin-mcp transitively imports @elizaos/agent which has
+  // pre-existing migration debt outside our scope.
+  dtsProject: "tsconfig.build.json",
+  dtsShims: [
+    { path: "index.d.ts", content: reexport("./node/index") },
+    { path: "cjs/index.d.ts", content: reexport("../node/index") },
+  ],
 });

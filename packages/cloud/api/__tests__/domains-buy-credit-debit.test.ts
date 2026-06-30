@@ -173,19 +173,23 @@ function buy(domain = "example.com", appId = "app-1") {
   });
 }
 
-function isDomainBuyResponseBody(body: unknown): body is DomainBuyResponseBody {
-  return typeof body === "object" && body !== null;
-}
-
 async function readDomainBuyResponseBody(
   res: Response,
 ): Promise<DomainBuyResponseBody> {
   const body = await res.json();
-  expect(isDomainBuyResponseBody(body)).toBe(true);
-  if (!isDomainBuyResponseBody(body)) {
-    throw new Error("Expected domain purchase response body to be an object");
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new Error("Expected domain buy response body to be an object");
   }
-  return body;
+
+  const success = Object.getOwnPropertyDescriptor(body, "success")?.value;
+  const code = Object.getOwnPropertyDescriptor(body, "code")?.value;
+  const domain = Object.getOwnPropertyDescriptor(body, "domain")?.value;
+
+  return {
+    success: typeof success === "boolean" ? success : undefined,
+    code: typeof code === "string" ? code : undefined,
+    domain: typeof domain === "string" ? domain : undefined,
+  };
 }
 
 describe("POST /apps/:id/domains/buy — credit debit gates registration", () => {

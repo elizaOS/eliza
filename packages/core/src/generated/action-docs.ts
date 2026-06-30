@@ -5191,6 +5191,15 @@ export const allActionsSpec = {
 			descriptionCompressed: "Show current context info",
 		},
 		{
+			name: "CREATE_APP",
+			description:
+				"Create a new Eliza Cloud app for the user from a name (and optional description / monetization intent). Use when the user asks to build, make, create, or start a new app.",
+			parameters: [],
+			descriptionCompressed:
+				"Create a new Eliza Cloud app from the user's intent.",
+			similes: ["BUILD_APP", "MAKE_APP", "NEW_APP", "CREATE_CLOUD_APP"],
+		},
+		{
 			name: "CREDENTIALS",
 			description:
 				"Owner-only credentials. Browser autofill + OS password manager (1Password/ProtonPass). ",
@@ -5310,6 +5319,28 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "DELETE_APP",
+			description:
+				"Delete an Eliza Cloud app. DESTRUCTIVE: tears down the app's container and tenant database. Requires an explicit confirmation — the first ask only confirms intent. Use when the user asks to delete, remove, or destroy an app.",
+			parameters: [],
+			descriptionCompressed:
+				"Delete a Cloud app (destructive; two-step confirm).",
+			similes: [
+				"REMOVE_APP",
+				"DELETE_MY_APP",
+				"DESTROY_APP",
+				"DELETE_CLOUD_APP",
+			],
+		},
+		{
+			name: "DEPLOY_APP",
+			description:
+				"Deploy an existing Eliza Cloud app and confirm it is live (waits for the build to finish and verifies the public URL responds). Use when the user asks to deploy, ship, launch, or go live with an app.",
+			parameters: [],
+			descriptionCompressed: "Deploy a Cloud app and verify it is live.",
+			similes: ["SHIP_APP", "GO_LIVE", "DEPLOY_CLOUD_APP", "LAUNCH_APP"],
 		},
 		{
 			name: "ELEVATED_COMMAND",
@@ -5928,6 +5959,48 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "GET_APP",
+			description:
+				"Show details about one specific Eliza Cloud app the user owns (URL, deployment status, credits used, earnings, users). Use when the user asks about a particular app by name or id.",
+			parameters: [],
+			descriptionCompressed: "Show details for one Eliza Cloud app by name/id.",
+			similes: [
+				"APP_DETAILS",
+				"SHOW_APP",
+				"TELL_ME_ABOUT_APP",
+				"APP_INFO",
+				"DESCRIBE_APP",
+			],
+		},
+		{
+			name: "GET_APP_DEPLOY_STATUS",
+			description:
+				"Report the deployment status of an Eliza Cloud app (draft / building / live / failed) and its URL. Use when the user asks whether an app is live, deployed, or done building.",
+			parameters: [],
+			descriptionCompressed:
+				"Report an app's deploy status (draft/building/live/failed).",
+			similes: [
+				"IS_MY_APP_LIVE",
+				"DEPLOY_STATUS",
+				"APP_DEPLOY_STATUS",
+				"IS_APP_DEPLOYED",
+			],
+		},
+		{
+			name: "GET_APP_EARNINGS",
+			description:
+				"Show how much an Eliza Cloud app has earned — withdrawable balance, pending balance, lifetime earnings, and amount withdrawn. Read-only. Use when the user asks how much they've earned or about an app's revenue/earnings.",
+			parameters: [],
+			descriptionCompressed: "Show a Cloud app's earnings (read-only).",
+			similes: [
+				"HOW_MUCH_HAVE_I_EARNED",
+				"MY_EARNINGS",
+				"APP_EARNINGS",
+				"SHOW_EARNINGS",
+				"CHECK_EARNINGS",
+			],
+		},
+		{
 			name: "GIT_PATHOLOGY",
 			description:
 				"Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem narrative. Use when the user asks 'when did this code get bad', 'where did rot start in X', or 'analyze git pathology for Y'. Actions: report (default), list (show cached reports).",
@@ -6351,6 +6424,21 @@ export const allActionsSpec = {
 						},
 					},
 				},
+			],
+		},
+		{
+			name: "LIST_CLOUD_APPS",
+			description:
+				"List the Eliza Cloud apps the user owns (name, URL, deployment status, and credits/earnings when present). Use when the user asks what apps they have, to see their apps, or to list their Cloud apps.",
+			parameters: [],
+			descriptionCompressed:
+				"List the user's Eliza Cloud apps (name/url/status).",
+			similes: [
+				"MY_APPS",
+				"GET_APPS",
+				"WHAT_APPS_DO_I_HAVE",
+				"MY_CLOUD_APPS",
+				"LIST_APPS",
 			],
 		},
 		{
@@ -7604,6 +7692,21 @@ export const allActionsSpec = {
 			],
 			similes: ["/reasoning", "/reason"],
 			descriptionCompressed: "Set reasoning visibility",
+		},
+		{
+			name: "REGENERATE_APP_API_KEY",
+			description:
+				"Regenerate (rotate) an Eliza Cloud app's API key. SECURITY-SENSITIVE: invalidates the current key immediately. Requires an explicit confirmation — the first ask only confirms intent. Use when the user asks to rotate, regenerate, reset, or get a new API key for an app.",
+			parameters: [],
+			descriptionCompressed:
+				"Rotate a Cloud app's API key (security; two-step confirm).",
+			similes: [
+				"ROTATE_KEY",
+				"NEW_API_KEY",
+				"REGENERATE_API_KEY",
+				"RESET_API_KEY",
+				"ROTATE_APP_KEY",
+			],
 		},
 		{
 			name: "RESET_COMMAND",
@@ -9399,6 +9502,29 @@ export const allActionsSpec = {
 				"Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000). `stop` and `status` take no...",
 		},
 		{
+			name: "UPDATE_APP",
+			description:
+				"Update an existing Eliza Cloud app's details — rename it, or change its description, logo, website, or contact email. Use when the user asks to rename, edit, or change an app's settings (not its monetization).",
+			parameters: [],
+			descriptionCompressed: "Rename or edit a Cloud app's details.",
+			similes: ["RENAME_APP", "EDIT_APP", "UPDATE_CLOUD_APP", "CHANGE_APP"],
+		},
+		{
+			name: "UPDATE_MONETIZATION",
+			description:
+				"Change an Eliza Cloud app's monetization — turn it on or off, set the inference markup percentage, or set the purchase share percentage. Use when the user asks to monetize, set a price/markup, or enable/disable earning on an app.",
+			parameters: [],
+			descriptionCompressed:
+				"Set a Cloud app's monetization (markup / on-off).",
+			similes: [
+				"SET_PRICE",
+				"CHANGE_MARKUP",
+				"ENABLE_MONETIZATION",
+				"DISABLE_MONETIZATION",
+				"SET_MARKUP",
+			],
+		},
+		{
 			name: "USAGE_COMMAND",
 			description: "Show token usage",
 			parameters: [],
@@ -10019,6 +10145,21 @@ export const allActionsSpec = {
 						},
 					},
 				},
+			],
+		},
+		{
+			name: "WITHDRAW_APP_EARNINGS",
+			description:
+				"Withdraw (cash out) an Eliza Cloud app's earnings. MONEY-OUT: requires an explicit confirmation — the first ask only confirms intent and hands off a dashboard link. Use when the user asks to withdraw, cash out, or request a payout of an app's earnings.",
+			parameters: [],
+			descriptionCompressed:
+				"Withdraw a Cloud app's earnings (money-out; two-step confirm).",
+			similes: [
+				"CASH_OUT",
+				"PAYOUT",
+				"WITHDRAW_EARNINGS",
+				"REQUEST_PAYOUT",
+				"CASH_OUT_APP",
 			],
 		},
 		{

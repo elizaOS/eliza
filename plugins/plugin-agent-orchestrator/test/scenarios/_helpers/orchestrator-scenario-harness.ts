@@ -350,7 +350,9 @@ class OrchestratorScenarioHarness {
       }>
     )[0];
     if (!reflection) {
-      throw new Error("expected a persisted reflection after the failed verify");
+      throw new Error(
+        "expected a persisted reflection after the failed verify",
+      );
     }
     const expectedLine = `Attempt ${reflection.attempt}: ${reflection.summary}`;
 
@@ -368,7 +370,9 @@ class OrchestratorScenarioHarness {
     const respawnGoalPrompt = this.acp.initialTaskFor(secondSessionId) ?? "";
 
     if (firstGoalPrompt.includes("Past Attempt Failures")) {
-      throw new Error("clean first spawn prompt unexpectedly carried a reflection");
+      throw new Error(
+        "clean first spawn prompt unexpectedly carried a reflection",
+      );
     }
     if (
       !respawnGoalPrompt.includes("--- Past Attempt Failures ---") ||

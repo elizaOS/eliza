@@ -35,15 +35,24 @@ import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 
 const cloud = new ElizaCloudClient({ apiKey: process.env.ELIZAOS_CLOUD_API_KEY });
 
-// 1. register the app
-const { app, apiKey } = await cloud.routes.postApiV1Apps({
-  json: { name, app_url: "https://placeholder.invalid", skipGitHubRepo: true },
+// 1. register the app. skipGitHubRepo: true makes this a TEMPLATE app — the
+//    cloud stamps the first-party template image onto it, so create -> deploy
+//    resolves to a prebuilt, allowlisted image with NO build step.
+const { app, apiKey } = await cloud.createApp({
+  name,
+  app_url: "https://placeholder.invalid",
+  skipGitHubRepo: true,
 });
 
-// 2. build + push container image
-// 3. deploy container with POST /api/v1/containers using `image`
-// 4. enable monetization with PUT /api/v1/apps/<id>/monetization
-// 5. patch app_url + allowed_origins to the container URL
+// 2. the app image: PREBUILT + first-party only. Apps deploy an allowlisted
+//    `ghcr.io/elizaos/*` image (default `ghcr.io/elizaos/example-edad:showcase`,
+//    override APP_DEFAULT_TEMPLATE_IMAGE). You do NOT build or push your own
+//    image to an arbitrary registry — build-from-repo is disabled.
+// 3. deploy: await cloud.deployApp(app.id); then poll cloud.getAppDeployStatus(app.id).
+//    GATED: returns 503 { code: "apps_deploy_disabled" } unless APPS_DEPLOY_ENABLED=1
+//    on the Worker AND the org is allowlisted.
+// 4. enable monetization: await cloud.updateMonetization(app.id, { ... })
+// 5. patch app_url + allowed_origins to the deployed URL: await cloud.updateApp(app.id, { ... })
 // 6. report URLs to the human (the auto-assigned *.apps.elizacloud.ai
 //    subdomain is the default; if the user wants a custom branded domain
 //    instead, hand off to the `eliza-cloud-buy-domain` skill)

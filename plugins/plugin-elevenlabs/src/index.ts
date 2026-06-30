@@ -18,6 +18,7 @@ import {
   ModelType,
   type Plugin,
   parseBooleanFromText,
+  resolveSetting,
 } from "@elizaos/core";
 
 function parseTtsOutputFormat(
@@ -151,6 +152,10 @@ function isBrowser(): boolean {
   return typeof globalThis.document !== "undefined";
 }
 
+// Runtime per-agent setting first, then `process.env`, then the fallback.
+// Thin wrapper over core `resolveSetting` so the precedence lives in one
+// canonical place; the env fallback uses dotenv semantics (trimmed; empty
+// strings treated as unset).
 function getSetting(runtime: IAgentRuntime, key: string): string | undefined;
 function getSetting(
   runtime: IAgentRuntime,
@@ -162,20 +167,9 @@ function getSetting(
   key: string,
   fallback?: string,
 ): string | undefined {
-  const rawRuntime = runtime.getSetting(key);
-  const fromRuntime =
-    rawRuntime === null || rawRuntime === undefined
-      ? undefined
-      : String(rawRuntime);
-
-  const envValue =
-    typeof process !== "undefined" &&
-    process.env &&
-    typeof process.env[key] === "string"
-      ? process.env[key]
-      : undefined;
-
-  return fromRuntime ?? envValue ?? fallback;
+  return fallback === undefined
+    ? resolveSetting(runtime, key)
+    : resolveSetting(runtime, key, { defaultValue: fallback });
 }
 
 function getBaseURL(runtime: IAgentRuntime): string {
@@ -189,16 +183,7 @@ function getBaseURL(runtime: IAgentRuntime): string {
 }
 
 function getApiKey(runtime: IAgentRuntime): string | undefined {
-  const raw = runtime.getSetting("ELEVENLABS_API_KEY");
-  const fromRuntime =
-    raw === null || raw === undefined ? undefined : String(raw);
-  const fromEnv =
-    typeof process !== "undefined" &&
-    process.env &&
-    typeof process.env.ELEVENLABS_API_KEY === "string"
-      ? process.env.ELEVENLABS_API_KEY
-      : undefined;
-  return fromRuntime ?? fromEnv;
+  return getSetting(runtime, "ELEVENLABS_API_KEY");
 }
 
 function getElevenLabsClientConfig(runtime: IAgentRuntime): {

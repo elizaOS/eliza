@@ -70,7 +70,9 @@ describe("reflexion re-spawn injection (#8899)", () => {
 
     // Re-spawn prompt (the string actually sent to ACP) replays it.
     expect(trace.respawnPrompt).toContain("--- Past Attempt Failures ---");
-    expect(trace.respawnPrompt).toContain(`Attempt 1: ${REFLEXION_FAIL_SUMMARY}`);
+    expect(trace.respawnPrompt).toContain(
+      `Attempt 1: ${REFLEXION_FAIL_SUMMARY}`,
+    );
     expect(trace.respawnPrompt).toContain(
       `Missing: ${REFLEXION_MISSING_CRITERION}.`,
     );
@@ -108,7 +110,11 @@ describe("reflexion re-spawn injection (#8899)", () => {
     });
     const acp = makeSpawnCapturingAcp();
     const service = new OrchestratorTaskService(
-      makeGrillingRuntime(makeBaseRuntime(), acp.service, reflexionVerifierModel),
+      makeGrillingRuntime(
+        makeBaseRuntime(),
+        acp.service,
+        reflexionVerifierModel,
+      ),
       { store },
     );
     await service.start();

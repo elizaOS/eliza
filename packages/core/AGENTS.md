@@ -112,6 +112,39 @@ Read by the runtime (see README for the full WHY of each):
 
 Prefer the canonical env reader in `utils/read-env.ts` over raw `process.env` (it handles legacy aliases).
 
+### Setting / env resolution — precedence & the multi-tenant rule
+
+Two canonical helpers own all setting/env resolution; everything else delegates:
+
+| Helper | Source order | Use when |
+| --- | --- | --- |
+| `runtime.getSetting(key)` (`runtime.ts`) | character secrets → character settings → `settings.extra` → `settings.secrets` → `character.env.vars` → the constructor-provided `settings` map. **Never `process.env`.** | Inside the runtime / framework code. |
+| `readEnv(key, opts)` (`utils/read-env.ts`) | `process.env[key]` (trimmed; empty string treated as unset) → `defaultValue`. | Reading an env var with no runtime in scope. |
+| `resolveSetting(runtime, key, opts)` (`utils/resolve-setting.ts`) | `runtime.getSetting(key)` (coerced to string) → `readEnv(key)` → `defaultValue`. | Single-tenant / headless plugins that still want a dotenv fallback. |
+
+**Resolution order:** runtime/character setting → env alias → default. The
+per-agent runtime value always wins; the env fallback is the deployment default.
+
+**WHY core `getSetting()` deliberately does NOT read `process.env`:** in a
+multi-tenant process many agents share one OS environment. If `getSetting()`
+fell through to `process.env`, a host secret (`OPENAI_API_KEY`,
+`POSTGRES_URL`, …) set for the *box* would silently leak into *every* agent,
+including ones the operator never granted it to. Keeping `getSetting()`
+per-agent makes each agent's config explicit and isolated. `resolveSetting`
+re-adds an opt-in env fallback for single-tenant/headless plugins **without**
+changing `getSetting()` semantics — multi-tenant hosts that never call it are
+unaffected.
+
+**Host obligation (how to make dotenv values visible to `getSetting()`):**
+because `getSetting()` reads the constructor-provided `settings` map and not
+`process.env`, a host that wants `.env` / `process.env` values honored must fold
+them into the runtime's settings at construction. `getBasicCapabilitiesSettings(character, env)`
+(`runtime-composition.ts`) does exactly this — it flattens `character.settings`,
+`character.secrets`, and `env` into the `Record<string,string>` handed to
+adapter factories and the `AgentRuntime` constructor. Construct the runtime with
+those settings and dotenv is honored; skip it and only character config is
+visible.
+
 ## How to extend
 
 - **Add an action/provider/evaluator/service to the built-in bundle:** implement against the `Action`/`Provider`/`Evaluator`/`Service` types in `types/`, then add it to the relevant array in `src/features/basic-capabilities/index.ts` (`basicActions`, `basicProviders`, `basicEvaluators`, `basicServices`). Most new capabilities should live in their own plugin package instead of here.

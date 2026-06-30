@@ -13,20 +13,10 @@
  * (the two runtime boundaries) are spied.
  */
 
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  spyOn,
-  test,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { servicePricingRepository } from "../../../db/repositories";
 import { cache } from "../../cache/client";
-import {
-  getServiceMethodCost,
-  invalidateServicePricingCache,
-} from "./pricing";
+import { getServiceMethodCost, invalidateServicePricingCache } from "./pricing";
 
 const SERVICE_ID = "pricing-fallback-test-service";
 
@@ -78,9 +68,7 @@ describe("getServiceMethodCost — missing-pricing fallback", () => {
 
     // Rows are seeded before the next call. Because the empty map was not
     // cached, the next read hits the DB again and picks up the real price.
-    listByServiceSpy.mockResolvedValueOnce([
-      { method: "getPrice", cost: "0.0003" },
-    ] as never);
+    listByServiceSpy.mockResolvedValueOnce([{ method: "getPrice", cost: "0.0003" }] as never);
     const second = await getServiceMethodCost(SERVICE_ID, "getPrice");
 
     expect(second).toBeCloseTo(0.0003, 12);

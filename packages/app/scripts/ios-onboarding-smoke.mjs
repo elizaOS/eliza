@@ -1,7 +1,11 @@
 #!/usr/bin/env node
-// iOS Simulator first-run smoke. WKWebView is not CDP-drivable like Android,
-// so the harness writes a Capacitor Preferences request, launches the installed
-// app, and lets the WebView click/fill the real onboarding DOM internally.
+// iOS Simulator first-run REMOTE-CONNECT smoke. WKWebView is not CDP-drivable
+// like Android, so the harness writes a Capacitor Preferences request (which
+// arms the in-app verifier), launches the installed app, then fires the real
+// `<scheme>://first-run/runtime/remote?api=<url>` deep link via `simctl
+// openurl`. The app connects to the remote + completes first-run on its own;
+// the in-app verifier proves it landed on home and reports back via Preferences.
+// No onboarding DOM is driven, so the lane survives the in-chat redesign.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -358,10 +362,6 @@ async function pollResult(udid, appId) {
       } catch {
         parsed = null;
       }
-      // Quarantined (#10322): the in-app smoke skips cleanly because the
-      // remote-connect-at-URL onboarding surface it drove was removed by #9952.
-      if (parsed?.skipped === true || parsed?.phase === "skipped")
-        return parsed;
       if (parsed?.ok === true) return parsed;
       if (parsed?.phase === "failed" || parsed?.error) {
         throw new Error(`iOS onboarding smoke failed: ${lastRaw}`);
@@ -406,31 +406,16 @@ async function main() {
     log(`launching ${appId} on ${udid}`);
     simctl(["launch", udid, appId]);
     await sleep(1500);
-    if (has("--use-deeplink")) {
-      tryRun("xcrun", [
-        "simctl",
-        "openurl",
-        udid,
-        `${urlScheme}://first-run/runtime/remote`,
-      ]);
-    }
+    // Fire the real OS deep link that carries the remote agent URL. The app's
+    // CONNECT_EVENT path connects + completes first-run; the in-app verifier
+    // (runIosOnboardingSmokeIfRequested) then proves it landed on home.
+    const deepLink = `${urlScheme}://first-run/runtime/remote?api=${encodeURIComponent(apiBase)}`;
+    log(`opening first-run remote deep link: ${deepLink}`);
+    simctl(["openurl", udid, deepLink]);
     takeScreenshot(udid, "fresh-onboarding");
     const result = await pollResult(udid, appId);
     const screenshot = takeScreenshot(udid, "home-landing");
     const video = await stopVideo(recording);
-    if (result.skipped === true || result.phase === "skipped") {
-      // Quarantined (#10322): remote-connect-at-URL onboarding was removed by
-      // #9952; the in-app smoke skips cleanly until device onboarding is
-      // redesigned. Treated as a pass so mobile-build-smoke.yml stays green.
-      fs.writeFileSync(
-        path.join(resultDir, "result.json"),
-        `${JSON.stringify({ ...result, screenshot, video }, null, 2)}\n`,
-      );
-      log(
-        `SKIP (#10322): ${result.reason ?? "remote-connect-at-URL onboarding pending device redesign"}`,
-      );
-      return;
-    }
     if (result.homeVisible !== true || result.composerVisible !== true) {
       throw new Error(
         `iOS onboarding smoke result lacked home/composer: ${JSON.stringify(result)}`,

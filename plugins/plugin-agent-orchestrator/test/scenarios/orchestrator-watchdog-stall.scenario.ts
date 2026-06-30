@@ -152,7 +152,9 @@ async function runWatchdogStall(): Promise<WatchdogScenarioResult> {
   if (!roundTripWarn) throw new Error("missing round-trip cap warning");
   if (!spendWarn) throw new Error("missing spend cap warning");
   if (posts.some((p) => p.roomId === ROOM_IDLE)) {
-    throw new Error("idle session (0 round-trips / 0 spend) must not be warned");
+    throw new Error(
+      "idle session (0 round-trips / 0 spend) must not be warned",
+    );
   }
 
   const approachingCap = watchdog.getApproachingCapSessionIds();
@@ -179,13 +181,15 @@ async function runWatchdogStall(): Promise<WatchdogScenarioResult> {
   }
 
   const providerSessions =
-    (provider.data as {
-      sessions?: Array<{
-        sessionId: string;
-        stalled: boolean;
-        approachingCap: string | null;
-      }>;
-    }).sessions ?? [];
+    (
+      provider.data as {
+        sessions?: Array<{
+          sessionId: string;
+          stalled: boolean;
+          approachingCap: string | null;
+        }>;
+      }
+    ).sessions ?? [];
   const providerStalled = providerSessions
     .filter((s) => s.stalled)
     .map((s) => s.sessionId);
@@ -205,7 +209,11 @@ async function runWatchdogStall(): Promise<WatchdogScenarioResult> {
     grilledSessionId: IDLE_SESSION,
     stallPromptSent,
     warnings: [
-      { roomId: roundTripWarn.roomId, source: roundTripWarn.source, kind: "round-trip" },
+      {
+        roomId: roundTripWarn.roomId,
+        source: roundTripWarn.source,
+        kind: "round-trip",
+      },
       { roomId: spendWarn.roomId, source: spendWarn.source, kind: "spend" },
     ],
     approachingCap,
@@ -273,7 +281,11 @@ export default scenario({
       name: "grill the idle session and warn on approaching caps",
       text: "Run the stalled-agent watchdog over a quiet session and an over-cap session.",
       actionName: ORCHESTRATOR_WATCHDOG_STALL,
-      responseIncludesAny: ["watchdog grilled", "cap warning", "approachingCap"],
+      responseIncludesAny: [
+        "watchdog grilled",
+        "cap warning",
+        "approachingCap",
+      ],
       assertTurn: (turn) => {
         const data = turn.actionsCalled[0]?.result?.data as
           | WatchdogScenarioResult

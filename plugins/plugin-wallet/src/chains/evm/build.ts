@@ -60,7 +60,7 @@ async function runBuild(): Promise<boolean> {
   console.log(`Build successful: ${result.outputs.length} files generated`);
 
   console.log("Generating TypeScript declarations...");
-  const tscResult = await Bun.$`cd ${process.cwd()} && bun x tsc -p tsconfig.build.json`
+  const tscResult = await Bun.$`cd ${process.cwd()} && bun x tsc -p tsconfig.build.json --noCheck`
     .quiet()
     .nothrow();
 

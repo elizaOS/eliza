@@ -15,12 +15,12 @@
  * the emitted character afterward.
  */
 
-import type { MigratedCharacter as Character } from "./types.js";
 import {
   isPlaybookMemory,
   isSelfMemory,
   type OcAgentSource,
 } from "./openclaw-reader.js";
+import type { MigratedCharacter as Character } from "./types.js";
 
 export interface CharacterMapOptions {
   /**
@@ -83,8 +83,13 @@ export function mapToCharacter(
   // ---- knowledge: USER.md (about the human) - FIREWALLED ----
   const knowledge: Character["knowledge"] = [];
   if (!opts.firewall && src.user?.trim()) {
+    // NOTE(#10326): the runtime ingests an inline-text knowledge item
+    // ({ case: "text", value: { text } }), but core's `DocumentSourceItem`
+    // type currently models only path/directory/empty cases — no inline-text
+    // member — so this requires a double cast. The correct fix is to widen
+    // `DocumentSourceItem` (or the migrate-knowledge representation) so this
+    // shape is type-expressible; tracked as a follow-up on #10326.
     knowledge.push({
-      // DocumentSourceItem: inline text knowledge about the human.
       case: "text",
       value: { text: stripFrontHeading(src.user).trim() },
     } as unknown as NonNullable<Character["knowledge"]>[number]);
@@ -100,7 +105,10 @@ export function mapToCharacter(
     settings: {
       // Record the migration provenance + firewall posture in metadata.
       ...(opts.firewall
-        ? { firewall_note: "USER/personal knowledge excluded (firewalled) from this character." }
+        ? {
+            firewall_note:
+              "USER/personal knowledge excluded (firewalled) from this character.",
+          }
         : {}),
     } as Character["settings"],
   };
@@ -117,7 +125,9 @@ export function mapToCharacter(
  *   3. agentId, capitalized (last resort).
  */
 function deriveName(src: OcAgentSource): string {
-  const fromIdentity = src.identity?.match(/^\s*[-*]?\s*\*{0,2}Name\*{0,2}:\s*(.+)$/im);
+  const fromIdentity = src.identity?.match(
+    /^\s*[-*]?\s*\*{0,2}Name\*{0,2}:\s*(.+)$/im,
+  );
   if (fromIdentity?.[1]) return fromIdentity[1].replace(/\*/g, "").trim();
 
   // Only a LEADING H1 is treated as the persona title: the first non-empty,
@@ -138,7 +148,9 @@ function deriveName(src: OcAgentSource): string {
     if (!boilerplate && h.length > 0 && h.length <= 40) {
       const firstWord = h.split(/\s+/)[0];
       return /^[A-Za-z][\w-]*$/.test(firstWord) && h.split(/\s+/).length <= 4
-        ? (h.split(/\s+/).length === 1 ? cap(firstWord) : h)
+        ? h.split(/\s+/).length === 1
+          ? cap(firstWord)
+          : h
         : cap(firstWord);
     }
   }

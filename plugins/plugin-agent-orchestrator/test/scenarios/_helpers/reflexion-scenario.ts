@@ -43,9 +43,8 @@ export const reflexionVerifierModel: VerifierModel = async (
 ) => {
   const opts = _args[1] as { prompt?: string } | undefined;
   const prompt = opts?.prompt ?? "";
-  const hasPassingTests = /\d+\s+passing|tests?\s+pass(ed)?\b.*\d|0\s+fail/i.test(
-    prompt,
-  );
+  const hasPassingTests =
+    /\d+\s+passing|tests?\s+pass(ed)?\b.*\d|0\s+fail/i.test(prompt);
   return JSON.stringify(
     hasPassingTests
       ? { passed: true, summary: "all criteria proven", missing: [] }
@@ -147,7 +146,9 @@ export async function driveReflexionRespawn(
   baseRuntime: IAgentRuntime,
   verifierModel: VerifierModel,
 ): Promise<ReflexionRespawnTrace> {
-  const { store, taskId } = await seedReflexionTask([REFLEXION_MISSING_CRITERION]);
+  const { store, taskId } = await seedReflexionTask([
+    REFLEXION_MISSING_CRITERION,
+  ]);
   const acp = makeSpawnCapturingAcp();
   const runtime = makeGrillingRuntime(baseRuntime, acp.service, verifierModel);
   const service = new OrchestratorTaskService(runtime, { store });
@@ -169,7 +170,9 @@ export async function driveReflexionRespawn(
       return Array.isArray(reflections) && reflections.length > 0;
     });
     if (!failed) {
-      throw new Error("verification never persisted a reflection after failure");
+      throw new Error(
+        "verification never persisted a reflection after failure",
+      );
     }
 
     // Re-spawn — the new prompt must replay attempt-1's reflection.

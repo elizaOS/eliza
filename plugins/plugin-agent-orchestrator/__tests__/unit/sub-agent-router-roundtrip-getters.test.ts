@@ -47,7 +47,10 @@ function makeAcp(session: SessionInfo) {
   };
 }
 
-function makeRuntime(acpService: unknown, setting: Record<string, string> = {}) {
+function makeRuntime(
+  acpService: unknown,
+  setting: Record<string, string> = {},
+) {
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },

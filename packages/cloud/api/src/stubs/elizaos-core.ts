@@ -29,6 +29,35 @@ function readEnvValue(
   return undefined;
 }
 
+/** Structural shape of a runtime that can resolve a per-agent setting. */
+export interface SettingReader {
+  getSetting(key: string): string | boolean | number | null;
+}
+
+export interface ResolveSettingOptions {
+  defaultValue?: string;
+  env?: Record<string, string | undefined>;
+}
+
+/**
+ * Worker-safe mirror of core's `resolveSetting` (utils/resolve-setting.ts):
+ * per-agent runtime setting first, then env (trimmed; empty treated as unset),
+ * then `options.defaultValue`. Coerces runtime values to string. No top-level I/O.
+ */
+export function resolveSetting(
+  runtime: SettingReader | null | undefined,
+  key: string,
+  options: ResolveSettingOptions = {},
+): string | undefined {
+  const fromRuntime = runtime?.getSetting(key);
+  if (fromRuntime !== undefined && fromRuntime !== null) {
+    return String(fromRuntime);
+  }
+  const env = options.env ?? process.env;
+  const value = env?.[key]?.trim();
+  return value && value.length > 0 ? value : options.defaultValue;
+}
+
 export function getElizaNamespace(
   env: Record<string, string | undefined> = process.env,
 ): string {
