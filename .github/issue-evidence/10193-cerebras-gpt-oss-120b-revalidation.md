@@ -164,16 +164,26 @@ target is pickled → `Can't pickle local object` → the process never runs →
 result empty → scored as failed. So **every** MINT code task was a false
 failure, independent of model quality.
 
-**Fix (committed):** use an explicit `fork` context for the Manager + Process,
-falling back to the default context where `fork` is unavailable:
+**Fix (committed):** hoist the per-call `unsafe_execute` **local closure** out to
+a module-level `_unsafe_execute(solution_code, test_code, timeout, result)` and
+pass its inputs as `Process` args. A module-level function is picklable, so the
+child runs correctly under **both** the default **`spawn`** start method
+(macOS/Windows) and **`fork`** (Linux); the `Manager().list()` proxy is itself
+picklable and shared across the process boundary. No start-method override is
+forced, so the fix is portable to Windows (where `fork` is unavailable) and
+avoids the fork-from-a-threaded-parent deadlock caveat:
 
 ```python
-try:
-    ctx = multiprocessing.get_context("fork")
-except ValueError:
-    ctx = multiprocessing.get_context()
-manager = ctx.Manager(); result = manager.list()
-p = ctx.Process(target=unsafe_execute)
+def _unsafe_execute(solution_code, test_code, timeout, result):
+    # module-level (not a closure) → picklable under spawn and fork
+    ...
+    result.append("passed")  # or "timed out" / f"failed: {e}"
+
+manager = multiprocessing.Manager()
+result = manager.list()
+p = multiprocessing.Process(
+    target=_unsafe_execute, args=(solution_code, test_code, timeout, result)
+)
 ```
 
 **Verified directly:**
