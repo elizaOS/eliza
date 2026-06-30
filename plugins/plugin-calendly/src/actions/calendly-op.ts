@@ -52,33 +52,6 @@ const UUID_FROM_URI_RE =
   /scheduled_events\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i;
 const BECAUSE_RE = /\bbecause\s+(.+?)(?:[.!?]|$)/i;
 const CALENDLY_CONTEXTS = ["calendar", "automation", "connectors"] as const;
-const CALENDLY_KEYWORDS = [
-  "calendly",
-  "book",
-  "booking",
-  "schedule",
-  "cancel",
-  "meeting",
-  "appointment",
-  "event",
-  "reservar",
-  "programar",
-  "cancelar",
-  "reunión",
-  "réserver",
-  "planifier",
-  "annuler",
-  "buchen",
-  "absagen",
-  "prenotare",
-  "annullare",
-  "agendar",
-  "预约",
-  "取消",
-  "予約",
-  "キャンセル",
-] as const;
-
 function hasCalendlyContext(message: Memory, state?: State): boolean {
   const active = new Set(
     getActiveRoutingContextsForTurn(state, message).map((context) =>
@@ -98,20 +71,6 @@ function hasCalendlyContext(message: Memory, state?: State): boolean {
     (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
   );
   return CALENDLY_CONTEXTS.some((context) => active.has(context));
-}
-
-function hasCalendlyIntent(message: Memory, state?: State): boolean {
-  const text = [
-    typeof message.content.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return CALENDLY_KEYWORDS.some((keyword) =>
-    text.includes(keyword.toLowerCase()),
-  );
 }
 
 function extractCalendlyUrl(text: string): string | null {
@@ -397,7 +356,7 @@ export const calendlyOpAction: Action = {
   ): Promise<boolean> => {
     return (
       Boolean(runtime.getService<CalendlyService>(CALENDLY_SERVICE_TYPE)) &&
-      (hasCalendlyContext(message, state) || hasCalendlyIntent(message, state))
+      hasCalendlyContext(message, state)
     );
   },
 
@@ -421,7 +380,13 @@ export const calendlyOpAction: Action = {
     if (op === "book") {
       return handleBook(runtime, text, params, callback);
     }
-    return handleCancel(runtime, message, text, { ...params, accountId }, callback);
+    return handleCancel(
+      runtime,
+      message,
+      text,
+      { ...params, accountId },
+      callback,
+    );
   },
 
   examples: [

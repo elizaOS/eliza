@@ -339,11 +339,11 @@ export const updateSettingsAction: Action = {
 		_state?: State,
 		_options?: HandlerOptions,
 	): Promise<boolean> => {
-		const text = message.content.text?.toLowerCase() ?? "";
-		const hasUpdateIntent =
-			["update", "settings"].some((keyword) => text.includes(keyword)) &&
-			/\b(?:update|settings)\b/i.test(text);
-		if (!hasUpdateIntent || message.content.channelType !== ChannelType.DM) {
+		// The real precondition: a DM with a world that still has unset settings.
+		// Whether the user is *asking* to update them is the model's call (offered
+		// via the action description + semantic retrieval), not an English-keyword
+		// match on "update"/"settings" — which excluded other languages entirely (#10470).
+		if (message.content.channelType !== ChannelType.DM) {
 			return false;
 		}
 

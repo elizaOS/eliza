@@ -35,58 +35,6 @@ const HYPERLIQUID_PLACE_ORDER_COMPAT_NAME = "HYPERLIQUID_PLACE_ORDER";
 function toCallbackData(data: ProviderDataRecord): Content["data"] {
   return data as Content["data"];
 }
-const HYPERLIQUID_READ_KEYWORDS = [
-  "hyperliquid",
-  "perp",
-  "perps",
-  "perpetual",
-  "perpetuals",
-  "funding",
-  "funding rate",
-  "futures",
-  "leverage",
-  "liquidation",
-  "perpétuel",
-  "perpetuo",
-  "perpetuelle",
-  "ewig",
-  "永続",
-  "永久",
-  "永续",
-  "선물",
-  "무기한",
-] as const;
-const HYPERLIQUID_TRADE_KEYWORDS = [
-  ...HYPERLIQUID_READ_KEYWORDS,
-  "buy",
-  "sell",
-  "trade",
-  "order",
-  "long",
-  "short",
-  "open position",
-  "close position",
-  "comprar",
-  "vender",
-  "orden",
-  "acheter",
-  "vendre",
-  "ordre",
-  "kaufen",
-  "verkaufen",
-  "auftrag",
-  "comprare",
-  "vendere",
-  "注文",
-  "買う",
-  "売る",
-  "买入",
-  "卖出",
-  "订单",
-  "매수",
-  "매도",
-] as const;
-
 const READ_KINDS = [
   "status",
   "markets",
@@ -255,22 +203,6 @@ function hasSelectedContext(
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
   return contexts.some((context) => selected.has(context));
-}
-
-function hasKeywordIntent(
-  message: Memory,
-  state: State | undefined,
-  keywords: readonly string[],
-): boolean {
-  const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 async function fetchHyperliquidJson<T>(path: string): Promise<T> {
@@ -826,10 +758,12 @@ export const perpetualMarketAction: Action = {
       schema: { type: "number" },
     },
   ],
-  validate: async (_runtime, message: Memory, state?: State) =>
-    hasSelectedContext(state) ||
-    hasKeywordIntent(message, state, HYPERLIQUID_READ_KEYWORDS) ||
-    hasKeywordIntent(message, state, HYPERLIQUID_TRADE_KEYWORDS),
+  // Applicability = the finance/crypto/trading/payments context is active. Whether
+  // the user wants a perpetual-market read is the model's call (offered via the
+  // action description + semantic retrieval, in any language), not a hardcoded
+  // multilingual keyword list on the message text (#10470).
+  validate: async (_runtime, _message: Memory, state?: State) =>
+    hasSelectedContext(state),
   handler: async (runtime, _message, _state, options, callback) => {
     const op = readOp(options);
     if (!op) {
