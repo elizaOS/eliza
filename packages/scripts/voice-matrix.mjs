@@ -332,8 +332,13 @@ const CELLS = [
       voices: "owner",
     },
     class: "native-bridge-unit",
-    command: ["./gradlew", ":elizaos-capacitor-talkmode:testDebugUnitTest"],
-    cwd: "packages/app/android",
+    command: [
+      "./gradlew",
+      "-p",
+      "../../../scripts/android-voice-bridge-gradle",
+      ":elizaos-capacitor-talkmode:testDebugUnitTest",
+    ],
+    cwd: "packages/app-core/platforms/android",
     evidence: ["plugins/plugin-native-talkmode/android/src/test/java"],
     probe: "androidGradle",
   },
@@ -349,8 +354,13 @@ const CELLS = [
       voices: "owner",
     },
     class: "native-bridge-unit",
-    command: ["./gradlew", ":elizaos-capacitor-swabble:testDebugUnitTest"],
-    cwd: "packages/app/android",
+    command: [
+      "./gradlew",
+      "-p",
+      "../../../scripts/android-voice-bridge-gradle",
+      ":elizaos-capacitor-swabble:testDebugUnitTest",
+    ],
+    cwd: "packages/app-core/platforms/android",
     evidence: ["plugins/plugin-native-swabble/android/src/test/java"],
     probe: "androidGradle",
   },
@@ -559,12 +569,14 @@ function probeCell(cell) {
       }
       return { available: true, reason: "Android voice runner enabled" };
     case "androidGradle": {
-      const androidDir = path.join(REPO_ROOT, "packages", "app", "android");
+      const androidDir = path.join(
+        REPO_ROOT,
+        cell.cwd ?? "packages/app-core/platforms/android",
+      );
       if (!fs.existsSync(androidDir)) {
         return {
           available: false,
-          reason:
-            "packages/app/android is not generated; run packages/app cap:sync:android or build:android first",
+          reason: `${path.relative(REPO_ROOT, androidDir)} is not generated; run packages/app cap:sync:android or build:android first`,
         };
       }
       const gradlew = path.join(
@@ -576,9 +588,20 @@ function probeCell(cell) {
           available: false,
           reason: "generated Android project has no Gradle wrapper",
         };
+      const bridgeProjectDir = path.join(
+        REPO_ROOT,
+        "packages",
+        "scripts",
+        "android-voice-bridge-gradle",
+      );
+      if (!fs.existsSync(path.join(bridgeProjectDir, "settings.gradle")))
+        return {
+          available: false,
+          reason: "Android voice bridge Gradle project is missing",
+        };
       return {
         available: true,
-        reason: "generated Android Gradle project exists",
+        reason: "Android voice bridge Gradle project exists",
       };
     }
     case "stageBStt":
