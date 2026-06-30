@@ -15,6 +15,8 @@ import { type AgentRequestTransport, headersToRecord } from "./transport";
 let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
 let globalFetchBridgeInstalled = false;
+let restartRequestListenerInstalled = false;
+let restartRequestInFlight: Promise<void> | null = null;
 let originalFetch: typeof fetch | null = null;
 let fullBunRuntime:
   | Promise<FullBunRuntimePlugin | null>
@@ -80,6 +82,11 @@ function isPrimedFullBunRuntime(
 interface FullBunRuntimeModule {
   ElizaBunRuntime: FullBunRuntimePlugin;
 }
+
+type IosLocalAgentRestartRequestDetail = {
+  attempt?: number;
+  source?: string;
+};
 
 const IOS_FULL_BUN_ARGV = [
   "bun",
@@ -235,6 +242,12 @@ function isNativeIosCloudRuntime(): boolean {
   const runtimeMode = readRuntimeMode();
   if (!runtimeMode && isTruthyBuildFlag(viteEnv().PROD)) return true;
   return runtimeMode === "cloud" || runtimeMode === "cloud-hybrid";
+}
+
+function isPureRemoteRuntimeMode(mode: string | null): boolean {
+  return (
+    mode === "cloud" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
+  );
 }
 
 function usesStrictIosNetworkPolicy(): boolean {
@@ -472,18 +485,7 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       // letting the import error escape to the strict handler and fail iOS local
       // startup with "Backend Timeout" (the reported first-run hang). A genuine
       // failure still surfaces below: runtime.start() throwing is NOT caught here.
-      let mod: Partial<FullBunRuntimeModule> | null = null;
-      try {
-        mod = (await import(
-          "@elizaos/capacitor-bun-runtime"
-        )) as Partial<FullBunRuntimeModule>;
-      } catch {
-        mod = null;
-      }
-      const plugin =
-        mod?.ElizaBunRuntime ??
-        registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime");
-      const runtime = wrapFullBunRuntime(plugin);
+      const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
         return runtime;
@@ -531,6 +533,82 @@ export function primeIosFullBunRuntime(runtime: unknown): void {
     kind: "primed",
     runtime: candidate ? wrapFullBunRuntime(candidate) : null,
   };
+}
+
+async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
+  let mod: Partial<FullBunRuntimeModule> | null = null;
+  try {
+    mod = (await import(
+      "@elizaos/capacitor-bun-runtime"
+    )) as Partial<FullBunRuntimeModule>;
+  } catch {
+    mod = null;
+  }
+  return (
+    mod?.ElizaBunRuntime ??
+    registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime")
+  );
+}
+
+async function restartIosFullBunRuntimeFromWatchdog(): Promise<void> {
+  if (restartRequestInFlight) return restartRequestInFlight;
+  restartRequestInFlight = (async () => {
+    if (!isNativeIos()) return;
+    if (isNativeIosCloudRuntime()) return;
+    if (isPureRemoteRuntimeMode(readRuntimeMode())) return;
+    if (!isFullBunRuntimePluginAvailable()) {
+      throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
+    }
+
+    const runtime = isPrimedFullBunRuntime(fullBunRuntime)
+      ? fullBunRuntime.runtime
+      : wrapFullBunRuntime(await importFullBunRuntimePlugin());
+    if (!runtime) {
+      throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
+    }
+
+    const started = await runtime.start({
+      engine: "bun",
+      argv: IOS_FULL_BUN_ARGV,
+      env: IOS_FULL_BUN_ENV,
+    });
+    if (!started.ok) {
+      throw new Error(started.error ?? "runtime start returned ok=false");
+    }
+    const status = await runtime.getStatus();
+    if (!status.ready || status.engine !== "bun") {
+      throw new Error(
+        `runtime status was ready=${String(status.ready)} engine=${
+          status.engine ?? "unknown"
+        }`,
+      );
+    }
+    fullBunRuntime = { kind: "primed", runtime };
+  })().finally(() => {
+    restartRequestInFlight = null;
+  });
+  return restartRequestInFlight;
+}
+
+function installIosLocalAgentRestartRequestListener(): void {
+  if (restartRequestListenerInstalled) return;
+  if (typeof window === "undefined") return;
+  if (typeof window.addEventListener !== "function") return;
+  window.addEventListener(
+    "eliza:local-agent-restart-requested",
+    (event: Event) => {
+      const detail = (event as CustomEvent<IosLocalAgentRestartRequestDetail>)
+        .detail;
+      void restartIosFullBunRuntimeFromWatchdog().catch((error) => {
+        console.error("[ios-local-agent] Watchdog restart request failed", {
+          attempt: detail?.attempt,
+          source: detail?.source,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    },
+  );
+  restartRequestListenerInstalled = true;
 }
 
 async function tryFullBunNativeRequest(
@@ -679,10 +757,12 @@ export async function handleIosLocalAgentNativeRequest(
 }
 
 export function installIosLocalAgentNativeRequestBridge(): void {
-  if (globalRequestHandlerInstalled) return;
   if (typeof window === "undefined") return;
-  window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ = handleIosLocalAgentNativeRequest;
-  globalRequestHandlerInstalled = true;
+  if (!globalRequestHandlerInstalled) {
+    window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ = handleIosLocalAgentNativeRequest;
+    globalRequestHandlerInstalled = true;
+  }
+  installIosLocalAgentRestartRequestListener();
 }
 
 function shouldBridgeFetchUrl(url: URL): boolean {
@@ -726,6 +806,7 @@ function localAgentUrlForFetch(url: URL): string {
 }
 
 export function installIosLocalAgentFetchBridge(): void {
+  installIosLocalAgentRestartRequestListener();
   if (globalFetchBridgeInstalled) return;
   if (typeof globalThis.fetch !== "function") return;
   const nativeFetch = globalThis.fetch;

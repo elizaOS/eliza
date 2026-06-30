@@ -9,9 +9,9 @@
 
 | Lane | Verdict | Key metrics |
 | --- | --- | --- |
-| supervisor-recovery | ✅ pass | induced restarts: 2, recovered: true, recovery latency: 4526 ms |
+| supervisor-recovery | ✅ pass | induced restarts: 2, recovered: true, recovery latency: 234 ms |
 | crash-loop-guard | ✅ pass | spawns before abort: 6 (guard = 5+1), aborted: true |
-| memory-soak | ✅ pass | steady slope: -0.095 MB/iter (limit 1), leaking slope: 3.815 MB/iter, steady peak RSS: 122.48 MB |
+| memory-soak | ✅ pass | steady slope: -0.095 MB/iter (limit 1), leaking slope: 3.815 MB/iter, steady peak RSS: 119.16 MB |
 
 **Overall: ✅ all lanes pass**
 
@@ -28,5 +28,5 @@ relaunch it depends on is proven by the supervisor-recovery lane above.
 | Surface | Mechanism | Evidence lane | Status |
 | --- | --- | --- | --- |
 | Android device | `ElizaAgentService` `WatchdogThread` (health poll + `scheduleRestart`) | `packages/app/scripts/android-e2e.mjs` (needs `ANDROID_SERIAL`) | code present; device-connected run gated on a phone |
-| iOS device | `AgentWatchdog` liveness poll + relaunch (parity with Android) | iOS device/sim capture | code present; device-connected run gated on a device |
-| Cloud pod | `restart: unless-stopped` + chainsaw kill/OOM | `packages/cloud/infra/cloud/tests/` chainsaw | gated on a k8s cluster |
+| iOS device | `AgentWatchdog` liveness poll + renderer restart request consumer | iOS device/sim capture | code present + unit-proven; device-connected run gated on a device |
+| Cloud pod | Container restart + replacement pod + recovered health/message | `packages/cloud/infra/cloud/tests/10-agent-crash-recovery` chainsaw | suite present; live run gated on a k8s cluster |

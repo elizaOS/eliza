@@ -95,6 +95,7 @@ vi.mock("@capacitor/core", () => ({
     isPluginAvailable: () => capacitorState.pluginAvailable,
     isNativePlatform: () => capacitorState.isNative,
   },
+  registerPlugin: vi.fn(),
 }));
 
 vi.mock("@elizaos/ui/build-variant", () => ({
@@ -137,6 +138,110 @@ describe("iOS local agent transport bridge", () => {
 
     const handler = window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__;
     expect(handler).toBe(handleIosLocalAgentNativeRequest);
+  });
+
+  it("honors native watchdog restart requests by re-running the full Bun start path", async () => {
+    capacitorState.pluginAvailable = true;
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "local" : null,
+    });
+    const eventTarget = new EventTarget();
+    vi.stubGlobal("window", {
+      location: { href: "capacitor://localhost/" },
+      navigator: { userAgent: "vitest" },
+      addEventListener: eventTarget.addEventListener.bind(eventTarget),
+      dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
+    });
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    const call = vi.fn();
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call },
+    }));
+
+    const { installIosLocalAgentNativeRequestBridge } = await import(
+      "./ios-local-agent-transport"
+    );
+    installIosLocalAgentNativeRequestBridge();
+
+    const event = new Event("eliza:local-agent-restart-requested");
+    Object.defineProperty(event, "detail", {
+      value: { attempt: 2, source: "ios-watchdog" },
+    });
+    window.dispatchEvent(event);
+
+    await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        engine: "bun",
+        argv: expect.arrayContaining(["ios-bridge", "--stdio"]),
+      }),
+    );
+    expect(getStatus).toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("ignores native watchdog restart requests in pure cloud runtime mode", async () => {
+    capacitorState.pluginAvailable = true;
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "cloud" : null,
+    });
+    const eventTarget = new EventTarget();
+    vi.stubGlobal("window", {
+      location: { href: "capacitor://localhost/" },
+      navigator: { userAgent: "vitest" },
+      addEventListener: eventTarget.addEventListener.bind(eventTarget),
+      dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
+    });
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call: vi.fn() },
+    }));
+
+    const { installIosLocalAgentNativeRequestBridge } = await import(
+      "./ios-local-agent-transport"
+    );
+    installIosLocalAgentNativeRequestBridge();
+
+    window.dispatchEvent(new Event("eliza:local-agent-restart-requested"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(start).not.toHaveBeenCalled();
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+
+  it("ignores native watchdog restart requests in tunnel-to-mobile runtime mode", async () => {
+    capacitorState.pluginAvailable = true;
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "tunnel-to-mobile" : null,
+    });
+    const eventTarget = new EventTarget();
+    vi.stubGlobal("window", {
+      location: { href: "capacitor://localhost/" },
+      navigator: { userAgent: "vitest" },
+      addEventListener: eventTarget.addEventListener.bind(eventTarget),
+      dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
+    });
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call: vi.fn() },
+    }));
+
+    const { installIosLocalAgentNativeRequestBridge } = await import(
+      "./ios-local-agent-transport"
+    );
+    installIosLocalAgentNativeRequestBridge();
+
+    window.dispatchEvent(new Event("eliza:local-agent-restart-requested"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(start).not.toHaveBeenCalled();
+    expect(getStatus).not.toHaveBeenCalled();
   });
 
   it("routes loopback local-agent URLs through the ITTP transport", async () => {
