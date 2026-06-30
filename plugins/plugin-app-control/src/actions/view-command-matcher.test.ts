@@ -32,6 +32,11 @@ describe("matchViewCommand — explicit user examples", () => {
 		["switch to focus mode", "focus"],
 		["open my goals", "goals"],
 		["show me my companion", "companion"],
+		// coding cockpit — wins over task-coordinator's bare "coding"
+		["open the cockpit", "cockpit"],
+		["open coding cockpit", "cockpit"],
+		["show me my agents", "cockpit"],
+		["go to my agents view", "cockpit"],
 	];
 	for (const [text, view] of cases) {
 		it(`"${text}" → ${view}`, () => {

@@ -677,6 +677,13 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 		"trò chuyện",
 		"tro chuyen",
 	],
+	cockpit: [
+		"cockpit",
+		"coding cockpit",
+		"the cockpit",
+		"agents view",
+		"my agents",
+	],
 	"task-coordinator": [
 		"task coordinator",
 		"orchestrator",
@@ -799,6 +806,7 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 // Priority order: more-specific / multiword views before generic ones so
 // "task coordinator" wins over a bare "coding" elsewhere, etc.
 const VIEW_PRIORITY = [
+	"cockpit",
 	"task-coordinator",
 	"finances",
 	"relationships",
