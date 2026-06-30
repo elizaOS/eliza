@@ -7,38 +7,40 @@
  * renderer URL so the React app renders the chat-overlay shell only (not the
  * full `<App>`), and the bar's screen geometry.
  *
- * Opt-in (default OFF) via `ELIZA_DESKTOP_BOTTOM_BAR=1`, mirroring the
- * `ELIZA_DESKTOP_TRAY_FIRST` rollout: flipping the default to bottom-bar-first
- * is gated on the per-platform device verification in PR_EVIDENCE.md. Excludes
- * kiosk shell mode (kiosk wants a fullscreen view-manager surface).
+ * Default ON (#10350): the chromeless bottom bar is the resting desktop surface,
+ * satisfying #9953 acceptance criterion #1. The opt-out kill switch is
+ * `ELIZA_DESKTOP_BOTTOM_BAR=0` (or `false`/`no`/`off`), which restores the legacy
+ * full-window dashboard. Excludes kiosk shell mode (kiosk wants a fullscreen
+ * view-manager surface), which always wins.
  */
 
 import { appendShellModeParam, isKioskShellMode } from "./kiosk-mode";
 
-function parseTruthy(value: string | undefined): boolean {
-  if (!value) return false;
+/** Explicit opt-out values for the bottom-bar default (the kill switch). */
+function parseFalsy(value: string | undefined): boolean {
+  if (value === undefined) return false;
   const normalized = value.trim().toLowerCase();
   return (
-    normalized === "1" ||
-    normalized === "true" ||
-    normalized === "yes" ||
-    normalized === "on"
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "off"
   );
 }
 
 /**
  * Whether the desktop should launch as a chromeless bottom chat bar instead of
- * the full-window dashboard. Opt-in via `ELIZA_DESKTOP_BOTTOM_BAR=1`; never in
- * kiosk mode.
+ * the full-window dashboard. Default ON (#10350); opt out with
+ * `ELIZA_DESKTOP_BOTTOM_BAR=0`; never in kiosk mode.
  */
 export function shouldStartBottomBar(
   env: Record<string, string | undefined> = process.env,
   argv: readonly string[] = process.argv,
 ): boolean {
-  if (!parseTruthy(env.ELIZA_DESKTOP_BOTTOM_BAR)) {
+  if (isKioskShellMode(env, argv)) {
     return false;
   }
-  if (isKioskShellMode(env, argv)) {
+  if (parseFalsy(env.ELIZA_DESKTOP_BOTTOM_BAR)) {
     return false;
   }
   return true;

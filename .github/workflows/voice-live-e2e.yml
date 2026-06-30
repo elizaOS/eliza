@@ -18,6 +18,18 @@ name: Voice Live E2E
 # libelizainference build. Its scripts run in require-real mode so a missing
 # model/ABI/credential is a hard failure rather than green skip evidence.
 #
+# Runner provisioning (full handoff: .github/issue-evidence/9454-gpu-runner-provisioning.md):
+#   The two real jobs default to the online [self-hosted, Linux, X64, eliza]
+#   runners. To repoint at a dedicated GPU box without editing this file, set the
+#   repo variable VOICE_LIVE_RUNNER_LABELS to a JSON array of labels, e.g.
+#   ["self-hosted","Linux","X64","gpu-cuda-12.6"] — this is the single point of
+#   runner configuration. The chosen runner must have ffmpeg, a fused
+#   libelizainference.so, and the eliza-1-2b ASR bundle staged; every voice GGUF
+#   is fetched fresh from Hugging Face with a pinned sha256 by this lane. The
+#   matrix is keyless (#9577): owner/impostor turns are synthesized locally with
+#   distinct fused Kokoro presets, so ELEVENLABS_API_KEY is optional and only
+#   upgrades the human-turn rows to real ElevenLabs voices.
+#
 # Runs nightly (offset from app-live-e2e) + on-demand; never on pull_request.
 
 on:
@@ -91,7 +103,8 @@ jobs:
 
   voice-roundtrip:
     name: Real fused ASR + optional mixed round-trip (self-hosted)
-    runs-on: [self-hosted, Linux, X64, eliza]
+    # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
+    runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     timeout-minutes: 90
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
@@ -142,6 +155,7 @@ jobs:
           FUSED_LIB="$(first_existing_file \
             "${ELIZA_INFERENCE_LIBRARY:-}" \
             "$BUNDLE/lib/libelizainference.so" \
+            "$HOME/.eliza/local-inference/lib/libelizainference.so" \
             "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cuda-fused/libelizainference.so" \
             "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so" \
             || true)"
@@ -170,7 +184,8 @@ jobs:
 
   voice-acoustic-matrix:
     name: Real acoustic VAD + diarization + self-voice matrix (self-hosted)
-    runs-on: [self-hosted, Linux, X64, eliza]
+    # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
+    runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     timeout-minutes: 120
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
@@ -194,9 +209,13 @@ jobs:
             nvcc --version || true
             nvidia-smi || true
             ffmpeg -version | head -1 || true
+            # Keyless by design (#9577): the owner/impostor corpus is synthesized
+            # locally with distinct fused Kokoro presets, so no ElevenLabs secret
+            # is required. The key only upgrades the human-turn rows to real voices.
             if [ -z "${ELEVENLABS_API_KEY:-}" ]; then
-              echo "ELEVENLABS_API_KEY is required for real generated-speech lanes"
-              exit 1
+              echo "ELEVENLABS_API_KEY not set — keyless local-Kokoro corpus (#9577)"
+            else
+              echo "ELEVENLABS_API_KEY present — human-turn rows use real ElevenLabs voices"
             fi
           } 2>&1 | tee "$VOICE_REAL_MATRIX_OUT/probe.log"
 
@@ -279,8 +298,16 @@ jobs:
           FUSED_LIB="$(first_existing_file \
             "${ELIZA_INFERENCE_LIBRARY:-}" \
             "$SRC_BUNDLE/lib/libelizainference.so" \
+            "$HOME/.eliza/local-inference/lib/libelizainference.so" \
             "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cuda-fused/libelizainference.so" \
-            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so")"
+            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so" \
+            || true)"
+          if [ -z "$FUSED_LIB" ]; then
+            echo "FATAL: fused libelizainference.so is not staged on this runner."
+            echo "Provision the lane per .github/issue-evidence/9454-gpu-runner-provisioning.md"
+            echo "(stage the fused libelizainference.so + the eliza-1-2b ASR bundle)."
+            exit 1
+          fi
 
           BUNDLE="$RUNNER_TEMP/eliza-voice-real.bundle"
           node packages/scripts/rm-path-recursive.mjs "$BUNDLE"
@@ -306,12 +333,12 @@ jobs:
           download_sha "$base/bundles/2b/vad/silero-vad-v5.gguf" \
             "$BUNDLE/vad/silero-vad-v5.gguf" \
             "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995"
-          download_sha "$base/bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" \
-            "$BUNDLE/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" \
-            "cb5440c3e2eadccae635ff5089cbe07082697910a611f323dc5278b9f6659c1e"
+          download_sha "$base/bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf" \
+            "$BUNDLE/tts/kokoro/kokoro-82m-v1_0.gguf" \
+            "25521c1aa35218d03630bf5239e70d8b5acd0e54c6e92543accfb3ebf9cff9d2"
           download_sha "$base/bundles/2b/tts/kokoro/voices/af_bella.bin" \
             "$BUNDLE/tts/kokoro/voices/af_bella.bin" \
-            "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b"
+            "63d24d0e5d91cb6cf3bca294a3b8c0b4428aa54ac9b5de42e5ba07f6bd110ea8"
 
           {
             echo "ELIZA_ASR_BUNDLE=$BUNDLE"

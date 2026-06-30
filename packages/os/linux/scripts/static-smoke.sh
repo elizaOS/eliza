@@ -270,13 +270,17 @@ grep -q 'text-txt' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
 grep -q 'text-destructive' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
-first_run_shell="${REPO_ROOT}/packages/ui/src/first-run/FirstRunChat.tsx"
-grep -q 'first-run-chat' "${first_run_shell}"
+# First-run onboarding now renders inline in the real floating chat overlay:
+# #10302 deleted the dedicated FirstRunChat.tsx surface and seeds the onboarding
+# greeting/choices as the same inline widgets the live chat uses. Gate that
+# overlay against the stale dark/gradient/glow styling from the pre-redesign
+# first-run shell (mirrors the #10167 repoint when CompactOnboarding was removed).
+first_run_shell="${REPO_ROOT}/packages/ui/src/components/shell/ContinuousChatOverlay.tsx"
 grep -q 'text-white' "${first_run_shell}"
 if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
     "${first_run_shell}"
 then
-    echo "First-run onboarding must not reintroduce the old dark/gradient shell." >&2
+    echo "First-run onboarding (in-chat overlay) must not reintroduce the old dark/gradient shell." >&2
     exit 1
 fi
 onboarding_states_css="${REPO_ROOT}/packages/ui/src/components/onboarding/states/onboarding.css"

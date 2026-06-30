@@ -159,6 +159,12 @@ export {
 	wordCount,
 } from "./first-line-cache";
 export {
+	bridgeDetectorToFusedWake,
+	type FusedWakeEventDetail,
+	type FusedWakeSink,
+	type FusedWakeStage,
+} from "./fused-wake-bridge";
+export {
 	type ArmedResources,
 	type TextResources,
 	VoiceLifecycle,
@@ -445,6 +451,7 @@ export {
 	OPENWAKEWORD_PLACEHOLDER_HEADS,
 	OpenWakeWordDetector,
 	resolveWakeWordModel,
+	type WakeFireInfo,
 	type WakeWordConfig,
 	type WakeWordModel,
 	type WakeWordModelPaths,

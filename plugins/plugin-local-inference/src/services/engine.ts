@@ -1304,6 +1304,14 @@ export class LocalInferenceEngine {
 			threshold?: number;
 			/** Called once per detected utterance (refractory-debounced). */
 			onWake?: () => void;
+			/**
+			 * Forward each fused-wake stage to the renderer (#10351). The host
+			 * wires this to its transport, where `emitFusedWake` dispatches the
+			 * `eliza:fused-wake` window event so `useWakeController` activates the
+			 * bottom bar and starts a turn. A native head-fire maps to the
+			 * terminal `head-fired` stage with the firing confidence.
+			 */
+			onFusedWake?: import("./voice/fused-wake-bridge").FusedWakeSink;
 		};
 		/**
 		 * Runtime reference for cancellation coordination (W3-9 F1).
@@ -1526,6 +1534,9 @@ export class LocalInferenceEngine {
 				OPENWAKEWORD_DEFAULT_HEAD,
 				OpenWakeWordDetector,
 			} = await import("./voice/wake-word");
+			const { bridgeDetectorToFusedWake } = await import(
+				"./voice/fused-wake-bridge"
+			);
 			const headName = opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
 			if (isPlaceholderWakeWordHead(headName)) {
 				console.warn(
@@ -1555,14 +1566,20 @@ export class LocalInferenceEngine {
 				...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),
 			});
 			if (model) {
+				const forwardFusedWake = opts.wakeWord.onFusedWake
+					? bridgeDetectorToFusedWake(opts.wakeWord.onFusedWake)
+					: null;
 				const detector = new OpenWakeWordDetector({
 					model,
 					...(opts.wakeWord.threshold !== undefined
 						? { config: { threshold: opts.wakeWord.threshold } }
 						: {}),
-					onWake: () => {
+					onWake: (info) => {
 						void this.prewarmConversation(opts.roomId, "");
 						opts.wakeWord?.onWake?.();
+						// Bridge the real native firing to the renderer (#10351):
+						// the bar activates and a turn starts via useWakeController.
+						forwardFusedWake?.(info);
 					},
 				});
 				wakeWord = detector;

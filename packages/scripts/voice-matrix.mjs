@@ -370,9 +370,26 @@ const CELLS = [
     probe: "openWakeWord",
   },
   {
+    id: "stt.stage-b.apple-sfspeech",
+    title:
+      "Stage-B STT Apple arm: real on-device SFSpeechRecognizer latency/WER over synthesised speech (quiet + 10dB noise)",
+    platform: "macos-electrobun",
+    dimensions: {
+      transcriptionState: "on",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "noisy-reverberant",
+      voices: "owner",
+    },
+    class: "stt-evaluation",
+    command: ["node", "packages/scripts/stage-b-stt-bench.mjs"],
+    evidence: [".github/issue-evidence/9958-stt-stage-b-eval"],
+    probe: "stageBSttApple",
+  },
+  {
     id: "stt.stage-b.evaluation",
     title:
-      "Stage-B STT evaluation: iOS SFSpeechRecognizer vs Android SpeechRecognizer vs fused ASR",
+      "Stage-B STT evaluation: iOS battery/energy + Android SpeechRecognizer (NNAPI) vs fused ASR",
     platform: "android",
     dimensions: {
       transcriptionState: "on",
@@ -659,6 +676,29 @@ function probeCell(cell) {
         reason: "Android voice bridge Gradle project exists",
       };
     }
+    case "stageBSttApple":
+      if (process.platform !== "darwin")
+        return {
+          available: false,
+          reason: `Apple SFSpeechRecognizer Stage-B arm requires macOS; current=${process.platform}`,
+        };
+      if (!commandExists("swift"))
+        return {
+          available: false,
+          reason:
+            "swift toolchain not available to build the Stage-B recognizer",
+        };
+      if (!commandExists("say") || !commandExists("afconvert"))
+        return {
+          available: false,
+          reason:
+            "macOS say/afconvert not available for on-device speech synthesis",
+        };
+      return {
+        available: true,
+        reason:
+          "macOS on-device SFSpeechRecognizer + say/afconvert available for a real Stage-B latency/WER measurement",
+      };
     case "stageBStt": {
       const report = process.env.ELIZA_VOICE_STAGE_B_REPORT?.trim();
       if (!report) {
