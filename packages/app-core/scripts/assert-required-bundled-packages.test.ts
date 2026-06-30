@@ -120,7 +120,7 @@ describe("assertRequiredBundledPackagesLanded", () => {
 
   it("lists ALL missing packages, not just the first one", () => {
     writePackageJson("@elizaos/core");
-    // plugin-sql, plugin-local-inference, app-companion all missing
+    // plugin-sql, plugin-local-inference, plugin-feed all missing
 
     try {
       assertRequiredBundledPackagesLanded(
@@ -129,7 +129,7 @@ describe("assertRequiredBundledPackagesLanded", () => {
           "@elizaos/core",
           "@elizaos/plugin-sql",
           "@elizaos/plugin-local-inference",
-          "@elizaos/plugin-companion",
+          "@elizaos/plugin-feed",
         ]),
       );
       throw new Error("expected assertRequiredBundledPackagesLanded to throw");
@@ -137,7 +137,7 @@ describe("assertRequiredBundledPackagesLanded", () => {
       const message = err instanceof Error ? err.message : String(err);
       expect(message).toContain("@elizaos/plugin-sql");
       expect(message).toContain("@elizaos/plugin-local-inference");
-      expect(message).toContain("@elizaos/plugin-companion");
+      expect(message).toContain("@elizaos/plugin-feed");
       // Count of missing should be in the header
       expect(message).toContain("3 required runtime package");
     }

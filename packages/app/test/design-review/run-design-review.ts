@@ -17,10 +17,9 @@ import {
 import { captureScreenshotWithQualityRetry } from "../ui-smoke/helpers/screenshot-quality";
 import { getFreePort } from "../utils/get-free-port.mjs";
 
-type ShellMode = "companion" | "native";
+type ShellMode = "native";
 type ViewId =
   | "first-run"
-  | "companion"
   | "chat"
   | "stream"
   | "character"
@@ -200,14 +199,6 @@ const views: ViewSpec[] = [
       { selector: '[data-testid="continuous-chat-overlay"]' },
       { selector: '[data-testid="choice-__first_run__:runtime:cloud"]' },
     ],
-  },
-  {
-    id: "companion",
-    label: "Companion",
-    path: "/companion",
-    shellMode: "companion",
-    lastNativeTab: "chat",
-    readyChecks: [{ selector: '[data-testid="companion-root"]' }],
   },
   {
     id: "chat",

@@ -341,9 +341,6 @@ export type {
   CharacterCatalogData,
   ClientMiddleware,
   CodingAgentTasksPanelProps,
-  CompanionInferenceNotice,
-  CompanionSceneStatus,
-  CompanionShellComponentProps,
   CondExpr,
   CustomProviderOption,
   DynamicProp,
@@ -360,13 +357,9 @@ export type {
   PatchOp,
   PathVisibility,
   RepeatConfig,
-  ResolveCompanionInferenceNoticeArgs,
   ResolvedCharacterAsset,
   ResolvedField,
   ResolvedInjectedCharacter,
-  StewardApprovalQueueProps,
-  StewardLogoProps,
-  StewardTransactionHistoryProps,
   UIStreamConfig,
   UiAction,
   UiComponentType,
@@ -539,8 +532,6 @@ export {
 } from "./state/bounded-view-lru";
 export type {
   ActionNotice,
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
   InventoryChainFilters,
 } from "./state/index";
 export * from "./state/index";
@@ -552,7 +543,6 @@ export {
   mergeStreamingText,
   useAppSelector,
   useAppSelectorShallow,
-  useCompanionSceneConfig,
   usePtySessions,
   useTranslation,
   useWalletState,

@@ -14,7 +14,6 @@
       "@elizaos/plugin-task-coordinator": [
         "./src/types/app-plugin-modules.d.ts"
       ],
-      "@elizaos/plugin-companion": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-personal-assistant": [
         "./src/types/app-plugin-modules.d.ts"
       ],

@@ -817,8 +817,8 @@ async function pickTutorial(
  * Drive the REAL in-chat onboarding to completion via Local → on-device
  * inference → tutorial-or-skip, then assert the post-onboarding HOME inside the
  * SAME floating ContinuousChatOverlay we use everywhere else. This is the
- * keyless path that calls completeFirstRun("chat", { launchCompanionOverlay:
- * true }) without a cloud sign-in (all-local needs no cloud connect). `click`
+ * keyless path that calls completeFirstRun("chat") without a cloud sign-in
+ * (all-local needs no cloud connect). `click`
  * lets the mobile lane TAP the inline choice buttons while desktop clicks.
  */
 export async function completeOnboardingToHome(

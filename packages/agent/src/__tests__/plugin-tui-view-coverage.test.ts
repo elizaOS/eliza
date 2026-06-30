@@ -30,7 +30,6 @@ const repoRoot = resolve(
 );
 
 const VIEW_MANIFESTS = [
-  "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
@@ -49,12 +48,6 @@ const VIEW_MANIFESTS = [
 ] as const;
 
 const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
-  "plugins/plugin-companion/src/components/companion/CompanionView.tsx": [
-    "terminal-companion-state",
-    "terminal-companion-emotes",
-    "terminal-companion-play-emote",
-    "terminal-companion-stop-emote",
-  ],
   // Each collapsed plugin re-exports its `<Name>View` componentExport and the
   // `interact` capability handler from a `<name>-view-bundle.ts` entry file, so
   // that bundle entry owns the terminal parity capabilities (same pattern as

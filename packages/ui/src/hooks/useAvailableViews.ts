@@ -192,7 +192,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   camera: "AppWindow",
   tasks: "ListTodo",
   browser: "Globe",
-  companion: "Bot",
   stream: "Radio",
   apps: "LayoutGrid",
   views: "LayoutGrid",

@@ -43,7 +43,7 @@ bun run format         # biome format via turbo
 bun run typecheck      # tsc across workspace (8 GB heap)
 bun run test           # full suite (run-all-tests.mjs)
 bun run test:server    # core/agent/app-core/shared/vault/elizaos/skills/scenario-runner
-bun run test:client    # app/ui + lifeops/companion/training plugins
+bun run test:client    # app/ui + lifeops/training plugins
 bun run test:e2e       # end-to-end lane
 bun run start          # run an agent (packages/agent start)
 bun run clean          # nuke dist/.turbo/node_modules, reinstall, rebuild
@@ -88,7 +88,7 @@ plugins/         runtime plugins and app plugins
   plugin-native-*/     native device bridges (camera, contacts, calendar, location, …)
   plugin-local-inference/  on-device llama.cpp / omnivoice / whisper (git submodules under native/)
   plugin-sql/ plugin-localdb/ plugin-inmemorydb/  storage adapters
-  plugin-companion/ plugin-documents/ plugin-lifeops/ plugin-health/ …  app plugins
+  plugin-documents/ plugin-lifeops/ plugin-health/ …  app plugins
 
 scripts/         repo automation        patches/   dependency patches
 skills/          runtime skill packages turbo.json knip.json  build + dead-code config

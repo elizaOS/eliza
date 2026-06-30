@@ -10,7 +10,6 @@ export {
 } from "./app-store";
 export * from "./ChatComposerContext.hooks";
 export * from "./ChatTurnStatusContext.hooks";
-export * from "./CompanionSceneConfigContext.hooks";
 export * from "./ConversationMessagesContext.hooks";
 export * from "./internal";
 export * from "./PtySessionsContext.hooks";

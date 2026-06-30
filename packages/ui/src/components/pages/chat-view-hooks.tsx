@@ -33,7 +33,6 @@ import {
   type VoiceTranscriptEvent,
 } from "../../voice/voice-chat-types";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
-import { useCompanionSceneStatus } from "../companion/injected.hooks";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 
@@ -189,7 +188,6 @@ export function useChatVoiceController(options: {
   continuousMode?: VoiceContinuousMode;
 }) {
   const { setTimeout } = useTimeout();
-  const { avatarReady: companionSceneAvatarReady } = useCompanionSceneStatus();
   const {
     agentVoiceMuted,
     chatFirstTokenReceived,
@@ -559,7 +557,6 @@ export function useChatVoiceController(options: {
     if (agentVoiceMuted || voice.isListening) {
       return;
     }
-    if (isGameModal && !companionSceneAvatarReady) return;
     if (voiceBootstrapTick === 0) return;
     // Skip the stale replay when the view just became active (mode switch).
     if (isGameModal && gameModalJustActivatedRef.current) {
@@ -709,7 +706,6 @@ export function useChatVoiceController(options: {
     agentVoiceMuted,
     activeConversationId,
     chatSending,
-    companionSceneAvatarReady,
     conversationMessages,
     isGameModal,
     queueAssistantSpeech,

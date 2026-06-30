@@ -501,9 +501,6 @@
     "plugins/plugin-native-activity-tracker": {
       "ignoreBinaries": ["swiftc"]
     },
-    "plugins/plugin-companion": {
-      "ignore": [".storybook-smoke/**", "public/vrm-decoders/draco/*.js"]
-    },
     "packages/elizaos": {
       "entry": [
         "src/**/*.ts",

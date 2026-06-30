@@ -360,7 +360,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Installed apps (2):\n  - Shopify (shopify) — running x1 [run_abc]\n  - Companion (companion)",
+						text: "Installed apps (2):\n  - Shopify (shopify) — running x1 [run_abc]\n  - Feed (feed)",
 						action: "APP",
 					},
 				},

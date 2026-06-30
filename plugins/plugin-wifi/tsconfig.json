@@ -100,8 +100,7 @@
       "@elizaos/plugin-music/*": ["../../plugins/plugin-music/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
-      "@elizaos/*": ["../../node_modules/@elizaos/*"],
-      "lucide-react": ["../plugin-companion/node_modules/lucide-react"]
+      "@elizaos/*": ["../../node_modules/@elizaos/*"]
     }
   },
   "include": [

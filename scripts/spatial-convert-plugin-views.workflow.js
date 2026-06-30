@@ -37,7 +37,6 @@ const PLUGINS =
         "plugin-feed",
         "plugin-screenshare",
         "plugin-facewear",
-        "plugin-companion",
       ];
 
 const SCOUT_SCHEMA = {

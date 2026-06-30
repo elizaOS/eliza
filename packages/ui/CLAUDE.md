@@ -10,7 +10,7 @@ A single design-system + runtime-glue package consumed by every elizaOS
 front-end and by plugin UIs. Importers include `@elizaos/app` (web + desktop
 shell), `@elizaos/app-core`, `@elizaos/cloud-frontend`, `@elizaos/os-homepage`,
 the `eliza-app` homepage, and many plugin UI packages (`plugin-wallet-ui`,
-`plugin-companion`, `plugin-messages`, `plugin-training`, `plugin-feed`, etc.).
+`plugin-messages`, `plugin-training`, `plugin-feed`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,
 widgets, overlay-apps), and the component/primitive exports. React/react-dom are
 **peer** deps (19.2.5) — the host owns React; plugin view bundles externalise
@@ -82,7 +82,6 @@ src/
                               state/useDisplayPreferences + state/persistence; the
                               /background view and the BACKGROUND action (plugin-app-control)
                               both drive the same store.
-  companion/                  Companion bar (desktop) — CompanionBar, push-to-talk
   views/                      View event bus + interact protocol (STANDARD_CAPABILITIES)
   hooks/                      ~35 hooks (useMediaQuery, useActivityEvents, useRenderGuard, ...);
                               many more use* hooks live alongside their features

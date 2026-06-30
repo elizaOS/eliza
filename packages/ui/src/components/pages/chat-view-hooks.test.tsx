@@ -41,10 +41,6 @@ vi.mock("../../hooks/useVoiceChat", () => ({
   useVoiceChat: vi.fn(),
 }));
 
-vi.mock("../companion/injected", () => ({
-  useCompanionSceneStatus: vi.fn(() => ({ avatarReady: true })),
-}));
-
 const useVoiceChatMock = vi.mocked(useVoiceChat);
 
 function makeVoiceState(

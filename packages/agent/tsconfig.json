@@ -131,9 +131,6 @@
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
-      "@elizaos/plugin-companion": [
-        "../../plugins/plugin-companion/src/index.ts"
-      ],
       "@elizaos/app-knowledge": [
         "../../plugins/app-knowledge/src/index.ts"
       ],

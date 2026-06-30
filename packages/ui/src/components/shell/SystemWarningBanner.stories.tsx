@@ -45,7 +45,7 @@ export const LongMessage: Story = {
   decorators: [
     mockApp({
       systemWarnings: [
-        "The agent runtime reported an unexpected error while loading the @elizaos/plugin-companion view bundle and has fallen back to a degraded mode; some features may be missing until the next restart.",
+        "The agent runtime reported an unexpected error while loading the @elizaos/plugin-feed view bundle and has fallen back to a degraded mode; some features may be missing until the next restart.",
       ],
       dismissSystemWarning: () => {},
     }),

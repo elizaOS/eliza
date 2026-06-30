@@ -32,9 +32,9 @@ const HEALTH_DETAILS = {
 
 const RUN_SUMMARY = {
   runId: "run-1",
-  appName: "companion",
-  displayName: "Companion",
-  pluginName: "@elizaos/plugin-companion",
+  appName: "feed",
+  displayName: "Feed",
+  pluginName: "@elizaos/plugin-feed",
   launchType: "viewer",
   launchUrl: "http://x",
   viewer: null,
@@ -172,7 +172,7 @@ describe("AppSessionStateSchema", () => {
   it("accepts a minimal session", () => {
     const v = {
       sessionId: "s1",
-      appName: "companion",
+      appName: "feed",
       mode: "viewer" as const,
       status: "active",
     };
@@ -182,7 +182,7 @@ describe("AppSessionStateSchema", () => {
   it("accepts a populated session", () => {
     const v = {
       sessionId: "s1",
-      appName: "companion",
+      appName: "feed",
       mode: "spectate-and-steer" as const,
       status: "active",
       controls: ["pause", "resume"] as const,
@@ -297,7 +297,7 @@ describe("AppLaunchResultSchema", () => {
     const v = {
       pluginInstalled: true,
       needsRestart: false,
-      displayName: "Companion",
+      displayName: "Feed",
       launchType: "viewer",
       launchUrl: null,
       viewer: null,
@@ -311,7 +311,7 @@ describe("AppLaunchResultSchema", () => {
     const v = {
       pluginInstalled: true,
       needsRestart: false,
-      displayName: "Companion",
+      displayName: "Feed",
       launchType: "viewer",
       launchUrl: "http://x",
       viewer: { url: "http://x" },
@@ -327,7 +327,7 @@ describe("AppStopResultSchema", () => {
   it("accepts the canonical stop result", () => {
     const v = {
       success: true,
-      appName: "companion",
+      appName: "feed",
       runId: "run-1",
       stoppedAt: "2026-05-11T01:00:00Z",
       pluginUninstalled: false,
@@ -371,7 +371,7 @@ describe("PostRelaunchAppResponseSchema", () => {
   const launch = {
     pluginInstalled: true,
     needsRestart: false,
-    displayName: "Companion",
+    displayName: "Feed",
     launchType: "viewer",
     launchUrl: null,
     viewer: null,

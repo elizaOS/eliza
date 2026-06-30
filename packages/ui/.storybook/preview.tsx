@@ -74,7 +74,6 @@ const preview: Preview = {
           "Views",
           "Composites",
           "*",
-          "Companion", // plugin stories (globbed in from plugins/plugin-companion)
           "Primitives", // 300+ base components — the parts bin, kept last
         ],
       },

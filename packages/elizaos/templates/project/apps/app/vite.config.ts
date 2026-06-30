@@ -1000,50 +1000,6 @@ function watchWorkspacePackagesPlugin(): Plugin {
   };
 }
 
-/**
- * Serve @elizaos/plugin-companion's public/ assets alongside the app's own
- * public/ directory. In dev the companion dir is served as a fallback
- * middleware; in build the files are copied into the output.
- */
-function companionAssetsPlugin(): Plugin {
-  const companionPublic = path.resolve(
-    elizaRoot,
-    "plugins/plugin-companion/public",
-  );
-  return {
-    name: "companion-assets",
-    configureServer(server) {
-      if (!fs.existsSync(companionPublic)) return;
-      // Serve companion public as fallback (after app public)
-      server.middlewares.use((req, res, next) => {
-        if (!req.url) return next();
-        const clean = req.url.split("?")[0];
-        const filePath = path.join(companionPublic, clean);
-        if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-          res.setHeader(
-            "Content-Type",
-            filePath.endsWith(".wasm")
-              ? "application/wasm"
-              : filePath.endsWith(".js")
-                ? "application/javascript"
-                : "application/octet-stream",
-          );
-          fs.createReadStream(filePath).pipe(res);
-        } else {
-          next();
-        }
-      });
-    },
-    closeBundle() {
-      // Copy companion public to dist at build time
-      if (fs.existsSync(companionPublic)) {
-        const outDir = path.resolve(here, "dist");
-        fs.cpSync(companionPublic, outDir, { recursive: true, force: false });
-      }
-    },
-  };
-}
-
 function workspaceJsxInJsPlugin(): Plugin {
   const normalizedAppCoreSrcRoot = appCoreSrcRoot.split(path.sep).join("/");
 
@@ -1090,7 +1046,6 @@ export default defineConfig({
     ),
   },
   plugins: [
-    companionAssetsPlugin(),
     nativeModuleStubPlugin(),
     asyncLocalStoragePatchPlugin(),
     watchWorkspacePackagesPlugin(),

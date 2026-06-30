@@ -26,7 +26,7 @@ export interface OverlayAppContext {
  * lifecycle — load assets on mount, dispose on unmount.
  */
 export interface OverlayApp {
-  /** Unique app identifier (npm-style, e.g. "@elizaos/plugin-companion"). */
+  /** Unique app identifier (npm-style, e.g. "@elizaos/plugin-feed"). */
   readonly name: string;
   /** Display name shown in the apps catalog. */
   readonly displayName: string;

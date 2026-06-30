@@ -41,8 +41,8 @@ describe("AppsView under mockApp()", () => {
 
   it("builds the favorite-names Set from the favoriteApps override and renders the catalog (with-favorites shape)", () => {
     const { getByTestId } = renderUnderMockApp({
-      favoriteApps: ["companion", "feed", "wallet"],
-      recentApps: ["feed", "companion"],
+      favoriteApps: ["feed", "wallet"],
+      recentApps: ["feed"],
     });
     // A non-array `favoriteApps` would throw at `new Set(favoriteApps)`; the
     // grid only mounts once that Set is constructed from the real array.

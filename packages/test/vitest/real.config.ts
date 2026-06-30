@@ -244,7 +244,6 @@ const realResolveAlias: ModuleAlias[] = [
     "plugin-wallet",
   ]),
   ...getWorkspacePluginAliases(repoRoot, [
-    "plugin-companion",
     "plugin-documents",
     "plugin-personal-assistant",
     "plugin-scheduling",

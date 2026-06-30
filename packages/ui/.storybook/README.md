@@ -10,7 +10,7 @@ bun run --cwd packages/ui build-storybook  # static build
 
 ## How it's wired
 
-- `main.ts` — stories glob (`src/**/*.stories.tsx` + plugin-companion), addons
+- `main.ts` — stories glob (`src/**/*.stories.tsx`), addons
   (docs/a11y/themes), and a `viteFinal` that mirrors `vitest.config.ts`:
   the `@tailwindcss/vite` plugin (the UI is Tailwind v4 — without it utilities
   never generate and components paint invisible), the `@elizaos/*` source

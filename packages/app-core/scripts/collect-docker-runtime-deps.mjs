@@ -71,7 +71,6 @@ const LINKED_WORKSPACE_PACKAGES = [
   // @elizaos/plugin-remote-manifest/worker-runtime but still needs a linked
   // workspace package in Docker images.
   "packages/plugin-worker-runtime",
-  "plugins/plugin-companion",
   "plugins/plugin-documents",
   "plugins/plugin-personal-assistant",
   "plugins/plugin-task-coordinator",

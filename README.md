@@ -68,7 +68,7 @@ Pick a model in **Settings → Model Routing** and it downloads and pins; from t
 elizaOS runs **apps**, not just an agent. An app is a plugin that adds a surface inside Eliza; the runtime installs, launches, and tracks it like real software, and it survives restarts.
 
 - **Browse & install** — catalog at [plugins.elizacloud.ai](https://plugins.elizacloud.ai); curated entries in [`packages/registry`](packages/registry), plus any npm package tagged `elizaos`.
-- **First-party apps** — [`plugin-companion`](plugins/plugin-companion), [`plugin-browser`](plugins/plugin-browser), [`plugin-documents`](plugins/plugin-documents), [`plugin-phone`](plugins/plugin-phone), [`plugin-task-coordinator`](plugins/plugin-task-coordinator).
+- **First-party apps** — [`plugin-browser`](plugins/plugin-browser), [`plugin-documents`](plugins/plugin-documents), [`plugin-phone`](plugins/plugin-phone), [`plugin-task-coordinator`](plugins/plugin-task-coordinator).
 - **Earn** — apps deployed through Eliza Cloud can be metered and monetized.
 
 ## elizaOS — the operating system

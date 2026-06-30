@@ -28,7 +28,6 @@ const VIEW_ROUTES: Array<{ id: string; path: string }> = [
   { id: "camera", path: "/camera" },
   { id: "tasks", path: "/apps/tasks" },
   { id: "browser", path: "/browser" },
-  { id: "companion", path: "/companion" },
   { id: "stream", path: "/stream" },
   { id: "apps", path: "/apps" },
   { id: "views", path: "/views" },

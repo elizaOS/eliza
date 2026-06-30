@@ -279,19 +279,6 @@ export const modelTesterPlugin = {
 };
 export default modelTesterPlugin;
 `,
-    "@elizaos/plugin-companion": `
-export const appCompanionPlugin = {
-  name: "companion",
-  description: "Live-safe companion overlay for elizaOS Live. The full 3D companion bundle can be installed through app updates.",
-  actions: [],
-  providers: [],
-  services: [],
-  routes: [],
-};
-export const companionPlugin = appCompanionPlugin;
-export const registerCompanionApp = () => undefined;
-export default appCompanionPlugin;
-`,
     "@elizaos/plugin-personal-assistant": `
 export const personalAssistantPlugin = {
   name: "lifeops",
@@ -485,7 +472,6 @@ export default undefined;
 
 const forceLiveStubPackages = new Set([
   "@elizaos/app-model-tester",
-  "@elizaos/plugin-companion",
   "@elizaos/plugin-documents",
   "@elizaos/plugin-google",
   "@elizaos/plugin-hyperliquid",

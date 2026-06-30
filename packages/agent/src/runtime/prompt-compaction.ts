@@ -57,13 +57,6 @@ export function compactLoadedPluginLists(prompt: string): string {
   );
 }
 
-export function compactEmoteCatalog(prompt: string): string {
-  return prompt.replace(
-    /\n## Available Emotes[\s\S]*?(?=\n# Active Workspaces & Agents|\n## Project Context \(Workspace\)|$)/g,
-    "\n## Available Emotes\n[emote catalog omitted in compact mode]\n",
-  );
-}
-
 export function compactWorkspaceContextForNonCoding(prompt: string): string {
   return prompt.replace(
     /\n## Project Context \(Workspace\)[\s\S]*?(?=\nAdmin trust:|\nThe current date and time is|\n# Conversation Messages|$)/g,
@@ -73,7 +66,7 @@ export function compactWorkspaceContextForNonCoding(prompt: string): string {
 
 export function compactUiComponentCatalog(prompt: string): string {
   return prompt.replace(
-    /\n### Available components \((\d+) total\)[\s\S]*?(?=\n## Available Emotes|\n## Project Context \(Workspace\)|$)/g,
+    /\n### Available components \((\d+) total\)[\s\S]*?(?=\n## Project Context \(Workspace\)|$)/g,
     (_match, total: string) =>
       `\n### Available components (${total} total)\n[component catalog omitted in compact mode]\n`,
   );
@@ -101,8 +94,6 @@ const PLUGIN_UI_INTENT_RE =
 // Terminal intent requires specific CLI/tool terms, not generic verbs.
 const TERMINAL_INTENT_RE =
   /\b(shell|command line|execute command|npm|bun|yarn|git\b|bash|terminal|script|pip|apt-get|brew)\b|터미널|명령어|스크립트|终端|命令行|脚本|\b(terminal|línea de comandos|linha de comando)\b/i;
-const EMOTE_INTENT_RE =
-  /\b(emote|wave|dance|bow|clap|laugh|angry|sad|think|sit|play_emote)\b|이모트|춤|인사|笑|跳舞|鞠躬|\b(bailar)\b/i;
 // "close" and "label" removed — too generic ("close the file", "label this").
 const ISSUE_INTENT_RE =
   /\b(issue|bug report|ticket|close issue|reopen issue|github issue|create issue|file a bug)\b|이슈|버그|티켓|问题|错误|工单|\b(problema|error|billete)\b/i;
@@ -116,7 +107,7 @@ const WALLET_INTENT_RE =
 // the very fields the planner must fill to open the right view. Broad by design:
 // a false positive only preserves param detail, it never triggers an action.
 const VIEWS_INTENT_RE =
-  /\b(go to|take me to|switch to|navigate to|pull up|bring up|what'?s on|let me see|i want to)\b|\b(open|show|see|view|check)\b[\s\S]{0,40}\b(view|views|page|screen|tab|panel|dashboard|inbox|e-?mail|mail|messages?|calendar|schedule|agenda|wallet|balance|portfolio|finances?|spending|budget|settings|preferences|focus|health|sleep|goals?|routines?|reminders?|contacts?|relationships?|notes?|documents?|files?|todos?|tasks?|automations?|plugins?|companion|feed)\b|\bmy\s+(e-?mail|inbox|messages?|calendar|schedule|agenda|wallet|balance|portfolio|finances?|spending|budget|goals?|routines?|reminders?|health|sleep|contacts?|relationships?|todos?|tasks?|notes?|documents?|files?)\b|\b(add (a |an )?(new )?feature|build (me )?(an? )?app|app builder|coding view)\b|(?:mu[eé]strame|ll[eé]vame a|[aá]breme|abre|ver mi|mi (?:calendario|correo|bandeja|cartera|billetera|finanzas|salud|tareas|documentos|contactos|metas|objetivos))|(?:montre-moi|emm[eè]ne-moi|ouvre|ouvrir|mon (?:calendrier|courrier|portefeuille|agenda)|mes (?:messages|finances|t[aâ]ches|documents|contacts|objectifs))|(?:zeig mir|öffne|mein (?:kalender|postfach)|meine (?:nachrichten|brieftasche|finanzen|aufgaben|ziele|gesundheit))|打开|显示|查看|带我去|我的(?:日历|邮件|消息|钱包|财务|健康|待办|文档|联系人|目标)|開いて|見せて|表示して|私の(?:カレンダー|ウォレット)|열어|보여줘|내\s?(?:캘린더|메시지|지갑)/i;
+  /\b(go to|take me to|switch to|navigate to|pull up|bring up|what'?s on|let me see|i want to)\b|\b(open|show|see|view|check)\b[\s\S]{0,40}\b(view|views|page|screen|tab|panel|dashboard|inbox|e-?mail|mail|messages?|calendar|schedule|agenda|wallet|balance|portfolio|finances?|spending|budget|settings|preferences|focus|health|sleep|goals?|routines?|reminders?|contacts?|relationships?|notes?|documents?|files?|todos?|tasks?|automations?|plugins?|feed)\b|\bmy\s+(e-?mail|inbox|messages?|calendar|schedule|agenda|wallet|balance|portfolio|finances?|spending|budget|goals?|routines?|reminders?|health|sleep|contacts?|relationships?|todos?|tasks?|notes?|documents?|files?)\b|\b(add (a |an )?(new )?feature|build (me )?(an? )?app|app builder|coding view)\b|(?:mu[eé]strame|ll[eé]vame a|[aá]breme|abre|ver mi|mi (?:calendario|correo|bandeja|cartera|billetera|finanzas|salud|tareas|documentos|contactos|metas|objetivos))|(?:montre-moi|emm[eè]ne-moi|ouvre|ouvrir|mon (?:calendrier|courrier|portefeuille|agenda)|mes (?:messages|finances|t[aâ]ches|documents|contacts|objectifs))|(?:zeig mir|öffne|mein (?:kalender|postfach)|meine (?:nachrichten|brieftasche|finanzen|aufgaben|ziele|gesundheit))|打开|显示|查看|带我去|我的(?:日历|邮件|消息|钱包|财务|健康|待办|文档|联系人|目标)|開いて|見せて|表示して|私の(?:カレンダー|ウォレット)|열어|보여줘|내\s?(?:캘린더|메시지|지갑)/i;
 
 /** Actions that are always included at full detail. */
 export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
@@ -133,7 +124,6 @@ export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
  *   RUNTIME       — packages/agent/src/actions/runtime.ts:405 (op:"restart"
  *                   replaces the old RESTART_AGENT)
  *   SHELL         — packages/agent/src/actions/terminal.ts:261
- *   PLAY_EMOTE    — plugins/plugin-companion/src/actions/emote.ts:22
  *
  * GitHub issue ops live under GITHUB_ISSUE in plugin-github but that plugin
  * isn't loaded by default — kept out of the map to avoid validator noise; it
@@ -148,7 +138,6 @@ export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
   coding: new Set(["TASKS"]),
   terminal: new Set(["SHELL", "RUNTIME"]),
   issues: new Set(["TASKS"]),
-  emote: new Set(["PLAY_EMOTE"]),
   plugin_ui: new Set(["RUNTIME"]),
   wallet: new Set(),
   views: new Set(["VIEWS"]),
@@ -220,7 +209,6 @@ export function detectIntentCategories(prompt: string): string[] {
   if (hasIntent(prompt, CODING_INTENT_RE)) categories.push("coding");
   if (hasIntent(prompt, TERMINAL_INTENT_RE)) categories.push("terminal");
   if (hasIntent(prompt, ISSUE_INTENT_RE)) categories.push("issues");
-  if (hasIntent(prompt, EMOTE_INTENT_RE)) categories.push("emote");
   if (hasIntent(prompt, PLUGIN_UI_INTENT_RE)) categories.push("plugin_ui");
   if (hasIntent(prompt, WALLET_INTENT_RE)) categories.push("wallet");
   if (hasIntent(prompt, VIEWS_INTENT_RE)) categories.push("views");
@@ -304,7 +292,7 @@ export function compactConversationHistory(prompt: string): string {
  * Strip the task-agent examples provider section when no task/coding intent
  * is detected. These examples teach the LLM how to use START_CODING_TASK /
  * SPAWN_AGENT / FINALIZE_WORKSPACE and related aliases, which are unnecessary
- * for general chat, emote, or plugin-config messages.
+ * for general chat or plugin-config messages.
  */
 export function compactCodingExamplesForIntent(prompt: string): string {
   if (hasIntent(prompt, CODING_INTENT_RE)) return prompt;
@@ -465,7 +453,6 @@ export function compactModelPrompt(prompt: string): string {
   // Action compaction is handled by installPromptOptimizations before
   // compactModelPrompt is called — no need to run it again here.
   next = compactLoadedPluginLists(next);
-  next = compactEmoteCatalog(next);
   if (!hasCodingIntent) {
     next = compactInstalledSkills(next);
   }

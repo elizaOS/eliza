@@ -10,7 +10,7 @@
  * `NativeAppsStudio` (a `MemoryRouter` + cloud providers + native Steward auth
  * context; see `@elizaos/ui/cloud/applications/NativeAppsStudio`).
  *
- * This mirrors `mobile-plugin-views.ts` (the same mechanism `companion` /
+ * This uses the in-process app-shell registration mechanism (the same one
  * `orchestrator` / `wallet.inventory` use). It is gated to non-web platforms so
  * it never competes with the web shell's route, and the import stays **lazy**
  * (the studio chunk — and the whole applications domain it pulls — loads only
