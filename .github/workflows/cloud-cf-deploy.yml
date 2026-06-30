@@ -94,7 +94,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
     steps:
       - name: Checkout repository
-        timeout-minutes: 5
+        timeout-minutes: 15
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -262,7 +262,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
     steps:
       - name: Checkout repository
-        timeout-minutes: 5
+        timeout-minutes: 15
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -452,7 +452,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
     steps:
       - name: Checkout repository
-        timeout-minutes: 5
+        timeout-minutes: 15
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
