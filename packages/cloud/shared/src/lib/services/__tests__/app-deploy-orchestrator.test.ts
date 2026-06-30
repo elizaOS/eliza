@@ -54,6 +54,7 @@ describe("deployApp", () => {
     // (DATABASE_URL standard + POSTGRES_URL for plugin-sql/eliza images)
     expect(seen.row?.environmentVars.DATABASE_URL).toBe(TENANT_DSN);
     expect(seen.row?.environmentVars.POSTGRES_URL).toBe(TENANT_DSN);
+    expect(seen.row?.environmentVars.ELIZA_APP_ID).toBe(REQ.appId);
     expect(seen.row?.image).toBe(REQ.image);
     expect(seen.row?.port).toBe(3000);
     // provision was enqueued for the created container
@@ -82,13 +83,13 @@ describe("deployApp", () => {
     expect(seen.row?.port).toBe(8080);
   });
 
-  test("injects runtime env into a stateless app container", async () => {
+  test("injects platform-owned app id into a stateless app container", async () => {
     const { seen, deps: d } = deps();
     await deployApp(
       {
         ...REQ,
         env: {
-          ELIZA_APP_ID: REQ.appId,
+          ELIZA_APP_ID: "spoofed-app",
           ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
         },
       },
@@ -108,7 +109,7 @@ describe("deployApp", () => {
         env: {
           DATABASE_URL: "postgresql://not-the-tenant-db",
           POSTGRES_URL: "postgresql://also-not-the-tenant-db",
-          ELIZA_APP_ID: REQ.appId,
+          ELIZA_APP_ID: "spoofed-app",
         },
       },
       d,
@@ -149,7 +150,7 @@ describe("deployApp", () => {
     expect(ensureCalled).toBe(false); // the tenant-DB cluster is never touched
     expect(seen.row?.environmentVars.DATABASE_URL).toBeUndefined();
     expect(seen.row?.environmentVars.POSTGRES_URL).toBeUndefined();
-    expect(seen.row?.environmentVars).toEqual({});
+    expect(seen.row?.environmentVars).toEqual({ ELIZA_APP_ID: REQ.appId });
     // everything else still happens — the app deploys + runs, just without a DB
     expect(result).toEqual({ containerId: "container-1", jobId: "job-1" });
     expect(seen.enqueued?.containerId).toBe("container-1");
@@ -166,6 +167,6 @@ describe("deployApp", () => {
     });
     await deployApp({ ...REQ, databaseMode: "none" }, d);
     expect(ensureCalled).toBe(false);
-    expect(seen.row?.environmentVars).toEqual({});
+    expect(seen.row?.environmentVars).toEqual({ ELIZA_APP_ID: REQ.appId });
   });
 });
