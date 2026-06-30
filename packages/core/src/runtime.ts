@@ -55,6 +55,12 @@ import {
 import { TurnControllerRegistry } from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
+import {
+	parseSecretSwapExemptValues,
+	SECRET_SWAP_ENABLED_SETTING,
+	SECRET_SWAP_EXEMPT_VALUES_SETTING,
+	SecretSwapSession,
+} from "./security/secret-swap";
 import { DefaultMessageService } from "./services/message";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
@@ -1137,6 +1143,45 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		return nativeRuntimeFeatureDefaults[feature];
+	}
+
+	private isSecretSwapEnabled(): boolean {
+		return (
+			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ?? false
+		);
+	}
+
+	private createSecretSwapSession(): SecretSwapSession {
+		const toSecretStrings = (
+			values: Record<string, unknown> | undefined,
+		): Record<string, string | undefined> => {
+			const result: Record<string, string | undefined> = {};
+			for (const [key, value] of Object.entries(values ?? {})) {
+				if (typeof value === "string") {
+					result[key] = value;
+				}
+			}
+			return result;
+		};
+		const settingsSecrets =
+			this.character.settings &&
+			typeof this.character.settings === "object" &&
+			"secrets" in this.character.settings &&
+			this.character.settings.secrets &&
+			typeof this.character.settings.secrets === "object"
+				? toSecretStrings(
+						this.character.settings.secrets as Record<string, unknown>,
+					)
+				: undefined;
+		return new SecretSwapSession({
+			knownSecrets: {
+				...settingsSecrets,
+				...toSecretStrings(this.character.secrets),
+			},
+			exemptValues: parseSecretSwapExemptValues(
+				this.getSetting(SECRET_SWAP_EXEMPT_VALUES_SETTING),
+			),
+		});
 	}
 
 	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
@@ -4754,24 +4799,6 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
-		// Only treat params as an object if it's actually an object (not a string or primitive)
-		const paramsObj =
-			params && typeof params === "object" && !Array.isArray(params)
-				? (params as Record<string, JsonValue | object>)
-				: null;
-		const promptContent =
-			(paramsObj &&
-			"prompt" in paramsObj &&
-			typeof paramsObj.prompt === "string"
-				? paramsObj.prompt
-				: null) ||
-			(paramsObj && "input" in paramsObj && typeof paramsObj.input === "string"
-				? paramsObj.input
-				: null) ||
-			(paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
-				? stringifyStructuredForPrompt({ messages: paramsObj.messages })
-				: null) ||
-			(typeof params === "string" ? params : null);
 		const resolvedModel = this.resolveModelRegistration(
 			requestedModelKey,
 			provider,
@@ -4798,52 +4825,12 @@ export class AgentRuntime implements IAgentRuntime {
 			throw new Error(errorMsg);
 		}
 
-		// Log input parameters (keep debug log if useful)
-		// Skip verbose logging for binary data models (TRANSCRIPTION, IMAGE, AUDIO, VIDEO)
 		const binaryModels: string[] = [
 			ModelType.TRANSCRIPTION,
 			ModelType.IMAGE,
 			ModelType.AUDIO,
 			ModelType.VIDEO,
 		];
-		if (!binaryModels.includes(resolvedModelKey)) {
-			this.logger.trace(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					model: resolvedModelKey,
-					params,
-				},
-				"Model input",
-			);
-		} else {
-			// For binary models, just log the type and size info
-			let sizeInfo = "unknown size";
-			if (Buffer.isBuffer(params)) {
-				sizeInfo = `${params.length} bytes`;
-			} else if (typeof Blob !== "undefined" && params instanceof Blob) {
-				sizeInfo = `${params.size} bytes`;
-			} else if (typeof params === "object" && params !== null) {
-				if ("audio" in params && Buffer.isBuffer(params.audio)) {
-					sizeInfo = `${(params.audio as Buffer).length} bytes`;
-				} else if (
-					"audio" in params &&
-					typeof Blob !== "undefined" &&
-					params.audio instanceof Blob
-				) {
-					sizeInfo = `${(params.audio as Blob).size} bytes`;
-				}
-			}
-			this.logger.trace(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					model: resolvedModelKey,
-					size: sizeInfo,
-				},
-				"Model input (binary)",
-			);
-		}
 		let modelParams: ModelParamsMap[T];
 		const paramsClone = isPlainObject(params)
 			? { ...(params as Record<string, JsonValue | object>) }
@@ -4963,18 +4950,20 @@ export class AgentRuntime implements IAgentRuntime {
 				: undefined;
 		let handlerDeliveredStream = false;
 		let streamedText = "";
+		let secretSwapSession: SecretSwapSession | null = null;
 		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
 			if (abortSignal?.aborted) return;
-			if (streamedText === "" && chunk.length > 0) {
+			const safeChunk = secretSwapSession?.substituteText(chunk) ?? chunk;
+			if (streamedText === "" && safeChunk.length > 0) {
 				markInference(INFERENCE_MARKS.firstToken);
 			}
-			streamedText += chunk;
+			streamedText += safeChunk;
 			const trajStream = getTrajectoryContext();
 			await this.invokePipelineHooks(
 				"model_stream_chunk",
 				modelStreamChunkPipelineHookContext({
 					source: "use_model",
-					chunk,
+					chunk: safeChunk,
 					messageId: msgId,
 					roomId:
 						(trajStream?.roomId as UUID | undefined) ??
@@ -5041,10 +5030,22 @@ export class AgentRuntime implements IAgentRuntime {
 		)
 			? String(resolvedModelKey)
 			: requestedModelKey;
-		const effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
+		let effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
 			textModelKey,
 			modelParams,
 		);
+
+		if (
+			this.isSecretSwapEnabled() &&
+			!binaryModels.includes(resolvedModelKey)
+		) {
+			secretSwapSession = this.createSecretSwapSession();
+			modelParams = secretSwapSession.substituteInValue(modelParams);
+			effectiveSystemPrompt =
+				effectiveSystemPrompt === undefined
+					? undefined
+					: secretSwapSession.substituteText(effectiveSystemPrompt);
+		}
 
 		await this.invokePipelineHooks(
 			"pre_model",
@@ -5057,6 +5058,79 @@ export class AgentRuntime implements IAgentRuntime {
 			}),
 			"Pre-model pipeline hook",
 		);
+		if (secretSwapSession) {
+			modelParams = secretSwapSession.substituteInValue(modelParams);
+			const postHookSystemPrompt = resolveEffectiveSystemPrompt({
+				params: modelParams,
+				fallback: effectiveSystemPrompt,
+			});
+			effectiveSystemPrompt =
+				postHookSystemPrompt === undefined
+					? undefined
+					: secretSwapSession.substituteText(postHookSystemPrompt);
+		}
+
+		const hookedParamsObj =
+			modelParams &&
+			typeof modelParams === "object" &&
+			!Array.isArray(modelParams)
+				? (modelParams as Record<string, JsonValue | object>)
+				: null;
+		const promptContent =
+			(hookedParamsObj &&
+			"prompt" in hookedParamsObj &&
+			typeof hookedParamsObj.prompt === "string"
+				? hookedParamsObj.prompt
+				: null) ||
+			(hookedParamsObj &&
+			"input" in hookedParamsObj &&
+			typeof hookedParamsObj.input === "string"
+				? hookedParamsObj.input
+				: null) ||
+			(hookedParamsObj &&
+			"messages" in hookedParamsObj &&
+			Array.isArray(hookedParamsObj.messages)
+				? stringifyStructuredForPrompt({ messages: hookedParamsObj.messages })
+				: null) ||
+			(typeof modelParams === "string" ? modelParams : null);
+
+		if (!binaryModels.includes(resolvedModelKey)) {
+			this.logger.trace(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					model: resolvedModelKey,
+					params: modelParams,
+				},
+				"Model input",
+			);
+		} else {
+			let sizeInfo = "unknown size";
+			if (Buffer.isBuffer(modelParams)) {
+				sizeInfo = `${modelParams.length} bytes`;
+			} else if (typeof Blob !== "undefined" && modelParams instanceof Blob) {
+				sizeInfo = `${modelParams.size} bytes`;
+			} else if (typeof modelParams === "object" && modelParams !== null) {
+				if ("audio" in modelParams && Buffer.isBuffer(modelParams.audio)) {
+					sizeInfo = `${(modelParams.audio as Buffer).length} bytes`;
+				} else if (
+					"audio" in modelParams &&
+					typeof Blob !== "undefined" &&
+					modelParams.audio instanceof Blob
+				) {
+					sizeInfo = `${(modelParams.audio as Blob).size} bytes`;
+				}
+			}
+			this.logger.trace(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					model: resolvedModelKey,
+					size: sizeInfo,
+				},
+				"Model input (binary)",
+			);
+		}
 
 		this.logger.debug(
 			{
@@ -5077,7 +5151,9 @@ export class AgentRuntime implements IAgentRuntime {
 			modelParams as Record<string, JsonValue | object>,
 		);
 
-		const resultRef: { current: unknown } = { current: rawResponse };
+		const resultRef: { current: unknown } = {
+			current: secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse,
+		};
 		const modelOutToTrajectoryString = (v: unknown) =>
 			typeof v === "string" ? v : stringifyStructuredForPrompt({ response: v });
 
@@ -5179,6 +5255,9 @@ export class AgentRuntime implements IAgentRuntime {
 				}),
 				"Post-model pipeline hook",
 			);
+			resultRef.current =
+				secretSwapSession?.substituteInValue(resultRef.current) ??
+				resultRef.current;
 
 			this.logger.trace(
 				{
@@ -5261,6 +5340,9 @@ export class AgentRuntime implements IAgentRuntime {
 			}),
 			"Post-model pipeline hook",
 		);
+		resultRef.current =
+			secretSwapSession?.substituteInValue(resultRef.current) ??
+			resultRef.current;
 
 		this.logger.trace(
 			{
