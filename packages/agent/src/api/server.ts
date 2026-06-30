@@ -428,6 +428,7 @@ import {
   patchTouchesProviderSelection,
 } from "./server-helpers.ts";
 import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
+import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import {
   createConnectorHealthMonitor,
   extractConversationMetadataFromRoom,
@@ -3801,6 +3802,7 @@ export async function startApiServer(opts?: {
     broadcastWsToClientId: null,
     broadcastWsToConversation: null,
     activeConversationId: null,
+    deliveryDedupe: createDeliveryDedupeState(),
     permissionStates: {},
     shellEnabled: config.features?.shellEnabled !== false,
     agentAutomationMode: resolveAgentAutomationModeFromConfig(config),

@@ -28,6 +28,7 @@ import {
 } from "./parse-action-block.ts";
 import { resolveAppUserName } from "./server-helpers.ts";
 import type { ConversationMeta, ServerState } from "./server-types.ts";
+import { beginDelivery } from "./delivery-dedupe.ts";
 import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.ts";
 
 interface TaskContext {
@@ -157,10 +158,28 @@ export async function routeAutonomyTextToUser(
     "action",
     "swarm_synthesis",
   ]);
+  const isEphemeral = ephemeralSources.has(source);
+
+  // Cross-path delivery dedupe (Bug A): the same reply may also be delivered
+  // by the `client_chat` send handler (client-chat-sender.deliver). If this
+  // exact (roomId + text) was just delivered, suppress this relay copy instead
+  // of writing a second memory + broadcasting a second proactive-message. The
+  // reservation is only committed AFTER a successful persist, and released on
+  // failure, so a failed delivery never suppresses a retry. CRUCIALLY, only
+  // DURABLE (persisted) deliveries engage the guard: an ephemeral broadcast
+  // writes no memory, so it must NOT anchor the dedupe and suppress a later
+  // persistent sink of the same text (which would leave the user with a
+  // transient WS message that vanishes on reconnect/history reload).
+  const delivery = isEphemeral
+    ? undefined
+    : beginDelivery(state.deliveryDedupe, conv.roomId, normalizedText);
+  if (delivery?.kind === "duplicate") {
+    return;
+  }
 
   const messageId = crypto.randomUUID() as UUID;
 
-  if (!ephemeralSources.has(source)) {
+  if (!isEphemeral) {
     const agentMessage = createMessageMemory({
       id: messageId,
       entityId: runtime.agentId,
@@ -170,7 +189,12 @@ export async function routeAutonomyTextToUser(
         source,
       },
     });
-    await runtime.createMemory(agentMessage, "messages");
+    try {
+      await runtime.createMemory(agentMessage, "messages");
+    } catch (err) {
+      if (delivery?.kind === "deliver") delivery.reservation.release();
+      throw err;
+    }
   }
   conv.updatedAt = new Date().toISOString();
 
@@ -186,6 +210,7 @@ export async function routeAutonomyTextToUser(
       source,
     },
   });
+  if (delivery?.kind === "deliver") delivery.reservation.commit();
 }
 
 // ---------------------------------------------------------------------------
