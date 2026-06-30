@@ -266,7 +266,9 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-console:
     name: Deploy Console (Pages · elizacloud.ai)
-    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hetzner-robot"]') }}
+    # Match deploy-api: the shared hetzner-robot pool is cancelling Pages
+    # checkouts mid-fetch before any build/deploy code runs.
+    runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -461,7 +463,9 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
-    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hetzner-robot"]') }}
+    # Match deploy-api: the shared hetzner-robot pool is cancelling Pages
+    # checkouts mid-fetch before any build/deploy code runs.
+    runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
