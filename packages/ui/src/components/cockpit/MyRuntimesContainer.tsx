@@ -6,6 +6,7 @@ import {
   loadAgentProfileRegistry,
   switchRuntimeNonDestructive,
 } from "../../state";
+import { isTrustedRestoreApiBaseUrl } from "../../state/startup-phase-restore";
 import { MyRuntimesSection } from "./MyRuntimesSection";
 
 export interface MyRuntimesContainerProps {
@@ -54,12 +55,25 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
       setBusy(true);
       setError(null);
       try {
-        addAgentProfile({
+        // Trust-gate at ADD time: a public URL would be added + auto-activated
+        // by addAgentProfile but then rejected by the switch gate, leaving the
+        // Active badge lying and the client un-repointed. Reject it up front.
+        if (!isTrustedRestoreApiBaseUrl(entry.apiBase)) {
+          setError(
+            "That remote isn't trusted — use a tailscale (100.x / *.ts.net) or local address.",
+          );
+          return;
+        }
+        const profile = addAgentProfile({
           kind: "remote",
           label: entry.label,
           apiBase: entry.apiBase,
           accessToken: entry.accessToken,
         });
+        // addAgentProfile activates it in the registry but does NOT repoint the
+        // live client; switch to it so the base/token swap + persisted-active all
+        // run and the Active badge matches the runtime actually serving.
+        switchRuntimeNonDestructive(profile.id);
       } finally {
         refresh();
         setBusy(false);

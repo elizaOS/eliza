@@ -9,12 +9,16 @@ const mocks = vi.hoisted(() => ({
   loadAgentProfileRegistry: vi.fn(),
   addAgentProfile: vi.fn(),
   switchRuntimeNonDestructive: vi.fn(() => ({ ok: true })),
+  isTrustedRestoreApiBaseUrl: vi.fn(() => true),
 }));
 
 vi.mock("../../state", () => ({
   loadAgentProfileRegistry: mocks.loadAgentProfileRegistry,
   addAgentProfile: mocks.addAgentProfile,
   switchRuntimeNonDestructive: mocks.switchRuntimeNonDestructive,
+}));
+vi.mock("../../state/startup-phase-restore", () => ({
+  isTrustedRestoreApiBaseUrl: mocks.isTrustedRestoreApiBaseUrl,
 }));
 
 import { MyRuntimesContainer } from "./MyRuntimesContainer";
@@ -47,6 +51,14 @@ describe("MyRuntimesContainer", () => {
     for (const f of Object.values(mocks)) f.mockClear();
     mocks.loadAgentProfileRegistry.mockReturnValue(REG);
     mocks.switchRuntimeNonDestructive.mockReturnValue({ ok: true });
+    mocks.isTrustedRestoreApiBaseUrl.mockReturnValue(true);
+    mocks.addAgentProfile.mockReturnValue({
+      id: "new-1",
+      label: "Laptop",
+      kind: "remote",
+      apiBase: "http://100.72.1.9:3000",
+      createdAt: "2026-06-30T00:00:00.000Z",
+    });
   });
 
   it("renders the runtimes from the registry", () => {
@@ -76,7 +88,7 @@ describe("MyRuntimesContainer", () => {
     );
   });
 
-  it("adding a remote calls addAgentProfile with kind=remote", async () => {
+  it("adding a TRUSTED remote: adds it AND switches to it (badge reflects reality)", async () => {
     const user = userEvent.setup();
     render(<MyRuntimesContainer />);
     await user.type(screen.getByTestId("add-remote-label"), "Laptop");
@@ -92,5 +104,24 @@ describe("MyRuntimesContainer", () => {
         apiBase: "http://100.72.1.9:3000",
       }),
     );
+    // and it switches to the new one so the client repoints + the Active badge is true
+    expect(mocks.switchRuntimeNonDestructive).toHaveBeenCalledWith("new-1");
+  });
+
+  it("rejecting an UNTRUSTED (public) remote at add time — no add, no switch", async () => {
+    const user = userEvent.setup();
+    mocks.isTrustedRestoreApiBaseUrl.mockReturnValue(false);
+    render(<MyRuntimesContainer />);
+    await user.type(screen.getByTestId("add-remote-label"), "Public VPS");
+    await user.type(
+      screen.getByTestId("add-remote-url"),
+      "https://my-vps.example.com",
+    );
+    await user.click(screen.getByTestId("add-remote-submit"));
+    expect(screen.getByTestId("my-runtimes-error").textContent).toMatch(
+      /trusted/i,
+    );
+    expect(mocks.addAgentProfile).not.toHaveBeenCalled();
+    expect(mocks.switchRuntimeNonDestructive).not.toHaveBeenCalled();
   });
 });

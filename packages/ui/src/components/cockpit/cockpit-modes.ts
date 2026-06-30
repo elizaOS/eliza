@@ -1,14 +1,11 @@
 /**
- * Client-side cockpit mode descriptors — the app-facing mirror of the
- * orchestrator's canonical `cockpit-mode.ts`
- * (`plugins/plugin-agent-orchestrator/src/services/cockpit-mode.ts`).
- *
- * The picker lives in the UI library and must not import a plugin, so the mode
- * *shape* is mirrored here (it is an interface contract, not logic) and the
- * display metadata that drives the picker lives here as its source of truth.
- * The app layer lowers a {@link CockpitModeConfig} to the orchestrator
- * create-task body (`providerPolicy`) — the canonical lowering is the plugin's
- * `cockpitModeToProviderPolicy`.
+ * Cockpit mode descriptors + the single source for the cockpit's mode →
+ * `providerPolicy` lowering. The picker lives in the UI library (it must not
+ * import a node plugin), and the orchestrator create-task route accepts the
+ * `{preferredFramework, providerSource, model}` policy this file emits — so the
+ * lowering and the display metadata both live here, unambiguously. (There is no
+ * separate "canonical" server copy; that earlier duplicate was unused and was
+ * removed to avoid two-sources-of-truth drift.)
  *
  * The four modes (locked product vision):
  *   1. Eliza Cloud = eliza-code on Cerebras, fast/smart tier (gpt-oss-120b / zai-glm-4.7)
@@ -25,13 +22,13 @@ import type {
 /** Eliza Cloud inference tiers. `small` is fast; `large` is smart. */
 export type ElizaCloudTier = "small" | "large";
 
-/** Canonical Cerebras model id per tier (mirrors the plugin's source of truth). */
+/** Canonical Cerebras model id per tier. */
 export const ELIZA_CLOUD_TIER_MODEL: Record<ElizaCloudTier, string> = {
   small: "gpt-oss-120b",
   large: "zai-glm-4.7",
 };
 
-/** One cockpit session's mode (shape-mirror of the orchestrator's union). */
+/** One cockpit session's mode. */
 export type CockpitModeConfig =
   | { mode: "eliza-cloud"; agentType: "elizaos"; tier: ElizaCloudTier }
   | { mode: "opencode"; agentType: "opencode"; model?: string }
@@ -168,8 +165,7 @@ export type ProviderSource =
   | "eliza-cloud"
   | "local";
 
-/** The inference/credential source label for a mode (mirrors the orchestrator
- * canonical `cockpit-mode.ts`). */
+/** The inference/credential source label for a mode. */
 export function cockpitModeProviderSource(
   config: CockpitModeConfig,
 ): ProviderSource {
@@ -194,10 +190,9 @@ export function cockpitModeModel(
 }
 
 /**
- * Lower a cockpit mode to the orchestrator's create-task `providerPolicy`.
- * The server-canonical lowering is the plugin's `cockpitModeToProviderPolicy`;
- * this client mirror produces the identical `{preferredFramework, providerSource,
- * model}` the create-task route's `asProviderPolicy` parser accepts.
+ * Lower a cockpit mode to the orchestrator's create-task `providerPolicy` —
+ * the `{preferredFramework, providerSource, model}` the create-task route's
+ * `asProviderPolicy` parser accepts.
  */
 export function cockpitModeToProviderPolicy(
   config: CockpitModeConfig,

@@ -44,7 +44,22 @@ export function CockpitRoute() {
     async (input: CodingAgentCreateTaskInput) => {
       setBusy(true);
       try {
-        await client.createOrchestratorTask(input);
+        // 1. Create the durable task record.
+        const task = await client.createOrchestratorTask(input);
+        // 2. SPAWN the coding agent into it. createOrchestratorTask only writes
+        // the record — the sub-agent actually starts via addOrchestratorAgent.
+        // Thread the picked mode (framework / providerSource / model) so the
+        // chosen mode runs. NOT a follow-up message: that path silently spawns
+        // the default opencode framework and discards the pick. (workdir is left
+        // to the orchestrator's default resolution; a cwd/repo picker is a
+        // follow-up.)
+        const policy = input.providerPolicy;
+        await client.addOrchestratorAgent(task.id, {
+          framework: policy?.preferredFramework,
+          providerSource: policy?.providerSource,
+          model: policy?.model,
+          task: input.goal,
+        });
         setError(null);
         await refresh();
       } catch (e) {
