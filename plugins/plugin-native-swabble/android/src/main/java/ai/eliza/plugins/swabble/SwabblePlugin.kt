@@ -3,7 +3,6 @@ package ai.eliza.plugins.swabble
 import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
@@ -207,32 +206,8 @@ class SwabblePlugin : Plugin() {
 
     @PluginMethod
     fun getAudioDevices(call: PluginCall) {
-        val am = getAudioManager()
-        val devices = JSArray()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val inputDevices = am.getDevices(AudioManager.GET_DEVICES_INPUTS)
-            for (device in inputDevices) {
-                devices.put(JSObject().apply {
-                    put("id", device.id.toString())
-                    put("name", getDeviceTypeName(device.type) +
-                            if (device.productName.isNotEmpty()) " (${device.productName})" else "")
-                    put("isDefault", device.id.toString() == (selectedDeviceId ?: inputDevices.firstOrNull()?.id?.toString()))
-                })
-            }
-        }
-
-        // Always include a default entry if no devices found
-        if (devices.length() == 0) {
-            devices.put(JSObject().apply {
-                put("id", "default")
-                put("name", "Default Microphone")
-                put("isDefault", true)
-            })
-        }
-
         call.resolve(JSObject().apply {
-            put("devices", devices)
+            put("devices", SwabbleAndroidPlatformProbe.audioDevices(context, selectedDeviceId))
         })
     }
 
@@ -657,16 +632,14 @@ class SwabblePlugin : Plugin() {
 
     private fun buildPermissionResult(): JSObject {
         val micStatus = getPermissionState("microphone")
-        val speechAvailable = SpeechRecognizer.isRecognitionAvailable(context)
-
-        return JSObject().apply {
-            put("microphone", when (micStatus) {
+        return SwabbleAndroidPlatformProbe.permissionResult(
+            microphone = when (micStatus) {
                 com.getcapacitor.PermissionState.GRANTED -> "granted"
                 com.getcapacitor.PermissionState.DENIED -> "denied"
                 else -> "prompt"
-            })
-            put("speechRecognition", if (speechAvailable) "granted" else "not_supported")
-        }
+            },
+            speechRecognitionAvailable = SwabbleAndroidPlatformProbe.speechRecognitionAvailable(context)
+        )
     }
 
     private fun getErrorMessage(error: Int): String {
@@ -681,20 +654,6 @@ class SwabblePlugin : Plugin() {
             SpeechRecognizer.ERROR_SERVER -> "Server error"
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech timeout"
             else -> "Unknown error: $error"
-        }
-    }
-
-    /** Human-readable name for AudioDeviceInfo types. */
-    private fun getDeviceTypeName(type: Int): String {
-        return when (type) {
-            AudioDeviceInfo.TYPE_BUILTIN_MIC -> "Built-in Microphone"
-            AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired Headset"
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth SCO"
-            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth A2DP"
-            AudioDeviceInfo.TYPE_USB_DEVICE -> "USB Device"
-            AudioDeviceInfo.TYPE_USB_ACCESSORY -> "USB Accessory"
-            AudioDeviceInfo.TYPE_TELEPHONY -> "Telephony"
-            else -> "Audio Input"
         }
     }
 
