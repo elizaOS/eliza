@@ -14,7 +14,9 @@ import { APP_PAUSE_EVENT } from "./events";
 import {
   getRetainedModuleMaxEntries,
   getRetainedModuleTtlMs,
+  HEAP_PRESSURE_EVENT,
 } from "./state/bounded-view-lru";
+import { installHeapPressureMonitor } from "./state/heap-pressure-monitor";
 
 type RetainedCleanup = () => void | Promise<void>;
 
@@ -44,6 +46,7 @@ const retainedModuleCache = new Map<
 
 let retainedModuleLifecycleInstalled = false;
 let pruneOnPressure: (() => void) | null = null;
+let pruneOnHeapPressure: (() => void) | null = null;
 let pruneOnVisibilityHidden: (() => void) | null = null;
 let pruneOnAppPause: (() => void) | null = null;
 
@@ -168,6 +171,7 @@ function installRetainedModuleLifecycle(): void {
     return;
   }
   retainedModuleLifecycleInstalled = true;
+  installHeapPressureMonitor();
   pruneOnPressure = () => {
     scheduleIdleWork(() =>
       pruneRetainedLazyModules({ force: true, reason: "memorypressure" }),
@@ -185,7 +189,14 @@ function installRetainedModuleLifecycle(): void {
       pruneRetainedLazyModules({ force: true, reason: "app-pause" }),
     );
   };
+  // Real heap-driven eviction (#10196) — see DynamicViewLoader for rationale.
+  pruneOnHeapPressure = () => {
+    scheduleIdleWork(() =>
+      pruneRetainedLazyModules({ force: true, reason: "heap-pressure" }),
+    );
+  };
   window.addEventListener("memorypressure", pruneOnPressure);
+  document.addEventListener(HEAP_PRESSURE_EVENT, pruneOnHeapPressure);
   document.addEventListener("visibilitychange", pruneOnVisibilityHidden);
   document.addEventListener(APP_PAUSE_EVENT, pruneOnAppPause);
 }
@@ -317,6 +328,9 @@ export function __resetRetainedLazyModulesForTests(): void {
   if (typeof window !== "undefined" && pruneOnPressure) {
     window.removeEventListener("memorypressure", pruneOnPressure);
   }
+  if (typeof document !== "undefined" && pruneOnHeapPressure) {
+    document.removeEventListener(HEAP_PRESSURE_EVENT, pruneOnHeapPressure);
+  }
   if (typeof document !== "undefined" && pruneOnVisibilityHidden) {
     document.removeEventListener("visibilitychange", pruneOnVisibilityHidden);
   }
@@ -324,6 +338,7 @@ export function __resetRetainedLazyModulesForTests(): void {
     document.removeEventListener(APP_PAUSE_EVENT, pruneOnAppPause);
   }
   pruneOnPressure = null;
+  pruneOnHeapPressure = null;
   pruneOnVisibilityHidden = null;
   pruneOnAppPause = null;
   retainedModuleLifecycleInstalled = false;

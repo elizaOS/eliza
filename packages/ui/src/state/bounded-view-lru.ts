@@ -34,6 +34,34 @@ export const LOW_MEMORY_KEEP_ALIVE_MAX_VIEWS = 1;
 export const DEFAULT_KEEP_ALIVE_TTL_MS = 5 * 60_000;
 export const LOW_MEMORY_KEEP_ALIVE_TTL_MS = 60_000;
 
+// Remote-bundle module-cache tiers (centralized here, previously hardcoded in
+// DynamicViewLoader.tsx where they had silently diverged from the retained-lazy
+// caps). A remote view bundle is heavier than a route chunk, so the normal cap
+// is smaller than the retained-module cap but the low-memory floor matches.
+export const DEFAULT_BUNDLE_MODULE_TTL_MS = 5 * 60_000;
+export const LOW_MEMORY_BUNDLE_MODULE_TTL_MS = 60_000;
+export const DEFAULT_BUNDLE_MODULE_MAX_ENTRIES = 6;
+export const LOW_MEMORY_BUNDLE_MODULE_MAX_ENTRIES = 2;
+
+/**
+ * Live-heap pressure threshold: when `usedJSHeapSize / jsHeapSizeLimit` reaches
+ * this fraction, every bounded cache drops to its low-memory tier and a forced
+ * idle-eviction pass is requested (via {@link HEAP_PRESSURE_EVENT}). 0.8 leaves
+ * headroom before the engine's own GC/OOM kicks in.
+ */
+export const HEAP_PRESSURE_RATIO = 0.8;
+
+/**
+ * Document event dispatched when live heap crosses {@link HEAP_PRESSURE_RATIO}.
+ * This is the REAL memory-pressure signal for the caches: the non-standard
+ * `memorypressure` window event Chromium never fires, so before this the caches
+ * had no live-heap input at all. The heap-pressure-monitor polls
+ * `performance.memory` while the tab is visible and dispatches this when usage
+ * crosses {@link HEAP_PRESSURE_RATIO}; the module caches listen for it and
+ * force-evict idle entries.
+ */
+export const HEAP_PRESSURE_EVENT = "eliza:heap-pressure";
+
 /**
  * Reported device RAM in GB, or `null` when the (Chromium-only) hint is absent.
  * `null` is treated as "not low memory" by {@link isLowMemoryDevice} so engines
@@ -52,16 +80,91 @@ export function isLowMemoryDevice(): boolean {
   return memoryGb !== null && memoryGb <= LOW_MEMORY_DEVICE_GB;
 }
 
+/** Live JS-heap reading from the (Chromium-only) `performance.memory` API. */
+export interface JsHeapReading {
+  usedJSHeapSize: number;
+  jsHeapSizeLimit: number;
+}
+
+/**
+ * Live heap usage from `performance.memory`, or `null` when the (Chromium-only)
+ * API is absent (Safari/Firefox) or reports non-finite values. Shared by the
+ * cache prune path, the cache-telemetry emitter, and {@link ViewTelemetryProfiler}
+ * so there is exactly one heap read implementation in the shell.
+ */
+export function readJsHeap(): JsHeapReading | null {
+  if (typeof performance === "undefined") return null;
+  const memory = (
+    performance as Performance & {
+      memory?: { usedJSHeapSize?: unknown; jsHeapSizeLimit?: unknown };
+    }
+  ).memory;
+  if (!memory) return null;
+  const used = memory.usedJSHeapSize;
+  const limit = memory.jsHeapSizeLimit;
+  if (
+    typeof used !== "number" ||
+    !Number.isFinite(used) ||
+    typeof limit !== "number" ||
+    !Number.isFinite(limit) ||
+    limit <= 0
+  ) {
+    return null;
+  }
+  return { usedJSHeapSize: used, jsHeapSizeLimit: limit };
+}
+
+/** Just the live used-heap bytes (or `undefined`), for telemetry payloads. */
+export function readJsHeapUsedSize(): number | undefined {
+  return readJsHeap()?.usedJSHeapSize;
+}
+
+/**
+ * True when live heap usage is at or above {@link HEAP_PRESSURE_RATIO} of the
+ * engine limit. Returns `false` (not "constrained") when the heap API is absent,
+ * so non-Chromium engines keep the larger caps and rely on TTL/visibility/pause.
+ */
+export function isHeapUnderPressure(
+  reading: JsHeapReading | null = readJsHeap(),
+): boolean {
+  if (!reading) return false;
+  return (
+    reading.usedJSHeapSize / reading.jsHeapSizeLimit >= HEAP_PRESSURE_RATIO
+  );
+}
+
+/**
+ * Single predicate the bounded caches size off: a device is treated as
+ * memory-constrained when it is a static low-memory device OR live heap is
+ * under pressure right now. This is the seam that finally feeds `usedJSHeapSize`
+ * into the prune decision — every cap/TTL getter below routes through it.
+ */
+export function isCacheMemoryConstrained(): boolean {
+  return isLowMemoryDevice() || isHeapUnderPressure();
+}
+
 export function getRetainedModuleTtlMs(): number {
-  return isLowMemoryDevice()
+  return isCacheMemoryConstrained()
     ? LOW_MEMORY_RETAINED_MODULE_TTL_MS
     : DEFAULT_RETAINED_MODULE_TTL_MS;
 }
 
 export function getRetainedModuleMaxEntries(): number {
-  return isLowMemoryDevice()
+  return isCacheMemoryConstrained()
     ? LOW_MEMORY_RETAINED_MODULE_MAX_ENTRIES
     : DEFAULT_RETAINED_MODULE_MAX_ENTRIES;
+}
+
+export function getBundleModuleTtlMs(): number {
+  return isCacheMemoryConstrained()
+    ? LOW_MEMORY_BUNDLE_MODULE_TTL_MS
+    : DEFAULT_BUNDLE_MODULE_TTL_MS;
+}
+
+export function getBundleModuleMaxEntries(): number {
+  return isCacheMemoryConstrained()
+    ? LOW_MEMORY_BUNDLE_MODULE_MAX_ENTRIES
+    : DEFAULT_BUNDLE_MODULE_MAX_ENTRIES;
 }
 
 /**
@@ -70,14 +173,14 @@ export function getRetainedModuleMaxEntries(): number {
  * least-recently-active retained view beyond this cap.
  */
 export function getKeepAliveMaxViews(): number {
-  return isLowMemoryDevice()
+  return isCacheMemoryConstrained()
     ? LOW_MEMORY_KEEP_ALIVE_MAX_VIEWS
     : DEFAULT_KEEP_ALIVE_MAX_VIEWS;
 }
 
 /** Idle TTL after which a retained-but-hidden keep-alive view is evicted. */
 export function getKeepAliveTtlMs(): number {
-  return isLowMemoryDevice()
+  return isCacheMemoryConstrained()
     ? LOW_MEMORY_KEEP_ALIVE_TTL_MS
     : DEFAULT_KEEP_ALIVE_TTL_MS;
 }

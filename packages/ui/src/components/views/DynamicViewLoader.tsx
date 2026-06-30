@@ -60,7 +60,12 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "../../state/app-store.ts";
-import { isLowMemoryDevice } from "../../state/bounded-view-lru";
+import {
+  getBundleModuleMaxEntries,
+  getBundleModuleTtlMs,
+  HEAP_PRESSURE_EVENT,
+} from "../../state/bounded-view-lru";
+import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
@@ -110,13 +115,12 @@ interface ViewBundleCacheEntry {
 // cleanup hook. Keep a tiny LRU of recently used views so quick tab switches are
 // instant, then drop idle/heavy views automatically.
 const bundleModuleCache = new Map<string, ViewBundleCacheEntry>();
-const DEFAULT_BUNDLE_CACHE_TTL_MS = 5 * 60_000;
-const LOW_MEMORY_BUNDLE_CACHE_TTL_MS = 60_000;
-const DEFAULT_BUNDLE_CACHE_MAX_ENTRIES = 6;
-const LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES = 2;
+// TTL/LRU caps live in bounded-view-lru (single home for all bounded caches,
+// heap-pressure aware). See getBundleModule{TtlMs,MaxEntries}.
 
 let bundleCacheLifecycleInstalled = false;
 let pruneBundleCacheOnPressure: (() => void) | null = null;
+let pruneBundleCacheOnHeapPressure: (() => void) | null = null;
 let pruneBundleCacheOnVisibilityHidden: (() => void) | null = null;
 let pruneBundleCacheOnAppPause: (() => void) | null = null;
 
@@ -147,18 +151,6 @@ function emitBundleTelemetry(
     ...patch,
     ...bundleCacheStats(),
   });
-}
-
-function getBundleCacheMaxEntries(): number {
-  if (isLowMemoryDevice()) {
-    return LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES;
-  }
-  return DEFAULT_BUNDLE_CACHE_MAX_ENTRIES;
-}
-
-function getBundleCacheTtlMs(): number {
-  if (isLowMemoryDevice()) return LOW_MEMORY_BUNDLE_CACHE_TTL_MS;
-  return DEFAULT_BUNDLE_CACHE_TTL_MS;
 }
 
 function scheduleIdleWork(work: () => void): void {
@@ -217,14 +209,14 @@ function armBundleEntryRetentionTimer(entry: ViewBundleCacheEntry): void {
   entry.retentionTimer = setTimeout(() => {
     entry.retentionTimer = null;
     scheduleIdleWork(() => pruneBundleModuleCache());
-  }, getBundleCacheTtlMs() + 50);
+  }, getBundleModuleTtlMs() + 50);
 }
 
 function pruneBundleModuleCache(
   options: { force?: boolean; reason?: EvictReason } = {},
 ): void {
   const now = Date.now();
-  const ttlMs = options.force ? 0 : getBundleCacheTtlMs();
+  const ttlMs = options.force ? 0 : getBundleModuleTtlMs();
   const reason = options.reason ?? (options.force ? "memorypressure" : "ttl");
   const idleEntries = [...bundleModuleCache.values()]
     .filter((entry) => entry.refCount === 0)
@@ -236,7 +228,7 @@ function pruneBundleModuleCache(
     }
   }
 
-  const maxEntries = options.force ? 0 : getBundleCacheMaxEntries();
+  const maxEntries = options.force ? 0 : getBundleModuleMaxEntries();
   let retained = [...bundleModuleCache.values()].filter(
     (entry) => entry.refCount === 0,
   );
@@ -251,6 +243,7 @@ function pruneBundleModuleCache(
 function installBundleCacheLifecycle(): void {
   if (bundleCacheLifecycleInstalled || typeof window === "undefined") return;
   bundleCacheLifecycleInstalled = true;
+  installHeapPressureMonitor();
   pruneBundleCacheOnPressure = () => {
     scheduleIdleWork(() =>
       pruneBundleModuleCache({ force: true, reason: "memorypressure" }),
@@ -268,7 +261,20 @@ function installBundleCacheLifecycle(): void {
       pruneBundleModuleCache({ force: true, reason: "app-pause" }),
     );
   };
+  // Real heap-driven eviction (#10196): ViewTelemetryProfiler dispatches this
+  // when live usedJSHeapSize crosses HEAP_PRESSURE_RATIO. Unlike the
+  // never-fired `memorypressure` window event, this actually feeds live heap
+  // into the cache.
+  pruneBundleCacheOnHeapPressure = () => {
+    scheduleIdleWork(() =>
+      pruneBundleModuleCache({ force: true, reason: "heap-pressure" }),
+    );
+  };
   window.addEventListener("memorypressure", pruneBundleCacheOnPressure);
+  document.addEventListener(
+    HEAP_PRESSURE_EVENT,
+    pruneBundleCacheOnHeapPressure,
+  );
   document.addEventListener(
     "visibilitychange",
     pruneBundleCacheOnVisibilityHidden,
@@ -290,6 +296,12 @@ export function __resetDynamicViewLoaderCacheForTests(): void {
   if (typeof window !== "undefined" && pruneBundleCacheOnPressure) {
     window.removeEventListener("memorypressure", pruneBundleCacheOnPressure);
   }
+  if (typeof document !== "undefined" && pruneBundleCacheOnHeapPressure) {
+    document.removeEventListener(
+      HEAP_PRESSURE_EVENT,
+      pruneBundleCacheOnHeapPressure,
+    );
+  }
   if (typeof document !== "undefined" && pruneBundleCacheOnVisibilityHidden) {
     document.removeEventListener(
       "visibilitychange",
@@ -300,6 +312,7 @@ export function __resetDynamicViewLoaderCacheForTests(): void {
     document.removeEventListener(APP_PAUSE_EVENT, pruneBundleCacheOnAppPause);
   }
   pruneBundleCacheOnPressure = null;
+  pruneBundleCacheOnHeapPressure = null;
   pruneBundleCacheOnVisibilityHidden = null;
   pruneBundleCacheOnAppPause = null;
   bundleCacheLifecycleInstalled = false;

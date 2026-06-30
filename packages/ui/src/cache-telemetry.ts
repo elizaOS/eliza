@@ -1,3 +1,5 @@
+import { readJsHeapUsedSize } from "./state/bounded-view-lru";
+
 export const MODULE_CACHE_TELEMETRY_EVENT = "eliza:module-cache-telemetry";
 
 export type ModuleCacheTelemetrySource =
@@ -19,6 +21,9 @@ export interface ModuleCacheTelemetryEvent {
     | "ttl"
     | "lru"
     | "memorypressure"
+    // Live `usedJSHeapSize` crossed HEAP_PRESSURE_RATIO (#10196) — the real
+    // heap-driven eviction, as opposed to the never-fired `memorypressure`.
+    | "heap-pressure"
     | "visibility-hidden"
     | "app-pause"
     | "invalidate"
@@ -29,6 +34,12 @@ export interface ModuleCacheTelemetryEvent {
   activeCount: number;
   idleCount: number;
   cacheSize: number;
+  /**
+   * Live `performance.memory.usedJSHeapSize` (bytes) at emit time, or omitted
+   * when the Chromium-only heap API is unavailable. Lets the views soak assert
+   * heap growth/eviction directly off the module-cache ring (#10196).
+   */
+  jsHeapUsedSize?: number;
   at: number;
   route?: string;
 }
@@ -46,8 +57,10 @@ function currentRoute(): string | undefined {
 export function emitModuleCacheTelemetry(
   event: Omit<ModuleCacheTelemetryEvent, "at" | "route">,
 ): void {
+  const jsHeapUsedSize = readJsHeapUsedSize();
   const detail: ModuleCacheTelemetryEvent = {
     ...event,
+    ...(jsHeapUsedSize !== undefined ? { jsHeapUsedSize } : {}),
     at: Date.now(),
     route: currentRoute(),
   };
