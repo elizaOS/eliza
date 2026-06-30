@@ -13,6 +13,11 @@ Branch: `feat/10317-credential-bridge-wiring`
 
 ## Evidence
 
+After the final pre-PR sync, `origin/develop` moved from `8681dc7cf8` to
+`fa83361b9f` with unrelated issue-evidence-only changes. The branch rebased
+cleanly, `git diff --check` still passed, and the focused test suites below
+were rerun on the rebased branch.
+
 ```bash
 bunx vitest run src/services/credential-tunnel-service.test.ts src/api/credential-tunnel-routes.test.ts src/runtime/sub-agent-credential-bridge-wiring.test.ts
 ```
@@ -36,7 +41,7 @@ bunx vitest run src/features/sub-agent-credentials/**/*.test.ts
 bunx vitest run src/features/sub-agent-credentials/plugin.test.ts
 ```
 
-Result from `packages/core`: action suites passed (4 files / 13 tests), plugin suite passed (1 file / 2 tests).
+Result from `packages/core`: 5 files passed, 15 tests passed.
 
 ```bash
 bun run --cwd packages/app audit:app
@@ -70,4 +75,3 @@ These failures are not introduced by the credential-bridge diff; the focused sui
 ## Scope Note
 
 This PR wires the deterministic parent-runtime bridge, inline sensitive-request submit path, and loopback redemption path. A live parent/child ACP scenario with real connector DM capture and live-model trajectory still requires a running orchestrator session and connector credentials; the local evidence here covers the production code seams that can be exercised without those external credentials.
-
