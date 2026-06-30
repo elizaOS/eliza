@@ -15,7 +15,7 @@ below, per `PR_EVIDENCE.md`).
 | **Supervisor crash-recovery** | `packages/app-core/scripts/lib/restart-guard.mjs` (extracted from `run-node.mjs`) | 5 guard unit tests + **2 real-process integration tests** that drive the actual `run-node.mjs` with a fake child (real exit-75) → relaunch + crash-loop abort. |
 | **Soak / leak detector** | `packages/agent/src/runtime/memory-soak.ts` | `runSoak()` forces GC + reports heap slope; 2 tests prove it flags a retained-allocation leak and reports a steady workload as flat. |
 | **Umbrella + scoreboard** | `packages/app-core/scripts/stability-suite.mjs` (`stability:suite`) | One command **induces** crash → recovery + a leak workload, writes `10197-agent-stability-scoreboard.md`, exits non-zero on any failure. |
-| **iOS watchdog parity** | `packages/app-core/platforms/ios/App/App/AgentWatchdog.swift` | Liveness poll + bounded relaunch mirroring Android `ElizaAgentService`. Device-run gated (see below). |
+| **iOS watchdog parity** | `packages/app-core/platforms/ios/App/App/AgentWatchdog.swift` (+ `AppDelegate.swift`) | Liveness poll via the in-process `ElizaBunRuntime` bridge (no TCP port) + 3-strike detection mirroring Android, emitting a bounded restart-request (max 5/backoff). `swiftc -typecheck` passes (exit 0) vs the iOS 16 SDK (Capacitor stubbed). Device-run gated (below). **Caveat:** to auto-recover end-to-end the renderer must consume the `eliza:local-agent-restart-requested` signal and call `ElizaBunRuntime.start(...)` — the Swift side raises the signal; wiring the renderer consumer is the remaining device-side step. |
 
 ## Real, reviewed results
 
