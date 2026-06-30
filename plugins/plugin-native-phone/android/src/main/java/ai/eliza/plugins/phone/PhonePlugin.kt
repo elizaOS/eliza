@@ -37,13 +37,7 @@ class PhonePlugin : Plugin() {
 
     @PluginMethod
     fun getStatus(call: PluginCall) {
-        val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-        val result = JSObject()
-        result.put("hasTelecom", telecom != null)
-        result.put("canPlaceCalls", hasPermission(Manifest.permission.CALL_PHONE))
-        result.put("defaultDialerPackage", telecom?.defaultDialerPackage)
-        result.put("isDefaultDialer", telecom?.defaultDialerPackage == context.packageName)
-        call.resolve(result)
+        call.resolve(PhoneStatus.read(context))
     }
 
     @PluginMethod

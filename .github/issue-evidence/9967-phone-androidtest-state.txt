@@ -1,0 +1,6 @@
+# #9967 phone — real device dialer state (Pixel 6a, Android 16), captured alongside the on-device test
+default-dialer: com.google.android.dialer
+DIALER-role: com.google.android.dialer
+
+# PhoneStatusInstrumentedTest.read_defaultDialerIsAConcreteSystemPackage reads
+# PhoneStatus.read(ctx).defaultDialerPackage == the value above (com.google.android.dialer).

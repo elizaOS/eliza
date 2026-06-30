@@ -17,6 +17,7 @@ android {
     defaultConfig {
         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
         targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -35,4 +36,11 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+
+    // On-device instrumented test for PhoneStatus (#9967). androidTest-only, so
+    // these never reach the app's runtime dex; they let the plugin's telecom/
+    // dialer status read be exercised against a real device.
+    androidTestImplementation "androidx.test.ext:junit:1.3.0"
+    androidTestImplementation "androidx.test:runner:1.7.0"
+    androidTestImplementation "androidx.test:core:1.7.0"
 }

@@ -1,0 +1,80 @@
+03-11 03:16:41.659 D/LauncherApps( 2086): onPackageAdded 0,ai.eliza.plugins.phone.test
+03-11 03:16:41.671 D/LauncherAppsService( 1676): onPackageAdded: triggering onPackageAdded for user=UserHandle{0}, packageName=ai.eliza.plugins.phone.test
+03-11 03:16:41.671 D/LauncherApps( 8018): onPackageAdded 0,ai.eliza.plugins.phone.test
+03-11 03:16:41.672 D/LauncherAppsCallbackImpl( 8018): onPackageAdded triggered for packageName=ai.eliza.plugins.phone.test, user=UserHandle{0}
+03-11 03:16:41.690 D/BaseIconCache( 8018): Default icon returned for ai.eliza.plugins.phone.test
+03-11 03:16:41.804 D/nativeloader( 6628): Configuring clns-9 for other apk /system/framework/android.test.mock.jar. target_sdk_version=35, uses_libraries=ALL, library_path=/data/app/~~03nzbd48bNHtnPu2akcjAQ==/ai.eliza.plugins.phone.test-6-L7YTvt_XPgTveCuqpVbA==/lib/arm64, permitted_path=/data:/mnt/expand:/data/user/0/ai.eliza.plugins.phone.test
+03-11 03:16:41.808 D/nativeloader( 6628): Configuring clns-10 for other apk /system/framework/android.test.runner.jar. target_sdk_version=35, uses_libraries=ALL, library_path=/data/app/~~03nzbd48bNHtnPu2akcjAQ==/ai.eliza.plugins.phone.test-6-L7YTvt_XPgTveCuqpVbA==/lib/arm64, permitted_path=/data:/mnt/expand:/data/user/0/ai.eliza.plugins.phone.test
+03-11 03:16:41.920 I/btw     (22041): Handling installed or updated package: ai.eliza.plugins.phone.test
+03-11 03:16:41.920 I/clo     (22041): Attempting to classify package: ai.eliza.plugins.phone.test using model: bll_1
+03-11 03:16:41.951 D/nativeloader( 6628): Configuring clns-11 for other apk /data/app/~~03nzbd48bNHtnPu2akcjAQ==/ai.eliza.plugins.phone.test-6-L7YTvt_XPgTveCuqpVbA==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~03nzbd48bNHtnPu2akcjAQ==/ai.eliza.plugins.phone.test-6-L7YTvt_XPgTveCuqpVbA==/lib/arm64, permitted_path=/data:/mnt/expand:/data/user/0/ai.eliza.plugins.phone.test
+03-11 03:16:41.971 V/GraphicsEnvironment( 6628): ai.eliza.plugins.phone.test is not listed in per-application setting
+03-11 03:16:42.050 I/TestRequestBuilder( 6628): Scanning classpath to find tests in paths [/data/app/~~03nzbd48bNHtnPu2akcjAQ==/ai.eliza.plugins.phone.test-6-L7YTvt_XPgTveCuqpVbA==/base.apk]
+03-11 03:16:42.060 I/bvb     (22041): BLL finished for package: ai.eliza.plugins.phone.test, score: 11000016, verdict: HARMFUL
+03-11 03:16:42.060 I/clo     (22041): Finished new classification for package: ai.eliza.plugins.phone.test, model: bll_1, verdict: HARMFUL, score: 1.1000016E7
+03-11 03:16:43.091 I/TestRunner( 6628): run started: 3 tests
+03-11 03:16:43.092 I/TestRunner( 6628): started: read_reportsTelecomAndDialerStateShape(ai.eliza.plugins.phone.PhoneStatusInstrumentedTest)
+03-11 03:16:43.099 I/TestRunner( 6628): finished: read_reportsTelecomAndDialerStateShape(ai.eliza.plugins.phone.PhoneStatusInstrumentedTest)
+03-11 03:16:43.101 I/TestRunner( 6628): started: read_defaultDialerIsAConcreteSystemPackage(ai.eliza.plugins.phone.PhoneStatusInstrumentedTest)
+03-11 03:16:43.111 I/TestRunner( 6628): finished: read_defaultDialerIsAConcreteSystemPackage(ai.eliza.plugins.phone.PhoneStatusInstrumentedTest)
+03-11 03:16:43.113 I/TestRunner( 6628): started: read_isDefaultDialerFalseForTestApkAndConsistent(ai.eliza.plugins.phone.PhoneStatusInstrumentedTest)
+03-11 03:16:43.117 I/TestRunner( 6628): finished: read_isDefaultDialerFalseForTestApkAndConsistent(ai.eliza.plugins.phone.PhoneStatusInstrumentedTest)
+03-11 03:16:43.118 I/TestRunner( 6628): run finished: 3 tests, 0 failed, 0 ignored
+03-11 03:16:43.122 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.phone.test appid=10326 user=0: finished inst
+03-11 03:16:43.123 I/ActivityManager( 1676): Killing 6628:ai.eliza.plugins.phone.test/u0a326 (adj 0): stop ai.eliza.plugins.phone.test due to finished inst
+03-11 03:16:43.161 V/ActivityManager( 1676): Got obituary of 6628:ai.eliza.plugins.phone.test
+03-11 03:16:43.498 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.phone.test appid=10326 user=-1: deletePackageX
+03-11 03:16:43.498 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{684d9af ai.eliza.plugins.phone.test/10326} BLOCKED
+03-11 03:16:43.498 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{684d9af ai.eliza.plugins.phone.test/10326} BLOCKED
+03-11 03:16:43.498 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{684d9af ai.eliza.plugins.phone.test/10326} BLOCKED
+03-11 03:16:43.558 D/BackgroundInstallControlService( 1676): handlePackageRemove: removing ai.eliza.plugins.phone.test from 0
+03-11 03:16:43.584 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.phone.test appid=10326 user=0: pkg removed
+03-11 03:16:43.595 V/StorageManagerService( 1676): Package ai.eliza.plugins.phone.test does not have legacy storage
+03-11 03:16:43.597 D/CarrierSvcBindHelper( 2466): onPackageRemoved: ai.eliza.plugins.phone.test
+03-11 03:16:43.598 I/SatelliteAppTracker( 2466): onPackageRemoved : ai.eliza.plugins.phone.test
+03-11 03:16:43.605 I/Finsky  ( 7317): [2] AIM: AppInfoCacheUpdater -> invalidating apps: [ai.eliza.plugins.phone.test]
+03-11 03:16:43.605 W/WifiService( 1676): Couldn't get PackageInfo for package:ai.eliza.plugins.phone.test
+03-11 03:16:43.605 D/WifiService( 1676): Remove settings for package:ai.eliza.plugins.phone.test
+03-11 03:16:43.605 D/WifiConfigManager( 1676): Remove all networks for app ApplicationInfo{b1724e ai.eliza.plugins.phone.test}
+03-11 03:16:43.605 V/WifiScanRequestProxy( 1676): Clearing scan request timestamps for uid=10326, packageName=ai.eliza.plugins.phone.test
+03-11 03:16:43.607 I/Finsky  ( 7317): [310] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [ai.eliza.plugins.phone.test]
+03-11 03:16:43.609 I/PasspointManager( 1676): No app ops listener found for ai.eliza.plugins.phone.test
+03-11 03:16:43.609 D/ShortcutService( 1676): removing package: ai.eliza.plugins.phone.test userId=0
+03-11 03:16:43.616 I/RollbackManager( 1676): broadcast=ACTION_PACKAGE_FULLY_REMOVED pkg=ai.eliza.plugins.phone.test
+03-11 03:16:43.616 W/WifiService( 1676): Couldn't get PackageInfo for package:ai.eliza.plugins.phone.test
+03-11 03:16:43.617 D/WifiService( 1676): Remove settings for package:ai.eliza.plugins.phone.test
+03-11 03:16:43.617 D/WifiConfigManager( 1676): Remove all networks for app ApplicationInfo{ab5e05e ai.eliza.plugins.phone.test}
+03-11 03:16:43.617 V/WifiScanRequestProxy( 1676): Clearing scan request timestamps for uid=10326, packageName=ai.eliza.plugins.phone.test
+03-11 03:16:43.617 I/PasspointManager( 1676): No app ops listener found for ai.eliza.plugins.phone.test
+03-11 03:16:43.617 I/PackageRemovedReceiver( 1676): Package ai.eliza.plugins.phone.test (UID: 10326) fully removed for user UserHandle{0}
+03-11 03:16:43.641 I/Finsky:background(22071): [2] Package no longer installed: ai.eliza.plugins.phone.test
+03-11 03:16:43.644 D/NfcRegisteredServicesCache( 2388): onReceive: action=android.intent.action.PACKAGE_REMOVED, pkg=ai.eliza.plugins.phone.test
+03-11 03:16:43.651 I/Finsky:background(22071): [2] Package no longer installed: ai.eliza.plugins.phone.test
+03-11 03:16:43.660 D/LauncherAppsService( 1676): onPackageRemoved: triggering onPackageRemoved for user=UserHandle{0}, packageName=ai.eliza.plugins.phone.test
+03-11 03:16:43.661 D/LauncherAppsService( 1676): onPackageRemoved: triggering onPackageRemoved for user=UserHandle{0}, packageName=ai.eliza.plugins.phone.test
+03-11 03:16:43.661 D/LauncherAppsService( 1676): onPackageRemoved: triggering onPackageRemoved for user=UserHandle{0}, packageName=ai.eliza.plugins.phone.test
+03-11 03:16:43.661 D/Bubbles ( 2086): BubbleData.removeBubblesWithPackageName() package=ai.eliza.plugins.phone.test
+03-11 03:16:43.661 I/Telecom ( 1676): CarModeTracker: Package ai.eliza.plugins.phone.test is not tracked.: SSH.oR@LFE
+03-11 03:16:43.664 D/LauncherAppsCallbackImpl( 8018): onPackageRemoved triggered for packageName=ai.eliza.plugins.phone.test, user=UserHandle{0}
+03-11 03:16:43.665 I/Finsky:background(22071): [306] IQ:PSL: skipping onPackageRemoved(replacing=false) for untracked package=ai.eliza.plugins.phone.test
+03-11 03:16:43.668 I/Finsky:background(22071): [2] Package no longer installed: ai.eliza.plugins.phone.test
+03-11 03:16:43.669 D/ModelWriter( 8018): removing items from db []. Reason: [removed because the corresponding package is removed. removedPackages=[ai.eliza.plugins.phone.test]]
+03-11 03:16:43.694 I/Finsky  ( 7317): [312] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [ai.eliza.plugins.phone.test]
+03-11 03:16:43.699 I/Finsky  ( 7317): [2744] Asset module storage cleared for package ai.eliza.plugins.phone.test.
+03-11 03:16:43.725 E/PackageChangedReceiver(  765): com.google.android.libraries.mediahome.providers.video.broadcastreceivers.PackageChangedReceiver.onReceive:58 Error: package ai.eliza.plugins.phone.test not found
+03-11 03:16:43.725 E/PackageChangedReceiver(  765): android.content.pm.PackageManager$NameNotFoundException: ai.eliza.plugins.phone.test
+03-11 03:16:43.727 I/AppSearchManagerService( 1676): Handling android.intent.action.PACKAGE_FULLY_REMOVED broadcast on package: ai.eliza.plugins.phone.test
+03-11 03:16:43.734 E/PackageAddedReceiver(  765): com.google.android.libraries.mediahome.providers.video.broadcastreceivers.PackageAddedReceiver$1.doInBackground:64 Package not found ai.eliza.plugins.phone.test
+03-11 03:16:43.734 E/PackageAddedReceiver(  765): android.content.pm.PackageManager$NameNotFoundException: ai.eliza.plugins.phone.test
+03-11 03:16:43.738 I/ConditionProviders( 1676): Disallowing condition provider ai.eliza.plugins.phone.test (userSet: true)
+03-11 03:16:43.755 W/Finsky  ( 7317): [2] STU: Failed to get storage stats for package 'ai.eliza.plugins.phone.test' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+03-11 03:16:43.810 I/ProximityAuth(31410): [RecentAppsMediator] Package removed: (user=UserHandle{0}) ai.eliza.plugins.phone.test
+03-11 03:16:43.850 W/RWIPackageIntentOps(21736): Registries cleared for package: ai.eliza.plugins.phone.test
+03-11 03:16:43.854 D/MediaProvider( 3648): Deleted 0 Android/media items belonging to ai.eliza.plugins.phone.test on /data/user/0/com.google.android.providers.media.module/databases/external.db
+03-11 03:16:43.862 I/FuseDaemon( 3648): Successfully deleted rows in leveldb for owner_id:  and ownerPackageIdentifier: ai.eliza.plugins.phone.test::0
+03-11 03:16:43.863 D/MediaGrants( 3648): Removed 0 media_grants for 0 user for [ai.eliza.plugins.phone.test]. Reason: Package orphaned
+03-11 03:16:43.895 I/Icing   (21736): doRemovePackageData ai.eliza.plugins.phone.test
+03-11 03:16:43.899 W/SQLiteLog(21736): (28) double-quoted string literal: "ai.eliza.plugins.phone.test"
+03-11 03:16:43.969 I/Finsky  ( 7317): [2] Received an install/uninstall event for package ai.eliza.plugins.phone.test
+03-11 03:16:44.082 I/btw     (22041): Ignoring deleted package: ai.eliza.plugins.phone.test
+03-11 03:16:44.287 D/PersistedStoragePackageUninstalledReceiver(21998): Received android.intent.action.PACKAGE_FULLY_REMOVED for ai.eliza.plugins.phone.test for u0
