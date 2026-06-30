@@ -46,6 +46,34 @@ Capacitor networkStatusChange (connected) events: []                <- Capacitor
 
 So on Android, `NETWORK_STATUS_CHANGE_EVENT` never fires on a connectivity change.
 
+## Root cause — an intermittent Capacitor `PluginLoadException` kills the whole plugin set
+
+The app's boot logcat (`boot-logcat-pluginload.txt`) explains *why* App and Network
+are unavailable. On **5 of 6 cold boots**:
+
+```
+E Capacitor: Error loading plugins.
+E Capacitor: PluginLoadException: Could not find class by class path:
+             io.ionic.backgroundrunner.plugin.BackgroundRunnerPlugin
+    at PluginManager.loadPluginClasses ... BridgeActivity.onCreate
+```
+
+Capacitor's `loadPluginClasses` aborts the **entire** plugin-load loop on the
+first class it can't resolve (`@capacitor/background-runner`), so after that only
+the 9 plugins registered before it survive — **App, Network, and every
+`@elizaos/capacitor-*` native plugin never register that session**. (On the rare
+clean boot all ~25 register, which is why the CDP probes above were
+inconsistent.) Diagnosing why background-runner's class intermittently fails to
+load (it's a Rust/QuickJS-backed plugin) and fixing it at the source needs a
+working `build:android` — broken on this host — so it is flagged here for the
+maintainers rather than guessed at.
+
+**This is exactly why the fallbacks below are the right fix, not belt-and-
+suspenders:** on most app starts the Capacitor `App`/`Network` plugins are simply
+not present, and the app's pause/resume + connectivity lifecycle must not depend
+on a plugin set that fails to load on 5 of 6 boots. The W3C `visibilitychange`
+and `online`/`offline` signals are independent of Capacitor and always fire.
+
 ## Fix
 
 `packages/app/src/mobile-lifecycle.ts` — two symmetric fallbacks:
