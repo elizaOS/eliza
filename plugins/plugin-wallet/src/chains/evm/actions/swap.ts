@@ -777,14 +777,25 @@ export async function buildSwapDetails(
     );
   }
 
-  const rawParams = {
+  const chain = String(parsedResponse.chain ?? "").toLowerCase();
+  const amountMode = resolveAmountMode(parsedResponse.amountMode);
+
+  // `chain` is an arbitrary lowercased string from the model, so the balance
+  // lookup is honestly `string | undefined` (resolveRelativeAmount throws when
+  // it is undefined). Validation of the chain itself happens via parseSwapParams.
+  const chainBalance: string | undefined = (balances as Record<string, string | undefined>)[chain];
+
+  const amount =
+    amountMode === "absolute"
+      ? String(parsedResponse.amount ?? "")
+      : resolveRelativeAmount(amountMode, parsedResponse.amountPercent, chainBalance);
+
+  const swapDetails = parseSwapParams({
     fromToken: String(parsedResponse.inputToken ?? ""),
     toToken: String(parsedResponse.outputToken ?? ""),
-    amount: String(parsedResponse.amount ?? ""),
-    chain: String(parsedResponse.chain ?? "").toLowerCase(),
-  };
-
-  const swapDetails = parseSwapParams(rawParams);
+    amount,
+    chain,
+  });
 
   if (!wp.chains[swapDetails.chain]) {
     throw new EVMError(
@@ -793,35 +804,51 @@ export async function buildSwapDetails(
     );
   }
 
-  const messageText = (message.content.text ?? "").toLowerCase();
-  if (swapDetails.amount === "null") {
-    const balance = balances[swapDetails.chain];
-    if (balance) {
-      if (messageText.includes("half") || messageText.includes("50%")) {
-        return { ...swapDetails, amount: (parseFloat(balance) / 2).toString() };
-      }
-      if (
-        messageText.includes("all") ||
-        messageText.includes("100%") ||
-        messageText.includes("everything")
-      ) {
-        return {
-          ...swapDetails,
-          amount: (parseFloat(balance) * 0.9).toString(),
-        };
-      }
-      const percentMatch = messageText.match(/(\d+)%/);
-      if (percentMatch) {
-        const percentage = parseInt(percentMatch[1], 10) / 100;
-        return {
-          ...swapDetails,
-          amount: (parseFloat(balance) * percentage).toString(),
-        };
-      }
-    }
+  return swapDetails;
+}
+
+const AMOUNT_MODES = ["absolute", "half", "max", "percent"] as const;
+type AmountMode = (typeof AMOUNT_MODES)[number];
+
+function resolveAmountMode(value: unknown): AmountMode {
+  return AMOUNT_MODES.includes(value as AmountMode) ? (value as AmountMode) : "absolute";
+}
+
+/**
+ * Resolve a relative swap size ("half"/"max"/"percent") into an absolute,
+ * human-readable amount string from the connected chain's native balance.
+ * `max` keeps a 10% gas reserve (0.9 * balance). Throws INVALID_PARAMS when the
+ * balance for the chain is unknown or a percentage is out of the 1-100 range.
+ */
+function resolveRelativeAmount(
+  mode: Exclude<AmountMode, "absolute">,
+  rawPercent: unknown,
+  balance: string | undefined
+): string {
+  if (balance === undefined) {
+    throw new EVMError(
+      EVMErrorCode.INVALID_PARAMS,
+      `Cannot resolve a relative swap amount: unknown balance for the selected chain.`
+    );
   }
 
-  return swapDetails;
+  const balanceNum = parseFloat(balance);
+
+  if (mode === "half") {
+    return (balanceNum / 2).toString();
+  }
+  if (mode === "max") {
+    return (balanceNum * 0.9).toString();
+  }
+
+  const percent = Number(rawPercent);
+  if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
+    throw new EVMError(
+      EVMErrorCode.INVALID_PARAMS,
+      `Swap percentage must be between 1 and 100, received: ${String(rawPercent)}`
+    );
+  }
+  return ((balanceNum * percent) / 100).toString();
 }
 
 export const swapAction = {
