@@ -49,6 +49,10 @@ export {
   useWakeListenWindow,
 } from "./useWakeListenWindow";
 export {
+  DESKTOP_FUSED_WAKE_MESSAGE,
+  registerDesktopFusedWake,
+} from "./fused-wake-desktop-bridge";
+export {
   createVoiceCapture,
   type VoiceCaptureBackend,
   type VoiceCaptureFactoryOptions,

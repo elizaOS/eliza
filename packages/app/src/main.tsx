@@ -2825,6 +2825,14 @@ async function main(): Promise<void> {
     installDiarizationPumpHarness();
     installJniVoiceHarness();
   }
+  // Desktop fused on-device wake (#10351): forward native libwakeword fires from
+  // the agent process to the renderer's `eliza:fused-wake` bridge so the
+  // battery-efficient on-device path drives the bottom bar — not just the
+  // Swabble fallback. No-op off-desktop (no electrobun RPC). Awaited before
+  // mountReactApp so `window.__ELIZA_FUSED_WAKE__` is set for the wake
+  // controller's first-render capability probe.
+  const { registerDesktopFusedWake } = await import("@elizaos/ui/voice");
+  registerDesktopFusedWake();
   markStartup("bridges:end", { platform });
   measureStartup("bridges", "bridges:start", "bridges:end");
   mountReactApp();
