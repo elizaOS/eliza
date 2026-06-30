@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { logger } from "@elizaos/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPersistedActiveServer,
@@ -196,5 +197,35 @@ describe("Cloud active server persistence", () => {
       label: "On-device agent",
       apiBase: "eliza-local-agent://ipc",
     });
+  });
+
+  it("logs a warning instead of silently swallowing a failed active-server persist", () => {
+    const server = createPersistedActiveServer({
+      id: "cloud:agent-warn",
+      kind: "cloud",
+      label: "Demo Agent",
+      apiBase: "https://agent-runtime.example.test",
+      accessToken: "cloud-token",
+    });
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("quota exceeded", "QuotaExceededError");
+      });
+
+    try {
+      // A failed persist must not throw (callers treat it as best-effort) but
+      // must surface a diagnostic — previously this was swallowed silently, so
+      // a lost freshly-recovered apiBase re-triggered backfill on every boot.
+      expect(() => savePersistedActiveServer(server)).not.toThrow();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0]?.[0]).toMatch(
+        /\[persistence\] failed to save active server/,
+      );
+    } finally {
+      setItemSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 });

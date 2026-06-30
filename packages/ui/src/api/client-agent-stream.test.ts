@@ -401,4 +401,52 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
     });
     expect(onToken).toHaveBeenCalledWith("hi", "hi");
   });
+
+  it("marks a 60s idle stall as a retryable provider_issue, keeping partial text", async () => {
+    vi.useFakeTimers();
+    try {
+      const encoder = new TextEncoder();
+      const read = vi
+        .fn()
+        // First read delivers a partial token, then the provider hangs — the
+        // second read never resolves, so only the 60s idle timer can settle it.
+        .mockResolvedValueOnce({
+          done: false,
+          value: encoder.encode(
+            'data: {"type":"token","text":"par","fullText":"par"}\n\n',
+          ),
+        })
+        .mockReturnValueOnce(new Promise(() => {}));
+      const cancel = vi.fn(async () => {});
+      const request = vi.fn(
+        async () =>
+          ({
+            ok: true,
+            status: 200,
+            body: { getReader: () => ({ read, cancel }) },
+          }) as unknown as Response,
+      );
+      const client = new ElizaClient("http://agent.example:31337", "token");
+      client.setRequestTransport({ request });
+
+      const resultPromise = client.streamChatEndpoint(
+        "/api/conversations/conversation-id/messages/stream",
+        "hello",
+        vi.fn(),
+      );
+
+      // Process the partial token, then trip the 60s idle timeout on the hang.
+      await vi.advanceTimersByTimeAsync(60_000);
+      const result = await resultPromise;
+
+      // The stall is now a retryable provider issue (renderer shows Retry)
+      // instead of an ambiguous interrupt, and the partial text is retained.
+      expect(result.completed).toBe(false);
+      expect(result.failureKind).toBe("provider_issue");
+      expect(result.text).toContain("par");
+      expect(cancel).toHaveBeenCalledWith("elizaos-sse-idle-timeout");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
