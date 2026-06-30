@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest" tests="4" failures="0" errors="0" skipped="0" time="1.314" timestamp="2026-06-30T08:10:20" hostname="localhost">
+  <properties>
+    <property name="device" value="Pixel 6a - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":elizaos-capacitor-mobile-signals" />
+  </properties>
+  <testcase name="usageSummaryIsBoundedWhenAccessIsGranted" classname="ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest" time="0.016" />
+  <testcase name="snapshotReadsNativeDeviceState" classname="ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest" time="0.001" />
+  <testcase name="showcaseActivityRendersReaderOutput" classname="ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest" time="0.734" />
+  <testcase name="usageAccessStatusMatchesAppOps" classname="ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest" time="0.03" />
+</testsuite>

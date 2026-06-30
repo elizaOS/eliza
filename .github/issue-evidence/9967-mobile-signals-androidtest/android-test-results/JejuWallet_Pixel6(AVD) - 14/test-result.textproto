@@ -1,0 +1,245 @@
+# proto-message: google.testing.platform.proto.api.core.TestSuiteResult
+# 2026-06-30T08:10:21.542796585Z:
+test_suite_meta_data {
+  scheduled_test_case_count: 4
+  device {
+    id: "emulator-5554"
+    friendly_name: "primary"
+  }
+}
+test_status: PASSED
+test_result {
+  test_case {
+    test_class: "MobileSignalsDeviceReaderInstrumentedTest"
+    test_package: "ai.eliza.plugins.mobilesignals"
+    test_method: "usageSummaryIsBoundedWhenAccessIsGranted"
+    start_time {
+      seconds: 1782807019
+      nanos: 487000000
+    }
+    end_time {
+      seconds: 1782807019
+      nanos: 543000000
+    }
+    device {
+      id: "emulator-5554"
+      friendly_name: "primary"
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest-usageSummaryIsBoundedWhenAccessIsGranted.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "MobileSignalsDeviceReaderInstrumentedTest"
+    test_package: "ai.eliza.plugins.mobilesignals"
+    test_method: "snapshotReadsNativeDeviceState"
+    start_time {
+      seconds: 1782807019
+      nanos: 566000000
+    }
+    end_time {
+      seconds: 1782807019
+      nanos: 567000000
+    }
+    device {
+      id: "emulator-5554"
+      friendly_name: "primary"
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest-snapshotReadsNativeDeviceState.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "MobileSignalsDeviceReaderInstrumentedTest"
+    test_package: "ai.eliza.plugins.mobilesignals"
+    test_method: "showcaseActivityRendersReaderOutput"
+    start_time {
+      seconds: 1782807019
+      nanos: 575000000
+    }
+    end_time {
+      seconds: 1782807020
+      nanos: 359000000
+    }
+    device {
+      id: "emulator-5554"
+      friendly_name: "primary"
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest-showcaseActivityRendersReaderOutput.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+    }
+  }
+}
+test_result {
+  test_case {
+    test_class: "MobileSignalsDeviceReaderInstrumentedTest"
+    test_package: "ai.eliza.plugins.mobilesignals"
+    test_method: "usageAccessStatusMatchesAppOps"
+    start_time {
+      seconds: 1782807020
+      nanos: 870000000
+    }
+    end_time {
+      seconds: 1782807020
+      nanos: 897000000
+    }
+    device {
+      id: "emulator-5554"
+      friendly_name: "primary"
+    }
+  }
+  test_status: PASSED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/logcat-ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest-usageAccessStatusMatchesAppOps.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/cpuinfo"
+    }
+  }
+}
+output_artifact {
+  label {
+    label: "test-results.log"
+    namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
+  }
+  source_path {
+    path: "/home/shaw/milady/eliza-wt-9967-mobile-signals/plugins/plugin-native-mobile-signals/android/build/outputs/androidTest-results/connected/debug/JejuWallet_Pixel6(AVD) - 14/testlog/test-results.log"
+  }
+  type: TEST_DATA
+  mime_type: "text/plain"
+}

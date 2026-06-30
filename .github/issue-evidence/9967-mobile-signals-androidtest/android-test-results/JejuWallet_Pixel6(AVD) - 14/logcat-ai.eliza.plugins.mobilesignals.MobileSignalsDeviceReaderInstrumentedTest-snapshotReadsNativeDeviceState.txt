@@ -1,0 +1,2 @@
+06-30 01:10:18.750 10327 10345 I TestRunner: started: snapshotReadsNativeDeviceState(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)
+06-30 01:10:18.778 10327 10345 I TestRunner: finished: snapshotReadsNativeDeviceState(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)

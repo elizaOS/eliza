@@ -1,0 +1,93 @@
+06-30 01:10:18.780 10327 10345 I TestRunner: started: showcaseActivityRendersReaderOutput(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)
+06-30 01:10:18.801 10327 10345 W Settings: Setting always_finish_activities has moved from android.provider.Settings.System to android.provider.Settings.Global, returning read-only value.
+06-30 01:10:18.831   893   945 D SplashScreenView: Build android.window.SplashScreenView{e38affb V.E...... ......ID 0,0-0,0}
+06-30 01:10:18.831   893   945 D SplashScreenView: Icon: view: null drawable: null size: 0
+06-30 01:10:18.831   893   945 D SplashScreenView: Branding: view: android.view.View{ae39818 G.ED..... ......I. 0,0-0,0 #10204ef android:id/splashscreen_branding_view} drawable: null size w: 0 h: 0
+06-30 01:10:18.852   420   420 I BpBinder: onLastStrongRef automatically unlinking death recipients:
+06-30 01:10:18.880  1171  2044 D EGL_emulation: app_time_stats: avg=3450.15ms min=10.47ms max=65190.94ms count=19
+06-30 01:10:18.896 10327 10352 D libEGL  : loaded /vendor/lib64/egl/libEGL_emulation.so
+06-30 01:10:18.897 10327 10327 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca in: PRE_ON_CREATE
+06-30 01:10:18.898 10327 10327 V ActivityScenario: Activity lifecycle changed event received but ignored because the reported transition was not ON_CREATE while the last known transition was PRE_ON_CREATE
+06-30 01:10:18.899 10327 10352 D libEGL  : loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+06-30 01:10:18.905 10327 10352 D libEGL  : loaded /vendor/lib64/egl/libGLESv2_emulation.so
+06-30 01:10:18.953 10327 10327 D CompatibilityChangeReporter: Compat change id reported: 210923482; UID 10203; state: ENABLED
+06-30 01:10:18.967 10327 10327 D CompatibilityChangeReporter: Compat change id reported: 171228096; UID 10203; state: ENABLED
+06-30 01:10:18.989 10327 10327 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca in: CREATED
+06-30 01:10:18.990 10327 10327 V ActivityScenario: Update currentActivityStage to CREATED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca
+06-30 01:10:18.991 10327 10327 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca in: STARTED
+06-30 01:10:18.991 10327 10327 V ActivityScenario: Update currentActivityStage to STARTED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca
+06-30 01:10:18.994 10327 10327 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca in: RESUMED
+06-30 01:10:18.994 10327 10327 V ActivityScenario: Update currentActivityStage to RESUMED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca
+06-30 01:10:18.999 10327 10327 D CompatibilityChangeReporter: Compat change id reported: 237531167; UID 10203; state: DISABLED
+06-30 01:10:19.001 10327 10327 W OpenGLRenderer: Unknown dataspace 0
+06-30 01:10:19.036   420   600 W ServiceManagerCppClient: Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10203 pid=0
+06-30 01:10:19.037   420   600 D PermissionCache: checking android.permission.ROTATE_SURFACE_FLINGER for uid=10203 => denied (169 us)
+06-30 01:10:19.037   420   600 W ServiceManagerCppClient: Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10203 pid=0
+06-30 01:10:19.037   420   600 D PermissionCache: checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10203 => denied (51 us)
+06-30 01:10:19.037   420   600 W ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10203 pid=0
+06-30 01:10:19.037   420   600 D PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10203 => denied (68 us)
+06-30 01:10:19.037   420   656 W ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10203 pid=10327
+06-30 01:10:19.037   420   656 D PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10203 => denied (113 us)
+06-30 01:10:19.044   893   977 D EGL_emulation: app_time_stats: avg=19009.37ms min=19009.37ms max=19009.37ms count=1
+06-30 01:10:19.049 10327 10350 W OpenGLRenderer: Failed to initialize 101010-2 format, error = EGL_SUCCESS
+06-30 01:10:19.067   157   157 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.mapper@4.0::IMapper/default in either framework or device VINTF manifest.
+06-30 01:10:19.067 10327 10350 I Gralloc4: mapper 4.x is not supported
+06-30 01:10:19.207   893   982 D KeyguardService: setOccluded(true)
+06-30 01:10:19.213   893   982 D KeyguardViewMediator: setOccluded(true)
+06-30 01:10:19.221   893   977 D EGL_emulation: app_time_stats: avg=3828.28ms min=15.87ms max=64334.49ms count=17
+06-30 01:10:19.222   893   893 D KeyguardViewMediator: handleSetOccluded(true)
+06-30 01:10:19.339   549   959 W ServiceManagerCppClient: Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10203 pid=0
+06-30 01:10:19.339   549   959 D PermissionCache: checking android.permission.ROTATE_SURFACE_FLINGER for uid=10203 => denied (214 us)
+06-30 01:10:19.339   549   959 W ServiceManagerCppClient: Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10203 pid=0
+06-30 01:10:19.339   549   959 D PermissionCache: checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10203 => denied (21 us)
+06-30 01:10:19.339   549   959 W ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10203 pid=0
+06-30 01:10:19.339   549   959 D PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10203 => denied (15 us)
+06-30 01:10:19.348   549   568 W ziparchive: Unable to open '/data/app/~~cniB2akZX4QdxPLJHOHgZg==/ai.eliza.plugins.mobilesignals.test-7fIvmwfDsIQVXpPWQn_Qig==/base.dm': No such file or directory
+06-30 01:10:19.354   549   568 I ActivityTaskManager: Displayed ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity for user 0: +523ms
+06-30 01:10:19.360  1171  2452 D OneSearchSuggestProvider: Shut down the binder channel
+06-30 01:10:19.362  1171  1193 I IPCThreadState: oneway function results for code 2 on binder at 0x7dba111c0510 will be dropped but finished with status UNKNOWN_TRANSACTION
+06-30 01:10:19.373  1171  1229 I ImeTracker: com.google.android.apps.nexuslauncher:b31f9618: onRequestHide at ORIGIN_CLIENT_HIDE_SOFT_INPUT reason HIDE_SOFT_INPUT
+06-30 01:10:19.375   549   959 I ImeTracker: ai.eliza.plugins.mobilesignals.test:955d77b4: onRequestHide at ORIGIN_SERVER_HIDE_INPUT reason HIDE_UNSPECIFIED_WINDOW
+06-30 01:10:19.376   549   959 I ImeTracker: ai.eliza.plugins.mobilesignals.test:955d77b4: onCancelled at PHASE_SERVER_SHOULD_HIDE
+06-30 01:10:19.373  1913  9577 I PBSessionCacheImpl: Deleted sessionId[8415245778896138] from persistence.
+06-30 01:10:19.381  1913  2931 W SearchServiceCore: Abort, client detached.
+06-30 01:10:19.383  1095  1382 D BtGatt.ScanManager: uid 10128 isForeground true scanMode -1
+06-30 01:10:19.384  1095  1382 D BtGatt.ScanManager: uid 10128 isForeground true scanMode -1
+06-30 01:10:19.389   549  2249 I ImeTracker: com.google.android.apps.nexuslauncher:b31f9618: onCancelled at PHASE_SERVER_CLIENT_FOCUSED
+06-30 01:10:19.396  1654  1654 I GoogleInputMethodService: GoogleInputMethodService.onFinishInput():3227
+06-30 01:10:19.400  1654  1654 I GoogleInputMethodService: GoogleInputMethodService.updateDeviceLockedStatus():2087 repeatCheckTimes = 0, unlocked = true
+06-30 01:10:19.404  1654  1654 I GoogleInputMethodService: GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=ai.eliza.plugins.mobilesignals.test fieldId=0 fieldName=null extras=null}, false)
+06-30 01:10:19.405  1654  1654 I GoogleInputMethodService: GoogleInputMethodService.shouldHideHeaderOnInitialState():4008 ShouldHideHeaderOnInitialState = false
+06-30 01:10:19.410  1654  1654 I GoogleInputMethodService: GoogleInputMethodService.updateDeviceLockedStatus():2087 repeatCheckTimes = 2, unlocked = true
+06-30 01:10:19.416 10327 10327 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca in: PAUSED
+06-30 01:10:19.416 10327 10327 V ActivityScenario: Update currentActivityStage to PAUSED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca
+06-30 01:10:19.435   420   420 I BpBinder: onLastStrongRef automatically unlinking death recipients:
+06-30 01:10:19.438 10327 10327 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8 in: PRE_ON_CREATE
+06-30 01:10:19.439 10327 10327 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8
+06-30 01:10:19.448 10327 10327 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8 in: CREATED
+06-30 01:10:19.448 10327 10327 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8
+06-30 01:10:19.449 10327 10327 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8 in: STARTED
+06-30 01:10:19.449 10327 10327 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8
+06-30 01:10:19.451 10327 10327 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8 in: RESUMED
+06-30 01:10:19.452 10327 10327 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8
+06-30 01:10:19.523   549   568 I ActivityTaskManager: Displayed ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity for user 0: +123ms
+06-30 01:10:19.532   893  3080 D KeyguardService: setOccluded(false)
+06-30 01:10:19.532   893  3080 D KeyguardViewMediator: setOccluded(false)
+06-30 01:10:19.545  1095  1382 D BtGatt.ScanManager: uid 10128 isForeground true scanMode -1
+06-30 01:10:19.545  1095  1382 D BtGatt.ScanManager: uid 10128 isForeground true scanMode -1
+06-30 01:10:19.554  5359  5674 I FontLog : Received query Noto Color Emoji Compat, URI content://com.google.android.gms.fonts [CONTEXT service_id=132 ]
+06-30 01:10:19.556  5359  5674 I FontLog : Query [emojicompat-emoji-font] resolved to {Noto Color Emoji Compat, wdth 100.0, wght 400, ital 0.0, bestEffort false} [CONTEXT service_id=132 ]
+06-30 01:10:19.559  5359  5674 I FontLog : Fetch {Noto Color Emoji Compat, wdth 100.0, wght 400, ital 0.0, bestEffort false} end status Status{statusCode=SUCCESS, resolution=null} [CONTEXT service_id=132 ]
+06-30 01:10:19.567 10327 10327 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca in: STOPPED
+06-30 01:10:19.568  5359  5371 I FontLog : Pulling font file for id = 4, cache size = 2 [CONTEXT service_id=132 ]
+06-30 01:10:19.570   420   420 I BpBinder: onLastStrongRef automatically unlinking death recipients:
+06-30 01:10:19.572 10327 10327 V ActivityScenario: Update currentActivityStage to STOPPED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca
+06-30 01:10:19.575 10327 10327 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@550a2ca in: DESTROYED
+06-30 01:10:19.576 10327 10327 V ActivityScenario: Update currentActivityStage to DESTROYED, currentActivity=null
+06-30 01:10:19.577 10327 10327 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=falsecallback=android.view.ViewRootImpl$$ExternalSyntheticLambda17@1e01c46
+06-30 01:10:19.582   549   980 W InputManager-JNI: Input channel object '1b359f0 ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity (client)' was disposed without first being removed with the input manager!
+06-30 01:10:19.582  5359  5371 I FontLog : Pulling font file for id = 4, cache size = 2 [CONTEXT service_id=132 ]
+06-30 01:10:19.587 10327 10327 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8 in: PAUSED
+06-30 01:10:19.587 10327 10327 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@94e69b8
+06-30 01:10:19.597   893   893 D KeyguardViewMediator: handleSetOccluded(false)
+06-30 01:10:19.617 10327 10345 I TestRunner: finished: showcaseActivityRendersReaderOutput(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)

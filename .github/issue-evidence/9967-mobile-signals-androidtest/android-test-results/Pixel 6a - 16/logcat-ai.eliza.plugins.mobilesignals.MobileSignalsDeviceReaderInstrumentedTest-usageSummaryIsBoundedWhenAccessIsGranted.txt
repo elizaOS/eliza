@@ -1,0 +1,2 @@
+03-11 03:36:46.516  9653  9676 I TestRunner: started: usageSummaryIsBoundedWhenAccessIsGranted(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)
+03-11 03:36:46.533  9653  9676 I TestRunner: finished: usageSummaryIsBoundedWhenAccessIsGranted(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)

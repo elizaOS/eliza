@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity"
+            android:exported="true"
+            android:label="Mobile Signals Reader Test"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+    </application>
+</manifest>

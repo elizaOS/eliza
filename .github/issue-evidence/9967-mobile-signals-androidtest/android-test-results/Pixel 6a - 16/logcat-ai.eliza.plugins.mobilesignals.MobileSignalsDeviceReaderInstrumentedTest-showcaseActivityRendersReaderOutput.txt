@@ -1,0 +1,1015 @@
+03-11 03:36:46.565  9653  9676 I TestRunner: started: showcaseActivityRendersReaderOutput(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)
+03-11 03:36:46.569  9653  9676 W Settings: Setting always_finish_activities has moved from android.provider.Settings.System to android.provider.Settings.Global, returning read-only value.
+03-11 03:36:46.579  1676  2234 V GrammaticalInflectionUtils: AttributionSource: android.content.AttributionSource@46d234c does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+03-11 03:36:46.582   621   762 I libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0xb4000075f27d0320) with descriptor: '(not cached)'
+03-11 03:36:46.583  8018  8018 D RecentsView: onTaskDisplayChanged: 58142, new displayId = 0
+03-11 03:36:46.589  2086  2111 W DisplayDisconnectTransitionHandler: No disconnect change found in the transition, not handling request.
+03-11 03:36:46.591  8018  8018 D b/417220811: invalidateLoadedTasks - previous requestLoadId: -1
+03-11 03:36:46.591  8018  8018 D b/417220811: invalidateLoadedTasks - previous requestLoadId: -1
+03-11 03:36:46.596  9653  9653 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee in: PRE_ON_CREATE
+03-11 03:36:46.596  9653  9653 V ActivityScenario: Activity lifecycle changed event received but ignored because the reported transition was not ON_CREATE while the last known transition was PRE_ON_CREATE
+03-11 03:36:46.598  1701  1701 I pixel-thermal: VIRTUAL-SKIN:40.4186 raw data: VIRTUAL-SKIN:40418.6
+03-11 03:36:46.599  1701  1701 I pixel-thermal: VIRTUAL-SKIN:40.4186 raw data: VIRTUAL-SKIN:40418.6
+03-11 03:36:46.599  1701  1701 I pixel-thermal: neutral_therm:38.539 raw data: neutral_therm:38539
+03-11 03:36:46.599  1701  1701 I pixel-thermal: cellular-emergency:40.4186 raw data: cellular-emergency:40418.6
+03-11 03:36:46.599  1701  1701 I pixel-thermal: usb_pwr_therm2:36.202 raw data: usb_pwr_therm2:36202
+03-11 03:36:46.599  1701  1701 I pixel-thermal: VIRTUAL-USB-UI:0 raw data: USB2-MINUS-CHG:-10214 VIRTUAL-USB-UI:0 charger_skin_therm:46416 usb_pwr_therm2:36202
+03-11 03:36:46.601  2086  2120 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): android.view.ViewRootImpl$$ExternalSyntheticLambda25@dfac185
+03-11 03:36:46.615  2086  2111 D KeyguardViewMediator: OccludeAnimator#onAnimationStart. Set occluded = true.
+03-11 03:36:46.615  2086  2111 D KeyguardViewMediator: setOccluded(true)
+03-11 03:36:46.615  2086  2086 D KeyguardViewMediator: handleSetOccluded(true)
+03-11 03:36:46.616  2086  2086 D KeyguardViewMediator: KeyguardViewMediator queue processing message: SET_OCCLUDED
+03-11 03:36:46.616  2086  2086 I KeyguardTransitionRepository: STARTED transition: TransitionStep(from=LOCKSCREEN, to=OCCLUDED, value=0.0, transitionState=STARTED, ownerName=FromLockscreenTransitionInteractor)
+03-11 03:36:46.619  2086  2130 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=0, disable2=0, animate=true)
+03-11 03:36:46.621  8018  8018 D b/417220811: invalidateLoadedTasks - previous requestLoadId: -1
+03-11 03:36:46.625  9653  9653 E ilesignals.test: Invalid resource ID 0x00000000.
+03-11 03:36:46.630  9653  9653 D CompatChangeReporter: Compat change id reported: 309578419; UID 10333; state: ENABLED
+03-11 03:36:46.630  9653  9653 D DesktopExperienceFlags: Toggle override initialized to: false
+03-11 03:36:46.630  9653  9653 D DesktopModeFlags: Toggle override initialized to: OVERRIDE_UNSET
+03-11 03:36:46.633  9653  9653 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee in: CREATED
+03-11 03:36:46.633  9653  9653 V ActivityScenario: Update currentActivityStage to CREATED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee
+03-11 03:36:46.634  9653  9653 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee in: STARTED
+03-11 03:36:46.635  9653  9653 V ActivityScenario: Update currentActivityStage to STARTED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee
+03-11 03:36:46.645  9653  9653 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee in: RESUMED
+03-11 03:36:46.645  9653  9653 V ActivityScenario: Update currentActivityStage to RESUMED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee
+03-11 03:36:46.650  9653  9653 D CompatChangeReporter: Compat change id reported: 349153669; UID 10333; state: ENABLED
+03-11 03:36:46.652  2086  2086 D UdfpsTouchOverlayBinder: [com.android.systemui.biometrics.ui.view.UdfpsTouchOverlay{4c0d55f V.E...... ........ 0,0-1080,2400 #7f0a0992 app:id/udfps_touch_overlay}]: update shouldHandleTouches=false
+03-11 03:36:46.653  1731  1731 I FingerprintSession: setIgnoreDisplayTouches 1
+03-11 03:36:46.653  1731  1731 I FingerprintSession: onContextChanged
+03-11 03:36:46.661  9653  9653 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee in: PAUSED
+03-11 03:36:46.661  9653  9653 V ActivityScenario: Update currentActivityStage to PAUSED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee
+03-11 03:36:46.662  9653  9653 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee in: RESUMED
+03-11 03:36:46.662  9653  9653 V ActivityScenario: Update currentActivityStage to RESUMED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee
+03-11 03:36:46.671  9653  9653 D VRI[MobileSignalsReaderShowcaseActivity]: WindowInsets changed: 1080x2400 statusBars:[0,132,0,0] navigationBars:[0,0,0,63] mandatorySystemGestures:[0,164,0,84]
+03-11 03:36:46.671  9653  9653 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): android.view.ViewRootImpl$$ExternalSyntheticLambda25@2fa3f5a
+03-11 03:36:46.672  9653  9653 I HWUI    : Using FreeType backend (prop=Auto)
+03-11 03:36:46.678   621   647 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10333 pid=9653
+03-11 03:36:46.678   621   647 D libbinder.PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10333 => denied (152 us)
+03-11 03:36:46.678   621   647 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10333 pid=9653
+03-11 03:36:46.678   621   647 D libbinder.PermissionCache: checking android.permission.ROTATE_SURFACE_FLINGER for uid=10333 => denied (55 us)
+03-11 03:36:46.678   621   647 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10333 pid=9653
+03-11 03:36:46.678   621   647 D libbinder.PermissionCache: checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10333 => denied (72 us)
+03-11 03:36:46.678   621   647 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.READ_FRAME_BUFFER from uid=10333 pid=9653
+03-11 03:36:46.678   621   647 D libbinder.PermissionCache: checking android.permission.READ_FRAME_BUFFER for uid=10333 => denied (89 us)
+03-11 03:36:46.698  8018  8018 D b/417220811: invalidateLoadedTasks - previous requestLoadId: -1
+03-11 03:36:46.705  1676  2344 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10333 pid=0
+03-11 03:36:46.705  1676  2344 D libbinder.PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10333 => denied (175 us)
+03-11 03:36:46.705  1676  2344 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10333 pid=0
+03-11 03:36:46.705  1676  2344 D libbinder.PermissionCache: checking android.permission.ROTATE_SURFACE_FLINGER for uid=10333 => denied (48 us)
+03-11 03:36:46.705  1676  2344 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10333 pid=0
+03-11 03:36:46.705  1676  2344 D libbinder.PermissionCache: checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10333 => denied (32 us)
+03-11 03:36:46.705  1676  2344 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.READ_FRAME_BUFFER from uid=10333 pid=0
+03-11 03:36:46.705  1676  2344 D libbinder.PermissionCache: checking android.permission.READ_FRAME_BUFFER for uid=10333 => denied (27 us)
+03-11 03:36:46.710  1676  1734 I ActivityTaskManager: Displayed ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity for user 0: +133ms
+03-11 03:36:46.717  7273  7273 I block_engine.manager: onEvent from com.android.systemui (false)
+03-11 03:36:46.803   623   679 E hwc-display: [PrimaryDisplay] resetColorMappingInfoForClientComp:: resetColorMappingInfo() idx=3 error(-22)
+03-11 03:36:46.803   623   679 E hwc-display: Fail to open file /data/vendor/log/hwc/PrimaryDisplay_hwc_error_log0.txt, error: Permission denied
+03-11 03:36:46.803   623   679 E hwc-display: Fail to open file /data/log/PrimaryDisplay_hwc_error_log0.txt, error: No such file or directory
+03-11 03:36:46.803   623   679 E hwc-display: Unable to open log file for PrimaryDisplay_hwc_error_log0.txt
+03-11 03:36:46.803   623   679 E hwc-display: [PrimaryDisplay] resetColorMappingInfoForClientComp:: resetColorMappingInfo() idx=4 error(-22)
+03-11 03:36:46.803   623   679 E hwc-display: Fail to open file /data/vendor/log/hwc/PrimaryDisplay_hwc_error_log0.txt, error: Permission denied
+03-11 03:36:46.803   623   679 E hwc-display: Fail to open file /data/log/PrimaryDisplay_hwc_error_log0.txt, error: No such file or directory
+03-11 03:36:46.803   623   679 E hwc-display: Unable to open log file for PrimaryDisplay_hwc_error_log0.txt
+03-11 03:36:46.800   623   623 W HwBinder:623_2: type=1400 audit(0.0:10674): avc:  denied  { search } for  name="log" dev="dm-65" ino=236 scontext=u:r:hal_graphics_composer_default:s0 tcontext=u:object_r:vendor_log_file:s0 tclass=dir permissive=0
+03-11 03:36:46.800   623   623 W HwBinder:623_2: type=1400 audit(0.0:10675): avc:  denied  { search } for  name="log" dev="dm-65" ino=236 scontext=u:r:hal_graphics_composer_default:s0 tcontext=u:object_r:vendor_log_file:s0 tclass=dir permissive=0
+03-11 03:36:46.800   623   623 W HwBinder:623_2: type=1400 audit(0.0:10676): avc:  denied  { search } for  name="log" dev="dm-65" ino=236 scontext=u:r:hal_graphics_composer_default:s0 tcontext=u:object_r:vendor_log_file:s0 tclass=dir permissive=0
+03-11 03:36:46.800   623   623 W HwBinder:623_2: type=1400 audit(0.0:10677): avc:  denied  { search } for  name="log" dev="dm-65" ino=236 scontext=u:r:hal_graphics_composer_default:s0 tcontext=u:object_r:vendor_log_file:s0 tclass=dir permissive=0
+03-11 03:36:46.822  7273  7273 I block_engine.manager: onEvent from com.android.systemui (false)
+03-11 03:36:46.872  9653  9661 I ilesignals.test: Compiler allocated 5038KB to compile void android.view.ViewRootImpl.performTraversals()
+03-11 03:36:46.971  7273  7273 I block_engine.manager: onEvent from com.android.systemui (false)
+03-11 03:36:46.976  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: DockObserver
+03-11 03:36:46.976  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:46.976  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: SurfaceFlinger
+03-11 03:36:46.977  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: SurfaceFlingerAIDL
+03-11 03:36:46.977  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: accessibility
+03-11 03:36:46.978  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: account
+03-11 03:36:46.978  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: activity
+03-11 03:36:46.978  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: activity_task
+03-11 03:36:46.978  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: adb
+03-11 03:36:46.979  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: adservices_manager
+03-11 03:36:46.979  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: advanced_protection
+03-11 03:36:46.979  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: alarm
+03-11 03:36:46.979  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ambient_context
+03-11 03:36:46.979  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.cameraservice.service.ICameraService/default
+03-11 03:36:46.980  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.devicestate.IDeviceStateService/default
+03-11 03:36:46.980  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.location.altitude.IAltitudeService/default
+03-11 03:36:46.981  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.sensorservice.ISensorManager/default
+03-11 03:36:46.983  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.stats.IStats/default
+03-11 03:36:46.980  9720  9720 W service : type=1400 audit(0.0:10678): avc:  denied  { call } for  scontext=u:r:shell:s0 tcontext=u:r:hal_authsecret_citadel:s0 tclass=binder permissive=0
+03-11 03:36:46.984  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.vibrator.IVibratorControlService/default
+03-11 03:36:46.985  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.authsecret.IAuthSecret/default
+03-11 03:36:46.985  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937490, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.985  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.biometrics.fingerprint.IFingerprint/default
+03-11 03:36:46.985  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937494, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.986  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.bluetooth.IBluetoothHci/default
+03-11 03:36:46.986  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937502, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.988  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.bluetooth.audio.IBluetoothAudioProviderFactory/default
+03-11 03:36:46.988  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937514, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.989  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.bluetooth.finder.IBluetoothFinder/default
+03-11 03:36:46.989  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937526, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.989  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.bluetooth.ranging.IBluetoothChannelSounding/default
+03-11 03:36:46.989  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937532, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.989  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.boot.IBootControl/default
+03-11 03:36:46.989  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937537, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.990  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.camera.provider.ICameraProvider/internal/0
+03-11 03:36:46.990  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937541, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.992  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.contexthub.IContextHub/default
+03-11 03:36:46.992  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937549, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.993  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.drm.IDrmFactory/clearkey
+03-11 03:36:46.993  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.drm.IDrmFactory/widevine
+03-11 03:36:46.994  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.dumpstate.IDumpstateDevice/default
+03-11 03:36:46.994  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937563, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.994  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.gatekeeper.IGatekeeper/default
+03-11 03:36:46.994  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937567, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.994  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.gnss.IGnss/default
+03-11 03:36:46.994  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937571, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.994  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.graphics.allocator.IAllocator/default
+03-11 03:36:46.995  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.health.IHealth/default
+03-11 03:36:46.995  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937580, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.995  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.input.processor.IInputProcessor/default
+03-11 03:36:46.995  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937584, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.995  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.media.c2.IComponentStore/default
+03-11 03:36:46.995  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.media.c2.IComponentStore/default1
+03-11 03:36:46.996  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.media.c2.IComponentStore/software
+03-11 03:36:46.996  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.memtrack.IMemtrack/default
+03-11 03:36:46.996  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937603, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.996  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.neuralnetworks.IDevice/google-edgetpu
+03-11 03:36:46.996  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.nfc.INfc/default
+03-11 03:36:46.996  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937612, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.997  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.oemlock.IOemLock/default
+03-11 03:36:46.997  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937616, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.997  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.power.IPower/default
+03-11 03:36:46.997  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937620, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.997  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.power.stats.IPowerStats/default
+03-11 03:36:46.997  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937624, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:46.998  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.security.keymint.IRemotelyProvisionedComponent/default
+03-11 03:36:47.001  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.sensors.ISensors/default
+03-11 03:36:47.001  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937650, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.001  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.thermal.IThermal/default
+03-11 03:36:47.001  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937654, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.003  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.usb.IUsb/default
+03-11 03:36:47.003  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937660, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.004  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.usb.gadget.IUsbGadget/default
+03-11 03:36:47.004  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937668, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.005  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.vibrator.IVibrator/default
+03-11 03:36:47.005  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937683, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.006  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.weaver.IWeaver/default
+03-11 03:36:47.006  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937695, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.007  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.wifi.IWifi/default
+03-11 03:36:47.007  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937702, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.007  2086  2120 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): null
+03-11 03:36:47.007  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.wifi.supplicant.ISupplicant/default
+03-11 03:36:47.007  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937709, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.007  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.os.UpdateEngineService
+03-11 03:36:47.007  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937715, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.008  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.os.UpdateEngineStableService
+03-11 03:36:47.008  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937722, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.009  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.apc
+03-11 03:36:47.009  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.authorization
+03-11 03:36:47.009  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.identity
+03-11 03:36:47.010  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.legacykeystore
+03-11 03:36:47.010  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.maintenance
+03-11 03:36:47.010  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.metrics
+03-11 03:36:47.011  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.keystore2.IKeystoreService/default
+03-11 03:36:47.011  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.net.netd.INetd/default
+03-11 03:36:47.011  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937771, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.012  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.suspend.ISystemSuspend/default
+03-11 03:36:47.012  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937775, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.012  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.vmtethering.IVmTethering
+03-11 03:36:47.012  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.vold.IVold/default
+03-11 03:36:47.012  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937784, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.012  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: aocx.IAocx/default
+03-11 03:36:47.012  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937788, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.012  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_binding
+03-11 03:36:47.013  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.013  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_function
+03-11 03:36:47.013  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_hibernation
+03-11 03:36:47.013  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_integrity
+03-11 03:36:47.013  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_prediction
+03-11 03:36:47.013  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_search
+03-11 03:36:47.013  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: appops
+03-11 03:36:47.014  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: appwidget
+03-11 03:36:47.014  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937832, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.014  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: attention
+03-11 03:36:47.014  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.014  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: attestation_verification
+03-11 03:36:47.014  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: audio
+03-11 03:36:47.014  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: auth
+03-11 03:36:47.015  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: authentication_policy
+03-11 03:36:47.015  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: autofill
+03-11 03:36:47.015  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: background_install_control
+03-11 03:36:47.015  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: backup
+03-11 03:36:47.015  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: battery
+03-11 03:36:47.015  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.015  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: batteryproperties
+03-11 03:36:47.015  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: batterystats
+03-11 03:36:47.016  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: binder_calls_stats
+03-11 03:36:47.016  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.016  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: binder_stats_consumer
+03-11 03:36:47.016  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: biometric
+03-11 03:36:47.016  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: blob_store
+03-11 03:36:47.016  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: bluetooth_manager
+03-11 03:36:47.016  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: bugreport
+03-11 03:36:47.017  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: cacheinfo
+03-11 03:36:47.017  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.017  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: carrier_config
+03-11 03:36:47.017  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: clipboard
+03-11 03:36:47.017  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: color_display
+03-11 03:36:47.018  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.edgetpu.IEdgeTpuAppService/default
+03-11 03:36:47.018  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.hardware.pixel.display.IDisplay/default
+03-11 03:36:47.018  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937953, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.018  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.input.ITouchContextService/default
+03-11 03:36:47.018  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937957, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.018  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.input.ITwoshayFileDumpService/touchflow_default
+03-11 03:36:47.018  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937961, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.019  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.input.ITwoshayFileDumpService/twoshay
+03-11 03:36:47.019  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8937965, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.019  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.pixel.camera.services.binder.IServiceBinder/default
+03-11 03:36:47.023  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.pixel.camera.services.cameraidremapper.ICameraIdRemapper/default
+03-11 03:36:47.023  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.pixel.camera.services.lyricconfigprovider.ILyricConfigProvider/default
+03-11 03:36:47.024  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.pixel.shared_modem_platform.ISharedModemPlatform/default
+03-11 03:36:47.024  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8938012, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.024  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: companiondevice
+03-11 03:36:47.024  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: connectivity
+03-11 03:36:47.024  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: connectivity_native
+03-11 03:36:47.024  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: connmetrics
+03-11 03:36:47.025  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: content
+03-11 03:36:47.025  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: content_capture
+03-11 03:36:47.025  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: content_suggestions
+03-11 03:36:47.025  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: contexthub
+03-11 03:36:47.025  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: contextual_search
+03-11 03:36:47.025  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: country_detector
+03-11 03:36:47.026  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: cpuinfo
+03-11 03:36:47.026  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.026  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: credential
+03-11 03:36:47.026  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: crossprofileapps
+03-11 03:36:47.026  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dataloader_manager
+03-11 03:36:47.026  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dbinfo
+03-11 03:36:47.026  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.026  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_config
+03-11 03:36:47.026  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.026  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_identifiers
+03-11 03:36:47.027  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_lock
+03-11 03:36:47.027  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_policy
+03-11 03:36:47.027  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_state
+03-11 03:36:47.027  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: deviceidle
+03-11 03:36:47.027  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: devicestoragemonitor
+03-11 03:36:47.027  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.027  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: diskstats
+03-11 03:36:47.028  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.028  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: display
+03-11 03:36:47.028  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: domain_verification
+03-11 03:36:47.028  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dreams
+03-11 03:36:47.028  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: drm.drmManager
+03-11 03:36:47.028  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dropbox
+03-11 03:36:47.029  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dynamic_instrumentation
+03-11 03:36:47.029  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dynamic_system
+03-11 03:36:47.029  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ecm_enhanced_confirmation
+03-11 03:36:47.029  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: econtroller
+03-11 03:36:47.029  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: emergency_affordance
+03-11 03:36:47.029  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.030  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ethernet
+03-11 03:36:47.030  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: euicc_card_controller
+03-11 03:36:47.030  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: external_vibrator_service
+03-11 03:36:47.030  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: feature_flags
+03-11 03:36:47.030  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: file_integrity
+03-11 03:36:47.030  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: fingerprint
+03-11 03:36:47.031  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: font
+03-11 03:36:47.031  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: game
+03-11 03:36:47.031  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: gfxinfo
+03-11 03:36:47.031  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.031  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: gpu
+03-11 03:36:47.031  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: grammatical_inflection
+03-11 03:36:47.031  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: graphicsstats
+03-11 03:36:47.032  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: hardware_properties
+03-11 03:36:47.032  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: healthconnect
+03-11 03:36:47.032  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: imms
+03-11 03:36:47.032  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: incidentcompanion
+03-11 03:36:47.032  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: incremental
+03-11 03:36:47.032  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: input
+03-11 03:36:47.032  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: input_method
+03-11 03:36:47.033  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: inputflinger
+03-11 03:36:47.033  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: intrusion_detection
+03-11 03:36:47.033  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ions
+03-11 03:36:47.033  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: iphonesubinfo
+03-11 03:36:47.033  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ipsec
+03-11 03:36:47.034  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: isms
+03-11 03:36:47.034  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: isub
+03-11 03:36:47.034  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: jobscheduler
+03-11 03:36:47.034  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: launcherapps
+03-11 03:36:47.034  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: legacy_permission
+03-11 03:36:47.034  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: lights
+03-11 03:36:47.035  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: locale
+03-11 03:36:47.035  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: location
+03-11 03:36:47.035  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: location_time_zone_manager
+03-11 03:36:47.035  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.035  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: lock_settings
+03-11 03:36:47.035  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: logcat
+03-11 03:36:47.035  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: looper_stats
+03-11 03:36:47.035  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.036  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: manager
+03-11 03:36:47.036  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.aaudio
+03-11 03:36:47.036  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.audio_flinger
+03-11 03:36:47.036  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.audio_policy
+03-11 03:36:47.037  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.camera
+03-11 03:36:47.037  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.camera.proxy
+03-11 03:36:47.037  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.ecoservice
+03-11 03:36:47.037  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.extractor
+03-11 03:36:47.037  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.metrics
+03-11 03:36:47.038  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.player
+03-11 03:36:47.038  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.resource_manager
+03-11 03:36:47.039  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.resource_observer
+03-11 03:36:47.039  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_communication
+03-11 03:36:47.039  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_metrics
+03-11 03:36:47.039  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_projection
+03-11 03:36:47.039  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_resource_monitor
+03-11 03:36:47.039  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_router
+03-11 03:36:47.040  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_session
+03-11 03:36:47.040  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: meminfo
+03-11 03:36:47.040  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.040  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: memtrack.proxy
+03-11 03:36:47.040  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: midi
+03-11 03:36:47.040  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: mmd
+03-11 03:36:47.040  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8938511, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.040  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: mount
+03-11 03:36:47.041  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: music_recognition
+03-11 03:36:47.041  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: nearby
+03-11 03:36:47.042  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: netd_listener
+03-11 03:36:47.043  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: netpolicy
+03-11 03:36:47.043  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: netstats
+03-11 03:36:47.043  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_management
+03-11 03:36:47.043  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_score
+03-11 03:36:47.043  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_stack
+03-11 03:36:47.043  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_time_update_service
+03-11 03:36:47.044  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.044  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_watchlist
+03-11 03:36:47.044  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: nfc
+03-11 03:36:47.044  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: notification
+03-11 03:36:47.044  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: oem_lock
+03-11 03:36:47.044  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: on_device_intelligence
+03-11 03:36:47.044  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ondevicepersonalization_system_service
+03-11 03:36:47.045  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: overlay
+03-11 03:36:47.045  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: pac_proxy
+03-11 03:36:47.045  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: package
+03-11 03:36:47.045  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: package_native
+03-11 03:36:47.045  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: people
+03-11 03:36:47.045  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: performance_hint
+03-11 03:36:47.046  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: permission
+03-11 03:36:47.046  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: permission_checker
+03-11 03:36:47.046  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: permissionmgr
+03-11 03:36:47.046  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: persistent_data_block
+03-11 03:36:47.046  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: phone
+03-11 03:36:47.046  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: pinner
+03-11 03:36:47.047  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: platform_compat
+03-11 03:36:47.047  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: platform_compat_native
+03-11 03:36:47.047  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: power
+03-11 03:36:47.047  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: powerstats
+03-11 03:36:47.047  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: print
+03-11 03:36:47.048  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: processinfo
+03-11 03:36:47.048  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: procstats
+03-11 03:36:47.048  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: profiling_service
+03-11 03:36:47.048  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: protolog_configuration
+03-11 03:36:47.048  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ranging
+03-11 03:36:47.048  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: reboot_readiness
+03-11 03:36:47.048  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: recovery
+03-11 03:36:47.049  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: remote_provisioning
+03-11 03:36:47.049  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: resolver
+03-11 03:36:47.049  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.049  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: resources
+03-11 03:36:47.049  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: restrictions
+03-11 03:36:47.049  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: rlsservice
+03-11 03:36:47.049  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8938757, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.049  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: role
+03-11 03:36:47.050  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: rollback
+03-11 03:36:47.050  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: runtime
+03-11 03:36:47.050  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.050  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: safety_center
+03-11 03:36:47.050  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: scheduling_policy
+03-11 03:36:47.050  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sdk_sandbox
+03-11 03:36:47.050  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: search
+03-11 03:36:47.051  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: search_ui
+03-11 03:36:47.051  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sec_key_att_app_id_provider
+03-11 03:36:47.051  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: secure_element
+03-11 03:36:47.051  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: security_state
+03-11 03:36:47.051  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: selection_toolbar
+03-11 03:36:47.051  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sensitive_content_protection_service
+03-11 03:36:47.052  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sensor_privacy
+03-11 03:36:47.052  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sensorservice
+03-11 03:36:47.052  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: serial
+03-11 03:36:47.052  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: servicediscovery
+03-11 03:36:47.052  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: settings
+03-11 03:36:47.052  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.053  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: shortcut
+03-11 03:36:47.054  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: simphonebook
+03-11 03:36:47.055  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: slice
+03-11 03:36:47.055  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: smartspace
+03-11 03:36:47.056  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: soundtrigger
+03-11 03:36:47.056  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: soundtrigger_middleware
+03-11 03:36:47.056  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: speech_recognition
+03-11 03:36:47.056  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: stats
+03-11 03:36:47.056  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: statsbootstrap
+03-11 03:36:47.057  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: statscompanion
+03-11 03:36:47.057  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: statsmanager
+03-11 03:36:47.057  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: statusbar
+03-11 03:36:47.057  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: storaged
+03-11 03:36:47.057  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: storaged_pri
+03-11 03:36:47.058  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: storagestats
+03-11 03:36:47.058  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: supervision
+03-11 03:36:47.058  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: system_config
+03-11 03:36:47.059  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: system_server_dumper
+03-11 03:36:47.059  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.059  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: system_update
+03-11 03:36:47.059  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telecom
+03-11 03:36:47.059  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telephony.oem.oemrilhook
+03-11 03:36:47.059  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telephony.registry
+03-11 03:36:47.059  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telephony_ims
+03-11 03:36:47.059  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telephony_phone_number
+03-11 03:36:47.060  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: testharness
+03-11 03:36:47.060  9720  9720 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.060  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: tethering
+03-11 03:36:47.060  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: textclassification
+03-11 03:36:47.060  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: textservices
+03-11 03:36:47.060  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: texttospeech
+03-11 03:36:47.060  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: thermalservice
+03-11 03:36:47.060  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: time_detector
+03-11 03:36:47.060  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: time_zone_detector
+03-11 03:36:47.061  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: tracing.proxy
+03-11 03:36:47.061  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: tradeinmode
+03-11 03:36:47.061  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: translation
+03-11 03:36:47.061  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: transparency
+03-11 03:36:47.061  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: trust
+03-11 03:36:47.061  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: uimode
+03-11 03:36:47.061  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: updatelock
+03-11 03:36:47.061  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: uri_grants
+03-11 03:36:47.062  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: usagestats
+03-11 03:36:47.062  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: usb
+03-11 03:36:47.062  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: user
+03-11 03:36:47.062  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vcn_management
+03-11 03:36:47.062  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.battery_mitigation.IBatteryMitigation/default
+03-11 03:36:47.062  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939099, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.062  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBTChannelAvoidance/default
+03-11 03:36:47.062  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939103, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.063  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothCcc/default
+03-11 03:36:47.063  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939107, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.063  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothCco/default
+03-11 03:36:47.063  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939111, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.063  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothEwp/default
+03-11 03:36:47.063  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939115, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.063  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothExt/default
+03-11 03:36:47.063  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939119, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.064  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothFinder/default
+03-11 03:36:47.064  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939123, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.064  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothSar/default
+03-11 03:36:47.064  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939127, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.064  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.google_battery.IGoogleBattery/default
+03-11 03:36:47.064  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939131, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.064  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.wifi_ext.IWifiExt/default
+03-11 03:36:47.064  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939135, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.064  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vibrator_manager
+03-11 03:36:47.065  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: virtualdevice
+03-11 03:36:47.065  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: virtualdevice_native
+03-11 03:36:47.065  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: voiceinteraction
+03-11 03:36:47.066  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vpn_management
+03-11 03:36:47.066  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wallpaper
+03-11 03:36:47.066  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wallpaper_effects_generation
+03-11 03:36:47.066  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wearable_sensing
+03-11 03:36:47.066  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: webviewupdate
+03-11 03:36:47.066  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifi
+03-11 03:36:47.067  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifiaware
+03-11 03:36:47.067  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifinl80211
+03-11 03:36:47.067  9720  9720 E libbinder.IPCThreadState: Binder transaction failure. id: 8939203, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.067  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifip2p
+03-11 03:36:47.067  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifirtt
+03-11 03:36:47.067  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifiscanner
+03-11 03:36:47.067  9720  9720 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: window
+03-11 03:36:47.071  7273  7273 I block_engine.manager: onEvent from com.android.systemui (false)
+03-11 03:36:47.105  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: DockObserver
+03-11 03:36:47.105  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.105  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: SurfaceFlinger
+03-11 03:36:47.106  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: SurfaceFlingerAIDL
+03-11 03:36:47.106  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: accessibility
+03-11 03:36:47.106  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: account
+03-11 03:36:47.106  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: activity
+03-11 03:36:47.106  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: activity_task
+03-11 03:36:47.107  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: adb
+03-11 03:36:47.107  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: adservices_manager
+03-11 03:36:47.107  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: advanced_protection
+03-11 03:36:47.107  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: alarm
+03-11 03:36:47.107  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ambient_context
+03-11 03:36:47.108  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.cameraservice.service.ICameraService/default
+03-11 03:36:47.108  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.devicestate.IDeviceStateService/default
+03-11 03:36:47.108  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.location.altitude.IAltitudeService/default
+03-11 03:36:47.109  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.sensorservice.ISensorManager/default
+03-11 03:36:47.109  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.stats.IStats/default
+03-11 03:36:47.109  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.frameworks.vibrator.IVibratorControlService/default
+03-11 03:36:47.110  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.authsecret.IAuthSecret/default
+03-11 03:36:47.110  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939398, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.110  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.biometrics.fingerprint.IFingerprint/default
+03-11 03:36:47.110  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939402, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.110  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.bluetooth.IBluetoothHci/default
+03-11 03:36:47.110  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939406, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.110  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.bluetooth.audio.IBluetoothAudioProviderFactory/default
+03-11 03:36:47.110  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939410, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.110  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.bluetooth.finder.IBluetoothFinder/default
+03-11 03:36:47.110  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939414, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.111  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.bluetooth.ranging.IBluetoothChannelSounding/default
+03-11 03:36:47.111  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939418, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.111  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.boot.IBootControl/default
+03-11 03:36:47.111  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939422, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.111  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.camera.provider.ICameraProvider/internal/0
+03-11 03:36:47.111  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939426, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.111  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.contexthub.IContextHub/default
+03-11 03:36:47.111  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939430, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.111  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.drm.IDrmFactory/clearkey
+03-11 03:36:47.112  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.drm.IDrmFactory/widevine
+03-11 03:36:47.112  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.dumpstate.IDumpstateDevice/default
+03-11 03:36:47.112  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939444, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.112  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.gatekeeper.IGatekeeper/default
+03-11 03:36:47.112  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939448, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.112  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.gnss.IGnss/default
+03-11 03:36:47.112  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939452, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.112  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.graphics.allocator.IAllocator/default
+03-11 03:36:47.113  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.health.IHealth/default
+03-11 03:36:47.113  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939461, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.113  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.input.processor.IInputProcessor/default
+03-11 03:36:47.113  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939465, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.113  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.media.c2.IComponentStore/default
+03-11 03:36:47.113  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.media.c2.IComponentStore/default1
+03-11 03:36:47.114  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.media.c2.IComponentStore/software
+03-11 03:36:47.114  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.memtrack.IMemtrack/default
+03-11 03:36:47.114  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939484, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.114  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.neuralnetworks.IDevice/google-edgetpu
+03-11 03:36:47.114  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.nfc.INfc/default
+03-11 03:36:47.114  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939493, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.115  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.oemlock.IOemLock/default
+03-11 03:36:47.115  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939497, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.115  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.power.IPower/default
+03-11 03:36:47.115  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939501, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.115  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.power.stats.IPowerStats/default
+03-11 03:36:47.115  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939505, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.116  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.security.keymint.IRemotelyProvisionedComponent/default
+03-11 03:36:47.117  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.sensors.ISensors/default
+03-11 03:36:47.117  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939531, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.117  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.thermal.IThermal/default
+03-11 03:36:47.117  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939535, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.118  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.usb.IUsb/default
+03-11 03:36:47.118  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939539, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.118  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.usb.gadget.IUsbGadget/default
+03-11 03:36:47.118  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939543, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.118  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.vibrator.IVibrator/default
+03-11 03:36:47.118  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939547, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.118  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.weaver.IWeaver/default
+03-11 03:36:47.118  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939551, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.118  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.wifi.IWifi/default
+03-11 03:36:47.119  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939555, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.119  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.hardware.wifi.supplicant.ISupplicant/default
+03-11 03:36:47.119  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939559, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.119  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.os.UpdateEngineService
+03-11 03:36:47.119  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939563, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.119  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.os.UpdateEngineStableService
+03-11 03:36:47.119  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939567, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.119  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.apc
+03-11 03:36:47.119  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.authorization
+03-11 03:36:47.119  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.identity
+03-11 03:36:47.120  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.legacykeystore
+03-11 03:36:47.120  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.maintenance
+03-11 03:36:47.120  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.security.metrics
+03-11 03:36:47.121  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.keystore2.IKeystoreService/default
+03-11 03:36:47.122  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.net.netd.INetd/default
+03-11 03:36:47.122  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939619, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.122  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.suspend.ISystemSuspend/default
+03-11 03:36:47.122  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939624, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.122  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.vmtethering.IVmTethering
+03-11 03:36:47.122  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: android.system.vold.IVold/default
+03-11 03:36:47.123  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939635, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.123  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: aocx.IAocx/default
+03-11 03:36:47.123  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939639, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.123  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_binding
+03-11 03:36:47.123  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.123  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_function
+03-11 03:36:47.123  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_hibernation
+03-11 03:36:47.123  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_integrity
+03-11 03:36:47.124  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_prediction
+03-11 03:36:47.124  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: app_search
+03-11 03:36:47.124  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: appops
+03-11 03:36:47.124  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: appwidget
+03-11 03:36:47.124  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939687, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.124  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: attention
+03-11 03:36:47.124  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.125  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: attestation_verification
+03-11 03:36:47.125  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: audio
+03-11 03:36:47.125  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: auth
+03-11 03:36:47.125  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: authentication_policy
+03-11 03:36:47.125  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: autofill
+03-11 03:36:47.125  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: background_install_control
+03-11 03:36:47.126  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: backup
+03-11 03:36:47.126  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: battery
+03-11 03:36:47.126  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.126  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: batteryproperties
+03-11 03:36:47.126  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: batterystats
+03-11 03:36:47.126  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: binder_calls_stats
+03-11 03:36:47.126  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.126  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: binder_stats_consumer
+03-11 03:36:47.127  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: biometric
+03-11 03:36:47.127  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: blob_store
+03-11 03:36:47.127  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: bluetooth_manager
+03-11 03:36:47.127  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: bugreport
+03-11 03:36:47.127  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: cacheinfo
+03-11 03:36:47.127  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.127  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: carrier_config
+03-11 03:36:47.128  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: clipboard
+03-11 03:36:47.128  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: color_display
+03-11 03:36:47.128  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.edgetpu.IEdgeTpuAppService/default
+03-11 03:36:47.129  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.hardware.pixel.display.IDisplay/default
+03-11 03:36:47.129  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939804, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.129  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.input.ITouchContextService/default
+03-11 03:36:47.129  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939808, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.129  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.input.ITwoshayFileDumpService/touchflow_default
+03-11 03:36:47.129  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939812, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.129  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.input.ITwoshayFileDumpService/twoshay
+03-11 03:36:47.129  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939816, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.130  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.pixel.camera.services.binder.IServiceBinder/default
+03-11 03:36:47.130  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.pixel.camera.services.cameraidremapper.ICameraIdRemapper/default
+03-11 03:36:47.130  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.pixel.camera.services.lyricconfigprovider.ILyricConfigProvider/default
+03-11 03:36:47.131  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: com.google.pixel.shared_modem_platform.ISharedModemPlatform/default
+03-11 03:36:47.131  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8939835, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.131  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: companiondevice
+03-11 03:36:47.131  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: connectivity
+03-11 03:36:47.131  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: connectivity_native
+03-11 03:36:47.131  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: connmetrics
+03-11 03:36:47.132  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: content
+03-11 03:36:47.132  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: content_capture
+03-11 03:36:47.132  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: content_suggestions
+03-11 03:36:47.132  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: contexthub
+03-11 03:36:47.132  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: contextual_search
+03-11 03:36:47.132  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: country_detector
+03-11 03:36:47.133  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: cpuinfo
+03-11 03:36:47.133  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.133  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: credential
+03-11 03:36:47.133  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: crossprofileapps
+03-11 03:36:47.133  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dataloader_manager
+03-11 03:36:47.133  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dbinfo
+03-11 03:36:47.133  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.133  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_config
+03-11 03:36:47.133  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.134  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_identifiers
+03-11 03:36:47.134  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_lock
+03-11 03:36:47.134  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_policy
+03-11 03:36:47.134  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: device_state
+03-11 03:36:47.134  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: deviceidle
+03-11 03:36:47.134  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: devicestoragemonitor
+03-11 03:36:47.134  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.135  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: diskstats
+03-11 03:36:47.135  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.135  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: display
+03-11 03:36:47.135  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: domain_verification
+03-11 03:36:47.135  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dreams
+03-11 03:36:47.135  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: drm.drmManager
+03-11 03:36:47.136  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dropbox
+03-11 03:36:47.136  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dynamic_instrumentation
+03-11 03:36:47.136  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: dynamic_system
+03-11 03:36:47.136  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ecm_enhanced_confirmation
+03-11 03:36:47.136  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: econtroller
+03-11 03:36:47.136  2086  2086 E NotifRow: Magnetic state changed from IDLE to IDLE on a null swiped listener, or the logging key of the listener is null
+03-11 03:36:47.136  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: emergency_affordance
+03-11 03:36:47.137  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.137  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ethernet
+03-11 03:36:47.137  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: euicc_card_controller
+03-11 03:36:47.137  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: external_vibrator_service
+03-11 03:36:47.137  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: feature_flags
+03-11 03:36:47.137  2086  2086 D SbStateController: setState: requested state SHADE!= upcomingState: KEYGUARD. This usually means the status bar state transition was interrupted before the upcoming state could be applied.
+03-11 03:36:47.138  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: file_integrity
+03-11 03:36:47.138  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: fingerprint
+03-11 03:36:47.138  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: font
+03-11 03:36:47.138  2086  2086 D DLIndicator: onStateChanged(0)
+03-11 03:36:47.138  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: game
+03-11 03:36:47.138  2086  2086 D DLIndicator: updateVisibility(), mDozing=false, mDocking=false, mTopIconShowing=false, mViewAttached=true
+03-11 03:36:47.139  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: gfxinfo
+03-11 03:36:47.139  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.139  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: gpu
+03-11 03:36:47.139  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: grammatical_inflection
+03-11 03:36:47.139  2086  2124 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=0, disable2=0, animate=false)
+03-11 03:36:47.139  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: graphicsstats
+03-11 03:36:47.139  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: hardware_properties
+03-11 03:36:47.139  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: healthconnect
+03-11 03:36:47.140  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: imms
+03-11 03:36:47.140  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: incidentcompanion
+03-11 03:36:47.141  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: incremental
+03-11 03:36:47.141  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: input
+03-11 03:36:47.141  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: input_method
+03-11 03:36:47.141  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: inputflinger
+03-11 03:36:47.142  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: intrusion_detection
+03-11 03:36:47.142  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ions
+03-11 03:36:47.142  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: iphonesubinfo
+03-11 03:36:47.143  2086  2103 D KeyguardService: setOccluded(true)
+03-11 03:36:47.143  2086  2103 D KeyguardViewMediator: setOccluded(true)
+03-11 03:36:47.143  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ipsec
+03-11 03:36:47.143  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: isms
+03-11 03:36:47.143  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: isub
+03-11 03:36:47.143  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: jobscheduler
+03-11 03:36:47.144  2086  2086 D KeyguardViewMediator: handleSetOccluded(true)
+03-11 03:36:47.144  2086  2086 D KeyguardViewMediator: KeyguardViewMediator queue processing message: SET_OCCLUDED
+03-11 03:36:47.144  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: launcherapps
+03-11 03:36:47.144  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: legacy_permission
+03-11 03:36:47.144  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: lights
+03-11 03:36:47.144  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: locale
+03-11 03:36:47.144  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: location
+03-11 03:36:47.145  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: location_time_zone_manager
+03-11 03:36:47.145  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.145  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: lock_settings
+03-11 03:36:47.145  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: logcat
+03-11 03:36:47.145  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: looper_stats
+03-11 03:36:47.145  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.145  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: manager
+03-11 03:36:47.146  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.aaudio
+03-11 03:36:47.146  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.audio_flinger
+03-11 03:36:47.146  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.audio_policy
+03-11 03:36:47.146  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.camera
+03-11 03:36:47.146  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.camera.proxy
+03-11 03:36:47.147  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.ecoservice
+03-11 03:36:47.147  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.extractor
+03-11 03:36:47.147  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.metrics
+03-11 03:36:47.147  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.player
+03-11 03:36:47.147  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.resource_manager
+03-11 03:36:47.147  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media.resource_observer
+03-11 03:36:47.148  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_communication
+03-11 03:36:47.148  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_metrics
+03-11 03:36:47.148  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_projection
+03-11 03:36:47.148  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_resource_monitor
+03-11 03:36:47.148  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_router
+03-11 03:36:47.148  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: media_session
+03-11 03:36:47.149  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: meminfo
+03-11 03:36:47.149  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.149  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: memtrack.proxy
+03-11 03:36:47.149  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: midi
+03-11 03:36:47.149  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: mmd
+03-11 03:36:47.149  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8940356, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.149  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: mount
+03-11 03:36:47.149  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: music_recognition
+03-11 03:36:47.150  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: nearby
+03-11 03:36:47.150  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: netd_listener
+03-11 03:36:47.150  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: netpolicy
+03-11 03:36:47.150  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: netstats
+03-11 03:36:47.150  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_management
+03-11 03:36:47.151  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_score
+03-11 03:36:47.151  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_stack
+03-11 03:36:47.152  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_time_update_service
+03-11 03:36:47.152  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.152  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: network_watchlist
+03-11 03:36:47.152  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: nfc
+03-11 03:36:47.152  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: notification
+03-11 03:36:47.152  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: oem_lock
+03-11 03:36:47.152  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: on_device_intelligence
+03-11 03:36:47.153  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ondevicepersonalization_system_service
+03-11 03:36:47.153  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: overlay
+03-11 03:36:47.154  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: pac_proxy
+03-11 03:36:47.155  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: package
+03-11 03:36:47.156  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: package_native
+03-11 03:36:47.156  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: people
+03-11 03:36:47.157  2086  2086 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): null
+03-11 03:36:47.158  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: performance_hint
+03-11 03:36:47.159  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: permission
+03-11 03:36:47.159 31410 31541 I FontLog : (REDACTED) Received query %s, URI %s
+03-11 03:36:47.159 31410 31541 I FontLog : (REDACTED) Query [%s] resolved to %s
+03-11 03:36:47.159  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: permission_checker
+03-11 03:36:47.160  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: permissionmgr
+03-11 03:36:47.160  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: persistent_data_block
+03-11 03:36:47.160  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: phone
+03-11 03:36:47.160 31410 31541 I FontLog : (REDACTED) Fetch %s end status %s
+03-11 03:36:47.160  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: pinner
+03-11 03:36:47.160  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: platform_compat
+03-11 03:36:47.160  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: platform_compat_native
+03-11 03:36:47.161  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: power
+03-11 03:36:47.161  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: powerstats
+03-11 03:36:47.161  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: print
+03-11 03:36:47.162  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: processinfo
+03-11 03:36:47.162  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: procstats
+03-11 03:36:47.162  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: profiling_service
+03-11 03:36:47.162  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: protolog_configuration
+03-11 03:36:47.162 31410 31541 I FontLog : (REDACTED) Pulling font file for id = %d, cache size = %d
+03-11 03:36:47.162  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: ranging
+03-11 03:36:47.162  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: reboot_readiness
+03-11 03:36:47.163  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: recovery
+03-11 03:36:47.163  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: remote_provisioning
+03-11 03:36:47.163  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: resolver
+03-11 03:36:47.163  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.163  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: resources
+03-11 03:36:47.163  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: restrictions
+03-11 03:36:47.163  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: rlsservice
+03-11 03:36:47.163  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8940676, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.163  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: role
+03-11 03:36:47.164  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: rollback
+03-11 03:36:47.164  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: runtime
+03-11 03:36:47.164  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.164  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: safety_center
+03-11 03:36:47.164  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: scheduling_policy
+03-11 03:36:47.164  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sdk_sandbox
+03-11 03:36:47.164  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: search
+03-11 03:36:47.165  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: search_ui
+03-11 03:36:47.165  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sec_key_att_app_id_provider
+03-11 03:36:47.165 31410 31541 I FontLog : (REDACTED) Pulling font file for id = %d, cache size = %d
+03-11 03:36:47.165  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: secure_element
+03-11 03:36:47.165  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: security_state
+03-11 03:36:47.165  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: selection_toolbar
+03-11 03:36:47.165  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sensitive_content_protection_service
+03-11 03:36:47.166  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sensor_privacy
+03-11 03:36:47.166  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: sensorservice
+03-11 03:36:47.166  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: serial
+03-11 03:36:47.166  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: servicediscovery
+03-11 03:36:47.166  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: settings
+03-11 03:36:47.166  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.166  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: shortcut
+03-11 03:36:47.167  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: simphonebook
+03-11 03:36:47.167  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: slice
+03-11 03:36:47.167  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: smartspace
+03-11 03:36:47.167  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: soundtrigger
+03-11 03:36:47.167  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: soundtrigger_middleware
+03-11 03:36:47.167  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: speech_recognition
+03-11 03:36:47.168  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: stats
+03-11 03:36:47.168  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: statsbootstrap
+03-11 03:36:47.168  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: statscompanion
+03-11 03:36:47.168  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: statsmanager
+03-11 03:36:47.168  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: statusbar
+03-11 03:36:47.168  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: storaged
+03-11 03:36:47.169  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: storaged_pri
+03-11 03:36:47.169  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: storagestats
+03-11 03:36:47.169  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: supervision
+03-11 03:36:47.169  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: system_config
+03-11 03:36:47.169  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: system_server_dumper
+03-11 03:36:47.170  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.170  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: system_update
+03-11 03:36:47.173  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telecom
+03-11 03:36:47.174  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telephony.oem.oemrilhook
+03-11 03:36:47.174  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telephony.registry
+03-11 03:36:47.175  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telephony_ims
+03-11 03:36:47.175  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: telephony_phone_number
+03-11 03:36:47.175  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: testharness
+03-11 03:36:47.176  9724  9724 E libbinder.Parcel: Reading a NULL string not supported here.
+03-11 03:36:47.176  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: tethering
+03-11 03:36:47.176  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: textclassification
+03-11 03:36:47.176  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: textservices
+03-11 03:36:47.176  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: texttospeech
+03-11 03:36:47.176  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: thermalservice
+03-11 03:36:47.176  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: time_detector
+03-11 03:36:47.177  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: time_zone_detector
+03-11 03:36:47.177  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: tracing.proxy
+03-11 03:36:47.177  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: tradeinmode
+03-11 03:36:47.177  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: translation
+03-11 03:36:47.177  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: transparency
+03-11 03:36:47.177  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: trust
+03-11 03:36:47.178  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: uimode
+03-11 03:36:47.178  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: updatelock
+03-11 03:36:47.178  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: uri_grants
+03-11 03:36:47.178  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: usagestats
+03-11 03:36:47.178  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: usb
+03-11 03:36:47.178  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: user
+03-11 03:36:47.178  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vcn_management
+03-11 03:36:47.179  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.battery_mitigation.IBatteryMitigation/default
+03-11 03:36:47.179  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941055, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.179  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBTChannelAvoidance/default
+03-11 03:36:47.179  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941059, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.179  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothCcc/default
+03-11 03:36:47.179  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941063, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.180  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothCco/default
+03-11 03:36:47.180  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941067, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.180  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothEwp/default
+03-11 03:36:47.180  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941071, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.180  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothExt/default
+03-11 03:36:47.180  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941075, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.181  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothFinder/default
+03-11 03:36:47.181  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941079, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.181  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.bluetooth_ext.IBluetoothSar/default
+03-11 03:36:47.181  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941083, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.181  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.google_battery.IGoogleBattery/default
+03-11 03:36:47.181  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941087, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.181  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vendor.google.wifi_ext.IWifiExt/default
+03-11 03:36:47.181  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941091, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.182  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vibrator_manager
+03-11 03:36:47.182  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: virtualdevice
+03-11 03:36:47.182  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: virtualdevice_native
+03-11 03:36:47.182  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: voiceinteraction
+03-11 03:36:47.182  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: vpn_management
+03-11 03:36:47.182  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wallpaper
+03-11 03:36:47.183  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wallpaper_effects_generation
+03-11 03:36:47.183  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wearable_sensing
+03-11 03:36:47.183  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: webviewupdate
+03-11 03:36:47.183  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifi
+03-11 03:36:47.183  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifiaware
+03-11 03:36:47.183  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifinl80211
+03-11 03:36:47.183  9724  9724 E libbinder.IPCThreadState: Binder transaction failure. id: 8941159, cmd: BR_FAILED_REPLY (29201), error: -1 (Operation not permitted)
+03-11 03:36:47.184  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifip2p
+03-11 03:36:47.184  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifirtt
+03-11 03:36:47.184  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: wifiscanner
+03-11 03:36:47.184  9724  9724 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: window
+03-11 03:36:47.186  2086  2086 I KeyguardTransitionRepository: FINISHED transition: TransitionStep(from=LOCKSCREEN, to=OCCLUDED, value=1.0, transitionState=FINISHED, ownerName=FromLockscreenTransitionInteractor)
+03-11 03:36:47.187  2086  2129 D StatusBar##isHomeStatusBarAllowed: newValue: true
+03-11 03:36:47.187  2086  2129 D StatusBar##chips: newValue: Chips[allowed=true numChips=0]
+03-11 03:36:47.195  2086  2244 D WallpaperService: onVisibilityChanged(false): com.android.systemui.wallpapers.ImageWallpaper$CanvasEngine@e1e4677
+03-11 03:36:47.201  2086  2086 D DLObserver: remove listener: com.android.systemui.dock.DockManagerExtensionsKt$retrieveIsDocked$1$callback$1@f407cb5
+03-11 03:36:47.202  2086  2086 D DLObserver: remove listener: com.android.systemui.dock.DockManagerExtensionsKt$retrieveIsDocked$1$callback$1@d726f4a
+03-11 03:36:47.203  2086  2086 D DLObserver: remove listener: com.android.systemui.dock.DockManagerExtensionsKt$retrieveIsDocked$1$callback$1@6ac9b54
+03-11 03:36:47.205  2086  2086 D DLObserver: remove listener: com.android.systemui.dock.DockManagerExtensionsKt$retrieveIsDocked$1$callback$1@4e218c0
+03-11 03:36:47.206  2086  2086 D DLObserver: remove listener: com.android.systemui.dock.DockManagerExtensionsKt$retrieveIsDocked$1$callback$1@5c9eafd
+03-11 03:36:47.206  7158  7167 I AiAiEcho: (REDACTED) Settings changed for uri: %s
+03-11 03:36:47.207  2086  2086 D DLObserver: remove listener: com.android.systemui.dock.DockManagerExtensionsKt$retrieveIsDocked$1$callback$1@c4f39f9
+03-11 03:36:47.207  7158  7659 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+03-11 03:36:47.207  7158  7659 I AiAiEcho: (REDACTED) EchoTargets: %s
+03-11 03:36:47.207  7158  7659 I AiAiEcho: Filtered by AiAi flag check: %s
+03-11 03:36:47.208  7158  7659 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+03-11 03:36:47.208  7158  7659 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+03-11 03:36:47.208  7158  7659 I AiAiEcho: (REDACTED) EchoTargets: %s
+03-11 03:36:47.208  7158  7659 I AiAiEcho: Filtered by AiAi flag check: %s
+03-11 03:36:47.208  7158  7659 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+03-11 03:36:47.208  7158  7659 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+03-11 03:36:47.208  7158  7659 I AiAiEcho: (REDACTED) EchoTargets: %s
+03-11 03:36:47.208  7158  7659 I AiAiEcho: Filtered by AiAi flag check: %s
+03-11 03:36:47.208  7158  7659 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+03-11 03:36:47.209  7158  7659 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+03-11 03:36:47.209  2086  2125 I AmbientCueRepository: Receiving SmartSpace targets # 0
+03-11 03:36:47.209  7158  7659 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+03-11 03:36:47.209  7158  7659 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+03-11 03:36:47.227  1676  1942 I ImeTracker: ai.eliza.plugins.mobilesignals.test:dcc8431f: onRequestHide at ORIGIN_SERVER reason HIDE_UNSPECIFIED_WINDOW fromUser false userId 0 displayId 0
+03-11 03:36:47.228  9653  9653 I ImeTracker: ai.eliza.plugins.mobilesignals.test:dcc8431f: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+03-11 03:36:47.231 22459 22459 I GoogleInputMethodService: GoogleInputMethodService.onFinishInput():2259
+03-11 03:36:47.231  1676  2395 I ImeTracker: system_server:7ae6c3b9: onRequestHide at ORIGIN_SERVER reason IME_REQUESTED_CHANGED_LISTENER fromUser false displayId 0
+03-11 03:36:47.231 22459 22459 I Module  : DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatus():103 repeatCheckTimes = 0, locked = true
+03-11 03:36:47.232 22459 22459 I GoogleInputMethodService: GoogleInputMethodService.onStartInput():1446 onStartInput(EditorInfo{EditorInfo{packageName=ai.eliza.plugins.mobilesignals.test, inputType=0, inputTypeString=NULL, enableLearning=false, autoCorrection=false, autoComplete=false, imeOptions=0, privateImeOptions=null, actionName=UNSPECIFIED, actionLabel=null, initialSelStart=-1, initialSelEnd=-1, initialCapsMode=0, label=null, fieldId=0, fieldName=null, extras=null, hintText=null, hintLocales=[]}}, false)
+03-11 03:36:47.232 22459 22459 W AndroidIME: LatinIMEBase.updateInputViewCoverNavigation():327 Null input view, cannot update padding!
+03-11 03:36:47.232  1676  1737 I ImeTracker: system_server:7ae6c3b9: onCancelled at PHASE_SERVER_SHOULD_HIDE
+03-11 03:36:47.232 22459 22459 I Module  : DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatus():103 repeatCheckTimes = 1, locked = true
+03-11 03:36:47.232 22459 22459 I Module  : DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatus():110 Scheduled to recheck device lock status
+03-11 03:36:47.238  7273  7273 I block_engine.manager: onEvent from com.android.systemui (false)
+03-11 03:36:47.242  1676  2344 V GrammaticalInflectionUtils: AttributionSource: android.content.AttributionSource@46d234c does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+03-11 03:36:47.247  2086  2111 W DisplayDisconnectTransitionHandler: No disconnect change found in the transition, not handling request.
+03-11 03:36:47.248  9653  9653 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee in: PAUSED
+03-11 03:36:47.248  9653  9653 V ActivityScenario: Update currentActivityStage to PAUSED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee
+03-11 03:36:47.255   621   647 I libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0xb4000075f27c0780) with descriptor: '(not cached)'
+03-11 03:36:47.256  9653  9653 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc in: PRE_ON_CREATE
+03-11 03:36:47.256  9653  9653 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 xflg=0x4 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc
+03-11 03:36:47.259  9653  9653 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc in: CREATED
+03-11 03:36:47.259  9653  9653 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 xflg=0x4 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc
+03-11 03:36:47.260  9653  9653 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc in: STARTED
+03-11 03:36:47.260  9653  9653 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 xflg=0x4 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc
+03-11 03:36:47.261  9653  9653 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc in: RESUMED
+03-11 03:36:47.261  9653  9653 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 xflg=0x4 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc
+03-11 03:36:47.265  9653  9653 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc in: PAUSED
+03-11 03:36:47.265  9653  9653 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 xflg=0x4 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc
+03-11 03:36:47.270  9653  9653 D VRI[InstrumentationActivityInvoker$EmptyActivity]: WindowInsets changed: 1080x2400 statusBars:[0,132,0,0] navigationBars:[0,0,0,63] mandatorySystemGestures:[0,164,0,84]
+03-11 03:36:47.270  9653  9653 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): android.view.ViewRootImpl$$ExternalSyntheticLambda25@ca98e3f
+03-11 03:36:47.277  2086  2111 D KeyguardViewMediator: UnoccludeAnimator#onAnimationStart. Set occluded = false.
+03-11 03:36:47.278  2086  2111 D KeyguardViewMediator: setOccluded(false)
+03-11 03:36:47.278  2086  2086 D KeyguardViewMediator: handleSetOccluded(false)
+03-11 03:36:47.279  2086  2086 D SbStateController: setState: requested state KEYGUARD!= upcomingState: SHADE. This usually means the status bar state transition was interrupted before the upcoming state could be applied.
+03-11 03:36:47.280  1018  1018 D usf_sensor_hal: proximity: Enter Activate. Enable = 0.
+03-11 03:36:47.280  2086  2086 D DLIndicator: onStateChanged(1)
+03-11 03:36:47.280  2086  2086 D DLIndicator: updateVisibility(), mDozing=false, mDocking=false, mTopIconShowing=false, mViewAttached=true
+03-11 03:36:47.280  1246  1246 D AOC     : A3:MSG: usf_sensor.cc, 1581: USF: Received stop sampling request for TMD3719 Proximity (active:0).
+03-11 03:36:47.281  2086  2086 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): com.android.systemui.back.domain.interactor.BackActionInteractor$callback$2@3674e2a
+03-11 03:36:47.281  1246  1246 D AOC     : A3:MSG: tmd3719_sensor.cc, 327: USF: TMD3719: Report new active state:0
+03-11 03:36:47.284  2086  2086 D KeyguardViewMediator: KeyguardViewMediator queue processing message: SET_OCCLUDED
+03-11 03:36:47.284  2086  2086 I KeyguardTransitionRepository: STARTED transition: TransitionStep(from=OCCLUDED, to=LOCKSCREEN, value=0.0, transitionState=STARTED, ownerName=FromOccludedTransitionInteractor)
+03-11 03:36:47.285  1018  1078 I usf_sensor_hal: Received REPORT_SENSOR_ACTIVE_STATE_CHANGES event from 'TMD3719 Proximity' with state:kInactive and desired fps:0!
+03-11 03:36:47.286  1018  1694 I sensor-suez: Vendor atom [id = 100242] reported.
+03-11 03:36:47.286  1018  1694 I sensor-suez: Vendor atom [id = 100243] reported.
+03-11 03:36:47.288  9653  9653 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee in: STOPPED
+03-11 03:36:47.288  9653  9653 V ActivityScenario: Update currentActivityStage to STOPPED, currentActivity=ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee
+03-11 03:36:47.288   623   672 D hwc-display: setMinIdleRefreshRate requester 0, fps 0
+03-11 03:36:47.288  9653  9653 D LifecycleMonitor: Lifecycle status change: ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity@3221eee in: DESTROYED
+03-11 03:36:47.288  9653  9653 V ActivityScenario: Update currentActivityStage to DESTROYED, currentActivity=null
+03-11 03:36:47.289  9653  9653 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): null
+03-11 03:36:47.289  1018  1018 D usf_sensor_hal: proximity: Enter Batch. Period = 20000000, latency = 0.
+03-11 03:36:47.289  1018  1694 I sensor-suez: Vendor atom [id = 100243] reported.
+03-11 03:36:47.290   623   672 I hwc-display: ExynosPrimaryDisplay::setMinIdleRefreshRate() writes min_vrefresh(0) to the sysfs node
+03-11 03:36:47.290  9653  9653 D ViewRootImpl: Skipping stats log for color mode
+03-11 03:36:47.290  1018  1018 D usf_sensor_hal: proximity: Enter Activate. Enable = 1.
+03-11 03:36:47.291  1246  1246 D AOC     : A3:MSG: usf_sensor.cc, 1573: USF: Received start sampling request for TMD3719 Proximity (active:1).
+03-11 03:36:47.292   623   672 I hwc-display: setRefreshRateThrottleNanos() requester(0) set delay to 0ns
+03-11 03:36:47.292   623   672 I hwc-display: setDisplayIdleDelayNanos() writes idle_delay_ms(0) to the sysfs node (0x0)
+03-11 03:36:47.293   621   621 I SurfaceFlinger: Display 4619827677550801152 policy changed
+03-11 03:36:47.293   621   621 I SurfaceFlinger: Previous: {defaultModeId=0, allowGroupSwitching=false, primaryRanges={physical=[60.00 Hz, 60.00 Hz], render=[0.00 Hz, 60.00 Hz]}, appRequestRanges={physical=[60.00 Hz, 60.00 Hz], render=[0.00 Hz, 60.00 Hz]} idleScreenConfig=nullptr}
+03-11 03:36:47.293   621   621 I SurfaceFlinger: Current:  DisplayManagerPolicy{defaultModeId=0, allowGroupSwitching=false, primaryRanges={physical=[0.00 Hz, inf Hz], render=[0.00 Hz, 60.00 Hz]}, appRequestRanges={physical=[0.00 Hz, inf Hz], render=[0.00 Hz, inf Hz]} idleScreenConfig=nullptr}
+03-11 03:36:47.293   621   621 I SurfaceFlinger: 0 mode changes were performed under the previous policy
+03-11 03:36:47.293   621   621 D SurfaceFlinger: setDesiredMode 4619827677550801152 {mode={fps=60.00 Hz, modePtr={id=0, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=true, force=false}
+03-11 03:36:47.294  1246  1246 D AOC     : A3:MSG: tmd3719_sensor.cc, 327: USF: TMD3719: Report new active state:1
+03-11 03:36:47.294  2086  2244 D WallpaperService: onVisibilityChanged(true): com.android.systemui.wallpapers.ImageWallpaper$CanvasEngine@e1e4677
+03-11 03:36:47.295  2086  2086 W View    : requestLayout() improperly called by com.android.systemui.util.AutoMarqueeTextView{e9caba8 V.ED..... ..S...ID 0,0-193,50 #7f0a057a app:id/mobile_carrier_text} during layout: running second layout pass
+03-11 03:36:47.297  9653  9653 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc in: STOPPED
+03-11 03:36:47.297  9653  9653 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 xflg=0x4 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc
+03-11 03:36:47.297  1018  1078 I usf_sensor_hal: Received REPORT_SENSOR_ACTIVE_STATE_CHANGES event from 'TMD3719 Proximity' with state:kActive and desired fps:0!
+03-11 03:36:47.298  1018  1694 I sensor-suez: Vendor atom [id = 100242] reported.
+03-11 03:36:47.298  1018  1694 I sensor-suez: Vendor atom [id = 100243] reported.
+03-11 03:36:47.299  9653  9653 D LifecycleMonitor: Lifecycle status change: androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc in: DESTROYED
+03-11 03:36:47.299  9653  9653 V ActivityScenario: Activity lifecycle changed event received but ignored because the intent does not match. startActivityIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=ai.eliza.plugins.mobilesignals.test/ai.eliza.plugins.mobilesignals.MobileSignalsReaderShowcaseActivity }, activity.getIntent()=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 xflg=0x4 cmp=ai.eliza.plugins.mobilesignals.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity }, activity=androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity@f951adc
+03-11 03:36:47.299  9653  9653 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): null
+03-11 03:36:47.301   623   672 D hwc-display: setMinIdleRefreshRate requester 0, fps 60
+03-11 03:36:47.301   623   672 I hwc-display: ExynosPrimaryDisplay::setMinIdleRefreshRate() writes min_vrefresh(60) to the sysfs node
+03-11 03:36:47.301   623   672 I hwc-display: setRefreshRateThrottleNanos() requester(0) set delay to 1000000000ns
+03-11 03:36:47.301   623   672 I hwc-display: setDisplayIdleDelayNanos() writes idle_delay_ms(1000) to the sysfs node (0x0)
+03-11 03:36:47.302  2086  2086 D DeviceEntryIconViewBinder: Initializing device entry fgIconView
+03-11 03:36:47.302  9653  9653 D ViewRootImpl: Skipping stats log for color mode
+03-11 03:36:47.303   621   621 I SurfaceFlinger: Display 4619827677550801152 policy changed
+03-11 03:36:47.303   621   621 I SurfaceFlinger: Previous: {defaultModeId=0, allowGroupSwitching=false, primaryRanges={physical=[0.00 Hz, inf Hz], render=[0.00 Hz, 60.00 Hz]}, appRequestRanges={physical=[0.00 Hz, inf Hz], render=[0.00 Hz, inf Hz]} idleScreenConfig=nullptr}
+03-11 03:36:47.303   621   621 I SurfaceFlinger: Current:  DisplayManagerPolicy{defaultModeId=0, allowGroupSwitching=false, primaryRanges={physical=[60.00 Hz, 60.00 Hz], render=[0.00 Hz, 60.00 Hz]}, appRequestRanges={physical=[60.00 Hz, 60.00 Hz], render=[0.00 Hz, 60.00 Hz]} idleScreenConfig=nullptr}
+03-11 03:36:47.303   621   621 I SurfaceFlinger: 0 mode changes were performed under the previous policy
+03-11 03:36:47.303   621   621 D SurfaceFlinger: setDesiredMode 4619827677550801152 {mode={fps=60.00 Hz, modePtr={id=0, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=true, force=false}
+03-11 03:36:47.307  9653  9676 I TestRunner: finished: showcaseActivityRendersReaderOutput(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)

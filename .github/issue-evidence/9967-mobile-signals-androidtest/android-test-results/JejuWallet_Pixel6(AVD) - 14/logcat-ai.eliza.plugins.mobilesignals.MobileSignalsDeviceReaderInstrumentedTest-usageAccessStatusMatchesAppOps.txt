@@ -1,0 +1,2 @@
+06-30 01:10:20.134 10327 10345 I TestRunner: started: usageAccessStatusMatchesAppOps(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)
+06-30 01:10:20.153 10327 10345 I TestRunner: finished: usageAccessStatusMatchesAppOps(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)

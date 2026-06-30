@@ -1,0 +1,19 @@
+03-11 03:36:47.312  9653  9676 I TestRunner: started: usageAccessStatusMatchesAppOps(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)
+03-11 03:36:47.315  7158  7167 I AiAiEcho: (REDACTED) Settings changed for uri: %s
+03-11 03:36:47.316  7158  7659 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+03-11 03:36:47.316  7158  7659 I AiAiEcho: (REDACTED) EchoTargets: %s
+03-11 03:36:47.316  7158  7659 I AiAiEcho: Filtered by AiAi flag check: %s
+03-11 03:36:47.316  7158  7659 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+03-11 03:36:47.316  7158  7659 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+03-11 03:36:47.316  7158  7659 I AiAiEcho: (REDACTED) EchoTargets: %s
+03-11 03:36:47.316  7158  7659 I AiAiEcho: Filtered by AiAi flag check: %s
+03-11 03:36:47.316  7158  7659 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+03-11 03:36:47.317  7158  7659 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+03-11 03:36:47.317  2086  2125 I AmbientCueRepository: Receiving SmartSpace targets # 0
+03-11 03:36:47.317  7158  7659 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+03-11 03:36:47.321  7158  7659 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+03-11 03:36:47.321  7158  7659 I AiAiEcho: (REDACTED) EchoTargets: %s
+03-11 03:36:47.321  7158  7659 I AiAiEcho: Filtered by AiAi flag check: %s
+03-11 03:36:47.321  7158  7659 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+03-11 03:36:47.321  7158  7659 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+03-11 03:36:47.322  9653  9676 I TestRunner: finished: usageAccessStatusMatchesAppOps(ai.eliza.plugins.mobilesignals.MobileSignalsDeviceReaderInstrumentedTest)

@@ -37,7 +37,9 @@ src/
 
 android/
   src/main/java/ai/eliza/plugins/mobilesignals/
-    MobileSignalsPlugin.kt   Android Capacitor plugin implementation
+    MobileSignalsDeviceReader.kt  Native Android device + UsageStats reader
+    MobileSignalsPlugin.kt        Android Capacitor plugin implementation
+  src/androidTest/                Instrumented reader tests and showcase activity
 
 ios/Sources/MobileSignalsPlugin/
   MobileSignalsPlugin.swift  iOS Capacitor plugin implementation (HealthKit, FamilyControls)
@@ -68,6 +70,9 @@ bun run --cwd plugins/plugin-native-mobile-signals test
 
 # Validate iOS Screen Time build wiring against the host app's Xcode project
 bun run --cwd plugins/plugin-native-mobile-signals validate:ios-screen-time
+
+# Run Android instrumented tests for native device and UsageStats reads
+packages/app-core/platforms/android/gradlew -p packages/app-core/platforms/android :elizaos-capacitor-mobile-signals:connectedDebugAndroidTest
 
 # Watch mode TypeScript compilation
 bun run --cwd plugins/plugin-native-mobile-signals watch
