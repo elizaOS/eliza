@@ -481,7 +481,7 @@ describe("POST /api/v1/apps (create)", () => {
     expect(json.suggestedName).toBe("My Cool App-a1b2");
   });
 
-  test("200 happy path → success + app + eliza_ apiKey", async () => {
+  test("200 happy path defaults to no GitHub repo", async () => {
     const { status, json } = await req("POST", "/api/v1/apps", {
       key: KEY_A,
       body: VALID_CREATE,
@@ -493,11 +493,30 @@ describe("POST /api/v1/apps (create)", () => {
     expect(created.organization_id).toBe(ORG_A);
     expect(typeof json.apiKey).toBe("string");
     expect(json.apiKey as string).toMatch(/^eliza_/);
-    // githubRepo present when not skipped.
-    expect(json.githubRepo).toBe("elizaOS-apps/my-cool-app");
+    expect(json.githubRepo).toBeUndefined();
+    expect(createApp.mock.calls[0][1]).toMatchObject({
+      createGitHubRepo: false,
+    });
     // Persisted: a follow-up list sees it.
     const list = await req("GET", "/api/v1/apps", { key: KEY_A });
     expect((list.json.apps as App[]).map((a) => a.id)).toContain(created.id);
+  });
+
+  test("200 skipGitHubRepo:false explicitly creates a GitHub repo", async () => {
+    const { status, json } = await req("POST", "/api/v1/apps", {
+      key: KEY_A,
+      body: {
+        ...VALID_CREATE,
+        name: "Repo App",
+        skipGitHubRepo: false,
+      },
+    });
+    expect(status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(json.githubRepo).toBe("elizaOS-apps/repo-app");
+    expect(createApp.mock.calls[0][1]).toMatchObject({
+      createGitHubRepo: true,
+    });
   });
 
   test("200 skipGitHubRepo:true → no githubRepo in response", async () => {

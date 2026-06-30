@@ -77,7 +77,7 @@ app.post("/", async (c) => {
           allowed_origins: data.allowed_origins,
           logo_url: data.logo_url,
         },
-        { createGitHubRepo: !data.skipGitHubRepo },
+        { createGitHubRepo: data.skipGitHubRepo === false },
       );
 
       logger.info(`[Apps API] Created app: ${result.app.name}`, {
