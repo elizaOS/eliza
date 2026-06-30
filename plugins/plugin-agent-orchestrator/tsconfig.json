@@ -41,6 +41,7 @@
     "dist",
     "node_modules",
     "vendor",
+    "test/**",
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.e2e.test.ts",

@@ -74,7 +74,7 @@ describe("POST /api/v1/containers reserved-env guard (#9853)", () => {
     test(`rejects a reserved env key (${key}) with 400 before provisioning`, async () => {
       const res = await post({
         name: "my-app",
-        image: "ghcr.io/elizaos/app@sha256:" + "a".repeat(64),
+        image: `ghcr.io/elizaos/app@sha256:${"a".repeat(64)}`,
         environmentVars: { [key]: "attacker-controlled" },
       });
       expect(res.status).toBe(400);
@@ -87,7 +87,7 @@ describe("POST /api/v1/containers reserved-env guard (#9853)", () => {
   test("a benign env key passes the reserved-key guard (fails later, not with RESERVED_ENV_KEYS)", async () => {
     const res = await post({
       name: "my-app",
-      image: "ghcr.io/elizaos/app@sha256:" + "a".repeat(64),
+      image: `ghcr.io/elizaos/app@sha256:${"a".repeat(64)}`,
       environmentVars: { MY_APP_FLAG: "1" },
     });
     // Past the guard: it does NOT 400 with the reserved-key code. (It may fail

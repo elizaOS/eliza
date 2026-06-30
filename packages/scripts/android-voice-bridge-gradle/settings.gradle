@@ -1,0 +1,34 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'elizaos-voice-bridge-tests'
+
+def repoRoot = rootDir.parentFile.parentFile.parentFile
+
+def findCapacitorAndroidProject = {
+    def bunStore = new File(repoRoot, 'node_modules/.bun')
+    if (bunStore.exists()) {
+        for (def candidate : bunStore.listFiles().findAll { it.name.startsWith('@capacitor+android@') }) {
+            def projectDir = new File(candidate, 'node_modules/@capacitor/android/capacitor')
+            if (new File(projectDir, 'build.gradle').exists()) {
+                return projectDir
+            }
+        }
+    }
+
+    throw new GradleException('Unable to locate @capacitor/android/capacitor in node_modules/.bun')
+}
+
+include ':capacitor-android'
+project(':capacitor-android').projectDir = findCapacitorAndroidProject()
+
+include ':elizaos-capacitor-talkmode'
+project(':elizaos-capacitor-talkmode').projectDir = new File(repoRoot, 'plugins/plugin-native-talkmode/android')
+
+include ':elizaos-capacitor-swabble'
+project(':elizaos-capacitor-swabble').projectDir = new File(repoRoot, 'plugins/plugin-native-swabble/android')

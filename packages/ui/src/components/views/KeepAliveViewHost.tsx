@@ -74,12 +74,18 @@ export function KeepAliveViewHost({
   return (
     <>
       {renderIds.map((viewId) => {
+        // A host whose renderView cannot reconstruct content for a retained id
+        // (e.g. the app's active-only router) returns null — skip the slot
+        // entirely rather than mount an empty, lifeless ViewLifecycleSlot +
+        // ViewErrorBoundary + ViewTelemetryProfiler over nothing (#10202 review).
+        const content = renderView(viewId);
+        if (content == null) return null;
         const hidden = viewId !== activeViewId;
         return (
           <ViewLifecycleSlot key={viewId} viewId={viewId} hidden={hidden}>
             <ViewErrorBoundary viewId={viewId}>
               <ViewTelemetryProfiler viewId={viewId}>
-                {renderView(viewId)}
+                {content}
               </ViewTelemetryProfiler>
             </ViewErrorBoundary>
           </ViewLifecycleSlot>

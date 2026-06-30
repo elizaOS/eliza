@@ -340,14 +340,29 @@ describe("useChatSend 404 recovery", () => {
     ).toBe(false);
   });
 
-  it("recreates the conversation and replays when only the conversation was deleted", async () => {
+  it("recreates the conversation and replays as a token STREAM when only the conversation was deleted", async () => {
     // The normal recoverable case: the conversation row was deleted but the
-    // agent is fine. createConversation succeeds, the message is replayed.
-    mockStream404();
+    // agent is fine. createConversation succeeds, and the message is REPLAYED
+    // through the streaming endpoint (not the non-streaming one) so the reply
+    // tokens in rather than popping in all at once (#10231).
+    const replayTokens: Array<[string, string]> = [];
+    mocks.client.sendConversationMessageStream
+      .mockRejectedValueOnce(http404())
+      .mockImplementationOnce(
+        async (
+          _id: string,
+          _text: string,
+          onToken: (token: string, accumulatedText?: string) => void,
+        ) => {
+          onToken("hi", "hi");
+          onToken(" back", "hi back");
+          replayTokens.push(["hi", " back"]);
+          return { text: "hi back", completed: true };
+        },
+      );
     mocks.client.createConversation.mockResolvedValue({
       conversation: conversation("conv-new", "room-new"),
     });
-    mocks.client.sendConversationMessage.mockResolvedValue({ text: "hi back" });
     mocks.client.getBaseUrl.mockReturnValue(
       "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123",
     );
@@ -366,7 +381,13 @@ describe("useChatSend 404 recovery", () => {
 
     expect(deps.setActionNotice).not.toHaveBeenCalled();
     expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
-    expect(mocks.client.sendConversationMessage).toHaveBeenCalledTimes(1);
+    // Original send (404) + streaming replay = two stream calls; the
+    // non-streaming endpoint is never used.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(2);
+    expect(mocks.client.sendConversationMessage).not.toHaveBeenCalled();
+    // The replay actually streamed tokens.
+    expect(replayTokens).toEqual([["hi", " back"]]);
+    expect(deps.setChatFirstTokenReceived).toHaveBeenCalledWith(true);
     const remaining = deps.conversationMessagesRef.current;
     expect(
       remaining.some((m) => m.role === "user" && m.text === "hello there"),
@@ -437,7 +458,8 @@ describe("useChatSend always streams (#9174)", () => {
 
     // Happy path streams.
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
-    // The non-streaming endpoint is reserved for 404 recovery only.
+    // The non-streaming endpoint is never used — even 404 recovery streams now
+    // (#10231).
     expect(mocks.client.sendConversationMessage).not.toHaveBeenCalled();
     // Streaming context is active by default — the first-token signal fired as
     // tokens arrived through onToken.
@@ -817,5 +839,62 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
     // temp- user id → cannot truncate; resend still fires.
     expect(mocks.client.truncateConversationMessages).not.toHaveBeenCalled();
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useChatSend empty-reply failure surfacing (#10231)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("surfaces a failureKind gate (not a silent drop) when the streamed terminal reply is empty", async () => {
+    // Regression: the empty-text terminal handler dropped any empty reply
+    // unconditionally, so an empty-text + failureKind response (e.g. the
+    // "Connect a provider" gate) vanished with no error. It must stamp the
+    // failureKind onto the assistant turn instead.
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => ({
+      text: "",
+      completed: true,
+      failureKind: "no_provider",
+    }));
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant.length).toBe(1);
+    expect(assistant[0]?.failureKind).toBe("no_provider");
+  });
+
+  it("still drops an empty terminal reply that carries no failureKind", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => ({
+      text: "",
+      completed: true,
+    }));
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant.length).toBe(0);
   });
 });

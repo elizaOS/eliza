@@ -513,10 +513,6 @@ export default defineConfig({
       "**/node_modules/**",
       ".claude/**",
       ...(hiddenElizaWorkspaceGlob ? [hiddenElizaWorkspaceGlob] : []),
-      // The default real/live lane only uses public chains. Local Anvil coverage
-      // stays out of bun run test until it is replaced with public-chain tests.
-      elizaWorkspacePattern(
-      ),
       elizaWorkspacePattern("packages/app-core/platforms/electrobun/**"),
       "apps/chrome-extension/**",
       elizaWorkspacePattern("cloud/**"),

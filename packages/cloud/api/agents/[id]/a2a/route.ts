@@ -369,24 +369,43 @@ async function handleChat(
     }
 
     if (character.monetization_enabled && actualCreatorMarkup > 0) {
-      await agentMonetizationService.recordCreatorEarnings({
-        agentId: character.id,
-        agentName: character.name,
-        ownerId: character.user_id,
-        earnings: actualCreatorMarkup,
-        consumerOrgId: authUser.organization_id,
-        model,
-        tokens: usage?.totalTokens,
-        protocol: "a2a",
-      });
-      logger.info(
-        "[Agent A2A] Creator earnings credited to redeemable balance",
-        {
+      // Earnings recording is a NON-CRITICAL post-settlement step. The consumer
+      // was already settled above (reconcile(actualTotal)); if this throws it
+      // must NOT propagate to the outer catch, whose reconcile(0) is
+      // non-idempotent and would refund the WHOLE reservation a second time →
+      // free inference + a net credit grant. Log and swallow.
+      try {
+        await agentMonetizationService.recordCreatorEarnings({
           agentId: character.id,
+          agentName: character.name,
           ownerId: character.user_id,
           earnings: actualCreatorMarkup,
-        },
-      );
+          consumerOrgId: authUser.organization_id,
+          model,
+          tokens: usage?.totalTokens,
+          protocol: "a2a",
+        });
+        logger.info(
+          "[Agent A2A] Creator earnings credited to redeemable balance",
+          {
+            agentId: character.id,
+            ownerId: character.user_id,
+            earnings: actualCreatorMarkup,
+          },
+        );
+      } catch (earningsError) {
+        logger.error(
+          "[Agent A2A] Failed to record creator earnings (settlement already applied — not rolling back)",
+          {
+            agentId: character.id,
+            ownerId: character.user_id,
+            error:
+              earningsError instanceof Error
+                ? earningsError.message
+                : String(earningsError),
+          },
+        );
+      }
     }
 
     return c.json({

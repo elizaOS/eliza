@@ -85,6 +85,40 @@ describe("resolveWaifuMeteringConfig", () => {
     expect(resolved?.usdPer1kOutput).toBeGreaterThan(0);
   });
 
+  it("resolves config from the canonical ELIZA_CLOUD_* names", () => {
+    const runtime = makeRuntime({
+      ELIZA_CLOUD_INFERENCE_WEBHOOK_URL: CONFIG.webhookUrl,
+      ELIZA_CLOUD_WEBHOOK_SECRET: CONFIG.secret,
+      ELIZA_CLOUD_METER_USD_PER_1K_INPUT: "0.009",
+      ELIZA_CLOUD_METER_USD_PER_1K_OUTPUT: "0.018",
+      WAIFU_AGENT_ID: CONFIG.agentId,
+    });
+    const resolved = resolveWaifuMeteringConfig(runtime);
+    expect(resolved).toMatchObject({
+      webhookUrl: CONFIG.webhookUrl,
+      secret: CONFIG.secret,
+      agentId: CONFIG.agentId,
+    });
+    expect(resolved?.usdPer1kInput).toBe(0.009);
+    expect(resolved?.usdPer1kOutput).toBe(0.018);
+  });
+
+  it("ELIZA_CLOUD_* takes precedence over the deprecated WAIFU_* aliases", () => {
+    const runtime = makeRuntime({
+      ELIZA_CLOUD_INFERENCE_WEBHOOK_URL: "https://api.example.test/new/inference",
+      ELIZA_CLOUD_WEBHOOK_SECRET: "new-secret",
+      ELIZA_CLOUD_METER_USD_PER_1K_INPUT: "0.001",
+      WAIFU_INFERENCE_WEBHOOK_URL: "https://api.example.test/old/inference",
+      WAIFU_WEBHOOK_SECRET: "old-secret",
+      WAIFU_METER_USD_PER_1K_INPUT: "0.999",
+      WAIFU_AGENT_ID: CONFIG.agentId,
+    });
+    const resolved = resolveWaifuMeteringConfig(runtime);
+    expect(resolved?.webhookUrl).toBe("https://api.example.test/new/inference");
+    expect(resolved?.secret).toBe("new-secret");
+    expect(resolved?.usdPer1kInput).toBe(0.001);
+  });
+
   it("never reuses the credits URL for inference; derives the /inference sibling instead", () => {
     const runtime = makeRuntime({
       WAIFU_WEBHOOK_URL: "https://api.waifu.fun/v2/webhooks/eliza-cloud/credits",

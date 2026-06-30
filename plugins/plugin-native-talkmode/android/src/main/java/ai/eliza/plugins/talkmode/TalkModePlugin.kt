@@ -517,12 +517,11 @@ class TalkModePlugin : Plugin() {
 
     private fun startAudioFramesInternal(call: PluginCall) {
         if (audioFrameRunning.get()) {
-            call.resolve(JSObject().apply {
-                put("started", true)
-                put("sampleRate", lastFrameSampleRate)
-                put("frameSamples", lastFrameSamples)
-                put("suspendedStt", sttSuspendedForFrames)
-            })
+            call.resolve(TalkModeAndroidBridgeContract.audioFramesStartedPayload(
+                sampleRate = lastFrameSampleRate,
+                frameSamples = lastFrameSamples,
+                suspendedStt = sttSuspendedForFrames
+            ).toJSObject())
             return
         }
 
@@ -581,12 +580,11 @@ class TalkModePlugin : Plugin() {
         audioFrameRunning.set(true)
         launchFrameLoop(record, frameSamples)
 
-        call.resolve(JSObject().apply {
-            put("started", true)
-            put("sampleRate", actualRate)
-            put("frameSamples", frameSamples)
-            put("suspendedStt", sttSuspendedForFrames)
-        })
+        call.resolve(TalkModeAndroidBridgeContract.audioFramesStartedPayload(
+            sampleRate = actualRate,
+            frameSamples = frameSamples,
+            suspendedStt = sttSuspendedForFrames
+        ).toJSObject())
     }
 
     @PluginMethod
@@ -934,10 +932,10 @@ class TalkModePlugin : Plugin() {
         } else {
             lastTranscript = transcript
             lastHeardAtMs = SystemClock.elapsedRealtime()
-            notifyListeners("transcript", JSObject().apply {
-                put("transcript", transcript)
-                put("isFinal", false)
-            })
+            notifyListeners("transcript", TalkModeAndroidBridgeContract.transcriptPayload(
+                transcript = transcript,
+                isFinal = false
+            ).toJSObject())
         }
     }
 
@@ -950,13 +948,18 @@ class TalkModePlugin : Plugin() {
         val text = transcript.trim()
         if (text.isEmpty()) return
         val now = SystemClock.elapsedRealtime()
-        if (text == lastEmittedFinal && now - lastEmittedFinalAtMs < 2000L) return
+        if (TalkModeAndroidBridgeContract.shouldDropDuplicateFinal(
+            transcript = text,
+            previousTranscript = lastEmittedFinal,
+            nowElapsedMs = now,
+            previousElapsedMs = lastEmittedFinalAtMs
+        )) return
         lastEmittedFinal = text
         lastEmittedFinalAtMs = now
-        notifyListeners("transcript", JSObject().apply {
-            put("transcript", text)
-            put("isFinal", true)
-        })
+        notifyListeners("transcript", TalkModeAndroidBridgeContract.transcriptPayload(
+            transcript = text,
+            isFinal = true
+        ).toJSObject())
     }
 
     /**
@@ -967,21 +970,10 @@ class TalkModePlugin : Plugin() {
      * genuine couple-of-words utterance from the user does.
      */
     private fun shouldInterrupt(transcript: String): Boolean {
-        val trimmed = transcript.trim()
-        val lower = trimmed.lowercase()
-        val words = lower.split(Regex("\\s+")).filter { it.isNotBlank() }
-        // Need real intent: at least two words, or one long word (≥ 8 chars).
-        if (words.size < 2 && trimmed.length < 8) return false
-        val spoken = lastSpokenText?.lowercase() ?: return true
-        // Exact echo of what we're saying → speaker bleed, not the user.
-        if (spoken.contains(lower)) return false
-        // Fuzzy echo: if most of the heard words appear in the text we're
-        // currently speaking, treat it as echo (ASR mishears of our own audio).
-        val echoed = words.count { spoken.contains(it) }
-        if (words.isNotEmpty() && echoed.toDouble() / words.size >= 0.6) {
-            return false
-        }
-        return true
+        return TalkModeAndroidBridgeContract.shouldInterruptSpeech(
+            transcript = transcript,
+            lastSpokenText = lastSpokenText
+        )
     }
 
     /**
@@ -1943,9 +1935,11 @@ class TalkModePlugin : Plugin() {
     }
 
     private fun computeInterruptedAt(): Double? {
-        if (!isSpeaking) return null
-        val elapsed = SystemClock.elapsedRealtime() - speakStartTimeMs
-        return elapsed.toDouble() / 1000.0
+        return TalkModeAndroidBridgeContract.interruptedAtSeconds(
+            isSpeaking = isSpeaking,
+            nowElapsedMs = SystemClock.elapsedRealtime(),
+            speakStartTimeMs = speakStartTimeMs
+        )
     }
 
     // ── Voice alias resolution ──────────────────────────────────────────
@@ -2051,26 +2045,22 @@ class TalkModePlugin : Plugin() {
         state = newState
         statusText = newStatusText
 
-        notifyListeners("stateChange", JSObject().apply {
-            put("state", newState)
-            put("previousState", previousState)
-            put("statusText", newStatusText)
-            put("usingSystemTts", usedSystemTts)
-        })
+        notifyListeners("stateChange", TalkModeAndroidBridgeContract.statePayload(
+            state = newState,
+            previousState = previousState,
+            statusText = newStatusText,
+            usingSystemTts = usedSystemTts
+        ).toJSObject())
     }
 
     private fun buildPermissionResult(): JSObject {
         val micGranted = isPermissionGranted(Manifest.permission.RECORD_AUDIO)
         val speechAvailable = SpeechRecognizer.isRecognitionAvailable(context)
 
-        return JSObject().apply {
-            put("microphone", if (micGranted) "granted" else "denied")
-            put("speechRecognition", if (speechAvailable) {
-                if (micGranted) "granted" else "prompt"
-            } else {
-                "not_supported"
-            })
-        }
+        return TalkModeAndroidBridgeContract.permissionPayload(
+            microphoneGranted = micGranted,
+            speechRecognitionAvailable = speechAvailable
+        ).toJSObject()
     }
 
     private fun isPermissionGranted(permission: String): Boolean {

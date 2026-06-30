@@ -414,7 +414,6 @@ const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
-const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "In one short sentence, confirm the iOS full Bun local backend is running.";
 const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
@@ -829,81 +828,6 @@ function parseIosOnboardingSmokeRequest(raw: string | null): {
   }
 }
 
-async function waitForIosOnboardingElement<T extends Element>(
-  selector: string,
-  options?: { timeoutMs?: number; visible?: boolean },
-): Promise<T> {
-  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  let lastElement: Element | null = null;
-  while (Date.now() < deadline) {
-    lastElement = document.querySelector(selector);
-    if (lastElement) {
-      const visible =
-        !options?.visible ||
-        (lastElement instanceof HTMLElement &&
-          lastElement.offsetParent !== null);
-      if (visible) return lastElement as T;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-  throw new Error(
-    `Timed out waiting for iOS onboarding selector ${selector}${lastElement ? " to become visible" : ""}`,
-  );
-}
-
-async function waitForIosOnboardingSelectorHidden(
-  selector: string,
-  options?: { timeoutMs?: number },
-): Promise<void> {
-  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const element = document.querySelector(selector);
-    if (
-      !element ||
-      !(element instanceof HTMLElement) ||
-      element.offsetParent === null
-    ) {
-      return;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-  throw new Error(
-    `Timed out waiting for iOS onboarding selector ${selector} to hide`,
-  );
-}
-
-async function waitForIosOnboardingButtonEnabled(
-  selector: string,
-  options?: { timeoutMs?: number },
-): Promise<HTMLButtonElement> {
-  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  let button: HTMLButtonElement | null = null;
-  while (Date.now() < deadline) {
-    button = await waitForIosOnboardingElement<HTMLButtonElement>(selector, {
-      timeoutMs: Math.min(1_000, Math.max(250, deadline - Date.now())),
-      visible: true,
-    }).catch(() => null);
-    if (button && !button.disabled) return button;
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-  throw new Error(
-    `Timed out waiting for iOS onboarding button ${selector} to enable`,
-  );
-}
-
-function setIosOnboardingInputValue(input: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    "value",
-  )?.set;
-  setter?.call(input, value);
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
 function readIosOnboardingSmokeStorageSnapshot(): Record<
   string,
   string | null
@@ -940,66 +864,22 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
 
   iosOnboardingSmokeStarted = true;
   const request = parseIosOnboardingSmokeRequest(rawRequest);
-  await writeIosOnboardingSmokeResult({
-    ok: false,
-    phase: "running",
-    startedAt: new Date().toISOString(),
-    apiBase: request.apiBase,
-  });
-
+  // QUARANTINED (#10322): #9952 moved onboarding into the in-chat
+  // ContinuousChatOverlay and removed the remote-connect-at-URL surface this
+  // smoke drove (first-run-remote-address / choice-remote / choice-connect /
+  // first-run-chat). Device remote-connect onboarding needs a product redesign
+  // before this lane can be rewritten, so skip cleanly — the harness treats a
+  // `phase: "skipped"` result as a pass — instead of timing out against
+  // selectors that no longer exist.
   try {
-    let remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
-      '[data-testid="first-run-remote-address"]',
-      { timeoutMs: 2_000, visible: true },
-    ).catch(() => null);
-    if (!remoteAddress) {
-      const remoteOption = await waitForIosOnboardingElement<HTMLButtonElement>(
-        '[data-testid="choice-remote"]',
-        { visible: true },
-      );
-      remoteOption.click();
-      remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
-        '[data-testid="first-run-remote-address"]',
-        { visible: true },
-      );
-    }
-    remoteAddress.focus();
-    setIosOnboardingInputValue(remoteAddress, request.apiBase);
-    remoteAddress.blur();
-
-    const remoteConnect = await waitForIosOnboardingButtonEnabled(
-      '[data-testid="choice-connect"]',
-    );
-    remoteConnect.click();
-
-    await waitForIosOnboardingSelectorHidden('[data-testid="first-run-chat"]');
-
-    const home = await waitForIosOnboardingElement<HTMLElement>(
-      '[data-testid="home-launcher-surface"][data-page="home"]',
-      { visible: true },
-    );
-    const composer = await waitForIosOnboardingElement<HTMLElement>(
-      '[data-testid="chat-composer-textarea"]',
-      { visible: true },
-    );
-
-    await writeIosOnboardingSmokeResult({
-      ok: true,
-      phase: "complete",
-      finishedAt: new Date().toISOString(),
-      apiBase: request.apiBase,
-      homeVisible: Boolean(home),
-      composerVisible: Boolean(composer),
-      onboardingHidden: true,
-      storage: readIosOnboardingSmokeStorageSnapshot(),
-    });
-  } catch (error) {
     await writeIosOnboardingSmokeResult({
       ok: false,
-      phase: "failed",
+      skipped: true,
+      phase: "skipped",
       finishedAt: new Date().toISOString(),
       apiBase: request.apiBase,
-      error: error instanceof Error ? error.message : String(error),
+      reason:
+        "remote-connect-at-URL onboarding removed by #9952; device redesign pending — see https://github.com/elizaOS/eliza/issues/10322",
       storage: readIosOnboardingSmokeStorageSnapshot(),
     });
   } finally {

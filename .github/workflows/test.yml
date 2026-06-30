@@ -281,6 +281,21 @@ jobs:
           path: packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
           if-no-files-found: ignore
 
+      # Perf gate (#9954): drive REAL overlay-scroll + conversation-swipe in
+      # headless chromium, feed REAL rAF/longtask/layout-shift entries through the
+      # shared frame-budget + layout-stability detectors, HARD-FAIL on dropped
+      # frames, p95 frame time, or CLS. Previously ran in no workflow.
+      - name: Perf gate e2e (#9954)
+        run: bun run --cwd packages/ui test:perf-gate-e2e
+
+      - name: Upload perf gate e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: perf-gate-e2e-artifacts
+          path: packages/ui/src/components/shell/__e2e__/output-perf-gate-e2e/
+          if-no-files-found: ignore
+
   xr-harness-e2e:
     name: XR harness e2e
     needs: changes
@@ -340,15 +355,20 @@ jobs:
           if-no-files-found: ignore
 
   plugin-tests:
-    name: Plugin Tests
+    name: Plugin Tests (${{ matrix.shard }}/4)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 95
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
+      TEST_SHARD: ${{ matrix.shard }}/4
       # Share compiled rust artifacts across all plugin crates so the
       # `elizaos = "2.0.0"` crate (and its sqlx/hyper/etc transitive deps)
       # only compiles once, not once per plugin. Without this, each
@@ -417,6 +437,30 @@ jobs:
             "${CARGO_TARGET_DIR}/release/build" \
             "${CARGO_TARGET_DIR}/release/examples"
           find "${CARGO_TARGET_DIR}" -type f \( -name '*.d' -o -name '*.rlib' -o -name '*.rmeta' \) -delete 2>/dev/null || true
+
+  plugin-tests-status:
+    name: Plugin Tests
+    needs:
+      - changes
+      - plugin-tests
+    if: ${{ !cancelled() && always() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check plugin shard results
+        shell: bash
+        run: |
+          set -u
+          result="${{ needs.plugin-tests.result }}"
+          echo "plugin-tests matrix: ${result}"
+          if [ "$result" = "success" ]; then
+            exit 0
+          fi
+          if [ "$result" = "skipped" ] && [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ needs.changes.outputs.plugins }}" != "true" ]; then
+            echo "::notice title=Plugin Tests::Path gate skipped plugin tests for this PR context."
+            exit 0
+          fi
+          echo "::error title=Plugin Tests::Plugin shard matrix finished with '${result}'"
+          exit 1
 
   desktop-contract:
     name: Electrobun Desktop Contract
@@ -1066,7 +1110,7 @@ jobs:
       - server-tests
       - client-tests
       - xr-harness-e2e
-      - plugin-tests
+      - plugin-tests-status
       - desktop-contract
       - zero-key-e2e
       - cloud-live-e2e
@@ -1083,7 +1127,7 @@ jobs:
           echo "server-tests:     ${{ needs.server-tests.result }}"
           echo "client-tests:     ${{ needs.client-tests.result }}"
           echo "xr-harness-e2e:   ${{ needs.xr-harness-e2e.result }}"
-          echo "plugin-tests:     ${{ needs.plugin-tests.result }}"
+          echo "plugin-tests:     ${{ needs.plugin-tests-status.result }}"
           echo "desktop-contract: ${{ needs.desktop-contract.result }}"
           echo "zero-key-e2e:     ${{ needs.zero-key-e2e.result }}"
           echo "cloud-live-e2e:   ${{ needs.cloud-live-e2e.result }}"
@@ -1097,7 +1141,7 @@ jobs:
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
             "xr-harness-e2e:${{ needs.xr-harness-e2e.result }}" \
-            "plugin-tests:${{ needs.plugin-tests.result }}" \
+            "plugin-tests:${{ needs.plugin-tests-status.result }}" \
             "desktop-contract:${{ needs.desktop-contract.result }}" \
             "zero-key-e2e:${{ needs.zero-key-e2e.result }}" \
             "cloud-live-e2e:${{ needs.cloud-live-e2e.result }}" \

@@ -315,6 +315,7 @@ async function notifyWaifuCreditWebhook(
   const webhookSecret =
     stringField(config, "webhookSecret") ??
     stringField(waifuWebhook, "secret") ??
+    process.env.ELIZA_CLOUD_WEBHOOK_SECRET ??
     process.env.WAIFU_WEBHOOK_SECRET;
   if (!webhookUrl || !webhookSecret) return;
 

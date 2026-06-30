@@ -34,6 +34,7 @@ export const ORCHESTRATOR_MULTI_TASK_SUPERVISOR =
 export const ORCHESTRATOR_VIEW_CLOUD_DEPLOY = "ORCHESTRATOR_VIEW_CLOUD_DEPLOY";
 export const ORCHESTRATOR_DEVICE_MODALITY_REACH =
   "ORCHESTRATOR_DEVICE_MODALITY_REACH";
+export const ORCHESTRATOR_REFLEXION_RESPAWN = "ORCHESTRATOR_REFLEXION_RESPAWN";
 
 type ScenarioRuntime = IAgentRuntime & {
   registerPlugin?: (plugin: Plugin) => Promise<void>;
@@ -67,6 +68,10 @@ type ScenarioResult = {
   finalStatuses: Record<string, string>;
   verifierPrompts?: string[];
   correctivePrompt?: string;
+  /** Goal prompt of the first spawn (before any failure). See #8899. */
+  firstGoalPrompt?: string;
+  /** Goal prompt of the re-spawn (after a failed verification). See #8899. */
+  respawnGoalPrompt?: string;
   digest?: string;
   forwardedTo?: string[];
   guidance?: string;
@@ -117,6 +122,9 @@ class ScenarioAcpService {
     string,
     SpawnResult & { metadata: Record<string, unknown> }
   >();
+  /** Goal prompt handed to each spawned session — used to prove the re-spawn
+   * prompt carries a prior attempt's reflection (#8899). */
+  private readonly initialTasks = new Map<string, string>();
   readonly sent: Array<{ sessionId: string; text: string }> = [];
 
   onSessionEvent(
@@ -154,7 +162,13 @@ class ScenarioAcpService {
       metadata,
     };
     this.sessions.set(sessionId, session);
+    this.initialTasks.set(sessionId, opts.initialTask ?? "");
     return session;
+  }
+
+  /** The goal prompt that was handed to a spawned session at spawn time. */
+  initialTaskFor(sessionId: string): string | undefined {
+    return this.initialTasks.get(sessionId);
   }
 
   async getSession(
@@ -290,6 +304,91 @@ class OrchestratorScenarioHarness {
       events: eventTypes(finalDoc),
       finalStatuses: { [task.id]: finalDoc.task.status },
       digest: `first=${firstDoc.task.status}; final=${finalDoc.task.status}`,
+    };
+  }
+
+  async runReflexionRespawn(): Promise<ScenarioResult> {
+    const task = (await this.taskService.createTask({
+      title: "Reflexion retry parser",
+      goal: "Implement the parser and prove the unit tests pass.",
+      originalRequest: "Implement the parser and report only when proven.",
+      kind: "coding",
+      roomId: "scenario-room-reflexion",
+      worldId: "scenario-world",
+      metadata: { source: "scenario-runner" },
+      acceptanceCriteria: ["unit tests pass"],
+    })) as TaskDetail;
+    const first = (await this.taskService.spawnAgentForTask(task.id, {
+      label: "Ada",
+      task: "Implement the parser and report only when proven.",
+    })) as TaskDetail | null;
+    const firstSessionId = first?.sessions[0]?.sessionId;
+    if (!firstSessionId) {
+      throw new Error("expected a first spawned scenario session");
+    }
+    const firstGoalPrompt = this.acp.initialTaskFor(firstSessionId) ?? "";
+
+    // Report complete with no proof → automatic verification fails and the real
+    // append writes attempt 1's post-mortem onto the task.
+    this.acp.emit(firstSessionId, "task_complete", {
+      response: "I implemented the parser and I believe it works.",
+    });
+    const failedDoc = await this.waitForDoc(
+      task.id,
+      (doc) =>
+        doc.task.status === "active" &&
+        doc.events.some((event) => event.eventType === "auto_verify_failed") &&
+        Array.isArray(doc.task.metadata?.attemptReflections) &&
+        (doc.task.metadata.attemptReflections as unknown[]).length > 0,
+      "first automatic verification failure with a persisted reflection",
+    );
+    const reflection = (
+      failedDoc.task.metadata.attemptReflections as Array<{
+        attempt: number;
+        summary: string;
+        missing: string[];
+      }>
+    )[0];
+    if (!reflection) {
+      throw new Error("expected a persisted reflection after the failed verify");
+    }
+    const expectedLine = `Attempt ${reflection.attempt}: ${reflection.summary}`;
+
+    // Re-spawn → the new goal prompt must replay attempt 1's reflection.
+    const second = (await this.taskService.spawnAgentForTask(task.id, {
+      label: "Bo",
+      task: "Retry: implement the parser and prove it.",
+    })) as TaskDetail | null;
+    const secondSessionId = second?.sessions.find(
+      (session) => session.sessionId !== firstSessionId,
+    )?.sessionId;
+    if (!secondSessionId) {
+      throw new Error("expected a re-spawned scenario session");
+    }
+    const respawnGoalPrompt = this.acp.initialTaskFor(secondSessionId) ?? "";
+
+    if (firstGoalPrompt.includes("Past Attempt Failures")) {
+      throw new Error("clean first spawn prompt unexpectedly carried a reflection");
+    }
+    if (
+      !respawnGoalPrompt.includes("--- Past Attempt Failures ---") ||
+      !respawnGoalPrompt.includes(expectedLine)
+    ) {
+      throw new Error(
+        `re-spawn prompt missed the injected reflection "${expectedLine}":\n${respawnGoalPrompt.slice(0, 500)}`,
+      );
+    }
+
+    return {
+      summary: `a proofless completion failed verification and persisted a post-mortem ("${expectedLine}"); the re-spawn goal prompt replayed it under "--- Past Attempt Failures ---" so the retry will not repeat the gap`,
+      taskIds: [task.id],
+      sessionIds: [firstSessionId, secondSessionId],
+      events: eventTypes(failedDoc),
+      finalStatuses: { [task.id]: failedDoc.task.status },
+      verifierPrompts: [...this.verifierPrompts],
+      firstGoalPrompt,
+      respawnGoalPrompt,
+      digest: `before=clean; after replays "${expectedLine}"`,
     };
   }
 
@@ -876,6 +975,11 @@ async function registerHarnessPlugin(runtime: ScenarioRuntime): Promise<void> {
         ORCHESTRATOR_DEVICE_MODALITY_REACH,
         "Assert device support profiles, unsupported mobile stubs, and voice-origin coding delegation.",
         (harness) => harness.runDeviceModalityReach(),
+      ),
+      scenarioAction(
+        ORCHESTRATOR_REFLEXION_RESPAWN,
+        "Assert a failed verification's reflection is injected into the re-spawn goal prompt.",
+        (harness) => harness.runReflexionRespawn(),
       ),
     ],
   });

@@ -761,7 +761,7 @@ article {
 
 .app-release-link:hover,
 .app-checksum-row a:hover {
-  color: var(--brand-orange);
+  color: #9c3600;
   text-decoration: underline;
 }
 
@@ -864,6 +864,18 @@ article {
   top: 1.1rem;
   right: 1rem;
   color: rgba(8, 9, 12, 0.45);
+}
+
+.app-download-card:hover .app-card-icon {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--brand-white);
+}
+
+.app-download-card:hover .app-download-card-copy span,
+.app-download-card:hover .app-download-card-copy small,
+.app-download-card:hover .app-download-card-meta,
+.app-download-card:hover .app-card-arrow {
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .app-store-grid {
@@ -1139,14 +1151,18 @@ article {
   }
 }
 
-/* Reduced motion - universal override is intentional for accessibility */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
-    scroll-behavior: auto;
+    /* biome-ignore lint/complexity/noImportantStyles: Reduced-motion overrides must win over component animations and transitions. */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: Reduced-motion overrides must win over component animations and transitions. */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: Reduced-motion overrides must win over component animations and transitions. */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: Reduced-motion overrides must win over component animations and transitions. */
+    scroll-behavior: auto !important;
   }
 }

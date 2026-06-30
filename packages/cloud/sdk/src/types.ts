@@ -639,28 +639,47 @@ export interface CloudContainer {
   updated_at: string;
 }
 
+/**
+ * Body for `POST /api/v1/containers`.
+ *
+ * Field names MUST match the server zod schema (`CreateContainerSchema` in
+ * `packages/cloud/api/v1/containers/route.ts`) verbatim — the server is
+ * camelCase. The server validates with `z.object`, which strips unknown keys,
+ * so a snake_case body (`project_name`, `environment_vars`, …) is silently
+ * dropped before the handler ever runs. That previously discarded
+ * `environmentVars.ELIZA_APP_ID` (per-app monetization attribution) and
+ * `projectName` (the sticky deploy key) on every container create, even on the
+ * happy path. Keep this in exact camelCase agreement with the server.
+ */
 export interface CreateContainerRequest {
+  /** Human-readable container name (1–100 chars). */
   name: string;
-  project_name: string;
-  description?: string;
-  port?: number;
-  desired_count?: number;
-  cpu?: number;
-  memory?: number;
-  environment_vars?: Record<string, string>;
-  health_check_path?: string;
-  /** Internal coding-container bootstrap mount. Defaults to /data. */
-  volume_mount_path?: string;
-  /** Internal coding-container source bundle, written into the mounted volume before start. */
-  bootstrap_source?: JsonValue;
   /** Full image reference (e.g. `ghcr.io/owner/repo:tag`). The Hetzner-Docker backend pulls it directly. */
   image: string;
+  /** Stable project key (sticky scheduling/volumes). Defaults to a slug of `name` server-side. */
+  projectName?: string;
+  port?: number;
+  cpu?: number;
+  memoryMb?: number;
+  /**
+   * Caller-supplied environment. Carries `ELIZA_APP_ID` for per-app
+   * monetization attribution; platform-reserved keys are rejected server-side.
+   */
+  environmentVars?: Record<string, string>;
+  healthCheckPath?: string;
 }
 
-export interface UpdateContainerRequest
-  extends Partial<CreateContainerRequest> {
-  status?: ContainerStatus;
-}
+/**
+ * Body for `PATCH /api/v1/containers/:id`. Mirrors the server's
+ * action-discriminated union (`PatchSchema` in
+ * `packages/cloud/api/v1/containers/[id]/route.ts`): restart | setEnv | scale.
+ * The server rejects any body without a recognized `action`, so this is a
+ * discriminated union, not a partial of the create body.
+ */
+export type UpdateContainerRequest =
+  | { action: "restart" }
+  | { action: "setEnv"; environmentVars: Record<string, string> }
+  | { action: "scale"; desiredCount: number };
 
 export interface CreateContainerResponse {
   success: boolean;
@@ -701,6 +720,288 @@ export interface ContainerQuotaResponse extends Record<string, unknown> {
 
 export interface ContainerCredentialsResponse extends Record<string, unknown> {
   success?: boolean;
+}
+
+// ─── Apps (Eliza Cloud Apps product) ────────────────────────────────────────
+// DTOs mirror the server apps routes (`packages/cloud/api/v1/apps/**`) and the
+// `apps` Drizzle table (`packages/cloud/shared/src/db/schemas/apps.ts`). The app
+// payload is snake_case (it serializes the row directly via
+// `appsService.withDatabaseState`); the monetization payload is camelCase
+// (`appCreditsService.getMonetizationSettings`). Match the server exactly.
+
+/** Deployment lifecycle of an app (server enum `app_deployment_status`). */
+export type AppDeploymentStatus =
+  | "draft"
+  | "building"
+  | "deploying"
+  | "deployed"
+  | "failed";
+
+/** Discord social-automation config stored on an app (jsonb column). */
+export interface AppDiscordAutomation {
+  enabled: boolean;
+  guildId?: string;
+  channelId?: string;
+  autoAnnounce: boolean;
+  announceIntervalMin: number;
+  announceIntervalMax: number;
+  vibeStyle?: string;
+  lastAnnouncementAt?: string;
+  totalMessages?: number;
+}
+
+/** Telegram social-automation config stored on an app (jsonb column). */
+export interface AppTelegramAutomation {
+  enabled: boolean;
+  botUsername?: string;
+  channelId?: string;
+  groupId?: string;
+  autoReply: boolean;
+  autoAnnounce: boolean;
+  announceIntervalMin: number;
+  announceIntervalMax: number;
+  welcomeMessage?: string;
+  vibeStyle?: string;
+  lastAnnouncementAt?: string;
+  totalMessages?: number;
+}
+
+/** X/Twitter social-automation config stored on an app (jsonb column). */
+export interface AppTwitterAutomation {
+  enabled: boolean;
+  autoPost: boolean;
+  autoReply: boolean;
+  autoEngage: boolean;
+  discovery: boolean;
+  postIntervalMin: number;
+  postIntervalMax: number;
+  vibeStyle?: string;
+  topics?: string[];
+  lastPostAt?: string;
+  totalPosts?: number;
+  agentCharacterId?: string;
+}
+
+/** A generated promotional asset stored on an app (jsonb column). */
+export interface AppPromotionalAsset {
+  type: "social_card" | "banner";
+  url: string;
+  size: { width: number; height: number };
+  generatedAt: string;
+}
+
+/**
+ * An Eliza Cloud App as returned by the apps routes. Mirrors the `apps` Drizzle
+ * row serialized over the wire: timestamps are ISO strings, `numeric` columns
+ * are decimal strings, and `real` columns are numbers. Field names are
+ * snake_case to match the server payload exactly.
+ */
+export interface AppDto {
+  id: string;
+  name: string;
+  description: string | null;
+  slug: string;
+  organization_id: string;
+  created_by_user_id: string;
+  app_url: string;
+  allowed_origins: string[];
+  api_key_id: string | null;
+  affiliate_code: string | null;
+  /** `numeric` decimal string. */
+  referral_bonus_credits: string | null;
+  total_requests: number;
+  total_users: number;
+  /** `numeric` decimal string. */
+  total_credits_used: string | null;
+  logo_url: string | null;
+  website_url: string | null;
+  contact_email: string | null;
+  metadata: Record<string, unknown>;
+  deployment_status: AppDeploymentStatus;
+  production_url: string | null;
+  last_deployed_at: string | null;
+  github_repo: string | null;
+  linked_character_ids: string[] | null;
+  monetization_enabled: boolean;
+  inference_markup_percentage: number | null;
+  purchase_share_percentage: number | null;
+  platform_offset_amount: number | null;
+  custom_pricing_enabled: boolean | null;
+  /** `numeric` decimal string. */
+  total_creator_earnings: string | null;
+  /** `numeric` decimal string. */
+  total_platform_revenue: string | null;
+  discord_automation: AppDiscordAutomation | null;
+  telegram_automation: AppTelegramAutomation | null;
+  twitter_automation: AppTwitterAutomation | null;
+  promotional_assets: AppPromotionalAsset[] | null;
+  email_notifications: boolean | null;
+  response_notifications: boolean | null;
+  is_active: boolean;
+  is_approved: boolean;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+}
+
+/** `GET /api/v1/apps` */
+export interface ListAppsResponse {
+  success: boolean;
+  apps: AppDto[];
+}
+
+/** Single-app envelope: `GET /api/v1/apps/:id`, `PUT|PATCH /api/v1/apps/:id`. */
+export interface AppResponse {
+  success: boolean;
+  app: AppDto;
+}
+
+/** `POST /api/v1/apps` request body (snake_case — matches `CreateAppSchema`). */
+export interface CreateAppInput {
+  name: string;
+  description?: string;
+  app_url: string;
+  website_url?: string;
+  contact_email?: string;
+  allowed_origins?: string[];
+  logo_url?: string;
+  /** Skip provisioning a GitHub repo for the app. */
+  skipGitHubRepo?: boolean;
+  /** Apply monetization at creation, saving a follow-up call. */
+  monetization_enabled?: boolean;
+  /** Inference markup percentage, 0–1000. */
+  inference_markup_percentage?: number;
+}
+
+/** `POST /api/v1/apps` response. */
+export interface CreateAppResponse {
+  success: boolean;
+  app: AppDto;
+  /** Plaintext app API key — returned once, at creation. */
+  apiKey: string;
+  githubRepo?: string;
+  warnings?: string[];
+}
+
+/** `PATCH /api/v1/apps/:id` request body (snake_case — matches `UpdateAppSchema`). */
+export interface UpdateAppInput {
+  name?: string;
+  description?: string;
+  app_url?: string;
+  website_url?: string;
+  contact_email?: string;
+  allowed_origins?: string[];
+  logo_url?: string;
+  is_active?: boolean;
+  /** Up to 4 linked character UUIDs. */
+  linked_character_ids?: string[];
+}
+
+/**
+ * App monetization settings, returned by `GET /api/v1/apps/:id/monetization`
+ * and `PUT .../monetization` (server `appCreditsService.getMonetizationSettings`).
+ */
+export interface AppMonetizationSettings {
+  monetizationEnabled: boolean;
+  inferenceMarkupPercentage: number;
+  purchaseSharePercentage: number;
+  platformOffsetAmount: number;
+  totalCreatorEarnings: number;
+}
+
+/**
+ * `PUT /api/v1/apps/:id/monetization` request body (camelCase — matches
+ * `UpdateMonetizationSchema`).
+ */
+export interface UpdateAppMonetizationInput {
+  monetizationEnabled?: boolean;
+  /** Inference markup percentage, 0–1000. */
+  inferenceMarkupPercentage?: number;
+  /** Purchase share percentage, 0–100. */
+  purchaseSharePercentage?: number;
+}
+
+/** `GET|PUT /api/v1/apps/:id/monetization` response. */
+export interface AppMonetizationResponse {
+  success: boolean;
+  monetization: AppMonetizationSettings | null;
+}
+
+/** `POST /api/v1/apps/:id/deploy` request body — all fields optional. */
+export interface DeployAppInput {
+  repoUrl?: string;
+  ref?: string;
+  dockerfile?: string;
+  env?: Record<string, string>;
+}
+
+/**
+ * `POST /api/v1/apps/:id/deploy` response (202 Accepted). `status` is the
+ * server-side deployment status string (the deploy lifecycle is polled via
+ * {@link AppDeployStatusResponse}).
+ */
+export interface DeployAppResponse {
+  success: boolean;
+  deploymentId: string;
+  status: string;
+  startedAt: string;
+}
+
+/** `GET /api/v1/apps/:id/deploy/status` response. */
+export interface AppDeployStatusResponse {
+  success: boolean;
+  deploymentId: string | null;
+  status: string;
+  vercelUrl: string | null;
+  error: string | null;
+  startedAt: string | null;
+}
+
+/** Per-resource counts the cleanup pass reports on app deletion. */
+export interface AppCleanupSummary {
+  domainsRemoved: number;
+  githubRepoDeleted: boolean;
+  secretBindingsRemoved: number;
+  managedDomainsUnlinked: number;
+  containersTornDown: number;
+}
+
+/** `DELETE /api/v1/apps/:id` response. */
+export interface DeleteAppResponse {
+  success: boolean;
+  message: string;
+  cleaned?: AppCleanupSummary;
+  errors?: string[];
+}
+
+/**
+ * `POST /api/v1/apps/:id/regenerate-api-key` response.
+ *
+ * SECURITY: `apiKey` is the new plaintext app API key, returned ONCE. The
+ * previous key is invalidated immediately. Surface it to the user a single time
+ * and never log or persist it.
+ */
+export interface RegenerateAppApiKeyResponse {
+  success: boolean;
+  apiKey?: string;
+  message?: string;
+  error?: string;
+}
+
+/** `POST /api/v1/apps/:id/domains/buy` request body. */
+export interface BuyAppDomainInput {
+  domain: string;
+}
+
+/**
+ * `POST /api/v1/apps/:id/domains/buy` response. DEFERRED: the domain-purchase
+ * flow is the last piece of the apps launch and its response envelope is not yet
+ * finalized server-side, so this captures only the stable fields.
+ */
+export interface BuyAppDomainResponse {
+  success: boolean;
+  domain?: string;
+  error?: string;
 }
 
 export interface CreateAgentRequest {

@@ -38,6 +38,8 @@
       "@elizaos/logger/*": ["../../logger/src/*"],
       "@elizaos/shared": ["../../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../../packages/shared/src/*"],
+      "@elizaos/plugin-cloud-apps": ["../../../plugins/plugin-cloud-apps/src/index.ts"],
+      "@elizaos/plugin-cloud-apps/*": ["../../../plugins/plugin-cloud-apps/src/*"],
       "@elizaos/plugin-elizacloud": ["../../../plugins/plugin-elizacloud/src/index.ts"],
       "@elizaos/plugin-elizacloud/*": ["../../../plugins/plugin-elizacloud/src/*"],
       "drizzle-orm": ["../../../node_modules/drizzle-orm"],

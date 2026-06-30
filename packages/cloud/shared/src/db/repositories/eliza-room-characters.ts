@@ -6,6 +6,7 @@ import {
   type ElizaRoomCharacter,
   elizaRoomCharactersTable,
   type NewElizaRoomCharacter,
+  userCharacters,
 } from "../schemas";
 
 /**
@@ -94,6 +95,28 @@ export const elizaRoomCharactersRepository = {
     });
 
     return character;
+  },
+
+  /**
+   * Resolves the owning organization of a room via its mapped character.
+   *
+   * `eliza_room_characters.room_id → character_id → user_characters.organization_id`
+   * is the authority for which org a conversation room belongs to. Used to
+   * confirm a payment-callback channel targets a room the charge creator owns
+   * before writing an agent message into it (cross-tenant guard, #10253).
+   *
+   * Returns `undefined` when the room has no character mapping (callers must
+   * treat that as unverifiable and fail closed).
+   */
+  async findOrganizationIdByRoomId(roomId: string): Promise<string | undefined> {
+    const [row] = await dbRead
+      .select({ organizationId: userCharacters.organization_id })
+      .from(elizaRoomCharactersTable)
+      .innerJoin(userCharacters, eq(userCharacters.id, elizaRoomCharactersTable.character_id))
+      .where(eq(elizaRoomCharactersTable.room_id, roomId))
+      .limit(1);
+
+    return row?.organizationId ?? undefined;
   },
 
   /**

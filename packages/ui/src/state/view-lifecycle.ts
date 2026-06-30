@@ -177,7 +177,14 @@ class ViewLifecycleController {
     const retainedIds = [...this.records.keys()]
       .filter((id) => {
         const record = this.records.get(id);
-        return id === this.activeId || record?.policy.keepAlive === true;
+        // Pinned views (chat/background) are STRUCTURAL surfaces rendered
+        // OUTSIDE the routed host (ContinuousChatOverlay/AppBackground); the
+        // host only renders them when they are the active tab. Their "retained"
+        // guarantee is that their record is never evicted — not that the routed
+        // host paints a hidden slot for them (which would be an empty,
+        // unrenderable slot — see #10202 review).
+        if (id === this.activeId) return true;
+        return record?.policy.keepAlive === true && !record.policy.pinned;
       })
       .sort();
     const next: ViewRenderSet = { activeId: this.activeId, retainedIds };
@@ -324,11 +331,21 @@ class ViewLifecycleController {
     this.transition(record, "crashed", "crash");
   }
 
-  /** Mark a crashed view as recovering (Retry pressed). */
+  /**
+   * Mark a crashed view as recovering (Retry pressed), then immediately resolve
+   * it back to its resting phase. The boundary remounts a fresh subtree on
+   * Retry, so the view is live again — leaving it stuck in "recovering" would
+   * keep `isActive` false and never emit the recovered "active" telemetry.
+   */
   markRecovering(viewId: string): void {
     const record = this.records.get(viewId);
     if (!record) return;
     this.transition(record, "recovering", "recover");
+    this.transition(
+      record,
+      viewId === this.activeId ? "active" : "inactive",
+      "resume",
+    );
   }
 
   /**
@@ -480,9 +497,14 @@ class ViewLifecycleController {
     return this.activeId;
   }
 
+  /**
+   * Ids the host actually retains hidden: keep-alive but NOT pinned (pinned
+   * surfaces are structural, rendered outside the host). The active view is
+   * included only if it is itself a retained keep-alive view.
+   */
   getRetainedKeepAliveIds(): string[] {
     return [...this.records.values()]
-      .filter((r) => r.policy.keepAlive)
+      .filter((r) => r.policy.keepAlive && !r.policy.pinned)
       .map((r) => r.viewId)
       .sort();
   }

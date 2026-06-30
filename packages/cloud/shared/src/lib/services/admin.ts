@@ -58,6 +58,7 @@ const ELIZALABS_ADMIN_EMAIL_DOMAIN = "@elizalabs.ai";
 
 interface AdminIdentity {
   email?: string | null;
+  email_verified?: boolean | null;
   wallet_address?: string | null;
 }
 
@@ -111,7 +112,12 @@ class AdminService {
   async getAdminStatusForUser(
     user: AdminIdentity,
   ): Promise<{ isAdmin: boolean; role: AdminRole | null }> {
-    if (isElizaLabsAdminEmail(user.email)) {
+    // SECURITY: the @elizalabs.ai super_admin grant requires a VERIFIED email.
+    // Real admins arrive via Steward Google-Workspace SSO, which sets
+    // email_verified=true. Without this check, any user could set an UNVERIFIED
+    // @elizalabs.ai email (e.g. a free wallet account via PATCH /api/v1/user/email)
+    // and self-grant platform super_admin.
+    if (isElizaLabsAdminEmail(user.email) && user.email_verified === true) {
       return { isAdmin: true, role: "super_admin" };
     }
 

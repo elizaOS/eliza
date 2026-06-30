@@ -16,6 +16,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { isElizaLabsAdminEmail } from "@/lib/services/admin";
 import { usersService } from "@/lib/services/users";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -56,6 +57,22 @@ app.patch("/", async (c) => {
     }
 
     const lower = parsed.data.email.toLowerCase().trim();
+
+    // SECURITY (defense-in-depth): this self-service route sets
+    // email_verified=false with NO ownership proof, so it must not accept a
+    // privileged-domain address. An unverified @elizalabs.ai email would
+    // otherwise be a super_admin grant vector (the admin grant now also requires
+    // email_verified, but reject it here too).
+    if (isElizaLabsAdminEmail(lower)) {
+      return c.json(
+        {
+          success: false,
+          error:
+            "This email domain cannot be set here. Please contact support.",
+        },
+        403,
+      );
+    }
 
     const existingUser = await usersService.getByEmail(lower);
     if (existingUser && existingUser.id !== authed.id) {

@@ -800,9 +800,11 @@ public class SwabblePlugin: CAPPlugin, CAPBridgedPlugin {
 
         // 2) Text-only fallback on final results (timing data absent/unreliable)
         if isFinal,
-           let command = WakeGate.textOnlyCommand(transcript: transcript,
-                                                  triggers: config.triggers,
-                                                  minCommandLength: config.minCommandLength) {
+           let command = SwabbleWakeBridgeContract.textOnlyCommand(
+                transcript: transcript,
+                triggers: config.triggers,
+                minCommandLength: config.minCommandLength
+           ) {
             let trigger = config.triggers.first ?? ""
             let fallback = GateMatch(triggerWord: trigger, triggerEndTime: 0,
                                      postGap: 0, command: command)
@@ -846,13 +848,16 @@ public class SwabblePlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func triggerWakeWord(match: GateMatch, transcript: String, confidence: Float) {
         state = .triggered
-        notifyListeners("wakeWord", data: [
-            "wakeWord": match.triggerWord,
-            "command": match.command,
-            "transcript": transcript,
-            "postGap": match.postGap,
-            "confidence": Double(confidence),
-        ])
+        notifyListeners("wakeWord", data: SwabbleWakeBridgeContract.wakeWordPayload(
+            match: SwabbleBridgeMatch(
+                triggerWord: match.triggerWord,
+                triggerEndTime: match.triggerEndTime,
+                postGap: match.postGap,
+                command: match.command
+            ),
+            transcript: transcript,
+            confidence: Double(confidence)
+        ))
         beginCapture(initialCommand: match.command, triggerEndTime: match.triggerEndTime)
     }
 
@@ -928,11 +933,10 @@ public class SwabblePlugin: CAPPlugin, CAPBridgedPlugin {
     /// Check if the transcript is just the trigger word with no command after it.
     private func isTriggerOnly(transcript: String) -> Bool {
         guard let config else { return false }
-        guard WakeGate.matchesTextOnly(text: transcript, triggers: config.triggers),
-              WakeGate.startsWithTrigger(transcript: transcript, triggers: config.triggers) else {
-            return false
-        }
-        return WakeGate.textAfterTrigger(transcript, triggers: config.triggers).isEmpty
+        return SwabbleWakeBridgeContract.isTriggerOnly(
+            transcript: transcript,
+            triggers: config.triggers
+        )
     }
 
     /// If the transcript hasn't changed after the pause window, start capture.
@@ -946,10 +950,10 @@ public class SwabblePlugin: CAPPlugin, CAPBridgedPlugin {
 
             let trigger = self.config?.triggers.first ?? ""
             self.state = .triggered
-            self.notifyListeners("wakeWord", data: [
-                "wakeWord": trigger, "command": "", "transcript": transcript,
-                "postGap": 0.0, "confidence": 0.0,
-            ])
+            self.notifyListeners("wakeWord", data: SwabbleWakeBridgeContract.triggerOnlyPayload(
+                trigger: trigger,
+                transcript: transcript
+            ))
             self.beginCapture(initialCommand: "", triggerEndTime: 0)
         }
     }

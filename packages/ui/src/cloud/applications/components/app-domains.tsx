@@ -48,6 +48,7 @@ import {
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { openExternalUrlOnNative } from "../lib/native-cloud-nav";
+import { BuyDomainCard } from "./BuyDomainCard";
 
 interface DomainInfo {
   id: string;
@@ -559,6 +560,11 @@ export function AppDomains({ appId }: AppDomainsProps) {
             </div>
           )}
         </div>
+
+        {/* Buy a domain through Cloudflare (#10246) */}
+        {primaryDomain && !hasCustomDomain && !isLoading && (
+          <BuyDomainCard appId={appId} onPurchased={fetchDomains} />
+        )}
 
         {/* DNS Configuration Panel */}
         <AnimatePresence>

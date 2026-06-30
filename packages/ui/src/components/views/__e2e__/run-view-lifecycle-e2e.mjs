@@ -174,7 +174,9 @@ const lc = (fn, ...args) =>
 const settle = (ms = 200) => p.waitForTimeout(ms);
 
 const memorySamples = [];
-const VIEWS = ["alpha", "beta", "gamma", "delta"];
+// Six pure keep-alive work views — more than the LRU cap (3 hidden + active),
+// so repeated switching forces real eviction.
+const VIEWS = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
 
 try {
   await p.goto(url);
@@ -220,9 +222,9 @@ try {
   );
   await snap(p, "after-switch-cycles");
 
-  // ── 3. EVICT CLEANUP — drive enough distinct keep-alive views to force an LRU
-  // eviction of an older one; its tracked subscription must be released. ──
-  for (const id of ["alpha", "beta", "gamma", "delta"]) {
+  // ── 3. EVICT CLEANUP — drive all 6 distinct keep-alive views (> cap) to force
+  // an LRU eviction of older ones; their tracked subscriptions must be released. ──
+  for (const id of VIEWS) {
     await lc("switchTo", id);
     await settle(60);
   }
@@ -245,9 +247,7 @@ try {
     () => window.__ELIZA_RENDER_TELEMETRY__ ?? [],
   );
   const stormEvents = renderTelemetry.filter((e) => e.name === "storm");
-  const calmStorm = renderTelemetry.filter((e) =>
-    ["alpha", "beta", "gamma", "delta"].includes(e.name),
-  );
+  const calmStorm = renderTelemetry.filter((e) => VIEWS.includes(e.name));
   assert(
     stormEvents.length >= 1,
     `render-storm telemetry flagged the storm view (${stormEvents.length} events)`,

@@ -140,6 +140,7 @@ function Harness(): React.JSX.Element {
     <>
       <ChatScaffold />
       <TutorialSpotlight
+        stepId={step.id}
         targetSelector={step.targetSelector}
         dimOutside
         title={step.title}

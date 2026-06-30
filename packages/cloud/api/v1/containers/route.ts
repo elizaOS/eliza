@@ -37,7 +37,6 @@
  */
 
 import { Hono } from "hono";
-import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
@@ -54,21 +53,9 @@ import {
 import { findReservedEnvKeys } from "@/lib/services/reserved-env-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { CreateContainerSchema } from "./schema";
 
 const app = new Hono<AppEnv>();
-
-const CreateContainerSchema = z.object({
-  name: z.string().min(1).max(100),
-  /** Container image reference, e.g. `ghcr.io/elizaos/my-app:latest`. */
-  image: z.string().min(1).max(512),
-  /** Stable project key (sticky scheduling/volumes). Defaults to a slug of `name`. */
-  projectName: z.string().min(1).max(100).optional(),
-  port: z.number().int().positive().max(65535).optional(),
-  cpu: z.number().int().positive().optional(),
-  memoryMb: z.number().int().positive().optional(),
-  environmentVars: z.record(z.string(), z.string()).optional(),
-  healthCheckPath: z.string().max(256).optional(),
-});
 
 function slugify(name: string): string {
   return (

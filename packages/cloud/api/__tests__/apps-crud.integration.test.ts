@@ -219,9 +219,6 @@ const createApp = mock(
       apiKey: `eliza_test_${app.id.replace(/-/g, "").slice(0, 24)}`,
       githubRepo: githubRepoCreated ? `elizaOS-apps/${slug}` : undefined,
       githubRepoCreated,
-      subdomain: undefined,
-      productionUrl: undefined,
-      subdomainAssigned: false,
       errors: [] as string[],
     };
   },

@@ -13,7 +13,12 @@
 		"outDir": "./dist",
 		"rootDir": "../..",
 		"lib": ["ES2022", "DOM"],
-		"types": ["node"],
+		"types": ["node", "webxr"],
+		"typeRoots": [
+			"./node_modules/@types",
+			"../../node_modules/@types",
+			"../../node_modules/.bun/node_modules/@types"
+		],
 		"allowImportingTsExtensions": true,
 		"rewriteRelativeImportExtensions": true,
 		"paths": {

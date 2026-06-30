@@ -142,29 +142,147 @@ function extractVerifiableUrls(
   return aliasFiltered.slice(0, limit);
 }
 
+// The augmented initial task (taskWithResolvedRoute) appends the user's verbatim
+// request after this marker, prefixed by all the injected route/swarm hints.
+// We slice the user portion out so intent/URL detection never keys on the
+// injected route hint text (which literally contains the word "URL" and a
+// route-prefix URL).
+const USER_TASK_MARKER = "--- User Task ---";
+
+function userTaskSlice(referenceText: string | undefined): string {
+  if (!referenceText) return "";
+  const idx = referenceText.lastIndexOf(USER_TASK_MARKER);
+  return idx >= 0
+    ? referenceText.slice(idx + USER_TASK_MARKER.length)
+    : referenceText;
+}
+
 function shouldVerifyCompletionUrls(
   text: string,
   referenceText?: string,
   routeVerification?: RouteUrlVerification,
 ): boolean {
   const completionUrls = collectVerifiableUrlCandidates(text);
-  const referenceUrls = referenceText
-    ? collectVerifiableUrlCandidates(referenceText)
-    : [];
-  if (completionUrls.length === 0 && referenceUrls.length === 0) {
+  // Use ONLY the user's verbatim task for intent/URL detection — never the
+  // injected route/swarm hints that the augmented initial task is wrapped in.
+  const userTask = userTaskSlice(referenceText);
+  const userTaskUrls = userTask ? collectVerifiableUrlCandidates(userTask) : [];
+  if (completionUrls.length === 0 && userTaskUrls.length === 0) {
     return false;
   }
 
-  if (referenceText && taskRequestsReachableArtifact(referenceText)) {
+  // An INPUT/consume request ("summarize / read / fetch / open / scrape this
+  // URL ...") names a SOURCE URL to read. On its own that does NOT make a URL a
+  // deliverable. It only suppresses the artifact-SHAPED-URL heuristic (branch 2),
+  // NOT an EXPLICIT deploy/share request (branch 1): a task can both read a
+  // source AND deploy an output (e.g. "read https://x, deploy a summary page,
+  // and give me the live URL") — that must still verify the claimed deployment.
+  const consumesUrl = userTask ? taskConsumesUrl(userTask) : false;
+
+  // 1) The USER explicitly requested a reachable/hosted/deployed/SHARED artifact
+  //    (deploy/host/live/serve/verify, OR "give/provide/share me the url/link")
+  //    -> verify whatever URL the completion claims. Holds in routed AND
+  //    un-routed sessions (e.g. "deploy to Vercel and give me the live URL", or
+  //    "create a landing page and give me the url"). This explicit intent is
+  //    authoritative and is NOT suppressed by also consuming a source URL.
+  if (
+    userTask &&
+    (taskRequestsReachableArtifact(userTask) ||
+      taskRequestsProvidedUrl(userTask))
+  ) {
     return true;
   }
-  return completionUrls.some((url) =>
-    isRoutedArtifactUrl(url, routeVerification),
+
+  // 2) The USER named a concrete DELIVERABLE-shaped URL (a routed hosted-app
+  //    URL like `.../apps/<slug>/`, or one that targets the session's route
+  //    mapping) -> the user pointed at a specific reachable artifact target, so
+  //    verifying it is correct. We key on the deliverable SHAPE, not on the
+  //    completion echoing it (the completion narration is often composed/
+  //    stripped before it reaches here, so an echo requirement would miss real
+  //    builds). Crucially this EXCLUDES arbitrary INPUT/source URLs such as
+  //    "summarize https://example.com/docs" or "fetch this API and report":
+  //    those are plain third-party URLs, not artifact-shaped, so they never
+  //    trigger a verify/retry.
+  //    EXCLUDES a consume request that names an `/apps/`-shaped SOURCE URL
+  //    ("summarize https://example.com/apps/foo/"): when the task consumes a
+  //    URL, an artifact-shaped path is still just a source, so it must not
+  //    verify.
+  const userNamedDeliverableUrl =
+    !consumesUrl &&
+    userTaskUrls.some(
+      (ru) =>
+        isRoutedArtifactUrl(ru, routeVerification) ||
+        (routeVerification !== undefined &&
+          routeVerification.mappings.some((m) => ru.startsWith(m.urlPrefix))),
+    );
+  if (userNamedDeliverableUrl) {
+    return true;
+  }
+
+  // 3) The task set up an explicit deployment ROUTE and a completion URL targets
+  //    that mapping -> a real hosted deliverable, verify it. An incidental URL
+  //    in narration that does not match the mapping (e.g. an `/apps/<slug>/` URL
+  //    grepped from skill code) is ignored.
+  if (routeVerification) {
+    return completionUrls.some((url) =>
+      routeVerification.mappings.some((mapping) =>
+        url.startsWith(mapping.urlPrefix),
+      ),
+    );
+  }
+
+  // Otherwise: no reachable-artifact intent, no claimed user URL, no route — a
+  // routed-shape or input URL appearing only in narration is not a deliverable.
+  return false;
+}
+
+// True only when the TASK explicitly asked for a REACHABLE / hosted / deployed
+// artifact (or for a URL/link to one). Deliberately does NOT match generic
+// authoring verbs like `build`, `create`, `site`, `page`, or `static`: a task
+// such as "build a static site in its own folder" is a LOCAL build with no
+// reachable artifact requested, so an incidental dead `/apps/...` URL in the
+// sub-agent's exploratory narration must not trigger URL verification + a
+// glitch/retry. We key on deployment/serving/reachability words and on an
+// explicit request for a URL/link/address.
+function taskRequestsReachableArtifact(text: string): boolean {
+  // Unambiguous deployment/serving/reachability words, or an explicit request
+  // to VERIFY a target. Deliberately EXCLUDES:
+  //  - generic authoring verbs (build/create/site/page/static) so a pure local
+  //    build never over-verifies on incidental narration URLs; and
+  //  - the ambiguous nouns `url`/`link`/`address`/`endpoint`, because
+  //    "summarize this URL: https://..." / "read the link ..." are INPUT-URL
+  //    requests, not deliverable requests. A user who names a deliverable URL
+  //    target is handled by the artifact-SHAPED user-URL branch (2) instead.
+  //    Deliverable intent here means hosting/serving/reachability, e.g.
+  //    "deploy X and give me the live url" still matches via `deploy`/`live`.
+  return /\b(?:deploy|deployed|deploying|deployment|host|hosted|hosting|publish|published|publishing|serve|served|serving|preview|reachable|live|online|accessible|verify|verified|verifying|verification)\b/i.test(
+    text,
   );
 }
 
-function taskRequestsReachableArtifact(text: string): boolean {
-  return /\b(?:app|site|website|webpage|page|build|built|create|created|deploy|deployed|deployment|host|hosted|hosting|preview|publish|published|serve|served|serving|static|reachable|live|verify|verified)\b/i.test(
+// True when the user is asking the agent to PROVIDE/SHARE a URL or link back to
+// them (an output deliverable), e.g. "give me the url", "send me the link",
+// "what's the url", "share the link". This is the deliverable reading of the
+// otherwise-ambiguous `url`/`link` nouns — distinct from CONSUMING a URL
+// (see taskConsumesUrl), which `taskRequestsReachableArtifact` deliberately
+// drops. Requires a provide-verb adjacent to the url/link noun so a bare
+// mention of "url" in an input request does not match.
+function taskRequestsProvidedUrl(text: string): boolean {
+  // Only UNAMBIGUOUS provide/output verbs. Deliberately EXCLUDES `get`/`need`/
+  // `want`, which routinely introduce an INPUT URL ("get the URL <x> and
+  // summarize it") rather than requesting one back.
+  return /\b(?:give|send|share|provide|return|show|tell|what(?:'?s| is)|where(?:'?s| is))\b[^.?!\n]{0,40}\b(?:url|link|address)\b/i.test(
+    text,
+  );
+}
+
+// True when the user is asking the agent to CONSUME/read a URL as input (a
+// SOURCE), e.g. "summarize this url", "read the link", "fetch this endpoint",
+// "open https://...", "scrape the page at ...". When the task is consuming a
+// URL, no URL-based deliverable signal applies — a dead/private source URL must
+// not trigger a verify/retry.
+function taskConsumesUrl(text: string): boolean {
+  return /\b(?:summari[sz]e|summary|read|fetch|scrape|crawl|open|visit|browse|download|parse|extract|analy[sz]e|review|check|look\s+at|go\s+to|load)\b[^.?!\n]{0,40}\b(?:url|link|endpoint|page|site|address|https?:\/\/)/i.test(
     text,
   );
 }
@@ -412,6 +530,22 @@ export class SubAgentRouter extends Service {
       this.bestResultForOrigin.delete(oldest);
     }
   }
+
+  /**
+   * The per-session round-trip count the loop guard has accumulated so far
+   * (0 when the session has not round-tripped yet). Read-only: the count is
+   * owned by the loop-guard reducer; this only exposes it so the watchdog can
+   * warn the user before a runaway session hits the force-stop cap (#8901).
+   */
+  getRoundTripCount(sessionId: string): number {
+    return this.loopState.roundTripCounts.get(sessionId) ?? 0;
+  }
+
+  /** The configured per-session round-trip cap (the runaway-loop force-stop limit). */
+  getRoundTripCap(): number {
+    return this.loopState.roundTripCap;
+  }
+
   private started = false;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;
@@ -643,6 +777,10 @@ export class SubAgentRouter extends Service {
       const { state, decision } = routerLoopTransition(this.loopState, {
         type: "state_lost",
         lineageKey: respawnLineageKey(session, origin),
+        // A `task_complete` for this lineage claims its slot under the
+        // completion key; pass it so the reducer can suppress a teardown-race
+        // state-loss whose deliverable already posted (no false "retry?").
+        completionKey: completionLineageKey(session, origin),
       });
       this.loopState = state;
       if (decision.kind === "already_terminal") {

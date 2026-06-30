@@ -358,6 +358,10 @@ async function pollResult(udid, appId) {
       } catch {
         parsed = null;
       }
+      // Quarantined (#10322): the in-app smoke skips cleanly because the
+      // remote-connect-at-URL onboarding surface it drove was removed by #9952.
+      if (parsed?.skipped === true || parsed?.phase === "skipped")
+        return parsed;
       if (parsed?.ok === true) return parsed;
       if (parsed?.phase === "failed" || parsed?.error) {
         throw new Error(`iOS onboarding smoke failed: ${lastRaw}`);
@@ -414,6 +418,19 @@ async function main() {
     const result = await pollResult(udid, appId);
     const screenshot = takeScreenshot(udid, "home-landing");
     const video = await stopVideo(recording);
+    if (result.skipped === true || result.phase === "skipped") {
+      // Quarantined (#10322): remote-connect-at-URL onboarding was removed by
+      // #9952; the in-app smoke skips cleanly until device onboarding is
+      // redesigned. Treated as a pass so mobile-build-smoke.yml stays green.
+      fs.writeFileSync(
+        path.join(resultDir, "result.json"),
+        `${JSON.stringify({ ...result, screenshot, video }, null, 2)}\n`,
+      );
+      log(
+        `SKIP (#10322): ${result.reason ?? "remote-connect-at-URL onboarding pending device redesign"}`,
+      );
+      return;
+    }
     if (result.homeVisible !== true || result.composerVisible !== true) {
       throw new Error(
         `iOS onboarding smoke result lacked home/composer: ${JSON.stringify(result)}`,

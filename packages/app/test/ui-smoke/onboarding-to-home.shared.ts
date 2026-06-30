@@ -14,6 +14,14 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 
 export const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 
+// A valid (tiny, silent) mp3 so a mocked TTS POST returns decodable audio bytes
+// instead of a 501, keeping the page-diagnostics guard clean when the tutorial
+// narrator speaks. Same fixture the assistant-home-flow voice lane uses.
+const TINY_MP3 = Buffer.from(
+  "SUQzAwAAAAAAFlRTU0UAAAAMAAADTGF2ZjU4LjI5LjEwMAAA//tQAAAAAAAA",
+  "base64",
+);
+
 // Launcher views so the launcher is non-empty (the home WidgetHost only
 // renders when the catalog has visible views) AND so a known launcher tile
 // (`launcher-tile-settings`) is assertable. `settings` is a system entry id.
@@ -282,7 +290,17 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
   });
 }
 
-async function routeFirstRunIncomplete(page: Page): Promise<void> {
+// Mutable, page-scoped record of the writes the in-chat onboarding performs, so
+// a spec can assert "POST /api/first-run fired exactly once" against the live
+// network boundary (the single `persistFirstRun` funnel in first-run-finish.ts).
+export interface OnboardingRouteState {
+  firstRunPosts: unknown[];
+}
+
+async function routeFirstRunIncomplete(
+  page: Page,
+  state: OnboardingRouteState,
+): Promise<void> {
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -298,9 +316,11 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
       expiresAt: null,
     });
   });
-  // Onboarding boots with first-run NOT complete so the onboarding surface
-  // renders. submitFirstRun (POST /api/first-run) is the write the local finish
-  // performs before completeFirstRun.
+  // Onboarding boots with first-run NOT complete so the in-chat conductor seeds
+  // the greeting + runtime choice into the live floating chat. submitFirstRun
+  // (POST /api/first-run) is the single write the finish use case performs
+  // before completeFirstRun; we record every POST so the spec can prove the
+  // exactly-once contract.
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -313,13 +333,21 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
       await route.fallback();
       return;
     }
+    try {
+      state.firstRunPosts.push(route.request().postDataJSON());
+    } catch {
+      state.firstRunPosts.push({});
+    }
     await fulfillJson(route, { ok: true });
   });
 }
 
-export async function installHomeRoutes(page: Page): Promise<void> {
+export async function installHomeRoutes(
+  page: Page,
+): Promise<OnboardingRouteState> {
+  const state: OnboardingRouteState = { firstRunPosts: [] };
   await installDefaultAppRoutes(page);
-  await routeFirstRunIncomplete(page);
+  await routeFirstRunIncomplete(page, state);
 
   await page.route("**/api/config", async (route) => {
     if (route.request().method() !== "GET") {
@@ -482,6 +510,174 @@ export async function installHomeRoutes(page: Page): Promise<void> {
     }
     await fulfillJson(route, notificationsPayload());
   });
+
+  // Benign TTS so the interactive tutorial's narrator (the "Take the tutorial"
+  // branch speaks its first voice line through the REAL voice pipeline) does not
+  // 501 against the stub and trip the page-diagnostics guard. A valid tiny mp3.
+  await page.route("**/api/tts/**", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "audio/mpeg" },
+      body: TINY_MP3,
+    });
+  });
+
+  return state;
+}
+
+// ── Cloud-runtime onboarding routes ──────────────────────────────────────────
+//
+// The in-chat Cloud path (pick Cloud → OAuth card → cloud-agent choice → bind)
+// is driven entirely by the conductor; the user never types a key. We mock the
+// cloud login success at the network boundary the SAME way the existing cloud
+// specs do: `/api/cloud/status` reports connected, a global auth token is
+// injected (see `injectCloudAuthToken`), and `/api/cloud/compat/agents` lists
+// one already-running agent whose bridge is this very page origin. Because that
+// bound base owns the app-shell routes (`supportsFullAppShellRoutes` → true),
+// the cloud finish persists first-run exactly once — same `persistFirstRun`
+// funnel as Local — so the POST-once contract holds across runtimes.
+export const CLOUD_AUTH_TOKEN = "ui-smoke-onboarding-cloud-token";
+export const CLOUD_AGENT_ID = "ui-smoke-cloud-agent-1";
+export const CLOUD_AGENT_NAME = "Smoke Cloud Agent";
+
+/** Inject the cloud session token before React boots (getCloudAuthToken reads it). */
+export async function injectCloudAuthToken(page: Page): Promise<void> {
+  await page.addInitScript((token) => {
+    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ = token;
+  }, CLOUD_AUTH_TOKEN);
+}
+
+export async function installCloudRoutes(page: Page): Promise<void> {
+  await page.unroute("**/api/cloud/status").catch(() => {});
+  await page.route("**/api/cloud/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      connected: true,
+      enabled: true,
+      cloudVoiceProxyAvailable: true,
+      hasApiKey: true,
+      userId: "ui-smoke-onboarding-user",
+    });
+  });
+
+  await page.unroute("**/api/cloud/credits").catch(() => {});
+  await page.route("**/api/cloud/credits", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      balance: 100,
+      low: false,
+      critical: false,
+      authRejected: false,
+    });
+  });
+
+  await page.route("**/api/cloud/login", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      ok: true,
+      sessionId: "ui-smoke-onboarding-cloud-session",
+      browserUrl:
+        "https://www.elizacloud.ai/device/ui-smoke-onboarding-cloud-session",
+    });
+  });
+  await page.route("**/api/cloud/login/status**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      status: "authenticated",
+      token: CLOUD_AUTH_TOKEN,
+      organizationId: "ui-smoke-onboarding-org",
+      userId: "ui-smoke-onboarding-user",
+    });
+  });
+
+  // The browser cloud path lists agents through the LOCAL proxy
+  // (`/api/cloud/compat/agents`), not the direct cloud origin — see
+  // getCloudCompatAgents (client-cloud.ts). One running agent whose bridge is
+  // the page origin makes the bound base an app-shell base → first-run persists.
+  await page.route("**/api/cloud/compat/agents", async (route) => {
+    const request = route.request();
+    const origin = new URL(request.url()).origin;
+    if (request.method() === "GET") {
+      await fulfillJson(route, {
+        success: true,
+        data: [
+          {
+            agent_id: CLOUD_AGENT_ID,
+            agent_name: CLOUD_AGENT_NAME,
+            status: "running",
+            bridge_url: origin,
+            web_ui_url: origin,
+            containerUrl: origin,
+            webUiUrl: origin,
+            database_status: "ready",
+            error_message: null,
+            agent_config: {},
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-01T00:00:00.000Z",
+            last_heartbeat_at: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      });
+      return;
+    }
+    if (request.method() === "POST") {
+      await fulfillJson(route, {
+        success: true,
+        data: {
+          agentId: CLOUD_AGENT_ID,
+          agentName: CLOUD_AGENT_NAME,
+          jobId: "",
+          status: "running",
+          nodeId: null,
+          message: "Agent created",
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route("**/api/cloud/compat/agents/**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const origin = new URL(route.request().url()).origin;
+    await fulfillJson(route, {
+      success: true,
+      data: {
+        agent_id: CLOUD_AGENT_ID,
+        agent_name: CLOUD_AGENT_NAME,
+        status: "running",
+        bridge_url: origin,
+        web_ui_url: origin,
+        containerUrl: origin,
+        webUiUrl: origin,
+        database_status: "ready",
+        error_message: null,
+        agent_config: {},
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+        last_heartbeat_at: "2026-01-01T00:00:00.000Z",
+      },
+    });
+  });
 }
 
 export async function settleHomeEntrance(page: Page): Promise<void> {
@@ -521,44 +717,65 @@ export const FINANCES_TESTID = "chat-widget-finances-alerts";
 export const GOALS_TESTID = "widget-goals-attention";
 export const NOTIFICATIONS_TESTID = "widget-notifications";
 
+// In-chat first-run choice button testIds. The conductor seeds each option as a
+// `[CHOICE:first-run id=…]` line `value=label`, where `value` is the reserved
+// `__first_run__:<group>:<id>` sentinel the AppContext send funnel intercepts
+// (use-first-run-conductor.ts). ChoiceWidget renders `data-testid="choice-<value>"`,
+// so the testId is the full sentinel. No separate full-screen onboarding surface
+// exists anymore — these buttons live INSIDE the floating ContinuousChatOverlay.
+const RUNTIME_CHOICE = (id: "cloud" | "local" | "other"): string =>
+  `choice-__first_run__:runtime:${id}`;
+const PROVIDER_CHOICE = (id: "on-device" | "elizacloud" | "other"): string =>
+  `choice-__first_run__:provider:${id}`;
+const TUTORIAL_CHOICE = (id: "start" | "skip"): string =>
+  `choice-__first_run__:tutorial:${id}`;
+const CLOUD_AGENT_CHOICE = (id: string): string =>
+  `choice-__first_run__:cloud-agent:${id}`;
+
+// The removed full-screen onboarding surface used these testIds. Asserting they
+// never appear proves the new flow is genuinely chat-first (no startup gate, no
+// FirstRunChat surface) — onboarding paints the home + the real chat overlay.
+const REMOVED_ONBOARDING_TESTIDS = [
+  "first-run-chat",
+  "first-run-greeting",
+  "startup-first-run-background",
+];
+
 /**
- * Drive the REAL onboarding to completion via Local → on-device inference, then
- * assert the post-onboarding HOME: the continuous chat overlay is present and
- * the home widget host renders its seeded per-plugin cards. This is the simplest
- * path that calls completeFirstRun("chat", { launchCompanionOverlay: true })
- * without a cloud sign-in (all-local does not need a cloud connect). `click`
- * lets the mobile lane drive the onboarding cards with touch taps while the
- * desktop lane uses ordinary clicks.
+ * Assert the FIRST painted surface of a fresh profile is the real floating chat
+ * (ContinuousChatOverlay) showing the conductor's agent greeting + the runtime
+ * choice — and that NONE of the removed full-screen onboarding testIds exist.
+ * This is the "chat-first" + "gate-absent" contract for #9952.
  */
-export async function completeOnboardingToHome(
-  page: Page,
-  click: (locator: Locator) => Promise<void>,
-): Promise<{ onboarding: Locator; surface: Locator }> {
-  // 1) In-chat first-run surface renders (agent greets first).
-  const onboarding = page.getByTestId("first-run-chat");
-  await expect(onboarding).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("first-run-greeting")).toBeVisible({
+export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
+  // The agent greets first, in the live transcript the overlay renders.
+  await expect(
+    chatOverlay.getByText("Let's get you set up", { exact: false }),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(
+    chatOverlay.getByText("where should your agent run", { exact: false }),
+  ).toBeVisible({ timeout: 15_000 });
+  // The removed full-screen onboarding gate must be absent.
+  for (const testId of REMOVED_ONBOARDING_TESTIDS) {
+    await expect(
+      page.getByTestId(testId),
+      `removed onboarding surface ${testId} must not render (flow is chat-first)`,
+    ).toHaveCount(0);
+  }
+  // The runtime choice renders as inline ChoiceWidget buttons in the overlay.
+  await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
     timeout: 15_000,
   });
+  await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
+  return chatOverlay;
+}
 
-  // 2) Local → on-device inference.
-  const local = page.getByTestId("choice-local");
-  await expect(local).toBeVisible({ timeout: 15_000 });
-  await expect(local).toBeEnabled({ timeout: 15_000 });
-  await click(local);
-
-  const inferenceLocal = page.getByTestId("choice-on-device");
-  await expect(inferenceLocal).toBeVisible({ timeout: 15_000 });
-  await click(inferenceLocal);
-
-  // 3) Landing is the HOME: the floating chat overlay is present AND the home
-  // widget host renders its seeded per-plugin cards.
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
-  await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
-
+/** Assert the seeded per-plugin home widgets render with their attention data. */
+async function expectPopulatedHome(page: Page): Promise<Locator> {
   const host = page.getByTestId("widget-host-home");
   await expect(host).toBeVisible({ timeout: 30_000 });
-
   for (const testId of [FINANCES_TESTID, GOALS_TESTID, NOTIFICATIONS_TESTID]) {
     await expect(
       host.getByTestId(testId),
@@ -572,13 +789,150 @@ export async function completeOnboardingToHome(
   await expect(host.getByTestId(NOTIFICATIONS_TESTID)).toContainText(
     "Payment failed",
   );
-
-  // The onboarding surface is gone now that we are on the home.
-  await expect(onboarding).toHaveCount(0, { timeout: 15_000 });
-
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toHaveAttribute("data-page", "home");
-  return { onboarding, surface };
+  return surface;
+}
+
+/**
+ * Drive the tutorial-or-skip CHOICE — the SINGLE real completion gate. The
+ * conductor defers the store's `completeFirstRun` until this pick, so it is
+ * reachable after EVERY runtime path. Picking either option flips
+ * firstRunComplete and lands on "chat" (the home). `start` additionally launches
+ * the interactive tutorial spotlight; `skip` lands straight on the home.
+ */
+async function pickTutorial(
+  page: Page,
+  click: (locator: Locator) => Promise<void>,
+  choice: "start" | "skip",
+): Promise<void> {
+  const start = page.getByTestId(TUTORIAL_CHOICE("start"));
+  const skip = page.getByTestId(TUTORIAL_CHOICE("skip"));
+  await expect(start).toBeVisible({ timeout: 30_000 });
+  await expect(skip).toBeVisible();
+  await click(choice === "start" ? start : skip);
+}
+
+/**
+ * Drive the REAL in-chat onboarding to completion via Local → on-device
+ * inference → tutorial-or-skip, then assert the post-onboarding HOME inside the
+ * SAME floating ContinuousChatOverlay we use everywhere else. This is the
+ * keyless path that calls completeFirstRun("chat", { launchCompanionOverlay:
+ * true }) without a cloud sign-in (all-local needs no cloud connect). `click`
+ * lets the mobile lane TAP the inline choice buttons while desktop clicks.
+ */
+export async function completeOnboardingToHome(
+  page: Page,
+  click: (locator: Locator) => Promise<void>,
+  opts: { state: OnboardingRouteState; tutorial?: "start" | "skip" } = {
+    state: { firstRunPosts: [] },
+  },
+): Promise<{ surface: Locator }> {
+  const { state, tutorial = "skip" } = opts;
+
+  // 1) Chat-first: the overlay greets first; no removed full-screen gate exists.
+  await expectChatFirstOnboarding(page);
+
+  // 2) Local runtime → on-device ("all-local") provider.
+  const local = page.getByTestId(RUNTIME_CHOICE("local"));
+  await expect(local).toBeEnabled({ timeout: 15_000 });
+  await click(local);
+
+  const onDevice = page.getByTestId(PROVIDER_CHOICE("on-device"));
+  await expect(onDevice).toBeVisible({ timeout: 15_000 });
+  await click(onDevice);
+
+  // 3) Provisioning posts first-run, then the conductor offers the tutorial.
+  await pickTutorial(page, click, tutorial);
+
+  // 4) Landing is the HOME: the floating chat overlay is present (composer
+  // usable) AND the home widget host renders its seeded per-plugin cards.
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const surface = await expectPopulatedHome(page);
+
+  // 5) The local finish persisted first-run exactly once (the single
+  // persistFirstRun funnel), even though the tutorial step ran afterwards.
+  expect(
+    state.firstRunPosts.length,
+    "POST /api/first-run must fire exactly once for the local path",
+  ).toBe(1);
+
+  return { surface };
+}
+
+/**
+ * Drive the REAL in-chat onboarding to completion via the CLOUD runtime: pick
+ * Cloud → the OAuth card appears while the conductor connects Eliza Cloud (mocked
+ * at the network boundary, no popup needed) → the cloud-agent CHOICE → bind →
+ * tutorial-or-skip → home. The bound agent base is this page origin (an app-shell
+ * base), so the cloud finish persists first-run exactly once — same contract as
+ * Local. Requires `installCloudRoutes` + `injectCloudAuthToken`.
+ */
+export async function completeCloudOnboardingToHome(
+  page: Page,
+  click: (locator: Locator) => Promise<void>,
+  opts: { state: OnboardingRouteState; tutorial?: "start" | "skip" },
+): Promise<{ surface: Locator }> {
+  const { state, tutorial = "skip" } = opts;
+
+  await expectChatFirstOnboarding(page);
+
+  // 1) Pick the Cloud runtime.
+  const cloud = page.getByTestId(RUNTIME_CHOICE("cloud"));
+  await expect(cloud).toBeEnabled({ timeout: 15_000 });
+  await click(cloud);
+
+  // 2) The conductor seeds the Eliza Cloud OAuth card (a `secretRequest` block)
+  // while it connects + lists the account's cloud agents at the network boundary.
+  await expect(page.getByTestId("sensitive-request").first()).toBeVisible({
+    timeout: 20_000,
+  });
+
+  // 3) ≥1 cloud agent → the conductor seeds a cloud-agent CHOICE. Pick it.
+  const agentChoice = page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID));
+  await expect(agentChoice).toBeVisible({ timeout: 30_000 });
+  await click(agentChoice);
+
+  // 4) Binding done → tutorial offered → land on the home.
+  await pickTutorial(page, click, tutorial);
+
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const surface = await expectPopulatedHome(page);
+
+  expect(
+    state.firstRunPosts.length,
+    "POST /api/first-run must fire exactly once for the cloud path",
+  ).toBe(1);
+
+  return { surface };
+}
+
+/**
+ * Collapse the floating ContinuousChatOverlay back to its composer-only resting
+ * state. In-chat onboarding leaves the overlay OPEN in the "full" detent (it was
+ * auto-opened with firstRunOpen=true), and while open its scrim captures pointer
+ * events over the whole viewport — so a home swipe lands on the chat, not the
+ * home rail. Escape collapses the sheet from any open state (the overlay's own
+ * keydown contract); `data-open` clears once it is back at the input detent.
+ */
+export async function collapseChatOverlay(page: Page): Promise<void> {
+  const overlay = page.getByTestId("continuous-chat-overlay");
+  await expect(overlay).toBeVisible({ timeout: 15_000 });
+  if ((await overlay.getAttribute("data-open")) !== "true") return;
+  await page.keyboard.press("Escape");
+  await expect(overlay).not.toHaveAttribute("data-open", "true", {
+    timeout: 10_000,
+  });
 }
 
 /**
@@ -593,6 +947,9 @@ export async function swipeLeftToLauncher(
   page: Page,
   surface: Locator,
 ): Promise<void> {
+  // The in-chat onboarding overlay rests OPEN; collapse it so the swipe lands on
+  // the home rail rather than the chat scrim.
+  await collapseChatOverlay(page);
   const homePage = page.getByTestId("home-launcher-home-page");
   await expect(homePage).toBeVisible();
   const box = await homePage.boundingBox();

@@ -149,6 +149,59 @@ export const containersEnv = {
   },
 
   /**
+   * Allowlist of image refs/prefixes permitted for APPS-DEPLOY (Product 2) image
+   * deploys — DELIBERATELY SEPARATE from {@link codingContainerImageAllowlist}.
+   *
+   * Apps-deploy ships ONLY first-party template/app images under
+   * `ghcr.io/elizaos/*`, so its default allowlist is `ghcr.io/elizaos/*` and
+   * nothing else — no personal (`ghcr.io/dexploarer/*`) or side-product
+   * (`ghcr.io/waifufun/*`) namespaces. Those stay on the coding-container
+   * allowlist (its BYO-image path), and an operator can opt them back in for
+   * apps-deploy by setting `APPS_DEPLOY_IMAGE_ALLOWLIST` explicitly.
+   *
+   * Format + matching rules are identical to the coding allowlist
+   * (comma-separated glob prefixes; trailing `*` = prefix match; no `*` = exact;
+   * a bare `*` opts out). Returns the parsed, normalized list; an empty list
+   * disables the gate at parse time, but the call site
+   * (`isCodingContainerImageAllowed`) is fail-closed, so an explicit empty env
+   * denies every apps-deploy image rather than silently opening the gate.
+   */
+  appsDeployImageAllowlist(): string[] {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.APPS_DEPLOY_IMAGE_ALLOWLIST);
+    if (raw === undefined) {
+      // First-party elizaOS images only. Operators widen via env.
+      return ["ghcr.io/elizaos/*"];
+    }
+    return raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  },
+
+  /**
+   * First-party TEMPLATE image stamped onto a template app (one created WITHOUT a
+   * user repo) at create time, so create -> deploy resolves to a prebuilt,
+   * allowlisted image instead of failing with "no image to deploy".
+   *
+   * Defaults to the published example-app image at the `:showcase` tag that
+   * `.github/workflows/build-example-app-images.yml` publishes (and gates on a
+   * working container before pushing). It sits under `ghcr.io/elizaos/*`, so the
+   * apps-deploy allowlist permits it unchanged. Override the whole ref via
+   * `APP_DEFAULT_TEMPLATE_IMAGE`.
+   *
+   * TODO(ops, digest-pin): `:showcase` is a MUTABLE tag — the registry could
+   * re-point it after the deploy-time allowlist check. Once a stable showcase
+   * digest is published, pin this default to
+   * `ghcr.io/elizaos/example-edad@sha256:<64hex>` so a future digest-pin gate
+   * (`CONTAINER_IMAGE_REQUIRE_DIGEST`) accepts the template default unchanged.
+   */
+  appDefaultTemplateImage(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.APP_DEFAULT_TEMPLATE_IMAGE) ?? "ghcr.io/elizaos/example-edad:showcase";
+  },
+
+  /**
    * Whether image refs must be pinned to a full `@sha256:<64hex>` digest to be
    * accepted by the container image gate (in addition to the allowlist).
    *

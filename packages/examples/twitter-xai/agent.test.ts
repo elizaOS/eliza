@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
+import { AgentRuntime, getBasicCapabilitiesSettings } from "@elizaos/core";
 import { requireEnv, validateEnvironment } from "./agent";
+import { character } from "./character";
 
 const ENV_KEYS = [
   "XAI_API_KEY",
@@ -12,6 +14,7 @@ const ENV_KEYS = [
   "TWITTER_API_SECRET_KEY",
   "TWITTER_ACCESS_TOKEN",
   "TWITTER_ACCESS_TOKEN_SECRET",
+  "POSTGRES_URL",
 ];
 
 const originalEnv = Object.fromEntries(
@@ -85,5 +88,29 @@ test("validateEnvironment rejects invalid auth modes and missing model key", () 
   process.env.TWITTER_AUTH_MODE = "cookies";
   expect(() => validateEnvironment()).toThrow(
     "Invalid TWITTER_AUTH_MODE=cookies",
+  );
+});
+
+test("auth mode defaults to env (the mode plugin-x supports standalone)", () => {
+  // With TWITTER_AUTH_MODE unset, the example must default to `env` — the only
+  // mode @elizaos/plugin-x implements standalone — not the unimplemented
+  // `broker`. Proven by the env-mode credential check firing.
+  resetExampleEnv();
+  process.env.XAI_API_KEY = "xai-test-key";
+  expect(() => validateEnvironment()).toThrow("TWITTER_API_KEY");
+});
+
+test("runtime resolves POSTGRES_URL from the environment via the settings bridge", () => {
+  // Regression for #10166: core getSetting() does not read process.env, so the
+  // headless host must merge env into settings. Without the bridge, plugin-sql's
+  // getSetting("POSTGRES_URL") misses the .env value and falls back to PGlite.
+  resetExampleEnv();
+  process.env.POSTGRES_URL = "postgresql://user:pass@db.example:5432/eliza";
+  const runtime = new AgentRuntime({
+    character,
+    settings: getBasicCapabilitiesSettings(character),
+  });
+  expect(runtime.getSetting("POSTGRES_URL")).toBe(
+    "postgresql://user:pass@db.example:5432/eliza",
   );
 });

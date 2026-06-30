@@ -2524,9 +2524,15 @@ export async function generateChatResponse(
                   : responseText
                     ? ({ text: responseText } as Content)
                     : null;
+              // Safety net ONLY for flows where the message handler produced no
+              // responseMessages of its own. When responseMessages exist the
+              // handler already emitted MESSAGE_SENT for each (message.ts), so
+              // re-emitting them here double-fires MESSAGE_SENT for one reply
+              // (eliza#10313). Emit just the synthetic fallback in the
+              // no-responseMessages case.
               const messagesToEmit =
                 responseMessages.length > 0
-                  ? responseMessages
+                  ? []
                   : fallbackResponseContent
                     ? [
                         {

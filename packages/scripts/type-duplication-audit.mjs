@@ -18,10 +18,24 @@
  *                                   (candidate for `extends` / `Pick` / `Omit`).
  *   3. structural near-duplicate — Jaccard similarity over property
  *                                   name+type-text above NEAR_DUP_THRESHOLD.
+ *   4. literal-set duplicate     — string-literal unions, `enum`s, and
+ *                                   `as const` enum-like objects that share the
+ *                                   SAME value set across ≥2 packages, even
+ *                                   under different names (#10201). This is the
+ *                                   class that surfaced the connector-setup
+ *                                   `SetupState` family ("idle"|"configuring"|
+ *                                   "paired"|"error") consolidated into
+ *                                   `@elizaos/core`.
  *
  * Weak-type inventory: per-site `as unknown as`, `as any`, explicit `: any`
  * (the actionable weak types). Bare `: unknown` is intentionally NOT flagged —
  * most are legitimate boundary types (#10195).
+ *
+ * NOT detected (deliberate deferral, #10201): zod/runtime-schema objects whose
+ * shape equals an exported TS type. Reliably matching a zod schema to a type
+ * needs schema-shape resolution that is heuristic and noisy; the deterministic
+ * classes above already surface the high-confidence families. Re-evaluate once
+ * the families they find are triaged.
  */
 
 import { execFileSync } from "node:child_process";
@@ -46,9 +60,20 @@ const MARKDOWN_OUT_PATH = path.join(
   "issue-evidence",
   "10195-type-duplication.md",
 );
+// Post-cleanup baseline of per-class candidate counts (#10201). Drift against
+// it is advisory only — the script never fails the build on it (see --check).
+const BASELINE_PATH = path.join(
+  ROOT,
+  "packages",
+  "scripts",
+  "type-duplication-audit.baseline.json",
+);
 
 const args = new Set(process.argv.slice(2));
 const SELF_TEST = args.has("--self-test");
+const CHECK = args.has("--check");
+const UPDATE_BASELINE = args.has("--update-baseline");
+const STRICT = args.has("--strict");
 
 // A subset/superset or near-duplicate pair only counts when both sides carry at
 // least this many properties — tiny shapes (`{ id }`, `{ ok }`) collide by
@@ -56,6 +81,10 @@ const SELF_TEST = args.has("--self-test");
 const MIN_PROPS = 3;
 // Jaccard similarity over `name:typeText` property signatures.
 const NEAR_DUP_THRESHOLD = 0.6;
+// A literal-set (string-union / enum / `as const`) only clusters when it has at
+// least this many members — two-member sets (`"asc"|"desc"`, `"on"|"off"`)
+// collide by accident across unrelated domains and would drown the report.
+const MIN_LITERAL_MEMBERS = 3;
 
 const EXCLUDED_SEGMENTS = new Set([
   "__fixtures__",
@@ -73,9 +102,16 @@ function usage() {
   console.log(`Usage: node packages/scripts/type-duplication-audit.mjs [options]
 
 Options:
-  --self-test   Prove the clustering fires on a synthetic duplicate pair and
-                ignores a synthetic distinct pair, then exit.
-  --help, -h    Show this help.
+  --self-test        Prove the clustering fires on a synthetic duplicate pair
+                     and ignores a synthetic distinct pair, then exit.
+  --check            Compare current per-class candidate counts to the saved
+                     baseline and print the drift. ADVISORY: exits 0 even when
+                     counts grow (unless --strict). Still writes the report.
+  --strict           With --check, exit 1 if any class count increased above
+                     the baseline. Off by default so local types are never
+                     blocked.
+  --update-baseline  Rewrite the checked-in baseline to the current counts.
+  --help, -h         Show this help.
 
 Writes:
   reports/type-duplication.json                       (gitignored, full output)
@@ -174,6 +210,89 @@ function declKind(node) {
   return null;
 }
 
+// Extract the string-literal member list of a `type X = "a" | "b" | ...` alias.
+// Returns null unless EVERY union member is a string literal (a closed string
+// domain). A single-literal alias (`type X = "a"`) is also returned; the
+// MIN_LITERAL_MEMBERS threshold decides later whether it is interesting.
+function stringUnionMembers(node) {
+  if (!ts.isTypeAliasDeclaration(node)) return null;
+  const literals = [];
+  const collect = (typeNode) => {
+    if (
+      ts.isLiteralTypeNode(typeNode) &&
+      ts.isStringLiteral(typeNode.literal)
+    ) {
+      literals.push(typeNode.literal.text);
+      return true;
+    }
+    return false;
+  };
+  const t = node.type;
+  if (ts.isUnionTypeNode(t)) {
+    for (const member of t.types) {
+      if (!collect(member)) return null;
+    }
+  } else if (!collect(t)) {
+    return null;
+  }
+  return literals;
+}
+
+// Value set of a TS `enum` (string/number initializers; bare members fall back
+// to their declared name).
+function enumMemberValues(node) {
+  if (!ts.isEnumDeclaration(node)) return null;
+  const values = [];
+  for (const member of node.members) {
+    const init = member.initializer;
+    if (init && (ts.isStringLiteral(init) || ts.isNumericLiteral(init))) {
+      values.push(String(init.text));
+    } else {
+      values.push(member.name.getText());
+    }
+  }
+  return values;
+}
+
+// Value set of an `as const` object literal whose values are all string/number
+// literals — the enum-like pattern used across the repo (SETUP_ERROR_CODES,
+// ChannelType, ...). Returns `{ name, values }` or null.
+function constEnumLikeMembers(node) {
+  if (!ts.isVariableStatement(node)) return null;
+  const decls = node.declarationList.declarations;
+  if (decls.length !== 1) return null;
+  const decl = decls[0];
+  if (!decl.name || !ts.isIdentifier(decl.name) || !decl.initializer) {
+    return null;
+  }
+  const init = decl.initializer;
+  if (
+    !ts.isAsExpression(init) ||
+    !ts.isTypeReferenceNode(init.type) ||
+    init.type.typeName.getText() !== "const" ||
+    !ts.isObjectLiteralExpression(init.expression) ||
+    init.expression.properties.length === 0
+  ) {
+    return null;
+  }
+  const values = [];
+  for (const prop of init.expression.properties) {
+    if (!ts.isPropertyAssignment(prop)) return null;
+    const v = prop.initializer;
+    if (ts.isStringLiteral(v) || ts.isNumericLiteral(v)) {
+      values.push(String(v.text));
+    } else {
+      return null; // not a pure literal map → not enum-like
+    }
+  }
+  return { name: decl.name.getText(), values };
+}
+
+// Stable, order-independent, de-duplicated identity key for a value set.
+function literalSetKey(values) {
+  return [...new Set(values)].sort().join("|");
+}
+
 // Parse one source file into the type-declaration and weak-type records it
 // contributes. `text` is provided directly in self-test mode.
 function collectFromSource(sourceText, relPath) {
@@ -187,6 +306,7 @@ function collectFromSource(sourceText, relPath) {
 
   const declarations = [];
   const weakTypes = [];
+  const literalSets = [];
 
   function lineOf(node) {
     return (
@@ -238,6 +358,19 @@ function collectFromSource(sourceText, relPath) {
     });
   }
 
+  function recordLiteralSet(name, setKind, values, node) {
+    literalSets.push({
+      name,
+      kind: setKind,
+      file: relPath,
+      line: lineOf(node),
+      package: packageOf(relPath),
+      members: values,
+      memberKey: literalSetKey(values),
+      memberCount: new Set(values).size,
+    });
+  }
+
   function visit(node) {
     const kind = declKind(node);
     if (kind && node.name) {
@@ -252,6 +385,33 @@ function collectFromSource(sourceText, relPath) {
         props: props ? Object.fromEntries(props) : null,
         propCount: props ? props.size : 0,
       });
+    }
+
+    // Closed literal domains: string-literal unions, `enum`s, and `as const`
+    // enum-like maps. Clustered by value set (class 4) regardless of name.
+    if (node.name) {
+      const stringUnion = stringUnionMembers(node);
+      if (stringUnion) {
+        recordLiteralSet(
+          node.name.getText(sourceFile),
+          "string-union",
+          stringUnion,
+          node,
+        );
+      }
+      const enumValues = enumMemberValues(node);
+      if (enumValues) {
+        recordLiteralSet(
+          node.name.getText(sourceFile),
+          "enum",
+          enumValues,
+          node,
+        );
+      }
+    }
+    const constEnum = constEnumLikeMembers(node);
+    if (constEnum) {
+      recordLiteralSet(constEnum.name, "as-const", constEnum.values, node);
     }
 
     if (ts.isAsExpression(node)) {
@@ -282,7 +442,7 @@ function collectFromSource(sourceText, relPath) {
   }
 
   visit(sourceFile);
-  return { declarations, weakTypes };
+  return { declarations, weakTypes, literalSets };
 }
 
 function jaccard(aKeys, bKeys) {
@@ -309,6 +469,7 @@ function loadAllowlist() {
   for (const entry of data.entries ?? []) {
     if (entry.pairKey) set.add(entry.pairKey);
     if (entry.name) set.add(`name:${entry.name}`);
+    if (entry.memberKey) set.add(`literalSet:${entry.memberKey}`);
   }
   return set;
 }
@@ -355,6 +516,51 @@ function buildSameNameClusters(declarations, allowlist) {
       b.packageCount - a.packageCount ||
       b.declarationCount - a.declarationCount ||
       a.name.localeCompare(b.name),
+  );
+}
+
+// Cluster literal-sets (string-unions / enums / `as const` maps) by their
+// VALUE set — two declarations are the same closed domain if they enumerate the
+// same values, regardless of name or kind. Only sets with ≥ MIN_LITERAL_MEMBERS
+// members spanning ≥2 packages are reported (#10201).
+function buildLiteralSetClusters(literalSets, allowlist) {
+  const byKey = new Map();
+  for (const set of literalSets) {
+    if (set.memberCount < MIN_LITERAL_MEMBERS) continue;
+    if (!byKey.has(set.memberKey)) byKey.set(set.memberKey, []);
+    byKey.get(set.memberKey).push(set);
+  }
+
+  const clusters = [];
+  for (const [memberKey, sets] of byKey) {
+    if (allowlist.has(`literalSet:${memberKey}`)) continue;
+    const packages = new Set(sets.map((s) => s.package));
+    if (sets.length < 2 || packages.size < 2) continue;
+
+    // Confidence rises with how many independent packages share the domain,
+    // saturating at 5 packages (mirrors the same-name cluster scoring).
+    const confidence = Math.min(1, (packages.size - 1) / 4);
+    clusters.push({
+      memberKey,
+      members: memberKey.split("|"),
+      memberCount: memberKey.split("|").length,
+      names: [...new Set(sets.map((s) => s.name))].sort(),
+      packageCount: packages.size,
+      declarationCount: sets.length,
+      confidence: Number(confidence.toFixed(3)),
+      locations: sets.map((s) => ({
+        name: s.name,
+        kind: s.kind,
+        file: s.file,
+        line: s.line,
+      })),
+    });
+  }
+  return clusters.sort(
+    (a, b) =>
+      b.packageCount - a.packageCount ||
+      b.declarationCount - a.declarationCount ||
+      a.memberKey.localeCompare(b.memberKey),
   );
 }
 
@@ -499,10 +705,11 @@ function renderMarkdown(report) {
     sameName,
     subsets,
     nearDuplicates,
+    literalSetClusters,
     weakTypeCounts,
   } = report;
   const lines = [];
-  lines.push("# Type-duplication candidate report (#10195)");
+  lines.push("# Type-duplication candidate report (#10195, extended #10201)");
   lines.push("");
   lines.push(
     "Generated by `node packages/scripts/type-duplication-audit.mjs` " +
@@ -523,6 +730,9 @@ function renderMarkdown(report) {
   lines.push(`| Subset / superset | ${subsets.length} |`);
   lines.push(
     `| Structural near-duplicate (Jaccard ≥ ${NEAR_DUP_THRESHOLD}) | ${nearDuplicates.length} |`,
+  );
+  lines.push(
+    `| Literal-set duplicate (≥ ${MIN_LITERAL_MEMBERS} members, multi-package) | ${literalSetClusters.length} |`,
   );
   lines.push("");
   lines.push("## Weak-type inventory (actionable casts only)");
@@ -575,6 +785,28 @@ function renderMarkdown(report) {
     );
   }
   lines.push("");
+  lines.push("## Top literal-set duplicate candidates");
+  lines.push("");
+  lines.push(
+    "Closed string/number domains (string-literal unions, `enum`s, `as const` " +
+      "maps) that enumerate the **same value set** across ≥2 packages — even " +
+      "under different names. Strong consolidation candidates: a shared union " +
+      "in `@elizaos/core` removes drift when a new member is added.",
+  );
+  lines.push("");
+  lines.push("| Names | Members | Packages | Decls | Confidence | Locations |");
+  lines.push("| --- | --- | --- | --- | --- | --- |");
+  for (const cluster of literalSetClusters.slice(0, 25)) {
+    const names = cluster.names.map((n) => `\`${n}\``).join(", ");
+    const members = `\`${cluster.members.join("\\|")}\``;
+    const locs = cluster.locations
+      .map((l) => `\`${l.file}:${l.line}\` (${l.kind})`)
+      .join("<br>");
+    lines.push(
+      `| ${names} | ${members} | ${cluster.packageCount} | ${cluster.declarationCount} | ${cluster.confidence} | ${locs} |`,
+    );
+  }
+  lines.push("");
   lines.push("## Review workflow");
   lines.push("");
   lines.push(
@@ -587,12 +819,98 @@ function renderMarkdown(report) {
       "removed cast, lower the `type-safety-ratchet` baseline.",
   );
   lines.push(
-    "3. Record reviewed-but-kept-separate pairs in " +
+    "3. Record reviewed-but-kept-separate findings in " +
       "`packages/scripts/type-duplication-audit.allowlist.json` with a written " +
-      "`reason` so re-runs stay low-noise.",
+      "`reason` so re-runs stay low-noise: `name` suppresses a same-name " +
+      "cluster, `pairKey` a subset/near-duplicate pair, `memberKey` a " +
+      "literal-set cluster (the `a|b|c` value key from the report).",
+  );
+  lines.push(
+    "4. Triage guidance + the accepted/rejected family log live in " +
+      "[`packages/scripts/type-duplication-triage.md`]" +
+      "(../../packages/scripts/type-duplication-triage.md).",
   );
   lines.push("");
   return `${lines.join("\n")}\n`;
+}
+
+// ── Advisory baseline (#10201) ────────────────────────────────────────────
+// The baseline records the per-class candidate counts after the first
+// human-reviewed cleanup so future drift is *visible* without blocking the
+// build. It is intentionally count-only (not a per-finding ratchet): the
+// finder is advisory, and many new local types are legitimate.
+
+const COUNT_LABELS = {
+  sameName: "same-name multi-package clusters",
+  subsets: "subset/superset candidates",
+  nearDuplicates: "structural near-duplicates",
+  literalSetClusters: "literal-set duplicates",
+  weakAsUnknownAs: "weak: as unknown as",
+  weakAsAny: "weak: as any",
+  weakExplicitAny: "weak: explicit : any",
+};
+
+function countsFromReport(report) {
+  return {
+    sameName: report.sameName.length,
+    subsets: report.subsets.length,
+    nearDuplicates: report.nearDuplicates.length,
+    literalSetClusters: report.literalSetClusters.length,
+    weakAsUnknownAs: report.weakTypeCounts.asUnknownAs,
+    weakAsAny: report.weakTypeCounts.asAny,
+    weakExplicitAny: report.weakTypeCounts.explicitAny,
+  };
+}
+
+function baselinePayload(report) {
+  return {
+    schema: "eliza_type_duplication_baseline_v1",
+    updatedAt: report.generatedAt,
+    thresholds: report.thresholds,
+    filesScanned: report.filesScanned,
+    counts: countsFromReport(report),
+  };
+}
+
+function loadBaselineFile() {
+  if (!existsSync(BASELINE_PATH)) return null;
+  return JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
+}
+
+// Compare current counts to the baseline. Returns per-metric drift; `increased`
+// flags any class that grew (the advisory signal).
+function compareBaseline(counts, baseline) {
+  const limits = baseline?.counts ?? {};
+  const rows = [];
+  let increased = 0;
+  for (const key of Object.keys(COUNT_LABELS)) {
+    const current = counts[key] ?? 0;
+    const base = Number.isInteger(limits[key]) ? limits[key] : null;
+    const delta = base === null ? null : current - base;
+    if (delta !== null && delta > 0) increased += 1;
+    rows.push({ key, current, base, delta });
+  }
+  return { rows, increased };
+}
+
+function printBaselineDrift({ rows, increased }) {
+  console.log("[type-duplication-audit] drift vs baseline (advisory):");
+  for (const row of rows) {
+    const label = COUNT_LABELS[row.key];
+    if (row.base === null) {
+      console.log(`  ? ${label}: ${row.current} (no baseline entry)`);
+      continue;
+    }
+    const arrow = row.delta > 0 ? "▲" : row.delta < 0 ? "▼" : "=";
+    const sign = row.delta > 0 ? `+${row.delta}` : String(row.delta);
+    console.log(`  ${arrow} ${label}: ${row.current} / ${row.base} (${sign})`);
+  }
+  if (increased > 0) {
+    console.log(
+      `[type-duplication-audit] ${increased} class(es) grew above baseline — ` +
+        "review new duplicates, then `--update-baseline` once triaged.",
+    );
+  }
 }
 
 function runSelfTest() {
@@ -623,7 +941,7 @@ function runSelfTest() {
       [c.a.name, c.b.name].includes("Alpha") &&
       [c.a.name, c.b.name].includes("Beta"),
   );
-  if (!alphaBeta || alphaBeta.similarity !== 1) {
+  if (alphaBeta?.similarity !== 1) {
     console.error(
       `[type-duplication-audit] self-test FAILED: identical Alpha/Beta not clustered as near-duplicate (got ${JSON.stringify(alphaBeta)})`,
     );
@@ -689,8 +1007,104 @@ function runSelfTest() {
     process.exit(1);
   }
 
+  // ── Literal-set clustering (class 4) ──────────────────────────────────
+  // pkg-a declares the domain as a string-literal union; pkg-b declares the
+  // SAME value set as an `enum` (reordered) — they must cluster across kinds.
+  // A 2-member set is below MIN_LITERAL_MEMBERS; a single-package set has no
+  // peer; both must be ignored.
+  const litA = collectFromSource(
+    `
+      export type StatusA = "idle" | "configuring" | "paired" | "error";
+      export type FlagDomain = "on" | "off";
+      export type SoloDomain = "x" | "y" | "z";
+    `,
+    "pkg-a/src/x.ts",
+  );
+  const litB = collectFromSource(
+    `
+      export enum StatusB { Configuring = "configuring", Error = "error", Idle = "idle", Paired = "paired" }
+      export const FLAGS = { ON: "on", OFF: "off" } as const;
+    `,
+    "pkg-b/src/y.ts",
+  );
+  const allSets = [...litA.literalSets, ...litB.literalSets];
+  const litClusters = buildLiteralSetClusters(allSets, new Set());
+  const STATUS_KEY = "configuring|error|idle|paired";
+
+  const statusCluster = litClusters.find((c) => c.memberKey === STATUS_KEY);
+  if (
+    statusCluster?.packageCount !== 2 ||
+    !statusCluster.names.includes("StatusA") ||
+    !statusCluster.names.includes("StatusB")
+  ) {
+    console.error(
+      `[type-duplication-audit] self-test FAILED: cross-kind StatusA(union)/StatusB(enum) literal-set not clustered (got ${JSON.stringify(statusCluster)})`,
+    );
+    process.exit(1);
+  }
+  if (litClusters.some((c) => c.memberKey === "off|on")) {
+    console.error(
+      "[type-duplication-audit] self-test FAILED: 2-member literal-set should be below MIN_LITERAL_MEMBERS",
+    );
+    process.exit(1);
+  }
+  if (litClusters.some((c) => c.memberKey === "x|y|z")) {
+    console.error(
+      "[type-duplication-audit] self-test FAILED: single-package literal-set should not cluster",
+    );
+    process.exit(1);
+  }
+  const litSuppressed = buildLiteralSetClusters(
+    allSets,
+    new Set([`literalSet:${STATUS_KEY}`]),
+  );
+  if (litSuppressed.some((c) => c.memberKey === STATUS_KEY)) {
+    console.error(
+      "[type-duplication-audit] self-test FAILED: allowlist memberKey did not suppress literal-set cluster",
+    );
+    process.exit(1);
+  }
+
+  // ── Advisory baseline drift compare ───────────────────────────────────
+  const fakeReport = {
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    thresholds: {},
+    filesScanned: 1,
+    sameName: [1, 2],
+    subsets: [1],
+    nearDuplicates: [],
+    literalSetClusters: [1, 2, 3],
+    weakTypeCounts: { asUnknownAs: 5, asAny: 0, explicitAny: 7 },
+  };
+  const baseCounts = countsFromReport(fakeReport);
+  if (
+    baseCounts.sameName !== 2 ||
+    baseCounts.literalSetClusters !== 3 ||
+    baseCounts.weakExplicitAny !== 7
+  ) {
+    console.error(
+      `[type-duplication-audit] self-test FAILED: countsFromReport (got ${JSON.stringify(baseCounts)})`,
+    );
+    process.exit(1);
+  }
+  const baseline = baselinePayload(fakeReport);
+  if (compareBaseline(baseCounts, baseline).increased !== 0) {
+    console.error(
+      "[type-duplication-audit] self-test FAILED: identical counts must show 0 increase",
+    );
+    process.exit(1);
+  }
+  const grown = compareBaseline({ ...baseCounts, sameName: 5 }, baseline);
+  const sameNameRow = grown.rows.find((r) => r.key === "sameName");
+  if (grown.increased !== 1 || sameNameRow.delta !== 3) {
+    console.error(
+      `[type-duplication-audit] self-test FAILED: baseline drift not detected (got ${JSON.stringify(grown)})`,
+    );
+    process.exit(1);
+  }
+
   console.log(
-    "[type-duplication-audit] self-test passed (fires on duplicate + subset, ignores distinct + tiny, allowlist suppresses, weak-types counted)",
+    "[type-duplication-audit] self-test passed (shape: duplicate + subset fire, distinct + tiny ignored; literal-set: cross-kind clusters, below-threshold + single-package ignored; allowlist suppresses; weak-types counted; baseline drift compares)",
   );
 }
 
@@ -702,11 +1116,16 @@ if (SELF_TEST) {
 const files = trackedSourceFiles();
 const allDeclarations = [];
 const allWeakTypes = [];
+const allLiteralSets = [];
 for (const relPath of files) {
   const sourceText = readFileSync(path.join(ROOT, relPath), "utf8");
-  const { declarations, weakTypes } = collectFromSource(sourceText, relPath);
+  const { declarations, weakTypes, literalSets } = collectFromSource(
+    sourceText,
+    relPath,
+  );
   allDeclarations.push(...declarations);
   allWeakTypes.push(...weakTypes);
+  allLiteralSets.push(...literalSets);
 }
 
 const allowlist = loadAllowlist();
@@ -715,6 +1134,7 @@ const { subsets, nearDuplicates } = buildShapeCandidates(
   allDeclarations,
   allowlist,
 );
+const literalSetClusters = buildLiteralSetClusters(allLiteralSets, allowlist);
 const weakTypeCounts = summarizeWeakTypes(allWeakTypes);
 
 const report = {
@@ -722,10 +1142,15 @@ const report = {
   generatedAt: new Date().toISOString(),
   filesScanned: files.length,
   declarationCount: allDeclarations.length,
-  thresholds: { minProps: MIN_PROPS, nearDuplicateJaccard: NEAR_DUP_THRESHOLD },
+  thresholds: {
+    minProps: MIN_PROPS,
+    nearDuplicateJaccard: NEAR_DUP_THRESHOLD,
+    minLiteralMembers: MIN_LITERAL_MEMBERS,
+  },
   sameName,
   subsets,
   nearDuplicates,
+  literalSetClusters,
   weakTypeCounts,
   weakTypes: allWeakTypes,
 };
@@ -748,6 +1173,9 @@ console.log(
   `[type-duplication-audit] structural near-duplicates (Jaccard ≥ ${NEAR_DUP_THRESHOLD}): ${nearDuplicates.length}`,
 );
 console.log(
+  `[type-duplication-audit] literal-set duplicates (≥ ${MIN_LITERAL_MEMBERS} members, multi-package): ${literalSetClusters.length}`,
+);
+console.log(
   `[type-duplication-audit] weak types — as unknown as: ${weakTypeCounts.asUnknownAs}, as any: ${weakTypeCounts.asAny}, explicit any: ${weakTypeCounts.explicitAny}`,
 );
 console.log(
@@ -756,3 +1184,30 @@ console.log(
 console.log(
   `[type-duplication-audit] wrote ${path.relative(ROOT, MARKDOWN_OUT_PATH)}`,
 );
+
+if (UPDATE_BASELINE) {
+  writeFileSync(
+    BASELINE_PATH,
+    `${JSON.stringify(baselinePayload(report), null, 2)}\n`,
+  );
+  console.log(
+    `[type-duplication-audit] wrote ${path.relative(ROOT, BASELINE_PATH)}`,
+  );
+}
+
+if (CHECK) {
+  const baseline = loadBaselineFile();
+  if (!baseline) {
+    console.error(
+      `[type-duplication-audit] no baseline at ${path.relative(ROOT, BASELINE_PATH)} — run with --update-baseline first.`,
+    );
+    process.exit(STRICT ? 1 : 0);
+  }
+  const drift = compareBaseline(countsFromReport(report), baseline);
+  printBaselineDrift(drift);
+  // Advisory by default: only --strict turns drift into a non-zero exit, so
+  // local types are never blocked (#10201 acceptance: CI/advisory mode).
+  if (STRICT && drift.increased > 0) {
+    process.exit(1);
+  }
+}

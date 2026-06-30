@@ -13,11 +13,12 @@
  * the UI can render an informative empty state.
  */
 
-import type {
-	IAgentRuntime,
-	Route,
-	RouteRequest,
-	RouteResponse,
+import {
+	buildSetupError,
+	type IAgentRuntime,
+	type Route,
+	type RouteRequest,
+	type RouteResponse,
 } from "@elizaos/core";
 import { isBlueBubblesWebhookAuthorized } from "./webhook-auth.js";
 
@@ -48,14 +49,6 @@ interface BlueBubblesServiceLike {
 	handleWebhook(payload: BlueBubblesWebhookPayload): Promise<void>;
 }
 
-interface SetupErrorResponse {
-	error: { code: string; message: string };
-}
-
-function setupError(code: string, message: string): SetupErrorResponse {
-	return { error: { code, message } };
-}
-
 function resolveService(runtime: IAgentRuntime): BlueBubblesServiceLike | null {
 	const raw = runtime.getService(BLUEBUBBLES_SERVICE_NAME);
 	return (raw as BlueBubblesServiceLike | null | undefined) ?? null;
@@ -72,7 +65,10 @@ async function handleChats(
 		res
 			.status(503)
 			.json(
-				setupError("service_unavailable", "bluebubbles service not registered"),
+				buildSetupError(
+					"service_unavailable",
+					"bluebubbles service not registered",
+				),
 			);
 		return;
 	}
@@ -81,7 +77,10 @@ async function handleChats(
 		res
 			.status(503)
 			.json(
-				setupError("service_unavailable", "bluebubbles client not available"),
+				buildSetupError(
+					"service_unavailable",
+					"bluebubbles client not available",
+				),
 			);
 		return;
 	}
@@ -104,7 +103,7 @@ async function handleChats(
 		res
 			.status(500)
 			.json(
-				setupError(
+				buildSetupError(
 					"internal_error",
 					`failed to read bluebubbles chats: ${error instanceof Error ? error.message : String(error)}`,
 				),
@@ -123,7 +122,10 @@ async function handleMessages(
 		res
 			.status(503)
 			.json(
-				setupError("service_unavailable", "bluebubbles service not registered"),
+				buildSetupError(
+					"service_unavailable",
+					"bluebubbles service not registered",
+				),
 			);
 		return;
 	}
@@ -132,7 +134,10 @@ async function handleMessages(
 		res
 			.status(503)
 			.json(
-				setupError("service_unavailable", "bluebubbles client not available"),
+				buildSetupError(
+					"service_unavailable",
+					"bluebubbles client not available",
+				),
 			);
 		return;
 	}
@@ -144,7 +149,9 @@ async function handleMessages(
 	if (!chatGuid) {
 		res
 			.status(400)
-			.json(setupError("bad_request", "chatGuid query parameter is required"));
+			.json(
+				buildSetupError("bad_request", "chatGuid query parameter is required"),
+			);
 		return;
 	}
 	const limit = Math.min(
@@ -171,7 +178,7 @@ async function handleMessages(
 		res
 			.status(500)
 			.json(
-				setupError(
+				buildSetupError(
 					"internal_error",
 					`failed to read bluebubbles messages: ${error instanceof Error ? error.message : String(error)}`,
 				),
@@ -190,14 +197,17 @@ async function handleWebhook(
 		res
 			.status(503)
 			.json(
-				setupError("service_unavailable", "bluebubbles service not registered"),
+				buildSetupError(
+					"service_unavailable",
+					"bluebubbles service not registered",
+				),
 			);
 		return;
 	}
 
 	// GHSA-vhvq-g4mq-vq62: require operator-configured shared secret on every POST.
 	if (!isBlueBubblesWebhookAuthorized(runtime, req)) {
-		res.status(401).json(setupError("unauthorized", "Unauthorized"));
+		res.status(401).json(buildSetupError("unauthorized", "Unauthorized"));
 		return;
 	}
 
@@ -212,7 +222,9 @@ async function handleWebhook(
 	) {
 		res
 			.status(400)
-			.json(setupError("bad_request", "invalid BlueBubbles webhook payload"));
+			.json(
+				buildSetupError("bad_request", "invalid BlueBubbles webhook payload"),
+			);
 		return;
 	}
 	try {
@@ -222,7 +234,7 @@ async function handleWebhook(
 		res
 			.status(500)
 			.json(
-				setupError(
+				buildSetupError(
 					"internal_error",
 					`failed to handle bluebubbles webhook: ${error instanceof Error ? error.message : String(error)}`,
 				),

@@ -123,7 +123,16 @@ function CrasherView(): React.JSX.Element {
 
 // ── View registry + policies ─────────────────────────────────────────────────
 
-const KEEP_ALIVE_VIEWS = ["alpha", "beta", "gamma", "delta", "storm", "leaky"];
+const KEEP_ALIVE_VIEWS = [
+  "alpha",
+  "beta",
+  "gamma",
+  "delta",
+  "epsilon",
+  "zeta",
+  "storm",
+  "leaky",
+];
 for (const id of KEEP_ALIVE_VIEWS) {
   registerViewPolicy(id, { keepAlive: true, pausable: true });
 }

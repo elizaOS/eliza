@@ -31,6 +31,10 @@ import {
   seedAppStorage,
 } from "./helpers";
 
+// Real fake-device audio plus ui-smoke live-stack setup can exceed the default
+// smoke timeout on loaded developer machines.
+test.setTimeout(360_000);
+
 const TRANSCRIPT_TEXT = "what time is it";
 const TRANSCRIPT_ID = "transcript-realaudio-e2e";
 const MEDIA_PATH = "/api/media/transcript-realaudio.wav";
@@ -148,10 +152,18 @@ const KNOWLEDGE_DOC = {
 };
 
 /** Tracks the meaningful network proofs the tests assert on. */
+interface TranscriptCreateProof {
+  audioBase64Length: number;
+  audioContentType: string | null;
+  createdAtType: string;
+  segmentCount: number;
+  segmentTexts: string[];
+}
+
 interface TranscriptProbes {
   asrPostCount: number;
   asrMaxCapturedBytes: number;
-  createBodies: Array<{ audioBase64Length: number; segmentCount: number }>;
+  createBodies: TranscriptCreateProof[];
   updateCount: number;
   deleteCount: number;
 }
@@ -220,6 +232,17 @@ async function installTranscriptBackendMocks(
       return;
     }
     await route.fallback();
+  });
+  await page.route("**/api/conversations/*", async (route) => {
+    if (!["PATCH", "PUT"].includes(route.request().method())) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ conversation: CONVO }),
+    });
   });
   // The post-turn history reload replaces the optimistic bubble with the server's
   // persisted messages. Serve a user turn that carries the transcript attachment
@@ -327,13 +350,26 @@ async function installTranscriptBackendMocks(
     if (method === "POST") {
       const reqBody = route.request().postDataJSON() as {
         audioBase64?: string;
+        audioContentType?: string;
+        createdAt?: unknown;
         segments?: unknown[];
       };
+      const segments = Array.isArray(reqBody?.segments) ? reqBody.segments : [];
       probes.createBodies.push({
         audioBase64Length: reqBody?.audioBase64?.length ?? 0,
-        segmentCount: Array.isArray(reqBody?.segments)
-          ? reqBody.segments.length
-          : 0,
+        audioContentType:
+          typeof reqBody?.audioContentType === "string"
+            ? reqBody.audioContentType
+            : null,
+        createdAtType: typeof reqBody?.createdAt,
+        segmentCount: segments.length,
+        segmentTexts: segments
+          .map((segment) =>
+            segment && typeof segment === "object" && "text" in segment
+              ? (segment as { text?: unknown }).text
+              : null,
+          )
+          .filter((text): text is string => typeof text === "string"),
       });
       await route.fulfill({
         status: 201,
@@ -540,6 +576,43 @@ async function finalizeTranscriptionViaSlash(page: Page): Promise<void> {
   );
 }
 
+async function dispatchTranscriptionAgentAction(
+  page: Page,
+  command: "start" | "stop",
+): Promise<void> {
+  await page.evaluate((nextCommand) => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:voice-control", {
+        detail: { command: nextCommand },
+      }),
+    );
+  }, command);
+}
+
+async function startTranscriptionViaAgentAction(page: Page): Promise<void> {
+  await dispatchTranscriptionAgentAction(page, "start");
+  // The agent-action bridge flips the shell controller directly; unlike the
+  // slash-command path it may not expand the sheet far enough to render the
+  // visible badge, so the mic control state is the durable proof.
+  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
+    "aria-label",
+    "stop transcription",
+    { timeout: 15_000 },
+  );
+}
+
+async function finalizeTranscriptionViaAgentAction(page: Page): Promise<void> {
+  await dispatchTranscriptionAgentAction(page, "stop");
+  await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
+    "aria-label",
+    "end conversation",
+    { timeout: 15_000 },
+  );
+}
+
 /**
  * Turn voice fully OFF and wait for the chat thread to settle. While voice is on,
  * the hands-free re-listen loop continuously reopens the mic + streams interim
@@ -583,23 +656,68 @@ async function stopVoiceAndSettle(page: Page): Promise<void> {
  * visible viewer locator.
  */
 async function openTranscriptViewer(page: Page): Promise<Locator> {
-  const tile = page.getByTestId("transcript-attachment").first();
   const viewer = page.getByTestId("transcript-viewer");
+  const visibleTile = page
+    .getByRole("button", { name: /Voice transcript\.md/i })
+    .last();
   // The thread churns (auto-scroll + the optimistic->persisted swap), so the tile
   // can detach mid-click and a freshly-opened viewer can be torn down by a late
-  // remount. Retry: force-click the (re-resolved) tile and confirm the viewer
-  // stays open across a short settle; re-open if a remount closed it.
+  // remount. Retry: click the currently visible tile in the DOM and confirm the
+  // rich viewer content loaded; re-open if a remount closed it.
   await expect
     .poll(
       async () => {
-        if (await viewer.isVisible().catch(() => false)) {
+        if (
+          (await page
+            .getByTestId("transcript-audio")
+            .isVisible()
+            .catch(() => false)) &&
+          (await page
+            .getByTestId("transcript-text")
+            .isVisible()
+            .catch(() => false))
+        ) {
           // Confirm it survives a brief window (no pending remount-close).
           await page.waitForTimeout(600);
-          if (await viewer.isVisible().catch(() => false)) return true;
+          if (
+            (await viewer.isVisible().catch(() => false)) &&
+            (await page
+              .getByTestId("transcript-audio")
+              .isVisible()
+              .catch(() => false))
+          ) {
+            return true;
+          }
         }
-        if (await tile.isVisible().catch(() => false)) {
-          await tile.click({ force: true }).catch(() => {});
+        if (await visibleTile.isVisible().catch(() => false)) {
+          await visibleTile.click({ timeout: 1000 }).catch(async () => {
+            await visibleTile.focus({ timeout: 1000 }).catch(() => {});
+            await page.keyboard.press("Enter").catch(() => {});
+          });
         }
+        await page.evaluate((expectedTitle) => {
+          const isVisible = (el: HTMLElement) => {
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            return (
+              rect.width > 0 &&
+              rect.height > 0 &&
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              style.pointerEvents !== "none"
+            );
+          };
+          const tiles = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              '[data-testid="transcript-attachment"]',
+            ),
+          );
+          const tile =
+            tiles.find(
+              (el) => isVisible(el) && el.textContent?.includes(expectedTitle),
+            ) ?? tiles.find(isVisible);
+          tile?.click();
+        }, "Voice transcript.md");
         return false;
       },
       { timeout: 45_000, intervals: [400] },
@@ -682,6 +800,82 @@ async function captureTranscriptToAttachment(
   await expect(page.getByTestId("transcript-attachment").first()).toBeVisible({
     timeout: 20_000,
   });
+}
+
+async function prepareTranscriptTestPage(
+  page: Page,
+  probes: TranscriptProbes,
+): Promise<void> {
+  await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+  await installDefaultAppRoutes(page);
+  await installTranscriptBackendMocks(page, probes);
+}
+
+type TranscriptionControlPath = "slash" | "agent-action";
+
+function normalizeCreateProofForParity(proof: TranscriptCreateProof): {
+  audioContentType: string | null;
+  createdAtType: string;
+  hasCapturedAudio: boolean;
+  segmentCount: number;
+  segmentTexts: string[];
+} {
+  return {
+    audioContentType: proof.audioContentType,
+    createdAtType: proof.createdAtType,
+    hasCapturedAudio: proof.audioBase64Length > 1000,
+    segmentCount: proof.segmentCount,
+    segmentTexts: proof.segmentTexts,
+  };
+}
+
+async function captureTranscriptRecordViaControlPath(
+  page: Page,
+  probes: TranscriptProbes,
+  controlPath: TranscriptionControlPath,
+): Promise<TranscriptCreateProof> {
+  const asr = trackAsrPosts(page);
+
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    timeout: 60_000,
+  });
+
+  const mic = page.getByTestId("chat-composer-mic");
+  await expect(mic).toBeVisible({ timeout: 30_000 });
+  await mic.click();
+  await expect(mic).toHaveAttribute("aria-label", "end conversation", {
+    timeout: 15_000,
+  });
+
+  if (controlPath === "agent-action") {
+    await startTranscriptionViaAgentAction(page);
+  } else {
+    await startTranscriptionViaSlash(page);
+  }
+
+  await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
+
+  if (controlPath === "agent-action") {
+    await finalizeTranscriptionViaAgentAction(page);
+  } else {
+    await finalizeTranscriptionViaSlash(page);
+  }
+
+  await expect
+    .poll(
+      () => probes.createBodies.find((b) => b.audioBase64Length > 1000) ?? null,
+      { timeout: 30_000 },
+    )
+    .not.toBeNull();
+
+  await expect(page.getByText(/^Transcript .*\.md$/).first()).toBeVisible({
+    timeout: 15_000,
+  });
+
+  const proof = probes.createBodies.find((b) => b.audioBase64Length > 1000);
+  if (!proof) throw new Error("expected transcript create proof");
+  return proof;
 }
 
 test.beforeEach(async ({ page }) => {
@@ -1004,4 +1198,52 @@ test("VIEWER: open-in-transcripts navigates to the Transcripts view", async ({
   await expect(page.getByTestId(`transcript-row-${TRANSCRIPT_ID}`)).toBeVisible(
     { timeout: 15_000 },
   );
+});
+
+// Scope note: this asserts CLIENT voice-control bridge parity — both paths drive
+// the real useShellController transcription state machine, capture real WAV audio,
+// POST real bytes to ASR, and produce a real /api/transcripts body that is then
+// compared. The "agent-action" path is exercised at its last hop — the
+// `eliza:voice-control` window event that the agent->shell bridge ultimately
+// dispatches (startup-phase-hydrate's dispatchVoiceControl). It deliberately does
+// NOT assert the upstream server START/STOP_TRANSCRIPTION action or the WS
+// `agent_event{stream:"voice-control"}` envelope (there is no server-side
+// voice-control emitter in the tree yet), so the title reflects bridge parity, not
+// server-action coverage — see #9958 for the remaining server-side hop.
+test("voice-control bridge parity: the eliza:voice-control bridge creates the same transcript record as the slash path", async ({
+  browser,
+}) => {
+  const slashPage = await browser.newPage();
+  const agentActionPage = await browser.newPage();
+  try {
+    const slashProbes = freshProbes();
+    await prepareTranscriptTestPage(slashPage, slashProbes);
+    const slashProof = await captureTranscriptRecordViaControlPath(
+      slashPage,
+      slashProbes,
+      "slash",
+    );
+
+    const agentActionProbes = freshProbes();
+    await prepareTranscriptTestPage(agentActionPage, agentActionProbes);
+    const agentActionProof = await captureTranscriptRecordViaControlPath(
+      agentActionPage,
+      agentActionProbes,
+      "agent-action",
+    );
+
+    expect(normalizeCreateProofForParity(agentActionProof)).toEqual(
+      normalizeCreateProofForParity(slashProof),
+    );
+    expect(normalizeCreateProofForParity(agentActionProof)).toEqual({
+      audioContentType: "audio/wav",
+      createdAtType: "number",
+      hasCapturedAudio: true,
+      segmentCount: 1,
+      segmentTexts: [TRANSCRIPT_TEXT],
+    });
+  } finally {
+    await agentActionPage.close();
+    await slashPage.close();
+  }
 });

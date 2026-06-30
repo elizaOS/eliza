@@ -32,7 +32,6 @@ import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
   applyStreamingTextModification,
-  filterRenderableConversationMessages,
   formatSearchBullet,
   type LoadConversationMessagesResult,
   mergeStreamingText,
@@ -971,10 +970,22 @@ export function useChatSend(deps: UseChatSendDeps) {
         flushStreamingText();
 
         if (!data.text.trim()) {
-          applyStreamingTextModification(setConversationMessages, {
-            messageId: assistantMsgId,
-            mode: "drop",
-          });
+          if (data.failureKind) {
+            // Empty reply but the server flagged a failure class — surface the
+            // gate UI (e.g. "Connect a provider") instead of silently dropping
+            // the turn. The failure branch below is an `else if`, unreachable
+            // once the text is empty, so it must be handled here.
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "fail",
+              failureKind: data.failureKind,
+            });
+          } else {
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "drop",
+            });
+          }
         } else if (
           shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
           data.reasoning
@@ -1109,32 +1120,69 @@ export function useChatSend(deps: UseChatSendDeps) {
               conversationId: conversation.id,
             });
 
-            const retryData = await client.sendConversationMessage(
+            // Seed the recreated conversation with the user turn + an empty
+            // assistant placeholder, then REPLAY as a token stream — the 404
+            // recovery must stream like the primary send, not pop the whole
+            // reply in at once with the non-streaming endpoint (#10231).
+            const replayUserId = `temp-${Date.now()}`;
+            const replayAssistantId = `temp-resp-${Date.now()}`;
+            // Seed unfiltered (like the primary send path) — the empty assistant
+            // placeholder must survive so streamed tokens have a target;
+            // filterRenderableConversationMessages would drop an empty turn.
+            setConversationMessages([
+              { id: replayUserId, role: "user", text, timestamp: Date.now() },
+              {
+                id: replayAssistantId,
+                role: "assistant",
+                text: "",
+                timestamp: Date.now(),
+              },
+            ]);
+
+            let replayStreamedText = "";
+            const retryData = await client.sendConversationMessageStream(
               conversation.id,
               text,
+              (token, accumulatedText) => {
+                const nextText =
+                  typeof accumulatedText === "string"
+                    ? accumulatedText
+                    : mergeStreamingText(replayStreamedText, token);
+                if (nextText === replayStreamedText) return;
+                replayStreamedText = nextText;
+                setChatFirstTokenReceived(true);
+                scheduleStreamingText(replayAssistantId, nextText);
+              },
               channelType,
+              controller?.signal,
               imagesToSend,
               turn.metadata,
+              (serverStatus) => setServerTurnStatus(serverStatus),
             );
-            setConversationMessages(
-              filterRenderableConversationMessages([
-                {
-                  id: `temp-${Date.now()}`,
-                  role: "user",
-                  text,
-                  timestamp: Date.now(),
-                },
-                {
-                  id: `temp-resp-${Date.now()}`,
-                  role: "assistant",
-                  text: retryData.text,
-                  timestamp: Date.now(),
-                  ...(retryData.failureKind
-                    ? { failureKind: retryData.failureKind }
-                    : {}),
-                },
-              ]),
-            );
+
+            // Commit any throttle-parked token before the terminal modification.
+            flushStreamingText();
+
+            if (!retryData.text.trim()) {
+              applyStreamingTextModification(setConversationMessages, {
+                messageId: replayAssistantId,
+                ...(retryData.failureKind
+                  ? { mode: "fail", failureKind: retryData.failureKind }
+                  : { mode: "drop" }),
+              });
+            } else {
+              applyStreamingTextModification(setConversationMessages, {
+                messageId: replayAssistantId,
+                mode: "complete",
+                fullText: retryData.text,
+                ...(retryData.failureKind
+                  ? { failureKind: retryData.failureKind }
+                  : {}),
+                ...(retryData.reasoning
+                  ? { reasoning: retryData.reasoning }
+                  : {}),
+              });
+            }
           } catch {
             dropEmptyAssistantPlaceholder(assistantMsgId);
           }
@@ -1490,10 +1538,22 @@ export function useChatSend(deps: UseChatSendDeps) {
           flushStreamingText();
 
           if (!data.text.trim()) {
-            applyStreamingTextModification(setConversationMessages, {
-              messageId: assistantMsgId,
-              mode: "drop",
-            });
+            if (data.failureKind) {
+              // Empty reply but the server flagged a failure class — surface the
+              // gate UI instead of silently dropping the turn (the failure
+              // branch below is an `else if`, unreachable once the text is
+              // empty). Mirrors the non-terminal handler above.
+              applyStreamingTextModification(setConversationMessages, {
+                messageId: assistantMsgId,
+                mode: "fail",
+                failureKind: data.failureKind,
+              });
+            } else {
+              applyStreamingTextModification(setConversationMessages, {
+                messageId: assistantMsgId,
+                mode: "drop",
+              });
+            }
           } else if (
             shouldApplyFinalStreamText(streamedAssistantText, data.text)
           ) {

@@ -5,6 +5,10 @@ import {
   runGrillingEvidenceBundleCheck,
   runGrillingHappyPathCheck,
 } from "../../test/scenarios/_helpers/grilling-scenario.ts";
+import {
+  reflexionVerifierModel,
+  runReflexionRespawnCheck,
+} from "../../test/scenarios/_helpers/reflexion-scenario.ts";
 import { runMultiTaskSupervisorCheck } from "../../test/scenarios/_helpers/supervisor-scenario.ts";
 
 /**
@@ -74,6 +78,12 @@ describe("orchestrator scenario logic (#8932)", () => {
       await runGrillingEvidenceBundleCheck(makeBaseRuntime()),
     ).toBeUndefined();
   });
+
+  it("reflexion re-spawn: a failed attempt's reflection is injected into the retry prompt (#8899)", async () => {
+    expect(
+      await runReflexionRespawnCheck(makeBaseRuntime(), reflexionVerifierModel),
+    ).toBeUndefined();
+  }, 20_000);
 
   it("device/modality matrix: supported profiles and unsupported stubs are explicit", async () => {
     const evidence = await buildDeviceSupportScenarioEvidence();

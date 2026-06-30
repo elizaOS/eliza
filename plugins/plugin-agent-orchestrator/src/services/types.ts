@@ -10,7 +10,12 @@ export type ApprovalPreset =
   | "readonly"
   | "standard"
   | "permissive"
-  | "autonomous";
+  | "autonomous"
+  // Read + search + EXECUTE allowed, edit/write/delete DENIED. The profile the
+  // independent read-only verifier (#8898) runs under: it must re-run tests
+  // (`execute`) and inspect files (`read`/`search`) but can never mutate the
+  // worktree it is verifying. `readonly` (`--deny-all`) cannot run the tests.
+  | "verifier";
 
 export type SessionStatus =
   | "running"

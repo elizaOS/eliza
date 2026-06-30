@@ -12,9 +12,6 @@
  * - `setActionNotice`        — from useLifecycleState, used for disconnect / auth notices
  * - `loadWalletConfig`       — from useWalletState, called after successful login
  * - `t`                      — translation function, used for auth-rejected notice key
- *
- * Note: `handleCloudFirstRunFinish` is kept in AppContext (one-liner that calls
- * `submitFirstRunAndComplete`, which is defined later in AppContext's render order).
  */
 
 import {
@@ -47,6 +44,7 @@ import {
   hasStewardLoginLauncher,
   launchStewardLogin,
 } from "./cloud-steward-login";
+import { scrubPersistedActiveServerToken } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -304,11 +302,6 @@ export function useCloudState({
   const elizaCloudLoginBusyRef = useRef(false);
   /** Tracks whether the auth-rejected notice has already been sent for the current rejection. */
   const elizaCloudAuthNoticeSentRef = useRef(false);
-  /**
-   * Forward ref so handleFirstRunNext (defined earlier in AppContext) can call
-   * handleCloudLogin (defined later).
-   */
-  const handleCloudLoginRef = useRef<() => Promise<void>>(async () => {});
 
   // ── Callbacks ──────────────────────────────────────────────────────
 
@@ -752,9 +745,6 @@ export function useCloudState({
     ],
   );
 
-  // Keep forward ref in sync so handleFirstRunNext can call it.
-  handleCloudLoginRef.current = handleCloudLogin;
-
   const handleCloudDisconnect = useCallback(
     async (opts?: { skipConfirmation?: boolean }): Promise<void> => {
       const MAIN_CONFIRM_DISCONNECT_MS = 300_000;
@@ -904,6 +894,12 @@ export function useCloudState({
         setElizaCloudStatusReason(null);
         lastElizaCloudPollConnectedRef.current = false;
         elizaCloudPreferDisconnectedUntilLoginRef.current = true;
+        // Drop the persisted JWT on disconnect. The full sign-out path
+        // (StewardProviderRuntime) already scrubs it; cloud-disconnect cleared
+        // in-memory state but left active-server.accessToken in localStorage —
+        // an at-rest JWT leak readable by XSS / plugin views. Keep the server
+        // selection (kind/apiBase/label) so we know where to re-authenticate.
+        scrubPersistedActiveServerToken();
         if (wasConnected) {
           setActionNotice("Disconnected from Eliza Cloud.", "success");
         }
@@ -1023,7 +1019,6 @@ export function useCloudState({
     lastElizaCloudPollConnectedRef,
     elizaCloudLoginPollTimer,
     elizaCloudLoginBusyRef,
-    handleCloudLoginRef,
     // Callbacks
     pollCloudCredits,
     handleCloudLogin,
