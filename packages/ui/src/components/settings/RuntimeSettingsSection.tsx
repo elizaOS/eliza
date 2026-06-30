@@ -23,9 +23,9 @@ import {
   inferAgentRuntimeTarget,
 } from "../../state/agent-runtime-target";
 import { loadPersistedActiveServer } from "../../state/persistence";
+import { Input } from "../ui/input";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
-import { Input } from "../ui/input";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
