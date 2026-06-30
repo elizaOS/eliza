@@ -141,4 +141,43 @@ describe("scenario cleanup", () => {
       "selfControlClearBlocks failed",
     );
   });
+
+  it("runs custom cleanup even when scenario execution throws", async () => {
+    let cleanedUp = false;
+
+    const report = await runScenario(
+      {
+        id: "custom-cleanup-after-throw",
+        title: "Custom cleanup after throw",
+        domain: "executor",
+        turns: [
+          {
+            kind: "message",
+            name: "missing-message-service",
+            text: "This turn should throw before normal completion.",
+          },
+        ],
+        cleanup: [
+          {
+            type: "custom",
+            name: "mark-cleaned",
+            apply: () => {
+              cleanedUp = true;
+              return undefined;
+            },
+          },
+        ],
+      },
+      createRuntime(),
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toContain("runtime.messageService is not initialized");
+    expect(cleanedUp).toBe(true);
+  });
 });

@@ -57,6 +57,8 @@ export interface LinearSearchFilters {
   label?: string[];
   project?: string;
   team?: string;
+  /** Search across all teams instead of scoping to the default team (#10470). */
+  allTeams?: boolean;
   priority?: number[];
   query?: string;
   limit?: number;

@@ -9,8 +9,12 @@ import { assertValidGitUrl, assertValidPackageName } from "./plugin-installer";
  */
 describe("assertValidGitUrl", () => {
   it("accepts a well-formed https .git URL", () => {
-    expect(() => assertValidGitUrl("https://github.com/elizaos/eliza.git")).not.toThrow();
-    expect(() => assertValidGitUrl("https://gitlab.com/group/sub/repo.git")).not.toThrow();
+    expect(() =>
+      assertValidGitUrl("https://github.com/elizaos/eliza.git"),
+    ).not.toThrow();
+    expect(() =>
+      assertValidGitUrl("https://gitlab.com/group/sub/repo.git"),
+    ).not.toThrow();
   });
 
   it("rejects non-https, missing .git, SSH, and injection attempts", () => {
@@ -29,7 +33,12 @@ describe("assertValidGitUrl", () => {
 
 describe("assertValidPackageName", () => {
   it("accepts plain and scoped package names", () => {
-    for (const n of ["lodash", "plugin-foo", "@elizaos/plugin-bar", "@scope/name.sub"]) {
+    for (const n of [
+      "lodash",
+      "plugin-foo",
+      "@elizaos/plugin-bar",
+      "@scope/name.sub",
+    ]) {
       expect(() => assertValidPackageName(n)).not.toThrow();
     }
   });

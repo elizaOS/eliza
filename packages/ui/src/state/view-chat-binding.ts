@@ -18,6 +18,14 @@ export interface ViewChatBinding {
    * filter/respond to what's being typed without sending to the agent.
    */
   onQuery?: (text: string) => void;
+  /**
+   * Claim a SEND from the floating composer. Return `true` to consume it — the
+   * active view routed the text to its own target (e.g. the cockpit drives the
+   * focused coding agent / room instead of the host agent), so the composer
+   * clears and does NOT fall through to `controller.send`. Return
+   * `false`/`undefined` to let the host agent handle it (driver mode).
+   */
+  onSubmit?: (text: string) => boolean;
 }
 
 interface BindingStore {
@@ -68,10 +76,13 @@ export function useRegisterViewChatBinding(
 ): void {
   const placeholder = binding?.placeholder;
   const onQuery = binding?.onQuery;
+  const onSubmit = binding?.onSubmit;
   React.useEffect(() => {
     setViewChatBinding(
-      placeholder || onQuery ? { placeholder, onQuery } : null,
+      placeholder || onQuery || onSubmit
+        ? { placeholder, onQuery, onSubmit }
+        : null,
     );
     return () => setViewChatBinding(null);
-  }, [placeholder, onQuery]);
+  }, [placeholder, onQuery, onSubmit]);
 }

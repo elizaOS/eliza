@@ -1,9 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  generateInviteToken,
-  hashInviteToken,
-  verifyInviteToken,
-} from "./invite-tokens";
+import { generateInviteToken, hashInviteToken, verifyInviteToken } from "./invite-tokens";
 
 /**
  * Tests for the invite-token security primitives (#8801 / #9943). These were

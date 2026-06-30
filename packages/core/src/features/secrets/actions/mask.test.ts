@@ -10,30 +10,30 @@ import { maskSecretValue } from "./mask";
  * is never exposed, and the mask is capped so the length isn't revealed.
  */
 describe("maskSecretValue", () => {
-  it("fully masks secrets of 8 characters or fewer", () => {
-    expect(maskSecretValue("")).toBe("****");
-    expect(maskSecretValue("a")).toBe("****");
-    expect(maskSecretValue("12345678")).toBe("****");
-  });
+	it("fully masks secrets of 8 characters or fewer", () => {
+		expect(maskSecretValue("")).toBe("****");
+		expect(maskSecretValue("a")).toBe("****");
+		expect(maskSecretValue("12345678")).toBe("****");
+	});
 
-  it("shows only the first and last 4 characters of a longer secret", () => {
-    expect(maskSecretValue("123456789")).toBe("1234*6789");
-    const masked = maskSecretValue("sk-abcdefghIJKLMNOP");
-    expect(masked.startsWith("sk-a")).toBe(true);
-    expect(masked.endsWith("MNOP")).toBe(true);
-  });
+	it("shows only the first and last 4 characters of a longer secret", () => {
+		expect(maskSecretValue("123456789")).toBe("1234*6789");
+		const masked = maskSecretValue("sk-abcdefghIJKLMNOP");
+		expect(masked.startsWith("sk-a")).toBe(true);
+		expect(masked.endsWith("MNOP")).toBe(true);
+	});
 
-  it("never exposes the middle of the secret", () => {
-    const masked = maskSecretValue("AKIASECRETMIDDLETAIL");
-    expect(masked).toBe("AKIA************TAIL");
-    expect(masked).not.toContain("SECRETMIDDLE");
-  });
+	it("never exposes the middle of the secret", () => {
+		const masked = maskSecretValue("AKIASECRETMIDDLETAIL");
+		expect(masked).toBe("AKIA************TAIL");
+		expect(masked).not.toContain("SECRETMIDDLE");
+	});
 
-  it("caps the mask at 20 stars so the true length is not revealed", () => {
-    const masked = maskSecretValue("x".repeat(100));
-    expect(masked).toHaveLength(28); // 4 + 20 + 4
-    expect((masked.match(/\*/g) ?? []).length).toBe(20);
-    expect(masked.startsWith("xxxx")).toBe(true);
-    expect(masked.endsWith("xxxx")).toBe(true);
-  });
+	it("caps the mask at 20 stars so the true length is not revealed", () => {
+		const masked = maskSecretValue("x".repeat(100));
+		expect(masked).toHaveLength(28); // 4 + 20 + 4
+		expect((masked.match(/\*/g) ?? []).length).toBe(20);
+		expect(masked.startsWith("xxxx")).toBe(true);
+		expect(masked.endsWith("xxxx")).toBe(true);
+	});
 });

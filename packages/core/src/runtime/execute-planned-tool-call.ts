@@ -2,6 +2,7 @@ import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { checkSenderRole } from "../roles";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
+import { getTrajectoryContext } from "../trajectory-context";
 import type {
 	Action,
 	ActionParameters,
@@ -229,6 +230,19 @@ export async function executePlannedToolCall(
 		const actionCallback: typeof executorCtx.callback = callback
 			? (response, actionName) => callback(response, actionName ?? action.name)
 			: undefined;
+		// Egress (#10469): this is the true execution boundary. Restore real
+		// secrets into the handler args ONLY here — the model, transcripts, logs,
+		// and trajectory upstream kept the placeholders. Fail loud if the model
+		// emitted a this-turn placeholder we cannot resolve, so a placeholder is
+		// never sent to a real command/connector/endpoint. No-op (and zero cost)
+		// when secret-swap is disabled: there is no turn session on the context.
+		const secretSwapSession = getTrajectoryContext()?.secretSwapSession;
+		if (secretSwapSession && handlerOptions.parameters !== undefined) {
+			handlerOptions.parameters = secretSwapSession.restoreInValue(
+				handlerOptions.parameters,
+				{ failOnUnresolved: true },
+			);
+		}
 		const result = await runWithActionRoutingContext(
 			{ actionName: action.name, modelClass: action.modelClass },
 			() =>

@@ -196,11 +196,7 @@ export const searchSkillsAction = {
 		"Search skill registry by keyword/category. Returns action chips: use/enable/disable/install/copy/details.",
 	descriptionCompressed:
 		"Search skill registry by keyword/category; returns action chips.",
-	validate: createAgentSkillsActionValidator({
-		keywords: ["search", "find", "browse", "list", "skill"],
-		regex:
-			/\b(?:search|find|browse|list)\b.*\bskills?\b|\bskills?\b.*\b(?:search|find|browse|list)\b/i,
-	}),
+	validate: createAgentSkillsActionValidator(),
 
 	handler: async (
 		runtime: IAgentRuntime,

@@ -133,3 +133,52 @@ describe("generateMediaAction availability", () => {
 		);
 	});
 });
+
+describe("generateMediaAction media-kind routing is i18n-safe (#10471)", () => {
+	it("honors the structured mediaType enum regardless of message language", async () => {
+		const generateMedia = vi.fn(async () => ({
+			mediaType: "video",
+			videoUrl: "https://cdn.example.com/v.mp4",
+			mimeType: "video/mp4",
+		}));
+		// Non-English prompt; routing must come from params.mediaType, not text.
+		const jaMessage = {
+			id: "msg",
+			roomId: "room",
+			content: { text: "猫の動画を作って" },
+		} as never;
+		await generateMediaAction.handler?.(
+			runtimeWithMediaService(true, generateMedia),
+			jaMessage,
+			undefined,
+			{ parameters: { mediaType: "video", prompt: "a cat" } },
+		);
+		expect(generateMedia).toHaveBeenCalledWith(
+			expect.objectContaining({ mediaType: "video" }),
+		);
+	});
+
+	it("does NOT infer media kind from English text when mediaType is absent", async () => {
+		const generateMedia = vi.fn(async () => ({
+			mediaType: "image",
+			url: "https://cdn.example.com/i.png",
+			mimeType: "image/png",
+		}));
+		// English "video"/"music" words in the prompt must no longer steer the
+		// media kind — only the structured enum does. Absent enum ⇒ image.
+		const englishyMessage = {
+			id: "msg",
+			roomId: "room",
+			content: { text: "make a video with background music of a lighthouse" },
+		} as never;
+		await generateMediaAction.handler?.(
+			runtimeWithMediaService(true, generateMedia),
+			englishyMessage,
+			undefined,
+			{ parameters: { prompt: "a lighthouse" } },
+		);
+		expect(generateMedia).toHaveBeenCalledWith(
+			expect.objectContaining({ mediaType: "image" }),
+		);
+	});
+});

@@ -46,10 +46,7 @@ export const getSkillDetailsAction = {
 	description:
 		"Get detailed information about a specific skill including version, owner, and stats.",
 	descriptionCompressed: "Get skill version, owner, stats.",
-	validate: createAgentSkillsActionValidator({
-		keywords: ["get", "skill", "details", "info", "tell", "more"],
-		regex: /\b(?:skill|details|info|tell\s+me\s+about)\b/i,
-	}),
+	validate: createAgentSkillsActionValidator(),
 
 	handler: async (
 		runtime: IAgentRuntime,

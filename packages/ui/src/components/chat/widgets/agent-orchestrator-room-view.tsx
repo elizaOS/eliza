@@ -159,9 +159,12 @@ function ParticipantRow({
 function RoomCard({
   room,
   t,
+  onSelectRoom,
 }: {
   room: OrchestratorRoomRoster;
   t: TranslateFn;
+  /** When set, the card header is a button that drills into this task room. */
+  onSelectRoom?: (taskId: string) => void;
 }) {
   // Orchestrator + user anchors first, then sub-agents (live before idle) so
   // the working swarm reads top-down without re-sorting the wire order.
@@ -174,41 +177,57 @@ function RoomCard({
     return [...anchors, ...subAgents];
   }, [room.participants]);
 
+  const header = (
+    <>
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${roomStatusTone(room.status)}`}
+        role="img"
+        aria-label={room.status}
+        title={room.status}
+      />
+      <span className="truncate text-2xs font-semibold text-txt">
+        {room.taskTitle}
+      </span>
+      <span className="ml-auto flex shrink-0 items-center gap-1 text-3xs text-muted">
+        {room.multiParty ? (
+          <Users
+            className="h-3 w-3"
+            aria-label={t("agentorchestrator.multiPartyRoom", {
+              defaultValue: "Multi-party room",
+            })}
+          />
+        ) : null}
+        <span
+          className="tabular-nums"
+          title={t("agentorchestrator.activeAgents", {
+            defaultValue: "{{count}} active",
+            count: room.activeAgentCount,
+          })}
+        >
+          {room.activeAgentCount}
+        </span>
+      </span>
+    </>
+  );
+
   return (
     <div
       className="space-y-1.5 rounded-sm border border-border/50 bg-bg-accent/30 p-2"
       data-testid="orchestrator-room-card"
     >
-      <div className="flex items-center gap-1.5">
-        <span
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${roomStatusTone(room.status)}`}
-          role="img"
-          aria-label={room.status}
-          title={room.status}
-        />
-        <span className="truncate text-2xs font-semibold text-txt">
-          {room.taskTitle}
-        </span>
-        <span className="ml-auto flex shrink-0 items-center gap-1 text-3xs text-muted">
-          {room.multiParty ? (
-            <Users
-              className="h-3 w-3"
-              aria-label={t("agentorchestrator.multiPartyRoom", {
-                defaultValue: "Multi-party room",
-              })}
-            />
-          ) : null}
-          <span
-            className="tabular-nums"
-            title={t("agentorchestrator.activeAgents", {
-              defaultValue: "{{count}} active",
-              count: room.activeAgentCount,
-            })}
-          >
-            {room.activeAgentCount}
-          </span>
-        </span>
-      </div>
+      {onSelectRoom ? (
+        <button
+          type="button"
+          onClick={() => onSelectRoom(room.taskId)}
+          aria-label={room.taskTitle}
+          data-testid="orchestrator-room-open"
+          className="flex w-full items-center gap-1.5 rounded-sm text-left transition-colors hover:bg-bg-hover"
+        >
+          {header}
+        </button>
+      ) : (
+        <div className="flex items-center gap-1.5">{header}</div>
+      )}
       <div className="space-y-0.5">
         {orderedParticipants.map((p) => (
           <ParticipantRow
@@ -225,6 +244,12 @@ function RoomCard({
 export interface OrchestratorRoomViewProps {
   rooms: OrchestratorRoomRosterOverview | null;
   t?: TranslateFn;
+  /**
+   * When set, each room card becomes a button that drills into that task room
+   * (the cockpit uses this; the chat-sidebar widget leaves it undefined, so the
+   * deck stays presentational there).
+   */
+  onSelectRoom?: (taskId: string) => void;
 }
 
 /**
@@ -236,6 +261,7 @@ export interface OrchestratorRoomViewProps {
 export function OrchestratorRoomView({
   rooms,
   t = fallbackTranslate,
+  onSelectRoom,
 }: OrchestratorRoomViewProps) {
   // Surface every non-terminal room so an operator sees the full live board, not
   // just rooms that currently have a busy worker (an idle room still matters).
@@ -296,7 +322,12 @@ export function OrchestratorRoomView({
     >
       <div className="space-y-2" data-testid="orchestrator-room-list">
         {liveRooms.map((room) => (
-          <RoomCard key={room.taskId} room={room} t={t} />
+          <RoomCard
+            key={room.taskId}
+            room={room}
+            t={t}
+            onSelectRoom={onSelectRoom}
+          />
         ))}
       </div>
     </WidgetSection>

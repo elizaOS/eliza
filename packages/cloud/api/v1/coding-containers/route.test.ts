@@ -4,6 +4,10 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
   organization_id: "org-1",
 }));
+type CreditGateResult = { allowed: boolean; balance: number; error?: string };
+const checkAgentCreditGate = mock(
+  async (): Promise<CreditGateResult> => ({ allowed: true, balance: 5 }),
+);
 const checkProvisioningWorkerHealth = mock(async () => ({ ok: true }));
 const createCodingContainerAgent = mock(async () => ({
   idempotent: true,
@@ -27,6 +31,10 @@ const triggerImmediate = mock(async () => undefined);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
+}));
+
+mock.module("@/lib/services/agent-billing-gate", () => ({
+  checkAgentCreditGate,
 }));
 
 mock.module("@/lib/eliza-agent-web-ui", () => ({
@@ -95,6 +103,8 @@ async function postCodingContainer(image: string): Promise<Response> {
 describe("coding containers route", () => {
   beforeEach(() => {
     requireUserOrApiKeyWithOrg.mockClear();
+    checkAgentCreditGate.mockClear();
+    checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     checkProvisioningWorkerHealth.mockClear();
     createCodingContainerAgent.mockClear();
     updateAgentEnvironment.mockClear();
@@ -176,6 +186,43 @@ describe("coding containers route", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(createCodingContainerAgent).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression for the free-compute leak (#10554, finding 3): a metered coding
+  // container is paid compute, so a $0/negative org must be blocked at the same
+  // credit gate every sibling provision route enforces — the route's downstream
+  // 402 poll branch is dead, so this gate is the only real block.
+  test("blocks provisioning with 402 when the org has insufficient credits", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: false,
+      balance: 0,
+      error: "Insufficient credits",
+    });
+
+    const response = await postCodingContainer("ghcr.io/dexploarer/bnancy:latest");
+
+    expect(response.status).toBe(402);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        success: false,
+        code: "insufficient_credits",
+        currentBalance: 0,
+        requiredBalance: 0.1,
+      }),
+    );
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
+    // The gate must short-circuit BEFORE any paid compute is provisioned.
+    expect(createCodingContainerAgent).not.toHaveBeenCalled();
+  });
+
+  test("provisions when the org is funded (passes the credit gate)", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({ allowed: true, balance: 12.5 });
+
+    const response = await postCodingContainer("ghcr.io/dexploarer/bnancy:latest");
+
+    expect(response.status).toBe(200);
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     expect(createCodingContainerAgent).toHaveBeenCalledTimes(1);
   });
 });

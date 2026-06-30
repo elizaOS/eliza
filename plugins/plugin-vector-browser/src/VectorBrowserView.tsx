@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@elizaos/ui/components/ui/select";
 import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
-import { type AppBootConfig, getBootConfig } from "@elizaos/ui/config";
+import { getBootConfig } from "@elizaos/ui/config";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { WorkspaceLayout } from "@elizaos/ui/layouts";
 import { Escape } from "@elizaos/ui/spatial";
@@ -50,6 +50,13 @@ type VectorBrowserRuntime = {
   THREE: typeof Three;
   createVectorBrowserRenderer: () => Promise<Three.WebGLRenderer>;
 };
+
+// Derive the boot-config type from getBootConfig's return rather than importing
+// the `AppBootConfig` type name: it is re-exported from @elizaos/ui/config only
+// through a multi-hop `export *` chain that tsgo does not resolve as a type
+// member, while the value export (getBootConfig) resolves fine. ReturnType is
+// the same type and immune to the chain quirk.
+type AppBootConfig = ReturnType<typeof getBootConfig>;
 
 type VectorBrowserBootConfig = AppBootConfig & {
   companionVectorBrowser?: VectorBrowserRuntime;

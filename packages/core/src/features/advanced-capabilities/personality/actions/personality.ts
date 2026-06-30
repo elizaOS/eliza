@@ -270,25 +270,6 @@ export const personalityAction: Action = {
 		if (!store) return false;
 		return hasActionContext(message, state, {
 			contexts: ["settings", "agent_internal", "media", "admin", "general"],
-			keywords: [
-				"personality",
-				"shut up",
-				"be quiet",
-				"stop talking",
-				"be nicer",
-				"be terse",
-				"be verbose",
-				"less responsive",
-				"more agreeable",
-				"only respond when",
-				"only when mentioned",
-				"stop responding",
-				"tone",
-				"verbosity",
-				"formality",
-				"reply gate",
-				"profile",
-			],
 		});
 	},
 

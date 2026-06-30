@@ -139,6 +139,14 @@ export type ScenarioCleanupStep =
       name?: string;
       profile?: string;
       [key: string]: unknown;
+    }
+  | {
+      type: "custom";
+      name?: string;
+      apply?: (
+        ctx: ScenarioContext,
+      ) => ScenarioCheckResult | Promise<ScenarioCheckResult>;
+      [key: string]: unknown;
     };
 
 export type ScenarioJudgeRubric = {

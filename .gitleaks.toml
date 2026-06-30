@@ -27,6 +27,18 @@ paths = [
   '''docs/.*\.mdx?$''',
 ]
 
+# The secret-swap PII detector suites (#10469) MUST embed example secret SHAPES
+# (a Stripe-style key, a GCP key, a JWT, …) to prove the detectors fire — none
+# are real credentials. Narrow per-file scope, not a broad regex.
+[[allowlists]]
+description = "secret-swap PII detector test fixtures — example secret shapes under test (#10469)"
+paths = [
+  '''packages/core/src/security/pii-detectors\.test\.ts$''',
+  '''packages/core/src/security/secret-swap\.redteam\.test\.ts$''',
+  '''packages/core/src/security/secret-swap\.fuzz\.test\.ts$''',
+  '''packages/core/src/security/secret-swap\.bench\.ts$''',
+]
+
 [[allowlists]]
 description = "Headscale DEPLOY.md CLI examples (`headscale apikeys create` — not a credential)"
 paths = [

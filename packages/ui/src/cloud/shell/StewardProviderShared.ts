@@ -5,6 +5,8 @@ import {
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
+import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
+import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { decodeJwtPayload } from "../lib/jwt";
 
 export function isPlaceholderValue(value: string | undefined): boolean {
@@ -143,6 +145,12 @@ export function tokenSecsRemaining(token: string): number | null {
 export function clearStaleStewardSession(): void {
   if (typeof window === "undefined") return;
   clearStoredStewardToken();
+  // SECURITY: also scrub the persisted accessToken mirrors so the secondary
+  // sign-out / 401-self-heal paths that route through here (native apps-studio
+  // signOut, the authorize-content edge, StewardProviderRuntime 401 clears) don't
+  // leave a usable cloud bearer/API-key at rest in localStorage.
+  scrubPersistedActiveServerToken();
+  scrubPersistedAgentProfileTokens();
   clearServerStewardSessionCookies();
   try {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));

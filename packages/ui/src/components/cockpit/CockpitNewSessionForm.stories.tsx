@@ -24,6 +24,10 @@ export const Default: Story = {
   args: { onCreate: noop },
 };
 
+export const ExperimentalArmed: Story = {
+  args: { onCreate: noop, experimentalEnabled: true },
+};
+
 export const Busy: Story = {
   args: { onCreate: noop, busy: true },
 };

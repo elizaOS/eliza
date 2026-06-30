@@ -21,7 +21,6 @@ export const noneAction: Action = {
 	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
 		hasActionContext(message, state, {
 			contexts: ["general"],
-			keywords: ["nothing", "no action", "no tool", "just respond", "none"],
 		}),
 	description: spec.description,
 	handler: async (

@@ -75,8 +75,8 @@ app.post("/", async (c) => {
   let settleReservation:
     | ReturnType<typeof createCreditReservationSettler>
     | undefined;
-  // True once settleBilling() (which runs billUsage → reservation.reconcile) has
-  // been invoked, so the catch never double-applies a release on the success path.
+  // True once settleBilling() has taken ownership of settling/releasing the
+  // reservation, so the outer catch never double-applies a release.
   let billed = false;
   try {
     // Resolve auth (+ org + moderation) in a SINGLE cache read for API-key
@@ -203,13 +203,12 @@ app.post("/", async (c) => {
     // enabled AND this org's balance comfortably clears SAFE_BALANCE_THRESHOLD,
     // SKIP the synchronous reserve write (~0.8-1.7s of serial credit DB on every
     // memory-backed reply) and defer the ACTUAL-cost debit to the post-response
-    // settle, backed by a durable KV pending-charge. Gated + fail-SAFE: flag off
+    // settle, backed by a durable pending-charge. Gated + fail-SAFE: flag off
     // / null org / low balance / cache down / non-durable backstop all fall
     // through to the synchronous reserve below, VERBATIM (same try/catch/402 as
-    // today). The success-path settleBilling and the catch are left byte-for-byte
-    // unchanged: on the optimistic path the reservation we hand billUsage is one
-    // whose `reconcile` IS the actual-cost debit, so there is exactly one charge
-    // site (billUsage's `reservation.reconcile(totalCost)`) on either path.
+    // today). On the optimistic path the reservation's `reconcile` IS the
+    // actual-cost debit, and settleBilling invokes it through the single
+    // first-call-wins settler.
     const requestId = c.req.header("x-request-id") || crypto.randomUUID();
     const orgId = user.organization_id;
     let reservation: Awaited<ReturnType<typeof reserveCredits>> | undefined;
@@ -320,11 +319,11 @@ app.post("/", async (c) => {
           // Build a reservation whose `reconcile` IS the optimistic debit
           // settler. We deliberately do NOT use
           // creditsService.createAnonymousReservation() here — its reconcile is
-          // a no-op (`async () => {}`), which would make billUsage charge
+          // a no-op (`async () => {}`), which would make settleReservation charge
           // NOTHING (free embeddings — the known trap). When settleBilling calls
-          // billUsage(..., reservation) → reservation.reconcile(totalCost), the
-          // settler atomically claims the KV backstop (so the cron sweep can't
-          // also charge) and debits the ACTUAL marked-up cost via deductCredits.
+          // settleReservation(totalCost), the settler atomically claims the
+          // pending backstop (so the sweep can't also charge) and debits the
+          // ACTUAL marked-up cost via deductCredits.
           const optimisticSettler = createOptimisticDebitSettler({
             requestId,
             organizationId: orgId,
@@ -383,9 +382,8 @@ app.post("/", async (c) => {
       }
     }
 
-    // Idempotent settler over whatever reservation we built. Used only by the
-    // catch below to release on a provider failure; the success path settles via
-    // billUsage(reservation) instead (see settleBilling). For the optimistic
+    // Idempotent settler over whatever reservation we built. The success path
+    // settles the actual cost; failure paths release to zero. For the optimistic
     // reservation, settleReservation(0) → reconcile(0) → optimisticSettler(0):
     // it claims (removes) the pending entry and debits nothing.
     if (!reservation) {
@@ -422,53 +420,76 @@ app.post("/", async (c) => {
 
     // Defer billing off the response path: reconciliation + usage recording add
     // serial DB round-trips that need not block the vector return. We still RUN
-    // billUsage (it reconciles the reservation), just after the response is sent
-    // via waitUntil. The terminal insufficient-credits guard already fired above
+    // billUsage + settle the reservation, just after the response is sent via
+    // waitUntil. The terminal insufficient-credits guard already fired above
     // (reserveCredits), so a caller with no balance was rejected before embedding;
     // the only residual risk is an under-bill if the Worker dies before the
-    // deferred task completes — an accepted trade-off (never a double- or
-    // dropped-bill, since billUsage runs exactly once).
+    // deferred task completes — an accepted trade-off for this route. The settler
+    // prevents double-settlement inside the task.
     const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
     const settleBilling = async () => {
-      const billing = await billUsage(
-        {
-          organizationId: user.organization_id,
-          userId: user.id,
-          apiKeyId,
+      try {
+        // #10557: bill WITHOUT handing billUsage the reservation, then settle
+        // explicitly below — making `settleReservation` the SINGLE idempotent
+        // reconcile owner (mirrors /v1/messages and /v1/chat/completions).
+        // Previously billUsage was given the reservation and reconciled it at the
+        // very END, AFTER two unguarded awaits (calculateCost + the affiliate-code
+        // lookup). If either threw, that internal reconcile never ran and the
+        // ~1.5x upfront hold leaked permanently (the outer catch is gated by
+        // `billed`, and this deferred task only logged its failure). Settling via
+        // the first-call-wins settler lets the catch release the hold without any
+        // double-refund risk.
+        const billing = await billUsage(
+          {
+            organizationId: user.organization_id,
+            userId: user.id,
+            apiKeyId,
+            model,
+            provider,
+            billingSource,
+            // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,
+            // activate the existing billUsage affiliate branch (same as /v1/messages).
+            affiliateCode,
+          },
+          { inputTokens: actualTokens, outputTokens: 0 },
+        );
+
+        // Single reconcile site. The settler is first-call-wins idempotent, so
+        // this actual-cost charge can never be double-applied with the catch's
+        // settleReservation(0).
+        await settleReservation?.(billing.totalCost);
+
+        logger.info("[Embeddings] Complete", {
           model,
+          actualTokens,
+          totalCost: billing.totalCost,
+        });
+
+        await usageService.create({
+          organization_id: user.organization_id,
+          user_id: user.id,
+          api_key_id: apiKeyId,
+          type: "embeddings",
+          model: normalizedModel,
           provider,
-          billingSource,
-          // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,
-          // activate the existing billUsage affiliate branch (same as /v1/messages).
-          affiliateCode,
-        },
-        { inputTokens: actualTokens, outputTokens: 0 },
-        reservation,
-      );
-
-      logger.info("[Embeddings] Complete", {
-        model,
-        actualTokens,
-        totalCost: billing.totalCost,
-      });
-
-      await usageService.create({
-        organization_id: user.organization_id,
-        user_id: user.id,
-        api_key_id: apiKeyId,
-        type: "embeddings",
-        model: normalizedModel,
-        provider,
-        input_tokens: actualTokens,
-        output_tokens: 0,
-        input_cost: String(billing.inputCost),
-        output_cost: String(0),
-        is_successful: true,
-      });
+          input_tokens: actualTokens,
+          output_tokens: 0,
+          input_cost: String(billing.inputCost),
+          output_cost: String(0),
+          is_successful: true,
+        });
+      } catch (err) {
+        // billUsage / calculateCost / affiliate lookup threw before the hold was
+        // reconciled → release it. Idempotent: a no-op if we already settled the
+        // actual cost above. Rethrow so the waitUntil .catch logs it.
+        await settleReservation?.(0);
+        throw err;
+      }
     };
 
-    // Past this point billing (which reconciles the reservation) owns the hold,
-    // so the catch must NOT also release it — that would double-refund.
+    // Past this point the deferred settleBilling owns the hold (it settles the
+    // actual cost on success and releases it on its own failure), so the outer
+    // catch must NOT also release it.
     billed = true;
     const billedPromise = settleBilling().catch((err) => {
       logger.error("[Embeddings] Failed to settle billing", {

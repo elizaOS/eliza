@@ -9,8 +9,17 @@ export class ShopifyClient {
   private accessToken: string;
 
   constructor(storeDomain: string, accessToken: string) {
-    const domain = storeDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    this.baseUrl = `https://${domain}/admin/api/${API_VERSION}/graphql.json`;
+    // Test-only wire-mock seam (mirrors plugin-openai/anthropic's
+    // ELIZA_MOCK_*_BASE): when set, route the Admin GraphQL call to a local
+    // mock instead of api.myshopify.com, so the connector can be exercised
+    // keyless in deterministic scenarios. Production (env unset) is unchanged.
+    const mockBase = process.env.ELIZA_MOCK_SHOPIFY_BASE?.trim();
+    if (mockBase) {
+      this.baseUrl = mockBase;
+    } else {
+      const domain = storeDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+      this.baseUrl = `https://${domain}/admin/api/${API_VERSION}/graphql.json`;
+    }
     this.accessToken = accessToken;
   }
 

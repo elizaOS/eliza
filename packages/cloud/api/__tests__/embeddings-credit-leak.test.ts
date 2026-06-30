@@ -245,28 +245,34 @@ describe("embeddings — reserve() failure does not crash the release path", () 
   });
 });
 
+function makeBilling(actual: number) {
+  return {
+    inputCost: actual,
+    outputCost: 0,
+    totalCost: actual,
+    baseInputCost: actual,
+    baseOutputCost: 0,
+    baseTotalCost: actual,
+    platformMarkup: 0,
+    inputTokens: 5,
+    outputTokens: 0,
+    totalTokens: 5,
+    markupApplied: true,
+  };
+}
+
 describe("embeddings — success settles to actual usage exactly once", () => {
-  test("success path reconciles via billUsage once; the catch never double-refunds", async () => {
+  test("success path settles via the route settler once; the catch never double-refunds", async () => {
     const ledger = makeLedgerReservation(100, 0.01);
     const ACTUAL = 0.003;
     reserveCredits.mockResolvedValue(ledger.reservation);
     embed.mockResolvedValue({ embedding: [0.1, 0.2], usage: { tokens: 5 } });
-    // Model reality: billUsage reconciles the reservation to actual cost.
-    billUsage.mockImplementation(async (_ctx, _usage) => {
-      await ledger.reservation.reconcile(ACTUAL);
-      return {
-        inputCost: ACTUAL,
-        outputCost: 0,
-        totalCost: ACTUAL,
-        baseInputCost: ACTUAL,
-        baseOutputCost: 0,
-        baseTotalCost: ACTUAL,
-        platformMarkup: 0,
-        inputTokens: 5,
-        outputTokens: 0,
-        totalTokens: 5,
-        markupApplied: true,
-      };
+    // #10557: billUsage is now called WITHOUT the reservation, so it does NOT
+    // reconcile internally (mirrors the real adapter's `if (reservation)`
+    // guard). The route reconciles via the single first-call-wins settler.
+    billUsage.mockImplementation(async (_ctx, _usage, reservationArg) => {
+      expect(reservationArg).toBeUndefined();
+      return makeBilling(ACTUAL);
     });
 
     const { ctx, scheduled } = makeExecutionCtx();
@@ -277,7 +283,66 @@ describe("embeddings — success settles to actual usage exactly once", () => {
     expect(res.status).toBe(200);
 
     await Promise.all(scheduled);
-    // Reconciled exactly once (by billUsage); the catch release never fired.
+    // Reconciled exactly once (by the route settler); the catch release never fired.
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ACTUAL, 10);
+  });
+});
+
+describe("embeddings — billUsage internal throw releases the hold (#10557)", () => {
+  test("billUsage throws AFTER embedding (e.g. calculateCost/affiliate lookup): hold released to 0, no double-refund", async () => {
+    // The original leak: the embedding succeeded and the reservation hold was
+    // taken, but billUsage threw before its internal reconcile (calculateCost or
+    // the affiliate-code lookup throwing). The deferred settleBilling only logged
+    // → the ~1.5x hold leaked permanently. After the fix, settleBilling's catch
+    // releases the hold via the settler.
+    const ledger = makeLedgerReservation(100, 0.01);
+    reserveCredits.mockResolvedValue(ledger.reservation);
+    embed.mockResolvedValue({ embedding: [0.1], usage: { tokens: 5 } });
+    billUsage.mockRejectedValue(new Error("calculateCost exploded"));
+
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await post(
+      // X-Affiliate-Code present → exercises the affiliate-lookup branch too.
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+    );
+
+    // Billing is deferred, so the vectors still returned 200.
+    expect(res.status).toBe(200);
+    expect(scheduled.length).toBe(1);
+    // The deferred task swallows its own error after releasing the hold.
+    await Promise.all(scheduled);
+
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    // Hold released exactly once → balance back to pre-request (no permanent over-debit).
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    // usage record never written because billUsage threw first.
+    expect(usageCreate).not.toHaveBeenCalled();
+  });
+
+  test("billUsage succeeds then usage-record write throws: actual cost stays settled, NOT refunded to 0", async () => {
+    // Defense of the idempotency guarantee: if settlement already happened and a
+    // later step (usageService.create) throws, the catch's settleReservation(0)
+    // must be a no-op (first-call-wins) — the customer stays billed the real
+    // cost, never refunded for inference they received.
+    const ledger = makeLedgerReservation(100, 0.01);
+    const ACTUAL = 0.004;
+    reserveCredits.mockResolvedValue(ledger.reservation);
+    embed.mockResolvedValue({ embedding: [0.1], usage: { tokens: 5 } });
+    billUsage.mockResolvedValue(makeBilling(ACTUAL));
+    usageCreate.mockRejectedValue(new Error("usage table write failed"));
+
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    await Promise.all(scheduled);
+
+    // Settled once to the ACTUAL cost; the post-settle throw did NOT refund it.
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - ACTUAL, 10);
   });

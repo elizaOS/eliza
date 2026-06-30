@@ -8,8 +8,12 @@ import { normalizeJsonRpcUrl } from "./tx-service";
  */
 describe("normalizeJsonRpcUrl", () => {
   it("accepts and normalizes an http(s) URL", () => {
-    expect(normalizeJsonRpcUrl("https://eth.example.com/rpc")).toBe("https://eth.example.com/rpc");
-    expect(normalizeJsonRpcUrl("  http://localhost:8545  ")).toBe("http://localhost:8545/");
+    expect(normalizeJsonRpcUrl("https://eth.example.com/rpc")).toBe(
+      "https://eth.example.com/rpc",
+    );
+    expect(normalizeJsonRpcUrl("  http://localhost:8545  ")).toBe(
+      "http://localhost:8545/",
+    );
   });
 
   it("throws on an empty / whitespace URL", () => {
@@ -18,11 +22,17 @@ describe("normalizeJsonRpcUrl", () => {
   });
 
   it("throws on an unparseable URL", () => {
-    expect(() => normalizeJsonRpcUrl("not a url")).toThrow(/expected an http\(s\) URL/);
+    expect(() => normalizeJsonRpcUrl("not a url")).toThrow(
+      /expected an http\(s\) URL/,
+    );
   });
 
   it("throws on a non-http(s) scheme", () => {
-    expect(() => normalizeJsonRpcUrl("ws://eth.example.com")).toThrow(/expected http: or https:/);
-    expect(() => normalizeJsonRpcUrl("ftp://x.com/")).toThrow(/expected http: or https:/);
+    expect(() => normalizeJsonRpcUrl("ws://eth.example.com")).toThrow(
+      /expected http: or https:/,
+    );
+    expect(() => normalizeJsonRpcUrl("ftp://x.com/")).toThrow(
+      /expected http: or https:/,
+    );
   });
 });

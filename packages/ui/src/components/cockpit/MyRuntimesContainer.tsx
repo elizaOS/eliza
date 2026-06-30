@@ -1,11 +1,14 @@
 import { useCallback, useState } from "react";
 
+import { isStoreBuild } from "../../build-variant";
 import { cn } from "../../lib/utils";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import {
   addAgentProfile,
   loadAgentProfileRegistry,
   switchRuntimeNonDestructive,
 } from "../../state";
+import { isTrustedRestoreApiBaseUrl } from "../../state/startup-phase-restore";
 import { MyRuntimesSection } from "./MyRuntimesSection";
 
 export interface MyRuntimesContainerProps {
@@ -24,6 +27,14 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // On a store / android-cloud build the on-device local runtime isn't a real
+  // option (no local code execution) — hide it and refuse switching to it, so
+  // phone users only ever drive a cloud/remote runtime.
+  const hideLocal = isAndroidCloudBuild() || isStoreBuild();
+  const visibleProfiles = hideLocal
+    ? registry.profiles.filter((p) => p.kind !== "local")
+    : registry.profiles;
+
   const refresh = useCallback(() => {
     setRegistry(loadAgentProfileRegistry());
   }, []);
@@ -33,6 +44,17 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
       setBusy(true);
       setError(null);
       try {
+        if (hideLocal) {
+          const target = loadAgentProfileRegistry().profiles.find(
+            (p) => p.id === id,
+          );
+          if (target?.kind === "local") {
+            setError(
+              "Local runtime isn't available on this build — use a cloud or remote runtime.",
+            );
+            return;
+          }
+        }
         const res = switchRuntimeNonDestructive(id);
         if (!res.ok) {
           setError(
@@ -46,7 +68,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         setBusy(false);
       }
     },
-    [refresh],
+    [refresh, hideLocal],
   );
 
   const onAddRemote = useCallback(
@@ -54,12 +76,25 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
       setBusy(true);
       setError(null);
       try {
-        addAgentProfile({
+        // Trust-gate at ADD time: a public URL would be added + auto-activated
+        // by addAgentProfile but then rejected by the switch gate, leaving the
+        // Active badge lying and the client un-repointed. Reject it up front.
+        if (!isTrustedRestoreApiBaseUrl(entry.apiBase)) {
+          setError(
+            "That remote isn't trusted — use a tailscale (100.x / *.ts.net) or local address.",
+          );
+          return;
+        }
+        const profile = addAgentProfile({
           kind: "remote",
           label: entry.label,
           apiBase: entry.apiBase,
           accessToken: entry.accessToken,
         });
+        // addAgentProfile activates it in the registry but does NOT repoint the
+        // live client; switch to it so the base/token swap + persisted-active all
+        // run and the Active badge matches the runtime actually serving.
+        switchRuntimeNonDestructive(profile.id);
       } finally {
         refresh();
         setBusy(false);
@@ -80,7 +115,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         </div>
       ) : null}
       <MyRuntimesSection
-        runtimes={registry.profiles}
+        runtimes={visibleProfiles}
         activeId={registry.activeProfileId}
         onSwitch={onSwitch}
         onAddRemote={onAddRemote}

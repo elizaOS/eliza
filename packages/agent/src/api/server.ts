@@ -509,11 +509,8 @@ import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 export {
   executeFallbackParsedActions,
   type FallbackParsedAction,
-  inferBalanceChainFromText,
-  isBalanceIntent,
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
-  shouldForceCheckBalanceFallback,
 } from "./binance-skill-helpers.ts";
 
 type FirstRunRouteArg = Parameters<typeof handleFirstRunRoutes>[0];
@@ -1615,8 +1612,6 @@ function buildPluginEvmDiagnosticEntry(
 import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.ts";
 
 export {
-  hasUsableWalletFallbackParams,
-  inferWalletExecutionFallback,
   resolveWalletExportRejection,
   type WalletExportRejection,
 } from "./server-helpers-wallet.ts";

@@ -64,11 +64,7 @@ export const uninstallSkillAction = {
 			schema: { type: "string" },
 		},
 	],
-	validate: createAgentSkillsActionValidator({
-		keywords: ["uninstall", "remove", "delete", "skill"],
-		regex:
-			/\b(?:uninstall|remove|delete)\b.*\bskill\b|\bskill\b.*\b(?:uninstall|remove|delete)\b/i,
-	}),
+	validate: createAgentSkillsActionValidator(),
 
 	handler: async (
 		runtime: IAgentRuntime,

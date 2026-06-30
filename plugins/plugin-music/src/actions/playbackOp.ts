@@ -30,43 +30,6 @@ function formatFetchProgressDetails(details: unknown): string | undefined {
 
 const MUSIC_SERVICE_NAME = "music";
 const PLAYBACK_CONTEXTS = ["media", "automation"] as const;
-const PLAYBACK_KEYWORDS = [
-  "pause",
-  "resume",
-  "unpause",
-  "skip",
-  "next",
-  "stop",
-  "queue",
-  "playback",
-  "music",
-  "audio",
-  "pausa",
-  "reanudar",
-  "saltar",
-  "detener",
-  "cola",
-  "reprendre",
-  "arrêter",
-  "suivant",
-  "warteschlange",
-  "pausieren",
-  "fortsetzen",
-  "überspringen",
-  "停止",
-  "一時停止",
-  "再開",
-  "スキップ",
-  "暂停",
-  "继续",
-  "跳过",
-  "停止",
-  "일시정지",
-  "재개",
-  "건너뛰기",
-  "중지",
-] as const;
-
 export type PlaybackControlOp = "pause" | "resume" | "skip" | "stop" | "queue";
 
 type PlaybackOp = PlaybackControlOp;
@@ -107,20 +70,6 @@ function selectedContextMatches(
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
   return contexts.some((context) => selected.has(context));
-}
-
-function hasPlaybackIntent(message: Memory, state: State | undefined): boolean {
-  const text = [
-    typeof message.content.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return PLAYBACK_KEYWORDS.some((keyword) =>
-    text.includes(keyword.toLowerCase()),
-  );
 }
 
 function normalizeOp(value: unknown): PlaybackOp | null {
@@ -166,13 +115,7 @@ export async function validatePlaybackControl(
   const text = message.content.text ?? "";
   const inferredFromText = inferOpFromText(text);
   const inferred = explicit ?? inferredFromText;
-  if (
-    !inferred &&
-    !(
-      selectedContextMatches(state, PLAYBACK_CONTEXTS) ||
-      hasPlaybackIntent(message, state)
-    )
-  ) {
+  if (!inferred && !selectedContextMatches(state, PLAYBACK_CONTEXTS)) {
     return false;
   }
   if (!inferred) return true;

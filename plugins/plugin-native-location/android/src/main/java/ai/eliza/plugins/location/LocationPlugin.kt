@@ -1,11 +1,8 @@
 package ai.eliza.plugins.location
 
 import android.Manifest
-import android.content.pm.PackageManager
 import android.location.Location
-import android.os.Build
 import android.os.Looper
-import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -268,54 +265,37 @@ class LocationPlugin : Plugin() {
             else -> "prompt"
         }
 
-        val result = JSObject().apply {
+        return JSObject().apply {
             put("location", locationStatus)
+            put("background", reader.readBackgroundPermissionStatus(locationStatus))
         }
-
-        // Background location is a separate permission on Android 10+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val bgGranted = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-
-            val bgStatus = when {
-                bgGranted -> "granted"
-                // If foreground isn't granted, background is implicitly denied
-                locationStatus != "granted" -> "denied"
-                else -> "prompt"
-            }
-            result.put("background", bgStatus)
-        } else {
-            // Pre-Q: background is granted with foreground
-            result.put("background", locationStatus)
-        }
-
-        return result
     }
 
     private fun buildLocationResult(location: Location, cached: Boolean): JSObject {
+        val position = reader.buildPositionResult(location, cached)
+        val coordsData = position.coords
         val coords = JSObject().apply {
-            put("latitude", location.latitude)
-            put("longitude", location.longitude)
-            if (location.hasAltitude()) {
-                put("altitude", location.altitude)
+            put("latitude", coordsData.latitude)
+            put("longitude", coordsData.longitude)
+            coordsData.altitude?.let {
+                put("altitude", it)
             }
-            put("accuracy", location.accuracy.toDouble())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && location.hasVerticalAccuracy()) {
-                put("altitudeAccuracy", location.verticalAccuracyMeters.toDouble())
+            put("accuracy", coordsData.accuracy)
+            coordsData.altitudeAccuracy?.let {
+                put("altitudeAccuracy", it)
             }
-            if (location.hasSpeed()) {
-                put("speed", location.speed.toDouble())
+            coordsData.speed?.let {
+                put("speed", it)
             }
-            if (location.hasBearing()) {
-                put("heading", location.bearing.toDouble())
+            coordsData.heading?.let {
+                put("heading", it)
             }
-            put("timestamp", location.time)
+            put("timestamp", coordsData.timestamp)
         }
 
         return JSObject().apply {
             put("coords", coords)
-            put("cached", cached)
+            put("cached", position.cached)
         }
     }
 

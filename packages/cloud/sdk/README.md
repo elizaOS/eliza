@@ -57,6 +57,26 @@ const reply = await cloud.createChatCompletion(
 );
 ```
 
+For a third-party OAuth-style app sign-in, send the user to the canonical
+Eliza Cloud app authorization route. Use the SDK helper so your app does not
+accidentally link to bare `/authorize`, which is not a Cloud app-auth route:
+
+```ts
+import { buildAppAuthorizeUrl } from "@elizaos/cloud-sdk";
+
+const authorizeUrl = buildAppAuthorizeUrl({
+  appId: "app_123",
+  redirectUri: "https://example.app/auth/eliza/callback",
+  state: crypto.randomUUID(),
+});
+
+window.location.assign(authorizeUrl);
+```
+
+The generated URL is
+`https://www.elizacloud.ai/app-auth/authorize?app_id=...&redirect_uri=...&state=...`.
+Use `/app-auth/authorize`; do not use `/authorize`.
+
 `waitForCliLogin(sessionId, { timeoutMs?, intervalMs?, signal? })` and the
 `{ appId }` option on `createChatCompletion` / `createResponse` /
 `createEmbeddings` / `generateImage` exist so browser apps don't have to

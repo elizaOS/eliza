@@ -6,8 +6,12 @@ import {
 
 export interface ActionContextValidationOptions {
 	contexts: readonly AgentContext[];
-	/** Search / i18n metadata; ignored by `hasActionContext` routing logic. */
-	keywords?: readonly string[];
+	/**
+	 * Optional localized keyword-data KEYS (into the i18n keyword DB under
+	 * `@elizaos/shared/.../keywords`). Forward-looking search metadata only;
+	 * `hasActionContext` decides purely on active routing contexts and never
+	 * matches raw natural-language keywords (which would be English-hostile).
+	 */
 	keywordKeys?: readonly string[];
 }
 

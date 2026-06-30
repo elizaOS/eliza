@@ -41,8 +41,12 @@ describe("deployApp env hardening", () => {
       deps,
     );
     // Reserved keys stripped; a stateless app gets NO DB var injected and can no
-    // longer smuggle one (or a managed identity key) in via caller env.
-    expect(captured.row?.environmentVars).toEqual({ APP_SETTING: "keep-me" });
+    // longer smuggle one (or a managed identity key) in via caller env. The app
+    // id is platform-owned and injected from the deploy request.
+    expect(captured.row?.environmentVars).toEqual({
+      APP_SETTING: "keep-me",
+      ELIZA_APP_ID: baseReq.appId,
+    });
   });
 
   test("platform isolated DSN wins over caller DATABASE_URL/POSTGRES_URL", async () => {
@@ -61,6 +65,7 @@ describe("deployApp env hardening", () => {
     );
     expect(captured.row?.environmentVars).toEqual({
       KEEP: "1",
+      ELIZA_APP_ID: baseReq.appId,
       DATABASE_URL: "postgres://tenant-dsn/app",
       POSTGRES_URL: "postgres://tenant-dsn/app",
     });
@@ -69,9 +74,17 @@ describe("deployApp env hardening", () => {
   test("non-reserved caller env passes through unchanged", async () => {
     const { deps, captured } = makeDeps();
     await deployApp(
-      { ...baseReq, databaseMode: "none", env: { FOO: "bar", LOG_LEVEL: "debug" } },
+      {
+        ...baseReq,
+        databaseMode: "none",
+        env: { FOO: "bar", ELIZA_APP_ID: "spoofed-app", LOG_LEVEL: "debug" },
+      },
       deps,
     );
-    expect(captured.row?.environmentVars).toEqual({ FOO: "bar", LOG_LEVEL: "debug" });
+    expect(captured.row?.environmentVars).toEqual({
+      FOO: "bar",
+      ELIZA_APP_ID: baseReq.appId,
+      LOG_LEVEL: "debug",
+    });
   });
 });

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Test-only showcase activity for #9967 screenshot/recording evidence;
+             renders live LocationFixReader output. Exported so it can be
+             launched via `am start`; showWhenLocked so capture works on locked
+             test devices. -->
+        <activity
+            android:name="ai.eliza.plugins.location.LocationReaderShowcaseActivity"
+            android:exported="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+    </application>
+</manifest>

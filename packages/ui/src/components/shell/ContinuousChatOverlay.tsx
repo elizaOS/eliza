@@ -1569,6 +1569,17 @@ export function ContinuousChatOverlay({
       const trimmed = text.trim();
       // An image-only turn is valid; only bail when there's nothing to send.
       if ((!trimmed && images.length === 0) || !canSend) return;
+      // A bound view (e.g. the coding cockpit when a session is focused) can
+      // claim the send to drive its OWN target instead of the host agent. If it
+      // consumes the text, clear the composer and stop — do not fall through to
+      // controller.send. Returns false/undefined → driver mode (host agent).
+      if (trimmed && viewChatBinding?.onSubmit?.(trimmed)) {
+        setDraft("");
+        setSlashDismissed(false);
+        setPendingImages([]);
+        setImageError(null);
+        return;
+      }
       setDraft("");
       setSlashDismissed(false);
       setPendingImages([]);
@@ -1593,7 +1604,7 @@ export function ContinuousChatOverlay({
       detentHaptic();
       inputRef.current?.focus();
     },
-    [canSend, send],
+    [canSend, send, viewChatBinding],
   );
 
   // Tapping a suggestion sends it immediately (same path as submit), so the

@@ -318,10 +318,7 @@ export const updateIssueAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
-    validateLinearActionIntent(runtime, message, state, {
-      keywords: ["update", "edit", "modify", "linear", "issue"],
-      regexAlternation: "update|edit|modify|linear|issue",
-    }),
+    validateLinearActionIntent(runtime, message, state),
 
   handler: handleUpdateIssue,
 };
