@@ -1,0 +1,16 @@
+initial app pid: 31236 | agent healthy: true
+cycle1: agent killed(down=true) | app pid 31236->31236 alive=true rendered(len=795,errBoundary=false)
+         agent restarted(up=true) | app pid=31236 | home reconnected=true
+cycle2: agent killed(down=true) | app pid 31236->31236 alive=true rendered(len=790,errBoundary=false)
+         agent restarted(up=true) | app pid=31236 | home reconnected=true
+cycle3: agent killed(down=true) | app pid 31236->31236 alive=true rendered(len=790,errBoundary=false)
+         agent restarted(up=true) | app pid=31236 | home reconnected=true
+cycle4: agent killed(down=true) | app pid 31236->31236 alive=true rendered(len=790,errBoundary=false)
+         agent restarted(up=true) | app pid=31236 | home reconnected=true
+
+=== crash-recovery soak: 4 cycles ===
+app pid stable across all cycles: true (start 31236, now 31236)
+app stayed rendered through every agent-down (no crash/white-screen): true
+app reconnected to home after every agent-restart: true
+OK: app survives repeated agent crash/restart cycles — UI never crashes, reconnects each time
+DONE
