@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  capScreenshotPathsByBudget,
   collectScreenshotPaths,
   deliverScreenshots,
   MAX_SCREENSHOTS,
@@ -93,5 +94,49 @@ describe("deliverScreenshots (#8904)", () => {
         "/tmp/a.png",
       ]),
     ).toBe(0);
+  });
+
+  it("forwards only the screenshots that fit the byte budget (#8904)", async () => {
+    const send = vi.fn(async () => undefined);
+    // a,b,c are 4 bytes each; budget 10 → a(4)+b(8) fit, c(12) is dropped.
+    const n = await deliverScreenshots(
+      send,
+      { source: "telegram", roomId: ROOM },
+      ["/x/a.png", "/x/b.png", "/x/c.png"],
+      undefined,
+      { sizeOf: () => 4, maxTotalBytes: 10 },
+    );
+    expect(n).toBe(2);
+    expect((send.mock.calls[0][1] as { attachments: unknown[] }).attachments).toHaveLength(2);
+  });
+});
+
+describe("capScreenshotPathsByBudget (#8904)", () => {
+  const paths = ["/a.png", "/b.png", "/c.png", "/d.png"];
+
+  it("caps by count", () => {
+    const many = Array.from({ length: 7 }, (_, i) => `/${i}.png`);
+    expect(capScreenshotPathsByBudget(many, { sizeOf: () => 1 })).toHaveLength(
+      MAX_SCREENSHOTS,
+    );
+  });
+
+  it("stops once the cumulative byte budget would be exceeded", () => {
+    // 4 bytes each, budget 10 → keep a(4) + b(8); c would be 12 > 10 → stop.
+    expect(
+      capScreenshotPathsByBudget(paths, { sizeOf: () => 4, maxTotalBytes: 10 }),
+    ).toEqual(["/a.png", "/b.png"]);
+  });
+
+  it("always keeps the first path even if it alone exceeds the budget", () => {
+    expect(
+      capScreenshotPathsByBudget(paths, { sizeOf: () => 100, maxTotalBytes: 10 }),
+    ).toEqual(["/a.png"]);
+  });
+
+  it("treats unreadable files (size 0) as free, keeping up to the count cap", () => {
+    expect(
+      capScreenshotPathsByBudget(paths, { sizeOf: () => 0, maxTotalBytes: 10 }),
+    ).toEqual(paths);
   });
 });
