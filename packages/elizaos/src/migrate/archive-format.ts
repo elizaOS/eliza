@@ -8,8 +8,8 @@
  *   ELIZA_AGENT_V1\n   (15 bytes magic)
  *   iterations         (4 bytes uint32 BE)
  *   salt               (32 bytes)
- *   iv                 (12 bytes — AES-256-GCM nonce)
- *   tag                (16 bytes — AES-GCM auth tag)
+ *   iv                 (12 bytes - AES-256-GCM nonce)
+ *   tag                (16 bytes - AES-GCM auth tag)
  *   ciphertext         (gzip-compressed JSON, AES-256-GCM encrypted)
  *
  * Output round-trips through `importAgent(runtime, buffer, password)`. If the

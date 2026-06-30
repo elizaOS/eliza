@@ -81,10 +81,15 @@ export async function emitCredentialPrompt(input: {
     `🔐 ${who} needs ${
       credentialKeys.length === 1 ? "a credential" : "credentials"
     } to continue: ${formatKeys(credentialKeys)}.`,
-    link
-      ? `Provide ${credentialKeys.length === 1 ? "it" : "them"} securely here: ${link}`
-      : "Reply here to provide it securely, or open the credentials settings.",
   ];
+  // Secrets never transit chat text — only point at the secure dashboard when a
+  // base URL is configured. With no link we post just the announcement; the
+  // owner provides the value out-of-band (the credentials settings surface).
+  if (link) {
+    lines.push(
+      `Provide ${credentialKeys.length === 1 ? "it" : "them"} securely here: ${link}`,
+    );
+  }
   try {
     await send(
       { source: origin.source, roomId: origin.roomId },

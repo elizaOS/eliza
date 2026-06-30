@@ -1505,6 +1505,8 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output-conversation-swipe/
 # chat overlay perf-gate artifacts (final screenshot)
 /packages/ui/src/components/shell/__e2e__/output-perf-gate/
+# perf-gate e2e artifacts (overlay-scroll + conversation-swipe video + screenshots)
+/packages/ui/src/components/shell/__e2e__/output-perf-gate-e2e/
 railway.json
 .railwayignore
 .dockerignore

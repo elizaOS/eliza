@@ -1200,7 +1200,17 @@ test("VIEWER: open-in-transcripts navigates to the Transcripts view", async ({
   );
 });
 
-test("AGENT ACTION parity: START/STOP_TRANSCRIPTION creates the same transcript record as the slash path", async ({
+// Scope note: this asserts CLIENT voice-control bridge parity — both paths drive
+// the real useShellController transcription state machine, capture real WAV audio,
+// POST real bytes to ASR, and produce a real /api/transcripts body that is then
+// compared. The "agent-action" path is exercised at its last hop — the
+// `eliza:voice-control` window event that the agent->shell bridge ultimately
+// dispatches (startup-phase-hydrate's dispatchVoiceControl). It deliberately does
+// NOT assert the upstream server START/STOP_TRANSCRIPTION action or the WS
+// `agent_event{stream:"voice-control"}` envelope (there is no server-side
+// voice-control emitter in the tree yet), so the title reflects bridge parity, not
+// server-action coverage — see #9958 for the remaining server-side hop.
+test("voice-control bridge parity: the eliza:voice-control bridge creates the same transcript record as the slash path", async ({
   browser,
 }) => {
   const slashPage = await browser.newPage();

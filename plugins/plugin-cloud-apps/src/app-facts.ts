@@ -44,7 +44,12 @@ async function findExistingDeployFact(
   try {
     const rows = await runtime.getMemories({
       tableName: "facts",
-      roomId: message.roomId,
+      // Dedup is keyed on app.id for the app owner across ALL rooms/connectors:
+      // re-deploying the same app from a different surface must update the single
+      // existing fact, not append a duplicate. Scope to the entity (owner), NOT
+      // the room — a room-scoped query would miss the prior fact and defeat the
+      // "exactly one fact per app.id" guarantee.
+      entityId: message.entityId,
       count: 200,
       unique: false,
     });

@@ -61,6 +61,10 @@ function shouldRunAuthed(): boolean {
   return serverReachable && hasTestApiKey;
 }
 
+function shouldRunLiveStewardWalletE2E(): boolean {
+  return process.env.RUN_STEWARD_WALLET_E2E === "1";
+}
+
 function shouldRunSession(): boolean {
   return shouldRunAuthed() && sessionCookie !== null;
 }
@@ -384,6 +388,11 @@ describe("POST /api/v1/user/wallets/provision", () => {
 
   test("happy path: provisions when external signer is configured, otherwise fails after auth", async () => {
     if (!shouldRunAuthed()) return;
+    // Live Steward provisioning is an integration check, not a release smoke.
+    // Keep the default deploy gate deterministic; opt in when explicitly
+    // validating Steward wallet provisioning.
+    if (!shouldRunLiveStewardWalletE2E()) return;
+
     const res = await api.post(
       "/api/v1/user/wallets/provision",
       {

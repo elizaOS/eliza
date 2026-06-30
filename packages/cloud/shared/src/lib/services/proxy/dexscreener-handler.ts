@@ -96,10 +96,7 @@ export async function handleDexscreenerProxyGet(c: Context<AppEnv>): Promise<Res
         .catch((refundError) => {
           logger.warn("[DexscreenerProxy] refund after upstream failure failed", {
             status: upstreamResponse.status,
-            error:
-              refundError instanceof Error
-                ? refundError.message
-                : String(refundError),
+            error: refundError instanceof Error ? refundError.message : String(refundError),
           });
         });
     }

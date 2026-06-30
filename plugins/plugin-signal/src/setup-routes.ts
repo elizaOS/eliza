@@ -21,7 +21,15 @@
  */
 
 import path from "node:path";
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import {
+  buildSetupError,
+  type IAgentRuntime,
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+  type SetupState,
+  type SetupStatusResponse,
+} from "@elizaos/core";
 import {
   type SignalPairingEvent,
   SignalPairingSession,
@@ -31,24 +39,6 @@ import {
   signalAuthExists,
   signalLogout,
 } from "./pairing-service";
-
-// ── Setup contract types (mirror @elizaos/app-core/api/setup-contract) ──
-
-type SetupState = "idle" | "configuring" | "paired" | "error";
-
-interface SetupStatusResponse<TDetail = unknown> {
-  connector: string;
-  state: SetupState;
-  detail?: TDetail;
-}
-
-interface SetupErrorResponse {
-  error: { code: string; message: string };
-}
-
-function setupError(code: string, message: string): SetupErrorResponse {
-  return { error: { code, message } };
-}
 
 // ── Module-level state ──────────────────────────────────────────────────
 // These maps survive across requests within the same process lifetime,
@@ -202,7 +192,7 @@ async function handleStatus(
   try {
     accountId = extractAccountId(url.searchParams.get("accountId"));
   } catch (err) {
-    res.status(400).json(setupError("bad_request", (err as Error).message));
+    res.status(400).json(buildSetupError("bad_request", (err as Error).message));
     return;
   }
 
@@ -235,7 +225,7 @@ async function handleStart(
   try {
     accountId = extractAccountId(body.accountId);
   } catch (err) {
-    res.status(400).json(setupError("bad_request", (err as Error).message));
+    res.status(400).json(buildSetupError("bad_request", (err as Error).message));
     return;
   }
 
@@ -244,7 +234,7 @@ async function handleStart(
     res
       .status(429)
       .json(
-        setupError(
+        buildSetupError(
           "too_many_sessions",
           `Too many concurrent pairing sessions (max ${MAX_PAIRING_SESSIONS})`
         )
@@ -369,7 +359,7 @@ async function handleCancel(
   try {
     accountId = extractAccountId(body.accountId);
   } catch (err) {
-    res.status(400).json(setupError("bad_request", (err as Error).message));
+    res.status(400).json(buildSetupError("bad_request", (err as Error).message));
     return;
   }
 
@@ -389,7 +379,7 @@ async function handleCancel(
     res
       .status(500)
       .json(
-        setupError(
+        buildSetupError(
           "internal_error",
           `Failed to disconnect Signal: ${err instanceof Error ? err.message : String(err)}`
         )
@@ -419,7 +409,7 @@ async function handleCancel(
       res
         .status(500)
         .json(
-          setupError(
+          buildSetupError(
             "internal_error",
             `Failed to persist Signal disconnect: ${error instanceof Error ? error.message : String(error)}`
           )

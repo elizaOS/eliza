@@ -7,13 +7,23 @@
  *                        Worker.
  *   TEST_API_KEY       — bootstrapped by `ensureLocalTestAuth()` in preload.
  *   CRON_SECRET        — for cron-route tests; defaults to "test-cron-secret".
+ *   TEST_REQUEST_TIMEOUT_MS — per-request timeout; defaults to 30000.
  *
  * The helpers throw if you call them before `ensureLocalTestAuth()` has run.
  * The preload is `packages/cloud/api/test/e2e/preload.ts`, which seeds
  * the DB and exports `TEST_API_KEY`.
  */
 
-const REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+function resolveRequestTimeoutMs(): number {
+  const parsed = Number(process.env.TEST_REQUEST_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+const REQUEST_TIMEOUT_MS = resolveRequestTimeoutMs();
 
 export function getBaseUrl(): string {
   return (

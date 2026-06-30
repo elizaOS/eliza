@@ -7,6 +7,10 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+// `mock.module` is process-global: spread the real auth module so this file's
+// partial mock (only `requireUserOrApiKeyWithOrg`) does not drop the other auth
+// exports (e.g. `requireUserOrApiKey`) for later test files in the same run.
+import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
 const USER_ID = "00000000-0000-4000-8000-0000000000bb";
@@ -62,6 +66,7 @@ mock.module("@/lib/services/characters/characters", () => ({
 }));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
+  ...workersHonoAuthActual,
   requireUserOrApiKeyWithOrg: mock(),
 }));
 
@@ -210,5 +215,38 @@ describe("Agent MCP billing", () => {
       message: "Insufficient credits for final usage cost",
     });
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  // Regression for #10266: a post-settlement earnings failure must NOT trigger a
+  // second reconcile. The consumer is settled with reconcile(actualTotal); if
+  // recordCreatorEarnings throws, the pre-fix code let it reach the outer catch,
+  // which ran the NON-idempotent reconcile(0) — double-refunding the WHOLE
+  // reservation (free inference + a net credit grant) and returning an error.
+  // The fix swallows the earnings error so reconcile fires exactly once and the
+  // already-correct settlement response is returned.
+  test("post-settlement earnings failure does not double-refund the reservation", async () => {
+    const reconcile = makeReservation({ adjustmentType: "none" });
+    recordCreatorEarnings.mockRejectedValue(
+      new Error("transient DB error while recording earnings"),
+    );
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      result?: { content: Array<{ type: string; text: string }> };
+      error?: { code: number; message: string };
+    };
+
+    expect(response.status).toBe(200);
+
+    // The reservation is reconciled EXACTLY ONCE, with the real settled total
+    // (not the double-refund reconcile(0) from the outer catch).
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+
+    // The earnings step was attempted (and failed) — but the request still
+    // returns the successful settlement, never the -32000 outer-catch error.
+    expect(recordCreatorEarnings).toHaveBeenCalledTimes(1);
+    expect(body.error).toBeUndefined();
+    expect(body.result?.content?.[0]?.text).toBe("hello from model");
   });
 });

@@ -6,7 +6,6 @@ import {
   type Provider,
   parseCharacter,
 } from "@elizaos/core";
-import { cloudAppsPlugin } from "@elizaos/plugin-cloud-apps";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { charactersService } from "../services/characters/characters";
 import type { ElizaCharacter } from "../types/eliza-character";
@@ -241,6 +240,10 @@ export class AgentLoader {
     // provider reach cloud-hosted agents. Gated OFF by default — see
     // isCloudAppsPluginEnabled — because it loads on every dedicated prod agent.
     if (isCloudAppsPluginEnabled(characterSettings)) {
+      // Lazy-load so the default-OFF gate actually avoids the import cost: a
+      // static top-level import would pull @elizaos/plugin-cloud-apps (+ the
+      // cloud SDK) into every dedicated prod agent regardless of the flag.
+      const { cloudAppsPlugin } = await import("@elizaos/plugin-cloud-apps");
       plugins.push(asPlugin(cloudAppsPlugin));
       logger.info("[AgentLoader] Cloud Apps plugin enabled (read-core)");
     }

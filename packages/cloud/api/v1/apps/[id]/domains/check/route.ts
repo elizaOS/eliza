@@ -46,6 +46,9 @@ app.post("/", async (c) => {
       return c.json({ success: true, domain, available: false });
     }
     const price = computeDomainPrice(availability.priceUsdCents);
+    const renewal = computeDomainPrice(
+      availability.renewalUsdCents ?? availability.priceUsdCents,
+    );
     return c.json({
       success: true,
       domain,
@@ -57,6 +60,10 @@ app.post("/", async (c) => {
         marginUsdCents: price.marginUsdCents,
         totalUsdCents: price.totalUsdCents,
         marginBps: price.marginBps,
+      },
+      // Annual renewal price the org will be re-charged for by the renewal cron.
+      renewal: {
+        totalUsdCents: renewal.totalUsdCents,
       },
     });
   } catch (error) {

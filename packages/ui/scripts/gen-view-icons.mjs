@@ -72,6 +72,8 @@ const SUBJECTS = {
   help: "a question mark in a circle",
   logs: "a scroll with list lines",
   background: "a framed landscape picture",
+  facewear: "a face silhouette wearing a pair of smart glasses",
+  polymarket: "a bar chart comparing two outcomes with an up arrow",
 };
 
 const STYLE =

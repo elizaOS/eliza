@@ -24,6 +24,7 @@ import type {
   Route,
   RouteRequest,
   RouteResponse,
+  SetupState,
 } from "@elizaos/core";
 import {
   clearTelegramAccountAuthState,
@@ -102,9 +103,6 @@ type TelegramAccountRuntimeServiceLike = {
   } | null;
   stop?: () => Promise<void>;
 };
-
-/** Canonical setup state matching `SetupState` in app-core setup-contract.ts. */
-type SetupState = "idle" | "configuring" | "paired" | "error";
 
 interface TelegramAccountDetail {
   /**

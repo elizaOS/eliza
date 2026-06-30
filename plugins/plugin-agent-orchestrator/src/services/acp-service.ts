@@ -2360,6 +2360,13 @@ function approvalArgs(preset: ApprovalPreset): string[] {
       return ["--approve-all"];
     case "readonly":
       return ["--deny-all"];
+    case "verifier":
+      // Independent read-only verifier (#8898). acpx has no execute-approve flag,
+      // so on the CLI transport the verifier gets the reads-approved / deny-the-rest
+      // baseline (writes are denied — never over-permissioned). Execute approval is
+      // enforced on the NATIVE transport (isOperationApproved), which is the
+      // orchestrator default; CLI deny-writes is the safe floor.
+      return ["--approve-reads", "--non-interactive-permissions", "deny"];
     default:
       return ["--approve-reads", "--non-interactive-permissions", "deny"];
   }
@@ -2386,6 +2393,12 @@ function normalizeApprovalPreset(value: string | undefined): ApprovalPreset {
   )
     return "permissive";
   if (normalized === "autonomous") return "autonomous";
+  if (
+    normalized === "verifier" ||
+    normalized === "read-execute" ||
+    normalized === "read-only-execute"
+  )
+    return "verifier";
   return "autonomous";
 }
 
