@@ -381,7 +381,8 @@
         "@elizaos/plugin-capacitor-bridge#build",
         "@elizaos/plugin-coding-tools#build",
         "@elizaos/plugin-registry#build",
-        "@elizaos/plugin-remote-manifest#build"
+        "@elizaos/plugin-remote-manifest#build",
+        "@elizaos/plugin-task-coordinator#build"
       ],
       "outputs": []
     },
@@ -459,6 +460,46 @@
     },
     "@elizaos/example-trader-ts#typecheck": {
       "dependsOn": ["@elizaos/plugin-wallet#build"],
+      "outputs": []
+    },
+    "@elizaos/example-a2a-server#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/example-app-electron#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/example-browser-extension-chrome#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/example-convex#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/example-rest-api-elysia#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/example-rest-api-express#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/example-rest-api-hono#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/example-xai-x#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "eliza-react-example#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-training#typecheck": {
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "@elizaos/plugin-sub-agent-claude-code#typecheck": {
