@@ -183,6 +183,13 @@ jobs:
       - name: Run type-safety ratchet
         run: bun run audit:type-safety-ratchet
 
+      # The type-duplication finder is advisory (it never fails the build); only
+      # its AST classifier is gated here so the candidate-report tooling stays
+      # honest. The full scan + `--check` drift report is run on demand /
+      # periodically, not on the hot path (#10195, #10201).
+      - name: Run type-duplication finder self-test
+        run: bun run audit:type-duplication:self-test
+
       - name: Run biome format check
         run: bun run format:check
 
