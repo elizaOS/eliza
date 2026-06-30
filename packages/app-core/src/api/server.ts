@@ -139,6 +139,7 @@ import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudPairRoute } from "./cloud-pair-route";
+import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
@@ -151,7 +152,6 @@ import {
   normalizeRouteKey,
   recordRouteTiming,
 } from "./perf-instrument";
-import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";

@@ -4,6 +4,8 @@ import {
   composeTaskBoard,
   createInMemoryBoardStore,
   createRuntimeMemoryBoardStore,
+  registerTelegramTaskBoardCommand,
+  registerTelegramTaskBoardSupervisorSink,
   type TaskBoardEntry,
   TelegramTaskBoard,
   taskBoardEmoji,
@@ -171,5 +173,160 @@ describe("createRuntimeMemoryBoardStore (#8902 AC3)", () => {
     expect(await store.load("100:")).toBe(654);
     await store.forget("100:");
     expect(await store.load("100:")).toBeUndefined();
+  });
+});
+
+describe("Telegram task board supervisor sink (#8902 AC2)", () => {
+  function fakeRuntime(options: {
+    tasks: TaskBoardEntry[];
+    onRegister?: (
+      source: string,
+      sink: (
+        target: { source: string; roomId: UUID },
+        content: unknown,
+      ) => Promise<boolean | undefined> | boolean | undefined,
+    ) => void;
+    room?: { channelId?: string; metadata?: Record<string, unknown> } | null;
+  }): IAgentRuntime {
+    const mem = new Map<string, Memory>();
+    const taskService = {
+      listTasks: vi.fn(async () => options.tasks),
+    };
+    const supervisor = {
+      registerDigestSink: vi.fn((source, sink) => {
+        options.onRegister?.(source, sink);
+        return vi.fn();
+      }),
+    };
+    return {
+      agentId: "00000000-0000-0000-0000-0000000000bb" as UUID,
+      getMemoryById: async (id: UUID) => mem.get(id) ?? null,
+      createMemory: async (m: Memory) => {
+        mem.set(m.id as string, m);
+        return m.id as UUID;
+      },
+      updateMemory: async (m: Partial<Memory> & { id: UUID }) => {
+        const prev = mem.get(m.id as string);
+        mem.set(
+          m.id as string,
+          {
+            ...(prev as Memory),
+            ...m,
+            content: m.content ?? prev?.content,
+          } as Memory,
+        );
+        return true;
+      },
+      getRoom: async () =>
+        "room" in options
+          ? options.room
+          : {
+              channelId: "-1001234567890-42",
+              metadata: { telegramThreadId: "42" },
+            },
+      getService: (serviceType: string) => {
+        if (serviceType === "ORCHESTRATOR_TASK_SERVICE") return taskService;
+        if (serviceType === "ORCHESTRATOR_TASK_SUPERVISOR") return supervisor;
+        return undefined;
+      },
+    } as unknown as IAgentRuntime;
+  }
+
+  it("updates the existing pinned board on supervisor status changes instead of posting a digest", async () => {
+    let commandHandler:
+      | ((ctx: {
+          chat?: { id: number };
+          message?: { message_thread_id?: number };
+        }) => Promise<void>)
+      | undefined;
+    let capturedSink:
+      | ((
+          target: { source: string; roomId: UUID },
+          content: unknown,
+        ) => Promise<boolean | undefined> | boolean | undefined)
+      | undefined;
+    const bot = {
+      command: vi.fn((_name, handler) => {
+        commandHandler = handler;
+      }),
+      telegram: {
+        sendMessage: vi.fn(async () => ({ message_id: 77 })),
+        pinChatMessage: vi.fn(async () => undefined),
+      },
+    };
+    const messageManager = {
+      editMessage: vi.fn(async () => undefined),
+    };
+    const runtime = fakeRuntime({
+      tasks: [{ id: "1", title: "ship feature", status: "active" }],
+      onRegister: (_source, sink) => {
+        capturedSink = sink;
+      },
+    });
+
+    registerTelegramTaskBoardCommand(bot, runtime, messageManager);
+    await commandHandler?.({
+      chat: { id: -1001234567890 },
+      message: { message_thread_id: 42 },
+    });
+
+    expect(bot.telegram.sendMessage).toHaveBeenCalledTimes(1);
+    expect(messageManager.editMessage).not.toHaveBeenCalled();
+
+    (
+      runtime.getService("ORCHESTRATOR_TASK_SERVICE") as {
+        listTasks: ReturnType<typeof vi.fn>;
+      }
+    ).listTasks.mockResolvedValueOnce([
+      { id: "1", title: "ship feature", status: "validating" },
+    ]);
+    const handled = await capturedSink?.(
+      {
+        source: "telegram",
+        roomId: "00000000-0000-4000-8000-000000000890" as UUID,
+      },
+      { text: "digest" },
+    );
+
+    expect(handled).toBe(true);
+    expect(bot.telegram.sendMessage).toHaveBeenCalledTimes(1);
+    expect(messageManager.editMessage).toHaveBeenCalledWith(
+      "-1001234567890",
+      77,
+      expect.stringContaining("validating"),
+      42,
+    );
+  });
+
+  it("declines supervisor delivery when the Telegram room cannot be resolved", async () => {
+    let capturedSink:
+      | ((
+          target: { source: string; roomId: UUID },
+          content: unknown,
+        ) => Promise<boolean | undefined> | boolean | undefined)
+      | undefined;
+    const runtime = fakeRuntime({
+      tasks: entries,
+      room: null,
+      onRegister: (_source, sink) => {
+        capturedSink = sink;
+      },
+    });
+    const board = new TelegramTaskBoard({
+      post: vi.fn(async () => ({ messageId: 1 })),
+      edit: vi.fn(async () => undefined),
+    });
+
+    registerTelegramTaskBoardSupervisorSink(runtime, board);
+
+    await expect(
+      capturedSink?.(
+        {
+          source: "telegram",
+          roomId: "00000000-0000-4000-8000-000000000890" as UUID,
+        },
+        { text: "digest" },
+      ),
+    ).resolves.toBe(false);
   });
 });

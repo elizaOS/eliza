@@ -148,6 +148,13 @@ type RuntimeWithSendTarget = IAgentRuntime & {
   ) => Promise<unknown>;
 };
 
+export type TaskSupervisorDigestTarget = { source: string; roomId: UUID };
+
+export type TaskSupervisorDigestSink = (
+  target: TaskSupervisorDigestTarget,
+  content: Content,
+) => Promise<boolean | undefined> | boolean | undefined;
+
 interface TaskServiceLike {
   listTasks(filter?: { includeArchived?: boolean }): Promise<
     Array<{
@@ -171,6 +178,7 @@ export class TaskSupervisorService extends Service {
   private timer: ReturnType<typeof setInterval> | undefined;
   /** roomId → last-posted digest, for change-driven dedup. */
   private readonly seen = new Map<string, string>();
+  private readonly digestSinks = new Map<string, TaskSupervisorDigestSink>();
 
   static async start(runtime: IAgentRuntime): Promise<TaskSupervisorService> {
     const svc = new TaskSupervisorService(runtime);
@@ -198,13 +206,50 @@ export class TaskSupervisorService extends Service {
     (this.timer as { unref?: () => void }).unref?.();
   }
 
+  registerDigestSink(
+    source: string,
+    sink: TaskSupervisorDigestSink,
+  ): () => void {
+    this.digestSinks.set(source, sink);
+    return () => {
+      if (this.digestSinks.get(source) === sink) {
+        this.digestSinks.delete(source);
+      }
+    };
+  }
+
+  private async sendDigest(
+    target: TaskSupervisorDigestTarget,
+    content: Content,
+    fallback?: RuntimeWithSendTarget["sendMessageToTarget"],
+  ): Promise<unknown> {
+    const sink = this.digestSinks.get(target.source);
+    if (sink) {
+      try {
+        const handled = await sink(target, content);
+        if (handled !== false) return handled;
+      } catch (error) {
+        logger.warn(
+          `[TaskSupervisorService] digest sink failed for ${target.source}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    if (typeof fallback === "function") return fallback(target, content);
+    throw new Error(`No digest delivery path for ${target.source}`);
+  }
+
   /** Build views from the task service and run one dedup-aware tick. */
   async runOnce(): Promise<SupervisorTickResult> {
     const taskSvc = this.runtime.getService<Service & TaskServiceLike>(
       "ORCHESTRATOR_TASK_SERVICE",
     );
     const send = (this.runtime as RuntimeWithSendTarget).sendMessageToTarget;
-    if (!taskSvc || typeof send !== "function") {
+    if (
+      !taskSvc ||
+      (typeof send !== "function" && this.digestSinks.size === 0)
+    ) {
       return { posted: [], skipped: [] };
     }
     const tasks = await taskSvc.listTasks({ includeArchived: false });
@@ -221,7 +266,7 @@ export class TaskSupervisorService extends Service {
     );
     const result = await runSupervisorTick(
       views,
-      (target, content) => send(target, content),
+      (target, content) => this.sendDigest(target, content, send),
       this.seen,
     );
     if (result.posted.length > 0) {
@@ -238,5 +283,6 @@ export class TaskSupervisorService extends Service {
       this.timer = undefined;
     }
     this.seen.clear();
+    this.digestSinks.clear();
   }
 }

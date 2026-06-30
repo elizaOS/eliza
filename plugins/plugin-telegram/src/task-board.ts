@@ -265,6 +265,65 @@ interface TaskServiceLike {
   }): Promise<Array<{ id: string; title: string; status: string }>>;
 }
 
+interface TaskSupervisorLike {
+  registerDigestSink?: (
+    source: string,
+    sink: (
+      target: { source: string; roomId: UUID },
+      content: unknown,
+    ) => Promise<boolean | undefined> | boolean | undefined,
+  ) => () => void;
+}
+
+interface RuntimeWithRooms {
+  getRoom?: (roomId: UUID) => Promise<{
+    channelId?: string | null;
+    metadata?: {
+      threadId?: string | number | null;
+      telegramThreadId?: string | number | null;
+    } | null;
+  } | null>;
+}
+
+interface RuntimeServiceLoader {
+  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+}
+
+const TASK_SUPERVISOR_SERVICE_TYPE = "ORCHESTRATOR_TASK_SUPERVISOR";
+const TELEGRAM_THREADED_CHANNEL_PATTERN = /^(-?\d+)-(\d+)$/;
+
+function parseTelegramBoardTargetParts(
+  channelId: string,
+  explicitThreadId?: string | number | null,
+): { chatId: string; threadId?: number } {
+  const explicitThreadNumber =
+    typeof explicitThreadId === "number"
+      ? explicitThreadId
+      : typeof explicitThreadId === "string" && /^\d+$/.test(explicitThreadId)
+        ? Number.parseInt(explicitThreadId, 10)
+        : undefined;
+  const threadedMatch = channelId.match(TELEGRAM_THREADED_CHANNEL_PATTERN);
+  if (threadedMatch) {
+    return {
+      chatId: threadedMatch[1],
+      threadId: explicitThreadNumber ?? Number.parseInt(threadedMatch[2], 10),
+    };
+  }
+  return { chatId: channelId, threadId: explicitThreadNumber };
+}
+
+async function resolveTelegramBoardTarget(
+  runtime: IAgentRuntime,
+  roomId: UUID,
+): Promise<{ chatId: string; threadId?: number } | null> {
+  const room = await (runtime as RuntimeWithRooms).getRoom?.(roomId);
+  if (!room?.channelId) return null;
+  return parseTelegramBoardTargetParts(
+    room.channelId,
+    room.metadata?.telegramThreadId ?? room.metadata?.threadId,
+  );
+}
+
 /** Minimal Telegraf surface the board command needs (kept narrow for testing). */
 interface TaskBoardBot {
   command: (
@@ -330,6 +389,7 @@ export function registerTelegramTaskBoardCommand(
     // board instead of posting a duplicate (#8902 AC3).
     store: createRuntimeMemoryBoardStore(runtime),
   });
+  registerTelegramTaskBoardSupervisorSink(runtime, board);
   bot.command("tasks", async (ctx) => {
     const chatId = ctx.chat?.id;
     if (chatId === undefined) return;
@@ -346,6 +406,51 @@ export function registerTelegramTaskBoardCommand(
     }
   });
   return board;
+}
+
+/**
+ * Let the orchestrator's change-driven task supervisor refresh Telegram's
+ * pinned board instead of posting a separate digest message for every status
+ * change (#8902 AC2). Kept duck-typed to avoid a hard dependency from the
+ * Telegram connector back into the orchestrator plugin.
+ */
+export function registerTelegramTaskBoardSupervisorSink(
+  runtime: IAgentRuntime,
+  board: TelegramTaskBoard,
+): (() => void) | undefined {
+  let unregister: (() => void) | undefined;
+  const tryRegister = () => {
+    if (unregister) return unregister;
+    const supervisor = runtime.getService<Service & TaskSupervisorLike>(
+      TASK_SUPERVISOR_SERVICE_TYPE,
+    );
+    if (typeof supervisor?.registerDigestSink !== "function") return undefined;
+    unregister = supervisor.registerDigestSink(
+      "telegram",
+      async (target): Promise<boolean> => {
+        const destination = await resolveTelegramBoardTarget(
+          runtime,
+          target.roomId,
+        );
+        if (!destination) return false;
+        const entries = await loadTaskBoardEntries(runtime);
+        await board.render(destination.chatId, entries, destination.threadId);
+        return true;
+      },
+    );
+    return unregister;
+  };
+
+  const registered = tryRegister();
+  if (registered) return registered;
+
+  void (runtime as RuntimeServiceLoader)
+    .getServiceLoadPromise?.(TASK_SUPERVISOR_SERVICE_TYPE)
+    ?.then(() => {
+      tryRegister();
+    })
+    .catch(() => undefined);
+  return undefined;
 }
 
 /**
