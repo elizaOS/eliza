@@ -50,6 +50,7 @@ export * from "./eliza-room-characters";
 export * from "./entity-settings";
 export * from "./generations";
 export * from "./idempotency-keys";
+export * from "./inference-pending-charges";
 export * from "./invoices";
 export * from "./jobs";
 export * from "./llm-trajectories";

@@ -1058,6 +1058,13 @@
       "when": 1780100400000,
       "tag": "0152_agent_sandboxes_previous_image",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1780186800000,
+      "tag": "0153_inference_pending_charges",
+      "breakpoints": true
     }
   ]
 }
