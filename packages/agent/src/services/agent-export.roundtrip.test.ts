@@ -24,7 +24,6 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { writeStoredMediaFile } from "../api/media-store.ts";
 import {
-  AgentExportError,
   buildExportManifest,
   canonicalize,
   digestCollection,
