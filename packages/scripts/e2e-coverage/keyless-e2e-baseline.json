@@ -3,7 +3,6 @@
   "knownUncovered": [
     "plugin-agent-orchestrator",
     "plugin-ainex",
-    "plugin-anthropic-proxy",
     "plugin-bluebubbles",
     "plugin-calendar",
     "plugin-calendly",
