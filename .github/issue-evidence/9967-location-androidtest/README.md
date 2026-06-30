@@ -34,6 +34,9 @@ Result: passed on both connected Android targets:
 - Pixel 6a / Android 16 / API 36: pending rerun after rebase.
 - Android emulator / Android 14 / API 34: pending rerun after rebase.
 
+After rebasing onto the latest `origin/develop`, the same command was rerun and
+passed again on both connected Android targets.
+
 Artifacts:
 
 - `location-connectedDebugAndroidTest.log`
