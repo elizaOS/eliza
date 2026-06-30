@@ -340,6 +340,122 @@ describe("bridge-routes — credential bridge", () => {
   });
 });
 
+/**
+ * A faithful one-shot adapter backed by an in-memory store, mirroring the
+ * production `createSubAgentCredentialBridgeAdapter` semantics (POST mints a
+ * scope; a staged value is delivered exactly once; replays are rejected). The
+ * real engine + the real adapter are unit-tested in app-core
+ * (`credential-tunnel-service.test.ts`); this exercises the ROUTE wiring with
+ * realistic round-trip behavior without crossing the plugin → app-core layer
+ * boundary.
+ */
+function makeOneShotAdapter(): BridgeCredentialAdapter & {
+  stage: (key: string, value: string) => void;
+} {
+  const declared = new Set<string>();
+  const staged = new Map<string, string>();
+  const redeemed = new Set<string>();
+  return {
+    async requestCredentials({ credentialKeys }) {
+      for (const k of credentialKeys) declared.add(k);
+      return {
+        credentialScopeId: "cred_scope_real",
+        scopedToken: "a".repeat(64),
+        expiresAt: Date.now() + 60_000,
+        sensitiveRequestIds: ["sreq_real"],
+      };
+    },
+    async tryRetrieveCredential({ key }) {
+      if (redeemed.has(key)) return { status: "rejected", reason: "already_redeemed" };
+      if (!declared.has(key)) return { status: "rejected", reason: "key_not_in_scope" };
+      const value = staged.get(key);
+      if (value === undefined) return { status: "pending" };
+      redeemed.add(key);
+      staged.delete(key);
+      return { status: "ready", value };
+    },
+    stage(key, value) {
+      staged.set(key, value);
+    },
+  };
+}
+
+function makeCtxWithOrigin(adapter: BridgeCredentialAdapter): {
+  ctx: RouteContext;
+  sent: Array<{ text?: string }>;
+} {
+  const sent: Array<{ text?: string }> = [];
+  const ctx = {
+    runtime: {
+      getService: (name: string) =>
+        name === "SubAgentCredentialBridgeAdapter" ? adapter : null,
+      getSetting: () => undefined,
+      // emitCredentialPrompt / emitCredentialResolved post here.
+      sendMessageToTarget: async (_target: unknown, content: { text?: string }) => {
+        sent.push(content);
+      },
+    } as unknown as RouteContext["runtime"],
+    acpService: {
+      getSession: (id: string) => ({
+        id,
+        status: "running",
+        name: "build-feature",
+        metadata: { roomId: "11111111-1111-1111-1111-111111111111", source: "app" },
+      }),
+    } as unknown as RouteContext["acpService"],
+    workspaceService: null,
+  };
+  return { ctx, sent };
+}
+
+describe("bridge-routes — real one-shot round-trip", () => {
+  it("POST mints a scope, GET long-poll returns the staged value and posts the resolved follow-up", async () => {
+    const adapter = makeOneShotAdapter();
+    const { ctx, sent } = makeCtxWithOrigin(adapter);
+
+    // POST: mint a scope (no 503 — a real adapter is registered).
+    const postReq = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/pty-1-abc/credentials/request",
+      body: { credentialKeys: ["OPENAI_API_KEY"] },
+    });
+    const post = fakeResponse();
+    await handleBridgeRoutes(
+      postReq,
+      post.res,
+      "/api/coding-agents/pty-1-abc/credentials/request",
+      ctx,
+    );
+    expect(post.status()).toBe(200);
+    expect((post.body() as { scopedToken: string }).scopedToken).toBe(
+      "a".repeat(64),
+    );
+    // The origin-thread prompt was posted (AC1) without leaking the token.
+    expect(sent.length).toBe(1);
+    expect(sent[0].text ?? "").not.toContain("a".repeat(64));
+
+    // Owner submits → value is staged (simulating tunnelCredential).
+    adapter.stage("OPENAI_API_KEY", "sk-from-owner");
+
+    // GET: long-poll redeems the value and posts the resolved follow-up.
+    const getReq = fakeRequest({
+      method: "GET",
+      url: `/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY?token=${"a".repeat(64)}`,
+    });
+    const get = fakeResponse();
+    await handleBridgeRoutes(
+      getReq,
+      get.res,
+      "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY",
+      ctx,
+    );
+    expect(get.status()).toBe(200);
+    expect((get.body() as { value: string }).value).toBe("sk-from-owner");
+    // emitCredentialResolved fired into the origin thread.
+    expect(sent.some((m) => (m.text ?? "").includes("received"))).toBe(true);
+  });
+});
+
 describe("coding-agent dispatcher — credential bridge", () => {
   it("reaches credential requests through the top-level route dispatcher", async () => {
     const adapter = makeAdapter();

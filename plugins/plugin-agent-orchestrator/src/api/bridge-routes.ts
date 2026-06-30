@@ -197,13 +197,19 @@ async function handlePost(
     childSessionId: sessionId,
     credentialKeys: rawKeys as readonly string[],
   });
-  // #8907: surface the pending request as a chat prompt in the origin task
-  // thread (best-effort; never blocks the credential bridge response).
+  // #8907/#10317: surface the pending request as the real out-of-band
+  // sensitive-request in the origin task thread so `SensitiveRequestBlock`
+  // renders an inline tunnel-routed secure form (AC1). Best-effort; never blocks
+  // the credential bridge response. The scoped token is NOT forwarded — only the
+  // scope id + child session id, so the submitted value tunnels to this child.
   await emitCredentialPrompt({
     runtime: ctx.runtime,
     metadata: session.metadata,
     credentialKeys: rawKeys as readonly string[],
     label: session.name,
+    credentialScopeId: result.credentialScopeId,
+    childSessionId: sessionId,
+    expiresAt: result.expiresAt,
   });
   sendJson(res, {
     credentialScopeId: result.credentialScopeId,
