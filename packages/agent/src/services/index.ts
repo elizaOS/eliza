@@ -1,3 +1,4 @@
+export * from "./agent-backup.ts";
 export * from "./agent-export.ts";
 export * from "./app-session-gate.ts";
 export {

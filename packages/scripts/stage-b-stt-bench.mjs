@@ -344,26 +344,45 @@ function renderMarkdown(report) {
     "  ANE-capable `SFSpeechRecognizer` is the cheapest-correct Stage-B confirm recognizer on Apple.",
   );
   lines.push(
-    "  Kokoro TTS is unchanged. Remaining device handoff: per-frame battery/energy telemetry on a real",
+    "  Kokoro TTS is unchanged. iOS device energy telemetry is not counted as covered by this",
   );
   lines.push(
-    "  iOS device (Instruments Energy Log), which a Mac cannot measure.",
+    "  Apple-Silicon-only artifact; it must be supplied through the strict Stage-B report gate.",
   );
   lines.push(
-    "- **Android:** `SpeechRecognizer` (NNAPI) latency/battery/accept must be measured on a real Android",
+    "- **Android:** `SpeechRecognizer` (NNAPI) latency/battery/accept is not counted as covered by",
   );
-  lines.push("  device — not reachable from this host. Handoff.");
+  lines.push(
+    "  this host artifact; it must be supplied through the strict Stage-B report gate.",
+  );
   lines.push(
     "- **Linux/desktop fused:** the fused libelizainference ASR latency/RTF on the identical corpus is a",
   );
   lines.push(
-    "  runtime handoff (needs the provisioned `libelizainference` bundle; see",
+    "  required report input when the provisioned `libelizainference` bundle is available.",
   );
   lines.push(
-    "  `.github/issue-evidence/9147-voice-asr-m4max.md` for the qualitative on-device transcription proof).",
+    "  Historical qualitative ASR artifacts are not accepted as Stage-B coverage; use",
+  );
+  lines.push(
+    "  `ELIZA_VOICE_STAGE_B_REPORT` with `packages/scripts/voice-stage-b-eval.mjs`.",
   );
   lines.push("");
-  lines.push("## Device handoff (not measurable on this host)");
+  lines.push(
+    "## Strict report gate (not measured by this Apple-only host artifact)",
+  );
+  lines.push("");
+  lines.push(
+    "The complete #9958 Stage-B decision is green only when `voice-stage-b-eval.mjs`",
+  );
+  lines.push(
+    "validates a reviewed JSON report covering iOS `SFSpeechRecognizer`, Android",
+  );
+  lines.push(
+    "`SpeechRecognizer`, and fused ASR with real hardware, latency, WER, and power telemetry.",
+  );
+  lines.push("");
+  lines.push("## Required external measurements");
   lines.push("");
   lines.push("| Arm | Needs | Run |");
   lines.push("|---|---|---|");

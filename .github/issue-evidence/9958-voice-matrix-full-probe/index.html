@@ -12,7 +12,7 @@ th{background:#f1f1f1;text-align:left}
 code{font-size:12px}
 </style>
 <h1>Voice Live Matrix</h1>
-<p>Generated 2026-06-30T06:45:47.854Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
+<p>Generated 2026-06-30T06:57:29.880Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
 <p>Pass 0 · Fail 0 · Pending 8 · Skip 8</p>
 <table><thead><tr><th>Cell</th><th>Status</th><th>Platform</th><th>Class</th><th>Dimensions</th><th>Probe / Result</th><th>Command</th><th>Evidence</th></tr></thead><tbody><tr class="pending"><td><code>web.fake-mic.roundtrip</code><br>Web fake-device mic capture -&gt; ASR -&gt; agent -&gt; local TTS + barge-in</td><td>pending</td><td>web</td><td>live-client-audio-barge-in</td><td>transcriptionState=off
 chimeIn=should-respond
@@ -59,7 +59,7 @@ packages/app/test-results</td></tr>
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
-voices=owner</td><td>set ELIZA_VOICE_IOS_READY=1 after installing a current iOS simulator/device build with voice assets</td><td><code>bun run --cwd packages/app capture:ios-sim -- --issue 9958 --slug voice-ios</code></td><td>.github/issue-evidence/9958-voice-ios-ios-sim.*</td></tr>
+voices=owner</td><td>set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets</td><td><code>bun run --cwd packages/app capture:ios-sim -- --issue 9958 --slug voice-ios</code></td><td>.github/issue-evidence/9958-voice-ios-ios-sim.*</td></tr>
 <tr class="pending"><td><code>ios.talkmode.native-bridge</code><br>TalkMode iOS transcript, permission, state, and barge-in bridge contracts</td><td>pending</td><td>ios</td><td>native-bridge-unit</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=already-listening-wake-inert

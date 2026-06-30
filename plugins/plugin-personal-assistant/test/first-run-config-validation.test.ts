@@ -93,21 +93,28 @@ function asScheduledTask(input: ScheduledTaskInput): ScheduledTaskInput {
 }
 
 describe("first-run config validation", () => {
-  it("buildDefaultsPack emits five shape-valid ScheduledTask inputs", () => {
+  it("buildDefaultsPack emits six shape-valid ScheduledTask inputs", () => {
     const pack = buildDefaultsPack({
       morningWindow: { startLocal: "06:30", endLocal: "11:30" },
       timezone: "America/Los_Angeles",
       agentId: "agent-1",
       channel: "in_app",
     });
-    expect(pack.length).toBe(5);
+    expect(pack.length).toBe(6);
     pack.forEach(asScheduledTask);
     // Specific slot assertions
     const slots = new Set(
       pack.map((p) => (p.metadata?.slot ?? null) as string | null),
     );
     expect(slots).toEqual(
-      new Set(["gm", "gn", "checkin", "morningBrief", "weeklyReview"]),
+      new Set([
+        "gm",
+        "gn",
+        "checkin",
+        "morningBrief",
+        "weeklyReview",
+        "localBackup",
+      ]),
     );
     const checkin = pack.find((p) => p.metadata?.slot === "checkin");
     expect(checkin?.completionCheck?.kind).toBe("user_replied_within");
@@ -122,6 +129,16 @@ describe("first-run config validation", () => {
     expect(weeklyReview?.trigger.kind).toBe("manual");
     expect(weeklyReview?.metadata?.pausedByDefault).toBe(true);
     expect(weeklyReview?.ownerVisible).toBe(true);
+    const localBackup = pack.find((p) => p.metadata?.slot === "localBackup");
+    expect(localBackup?.kind).toBe("output");
+    expect(localBackup?.trigger.kind).toBe("cron");
+    if (localBackup?.trigger.kind === "cron") {
+      expect(localBackup.trigger.expression).toBe("0 */6 * * *");
+      expect(localBackup.trigger.tz).toBe("America/Los_Angeles");
+    }
+    expect(localBackup?.metadata?.systemOperation).toBe("agent.localBackup");
+    expect(localBackup?.respectsGlobalPause).toBe(false);
+    expect(localBackup?.executionProfile).toBe("bg-heavy-fgs");
   });
 
   it("parseTimezone / parseTimeWindow accept valid input and reject garbage", () => {
@@ -196,15 +213,22 @@ describe("first-run config validation", () => {
     // No first-run was ever performed (the lifecycle store is `pending`),
     // yet boot seeding still materializes the full default pack.
     const result = await service.seedDefaultPackOnBoot();
-    expect(result.seeded.length).toBe(5);
+    expect(result.seeded.length).toBe(6);
     expect(result.skipped.length).toBe(0);
-    expect(tasks.size).toBe(5);
+    expect(tasks.size).toBe(6);
 
     const slots = new Set(
       [...tasks.values()].map((t) => t.metadata?.slot as string),
     );
     expect(slots).toEqual(
-      new Set(["gm", "gn", "checkin", "morningBrief", "weeklyReview"]),
+      new Set([
+        "gm",
+        "gn",
+        "checkin",
+        "morningBrief",
+        "weeklyReview",
+        "localBackup",
+      ]),
     );
 
     // The weekly-review starter stays paused (manual trigger, never fires
@@ -223,7 +247,7 @@ describe("first-run config validation", () => {
     const first = await new FirstRunService(runtime, {
       runner: makeTrackingRunner(tasks),
     }).seedDefaultPackOnBoot();
-    expect(first.seeded.length).toBe(5);
+    expect(first.seeded.length).toBe(6);
 
     // Second boot (fresh service instance, same persistent runtime cache):
     // every key is already in the seeded marker, so nothing is re-created.
@@ -231,8 +255,8 @@ describe("first-run config validation", () => {
       runner: makeTrackingRunner(tasks),
     }).seedDefaultPackOnBoot();
     expect(second.seeded.length).toBe(0);
-    expect(second.skipped.length).toBe(5);
-    expect(tasks.size).toBe(5);
+    expect(second.skipped.length).toBe(6);
+    expect(tasks.size).toBe(6);
   });
 
   it("seedDefaultPackOnBoot respects user deletion — a deleted default is not recreated", async () => {
@@ -242,7 +266,7 @@ describe("first-run config validation", () => {
     await new FirstRunService(runtime, {
       runner: makeTrackingRunner(tasks),
     }).seedDefaultPackOnBoot();
-    expect(tasks.size).toBe(5);
+    expect(tasks.size).toBe(6);
 
     // User deletes the weekly-review default out from under the runner.
     const weeklyKey = "lifeops:first-run:default:weekly-review";
@@ -251,7 +275,7 @@ describe("first-run config validation", () => {
     );
     if (!weekly) throw new Error("expected weekly-review default to be seeded");
     tasks.delete(weekly.taskId);
-    expect(tasks.size).toBe(4);
+    expect(tasks.size).toBe(5);
 
     // Next boot must NOT resurrect it — the seeded marker still records the
     // key, so the boot seeder skips it.
@@ -260,7 +284,7 @@ describe("first-run config validation", () => {
     }).seedDefaultPackOnBoot();
     expect(reboot.seeded.length).toBe(0);
     expect(reboot.skipped).toContain(weeklyKey);
-    expect(tasks.size).toBe(4);
+    expect(tasks.size).toBe(5);
     expect(
       [...tasks.values()].some((t) => t.idempotencyKey === weeklyKey),
     ).toBe(false);
@@ -276,15 +300,15 @@ describe("first-run config validation", () => {
       runner: makeTrackingRunner(tasks),
     });
     await firstRun.runDefaultsPath({ wakeTime: "6:30am" });
-    expect(tasks.size).toBe(5);
+    expect(tasks.size).toBe(6);
 
     // A subsequent boot seeder sees every key already seeded → no double-seed.
     const boot = await new FirstRunService(runtime, {
       runner: makeTrackingRunner(tasks),
     }).seedDefaultPackOnBoot();
     expect(boot.seeded.length).toBe(0);
-    expect(boot.skipped.length).toBe(5);
-    expect(tasks.size).toBe(5);
+    expect(boot.skipped.length).toBe(6);
+    expect(tasks.size).toBe(6);
   });
 
   it("FirstRunService produces shape-valid tasks via the in-memory runner", async () => {
@@ -316,8 +340,8 @@ describe("first-run config validation", () => {
 
     const done = await service.runDefaultsPath({ wakeTime: "6:30am" });
     expect(done.status).toBe("ok");
-    expect(done.scheduledTasks.length).toBe(5);
-    expect(recorded.length).toBe(5);
+    expect(done.scheduledTasks.length).toBe(6);
+    expect(recorded.length).toBe(6);
     expect(done.facts.morningWindow?.startLocal).toBe("06:30");
   });
 });

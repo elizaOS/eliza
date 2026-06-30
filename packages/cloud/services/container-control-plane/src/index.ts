@@ -1,3 +1,4 @@
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
 import type { DockerNode } from "@elizaos/cloud-shared/db/schemas/docker-nodes";
@@ -823,6 +824,98 @@ app.get(
   "/api/v1/admin/warm-pool/rollout-status",
   poolImageRolloutStatusResponse,
 );
+
+function readPositiveLimit(
+  value: string | null,
+  fallback: number,
+  max: number,
+): number {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new HetznerClientError(
+      "invalid_input",
+      "limit must be a positive number",
+    );
+  }
+  return Math.min(Math.floor(parsed), max);
+}
+
+function poolImageRollbackResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    if (body.confirm !== "rollback") {
+      throw new HetznerClientError(
+        "invalid_input",
+        "confirm must be the literal string 'rollback'",
+      );
+    }
+
+    const image = containersEnv.defaultAgentImage();
+    const rollout = await getWarmPoolManager().rolloutStatus(image);
+    const currentDigest = rollout.desired.digest;
+    if (!currentDigest) {
+      return c.json({
+        success: true,
+        data: {
+          image,
+          skipped: true,
+          reason:
+            rollout.desired.warning ?? "Desired image is not digest-pinned",
+          rollout,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+
+    const limit = readPositiveLimit(c.req.query("limit") ?? null, 50, 200);
+    const candidates =
+      await agentSandboxesRepository.listRollbackEligibleForDigest(
+        currentDigest,
+        image,
+        limit,
+      );
+
+    let enqueued = 0;
+    const failures: Array<{ agentId: string; error: string }> = [];
+    for (const candidate of candidates) {
+      try {
+        const result = await provisioningJobService.enqueueAgentDowngradeOnce({
+          agentId: candidate.id,
+          organizationId: candidate.organization_id,
+          userId: candidate.user_id,
+          dockerImage: image,
+          fromDigest: currentDigest,
+        });
+        if (result.created) enqueued += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failures.push({ agentId: candidate.id, error: message });
+        logger.warn("[container-control-plane] rollback enqueue failed", {
+          agentId: candidate.id,
+          error: message,
+        });
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        image,
+        currentDigest,
+        candidates: candidates.length,
+        enqueued,
+        failures,
+        rollout,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  });
+}
+app.post("/api/v1/admin/warm-pool/rollback", poolImageRollbackResponse);
 
 function poolStateResponse(c: Context) {
   return handleInternal(c, async () => {

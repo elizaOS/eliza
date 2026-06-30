@@ -586,6 +586,8 @@ export function SensitiveRequestBlock({
     return (values[field.name] ?? "").trim().length > 0;
   });
 
+  const tunnel = request.delivery?.tunnel;
+
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -593,14 +595,32 @@ export function SensitiveRequestBlock({
       setSaving(true);
       setError(null);
       try {
-        const secrets: Record<string, string> = {};
-        for (const field of fields) {
-          const value = values[field.name];
-          if (value != null && value !== "") {
-            secrets[field.name] = value;
+        if (tunnel) {
+          // Tunnel path (#10317): route each submitted value to the waiting
+          // child via the one-shot CredentialTunnelService. MUTUALLY EXCLUSIVE
+          // with updateSecrets — a tunnel-routed value is never written to the
+          // long-term agent secret store.
+          for (const field of fields) {
+            const value = values[field.name];
+            if (value != null && value !== "") {
+              await client.tunnelCredential({
+                credentialScopeId: tunnel.credentialScopeId,
+                childSessionId: tunnel.childSessionId,
+                key: field.name,
+                value,
+              });
+            }
           }
+        } else {
+          const secrets: Record<string, string> = {};
+          for (const field of fields) {
+            const value = values[field.name];
+            if (value != null && value !== "") {
+              secrets[field.name] = value;
+            }
+          }
+          await client.updateSecrets(secrets);
         }
-        await client.updateSecrets(secrets);
         setValues({});
         setStatus("saved");
       } catch (caught) {
@@ -612,7 +632,7 @@ export function SensitiveRequestBlock({
         setSaving(false);
       }
     },
-    [canCollectSecret, canSubmit, fields, values],
+    [canCollectSecret, canSubmit, fields, tunnel, values],
   );
 
   return (

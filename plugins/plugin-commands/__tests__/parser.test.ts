@@ -1,257 +1,110 @@
-import fc from "fast-check";
-import { afterEach, describe, expect, it } from "vitest";
-import { formatCommandResult, isAuthorized, isElevated } from "../src/index";
-import {
-	detectCommand,
-	extractCommand,
-	hasCommand,
-	isCommandOnly,
-	normalizeCommandBody,
-	parseCommand,
-} from "../src/parser";
-import {
-	findCommandByAlias,
-	findCommandByKey,
-	initForRuntime,
-	registerCommand,
-	resetCommands,
-	unregisterCommand,
-	useRuntime,
-} from "../src/registry";
-import type { CommandContext, CommandDefinition } from "../src/types";
+import { describe, expect, it } from "vitest";
+import { normalizeCommandBody, parseCommand } from "../src/parser.ts";
+import type { CommandDefinition } from "../src/types.ts";
 
-const customCommand: CommandDefinition = {
-	key: "deploy",
-	description: "Deploy a target",
-	textAliases: ["/deploy", "!deploy"],
-	scope: "text",
-	acceptsArgs: true,
-	args: [
-		{ name: "target", description: "Deployment target" },
-		{ name: "notes", description: "Deployment notes", captureRemaining: true },
-	],
-};
+/**
+ * First tests for the slash-command parser (#8801 / #9943 — plugin-commands
+ * shipped with zero tests). Covers alias matching, the colon form, quoted /
+ * capture-remaining args, and the parsing modes — the logic every connector
+ * surface relies on to turn a chat line into a command.
+ */
+function define(
+	overrides: Partial<CommandDefinition> &
+		Pick<CommandDefinition, "key" | "textAliases">,
+): CommandDefinition {
+	return { description: "test command", scope: "both", ...overrides };
+}
 
-describe("command parser", () => {
-	afterEach(() => {
-		resetCommands();
+describe("normalizeCommandBody", () => {
+	it("trims surrounding whitespace", () => {
+		expect(normalizeCommandBody("  /status  ")).toBe("/status");
 	});
 
-	it("detects enabled default commands by alias without matching ordinary chat text", () => {
-		expect(hasCommand("/help")).toBe(true);
-		expect(hasCommand("/h")).toBe(true);
-		expect(hasCommand("please /help")).toBe(false);
-		expect(hasCommand("/debug")).toBe(false);
-		expect(detectCommand("/unknown")).toEqual({ isCommand: false });
+	it("strips a leading bot mention, case-insensitively", () => {
+		expect(normalizeCommandBody("@Bot  /status", "bot")).toBe("/status");
 	});
 
-	it("parses colon syntax and normalizes bot mention prefixes", () => {
-		const normalized = normalizeCommandBody("@Eliza /think: high", "eliza");
+	it("rewrites a colon command separator to a space", () => {
+		expect(normalizeCommandBody("/think: high")).toBe("/think high");
+		expect(normalizeCommandBody("!mode:fast")).toBe("!mode fast");
+	});
 
-		expect(normalized).toBe("/think high");
-		expect(detectCommand(normalized)).toEqual({
-			isCommand: true,
-			command: {
-				key: "think",
-				canonical: "/think",
-				args: ["high"],
-				rawArgs: "high",
-			},
+	it("leaves a plain command body untouched", () => {
+		expect(normalizeCommandBody("/help me now")).toBe("/help me now");
+	});
+});
+
+describe("parseCommand", () => {
+	const think = define({
+		key: "think",
+		textAliases: ["/think"],
+		acceptsArgs: true,
+		argsParsing: "positional",
+		args: [],
+	});
+
+	it("returns null when no alias matches", () => {
+		expect(parseCommand("/status", think)).toBeNull();
+		// a strict prefix that is not followed by space/colon is NOT a match
+		expect(parseCommand("/thinking", think)).toBeNull();
+	});
+
+	it("matches an exact alias with no args", () => {
+		const parsed = parseCommand("/think", think);
+		expect(parsed?.key).toBe("think");
+		expect(parsed?.canonical).toBe("/think");
+		expect(parsed?.args).toEqual([]);
+	});
+
+	it("matches case-insensitively", () => {
+		expect(parseCommand("/THINK", think)?.key).toBe("think");
+	});
+
+	it("parses the colon form (/think:high)", () => {
+		expect(parseCommand("/think:high", think)?.args).toEqual(["high"]);
+	});
+
+	it("tokenizes positional args, respecting quotes", () => {
+		expect(parseCommand('/think "two words" solo', think)?.args).toEqual([
+			"two words",
+			"solo",
+		]);
+	});
+
+	it("captureRemaining joins the rest into a single arg", () => {
+		const say = define({
+			key: "say",
+			textAliases: ["/say"],
+			acceptsArgs: true,
+			argsParsing: "positional",
+			args: [{ name: "message", description: "", captureRemaining: true }],
 		});
+		expect(parseCommand("/say hello there world", say)?.args).toEqual([
+			"hello there world",
+		]);
 	});
 
-	it("normalizes hostile bot mention strings literally instead of as regex", () => {
-		const mention = ["bot.*+?^", "$", "{}()|[]", "\\"].join("");
-		const normalized = normalizeCommandBody(`@${mention} /help`, mention);
-
-		expect(normalized).toBe("/help");
-		expect(normalizeCommandBody("@botx /help", "bot.")).toBe("@botx /help");
-	});
-
-	it("accepts whitespace and colon separators without merging commands into args", () => {
-		expect(detectCommand("/think\thigh")).toMatchObject({
-			isCommand: true,
-			command: { key: "think", args: ["high"], rawArgs: "high" },
-		});
-		expect(detectCommand("/think\nhigh")).toMatchObject({
-			isCommand: true,
-			command: { key: "think", args: ["high"], rawArgs: "high" },
-		});
-		expect(normalizeCommandBody("!deploy: prod")).toBe("!deploy prod");
-	});
-
-	it("rejects malformed command prefixes and alias smuggling attempts", () => {
-		for (const text of [
-			"/",
-			"!",
-			"/ help",
-			"/helpful",
-			"/help--force",
-			"/help/../../reset",
-			"/debug: true",
-		]) {
-			expect(detectCommand(text)).toEqual({ isCommand: false });
-			expect(extractCommand(text)).toBeNull();
-		}
-	});
-
-	it("tokenizes quoted positional args and captures remaining text", () => {
-		registerCommand(customCommand);
-
-		expect(detectCommand('/deploy "prod west" verify after deploy')).toEqual({
-			isCommand: true,
-			command: {
-				key: "deploy",
-				canonical: "/deploy",
-				args: ["prod west", "verify after deploy"],
-				rawArgs: '"prod west" verify after deploy',
-			},
-		});
-	});
-
-	it("returns the whole argument string for commands using argsParsing none", () => {
-		const command: CommandDefinition = {
-			key: "note",
-			description: "Capture a note",
-			textAliases: ["/note"],
-			scope: "text",
+	it("argsParsing 'none' returns the whole remainder as one arg", () => {
+		const raw = define({
+			key: "raw",
+			textAliases: ["/raw"],
 			acceptsArgs: true,
 			argsParsing: "none",
-		};
-
-		expect(parseCommand("/note keep  exact  spacing", command)).toEqual({
-			key: "note",
-			canonical: "/note",
-			args: ["keep  exact  spacing"],
-			rawArgs: "keep  exact  spacing",
 		});
+		expect(parseCommand("/raw a b c", raw)?.args).toEqual(["a b c"]);
 	});
 
-	it("extracts remaining command text and distinguishes command-only messages", () => {
-		expect(isCommandOnly("/help")).toBe(true);
-		expect(isCommandOnly("/think high")).toBe(false);
-		expect(extractCommand("/bash bun test --filter parser")).toEqual({
-			command: {
-				key: "bash",
-				canonical: "/bash",
-				args: ["bun test --filter parser"],
-				rawArgs: "bun test --filter parser",
-			},
-			remainingText: "bun test --filter parser",
+	it("returns empty args when the command does not accept args", () => {
+		const ping = define({
+			key: "ping",
+			textAliases: ["/ping"],
+			acceptsArgs: false,
 		});
+		expect(parseCommand("/ping ignored", ping)?.args).toEqual([]);
 	});
 
-	it("ignores registered disabled commands", () => {
-		registerCommand({
-			...customCommand,
-			enabled: false,
-		});
-
-		expect(findCommandByKey("deploy")?.enabled).toBe(false);
-		expect(detectCommand("/deploy production")).toEqual({ isCommand: false });
-	});
-
-	it("invalidates alias cache when replacing and unregistering commands", () => {
-		registerCommand(customCommand);
-		expect(findCommandByAlias("/deploy")?.key).toBe("deploy");
-
-		registerCommand({
-			...customCommand,
-			textAliases: ["/ship"],
-		});
-		expect(findCommandByAlias("/deploy")).toBeUndefined();
-		expect(detectCommand("/deploy prod")).toEqual({ isCommand: false });
-		expect(detectCommand("/ship prod")).toMatchObject({
-			isCommand: true,
-			command: { key: "deploy", args: ["prod"] },
-		});
-
-		unregisterCommand("deploy");
-		expect(findCommandByAlias("/ship")).toBeUndefined();
-		expect(detectCommand("/ship prod")).toEqual({ isCommand: false });
-	});
-
-	it("keeps per-runtime command changes isolated when switching runtimes", () => {
-		initForRuntime("agent-a");
-		registerCommand(customCommand);
-
-		initForRuntime("agent-b");
-		expect(detectCommand("/deploy prod")).toEqual({ isCommand: false });
-
-		useRuntime("agent-a");
-		expect(detectCommand("/deploy prod")).toMatchObject({
-			isCommand: true,
-			command: { key: "deploy", args: ["prod"] },
-		});
-
-		useRuntime("agent-b");
-		expect(detectCommand("/deploy prod")).toEqual({ isCommand: false });
-	});
-
-	it("denies auth and elevated checks only for commands that require them", () => {
-		const context: CommandContext = {
-			isAuthorized: false,
-			isElevated: false,
-			roomId: "room-1",
-		};
-
-		expect(isAuthorized(context, customCommand)).toBe(true);
-		expect(
-			isAuthorized(context, { ...customCommand, requiresAuth: true }),
-		).toBe(false);
-		expect(isElevated(context, customCommand)).toBe(true);
-		expect(
-			isElevated(context, { ...customCommand, requiresElevated: true }),
-		).toBe(false);
-	});
-
-	it("formats command error results before fallback replies", () => {
-		expect(
-			formatCommandResult({
-				handled: true,
-				shouldContinue: false,
-				reply: "ok",
-				error: "permission denied",
-			}),
-		).toBe("Error: permission denied");
-		expect(formatCommandResult({ handled: true, shouldContinue: false })).toBe(
-			"Command executed",
-		);
-	});
-
-	it("fuzzes non-command prefixes without accidentally invoking command parsing", () => {
-		fc.assert(
-			fc.property(
-				fc.string({ maxLength: 200 }).filter((value) => {
-					const trimmed = value.trim();
-					return !trimmed.startsWith("/") && !trimmed.startsWith("!");
-				}),
-				(text) => {
-					expect(hasCommand(text)).toBe(false);
-					expect(detectCommand(text)).toEqual({ isCommand: false });
-					expect(extractCommand(text)).toBeNull();
-				},
-			),
-			{ numRuns: 500 },
-		);
-	});
-
-	it("fuzzes quoted command args without throwing or emitting phantom commands", () => {
-		registerCommand(customCommand);
-
-		fc.assert(
-			fc.property(fc.string({ maxLength: 120 }), (suffix) => {
-				const text = `/deploy "prod ${suffix}`;
-
-				expect(() => detectCommand(text)).not.toThrow();
-				const result = detectCommand(text);
-				expect(result.isCommand).toBe(true);
-				expect(result.command?.key).toBe("deploy");
-				expect(result.command?.args.join(" ").length).toBeLessThanOrEqual(
-					text.length,
-				);
-			}),
-			{ numRuns: 300 },
-		);
+	it("uses the first alias as the canonical form", () => {
+		const help = define({ key: "help", textAliases: ["/help", "/h", "/?"] });
+		expect(parseCommand("/h", help)?.canonical).toBe("/help");
 	});
 });

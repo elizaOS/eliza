@@ -26,6 +26,8 @@
  * `dispatchAppEvent` in `@elizaos/ui/events`).
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
@@ -107,6 +109,16 @@ function fireAppEvent(eventName: string, payload: unknown): void {
   for (const handler of appListeners.get(eventName) ?? []) handler(payload);
 }
 
+// Drive a real document.visibilitychange (the App-plugin-independent lifecycle
+// signal) by overriding the read-only visibilityState then dispatching the event.
+function setVisibility(state: "visible" | "hidden"): void {
+  Object.defineProperty(document, "visibilityState", {
+    value: state,
+    configurable: true,
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
 function fireNetworkEvent(eventName: string, payload: unknown): void {
   for (const handler of networkListeners.get(eventName) ?? []) handler(payload);
 }
@@ -141,6 +153,18 @@ afterEach(() => {
 });
 
 describe("createMobileLifecycle — app lifecycle", () => {
+  it("keeps the production app entrypoint wired to the visibilitychange fallback", () => {
+    const mainSrc = readFileSync(join(import.meta.dirname, "../src/main.tsx"), {
+      encoding: "utf8",
+    });
+
+    expect(mainSrc).toContain('addEventListener("visibilitychange"');
+    expect(mainSrc).toContain('document.visibilityState !== "hidden"');
+    expect(mainSrc).toContain(
+      "dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT)",
+    );
+  });
+
   it("dispatches APP_RESUME_EVENT when the app becomes active", async () => {
     const lifecycle = createMobileLifecycle(makeContext());
     const resume = vi.fn();
@@ -171,6 +195,53 @@ describe("createMobileLifecycle — app lifecycle", () => {
 
     expect(pause).toHaveBeenCalledTimes(1);
     document.removeEventListener(APP_PAUSE_EVENT, pause);
+  });
+
+  it("dispatches APP_PAUSE_EVENT on visibilitychange to hidden (App-plugin-independent fallback)", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+    const pause = vi.fn();
+    document.addEventListener(APP_PAUSE_EVENT, pause);
+
+    lifecycle.initializeAppLifecycle();
+    setVisibility("hidden");
+
+    // The visibilitychange fallback fires pause even though the Capacitor `App`
+    // plugin's appStateChange may be unavailable / not implemented on the device.
+    expect(pause).toHaveBeenCalledTimes(1);
+    document.removeEventListener(APP_PAUSE_EVENT, pause);
+    setVisibility("visible");
+  });
+
+  it("dispatches APP_RESUME_EVENT on visibilitychange back to visible", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+    lifecycle.initializeAppLifecycle();
+    setVisibility("hidden");
+
+    const resume = vi.fn();
+    document.addEventListener(APP_RESUME_EVENT, resume);
+    setVisibility("visible");
+
+    expect(resume).toHaveBeenCalledTimes(1);
+    document.removeEventListener(APP_RESUME_EVENT, resume);
+  });
+
+  it("does not double-dispatch when appStateChange and visibilitychange report the same transition", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+    const pause = vi.fn();
+    document.addEventListener(APP_PAUSE_EVENT, pause);
+
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() =>
+      expect(appListeners.has("appStateChange")).toBe(true),
+    );
+
+    // Both signals report the same background transition; dedup => one PAUSE.
+    fireAppEvent("appStateChange", { isActive: false });
+    setVisibility("hidden");
+
+    expect(pause).toHaveBeenCalledTimes(1);
+    document.removeEventListener(APP_PAUSE_EVENT, pause);
+    setVisibility("visible");
   });
 
   it("calls window.history.back() only when the back button can go back", async () => {
@@ -262,6 +333,50 @@ describe("createMobileLifecycle — network listener", () => {
     fireNetworkEvent("networkStatusChange", { connected: true });
 
     expect(received).toEqual([false, true]);
+    document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+  });
+
+  it("dispatches NETWORK_STATUS_CHANGE_EVENT on window offline/online (fallback when the Network plugin is unavailable)", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+    const received: boolean[] = [];
+    const onNetwork = (event: Event) => {
+      received.push(
+        (event as CustomEvent<{ connected: boolean }>).detail.connected,
+      );
+    };
+    document.addEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+
+    await lifecycle.initializeNetworkListener();
+
+    // The window online/offline fallback drives connectivity even when the
+    // Capacitor Network plugin never registered (as observed on Android).
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+
+    expect(received).toEqual([false, true]);
+    document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+  });
+
+  it("does not double-dispatch when Capacitor networkStatusChange and window offline agree", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+    const received: boolean[] = [];
+    const onNetwork = (event: Event) => {
+      received.push(
+        (event as CustomEvent<{ connected: boolean }>).detail.connected,
+      );
+    };
+    document.addEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+
+    await lifecycle.initializeNetworkListener();
+    await vi.waitFor(() =>
+      expect(networkListeners.has("networkStatusChange")).toBe(true),
+    );
+
+    // Both signals report the same disconnect; dedup => one dispatch.
+    fireNetworkEvent("networkStatusChange", { connected: false });
+    window.dispatchEvent(new Event("offline"));
+
+    expect(received).toEqual([false]);
     document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
   });
 

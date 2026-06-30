@@ -343,6 +343,7 @@ let mobileRuntimeModeListenerInstalled = false;
 let keyboardListenersRegistered = false;
 let lifecycleListenersRegistered = false;
 let networkStatusListenerRegistered = false;
+let activeVisibilityHandler: (() => void) | null = null;
 let iosFullBunSmokeStarted = false;
 let iosOnboardingSmokeStarted = false;
 
@@ -1535,17 +1536,28 @@ function initializeAppLifecycle(): void {
   if (lifecycleListenersRegistered) return;
   lifecycleListenersRegistered = true;
 
+  let lastActive: boolean | null = null;
+  const setAppActive = (active: boolean): void => {
+    if (lastActive === active) return;
+    lastActive = active;
+    dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT);
+  };
+
   void Promise.resolve(
     CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-      if (isActive) {
-        dispatchAppEvent(APP_RESUME_EVENT);
-      } else {
-        dispatchAppEvent(APP_PAUSE_EVENT);
-      }
+      setAppActive(isActive);
     }),
   ).catch((error) => {
     logNativePluginUnavailable("App", error);
   });
+
+  if (activeVisibilityHandler) {
+    document.removeEventListener("visibilitychange", activeVisibilityHandler);
+  }
+  activeVisibilityHandler = () => {
+    setAppActive(document.visibilityState !== "hidden");
+  };
+  document.addEventListener("visibilitychange", activeVisibilityHandler);
 
   void Promise.resolve(
     CapacitorApp.addListener("backButton", ({ canGoBack }) => {

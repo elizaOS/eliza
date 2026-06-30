@@ -123,9 +123,21 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   store.setHotPoolTarget(hotPoolSize);
 
   const app = new Hono();
+  const runtimeState = {
+    memories: [] as Array<{ role: string; text: string; timestamp: number }>,
+    config: {} as Record<string, unknown>,
+    workspaceFiles: {} as Record<string, string>,
+  };
 
   app.use("*", async (c, next) => {
     if (c.req.path === "/health") return next();
+    if (
+      c.req.path === "/api/health" ||
+      c.req.path === "/api/snapshot" ||
+      c.req.path === "/api/restore"
+    ) {
+      return next();
+    }
     // Mock production app URLs are externally reachable, unlike control-plane APIs.
     if (c.req.path.startsWith("/mock/apps/")) return next();
     // Admin endpoints use their own token, validated per-route.
@@ -555,6 +567,23 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   app.get("/health", (c) =>
     c.json({ success: true, service: "control-plane-mock" }),
   );
+  app.get("/api/health", (c) =>
+    c.json({ success: true, status: "ok", ready: true }),
+  );
+  app.post("/api/snapshot", (c) => c.json(runtimeState));
+  app.post("/api/restore", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as Partial<
+      typeof runtimeState
+    > | null;
+    runtimeState.memories = Array.isArray(body?.memories) ? body.memories : [];
+    runtimeState.config =
+      body?.config && typeof body.config === "object" ? body.config : {};
+    runtimeState.workspaceFiles =
+      body?.workspaceFiles && typeof body.workspaceFiles === "object"
+        ? body.workspaceFiles
+        : {};
+    return c.json({ success: true });
+  });
 
   app.post("/jobs", async (c) => {
     const auth = requireForwardedAuth(c);

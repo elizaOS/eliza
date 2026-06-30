@@ -187,6 +187,8 @@ export interface ScheduledTaskOutput {
   persistAs?: "task_metadata" | "external_only";
 }
 
+export type ScheduledTaskMetadata = Record<string, unknown>;
+
 export interface ScheduledTaskPipeline {
   onComplete?: ScheduledTaskRef[];
   onSkip?: ScheduledTaskRef[];
@@ -236,7 +238,7 @@ export interface ScheduledTask {
   source: ScheduledTaskSource;
   createdBy: string;
   ownerVisible: boolean;
-  metadata?: Record<string, unknown>;
+  metadata?: ScheduledTaskMetadata;
   /**
    * Host execution profile required at fire time. The runner consults the
    * platform's `getHostExecutionCapabilities` and substitutes `notify-only`

@@ -59,17 +59,121 @@ function formatKeys(keys: readonly string[]): string {
 }
 
 /**
- * Post a chat prompt to the origin room announcing the pending credential
- * request. Returns true when a message was dispatched. Best-effort: a runtime
- * without `sendMessageToTarget`, or a session with no origin room, is a no-op.
+ * Structured secret-request envelope rendered inline by the dashboard's
+ * `SensitiveRequestBlock`. Mirrors the owner-app-inline adapter's envelope and
+ * adds `delivery.tunnel` so a submitted value is routed through the credential
+ * tunnel (to the blocked child) rather than the agent secret store.
+ *
+ * SECURITY: carries the form spec + tunnel routing identifiers only. The scoped
+ * bearer token and the credential value are NEVER included.
+ */
+interface CredentialSecretRequestEnvelope {
+  requestId: string;
+  key: string;
+  reason?: string;
+  status: "pending";
+  expiresAt: string;
+  delivery: {
+    mode: "inline_owner_app";
+    instruction?: string;
+    privateRouteRequired: true;
+    canCollectValueInCurrentChannel: true;
+    tunnel: { credentialScopeId: string; childSessionId: string };
+  };
+  form: {
+    type: "sensitive_request_form";
+    kind: "secret";
+    mode: "inline_owner_app";
+    fields: Array<{
+      name: string;
+      label: string;
+      input: "secret";
+      required: true;
+    }>;
+    submitLabel: string;
+    statusOnly: true;
+  };
+}
+
+function buildCredentialEnvelope(input: {
+  credentialKeys: readonly string[];
+  credentialScopeId: string;
+  childSessionId: string;
+  expiresAt: number;
+  reason?: string;
+  instruction?: string;
+}): CredentialSecretRequestEnvelope {
+  return {
+    requestId: `cred_${input.credentialScopeId}`,
+    key: input.credentialKeys[0],
+    reason: input.reason,
+    status: "pending",
+    expiresAt: new Date(input.expiresAt).toISOString(),
+    delivery: {
+      mode: "inline_owner_app",
+      instruction: input.instruction,
+      privateRouteRequired: true,
+      canCollectValueInCurrentChannel: true,
+      tunnel: {
+        credentialScopeId: input.credentialScopeId,
+        childSessionId: input.childSessionId,
+      },
+    },
+    form: {
+      type: "sensitive_request_form",
+      kind: "secret",
+      mode: "inline_owner_app",
+      fields: input.credentialKeys.map((name) => ({
+        name,
+        label: name,
+        input: "secret",
+        required: true,
+      })),
+      submitLabel:
+        input.credentialKeys.length === 1
+          ? "Provide credential"
+          : "Provide credentials",
+      statusOnly: true,
+    },
+  };
+}
+
+/**
+ * Post a credential request to the origin task thread. When the credential
+ * scope identifiers are supplied (the production path) this dispatches the real
+ * out-of-band sensitive-request — a `secretRequest` content envelope carrying
+ * `delivery.tunnel` — so the dashboard's `SensitiveRequestBlock` renders an
+ * inline secure form in the originating thread (AC1). The same message carries
+ * a plain-text announcement so text-only connectors (Telegram/Discord DM) still
+ * surface the request.
+ *
+ * Returns true when a message was dispatched. Best-effort: a runtime without
+ * `sendMessageToTarget`, or a session with no origin room, is a no-op.
+ *
+ * SECURITY: the scoped bearer token and the credential value are NEVER placed
+ * in `text` or in the `secretRequest` envelope — only the form spec + tunnel
+ * routing identifiers.
  */
 export async function emitCredentialPrompt(input: {
   runtime: IAgentRuntime;
   metadata: Record<string, unknown> | undefined;
   credentialKeys: readonly string[];
   label?: string;
+  /** When present, render the inline tunnel-routed secret form (AC1). */
+  credentialScopeId?: string;
+  childSessionId?: string;
+  /** Scope expiry (epoch ms) — surfaced on the inline form envelope. */
+  expiresAt?: number;
 }): Promise<boolean> {
-  const { runtime, metadata, credentialKeys, label } = input;
+  const {
+    runtime,
+    metadata,
+    credentialKeys,
+    label,
+    credentialScopeId,
+    childSessionId,
+    expiresAt,
+  } = input;
   const origin = readOrigin(metadata);
   const send = (runtime as RuntimeWithSendTarget).sendMessageToTarget;
   if (!origin || typeof send !== "function" || credentialKeys.length === 0) {
@@ -90,11 +194,35 @@ export async function emitCredentialPrompt(input: {
       `Provide ${credentialKeys.length === 1 ? "it" : "them"} securely here: ${link}`,
     );
   }
+  const reason = `${who.replace(/\*\*/g, "")} needs ${
+    credentialKeys.length === 1 ? "this credential" : "these credentials"
+  } to continue.`;
+  // Render the inline secure form only when the credential scope is known. The
+  // form value is captured client-side and tunneled to the child — it is never
+  // echoed into chat text.
+  const secretRequest =
+    credentialScopeId && childSessionId
+      ? buildCredentialEnvelope({
+          credentialKeys,
+          credentialScopeId,
+          childSessionId,
+          expiresAt: expiresAt ?? Date.now() + 30 * 60 * 1000,
+          reason,
+          instruction: link
+            ? "Provide it securely below or in the dashboard."
+            : "Provide it securely below.",
+        })
+      : undefined;
+  // `secretRequest` is the canonical content key the dashboard projector reads
+  // to hydrate `ConversationMessage.secretRequest`; `Content` does not type it
+  // natively, so attach it at the boundary like the owner-app-inline adapter.
+  const content = {
+    text: lines.join("\n"),
+    source: origin.source,
+    ...(secretRequest ? { secretRequest } : {}),
+  } as Content & { secretRequest?: CredentialSecretRequestEnvelope };
   try {
-    await send(
-      { source: origin.source, roomId: origin.roomId },
-      { text: lines.join("\n"), source: origin.source },
-    );
+    await send({ source: origin.source, roomId: origin.roomId }, content);
     return true;
   } catch (error) {
     // Posting the prompt is a non-critical side-effect of the credential

@@ -930,7 +930,11 @@ describe("ScheduledTaskRunner — dispatcher", () => {
       newTaskId: () => "task_dispatch",
       now: () => new Date("2026-05-09T12:00:00.000Z"),
     });
-    const task = await runner.schedule(baseInput());
+    const task = await runner.schedule(
+      baseInput({
+        metadata: { systemOperation: "agent.localBackup" },
+      }),
+    );
     await runner.fire(task.taskId);
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith(
@@ -938,6 +942,9 @@ describe("ScheduledTaskRunner — dispatcher", () => {
         taskId: task.taskId,
         firedAtIso: "2026-05-09T12:00:00.000Z",
         promptInstructions: "do the thing",
+        metadata: expect.objectContaining({
+          systemOperation: "agent.localBackup",
+        }),
       }),
     );
   });

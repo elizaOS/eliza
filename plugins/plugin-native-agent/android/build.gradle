@@ -20,6 +20,7 @@ android {
     defaultConfig {
         minSdk project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 22
         targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
@@ -41,4 +42,9 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+
+    // On-device instrumented test for AgentServiceLocator (#9967). androidTest-only.
+    androidTestImplementation "androidx.test.ext:junit:1.3.0"
+    androidTestImplementation "androidx.test:runner:1.7.0"
+    androidTestImplementation "androidx.test:core:1.7.0"
 }

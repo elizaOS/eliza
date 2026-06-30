@@ -202,17 +202,18 @@ async function main() {
     env,
   );
 
-  // When the e2e harness runs (NODE_ENV=test), force the KMS backend to
-  // the in-memory adapter via `--var`. wrangler's `[vars] NODE_ENV =
-  // "production"` block in wrangler.toml takes precedence over the shell
-  // NODE_ENV, which would otherwise cause `resolveKmsBackend()` in
-  // `@elizaos/security/kms` to default to the Steward backend and throw
-  // `KmsError("ELIZA_KMS_BACKEND=steward requires steward.{baseUrl, tokenProvider}")`
-  // for any route that touches encrypted fields (e.g. /api/v1/api-keys/*,
-  // /api/v1/api-keys/explorer). The integration suite expects these
-  // routes to return 2xx with a working in-memory key store.
+  // When the e2e harness runs (NODE_ENV=test), forward the test KMS backend via
+  // `--var`. wrangler's `[vars] NODE_ENV = "production"` block in wrangler.toml
+  // takes precedence over the shell NODE_ENV, which would otherwise cause
+  // `resolveKmsBackend()` in `@elizaos/security/kms` to default to the Steward
+  // backend and throw `KmsError("ELIZA_KMS_BACKEND=steward requires
+  // steward.{baseUrl, tokenProvider}")` for any route that touches encrypted
+  // fields. Cross-process e2e flows use the local backend with a deterministic
+  // root key so Worker routes can decrypt rows written by the control plane.
   const isE2eTestMode =
     process.env.NODE_ENV === "test" || process.env.CLOUD_E2E === "1";
+  const kmsBackend = process.env.ELIZA_KMS_BACKEND ?? "memory";
+  const localRootKey = process.env.ELIZA_LOCAL_ROOT_KEY;
   // In e2e/test mode, also stub the Cloudflare registrar/DNS by default so the
   // domain buy/check routes never hit the real Cloudflare API (overridable via
   // ELIZA_CF_REGISTRAR_DEV_STUB).
@@ -237,7 +238,10 @@ async function main() {
         "--var",
         "NODE_ENV:test",
         "--var",
-        "ELIZA_KMS_BACKEND:memory",
+        `ELIZA_KMS_BACKEND:${kmsBackend}`,
+        ...(localRootKey
+          ? ["--var", `ELIZA_LOCAL_ROOT_KEY:${localRootKey}`]
+          : []),
         "--var",
         `ELIZA_CF_REGISTRAR_DEV_STUB:${registrarStub}`,
         "--var",

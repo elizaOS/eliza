@@ -1,7 +1,7 @@
 // Real interaction coverage for the Settings sections + character editor.
 // all-pages-clicksafe only render-smokes settings; this drives the actual
 // controls (voice auto-learn toggle, appearance theme, capability switch, app-
-// permission refresh, backup/export modal, character bio save) and asserts they
+// permission refresh, backup modal, character bio save) and asserts they
 // DO something. Keyless against the stub.
 
 import { expect, type Page, test } from "@playwright/test";
@@ -155,7 +155,7 @@ test("capabilities settings: the Wallet switch fires the real config write", asy
     .not.toBe(before);
 });
 
-test("backup & reset settings: Export opens its modal", async ({ page }) => {
+test("backup & reset settings: Back Up opens its modal", async ({ page }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /Backup & Reset|Advanced/);
   await expect(page.locator("#advanced")).toBeVisible({ timeout: 30_000 });

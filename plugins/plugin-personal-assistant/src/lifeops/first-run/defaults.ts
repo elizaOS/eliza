@@ -24,6 +24,10 @@
  *     install but never fires on its own (no cron/anchor/interval), so it ships
  *     **paused**: the owner runs it on demand or gives it a schedule. A useful
  *     starter the owner can adopt without it nagging from day one.
+ *   - **local backup** — `kind: "output"` every six hours. Dispatch is driven
+ *     by `metadata.systemOperation = "agent.localBackup"` in the production
+ *     scheduled-task dispatcher, not by prompt text, and writes an encrypted
+ *     backup file through the agent backup service.
  *
  * This module emits the spec; the action calls `ScheduledTaskRunner.schedule`
  * for each entry. When the runner is not wired in (e.g. during integration
@@ -31,7 +35,6 @@
  * remains testable.
  */
 
-import type { ScheduledTaskTrigger } from "../scheduled-task/index.js";
 import type { ScheduledTaskInput } from "../wave1-types.js";
 import type { OwnerFactWindow } from "./state.js";
 
@@ -119,9 +122,10 @@ export const DEFAULT_PACK_IDEMPOTENCY_KEYS = {
   checkin: "lifeops:first-run:default:checkin",
   morningBrief: "lifeops:first-run:default:morning-brief",
   weeklyReview: "lifeops:first-run:default:weekly-review",
+  localBackup: "lifeops:first-run:default:local-backup",
 } as const;
 
-function cronAtLocal(hhmm: string, tz: string): ScheduledTaskTrigger {
+function cronAtLocal(hhmm: string, tz: string): ScheduledTaskInput["trigger"] {
   const [h, m] = hhmm.split(":").map((part) => Number.parseInt(part, 10));
   return {
     kind: "cron",
@@ -249,6 +253,30 @@ export function buildDefaultsPack(
         slot: "weeklyReview",
         pausedByDefault: true,
       },
+    },
+    {
+      kind: "output",
+      promptInstructions:
+        "Create an encrypted local backup of the agent's persisted state.",
+      trigger: {
+        kind: "cron",
+        expression: "0 */6 * * *",
+        tz: timezone,
+      },
+      priority: "low",
+      respectsGlobalPause: false,
+      source: "first_run",
+      createdBy: agentId,
+      ownerVisible: true,
+      idempotencyKey: DEFAULT_PACK_IDEMPOTENCY_KEYS.localBackup,
+      output: { destination: "memory", persistAs: "task_metadata" },
+      metadata: {
+        firstRunPack: "defaults",
+        slot: "localBackup",
+        systemOperation: "agent.localBackup",
+        backupTarget: "local-file",
+      },
+      executionProfile: "bg-heavy-fgs",
     },
   ];
 }

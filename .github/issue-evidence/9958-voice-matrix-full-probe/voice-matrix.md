@@ -1,6 +1,6 @@
 # Voice Live Matrix
 
-Generated: 2026-06-30T06:45:47.854Z
+Generated: 2026-06-30T06:57:29.880Z
 Host: darwin arm64 (Shaws-MacBook-Pro.local)
 
 | Cell | Status | Platform | Class | Probe / Result | Command |
@@ -12,7 +12,7 @@ Host: darwin arm64 (Shaws-MacBook-Pro.local)
 | `linux.fused-acoustic.barge-in` | skip | linux | barge-in | requires Linux runner; current=darwin | `bun run --cwd plugins/plugin-local-inference voice:bargein-bench` |
 | `macos.electrobun.live-roundtrip` | skip | macos-electrobun | desktop-live-voice | set ELIZA_VOICE_MACOS_ELECTROBUN_READY=1 on a macOS Electrobun voice runner with loopback mic/audio capture | `bun run --cwd packages/app test:desktop:voice` |
 | `windows.electrobun.live-roundtrip` | skip | windows-electrobun | desktop-live-voice | requires Windows runner; current=darwin | `bun run --cwd packages/app test:desktop:voice` |
-| `ios.sim-or-device.voice-roundtrip` | skip | ios | mobile-live-voice | set ELIZA_VOICE_IOS_READY=1 after installing a current iOS simulator/device build with voice assets | `bun run --cwd packages/app capture:ios-sim -- --issue 9958 --slug voice-ios` |
+| `ios.sim-or-device.voice-roundtrip` | skip | ios | mobile-live-voice | set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets | `bun run --cwd packages/app capture:ios-sim -- --issue 9958 --slug voice-ios` |
 | `ios.talkmode.native-bridge` | pending | ios | native-bridge-unit | macOS Swift Package test toolchain is available | `swift test --disable-index-store --package-path plugins/plugin-native-talkmode/ios` |
 | `ios.swabble.native-bridge` | pending | ios | native-bridge-unit | macOS Swift Package test toolchain is available | `swift test --disable-index-store --package-path plugins/plugin-native-swabble/ios` |
 | `android.device.voice-roundtrip` | skip | android | mobile-live-voice | set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed | `bun run --cwd packages/app test:e2e:android:local` |

@@ -30,6 +30,9 @@ function makeSteps(): { steps: PostReadyBootSteps; order: string[] } {
     registerAppRoutePlugins: vi.fn(record("appRoutes", Promise.resolve())),
     registerTrainingRuntimeHooks: vi.fn(record("training", Promise.resolve())),
     registerCoreSensitiveRequestAdapters: vi.fn(record("sensitive", undefined)),
+    registerSubAgentCredentialBridge: vi.fn(
+      record("credentialBridge", Promise.resolve()),
+    ),
     shouldStartTelegramStandaloneBot: vi.fn(record("telegramCheck", false)),
     ensureTelegramBotPolling: vi.fn(record("telegramPoll", Promise.resolve())),
     stopTelegramBotPolling: vi.fn(record("telegramStop", undefined)),
@@ -85,6 +88,7 @@ describe("runPostReadyBootTail — phase split", () => {
       "appRoutes",
       "training",
       "sensitive",
+      "credentialBridge",
       "telegramCheck",
       "telegramStop",
       "triggerBridge",

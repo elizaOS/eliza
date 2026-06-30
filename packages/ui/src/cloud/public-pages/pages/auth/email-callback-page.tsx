@@ -15,13 +15,31 @@ import {
 } from "../../../../cloud-ui/components/auth/authorize-return";
 import { BrandButton } from "../../../../cloud-ui/components/brand/brand-button";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { LocalStewardAuthContext } from "../../../shell/StewardProvider";
+import {
+  LocalStewardAuthContext,
+  StewardAuthProvider,
+} from "../../../shell/StewardProvider";
 import { syncStewardSessionCookie } from "../../lib/steward-session";
 import { usePageTitle } from "../../lib/use-page-title";
 
 type CallbackStatus = "verifying" | "success" | "error";
 
+// `public: true` routes render WITHOUT the per-route Steward wrapper (see
+// `CloudRouteElement` / `app-authorize-page` #9881), so this page must mount the
+// shell's `StewardAuthProvider` itself. Otherwise the magic-link verify has no
+// Steward context, `auth` is null, and a first-time signed-out visitor (no
+// stored token, cold browser) just gets "Sign-in is unavailable". `/auth` is
+// already in `StewardAuthProvider`'s runtime route patterns, so the Steward
+// runtime mounts even for that visitor.
 export default function EmailCallbackPage() {
+  return (
+    <StewardAuthProvider>
+      <EmailCallbackContent />
+    </StewardAuthProvider>
+  );
+}
+
+function EmailCallbackContent() {
   const t = useCloudT();
   const [searchParams] = useSearchParams();
   const auth = useContext(LocalStewardAuthContext);
