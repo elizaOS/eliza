@@ -38,6 +38,20 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Character not found" }, 404);
     }
 
+    // SECURITY: charactersService.getById is NOT org/visibility-scoped, so gate
+    // clonability — a caller may only clone a character they own, or one that is
+    // public/template. Otherwise any authenticated user could clone (and read
+    // back) another org's PRIVATE character config (system prompt, knowledge,
+    // settings) — cross-tenant IP disclosure. 404 (not 403) to avoid an
+    // existence oracle. Mirrors the app-link route's guard.
+    if (
+      original.user_id !== user.id &&
+      !original.is_public &&
+      !original.is_template
+    ) {
+      return c.json({ success: false, error: "Character not found" }, 404);
+    }
+
     const cloneName = body.name || `${original.name} (Copy)`;
 
     const clonedCharacter = await charactersService.create({
