@@ -1,6 +1,7 @@
 # Issue #9967 - Location native plugin androidTest
 
-Branch: `fix/9967-location-androidtest`
+Branch: `fix/9967-location-foreground-prompt-tristate`
+(follow-up to merged PR #10437 / branch `fix/9967-location-androidtest`)
 
 ## What Changed
 
@@ -10,12 +11,22 @@ Branch: `fix/9967-location-androidtest`
 - Keeps the JS wire shape unchanged: `LocationPlugin` still resolves the same
   `location`/`background` permission fields and `coords` position payload.
 - Preserves the foreground permission contract by keeping
-  `getPermissionState("location")` as the source for `location`, so a fresh
-  never-asked install can still report `"prompt"` instead of collapsing to
-  `"denied"`.
+  `getPermissionState("location")` as the source for the production `location`
+  field, so a fresh never-asked install can still report `"prompt"` instead of
+  collapsing to `"denied"`.
+- Adds an Activity-aware tri-state reader read,
+  `LocationFixReader.readForegroundPermissionStatus(activity)`, so the on-device
+  evidence/showcase surface reports the same `granted | denied | prompt` contract
+  the JS side expects (a never-asked permission reads `"prompt"`, never
+  `"denied"`) via `ActivityCompat.shouldShowRequestPermissionRationale` — mirroring
+  the iOS `.notDetermined → "prompt"` mapping. The earlier showcase/test path
+  collapsed this to a boolean (`granted`/`denied`), which could not express the
+  `"prompt"` state.
 - Adds `LocationFixReaderDeviceStateInstrumentedTest`, which runs on real Android and
   checks:
   - foreground location permission grant via real Android permission state,
+  - the tri-state `readForegroundPermissionStatus` read through a launched
+    Activity (granted → `"granted"`, value within the JS contract set),
   - enabled provider state via live `LocationManager`,
   - Android `Location` result shaping.
 - Adds a test-only `LocationReaderShowcaseActivity` for screenshot and
@@ -85,8 +96,35 @@ Screenshot and screen recording evidence:
 
 The showcase Activity renders the live `LocationFixReader` output: foreground
 permission state and `LocationManager` provider state. The captured Pixel 6a and
-emulator screens show `foreground granted: true` and live enabled provider rows
+emulator screens show the granted foreground state and live enabled provider rows
 from Android rather than a desktop Chromium bridge mock.
+
+> Re-capture note: the captured screenshots/recordings above predate the
+> tri-state showcase change — they render the old boolean label
+> `foreground granted: true`. The showcase now prints the tri-state
+> `foreground: granted` (and `prompt`/`denied` in those states). The on-device
+> substance (granted foreground + live providers) is unchanged; only the label
+> string differs. Re-run
+> `:elizaos-capacitor-location:connectedDebugAndroidTest` and re-capture the
+> showcase on a booted emulator/device to refresh the label before final merge
+> sign-off if a reviewer needs the exact new string on-screen.
+
+## Verification status of the tri-state follow-up
+
+The connected-device results above were captured before the tri-state
+`readForegroundPermissionStatus` reader read + its instrumented assertion +
+the showcase label change were added. Those Kotlin additions were verified
+statically (imports resolve to already-declared AndroidX deps —
+`androidx.core` via `appcompat`, `androidx.test:core` for `ActivityScenario`)
+and the TypeScript side was re-verified host-side
+(`bun run --cwd plugins/plugin-native-location test` → 16/16 pass;
+`tsc --noEmit` clean). The Android Gradle compile + `connectedDebugAndroidTest`
+could not be re-run in this isolated worktree: the host-app Android project
+(`packages/app-core/platforms/android`) requires a full Capacitor-synced
+`node_modules` (the `@capacitor/*` android source dirs are absent here), which
+is the heavy full-app setup out of scope for this change. Re-run
+`:elizaos-capacitor-location:connectedDebugAndroidTest` on a synced checkout to
+refresh the device evidence for the new assertion + showcase label.
 
 ## Notes
 
