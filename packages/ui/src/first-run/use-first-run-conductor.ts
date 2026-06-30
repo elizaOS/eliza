@@ -44,6 +44,14 @@ import {
 const GREETING =
   "Hi — I'm Eliza. Let's get you set up. First, where should your agent run?";
 
+/** User-facing recovery message when a cloud provisioning call rejects. */
+function cloudFailureMessage(err: unknown): string {
+  const detail = err instanceof Error ? err.message : "";
+  return detail
+    ? `Couldn't connect to Eliza Cloud: ${detail}. Pick how to run your agent again.`
+    : "Couldn't connect to Eliza Cloud. Pick how to run your agent again.";
+}
+
 function makeTurn(
   id: string,
   text: string,
@@ -298,23 +306,25 @@ export function useFirstRunConductor(): void {
               { secretRequest: cloudOAuthSecretRequest("pending") },
             ),
           );
-          void listOrAutoProvisionCloudAgent(
-            draftRef.current,
-            portsRef.current,
-          ).then((outcome) => {
-            if (
-              outcome.kind === "done" ||
-              outcome.kind === "pick-cloud-agent"
-            ) {
-              replaceTurn(
-                "first-run:cloud-oauth",
-                makeTurn("first-run:cloud-oauth", "Eliza Cloud connected.", {
-                  secretRequest: cloudOAuthSecretRequest("saved"),
-                }),
-              );
-            }
-            handleOutcome(outcome);
-          });
+          void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
+            .then((outcome) => {
+              if (
+                outcome.kind === "done" ||
+                outcome.kind === "pick-cloud-agent"
+              ) {
+                replaceTurn(
+                  "first-run:cloud-oauth",
+                  makeTurn("first-run:cloud-oauth", "Eliza Cloud connected.", {
+                    secretRequest: cloudOAuthSecretRequest("saved"),
+                  }),
+                );
+              }
+              handleOutcome(outcome);
+            })
+            // Unlike runFirstRunFinish (which funnels throws to seedError), these
+            // cloud entrypoints can reject (OAuth/network); without this the
+            // "Connecting…" turn strands on screen as an unhandled rejection.
+            .catch((err: unknown) => seedError(cloudFailureMessage(err)));
           return true;
         }
         // local + "other" (bring your own keys) both run the local backend;
@@ -339,9 +349,19 @@ export function useFirstRunConductor(): void {
             ...draftRef.current,
             localInference: "cloud-inference",
           };
+        } else if (id === "other") {
+          // "Other / configure in Settings" (bring your own keys): run locally
+          // but wire NO provider, so the finish path's `needsProviderSetup`
+          // handoff surfaces the "Open Settings" banner where the user picks a
+          // subscription provider (Anthropic / Codex / z.ai / Kimi). NOT
+          // all-local — that would silently download an on-device model and
+          // suppress the banner.
+          draftRef.current = {
+            ...draftRef.current,
+            localInference: "configure-later",
+          };
         } else {
-          // on-device + "other" both run all-local; "other" surfaces the
-          // needs-provider-setup banner (open Settings) from the finish path.
+          // on-device: run every model locally (kicks off the download now).
           draftRef.current = {
             ...draftRef.current,
             localInference: "all-local",
@@ -366,7 +386,9 @@ export function useFirstRunConductor(): void {
           authToken,
           cloudPrefsRef.current,
           portsRef.current,
-        ).then(handleOutcome);
+        )
+          .then(handleOutcome)
+          .catch((err: unknown) => seedError(cloudFailureMessage(err)));
         return true;
       }
 
@@ -380,7 +402,7 @@ export function useFirstRunConductor(): void {
 
       return false;
     },
-    [seedTurn, replaceTurn, handleOutcome, completeFirstRun],
+    [seedTurn, replaceTurn, handleOutcome, completeFirstRun, seedError],
   );
   const handleActionRef = React.useRef(handleFirstRunAction);
   handleActionRef.current = handleFirstRunAction;
