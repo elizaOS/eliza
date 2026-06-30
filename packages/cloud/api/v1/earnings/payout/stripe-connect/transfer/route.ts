@@ -92,6 +92,10 @@ async function handleTransfer(c: AppContext) {
   // can never let us transfer more fiat than the creator actually earned. On
   // success exactly `amount` is debited, so the compensation below (which
   // re-credits `amount`) is also exact.
+  // dedupeBySourceId makes the debit IDEMPOTENT on idempotency_key: a legitimate
+  // same-key retry (the point of the param) reuses the prior adjustment instead
+  // of debiting again, while Stripe replays the single transfer — so the creator
+  // is never debited 2× and paid 1×.
   const debit = await redeemableEarningsService.reduceEarnings({
     userId: user_id,
     amount,
@@ -100,6 +104,7 @@ async function handleTransfer(c: AppContext) {
     description: "Stripe Connect fiat payout",
     metadata: { payout_method: "stripe_connect" },
     requireSufficientBalance: true,
+    dedupeBySourceId: true,
   });
   if (!debit.success) {
     return Response.json(
@@ -130,21 +135,65 @@ async function handleTransfer(c: AppContext) {
       newBalance: debit.newBalance,
     });
   } catch (error) {
-    // Compensate: the transfer never settled, so restore the debited balance.
-    await redeemableEarningsService.addEarnings({
-      userId: user_id,
-      amount,
-      source: "creator_revenue_share",
-      sourceId: `${idempotency_key}:refund`,
-      description: "Stripe Connect payout failed — balance restored",
-      metadata: { payout_method: "stripe_connect", refund_of: idempotency_key },
-    });
-    logger.error("[StripeConnect] transfer failed; balance restored", {
-      userId: user_id,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    // Only auto-compensate when Stripe DEFINITIVELY rejected the request, i.e.
+    // no transfer was created (bad params, inactive account, insufficient
+    // platform balance, auth/permission). On an AMBIGUOUS failure — a network
+    // timeout or a Stripe-side error where the create may have reached Stripe and
+    // settled — re-crediting would double-pay (fiat already left, balance
+    // restored). In that case we hold the debit and surface for reconciliation
+    // rather than mint balance back on uncertainty. The refund is itself
+    // idempotent (dedupeBySourceId) so a route retry can't double-credit.
+    const stripeType =
+      error && typeof error === "object" && "type" in error
+        ? String((error as { type: unknown }).type)
+        : "";
+    const definitivelyNotCreated =
+      stripeType === "StripeInvalidRequestError" ||
+      stripeType === "StripeAuthenticationError" ||
+      stripeType === "StripePermissionError" ||
+      stripeType === "StripeRateLimitError";
+
+    if (definitivelyNotCreated) {
+      await redeemableEarningsService.addEarnings({
+        userId: user_id,
+        amount,
+        source: "creator_revenue_share",
+        sourceId: `${idempotency_key}:refund`,
+        description: "Stripe Connect payout rejected — balance restored",
+        metadata: {
+          payout_method: "stripe_connect",
+          refund_of: idempotency_key,
+        },
+        dedupeBySourceId: true,
+      });
+      logger.error("[StripeConnect] transfer rejected; balance restored", {
+        userId: user_id,
+        stripeType,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return Response.json(
+        { success: false, error: "Transfer rejected; balance restored" },
+        { status: 502 },
+      );
+    }
+
+    // Ambiguous outcome — the transfer may have settled. Do NOT re-credit.
+    logger.error(
+      "[StripeConnect] transfer status UNKNOWN; balance HELD for reconciliation",
+      {
+        userId: user_id,
+        idempotencyKey: idempotency_key,
+        stripeType,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
     return Response.json(
-      { success: false, error: "Transfer failed; balance restored" },
+      {
+        success: false,
+        error:
+          "Transfer status unknown; balance held pending manual reconciliation",
+        needsReconciliation: true,
+      },
       { status: 502 },
     );
   }
