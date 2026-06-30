@@ -194,11 +194,15 @@ function filesFromRootScripts(reachedRoots, rootScripts, fileUniverse) {
  * every workspace package, so a fan-out task reaches packages/app's same-named
  * script — unless the invocation carries a positive `--filter=@elizaos/<pkg>`
  * allowlist that omits app (e.g. `build:core`). Negative `--filter=!…` filters
- * still include app.
+ * still include app, and Turbo's dependency selectors `<pkg>...` (with-deps) /
+ * `...<pkg>` (with-dependents) both include the named package, so the leading/
+ * trailing `...` is stripped before the equality check.
  */
 function turboFanoutTasks(body) {
   const positiveElizaFilters = [
-    ...body.matchAll(/--filter=['"]?(@elizaos\/[a-z0-9.-]+)/g),
+    ...body.matchAll(
+      /--filter=['"]?(?:\.\.\.)?(@elizaos\/[a-z0-9-]+)(?:\.\.\.)?/g,
+    ),
   ].map((m) => m[1]);
   if (
     positiveElizaFilters.length &&

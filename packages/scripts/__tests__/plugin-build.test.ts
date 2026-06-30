@@ -8,6 +8,10 @@
  *
  * Lives in packages/scripts/__tests__ (not a workspace member), so a workflow
  * must invoke it explicitly via `bun test packages/scripts/__tests__/plugin-build.test.ts`.
+ *
+ * The driver resolves `tsc` to an absolute path (`TSC_BIN`, via node module
+ * resolution) and runs it as `node ${TSC_BIN}`, so the declaration-emit cases run
+ * without `node_modules/.bin` on PATH — exactly the bare `bun test` CI shape.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
@@ -51,6 +55,11 @@ function makeFixture(opts: {
   pkg?: Record<string, unknown>;
   src?: string;
   tsconfig?: boolean;
+  /** Real dependency packages to drop into the fixture's node_modules. */
+  deps?: Record<
+    string,
+    { packageJson?: Record<string, unknown>; index: string }
+  >;
 }) {
   fixtureDir = mkdtempSync(path.join(tmpdir(), "plugin-build-"));
   writeFileSync(
@@ -76,6 +85,21 @@ function makeFixture(opts: {
       path.join(fixtureDir, "tsconfig.json"),
       JSON.stringify(TS_CONFIG, null, 2),
     );
+  }
+  for (const [name, dep] of Object.entries(opts.deps ?? {})) {
+    const depDir = path.join(fixtureDir, "node_modules", name);
+    mkdirSync(depDir, { recursive: true });
+    writeFileSync(
+      path.join(depDir, "package.json"),
+      JSON.stringify({
+        name,
+        version: "1.0.0",
+        type: "module",
+        main: "index.js",
+        ...dep.packageJson,
+      }),
+    );
+    writeFileSync(path.join(depDir, "index.js"), dep.index);
   }
   process.chdir(fixtureDir);
   return fixtureDir;
@@ -105,6 +129,35 @@ describe("buildPlugin (shared driver, issue #10200)", () => {
     expect(existsSync(distPath("index.d.ts"))).toBe(true);
     expect(readFileSync(distPath("index.d.ts"), "utf8")).toContain("add");
     // No JS bundle on the tsc-only path.
+    expect(existsSync(distPath("index.js"))).toBe(false);
+  });
+
+  test("dtsEmitDeclarationOnly passes --emitDeclarationOnly (tsconfig that also emits JS)", async () => {
+    // tsconfig WITHOUT emitDeclarationOnly: only --emitDeclarationOnly on the CLI
+    // keeps this from emitting index.js alongside the declarations.
+    makeFixture({ tsconfig: false });
+    writeFileSync(
+      path.join(fixtureDir, "tsconfig.json"),
+      JSON.stringify(
+        {
+          compilerOptions: {
+            ...TS_CONFIG.compilerOptions,
+            emitDeclarationOnly: false,
+          },
+          include: ["src"],
+        },
+        null,
+        2,
+      ),
+    );
+    await buildPlugin({
+      name: "@elizaos/fixture-plugin",
+      targets: [],
+      dtsProject: "tsconfig.json",
+      dtsEmitDeclarationOnly: true,
+    });
+    expect(existsSync(distPath("index.d.ts"))).toBe(true);
+    // --emitDeclarationOnly suppressed the JS the tsconfig would otherwise emit.
     expect(existsSync(distPath("index.js"))).toBe(false);
   });
 
@@ -171,28 +224,68 @@ describe("buildPlugin (shared driver, issue #10200)", () => {
     );
   });
 
-  test("externals:auto keeps a declared dependency un-inlined in the bundle", async () => {
-    makeFixture({
-      pkg: { dependencies: { "node-fetch": "^3.0.0" } },
-      src: 'import fetch from "node-fetch";\nexport const f = fetch;\n',
-    });
+  test("renames + flatten work with no tsc (pure-fs orchestration, no dtsProject)", async () => {
+    // Decoupled from the compiler so a moveTreeContents/rename regression is
+    // caught even where tsc is unavailable.
+    makeFixture({ tsconfig: false });
     await buildPlugin({
       name: "@elizaos/fixture-plugin",
-      externals: "auto",
       targets: [
         {
           label: "Node",
           entry: "src/index.ts",
-          outSubdir: ".",
+          outSubdir: "node",
           target: "node",
           format: "esm",
+          renames: [["index.js", "index.node.js"]],
         },
       ],
+      flatten: [{ from: "node", to: "." }],
     });
-    const bundle = readFileSync(distPath("index.js"), "utf8");
-    // The dep is externalized: a bare `from "node-fetch"` import survives rather
-    // than the module being inlined into the bundle.
-    expect(bundle).toContain("node-fetch");
+    expect(existsSync(distPath("index.node.js"))).toBe(true);
+    expect(existsSync(distPath("node"))).toBe(false);
+    expect(readFileSync(distPath("index.node.js"), "utf8")).toContain("add");
+  });
+
+  test("externals:auto externalizes a declared dep; externals:[] inlines it", async () => {
+    // The marker body proves externalization: an externalized dep keeps only the
+    // bare import (no marker bytes), an inlined dep carries the marker into the
+    // bundle. Asserting the import *specifier* alone would be tautological.
+    const MARKER = "INLINED_MARKER_9f3a2b";
+    const depIndex = `export const m = "${MARKER}";\nexport default m;\n`;
+    const fixtureOpts = {
+      pkg: { dependencies: { "fixture-marker-dep": "1.0.0" } },
+      src: 'import m from "fixture-marker-dep";\nexport const v = m;\n',
+      deps: { "fixture-marker-dep": { index: depIndex } },
+    };
+    const target = {
+      label: "Node",
+      entry: "src/index.ts",
+      outSubdir: ".",
+      target: "node" as const,
+      format: "esm" as const,
+    };
+
+    makeFixture(fixtureOpts);
+    await buildPlugin({
+      name: "@elizaos/fixture-plugin",
+      externals: "auto",
+      targets: [target],
+    });
+    const autoBundle = readFileSync(distPath("index.js"), "utf8");
+    expect(autoBundle).toContain("fixture-marker-dep"); // bare import survives
+    expect(autoBundle).not.toContain(MARKER); // body NOT inlined → externalized
+    process.chdir(originalCwd);
+    rmSync(fixtureDir, { recursive: true, force: true });
+
+    makeFixture(fixtureOpts);
+    await buildPlugin({
+      name: "@elizaos/fixture-plugin",
+      externals: [],
+      targets: [target],
+    });
+    const inlinedBundle = readFileSync(distPath("index.js"), "utf8");
+    expect(inlinedBundle).toContain(MARKER); // body inlined → NOT externalized
   });
 
   test("a failing Bun.build aborts with a thrown error (no silent success)", async () => {
@@ -213,26 +306,52 @@ describe("buildPlugin (shared driver, issue #10200)", () => {
     ).rejects.toThrow();
   });
 
-  test("dtsTolerant swallows a failed declaration emit and keeps JS outputs", async () => {
-    // No tsconfig present → tsc invocation fails; tolerant mode warns + continues.
+  test("dtsTolerant swallows a failed declaration emit and warns, keeping JS outputs", async () => {
+    // No tsconfig present → tsc fails (TS5058, missing project) → tolerant mode
+    // must warn + continue rather than abort. Spy on console.warn to prove the
+    // tolerant branch actually fired (not that tsc silently never ran).
     makeFixture({ tsconfig: false });
-    await buildPlugin({
-      name: "@elizaos/fixture-plugin",
-      targets: [
-        {
-          label: "Node",
-          entry: "src/index.ts",
-          outSubdir: ".",
-          target: "node",
-          format: "esm",
-        },
-      ],
-      dtsProject: "tsconfig.json",
-      dtsTolerant: true,
-    });
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(" "));
+    };
+    try {
+      await buildPlugin({
+        name: "@elizaos/fixture-plugin",
+        targets: [
+          {
+            label: "Node",
+            entry: "src/index.ts",
+            outSubdir: ".",
+            target: "node",
+            format: "esm",
+          },
+        ],
+        dtsProject: "tsconfig.json",
+        dtsTolerant: true,
+      });
+    } finally {
+      console.warn = realWarn;
+    }
     // JS target survived even though declaration emit failed.
     expect(existsSync(distPath("index.js"))).toBe(true);
     expect(existsSync(distPath("index.d.ts"))).toBe(false);
+    // The tolerant branch logged the specific warning.
+    expect(warnings.some((w) => /declaration generation failed/i.test(w))).toBe(
+      true,
+    );
+  });
+
+  test("dtsProject failure WITHOUT dtsTolerant rejects (the strict default)", async () => {
+    makeFixture({ tsconfig: false });
+    await expect(
+      buildPlugin({
+        name: "@elizaos/fixture-plugin",
+        targets: [],
+        dtsProject: "tsconfig.json",
+      }),
+    ).rejects.toThrow();
   });
 });
 
