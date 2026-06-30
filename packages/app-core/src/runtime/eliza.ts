@@ -50,13 +50,13 @@ import {
 } from "@elizaos/shared";
 import { getApps, loadRegistry } from "../registry";
 import { registerCoreSensitiveRequestAdapters } from "../services/sensitive-requests/index.js";
-import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.js";
 import {
   type AppRoutePluginRegistryEntry,
   drainAppRoutePluginLoaders,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
+import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.js";
 import { shouldWarmupVoice, warmVoiceModels } from "./voice-warmup";
 
 type EmbeddingProgressCallback = (

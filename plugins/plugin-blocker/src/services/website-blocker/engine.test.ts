@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSelfControlBlockPolicy,
-  isWebsiteBlockSinkholeAddress,
   isWebsiteBlockedByPolicy,
+  isWebsiteBlockSinkholeAddress,
   normalizeWebsiteTargets,
   parseResolvedAddressesFromDscacheutilOutput,
 } from "./engine.ts";
@@ -63,14 +63,22 @@ describe("website-blocker engine", () => {
     });
 
     it("normalizes the query (URL + case) before matching", () => {
-      expect(isWebsiteBlockedByPolicy(policy, "https://EXAMPLE.com/feed")).toBe(true);
+      expect(isWebsiteBlockedByPolicy(policy, "https://EXAMPLE.com/feed")).toBe(
+        true,
+      );
     });
 
     it("exact match mode does NOT block subdomains; subdomain mode does", () => {
-      const exact = { blockedWebsites: ["example.com"], allowedWebsites: [], matchMode: "exact" as const };
+      const exact = {
+        blockedWebsites: ["example.com"],
+        allowedWebsites: [],
+        matchMode: "exact" as const,
+      };
       const subdomain = { ...exact, matchMode: "subdomain" as const };
       expect(isWebsiteBlockedByPolicy(exact, "deep.example.com")).toBe(false);
-      expect(isWebsiteBlockedByPolicy(subdomain, "deep.example.com")).toBe(true);
+      expect(isWebsiteBlockedByPolicy(subdomain, "deep.example.com")).toBe(
+        true,
+      );
     });
 
     it("allow-list wins over the block-list", () => {
@@ -89,7 +97,13 @@ describe("website-blocker engine", () => {
 
   describe("isWebsiteBlockSinkholeAddress", () => {
     it("detects loopback / null-route sinkholes", () => {
-      for (const a of ["0.0.0.0", "127.0.0.1", "127.5.5.5", "::1", "  0.0.0.0  "]) {
+      for (const a of [
+        "0.0.0.0",
+        "127.0.0.1",
+        "127.5.5.5",
+        "::1",
+        "  0.0.0.0  ",
+      ]) {
         expect(isWebsiteBlockSinkholeAddress(a)).toBe(true);
       }
     });
@@ -103,7 +117,12 @@ describe("website-blocker engine", () => {
   describe("parseResolvedAddressesFromDscacheutilOutput", () => {
     it("extracts ip/ipv6 addresses and dedups", () => {
       const out = parseResolvedAddressesFromDscacheutilOutput(
-        ["name: example.com", "ip_address: 1.2.3.4", "ip_address: 1.2.3.4", "ipv6_address: ::1"].join("\n"),
+        [
+          "name: example.com",
+          "ip_address: 1.2.3.4",
+          "ip_address: 1.2.3.4",
+          "ipv6_address: ::1",
+        ].join("\n"),
       );
       expect(out).toEqual(["1.2.3.4", "::1"]);
     });
