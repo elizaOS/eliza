@@ -60,7 +60,7 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "../../state/app-store.ts";
-import { isLowMemoryDevice } from "../../state/bounded-view-lru";
+import { isUnderMemoryPressure } from "../../state/bounded-view-lru";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
@@ -150,14 +150,14 @@ function emitBundleTelemetry(
 }
 
 function getBundleCacheMaxEntries(): number {
-  if (isLowMemoryDevice()) {
+  if (isUnderMemoryPressure()) {
     return LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES;
   }
   return DEFAULT_BUNDLE_CACHE_MAX_ENTRIES;
 }
 
 function getBundleCacheTtlMs(): number {
-  if (isLowMemoryDevice()) return LOW_MEMORY_BUNDLE_CACHE_TTL_MS;
+  if (isUnderMemoryPressure()) return LOW_MEMORY_BUNDLE_CACHE_TTL_MS;
   return DEFAULT_BUNDLE_CACHE_TTL_MS;
 }
 
