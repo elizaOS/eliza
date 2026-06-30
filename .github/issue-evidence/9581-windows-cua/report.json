@@ -1,7 +1,7 @@
 {
   "issue": 9581,
-  "generatedAt": "2026-06-29T16:56:32.389Z",
-  "gitHead": "03e0b1fc94",
+  "generatedAt": "2026-06-30T00:33:12.419Z",
+  "gitHead": "d07c1b4cca",
   "host": {
     "hostname": "eliza",
     "machineModel": "QEMU Standard PC (Q35 + ICH9, 2009)",
@@ -12,7 +12,7 @@
     "arch": "x64"
   },
   "options": {
-    "outDir": "C:\\Users\\Administrator\\Documents\\eliza\\.claude\\worktrees\\romantic-torvalds-95c5f5\\.github\\issue-evidence\\9581-windows-cua",
+    "outDir": "C:\\Users\\Administrator\\Documents\\eliza\\.claude\\worktrees\\sleepy-tu-6f5ad1\\.github\\issue-evidence\\9581-windows-cua",
     "skipBrowser": false,
     "skipInput": false
   },
@@ -29,8 +29,8 @@
       "machineModel": "QEMU Standard PC (Q35 + ICH9, 2009)",
       "windowsVersion": "Microsoft Windows 11 Pro 10.0.26200",
       "buildId": "26200",
-      "validatedAt": "2026-06-29T16:56:32.389Z",
-      "validator": "bun scripts/capture-windows-desktop-evidence.mjs (03e0b1fc94)",
+      "validatedAt": "2026-06-30T00:33:12.419Z",
+      "validator": "bun scripts/capture-windows-desktop-evidence.mjs (d07c1b4cca)",
       "artifacts": [
         ".github/issue-evidence/9581-windows-cua/screenshot-primary.png",
         ".github/issue-evidence/9581-windows-cua/browser-evidence.png",
@@ -58,7 +58,7 @@
         "method": "captureDisplay/capturePrimaryDisplay",
         "status": "passed",
         "requiredEvidence": [
-          "primary display capture returned 845567 PNG bytes",
+          "primary display capture returned 1436607 PNG bytes",
           "captured dimensions 1728x1052 match display 0",
           "screenshot artifact .github/issue-evidence/9581-windows-cua/screenshot-primary.png"
         ]
@@ -68,11 +68,11 @@
         "method": "ComputerUseService desktop actions",
         "status": "passed",
         "requiredEvidence": [
-          "launched controlled Notepad (pid 14796); resolved window [46656] \"*RESEARCH-LIST.txt - Notepad\"",
-          "mouse_move succeeded at 758,648 on display 0",
+          "launched controlled Notepad (pid 12420); resolved window [22420] \"Notepad\"",
+          "mouse_move succeeded at 804,510 on display 0",
           "click succeeded inside the controlled Notepad text area",
           "key_combo ctrl+a succeeded in the controlled text field",
-          "type wrote and verified marker eliza-win-cua-1782752194983 (read back via select-all/copy)",
+          "type wrote and verified marker eliza-win-cua-1782779605616 (read back via select-all/copy)",
           "post-action screenshots were requested by service configuration"
         ]
       },
@@ -81,8 +81,8 @@
         "method": "listWindows/focusWindow",
         "status": "passed",
         "requiredEvidence": [
-          "listWindows returned 3 visible window(s) with id + title metadata (finding #2 resolved — not 0)",
-          "3 window(s) had a usable id + title; focusWindow/switchWindow succeeded for [52064] \"Claude\"",
+          "listWindows returned 2 visible window(s) with id + title metadata (finding #2 resolved — not 0)",
+          "2 window(s) had a usable id + title; focusWindow/switchWindow succeeded for [52064] \"Claude\"",
           "window operation failures surface actionable diagnostics through the service result"
         ]
       },
@@ -103,7 +103,7 @@
         "method": "readClipboard/writeClipboard",
         "status": "passed",
         "requiredEvidence": [
-          "Set-Clipboard wrote test marker windows-clipboard-1782752210096",
+          "Set-Clipboard wrote test marker windows-clipboard-1782779635409",
           "Get-Clipboard -Raw read the same test marker (trailing newline normalized)",
           "large payload cap and command failures remain covered by unit tests"
         ]
@@ -113,9 +113,9 @@
         "method": "PowerShell terminal execution safety",
         "status": "passed",
         "requiredEvidence": [
-          "allowed harmless PowerShell command 'echo eliza-term-1782752210157' succeeded and echoed the token",
+          "allowed harmless PowerShell command 'echo eliza-term-1782779635811' succeeded and echoed the token",
           "dangerous 'Remove-Item -Recurse 'C:\\'' was rejected: Command blocked: PowerShell recursive deletion of drive root.",
-          "a 1s timeout killed a 5s Start-Sleep in 1045ms (timeout enforced)"
+          "a 1s timeout killed a 5s Start-Sleep in 1119ms (timeout enforced)"
         ]
       },
       {
@@ -231,7 +231,7 @@
     "screenshotCapture": {
       "status": "passed",
       "requiredEvidence": [
-        "primary display capture returned 845567 PNG bytes",
+        "primary display capture returned 1436607 PNG bytes",
         "captured dimensions 1728x1052 match display 0",
         "screenshot artifact .github/issue-evidence/9581-windows-cua/screenshot-primary.png"
       ],
@@ -249,56 +249,56 @@
           "name": "\\\\.\\DISPLAY33"
         },
         "screenshotQuality": {
-          "byteLength": 845567,
+          "byteLength": 1436607,
           "width": 1728,
           "height": 1052,
           "sampledPixels": 1817856,
-          "colorBuckets": 1566,
-          "dominantRatio": 0.4170632877411632
+          "colorBuckets": 1637,
+          "dominantRatio": 0.4590721157231376
         }
       }
     },
     "mouseKeyboardInput": {
       "status": "passed",
       "requiredEvidence": [
-        "launched controlled Notepad (pid 14796); resolved window [46656] \"*RESEARCH-LIST.txt - Notepad\"",
-        "mouse_move succeeded at 758,648 on display 0",
+        "launched controlled Notepad (pid 12420); resolved window [22420] \"Notepad\"",
+        "mouse_move succeeded at 804,510 on display 0",
         "click succeeded inside the controlled Notepad text area",
         "key_combo ctrl+a succeeded in the controlled text field",
-        "type wrote and verified marker eliza-win-cua-1782752194983 (read back via select-all/copy)",
+        "type wrote and verified marker eliza-win-cua-1782779605616 (read back via select-all/copy)",
         "post-action screenshots were requested by service configuration"
       ],
       "details": {
         "notepadWindow": {
-          "id": "46656",
-          "title": "*RESEARCH-LIST.txt - Notepad",
-          "app": "Notepad"
+          "id": "22420",
+          "title": "Notepad",
+          "app": "unknown"
         },
         "bounds": {
-          "x": 110,
-          "y": 294,
+          "x": 156,
+          "y": 156,
           "width": 1296,
           "height": 707
         },
         "coordinate": [
-          758,
-          648
+          804,
+          510
         ],
         "displayId": 0,
-        "marker": "eliza-win-cua-1782752194983",
-        "launchedPid": 14796
+        "marker": "eliza-win-cua-1782779605616",
+        "launchedPid": 12420
       }
     },
     "windowListFocus": {
       "status": "passed",
       "requiredEvidence": [
-        "listWindows returned 3 visible window(s) with id + title metadata (finding #2 resolved — not 0)",
-        "3 window(s) had a usable id + title; focusWindow/switchWindow succeeded for [52064] \"Claude\"",
+        "listWindows returned 2 visible window(s) with id + title metadata (finding #2 resolved — not 0)",
+        "2 window(s) had a usable id + title; focusWindow/switchWindow succeeded for [52064] \"Claude\"",
         "window operation failures surface actionable diagnostics through the service result"
       ],
       "details": {
-        "windowCount": 3,
-        "usableCount": 3,
+        "windowCount": 2,
+        "usableCount": 2,
         "focusedWindow": {
           "id": "52064",
           "title": "Claude",
@@ -308,11 +308,6 @@
           {
             "id": "52064",
             "title": "Claude",
-            "app": "unknown"
-          },
-          {
-            "id": "18936",
-            "title": "Codex",
             "app": "unknown"
           },
           {
@@ -350,12 +345,12 @@
     "clipboardRoundTrip": {
       "status": "passed",
       "requiredEvidence": [
-        "Set-Clipboard wrote test marker windows-clipboard-1782752210096",
+        "Set-Clipboard wrote test marker windows-clipboard-1782779635409",
         "Get-Clipboard -Raw read the same test marker (trailing newline normalized)",
         "large payload cap and command failures remain covered by unit tests"
       ],
       "details": {
-        "marker": "windows-clipboard-1782752210096",
+        "marker": "windows-clipboard-1782779635409",
         "rawReadbackLength": 33,
         "restoredOriginalClipboard": true
       }
@@ -363,14 +358,14 @@
     "terminalSafety": {
       "status": "passed",
       "requiredEvidence": [
-        "allowed harmless PowerShell command 'echo eliza-term-1782752210157' succeeded and echoed the token",
+        "allowed harmless PowerShell command 'echo eliza-term-1782779635811' succeeded and echoed the token",
         "dangerous 'Remove-Item -Recurse 'C:\\'' was rejected: Command blocked: PowerShell recursive deletion of drive root.",
-        "a 1s timeout killed a 5s Start-Sleep in 1045ms (timeout enforced)"
+        "a 1s timeout killed a 5s Start-Sleep in 1119ms (timeout enforced)"
       ],
       "details": {
-        "harmlessOutput": "eliza-term-1782752210157",
+        "harmlessOutput": "eliza-term-1782779635811",
         "dangerousError": "Command blocked: PowerShell recursive deletion of drive root.",
-        "timeoutElapsedMs": 1045
+        "timeoutElapsedMs": 1119
       }
     },
     "approvalMode": {
