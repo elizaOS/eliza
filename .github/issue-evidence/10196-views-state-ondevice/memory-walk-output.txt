@@ -1,0 +1,16 @@
+baseline(home): PSS=146MB RSS=252MB
+  cycle1 after 13 views: PSS=147MB RSS=254MB
+  cycle1 after 26 views: PSS=215MB RSS=321MB
+  cycle1 after 39 views: PSS=152MB RSS=259MB
+  cycle1 after 52 views: PSS=146MB RSS=253MB
+  cycle1 END (home): PSS=146MB RSS=253MB
+  cycle2 after 13 views: PSS=148MB RSS=255MB
+  cycle2 after 26 views: PSS=215MB RSS=321MB
+  cycle2 after 39 views: PSS=159MB RSS=266MB
+  cycle2 after 52 views: PSS=149MB RSS=256MB
+  cycle2 END (home): PSS=146MB RSS=253MB
+
+=== native memory across 104 view-navigations (2 cycles × 52) ===
+baseline(home)=146MB  final(home)=147MB  RSS 252→254MB
+PSS final/baseline: 1% → OK: native PSS bounded across 2 full view-walk cycles (no per-cycle accumulation → no runaway leak)
+DONE
