@@ -59,7 +59,7 @@ describe("registerSubAgentCredentialBridge — parent runtime", () => {
 
     await registerSubAgentCredentialBridge(runtime);
 
-    const adapter = runtime.getService<{ requestCredentials: unknown }>(
+    const adapter = runtime.getService<Service & { requestCredentials: unknown }>(
       "SubAgentCredentialBridgeAdapter",
     );
     const bridge = runtime.getService<Service & SubAgentCredentialBridge>(
@@ -67,9 +67,7 @@ describe("registerSubAgentCredentialBridge — parent runtime", () => {
     );
     expect(adapter).not.toBeNull();
     expect(bridge).not.toBeNull();
-    expect(typeof (adapter as { requestCredentials: unknown }).requestCredentials).toBe(
-      "function",
-    );
+    expect(typeof adapter?.requestCredentials).toBe("function");
     expect(typeof bridge?.declareScope).toBe("function");
     expect(typeof bridge?.tunnelCredential).toBe("function");
 
@@ -85,13 +83,15 @@ describe("registerSubAgentCredentialBridge — parent runtime", () => {
     const bridge = runtime.getService<Service & SubAgentCredentialBridge>(
       "SubAgentCredentialBridge",
     );
-    const adapter = runtime.getService<{
-      tryRetrieveCredential: (input: {
-        childSessionId: string;
-        key: string;
-        scopedToken: string;
-      }) => Promise<{ status: string; value?: string }>;
-    }>("SubAgentCredentialBridgeAdapter");
+    const adapter = runtime.getService<
+      Service & {
+        tryRetrieveCredential: (input: {
+          childSessionId: string;
+          key: string;
+          scopedToken: string;
+        }) => Promise<{ status: string; value?: string }>;
+      }
+    >("SubAgentCredentialBridgeAdapter");
 
     const scope: SubAgentCredentialScope = await bridge!.declareScope({
       childSessionId: "pty-1-abc",
