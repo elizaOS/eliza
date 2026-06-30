@@ -68,26 +68,27 @@ function FtuWelcomeWidget({
     markHomeWidgetActed(WIDGET_KEY);
   };
 
-  // Deliberately flat — no card/border/background/rounded-pill chrome. The
-  // welcome sits directly on the home: a greeting line and the starters as plain
-  // tappable text (hover underline is the only affordance).
+  // Deliberately flat: no card chrome. The welcome sits directly on the home as
+  // an editorial intro line, with the starters as warm-tinted tappable chips and
+  // a quiet dismiss. The greeting carries real hierarchy (a serene display line)
+  // so a cold home still feels composed, not empty.
   return (
     <section
       className={spanClassName}
       data-testid="chat-widget-ftu-welcome"
-      aria-label="Welcome — getting started"
+      aria-label="Getting started"
     >
-      <p className="text-sm font-medium text-white">
-        Welcome — ask me anything to get started.
+      <p className="text-[0.95rem] font-medium leading-snug text-white/95 [text-shadow:0_1px_3px_rgba(0,0,0,0.4)]">
+        Ask me anything to get started.
       </p>
-      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         {suggestions.map((text) => (
           <button
             key={text}
             type="button"
             data-testid="ftu-welcome-chip"
             onClick={() => onChip(text)}
-            className="text-sm text-white/75 underline-offset-4 transition-colors hover:text-white hover:underline"
+            className="rounded-full border border-[rgba(255,106,31,0.22)] bg-[rgba(255,106,31,0.1)] px-3 py-1.5 text-[0.8125rem] font-medium text-white/85 transition-colors duration-150 hover:border-[rgba(255,106,31,0.4)] hover:bg-[rgba(255,106,31,0.18)] hover:text-white active:scale-[0.97] motion-reduce:active:scale-100"
           >
             {text}
           </button>
@@ -97,7 +98,7 @@ function FtuWelcomeWidget({
           data-testid="ftu-welcome-dismiss"
           aria-label="Dismiss welcome"
           onClick={() => dismissHomeWidget(WIDGET_KEY)}
-          className="text-sm text-white/60 transition-colors hover:text-white/80"
+          className="px-1 text-[0.8125rem] text-white/50 transition-colors hover:text-white/80"
         >
           Dismiss
         </button>

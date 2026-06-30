@@ -282,8 +282,12 @@ export function HomeScreen({
           {/* The prioritized data widgets (#9143) flow in below the base. Each
             self-hides when empty, so the host renders nothing until a widget has
             something to show — the base above keeps the dashboard from ever
-            being just the floating chat. */}
-          <div className={enterClass} style={{ animationDelay: "110ms" }}>
+            being just the floating chat. A little extra top space sets the
+            widget stack apart from the editorial header as its own section. */}
+          <div
+            className={cn(enterClass, "mt-1")}
+            style={{ animationDelay: "110ms" }}
+          >
             <WidgetHost
               slot="home"
               layout="grid"

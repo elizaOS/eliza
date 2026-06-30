@@ -52,11 +52,19 @@ export function useWidgetNavigation(): {
 
 export type HomeWidgetTone = "default" | "danger" | "warn";
 
-// Default values sit on the orange home wallpaper; keep them high contrast.
+// The datum tone. Default is high-contrast white on the warm-dark card; danger/
+// warn carry the accent so an at-risk widget reads at a glance.
 const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
   default: "text-white",
   danger: "text-danger",
   warn: "text-warn",
+};
+
+// The icon chip tone: a warm-tinted resting chip, escalating to the status hue.
+const TONE_CHIP_CLASS: Record<HomeWidgetTone, string> = {
+  default: "bg-[rgba(255,106,31,0.12)] text-[#ffb488]",
+  danger: "bg-danger/15 text-danger",
+  warn: "bg-warn/15 text-warn",
 };
 
 const TONE_DOT_CLASS: Record<HomeWidgetTone, string> = {
@@ -104,18 +112,33 @@ export function HomeWidgetCard({
       title={label}
       onClick={onActivate}
       className={cn(
-        // Chromeless (#10708): no border/background/rounded card — content sits
-        // directly on the wallpaper. Neutral-resting hover affordance is an
-        // opacity change (no background fill), per the neutral hover rule.
-        "group flex w-full items-center gap-3 px-3 py-2.5 text-left",
-        "transition-opacity hover:opacity-80",
+        // A SOLID warm-dark tile (var(--surface-1)) with a warm hairline edge,
+        // so it sits in the ember field instead of letting it bleed through
+        // (the old bg-black/55 was translucent). A left accent rail keys the
+        // tone. Tactile: a hair lift + warmer edge on hover, scale-press on tap.
+        "group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/[0.07] bg-[var(--surface-1)] px-3.5 py-3 text-left",
+        "transition-[transform,border-color,background-color] duration-150",
+        "hover:border-[rgba(255,106,31,0.28)] hover:bg-[var(--surface-2)]",
+        "active:scale-[0.985] motion-reduce:active:scale-100",
       )}
     >
+      {/* Left accent rail: a quiet ember stripe at rest, brightening on hover,
+          a deliberate edge detail, not a generic one-sided border. */}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-2.5 left-0 w-[3px] rounded-full transition-colors duration-150",
+          tone === "danger"
+            ? "bg-danger/70"
+            : tone === "warn"
+              ? "bg-warn/70"
+              : "bg-[rgba(255,106,31,0.35)] group-hover:bg-[rgba(255,106,31,0.7)]",
+        )}
+      />
       <span
         className={cn(
-          "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/85 [&>svg]:h-4 [&>svg]:w-4",
-          tone === "danger" && "text-danger",
-          tone === "warn" && "text-warn",
+          "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl [&>svg]:h-[18px] [&>svg]:w-[18px]",
+          TONE_CHIP_CLASS[tone],
         )}
       >
         {icon}
@@ -123,21 +146,24 @@ export function HomeWidgetCard({
           <span
             aria-hidden
             className={cn(
-              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-black/40",
+              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-[#1d130c]",
               TONE_DOT_CLASS[tone],
             )}
           />
         ) : null}
       </span>
 
-      {/* Icon-only: the lucide icon identifies the widget; the label is folded
-          into the button's aria-label (and the hover title), never shown as a
-          visible eyebrow. Only the single high-priority datum renders. */}
-      <span className="flex min-w-0 flex-1 flex-col">
+      {/* The label is now a visible eyebrow (the widgets are the hero, so they
+          read as a real dashboard), with the single high-priority datum below
+          it. When a widget supplies no datum, the label carries the row alone. */}
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-white/45">
+          {label}
+        </span>
         {value != null ? (
           <span
             className={cn(
-              "truncate text-sm font-semibold leading-tight",
+              "truncate text-[0.9375rem] font-semibold leading-tight",
               TONE_VALUE_CLASS[tone],
             )}
           >
@@ -147,19 +173,19 @@ export function HomeWidgetCard({
       </span>
 
       {meta != null ? (
-        <span className="shrink-0 text-2xs tabular-nums text-white/60">
+        <span className="shrink-0 text-[0.6875rem] tabular-nums text-white/55">
           {meta}
         </span>
       ) : null}
       {badge != null ? (
         <span
           className={cn(
-            "shrink-0 rounded-full px-1.5 py-0.5 text-2xs font-semibold",
+            "shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold tabular-nums",
             tone === "danger"
               ? "bg-danger/15 text-danger"
               : tone === "warn"
                 ? "bg-warn/15 text-warn"
-                : "bg-accent-subtle text-accent",
+                : "bg-[rgba(255,106,31,0.16)] text-[#ffb488]",
           )}
         >
           {badge}
