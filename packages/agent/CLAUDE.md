@@ -121,6 +121,16 @@ Capability router (remote plugins — see `docs/capability-router-remote-plugins
 
 Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`, `ELIZA_CONVERSATION_COMPACTOR`.
 
+Stability (memory watchdog — `runtime/memory-watchdog.ts`, #10197): the boot
+sampler (`runtime/boot-telemetry.ts`) only *records* RSS; the watchdog *acts* on
+it by requesting a clean restart through the existing `requestRestart()` seam
+(host exits `RESTART_EXIT_CODE=75`, the `app-core/scripts/run-node.mjs`
+supervisor relaunches) — never a silent `process.exit`.
+- `ELIZA_MEMORY_WATCHDOG` — `1`/`true` enables it (default **off**).
+- `ELIZA_MEMORY_WATCHDOG_RSS_MB` — RSS restart threshold in MB (default `1536`, floor `128`).
+- `ELIZA_MEMORY_WATCHDOG_INTERVAL_MS` — sample interval (default `30000`, floor `1000`).
+- `ELIZA_MEMORY_WATCHDOG_SUSTAINED` — consecutive over-threshold samples before a restart, to debounce transient spikes (default `3`, floor `1`).
+
 ## How to extend
 
 - **Add an Eliza action/provider to the agent plugin:** add the file under `src/actions/` or `src/providers/`, export it through the directory barrel (`actions/index.ts`), then wire it into the `actions`/`providers` arrays in `createElizaPlugin()` (`runtime/eliza-plugin.ts`). Parent actions with subactions are flattened via `promoteSubactionsToActions(...)`.

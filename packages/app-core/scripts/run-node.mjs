@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { registerRestartAndShouldAbort } from "./lib/restart-guard.mjs";
 import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 import {
   chooseElizaRuntime,
@@ -233,17 +234,15 @@ const runNode = () => {
     // Re-run the full runner (including the build-staleness check) so any
     // source changes are compiled before the new process starts.
     if (exitCode === RESTART_EXIT_CODE) {
-      // Guard against rapid restart loops.
-      const now = Date.now();
-      restartTimestamps.push(now);
-      // Trim timestamps outside the window.
-      while (
-        restartTimestamps.length > 0 &&
-        restartTimestamps[0] < now - RESTART_WINDOW_MS
+      // Guard against rapid restart loops (window/trim/threshold in restart-guard.mjs).
+      if (
+        registerRestartAndShouldAbort(
+          restartTimestamps,
+          Date.now(),
+          MAX_RESTARTS_IN_WINDOW,
+          RESTART_WINDOW_MS,
+        )
       ) {
-        restartTimestamps.shift();
-      }
-      if (restartTimestamps.length > MAX_RESTARTS_IN_WINDOW) {
         logRunner(
           `Restart loop detected: ${restartTimestamps.length} restarts in ${RESTART_WINDOW_MS / 1000}s — aborting.`,
         );
