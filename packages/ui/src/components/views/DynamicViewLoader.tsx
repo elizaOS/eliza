@@ -63,6 +63,7 @@ import {
 import {
   HEAP_PRESSURE_EVENT,
   isUnderMemoryPressure,
+  planModuleCacheEvictions,
 } from "../../state/bounded-view-lru";
 import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
 import { useTranslation } from "../../state/TranslationContext.hooks";
@@ -228,28 +229,18 @@ function armBundleEntryRetentionTimer(entry: ViewBundleCacheEntry): void {
 function pruneBundleModuleCache(
   options: { force?: boolean; reason?: EvictReason } = {},
 ): void {
-  const now = Date.now();
-  const ttlMs = options.force ? 0 : getBundleCacheTtlMs();
-  const reason = options.reason ?? (options.force ? "memorypressure" : "ttl");
-  const idleEntries = [...bundleModuleCache.values()]
-    .filter((entry) => entry.refCount === 0)
-    .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-
-  for (const entry of idleEntries) {
-    if (options.force || now - entry.lastUsedAt >= ttlMs) {
-      cleanupBundleEntry(entry, reason);
-    }
-  }
-
-  const maxEntries = options.force ? 0 : getBundleCacheMaxEntries();
-  let retained = [...bundleModuleCache.values()].filter(
-    (entry) => entry.refCount === 0,
-  );
-  retained = retained.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-  while (bundleModuleCache.size > maxEntries && retained.length > 0) {
-    const entry = retained.shift();
-    if (!entry) break;
-    cleanupBundleEntry(entry, options.reason ?? "lru");
+  const ttlReason =
+    options.reason ?? (options.force ? "memorypressure" : "ttl");
+  const lruReason = options.reason ?? "lru";
+  const plan = planModuleCacheEvictions([...bundleModuleCache.values()], {
+    now: Date.now(),
+    ttlMs: options.force ? 0 : getBundleCacheTtlMs(),
+    maxEntries: options.force ? 0 : getBundleCacheMaxEntries(),
+    force: options.force ?? false,
+    totalSize: bundleModuleCache.size,
+  });
+  for (const { entry, phase } of plan) {
+    cleanupBundleEntry(entry, phase === "ttl" ? ttlReason : lruReason);
   }
 }
 
