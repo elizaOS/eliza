@@ -1970,6 +1970,48 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/backups**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/backups" && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ backups: [] }),
+      });
+      return;
+    }
+    if (url.pathname === "/api/backups" && request.method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          backup: {
+            fileName: "ui-smoke.agent-backup.json",
+            path: "ui-smoke.agent-backup.json",
+            createdAt: SMOKE_GENERATED_AT,
+            agentId: SMOKE_AGENT.id,
+            stateSha256: "ui-smoke-state",
+            sizeBytes: 0,
+          },
+        }),
+      });
+      return;
+    }
+    if (
+      url.pathname === "/api/backups/restore" &&
+      request.method() === "POST"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ restored: true, requiresRestart: true }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
   await page.route("**/api/asr/local-inference/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

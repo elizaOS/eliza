@@ -196,6 +196,7 @@ export interface ScheduledTaskDispatchRecord {
   contextRequest: ScheduledTask["contextRequest"];
   consolidationBatchId?: string;
   output?: ScheduledTask["output"];
+  metadata?: ScheduledTask["metadata"];
 }
 
 export interface ScheduledTaskDispatcher {
@@ -1088,6 +1089,7 @@ export function createScheduledTaskRunner(
         promptInstructions: claimed.promptInstructions,
         contextRequest: claimed.contextRequest,
         output: claimed.output,
+        metadata: claimed.metadata,
       });
     } catch (error) {
       const wrapped = error instanceof Error ? error : new Error(String(error));

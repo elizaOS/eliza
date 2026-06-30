@@ -31,7 +31,7 @@ function readEnvValue(
 
 /** Structural shape of a runtime that can resolve a per-agent setting. */
 export interface SettingReader {
-  getSetting(key: string): string | boolean | number | null;
+  getSetting(key: string): string | boolean | number | null | undefined;
 }
 
 export interface ResolveSettingOptions {
@@ -53,9 +53,9 @@ export function resolveSetting(
   if (fromRuntime !== undefined && fromRuntime !== null) {
     return String(fromRuntime);
   }
-  const env = options.env ?? process.env;
-  const value = env?.[key]?.trim();
-  return value && value.length > 0 ? value : options.defaultValue;
+  return (
+    readEnvValue(options.env ?? process.env, [key]) ?? options.defaultValue
+  );
 }
 
 export function getElizaNamespace(

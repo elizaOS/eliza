@@ -8,7 +8,7 @@
  */
 
 import crypto from "node:crypto";
-import { getAgentEventService } from "@elizaos/agent";
+import { createLocalAgentBackup, getAgentEventService } from "@elizaos/agent";
 import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
 import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import type {
@@ -254,6 +254,14 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
+const LOCAL_AGENT_BACKUP_OPERATION = "agent.localBackup";
+
+function isLocalAgentBackupDispatch(
+  record: ScheduledTaskDispatchRecord,
+): boolean {
+  return record.metadata?.systemOperation === LOCAL_AGENT_BACKUP_OPERATION;
+}
+
 function deniedDecisionToDispatchResult(
   decision: Awaited<
     ReturnType<
@@ -287,6 +295,28 @@ export function createProductionScheduledTaskDispatcher(opts: {
     async dispatch(
       record: ScheduledTaskDispatchRecord,
     ): Promise<DispatchResult> {
+      if (isLocalAgentBackupDispatch(record)) {
+        const backup = await createLocalAgentBackup(
+          opts.runtime,
+          {} as Parameters<typeof createLocalAgentBackup>[1],
+        );
+        logger.info(
+          {
+            src: "lifeops:scheduled-task",
+            agentId: opts.runtime.agentId,
+            taskId: record.taskId,
+            fileName: backup.fileName,
+            stateSha256: backup.stateSha256,
+            sizeBytes: backup.sizeBytes,
+          },
+          "[lifeops-scheduled-task] Local agent backup completed",
+        );
+        return {
+          ok: true,
+          messageId: `agent-backup:${backup.fileName}`,
+        };
+      }
+
       const registry = getChannelRegistry(opts.runtime);
       const channel = registry?.get(record.channelKey) ?? null;
       if (!channel?.send) {

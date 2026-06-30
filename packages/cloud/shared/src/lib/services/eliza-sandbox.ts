@@ -11,6 +11,7 @@ import {
   type AgentBackupSnapshotType,
   type AgentSandbox,
   type AgentSandboxBackup,
+  type AgentSandboxBackupMetadata,
   type AgentSandboxStatus,
   agentSandboxesRepository,
   prepareAgentBackupInsertData,
@@ -137,6 +138,15 @@ export interface BridgeResponse {
   error?: { code: number; message: string };
 }
 
+type AgentRuntimeHealthPayload = {
+  ready?: unknown;
+  runtime?: unknown;
+  database?: unknown;
+  plugins?: { failed?: unknown } | null;
+  agentState?: unknown;
+  startup?: { lastError?: unknown } | null;
+};
+
 export interface SnapshotResult {
   success: boolean;
   backup?: AgentSandboxBackup;
@@ -165,6 +175,9 @@ const HEARTBEAT_PROBE_RETRY_MS = 2_000;
 // on success) is the downtime clock. The ~30s heartbeat itself keeps the
 // WireGuard NAT mapping warm, so a reachable agent never trips this.
 const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
+const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
+const SNAPSHOT_RESTORE_TIMEOUT_MS = 120_000;
+const UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS = 30_000;
 // Hard cap on the container+VPN teardown during agent delete. The underlying
 // docker rm (60s) and headscale cleanup (15s) are each internally bounded, but
 // an EARLY hang (SSH connect / provider init) was not — and a single stuck node
@@ -1376,11 +1389,8 @@ export class ElizaSandboxService {
   ): Promise<string> {
     const isWorkerRuntime = this.isCloudflareWorkerRuntime();
     const baseDomain = this.getConfiguredAgentBaseDomain();
-    if (isWorkerRuntime) {
-      const publicEndpoint = getElizaAgentPublicWebUiUrl(
-        rec,
-        baseDomain ? { baseDomain, path } : { path },
-      );
+    if (isWorkerRuntime && baseDomain) {
+      const publicEndpoint = getElizaAgentPublicWebUiUrl(rec, { baseDomain, path });
       if (publicEndpoint) return publicEndpoint;
     }
 
@@ -3427,6 +3437,13 @@ export class ElizaSandboxService {
       throw error;
     }
 
+    if (type === "pre-upgrade" && !stateData.manifest) {
+      return {
+        success: false,
+        error: "Pre-upgrade snapshot did not include a full-agent manifest",
+      };
+    }
+
     const backup = await agentSandboxesRepository.createBackup(
       await this.buildBackupInput(rec.id, type, stateData, sizeBytes),
     );
@@ -3478,7 +3495,7 @@ export class ElizaSandboxService {
               sandbox_record_id: sandboxRecordId,
               snapshot_type: type,
               // The state_data jsonb holds a BackupDelta for incremental rows.
-              state_data: plan.delta as unknown as AgentBackupStateData,
+              state_data: plan.delta,
               size_bytes: estimateDeltaBytes(plan.delta),
               backup_kind: "incremental",
               parent_backup_id: latest.id,
@@ -3528,9 +3545,13 @@ export class ElizaSandboxService {
     }
 
     if (rec.status === "running" && rec.bridge_url) {
-      const restoreState =
-        (await agentSandboxesRepository.getReconstructedBackupState(backup.id)) ??
-        (backup.state_data as AgentBackupStateData);
+      const restoreState = await agentSandboxesRepository.getReconstructedBackupState(backup.id);
+      if (!restoreState) {
+        return {
+          success: false,
+          error: `Backup ${backup.id} could not be reconstructed`,
+        };
+      }
       await this.pushState(rec, restoreState);
       return { success: true, backup };
     }
@@ -3539,9 +3560,9 @@ export class ElizaSandboxService {
     return prov.success ? { success: true, backup } : { success: false, error: prov.error };
   }
 
-  async listBackups(agentId: string, orgId: string): Promise<AgentSandboxBackup[]> {
+  async listBackups(agentId: string, orgId: string): Promise<AgentSandboxBackupMetadata[]> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    return rec ? agentSandboxesRepository.listBackups(rec.id) : [];
+    return rec ? agentSandboxesRepository.listBackupMetadata(rec.id) : [];
   }
 
   // Heartbeat
@@ -3622,6 +3643,82 @@ export class ElizaSandboxService {
       }
     }
     return false;
+  }
+
+  private async verifyUpgradeRuntimeHealth(args: {
+    agent: Pick<AgentSandbox, "id" | "environment_vars">;
+    bridgeUrl: string;
+  }): Promise<{ success: true } | { success: false; error: string }> {
+    let endpoint: string;
+    try {
+      endpoint = new URL("/api/health", args.bridgeUrl).toString();
+    } catch (error) {
+      return {
+        success: false,
+        error: `invalid bridge URL: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+
+    try {
+      const res = await withTimeout(
+        fetch(endpoint, {
+          method: "GET",
+          headers: {
+            ...this.getAgentJsonHeaders(args.agent),
+            Accept: "application/json",
+          },
+          signal: AbortSignal.timeout(UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS),
+        }),
+        UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS + 1_000,
+        "blue runtime health gate",
+      );
+      if (!res.ok) {
+        return {
+          success: false,
+          error: `/api/health returned HTTP ${res.status}`,
+        };
+      }
+
+      const health = (await res.json()) as AgentRuntimeHealthPayload;
+      const failures: string[] = [];
+      if (health.ready !== true) {
+        failures.push(`ready=${String(health.ready)}`);
+      }
+      if (health.runtime !== "ok") {
+        failures.push(`runtime=${String(health.runtime)}`);
+      }
+      if (health.database !== "ok") {
+        failures.push(`database=${String(health.database)}`);
+      }
+      const rawFailedPlugins = health.plugins?.failed ?? 0;
+      const failedPlugins =
+        typeof rawFailedPlugins === "number" ? rawFailedPlugins : Number(rawFailedPlugins);
+      if (!Number.isFinite(failedPlugins)) {
+        failures.push(`plugins.failed=${String(rawFailedPlugins)}`);
+      } else if (failedPlugins > 0) {
+        failures.push(`plugins.failed=${failedPlugins}`);
+      }
+      const startupError =
+        typeof health.startup?.lastError === "string" && health.startup.lastError.trim()
+          ? health.startup.lastError.trim()
+          : null;
+      if (startupError) {
+        failures.push(`startup.lastError=${startupError}`);
+      }
+
+      if (failures.length > 0) {
+        return {
+          success: false,
+          error: `/api/health not ready (${failures.join(", ")})`,
+        };
+      }
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   /**
@@ -4116,12 +4213,14 @@ export class ElizaSandboxService {
    *      provider's container name is deterministic (`agent-${id}`), so the
    *      blue must land on a different docker daemon. The provider's
    *      `excludeNodeId` makes this guarantee.
-   *   3. Health-check blue. If it doesn't come up, tear it down and bail —
-   *      the agent keeps running on the old container with the old image
-   *      (auto-rollback, no operator intervention).
-   *   4. Atomic UPDATE: swap the row's bridge_url / node_id / container_name
+   *   3. Health-check blue, then gate on its `/api/health` runtime readiness:
+   *      ready runtime, DB ok, and zero failed plugins. Plugin/database
+   *      migrations run during blue startup, so this is the migration verify
+   *      gate before any traffic cutover.
+   *   4. Capture a pre-upgrade snapshot from the still-live old container.
+   *   5. Atomic UPDATE: swap the row's bridge_url / node_id / container_name
    *      / image_digest. New HTTP requests hit blue from this point on.
-   *   5. Best-effort SIGTERM (30s drain) on the old container, then remove
+   *   6. Best-effort SIGTERM (30s drain) on the old container, then remove
    *      it. Already-in-flight HTTP responses on the old finish; websockets
    *      get a clean drop and reconnect to blue.
    */
@@ -4269,17 +4368,48 @@ export class ElizaSandboxService {
       };
     }
 
+    const runtimeHealth = await this.verifyUpgradeRuntimeHealth({
+      agent,
+      bridgeUrl: blueHandle.bridgeUrl,
+    });
+    if (!runtimeHealth.success) {
+      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+        logger.warn("[agent-sandbox] Failed to tear down blue after runtime readiness failure", {
+          agentId,
+          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+        }),
+      );
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: `Blue runtime readiness gate failed: ${runtimeHealth.error}`,
+      };
+    }
+
     // Capture a restore point on the OLD (still-live) container before the
     // cutover. This is the snapshot `executeDowngrade` replays when rolling
-    // back. Like every snapshot path, an image that does not serve
-    // /api/snapshot is a benign skip (SNAPSHOT_ENDPOINT_UNSUPPORTED), not an
-    // upgrade failure — the digest swap below is still the real rollback lever.
-    await this.snapshot(agentId, orgId, "pre-upgrade").catch((err) => {
-      logger.warn("[agent-sandbox] Pre-upgrade snapshot failed; continuing upgrade", {
-        agentId,
-        err: err instanceof Error ? err.message : String(err),
-      });
-    });
+    // back. A missing/partial snapshot blocks the upgrade: swapping images
+    // without a verified full-agent restore point is the data-loss class this
+    // path is designed to prevent.
+    const preUpgradeSnapshot = await this.snapshot(agentId, orgId, "pre-upgrade").catch((err) => ({
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    }));
+    if (!preUpgradeSnapshot.success) {
+      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+        logger.warn("[agent-sandbox] Failed to tear down blue after pre-upgrade snapshot failure", {
+          agentId,
+          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+        }),
+      );
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: `Pre-upgrade snapshot failed: ${preUpgradeSnapshot.error ?? "unknown error"}`,
+      };
+    }
 
     try {
       const swapped = await dbWrite.transaction(async (tx) => {
@@ -4378,9 +4508,8 @@ export class ElizaSandboxService {
    *      node, and health-check it (same guarantees as upgrade).
    *   3. Restore the `pre-upgrade` snapshot onto blue BEFORE cutover so the
    *      rolled-back agent comes up with the state it had before the upgrade.
-   *      The bridge push is guarded: an image without /api/restore (custom
-   *      tier) is a benign skip, mirroring how snapshot no-ops on
-   *      SNAPSHOT_ENDPOINT_UNSUPPORTED.
+   *      The bridge push is guarded and mandatory: an image without
+   *      `/api/restore` fails the rollback before traffic moves.
    *   4. Atomic CAS swap: point the row at blue, set `image_digest` to the
    *      prior digest, and clear the previous-image columns (the upgrade we
    *      just undid is no longer the rollback target).
@@ -4533,10 +4662,9 @@ export class ElizaSandboxService {
       };
     }
 
-    // Restore the pre-upgrade state onto blue BEFORE cutover. A missing
-    // restore point is not fatal — blue still serves the prior IMAGE, it just
-    // starts from whatever persisted state it has. An image without
-    // /api/restore (custom tier) is a benign skip, mirroring the snapshot path.
+    // Restore the pre-upgrade state onto blue BEFORE cutover. A rollback that
+    // cannot replay the verified restore point is not a rollback, so fail
+    // loudly and leave the current image serving traffic.
     const preUpgradeBackup = await agentSandboxesRepository.getLatestBackupByType(
       agent.id,
       "pre-upgrade",
@@ -4550,41 +4678,46 @@ export class ElizaSandboxService {
           await this.pushState(blueHandle.bridgeUrl, restoreState, { trusted: true });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (
-            agent.execution_tier !== "custom" ||
-            !message.startsWith("State restore failed: HTTP 404")
-          ) {
-            await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-              logger.warn(
-                "[agent-sandbox] Failed to tear down blue after rollback restore failure",
-                {
-                  agentId,
-                  err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-                },
-              ),
-            );
-            return {
-              success: false,
-              oldNodeId,
-              oldContainerName,
-              error: `Pre-upgrade state restore failed: ${message}`,
-            };
-          }
-          logger.info(
-            "[agent-sandbox] Rollback restore skipped: custom image has no restore endpoint",
-            { agentId, backupId: preUpgradeBackup.id },
+          await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+            logger.warn("[agent-sandbox] Failed to tear down blue after rollback restore failure", {
+              agentId,
+              err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+            }),
           );
+          return {
+            success: false,
+            oldNodeId,
+            oldContainerName,
+            error: `Pre-upgrade state restore failed: ${message}`,
+          };
         }
       } else {
-        logger.warn("[agent-sandbox] Rollback restore skipped: reconstructed state was null", {
-          agentId,
-          backupId: preUpgradeBackup.id,
-        });
+        await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+          logger.warn("[agent-sandbox] Failed to tear down blue after empty rollback restore", {
+            agentId,
+            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          }),
+        );
+        return {
+          success: false,
+          oldNodeId,
+          oldContainerName,
+          error: `Pre-upgrade backup ${preUpgradeBackup.id} could not be reconstructed`,
+        };
       }
     } else {
-      logger.warn("[agent-sandbox] Rollback proceeding without a pre-upgrade snapshot", {
-        agentId,
-      });
+      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+        logger.warn("[agent-sandbox] Failed to tear down blue after missing rollback snapshot", {
+          agentId,
+          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+        }),
+      );
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: "No pre-upgrade snapshot found; refusing rollback without restore point",
+      };
     }
 
     try {
@@ -4803,7 +4936,7 @@ export class ElizaSandboxService {
     const res = await fetch(snapshotEndpoint, {
       method: "POST",
       headers: this.getAgentJsonHeaders(rec),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(SNAPSHOT_FETCH_TIMEOUT_MS),
     });
     if (res.status === 404) {
       // The deployed agent image does not expose POST /api/snapshot (only the
@@ -4934,7 +5067,7 @@ export class ElizaSandboxService {
           ? { "Content-Type": "application/json" }
           : this.getAgentJsonHeaders(sandboxOrBridgeUrl),
       body: JSON.stringify(state),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(SNAPSHOT_RESTORE_TIMEOUT_MS),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");

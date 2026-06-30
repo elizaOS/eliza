@@ -24,28 +24,41 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AgentBackupStateData } from "../../db/schemas/agent-sandboxes";
+import type {
+  AgentBackupDeltaData,
+  AgentBackupPlainStateData,
+  AgentBackupStateData,
+} from "../../db/schemas/agent-sandboxes";
 
 export type AgentBackupMemory = AgentBackupStateData["memories"][number];
 
-export interface BackupDelta {
-  /** Files added, or whose content changed, keyed by workspace-relative path. */
-  filesChanged: Record<string, string>;
-  /** File paths present in the parent state but absent in the child. */
-  filesRemoved: string[];
-  /** Top-level config keys added or whose value changed. */
-  configChanged: Record<string, unknown>;
-  /** Top-level config keys removed. */
-  configRemoved: string[];
-  /**
-   * Number of leading memories shared with the parent. The child's memory log
-   * is `parent.memories.slice(0, memoriesBaseCount)` followed by
-   * `memoriesAppended`. When the parent prefix diverges this is 0 and
-   * `memoriesAppended` carries the entire child log (a rebase).
-   */
-  memoriesBaseCount: number;
-  /** Memories appended after the shared prefix. */
-  memoriesAppended: AgentBackupMemory[];
+export type BackupDelta = AgentBackupDeltaData;
+
+export function isBackupDelta(value: AgentBackupPlainStateData): value is BackupDelta {
+  return (
+    "filesChanged" in value &&
+    "filesRemoved" in value &&
+    "configChanged" in value &&
+    "configRemoved" in value &&
+    "memoriesBaseCount" in value &&
+    "memoriesAppended" in value
+  );
+}
+
+export function requireBackupDelta(
+  value: AgentBackupPlainStateData,
+  backupId: string,
+): BackupDelta {
+  if (isBackupDelta(value)) return value;
+  throw new Error(`Incremental backup ${backupId} did not contain a delta payload`);
+}
+
+export function requireBackupStateData(
+  value: AgentBackupPlainStateData,
+  backupId: string,
+): AgentBackupStateData {
+  if (!isBackupDelta(value)) return value;
+  throw new Error(`Full backup ${backupId} did not contain a full-state payload`);
 }
 
 const EMPTY_STATE: AgentBackupStateData = {
@@ -208,6 +221,12 @@ export function planIncrementalBackup(params: {
 }): { kind: "full" } | { kind: "incremental"; delta: BackupDelta } {
   const maxChainDepth = params.maxChainDepth ?? 20;
   const maxDeltaRatio = params.maxDeltaRatio ?? 0.5;
+  // Full-agent manifests contain component blobs and per-component hashes. The
+  // legacy delta format intentionally knows only memories/config/workspaceFiles,
+  // so storing a manifest snapshot incrementally would drop the real backup
+  // surface. Keep manifest-bearing snapshots full until a component-aware delta
+  // format exists.
+  if (params.base.manifest || params.next.manifest) return { kind: "full" };
   if (params.chainDepth >= maxChainDepth) return { kind: "full" };
 
   const delta = diffBackupState(params.base, params.next);

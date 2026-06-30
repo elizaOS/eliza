@@ -107,15 +107,6 @@ export interface AgentUpgradeJobData {
   toDigest: string;
 }
 
-export interface AgentUpgradeJobResult {
-  oldNodeId: string;
-  oldContainerName: string;
-  newNodeId: string;
-  newContainerName: string;
-  newDigest: string;
-  durationMs: number;
-}
-
 export interface AgentDowngradeJobData {
   agentId: string;
   organizationId: string;
@@ -124,6 +115,15 @@ export interface AgentDowngradeJobData {
   dockerImage: string;
   /** sha256 the agent is currently on — the rollback precondition guard. */
   fromDigest: string;
+}
+
+export interface AgentUpgradeJobResult {
+  oldNodeId: string;
+  oldContainerName: string;
+  newNodeId: string;
+  newContainerName: string;
+  newDigest: string;
+  durationMs: number;
 }
 
 export interface AgentDowngradeJobResult {
@@ -589,6 +589,11 @@ export interface EnqueueAgentWakeResult {
 }
 
 export interface EnqueueAgentRestartResult {
+  job: Job;
+  created: boolean;
+}
+
+export interface EnqueueAgentDowngradeResult {
   job: Job;
   created: boolean;
 }
@@ -1208,7 +1213,7 @@ export class ProvisioningJobService {
     dockerImage: string;
     fromDigest: string;
     webhookUrl?: string;
-  }): Promise<{ created: boolean; job: Job }> {
+  }): Promise<EnqueueAgentDowngradeResult> {
     return this.enqueueLifecycleJob<AgentDowngradeJobData>({
       jobType: JOB_TYPES.AGENT_DOWNGRADE,
       jobData: {
@@ -1223,10 +1228,12 @@ export class ProvisioningJobService {
       organizationId: params.organizationId,
       userId: params.userId,
       webhookUrl: params.webhookUrl,
-      maxAttempts: 3,
+      maxAttempts: 1,
       // Same blue/green budget as upgrade + a pre-cutover snapshot restore.
       estimatedDurationMs: 180_000,
       logName: "agent_downgrade",
+      logExtras: { fromDigest: params.fromDigest },
+      idempotencyPredicates: [sql`${jobs.data}->>'fromDigest' = ${params.fromDigest}`],
     });
   }
 
