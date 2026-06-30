@@ -6,10 +6,10 @@ import agentSkillsPlugin from "@elizaos/plugin-agent-skills";
 import appControlPlugin from "@elizaos/plugin-app-control";
 import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
-import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
 import githubPlugin from "@elizaos/plugin-github";
 import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
+import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
 import shellPlugin from "@elizaos/plugin-shell";
 import streamingPlugin from "@elizaos/plugin-streaming";
 import todosPlugin from "@elizaos/plugin-todos";
@@ -755,6 +755,8 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
     "inbound attachment flows through the pipeline to a deterministic reply; it does not route an action (the read tool is core ATTACHMENT, unit-tested in core)",
   "live-inbound-attachment":
     "live-lane real-LLM counterpart of deterministic-inbound-attachment-actions; the model reads the attachment and replies in prose, routing no action",
+  "cloud-apps-read-core":
+    "live-only real-LLM trajectory exercising LIST_CLOUD_APPS against the real Cloud API (#10277); it routes via the live model, NOT a deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract and is classified here (the no-deterministic-fixture bucket). Its gating proof is the keyless bun:test suite in plugins/plugin-cloud-apps/__tests__.",
 };
 
 /**
