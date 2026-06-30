@@ -255,6 +255,7 @@ name = "eliza-cloud-api-staging"
 workers_dev = false
 routes = [
   { pattern = "staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "app-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "api-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
 
