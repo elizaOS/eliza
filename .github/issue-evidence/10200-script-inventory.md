@@ -434,25 +434,36 @@ without an owner sign-off:
 
 ## Recommended next steps (for the decluttering follow-up)
 
+> **Update:** the decluttering follow-up landed — see
+> [`10200-script-declutter.md`](./10200-script-declutter.md). The headline
+> `build:core` rework + the `packages/app` inventory + the `plugin-build`
+> self-test + the proven-dup removals are **done**. Status annotated inline below.
+
 **Safe to remove first (evidence-backed, low blast radius):**
-1. `test:cloud:playwright` — zero references; exact dup of `test:ui:playwright`.
-2. `dev:web:ui` — exact dup of `dev`; also update the one doc cell that names it.
-3. `harness` — exact dup of `start`; no real caller.
+1. `test:cloud:playwright` — ✗ **kept**: re-confirmed it backs the
+   `scenario-pr-workflow` guard pinning cloud CI to `packages/app` (removing it
+   fails that test). Not a clean removal.
+2. `dev:web:ui` — ✓ **removed** (exact dup of `dev`); doc cell + 2 e2e-config
+   comments redirected to `dev`.
+3. `harness` — ✓ **removed** in #10361 (exact dup of `start`).
 
 **Do next, with a maintainer decision (per script above):**
 - Resolve the `test:lint*` chain: **wire into CI** or delete (don't leave an
-  unenforced guard).
+  unenforced guard). — still open.
 - Collapse the pure ALIASes (`dev:cloud:full`, `lint:all`, `test:cloud:full`)
-  into their targets if no one relies on them.
+  into their targets if no one relies on them. — `dev:cloud:full` ✓ **removed**
+  (zero callers); `test:cloud:full` kept (referenced by
+  `check-live-test-artifact-coverage.mjs`); `lint:all` kept (human convenience).
 - Decide whether `local-inference:ablation*` / `lifeops:bench` root aliases earn
-  their keep given CI invokes the tools by path.
+  their keep given CI invokes the tools by path. — still open.
 
 **The real win (the issue's headline) — needs design, not just deletion:**
-- Replace `build:core`'s hand-maintained 27-`--filter` list with a derived set
-  (turbo dependency-graph filter or a generated allowlist), so test lanes stop
-  depending on a manually-curated package roster.
-- Consider folding the `:check` / `:self-test` / `:update-baseline` variant
-  families into single scripts + flags to shrink the surface.
+- ✓ **done.** `build:core`'s hand-maintained 27-`--filter` list is replaced by
+  `packages/scripts/build-core-packages.mjs` (declarative metadata) +
+  `build-core.mjs` (driver) + a drift self-test. Same Turbo invocation, now
+  guarded against package rename/removal rot.
+- Folding the `:check` / `:self-test` / `:update-baseline` variant families into
+  single scripts + flags — still open (lower priority).
 
 **Leave alone:** every `release:*` / `version:*` / `publish:*` / `db:cloud:*` /
 `bench:*` / `voice:*` / `smartglasses:*` / `dev:*` entry — all are
