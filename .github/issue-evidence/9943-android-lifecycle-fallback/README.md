@@ -90,7 +90,7 @@ W3C-standard signals that fire on every surface (web/desktop/iOS/Android WebView
 
 ## Verification
 
-- **Unit** (`packages/app/test/mobile-lifecycle.test.ts`, **14/14 pass**): new
+- **Unit** (`packages/app/test/mobile-lifecycle.test.ts`, **15/15 pass**): new
   cases assert `visibilitychange → hidden` ⇒ `APP_PAUSE_EVENT`, `→ visible` ⇒
   `APP_RESUME_EVENT`, `window offline/online` ⇒ `NETWORK_STATUS_CHANGE_EVENT`,
   and that each native+web signal pair reporting the same transition dispatches
@@ -98,10 +98,37 @@ W3C-standard signals that fire on every surface (web/desktop/iOS/Android WebView
 - **On-device** (`cdp-lifecycle-probe.txt`, `cdp-lifecycle-probe.mjs`): proves
   `visibilitychange` fires on real Android backgrounding while `appStateChange`
   does not. `app-running-emulator.png` is the running app.
-- **Caveat (honest):** the end-to-end *fixed* behavior could not be captured
-  on-device because `build:android` is currently broken on this host
-  (`@tailwindcss/vite` missing + an eliza/Milady workspace path crossover), so a
-  fresh APK carrying this change can't be produced here. The probe runs against
-  the prebuilt APK (old lifecycle), which is why it shows the **broken** state;
-  the unit test proves the new handler dispatches the events, and the probe
-  proves the `visibilitychange` signal it relies on fires on-device.
+- **Biome**:
+  `bunx @biomejs/biome check packages/app/src/mobile-lifecycle.ts packages/app/src/main.tsx packages/app/test/mobile-lifecycle.test.ts`
+  passed.
+- **Package builds**:
+  `bun run --cwd packages/core prebuild`,
+  `bun run --cwd packages/core build:node`, and
+  `bun run --cwd packages/app-core build` passed.
+- **Full Android build caveat (honest):**
+  `bun run --cwd packages/app build:android` still fails before APK packaging on
+  this host because the generated Gradle task requires a configured/pre-staged
+  fused arm64 inference lib:
+  `[copyForkLlamaLib] no fused inference lib for arm64-v8a ... set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR`.
+  That is outside this lifecycle fix; it prevents claiming a full
+  inference-capable Android APK here.
+- **Smoke Android APK**:
+  `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 bun run --cwd packages/app build:android`
+  produced
+  `packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk`.
+  The smoke APK was installed on the API-34 emulator and launched as
+  `ai.elizaos.app/.MainActivity`.
+- **Fixed on-emulator lifecycle probe**:
+  `cdp-lifecycle-probe-fixed-smoke-2.txt` was captured from the smoke APK over
+  the real app WebView:
+
+  ```
+  observer install: {"observersInstalled":true,"hasCapacitor":true,"capPlatform":"android","hasAppPlugin":true,"directListener":true,"href":"https://localhost/"}
+  direct Capacitor appStateChange (isActive) events: [false,true]
+  raw document.visibilitychange states: ["hidden","visible"]
+  app eliza:app-pause/resume events recorded: ["pause","resume"]
+  RESULT: pause=true resume=true
+  ```
+
+  `fixed-smoke-app-running-emulator.png` is the fixed smoke APK running on the
+  emulator immediately after the successful probe.
