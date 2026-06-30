@@ -3,12 +3,12 @@ import * as React from "react";
 /**
  * Current-conditions weather for the home dashboard's weather widget.
  *
- * Source: Open-Meteo (https://open-meteo.com) — free, no API key, CORS-enabled,
- * and reachable under the app CSP (`connect-src https://*`). Location comes from
- * the browser/Capacitor Geolocation API; if that is denied or unavailable we
- * fall back to a coarse IP lookup so the widget still shows something. All
- * network + clock work happens in effects (never the render path) so the home's
- * determinism gate stays clean.
+ * Source: Open-Meteo (https://open-meteo.com) — free, no API key, and reachable
+ * under the app CSP. Location comes from the browser/Capacitor Geolocation API
+ * only when permission is already granted; first-run/home load never triggers a
+ * location prompt or noisy third-party IP lookup. All network + clock work
+ * happens in effects (never the render path) so the home's determinism gate
+ * stays clean.
  *
  * The result is cached in localStorage for {@link WEATHER_TTL_MS} so remounts
  * (every home visit) paint instantly from cache and only refetch when stale.
@@ -107,44 +107,25 @@ async function geolocationAlreadyGranted(): Promise<boolean> {
   }
 }
 
-/** Resolve coordinates: precise device location ONLY if already granted (no
- *  prompt), else a coarse IP fallback. */
+/**
+ * Resolve coordinates with precise device location ONLY if already granted.
+ * Without existing permission, degrade to unavailable instead of making a
+ * browser-side IP lookup that can CORS-fail on hosted app origins.
+ */
 async function resolveCoords(): Promise<{ coords: Coords; city: string }> {
   const canUseDevice =
     typeof navigator !== "undefined" &&
     !!navigator.geolocation &&
     (await geolocationAlreadyGranted());
-  const deviceCoords = canUseDevice
-    ? await new Promise<Coords | null>((resolve) => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) =>
-            resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-          () => resolve(null),
-          { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
-        );
-      })
-    : null;
+  if (!canUseDevice) throw new Error("no-location");
 
-  // Even with device coords we want a city label, and the IP lookup supplies a
-  // fallback location when permission was denied. One request covers both.
-  try {
-    const res = await fetch("https://ipapi.co/json/");
-    if (res.ok) {
-      const ip = (await res.json()) as {
-        latitude?: number;
-        longitude?: number;
-        city?: string;
-      };
-      const coords =
-        deviceCoords ??
-        (typeof ip.latitude === "number" && typeof ip.longitude === "number"
-          ? { lat: ip.latitude, lon: ip.longitude }
-          : null);
-      if (coords) return { coords, city: ip.city?.trim() || "" };
-    }
-  } catch {
-    // IP lookup failed; fall through to device coords if we have them.
-  }
+  const deviceCoords = await new Promise<Coords | null>((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
+    );
+  });
 
   if (deviceCoords) return { coords: deviceCoords, city: "" };
   throw new Error("no-location");

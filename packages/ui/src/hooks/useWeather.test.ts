@@ -1,5 +1,53 @@
-import { describe, expect, it } from "vitest";
-import { describeWeatherCode, type WeatherKind } from "./useWeather";
+// @vitest-environment jsdom
+
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  describeWeatherCode,
+  useWeather,
+  type WeatherKind,
+} from "./useWeather";
+
+const originalFetch = globalThis.fetch;
+const originalPermissionsDescriptor = Object.getOwnPropertyDescriptor(
+  navigator,
+  "permissions",
+);
+const originalGeolocationDescriptor = Object.getOwnPropertyDescriptor(
+  navigator,
+  "geolocation",
+);
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  if (originalFetch) {
+    globalThis.fetch = originalFetch;
+  } else {
+    delete (globalThis as { fetch?: typeof fetch }).fetch;
+  }
+  if (originalPermissionsDescriptor) {
+    Object.defineProperty(
+      navigator,
+      "permissions",
+      originalPermissionsDescriptor,
+    );
+  } else {
+    delete (navigator as { permissions?: Navigator["permissions"] })
+      .permissions;
+  }
+  if (originalGeolocationDescriptor) {
+    Object.defineProperty(
+      navigator,
+      "geolocation",
+      originalGeolocationDescriptor,
+    );
+  } else {
+    delete (navigator as { geolocation?: Navigator["geolocation"] })
+      .geolocation;
+  }
+  localStorage.clear();
+});
 
 describe("describeWeatherCode", () => {
   // (code, expected kind, expected condition substring)
@@ -30,5 +78,29 @@ describe("describeWeatherCode", () => {
       kind: "cloudy",
       condition: "Cloudy",
     });
+  });
+});
+
+describe("useWeather", () => {
+  it("does not call third-party weather services without granted geolocation", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: {
+        query: vi.fn().mockResolvedValue({ state: "denied" }),
+      },
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: undefined,
+    });
+
+    const { result } = renderHook(() => useWeather());
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("unavailable");
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
