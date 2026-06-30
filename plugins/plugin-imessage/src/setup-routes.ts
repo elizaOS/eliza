@@ -22,25 +22,15 @@
  * canonical paths without the plugin-name prefix.
  */
 
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
-
-// ── Setup contract types (mirror @elizaos/app-core/api/setup-contract) ──
-
-type SetupState = "idle" | "configuring" | "paired" | "error";
-
-interface SetupStatusResponse<TDetail = unknown> {
-  connector: string;
-  state: SetupState;
-  detail?: TDetail;
-}
-
-interface SetupErrorResponse {
-  error: { code: string; message: string };
-}
-
-function setupError(code: string, message: string): SetupErrorResponse {
-  return { error: { code, message } };
-}
+import {
+  buildSetupError,
+  type IAgentRuntime,
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+  type SetupState,
+  type SetupStatusResponse,
+} from "@elizaos/core";
 
 const IMESSAGE_SERVICE_NAME = "imessage";
 
@@ -157,7 +147,7 @@ async function handleSetupStart(
   if (!setupService) {
     res
       .status(503)
-      .json(setupError("service_unavailable", "connector-setup service not registered"));
+      .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
     return;
   }
 
@@ -184,7 +174,7 @@ async function handleSetupCancel(
   if (!setupService) {
     res
       .status(503)
-      .json(setupError("service_unavailable", "connector-setup service not registered"));
+      .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
     return;
   }
 
