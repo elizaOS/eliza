@@ -19,7 +19,7 @@ export const wikipediaProvider: Provider = {
   cacheStable: false,
   cacheScope: "turn",
 
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     logger.debug("[WIKIPEDIA_MUSIC Provider] Starting provider execution");
 
     const messageText = message.content.text || "";
@@ -90,8 +90,7 @@ export const wikipediaProvider: Provider = {
       `[WIKIPEDIA_MUSIC Provider] Processing ${validEntities.length} valid entities (filtered ${detectedEntities.length - validEntities.length} URLs)`,
     );
 
-    // Determine context from state or message
-    const purpose = determineContext(state, message);
+    const purpose = "general_info" as const;
     logger.debug(`[WIKIPEDIA_MUSIC Provider] Determined context: ${purpose}`);
 
     const extractedInfo: Array<{
@@ -110,6 +109,7 @@ export const wikipediaProvider: Provider = {
           currentArtist: entity.type === "artist" ? entity.name : undefined,
           currentTrack: entity.type === "song" ? entity.name : undefined,
           currentAlbum: entity.type === "album" ? entity.name : undefined,
+          requestContext: messageText.trim(),
         };
 
         const info = await musicLibrary.extractFromWikipedia(
@@ -174,38 +174,3 @@ export const wikipediaProvider: Provider = {
     };
   },
 };
-
-/**
- * Determine context purpose from state or message
- */
-function determineContext(
-  _state: State,
-  message: Memory,
-): "dj_intro" | "music_selection" | "general_info" | "related_artists" {
-  const messageText = (message.content.text || "").toLowerCase();
-
-  if (
-    messageText.includes("introduce") ||
-    messageText.includes("intro") ||
-    messageText.includes("dj")
-  ) {
-    return "dj_intro";
-  }
-  if (
-    messageText.includes("select") ||
-    messageText.includes("suggest") ||
-    messageText.includes("recommend") ||
-    messageText.includes("play")
-  ) {
-    return "music_selection";
-  }
-  if (
-    messageText.includes("related") ||
-    messageText.includes("similar") ||
-    messageText.includes("influence")
-  ) {
-    return "related_artists";
-  }
-
-  return "general_info";
-}

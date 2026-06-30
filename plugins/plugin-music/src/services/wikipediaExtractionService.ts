@@ -6,10 +6,11 @@ import type { WikipediaClient } from "./wikipediaClient";
 const WIKIPEDIA_EXTRACTION_SERVICE_NAME = "wikipediaExtraction";
 
 export interface WikipediaExtractionContext {
-  purpose: "dj_intro" | "music_selection" | "general_info" | "related_artists";
+  purpose: "general_info";
   currentArtist?: string;
   currentTrack?: string;
   currentAlbum?: string;
+  requestContext?: string;
 }
 
 export interface ExtractedMusicInfo {
@@ -20,7 +21,6 @@ export interface ExtractedMusicInfo {
   influences?: string[];
   genres?: string[];
   interestingFacts?: string[];
-  selectionSuggestions?: string[];
 }
 
 type WikipediaExtractionSourceData =
@@ -91,6 +91,10 @@ function formatWikipediaDataForPrompt(
   return formatPromptValue(wikiData);
 }
 
+function normalizeRequestContext(value: string | undefined): string {
+  return value?.replace(/\s+/g, " ").trim().slice(0, 500) ?? "";
+}
+
 function toStringList(value: unknown): string[] | undefined {
   if (Array.isArray(value)) {
     const items = value
@@ -111,8 +115,8 @@ function toStringList(value: unknown): string[] | undefined {
 }
 
 /**
- * Service that uses LLMs to dynamically extract relevant information from Wikipedia
- * Based on context (e.g., DJ intro, music selection), extracts different information
+ * Service that uses an LLM to extract relevant music information from a
+ * Wikipedia page, scoped by the caller-supplied request context.
  */
 export class WikipediaExtractionHelper {
   capabilityDescription =
@@ -152,8 +156,10 @@ export class WikipediaExtractionHelper {
       return null;
     }
 
+    const requestContext = normalizeRequestContext(context.requestContext);
+
     // Create cache key
-    const cacheKey = `${entityType}:${entityName}:${context.purpose}`;
+    const cacheKey = [entityType, entityName, requestContext].join(":");
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
       return cached.data;
@@ -215,7 +221,10 @@ export class WikipediaExtractionHelper {
       }
 
       // Use LLM to extract relevant information based on context
-      const extractionPrompt = this.buildExtractionPrompt(wikiData, context);
+      const extractionPrompt = this.buildExtractionPrompt(wikiData, {
+        ...context,
+        requestContext: requestContext || undefined,
+      });
       const extractionResponse = await this.runtime.useModel(
         ModelType.TEXT_LARGE,
         {
@@ -259,73 +268,13 @@ Context: ${context.purpose}
 ${context.currentArtist ? `Current Artist: ${context.currentArtist}` : ""}
 ${context.currentTrack ? `Current Track: ${context.currentTrack}` : ""}
 ${context.currentAlbum ? `Current Album: ${context.currentAlbum}` : ""}
+${context.requestContext ? `User request: ${context.requestContext}` : ""}
 
 `;
 
-    switch (context.purpose) {
-      case "dj_intro":
-        return (
-          basePrompt +
-          `Extract information that would be interesting for a radio DJ introduction:
-- Interesting facts and trivia about the artist/song (prioritize fun, surprising, or noteworthy facts)
-- Genre and style information
-- Related artists or influences
-- Release year or historical context
-- Any notable achievements, awards, or interesting backstories
-- Fun anecdotes or stories about the song/artist
-- Chart positions or commercial success (if notable)
-- Cultural impact or significance
-
-Return JSON with this shape:
-{
-  "interestingFacts": ["most interesting fact"],
-  "genres": ["genre"],
-  "relatedArtists": ["artist"],
-  "influences": ["influence"],
-  "year": 2000
-}`
-        );
-
-      case "music_selection":
-        return (
-          basePrompt +
-          `Extract information that would help with intelligent music selection:
-- Related artists and influences (for discovering similar music)
-- Genre information
-- Musical style characteristics
-- Artists that influenced this artist
-- Artists that were influenced by this artist
-
-Return JSON with this shape:
-{
-  "relatedArtists": ["artist"],
-  "influences": ["influence"],
-  "genres": ["genre"],
-  "selectionSuggestions": ["artist or song name"]
-}`
-        );
-
-      case "related_artists":
-        return (
-          basePrompt +
-          `Extract all related artists, influences, and similar acts:
-- Artists that influenced this artist
-- Artists influenced by this artist
-- Similar artists or genre peers
-- Associated acts or collaborators
-
-Return JSON with this shape:
-{
-  "influences": ["influence"],
-  "relatedArtists": ["artist"],
-  "similarArtists": ["similar artist"]
-}`
-        );
-
-      default:
-        return (
-          basePrompt +
-          `Extract general music information:
+    return (
+      basePrompt +
+      `Extract general music information:
 - Genre and style
 - Related artists
 - Influences
@@ -338,8 +287,7 @@ Return JSON with this shape:
   "influences": ["influence"],
   "interestingFacts": ["fact"]
 }`
-        );
-    }
+    );
   }
 
   /**
@@ -361,9 +309,6 @@ Return JSON with this shape:
         extracted.influences = toStringList(parsedJson.influences);
         extracted.genres = toStringList(parsedJson.genres);
         extracted.interestingFacts = toStringList(parsedJson.interestingFacts);
-        extracted.selectionSuggestions = toStringList(
-          parsedJson.selectionSuggestions,
-        );
         return extracted;
       }
 
