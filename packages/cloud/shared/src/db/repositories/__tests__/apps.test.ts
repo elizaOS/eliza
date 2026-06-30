@@ -591,6 +591,36 @@ describe("AppsService.isNameAvailable", () => {
 });
 
 describe("AppsService.create organization cap", () => {
+  test("treats malformed cap values as invalid and falls back to the default", async () => {
+    if (!pgliteReady) return;
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "1abc";
+    try {
+      const { organizationId, userId } = await seedOrgAndUser();
+      await createApp({
+        name: "Existing App",
+        organization_id: organizationId,
+        created_by_user_id: userId,
+      });
+
+      const result = await appsService.create({
+        name: "Allowed By Default Cap",
+        organization_id: organizationId,
+        created_by_user_id: userId,
+        app_url: "https://default-cap.example",
+      });
+
+      expect(result.app.organization_id).toBe(organizationId);
+      expect(await appsRepository.countByOrganization(organizationId)).toBe(2);
+    } finally {
+      if (previousLimit === undefined) {
+        delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+      } else {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
+  });
+
   test("rejects before API key creation when the org is already at the configured app cap", async () => {
     if (!pgliteReady) return;
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
@@ -652,6 +682,42 @@ describe("AppsService.create organization cap", () => {
       expect(apiKey?.organization_id).toBe(organizationId);
       expect(apiKey?.user_id).toBe(userId);
     } finally {
+      if (previousLimit === undefined) {
+        delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+      } else {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
+  });
+
+  test("cleans up the generated API key when the transactional cap check rejects", async () => {
+    if (!pgliteReady) return;
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    const originalCreateIfBelowLimit = appsRepository.createIfOrganizationBelowLimit;
+    process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "25";
+    try {
+      const { organizationId, userId } = await seedOrgAndUser();
+      appsRepository.createIfOrganizationBelowLimit = async () => undefined;
+
+      await expect(
+        appsService.create({
+          name: "Race Rejected App",
+          organization_id: organizationId,
+          created_by_user_id: userId,
+          app_url: "https://race-rejected.example",
+        }),
+      ).rejects.toMatchObject({
+        name: "AppCreationLimitError",
+        organizationId,
+        limit: 25,
+      });
+
+      expect(
+        await apiKeysRepository.findByUserAndName(userId, "Race Rejected App - App API Key"),
+      ).toEqual([]);
+      expect(await appsRepository.countByOrganization(organizationId)).toBe(0);
+    } finally {
+      appsRepository.createIfOrganizationBelowLimit = originalCreateIfBelowLimit;
       if (previousLimit === undefined) {
         delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
       } else {

@@ -22,8 +22,8 @@ function resolveMaxAppsPerOrg(): number {
   const raw = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
   if (!raw) return DEFAULT_MAX_APPS_PER_ORG;
 
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
+  const value = raw.trim();
+  if (!/^[1-9]\d*$/.test(value)) {
     logger.warn("[Apps] Invalid ELIZA_CLOUD_MAX_APPS_PER_ORG; using default", {
       value: raw,
       defaultValue: DEFAULT_MAX_APPS_PER_ORG,
@@ -31,7 +31,7 @@ function resolveMaxAppsPerOrg(): number {
     return DEFAULT_MAX_APPS_PER_ORG;
   }
 
-  return parsed;
+  return Number.parseInt(value, 10);
 }
 
 export class AppNameConflictError extends Error {
