@@ -126,6 +126,7 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
+        timeout-minutes: 20
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
@@ -298,6 +299,7 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
+        timeout-minutes: 20
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
@@ -492,6 +494,7 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
+        timeout-minutes: 20
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
