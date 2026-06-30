@@ -2193,6 +2193,19 @@
       ]
     },
     {
+      "name": "GET_APP",
+      "description": "Show details about one specific Eliza Cloud app the user owns (URL, deployment status, credits used, earnings, users). Use when the user asks about a particular app by name or id.",
+      "parameters": [],
+      "descriptionCompressed": "Show details for one Eliza Cloud app by name/id.",
+      "similes": [
+        "APP_DETAILS",
+        "SHOW_APP",
+        "TELL_ME_ABOUT_APP",
+        "APP_INFO",
+        "DESCRIBE_APP"
+      ]
+    },
+    {
       "name": "GIT_PATHOLOGY",
       "description": "Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem narrative. Use when the user asks 'when did this code get bad', 'where did rot start in X', or 'analyze git pathology for Y'. Actions: report (default), list (show cached reports).",
       "parameters": [
@@ -2559,6 +2572,19 @@
             }
           }
         }
+      ]
+    },
+    {
+      "name": "LIST_CLOUD_APPS",
+      "description": "List the Eliza Cloud apps the user owns (name, URL, deployment status, and credits/earnings when present). Use when the user asks what apps they have, to see their apps, or to list their Cloud apps.",
+      "parameters": [],
+      "descriptionCompressed": "List the user's Eliza Cloud apps (name/url/status).",
+      "similes": [
+        "MY_APPS",
+        "GET_APPS",
+        "WHAT_APPS_DO_I_HAVE",
+        "MY_CLOUD_APPS",
+        "LIST_APPS"
       ]
     },
     {
