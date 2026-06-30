@@ -235,6 +235,32 @@ describe("first-run flow", () => {
     expect(plan.runtimeConfig.needsProviderSetup).toBe(false);
   });
 
+  it('routes "Other / configure in Settings" (configure-later) to the provider-setup handoff without downloading a local model (#9952 / C1)', () => {
+    const plan = buildFirstRunSubmitPlan({
+      uiLanguage: "en",
+      draft: {
+        agentName: "Eliza",
+        runtime: "local",
+        localInference: "configure-later",
+        remoteApiBase: "",
+        remoteToken: "",
+      },
+    });
+
+    // Local backend, no provider wired in the payload (the user picks one in
+    // Settings) — distinct from on-device, which downloads a model.
+    expect(plan.payload).toMatchObject({
+      deploymentTarget: { runtime: "local" },
+    });
+    expect(plan.payload.deploymentTarget).not.toHaveProperty("provider");
+    // The fix: unlike all-local, configure-later leaves needsProviderSetup TRUE,
+    // so the finish path opens the "Open Settings" banner (the #9952 handoff the
+    // "Other" choice promises). Was silently false before the C1 fix.
+    expect(plan.runtimeConfig.needsProviderSetup).toBe(true);
+    // And it must NOT kick off an on-device model download.
+    expect(firstRunDownloadsLocalModel("configure-later")).toBe(false);
+  });
+
   it("does not nag for a provider on remote-connect (the remote agent owns it)", () => {
     const plan = buildFirstRunSubmitPlan({
       uiLanguage: "en",
