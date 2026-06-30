@@ -47,13 +47,29 @@ Pixel 6a (`bluejay`), **Android 16 / API 36**, serial `27051JEGR10034` — see
 | `TEST-results-Pixel6a-Android16.xml` | JUnit XML — `tests="3" failures="0" errors="0" skipped="0"` |
 | `ai.eliza.plugins.system.SystemDeviceReaderInstrumentedTest.html` | Gradle HTML report |
 
+## Second plugin: `@elizaos/capacitor-wifi`
+
+The same pattern applied to the launcher Wi-Fi view: `WiFiStateReader` (extracted
+from `WiFiPlugin.getWifiState`) is driven on-device and asserts the **live radio
+state** — `enabled` cross-checked against an independent `WifiManager.isWifiEnabled`
+read, and RSSI present-iff-connected with a plausible dBm value.
+
+```bash
+./gradlew :elizaos-capacitor-wifi:connectedDebugAndroidTest
+```
+
+| file | what |
+|---|---|
+| `wifi-TEST-results-Pixel6a-Android16.xml` | JUnit XML — `tests="1" failures="0" errors="0"` |
+| `wifi-logcat-androidtest.txt` | on-device `TestRunner`: `run finished: 1 tests, 0 failed, 0 ignored` |
+
 ## Scope
 
-This is one column of the #9967 work-order (the System plugin). It establishes
+These are two columns of the #9967 work-order (System + Wi-Fi). They establish
 the reusable pattern — extract a `Context`-backed reader, add `src/androidTest` +
-the instrumentation runner, run `connectedDebugAndroidTest` — that the other
-native plugins (phone/messages/contacts/location/camera/wifi/mobile-signals) can
+the instrumentation runner, run `connectedDebugAndroidTest` — that the remaining
+native plugins (phone/messages/contacts/location/camera/mobile-signals) can
 follow to reach the "every native plugin has ≥1 androidTest" acceptance criterion.
-App-surface screenshots/recordings of the rendered System view require the device
-to be unlocked (this device is secure-locked; instrumented system-state tests run
+App-surface screenshots/recordings of the rendered views require the device to be
+unlocked (this device is secure-locked; instrumented system-state tests run
 regardless of keyguard, which is why they are the verifiable layer here).

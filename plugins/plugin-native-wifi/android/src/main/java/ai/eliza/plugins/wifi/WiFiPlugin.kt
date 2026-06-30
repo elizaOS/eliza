@@ -43,18 +43,20 @@ class WiFiPlugin : Plugin() {
 
     @PluginMethod
     fun getWifiState(call: PluginCall) {
-        val manager = wifiManager
-        if (manager == null) {
-            call.reject("Wi-Fi service is unavailable on this device")
+        // Device read is delegated to WiFiStateReader so it can be exercised by
+        // an instrumented androidTest without a Capacitor Bridge (issue #9967);
+        // the JS wire shape below is unchanged.
+        val state = try {
+            WiFiStateReader(context).readWifiState()
+        } catch (error: IllegalStateException) {
+            call.reject(error.message ?: "Wi-Fi service is unavailable on this device")
             return
         }
-        val info = manager.connectionInfo
-        val connected = info != null && info.networkId != -1
         val result = JSObject()
-        result.put("enabled", manager.isWifiEnabled)
-        result.put("connected", connected)
-        if (connected && info != null) {
-            result.put("rssi", info.rssi)
+        result.put("enabled", state.enabled)
+        result.put("connected", state.connected)
+        if (state.rssi != null) {
+            result.put("rssi", state.rssi)
         } else {
             result.put("rssi", JSObject.NULL)
         }
