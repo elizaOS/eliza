@@ -16,15 +16,39 @@ type RuntimeChoice = "cloud" | "local" | "other";
 type ProviderChoice = "on-device" | "elizacloud" | "other";
 type ChooserStep = "runtime" | "provider";
 
-const FIRST_RUN_CHOICE_PATTERN = /\[CHOICE:first-run\b/;
+const FIRST_RUN_RUNTIME_PROVIDER_CHOICE_PATTERN =
+  /\[CHOICE:first-run id=(?:runtime|provider)\]/;
+const FIRST_RUN_BACKUP_RESTORE_CHOICE_PATTERN =
+  /\[CHOICE:first-run id=backup-restore\]/;
+
+type FirstRunChoiceCandidate = Pick<ConversationMessage, "id"> &
+  Partial<Pick<ConversationMessage, "text">> & { content?: string };
+
+function firstRunChoiceBody(message: FirstRunChoiceCandidate): string {
+  if (typeof message.content === "string") return message.content;
+  if (typeof message.text === "string") return message.text;
+  return "";
+}
 
 export function isSyntheticFirstRunChoiceTurn(
-  message: Pick<ConversationMessage, "id" | "content">,
+  message: FirstRunChoiceCandidate,
 ): boolean {
   return (
     message.id.startsWith("first-run:") &&
-    FIRST_RUN_CHOICE_PATTERN.test(message.content)
+    FIRST_RUN_RUNTIME_PROVIDER_CHOICE_PATTERN.test(firstRunChoiceBody(message))
   );
+}
+
+export function hasPendingFirstRunBackupRestoreChoice(
+  messages: FirstRunChoiceCandidate[],
+): boolean {
+  const hasBackupRestoreChoice = messages.some(
+    (message) =>
+      message.id.startsWith("first-run:backup-restore") &&
+      FIRST_RUN_BACKUP_RESTORE_CHOICE_PATTERN.test(firstRunChoiceBody(message)),
+  );
+  if (!hasBackupRestoreChoice) return false;
+  return !messages.some((message) => message.id === "first-run:greeting");
 }
 
 type ChoiceDefinition = {
@@ -312,6 +336,8 @@ export function FirstRunRuntimeChooser(): React.ReactElement | null {
     useConversationMessages();
   const active =
     firstRunComplete === false && startupPhase === "first-run-required";
+  const backupRestorePending =
+    hasPendingFirstRunBackupRestoreChoice(conversationMessages);
 
   const removeSyntheticChoiceTurns = React.useCallback(() => {
     setConversationMessages((previous) => {
@@ -343,7 +369,7 @@ export function FirstRunRuntimeChooser(): React.ReactElement | null {
     setError(null);
   }, [active]);
 
-  if (!active || dismissed) return null;
+  if (!active || dismissed || backupRestorePending) return null;
 
   const appName = getBootConfig().branding?.appName ?? "elizaOS";
 

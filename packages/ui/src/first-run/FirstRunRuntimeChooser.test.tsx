@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Z_FIRST_RUN_CHOOSER } from "../lib/floating-layers";
 import {
   FirstRunRuntimeChooserSurface,
+  hasPendingFirstRunBackupRestoreChoice,
   isSyntheticFirstRunChoiceTurn,
 } from "./FirstRunRuntimeChooser";
 
@@ -35,6 +36,18 @@ describe("FirstRunRuntimeChooserSurface", () => {
     ).toBe(true);
     expect(
       isSyntheticFirstRunChoiceTurn({
+        id: "first-run:backup-restore",
+        content: "[CHOICE:first-run id=backup-restore]",
+      }),
+    ).toBe(false);
+    expect(
+      isSyntheticFirstRunChoiceTurn({
+        id: "first-run:greeting",
+        text: "[CHOICE:first-run id=runtime]",
+      }),
+    ).toBe(true);
+    expect(
+      isSyntheticFirstRunChoiceTurn({
         id: "first-run:status:Saving first-run profile",
         content: "Saving first-run profile",
       }),
@@ -44,6 +57,37 @@ describe("FirstRunRuntimeChooserSurface", () => {
         id: "regular-message",
         content: "[CHOICE:first-run id=runtime]",
       }),
+    ).toBe(false);
+  });
+
+  it("detects a pending backup restore choice before runtime setup starts", () => {
+    expect(
+      hasPendingFirstRunBackupRestoreChoice([
+        {
+          id: "first-run:backup-restore",
+          text: "Restore?\n\n[CHOICE:first-run id=backup-restore]\n[/CHOICE]",
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      hasPendingFirstRunBackupRestoreChoice([
+        {
+          id: "first-run:backup-restore-error:1",
+          text: "Try again\n\n[CHOICE:first-run id=backup-restore]\n[/CHOICE]",
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      hasPendingFirstRunBackupRestoreChoice([
+        {
+          id: "first-run:backup-restore",
+          text: "Restore?\n\n[CHOICE:first-run id=backup-restore]\n[/CHOICE]",
+        },
+        {
+          id: "first-run:greeting",
+          text: "Hi — I'm Eliza. Choose a setup option to continue.",
+        },
+      ]),
     ).toBe(false);
   });
 

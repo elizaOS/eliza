@@ -717,16 +717,13 @@ export const FINANCES_TESTID = "chat-widget-finances-alerts";
 export const GOALS_TESTID = "widget-goals-attention";
 export const NOTIFICATIONS_TESTID = "widget-notifications";
 
-// In-chat first-run choice button testIds. The conductor seeds each option as a
-// `[CHOICE:first-run id=…]` line `value=label`, where `value` is the reserved
-// `__first_run__:<group>:<id>` sentinel the AppContext send funnel intercepts
-// (use-first-run-conductor.ts). ChoiceWidget renders `data-testid="choice-<value>"`,
-// so the testId is the full sentinel. No separate full-screen onboarding surface
-// exists anymore — these buttons live INSIDE the floating ContinuousChatOverlay.
+// First-run runtime/provider buttons live in the floating runtime chooser. The
+// headless conductor still owns backup/tutorial/cloud-agent ChoiceWidgets in the
+// transcript, but runtime/provider UI must not duplicate there.
 const RUNTIME_CHOICE = (id: "cloud" | "local" | "other"): string =>
-  `choice-__first_run__:runtime:${id}`;
+  `first-run-chooser-${id}`;
 const PROVIDER_CHOICE = (id: "on-device" | "elizacloud" | "other"): string =>
-  `choice-__first_run__:provider:${id}`;
+  `first-run-provider-${id}`;
 const TUTORIAL_CHOICE = (id: "start" | "skip"): string =>
   `choice-__first_run__:tutorial:${id}`;
 const CLOUD_AGENT_CHOICE = (id: string): string =>
@@ -742,21 +739,22 @@ const REMOVED_ONBOARDING_TESTIDS = [
 ];
 
 /**
- * Assert the FIRST painted surface of a fresh profile is the real floating chat
- * (ContinuousChatOverlay) showing the conductor's agent greeting + the runtime
- * choice — and that NONE of the removed full-screen onboarding testIds exist.
- * This is the "chat-first" + "gate-absent" contract for #9952.
+ * Assert the FIRST painted surface of a fresh profile is the real app shell plus
+ * floating runtime chooser — and that NONE of the removed full-screen onboarding
+ * testIds exist. The chat overlay may be present underneath, but runtime/provider
+ * controls are owned by the chooser.
  */
 export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
-  // The agent greets first, in the live transcript the overlay renders.
+  const chooser = page.getByTestId("first-run-runtime-chooser");
+  await expect(chooser).toBeVisible({ timeout: 30_000 });
   await expect(
-    chatOverlay.getByText("Let's get you set up", { exact: false }),
+    chooser.getByText("Choose how Eliza should run", { exact: true }),
   ).toBeVisible({ timeout: 20_000 });
   await expect(
-    chatOverlay.getByText("where should your agent run", { exact: false }),
-  ).toBeVisible({ timeout: 15_000 });
+    chooser.getByRole("button", { name: /Advanced setup/i }),
+  ).toBeVisible();
   // The removed full-screen onboarding gate must be absent.
   for (const testId of REMOVED_ONBOARDING_TESTIDS) {
     await expect(
@@ -764,11 +762,10 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
       `removed onboarding surface ${testId} must not render (flow is chat-first)`,
     ).toHaveCount(0);
   }
-  // The runtime choice renders as inline ChoiceWidget buttons in the overlay.
-  await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
+  await expect(chooser.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
+  await expect(chooser.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
   return chatOverlay;
 }
 
@@ -814,12 +811,10 @@ async function pickTutorial(
 }
 
 /**
- * Drive the REAL in-chat onboarding to completion via Local → on-device
- * inference → tutorial-or-skip, then assert the post-onboarding HOME inside the
- * SAME floating ContinuousChatOverlay we use everywhere else. This is the
- * keyless path that calls completeFirstRun("chat") without a cloud sign-in
- * (all-local needs no cloud connect). `click`
- * lets the mobile lane TAP the inline choice buttons while desktop clicks.
+ * Drive first-run to completion via Local → on-device inference →
+ * tutorial-or-skip, then assert the post-onboarding HOME inside the same shell
+ * and floating chat overlay we use everywhere else. This is the keyless path
+ * that calls completeFirstRun("chat") without a cloud sign-in.
  */
 export async function completeOnboardingToHome(
   page: Page,
@@ -830,7 +825,7 @@ export async function completeOnboardingToHome(
 ): Promise<{ surface: Locator }> {
   const { state, tutorial = "skip" } = opts;
 
-  // 1) Chat-first: the overlay greets first; no removed full-screen gate exists.
+  // 1) The chooser owns runtime/provider setup; no removed full-screen gate exists.
   await expectChatFirstOnboarding(page);
 
   // 2) Local runtime → on-device ("all-local") provider.
@@ -866,12 +861,12 @@ export async function completeOnboardingToHome(
 }
 
 /**
- * Drive the REAL in-chat onboarding to completion via the CLOUD runtime: pick
- * Cloud → the OAuth card appears while the conductor connects Eliza Cloud (mocked
- * at the network boundary, no popup needed) → the cloud-agent CHOICE → bind →
- * tutorial-or-skip → home. The bound agent base is this page origin (an app-shell
- * base), so the cloud finish persists first-run exactly once — same contract as
- * Local. Requires `installCloudRoutes` + `injectCloudAuthToken`.
+ * Drive first-run to completion via the CLOUD runtime: pick Cloud → the OAuth
+ * card appears while the conductor connects Eliza Cloud (mocked at the network
+ * boundary, no popup needed) → the cloud-agent CHOICE → bind →
+ * tutorial-or-skip → home. The bound agent base is this page origin (an
+ * app-shell base), so the cloud finish persists first-run exactly once — same
+ * contract as Local. Requires `installCloudRoutes` + `injectCloudAuthToken`.
  */
 export async function completeCloudOnboardingToHome(
   page: Page,

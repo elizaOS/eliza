@@ -186,23 +186,17 @@ test.describe("walkthrough capture smoke", () => {
     await installWalkthroughConversationStore(page);
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    // #9952: onboarding IS the chat — the conductor greets first inside the REAL
-    // floating ContinuousChatOverlay and offers the runtime question as inline
-    // ChoiceWidget buttons. There is no separate full-screen onboarding surface.
     const onboarding = page.getByTestId("continuous-chat-overlay");
     await expect(onboarding).toBeVisible({ timeout: 20_000 });
+    const chooser = page.getByTestId("first-run-runtime-chooser");
+    await expect(chooser).toBeVisible({ timeout: 20_000 });
     await expect(
-      onboarding.getByText("Let's get you set up", { exact: false }),
+      chooser.getByText("Choose how Eliza should run", { exact: true }),
     ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      page.getByTestId("choice-__first_run__:runtime:cloud"),
-    ).toBeVisible();
-    await expect(
-      page.getByTestId("choice-__first_run__:runtime:other"),
-    ).toBeVisible();
-    await expect(
-      page.getByTestId("choice-__first_run__:runtime:local"),
-    ).toBeVisible();
+    await expect(chooser.getByTestId("first-run-chooser-cloud")).toBeVisible();
+    await expect(chooser.getByTestId("first-run-chooser-local")).toBeVisible();
+    await chooser.getByRole("button", { name: /Advanced setup/i }).click();
+    await expect(chooser.getByTestId("first-run-chooser-other")).toBeVisible();
     await captureState(page, testInfo, "walkthrough-01-onboarding.png");
 
     firstRun.setComplete(true);
