@@ -171,14 +171,6 @@ export {
   type BrowserLaunchWidgetProps,
 } from "./components/chat/widgets/browser-launch-widget";
 export {
-  type CredentialRequestVariant,
-  CredentialRequestWidget,
-  type CredentialRequestWidgetProps,
-  type ImageUploadVariant,
-  type OAuthLinkVariant,
-  type PasteSecretVariant,
-} from "./components/chat/widgets/credential-request-widget";
-export {
   getInlineWidget,
   getInlineWidgets,
   type InlineWidgetContext,
