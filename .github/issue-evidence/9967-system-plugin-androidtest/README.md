@@ -85,11 +85,15 @@ read, and RSSI present-iff-connected with a plausible dBm value.
 
 ## Scope
 
-These are three columns of the #9967 work-order (System + Wi-Fi + Phone/dialer — the headline "dialer renders the web stub" risk). They establish
-the reusable pattern — extract a `Context`-backed reader, add `src/androidTest` +
-the instrumentation runner, run `connectedDebugAndroidTest` — that the remaining
-native plugins (messages/contacts/location/camera/mobile-signals) can
-follow to reach the "every native plugin has ≥1 androidTest" acceptance criterion.
+These are **five** columns of the #9967 work-order (System + Wi-Fi + Phone +
+Camera + Contacts). Contacts is a full **write→read round-trip** — insert a
+contact through the real ContactsProvider, read it back via the reader, assert
+the written name + phone, then clean up — the issue's "contact written/read"
+side-effect. They establish the reusable pattern — extract a `Context`-backed
+reader, add `src/androidTest` + the instrumentation runner, run
+`connectedDebugAndroidTest` — that the remaining native plugins
+(messages/location/mobile-signals) can follow to reach the "every native plugin
+has ≥1 androidTest" acceptance criterion.
 App-surface screenshots/recordings of the rendered views require the device to be
 unlocked (this device is secure-locked; instrumented system-state tests run
 regardless of keyguard, which is why they are the verifiable layer here).
