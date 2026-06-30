@@ -15,8 +15,10 @@ import { DocumentService } from "../service";
 // structured English-enum `action` parameter (via `resolveActionArgs`), NOT
 // from natural-language keywords in the user's `message.content.text`. The
 // planner-trust path in `resolveActionArgs` resolves a valid `action` value
-// with zero required fields synchronously — no model call — so these tests are
-// fully deterministic.
+// synchronously when the required structured params are already present. When
+// natural-language values such as `query` or `text` are missing, the shared
+// extractor supplies them instead of the handler stripping English prefixes from
+// `message.content.text`.
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e7" as UUID;
 const USER_ID = "00000000-0000-0000-0000-00000000c0de" as UUID;
@@ -131,30 +133,85 @@ describe("documentAction.handler structured routing", () => {
 		expect(useModel).not.toHaveBeenCalled();
 		expect(service.listDocuments).toHaveBeenCalledTimes(1);
 		expect(service.deleteDocument).not.toHaveBeenCalled();
-		expect(res?.data).toMatchObject({ actionName: "DOCUMENT", subaction: "list" });
+		expect(res?.data).toMatchObject({
+			actionName: "DOCUMENT",
+			subaction: "list",
+		});
 	});
 
 	it.each([
 		["search", "searchDocuments"],
 		["list", "listDocuments"],
-	] as const)(
-		"routes the %s subaction to the matching service call",
-		async (action, method) => {
-			const service = makeService();
-			const { runtime } = makeRuntime(service);
-			await documentAction.handler?.(
-				runtime,
-				makeMessage("placeholder text"),
-				undefined,
-				options(
-					action === "search"
-						? { action, query: "launch notes" }
-						: { action },
-				),
-			);
-			expect(service[method]).toHaveBeenCalledTimes(1);
-		},
-	);
+	] as const)("routes the %s subaction to the matching service call", async (action, method) => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+		await documentAction.handler?.(
+			runtime,
+			makeMessage("placeholder text"),
+			undefined,
+			options(
+				action === "search" ? { action, query: "launch notes" } : { action },
+			),
+		);
+		expect(service[method]).toHaveBeenCalledTimes(1);
+	});
+
+	it("extracts a missing search query instead of stripping English prose in the handler", async () => {
+		const service = makeService();
+		const { runtime, useModel } = makeRuntime(service);
+		useModel.mockResolvedValueOnce(
+			JSON.stringify({
+				action: "search",
+				params: { query: "launch notes" },
+				missing: [],
+				confidence: 1,
+			}),
+		);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("search my documents for launch notes"),
+			undefined,
+			options({ action: "search" }),
+		);
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(service.searchDocuments).toHaveBeenCalledTimes(1);
+		expect(service.searchDocuments.mock.calls[0]?.[0]).toMatchObject({
+			content: { text: "launch notes" },
+		});
+		expect(res?.data).toMatchObject({
+			subaction: "search",
+			query: "launch notes",
+		});
+	});
+
+	it("extracts write text instead of stripping an English save prefix", async () => {
+		const service = makeService();
+		const { runtime, useModel } = makeRuntime(service);
+		useModel.mockResolvedValueOnce(
+			JSON.stringify({
+				action: "write",
+				params: { text: "Launch is Friday." },
+				missing: [],
+				confidence: 1,
+			}),
+		);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("save this as a document: Launch is Friday."),
+			undefined,
+			options({ action: "write" }),
+		);
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(service.addDocument).toHaveBeenCalledTimes(1);
+		expect(service.addDocument.mock.calls[0]?.[0]).toMatchObject({
+			content: "Launch is Friday.",
+		});
+		expect(res?.data).toMatchObject({ subaction: "write" });
+	});
 
 	it("forwards a structured documentId to read without scanning the text", async () => {
 		const service = makeService();
