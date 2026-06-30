@@ -104,6 +104,17 @@ export function createMockService(
         }),
       ])
     ),
+    // Distinct from listWorkflows so a route test can prove the `?q=` ranked-search
+    // branch was taken (and not a plain list). #8913.
+    searchWorkflows: mock(() =>
+      Promise.resolve([
+        createWorkflowResponse({
+          id: 'wf-match',
+          name: 'Matched Workflow',
+          active: true,
+        }),
+      ])
+    ),
     activateWorkflow: mock(() => Promise.resolve()),
     deactivateWorkflow: mock(() => Promise.resolve()),
     deleteWorkflow: mock(() => Promise.resolve()),
