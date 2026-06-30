@@ -11,6 +11,7 @@ function runtime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
   return {
     getService: vi.fn(() => null),
     getSetting: vi.fn(() => undefined),
+    useModel: vi.fn(),
     ...overrides,
   } as unknown as IAgentRuntime;
 }
@@ -34,6 +35,106 @@ function resolved(
 }
 
 describe("MUSIC umbrella action dispatch", () => {
+  it("validates explicit structured action without model extraction", async () => {
+    const useModel = vi.fn();
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message(""),
+        undefined,
+        { parameters: { action: "pause" } },
+      ),
+    ).resolves.toBe(true);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("validates from the production __contextRouting primary context (planner shape)", async () => {
+    // The v5 planner writes its routing decision to
+    // `state.values.__contextRouting`, never to `selectedContexts`. This is the
+    // exact shape present when validate() runs at action-exposure time.
+    const useModel = vi.fn();
+    const state = {
+      values: { __contextRouting: { primaryContext: "media" } },
+    };
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message("pause the music"),
+        state as never,
+        undefined,
+      ),
+    ).resolves.toBe(true);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("validates from a __contextRouting secondary music context", async () => {
+    const useModel = vi.fn();
+    const state = {
+      values: {
+        __contextRouting: {
+          primaryContext: "social",
+          secondaryContexts: ["files"],
+        },
+      },
+    };
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message("queue something"),
+        state as never,
+        undefined,
+      ),
+    ).resolves.toBe(true);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("does NOT validate when __contextRouting selects a non-music context and no action param is set", async () => {
+    const useModel = vi.fn();
+    const state = {
+      values: {
+        __contextRouting: {
+          primaryContext: "social",
+          secondaryContexts: ["wallet"],
+        },
+      },
+    };
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message("pause the music"),
+        state as never,
+        undefined,
+      ),
+    ).resolves.toBe(false);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("still validates from the legacy selectedContexts state shape", async () => {
+    const useModel = vi.fn();
+    const state = {
+      values: { selectedContexts: ["media"] },
+    };
+
+    await expect(
+      musicAction.validate?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message("pause the music"),
+        state as never,
+        undefined,
+      ),
+    ).resolves.toBe(true);
+
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["next", "skip"],
     ["unpause", "resume"],
@@ -63,6 +164,117 @@ describe("MUSIC umbrella action dispatch", () => {
       expect.objectContaining({ op: expectedOp }),
       expect.any(Function),
     );
+
+    handler.mockRestore();
+  });
+
+  it("uses model structured extraction when action params are absent", async () => {
+    const handler = vi
+      .spyOn(playbackOp, "handler")
+      .mockResolvedValue(resolved("playback pause"));
+    const playAudioHandler = vi.spyOn(playAudio, "handler");
+    const useModel = vi
+      .fn()
+      .mockResolvedValue("<response><action>pause</action></response>");
+    const callback = vi.fn();
+    const state = {
+      values: { selectedContexts: ["media"] },
+    };
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("pausa la música"),
+      state as never,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      text: "playback pause",
+    });
+    expect(useModel).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        prompt: expect.stringContaining("pausa la música"),
+      }),
+    );
+    expect(handler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      state,
+      expect.objectContaining({ op: "pause" }),
+      expect.any(Function),
+    );
+    expect(playAudioHandler).not.toHaveBeenCalled();
+
+    handler.mockRestore();
+    playAudioHandler.mockRestore();
+  });
+
+  it("does not use sub-handler English regexes before model extraction", async () => {
+    const handler = vi.spyOn(musicLibraryAction, "handler");
+    const useModel = vi
+      .fn()
+      .mockResolvedValue(
+        "<response><action>not_a_music_action</action></response>",
+      );
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({
+        getService: vi.fn((serviceName: string) =>
+          serviceName === "musicLibrary" ? {} : null,
+        ),
+        useModel,
+      } as unknown as Partial<IAgentRuntime>),
+      message("find the YouTube link for Surefire by Wilderado"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Could not classify a music subaction"),
+    });
+    expect(useModel).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        prompt: expect.stringContaining("Surefire by Wilderado"),
+      }),
+    );
+    expect(handler).not.toHaveBeenCalled();
+
+    handler.mockRestore();
+  });
+
+  it("does not fall back to English regex routing when model extraction fails", async () => {
+    const handler = vi.spyOn(playbackOp, "handler");
+    const useModel = vi
+      .fn()
+      .mockResolvedValue(
+        "<response><action>not_a_music_action</action></response>",
+      );
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("pause the music"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Could not classify a music subaction"),
+    });
+    expect(handler).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith({
+      text: result?.text,
+      source: "test",
+    });
 
     handler.mockRestore();
   });
@@ -185,5 +397,89 @@ describe("MUSIC umbrella action dispatch", () => {
       text: result?.text,
       source: "test",
     });
+  });
+
+  it("returns a terminal failure (no crash) when model extraction rejects", async () => {
+    const playbackHandler = vi.spyOn(playbackOp, "handler");
+    const useModel = vi.fn().mockRejectedValue(new Error("model offline"));
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("pon música de fondo"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Could not classify a music subaction"),
+    });
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(playbackHandler).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith({
+      text: result?.text,
+      source: "test",
+    });
+
+    playbackHandler.mockRestore();
+  });
+
+  it("returns a terminal failure when the model returns a blank response", async () => {
+    const useModel = vi.fn().mockResolvedValue("   \n  ");
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("メディアを再生して"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Could not classify a music subaction"),
+    });
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith({
+      text: result?.text,
+      source: "test",
+    });
+  });
+
+  it("strips markdown code fences from the model response before parsing", async () => {
+    const handler = vi
+      .spyOn(playbackOp, "handler")
+      .mockResolvedValue(resolved("playback pause"));
+    const useModel = vi
+      .fn()
+      .mockResolvedValue(
+        "```xml\n<response><action>pause</action></response>\n```",
+      );
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("일시 정지"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      text: "playback pause",
+    });
+    expect(handler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      expect.objectContaining({ op: "pause" }),
+      expect.any(Function),
+    );
+
+    handler.mockRestore();
   });
 });

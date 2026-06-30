@@ -19,6 +19,7 @@ vi.mock("@elizaos/core", () => {
   }
 
   return {
+    CONTEXT_ROUTING_STATE_KEY: "__contextRouting",
     ChannelType: {
       DM: "DM",
     },
@@ -27,6 +28,13 @@ vi.mock("@elizaos/core", () => {
       TEXT_SMALL: "TEXT_SMALL",
     },
     getActiveRoutingContextsForTurn: vi.fn(() => []),
+    parseKeyValueXml: (xml: string) => {
+      const result: Record<string, string> = {};
+      for (const match of xml.matchAll(/<([a-zA-Z0-9_:-]+)>([^<]*)<\/\1>/g)) {
+        result[match[1]] = match[2];
+      }
+      return result;
+    },
     promoteSubactionsToActions: (action: unknown) => [action],
     Service,
     logger,
