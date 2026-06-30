@@ -7,9 +7,7 @@
     "dir::../../rtl/npu/e1_npu_weight_buffer_array.sv",
     "dir::../../rtl/memory/e1_weight_buffer_sram.sv"
   ],
-  "VERILOG_DEFINES": [
-    "E1_HAVE_HARD_SRAM"
-  ],
+  "VERILOG_DEFINES": ["E1_HAVE_HARD_SRAM"],
   "CLOCK_PORT": "clk",
   "CLOCK_PERIOD": 15,
   "FP_SIZING": "absolute",
@@ -40,64 +38,38 @@
           "pdk_dir::libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
         ]
       },
-      "nl": [
-        "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
-      ],
+      "nl": ["dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"],
       "instances": {
         "u_bank0.u_sram": {
-          "location": [
-            400,
-            150
-          ],
+          "location": [400, 150],
           "orientation": "N"
         },
         "u_bank1.u_sram": {
-          "location": [
-            1500,
-            150
-          ],
+          "location": [1500, 150],
           "orientation": "N"
         },
         "u_bank2.u_sram": {
-          "location": [
-            400,
-            650
-          ],
+          "location": [400, 650],
           "orientation": "N"
         },
         "u_bank3.u_sram": {
-          "location": [
-            1500,
-            650
-          ],
+          "location": [1500, 650],
           "orientation": "N"
         },
         "u_bank4.u_sram": {
-          "location": [
-            400,
-            1150
-          ],
+          "location": [400, 1150],
           "orientation": "N"
         },
         "u_bank5.u_sram": {
-          "location": [
-            1500,
-            1150
-          ],
+          "location": [1500, 1150],
           "orientation": "N"
         },
         "u_bank6.u_sram": {
-          "location": [
-            400,
-            1650
-          ],
+          "location": [400, 1650],
           "orientation": "N"
         },
         "u_bank7.u_sram": {
-          "location": [
-            1500,
-            1650
-          ],
+          "location": [1500, 1650],
           "orientation": "N"
         }
       }

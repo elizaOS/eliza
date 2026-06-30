@@ -151,7 +151,11 @@ export function killApp(target: string): Promise<KillResult> {
     command = "taskkill";
     args = isPid
       ? ["/F", "/PID", value]
-      : ["/F", "/IM", value.toLowerCase().endsWith(".exe") ? value : `${value}.exe`];
+      : [
+          "/F",
+          "/IM",
+          value.toLowerCase().endsWith(".exe") ? value : `${value}.exe`,
+        ];
   } else if (os === "darwin" || os === "linux") {
     if (isPid) {
       command = "kill";
@@ -161,7 +165,9 @@ export function killApp(target: string): Promise<KillResult> {
       args = ["-f", value];
     }
   } else {
-    return Promise.reject(new Error(`kill_app unsupported on platform "${os}"`));
+    return Promise.reject(
+      new Error(`kill_app unsupported on platform "${os}"`),
+    );
   }
   return new Promise<KillResult>((resolve, reject) => {
     execFile(command, args, { timeout: OPEN_TIMEOUT_MS }, (err) => {
@@ -172,7 +178,11 @@ export function killApp(target: string): Promise<KillResult> {
           ),
         );
       } else {
-        resolve({ target: value, ...(isPid ? { pid: Number(value) } : {}), killed: true });
+        resolve({
+          target: value,
+          ...(isPid ? { pid: Number(value) } : {}),
+          killed: true,
+        });
       }
     });
   });

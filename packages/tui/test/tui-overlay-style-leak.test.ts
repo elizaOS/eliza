@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { describe, it } from "vitest";
-import { type Component, TUI } from "../src/tui.js";
 import { VirtualTerminal } from "../src/testing/virtual-terminal.js";
+import { type Component, TUI } from "../src/tui.js";
 
 class StaticLines implements Component {
   constructor(private readonly lines: string[]) {}

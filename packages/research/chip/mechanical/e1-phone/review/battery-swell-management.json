@@ -2,33 +2,14 @@
   "claim_boundary": "CAD battery swell management screen for the EVT0 compact enclosure. It records the modeled foam pad and worst-case arithmetic stack, but does not replace supplier pack swelling data, foam compression-set data, or physical thermal/aging validation.",
   "status": "cad_battery_swell_management_ready",
   "battery_candidate": "LiPol LP566487 class 3.85 V 5727 mAh 22.05 Wh thick pouch",
-  "battery_envelope_mm": [
-    64.0,
-    87.0,
-    5.6
-  ],
+  "battery_envelope_mm": [64.0, 87.0, 5.6],
   "battery_back_void_gap_mm": 0.6,
   "display_static_gap_mm": 0.18,
   "foam_pad": {
     "part": "battery_back_void_foam_pad",
     "material": "PORON-style low-compression-set polyurethane foam, low-preload battery back pad",
-    "envelope_mm": [
-      60.0,
-      80.0,
-      0.18
-    ],
-    "bounds_mm": [
-      [
-        -30.0,
-        -47.0,
-        -4.75
-      ],
-      [
-        30.0,
-        33.0,
-        -4.57
-      ]
-    ],
+    "envelope_mm": [60.0, 80.0, 0.18],
+    "bounds_mm": [[-30.0, -47.0, -4.75], [30.0, 33.0, -4.57]],
     "compression_allowance_mm": 0.18,
     "free_gap_to_pouch_mm": 0.42
   },

@@ -139,15 +139,13 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-native-settings": null,
   "@elizaos/plugin-facewear": "plugins/plugin-facewear/src/index.ts",
   "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
-  "@elizaos/plugin-hyperliquid":
-    "plugins/plugin-hyperliquid/src/plugin.ts",
+  "@elizaos/plugin-hyperliquid": "plugins/plugin-hyperliquid/src/plugin.ts",
   // PA no longer declares a view (the LifeOps overview was removed); it is a
   // boot plugin with no renderer module.
   "@elizaos/plugin-personal-assistant": null,
   "@elizaos/plugin-messages": "plugins/plugin-messages/src/plugin.ts",
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
-  "@elizaos/plugin-polymarket":
-    "plugins/plugin-polymarket/src/plugin.ts",
+  "@elizaos/plugin-polymarket": "plugins/plugin-polymarket/src/plugin.ts",
   "@elizaos/plugin-shopify": "plugins/plugin-shopify/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",

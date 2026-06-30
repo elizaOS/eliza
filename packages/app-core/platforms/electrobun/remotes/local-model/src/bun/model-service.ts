@@ -1,16 +1,16 @@
-import { serializeError, throwModelError } from "./errors.ts";
-import {
-  getEliza1BundleTiers,
-  getEliza1Catalog,
-  getEliza1VoiceComponents,
-} from "./eliza1-catalog.ts";
-import { HuggingFaceEliza1Client } from "./hf-eliza1-client.ts";
-import { LocalInferenceApiClient } from "./local-inference-api-client.ts";
 import {
   DownloadStateTracker,
   normalizeDownloadJob,
   normalizeDownloadJobs,
 } from "./download-state.ts";
+import {
+  getEliza1BundleTiers,
+  getEliza1Catalog,
+  getEliza1VoiceComponents,
+} from "./eliza1-catalog.ts";
+import { serializeError, throwModelError } from "./errors.ts";
+import { HuggingFaceEliza1Client } from "./hf-eliza1-client.ts";
+import { LocalInferenceApiClient } from "./local-inference-api-client.ts";
 import type {
   Eliza1BundleTier,
   Eliza1VoiceComponent,

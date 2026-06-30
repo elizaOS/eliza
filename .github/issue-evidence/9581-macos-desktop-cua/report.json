@@ -22,10 +22,7 @@
     "status": "passed",
     "target": {
       "minimumMacos": "macOS 13 or newer",
-      "requiredPermissions": [
-        "Screen Recording",
-        "Accessibility"
-      ],
+      "requiredPermissions": ["Screen Recording", "Accessibility"],
       "driver": "nutjs preferred; legacy cliclick/AppleScript fallback allowed"
     },
     "evidence": {
@@ -214,12 +211,7 @@
         "displays": [
           {
             "id": 0,
-            "bounds": [
-              0,
-              0,
-              1728,
-              1117
-            ],
+            "bounds": [0, 0, 1728, 1117],
             "scaleFactor": 2,
             "primary": true,
             "name": "Color LCD"
@@ -237,12 +229,7 @@
       "details": {
         "display": {
           "id": 0,
-          "bounds": [
-            0,
-            0,
-            1728,
-            1117
-          ],
+          "bounds": [0, 0, 1728, 1117],
           "scaleFactor": 2,
           "primary": true,
           "name": "Color LCD"
@@ -338,10 +325,7 @@
           "width": 586,
           "height": 488
         },
-        "coordinate": [
-          1348,
-          581
-        ],
+        "coordinate": [1348, 581],
         "displayId": 0,
         "marker": "macos-cua-1782514041177"
       }

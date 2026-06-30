@@ -60,7 +60,16 @@ function parseArgs(argv) {
   return args;
 }
 
-function writeEvidence({ evidencePath, ok, bridgeUrl, doctor, before, retry, after, error }) {
+function writeEvidence({
+  evidencePath,
+  ok,
+  bridgeUrl,
+  doctor,
+  before,
+  retry,
+  after,
+  error,
+}) {
   if (!evidencePath) return;
   fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
   const evidence = {
@@ -85,7 +94,8 @@ async function getJson(url) {
   const response = await fetch(url);
   const text = await response.text();
   const body = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(`${url} failed (${response.status}): ${text}`);
+  if (!response.ok)
+    throw new Error(`${url} failed (${response.status}): ${text}`);
   return body;
 }
 
@@ -93,7 +103,8 @@ async function postJson(url) {
   const response = await fetch(url, { method: "POST" });
   const text = await response.text();
   const body = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(`${url} failed (${response.status}): ${text}`);
+  if (!response.ok)
+    throw new Error(`${url} failed (${response.status}): ${text}`);
   return body;
 }
 
@@ -114,8 +125,8 @@ async function main() {
       ? " Run: bun run --cwd packages/app-core sms-gateway:validate:bluebubbles -- --confirm-real-send"
       : "";
     const error = `BlueBubbles bridge is not ready: ${blockingChecks
-        .map((check) => `${check.name}: ${check.detail}`)
-        .join("; ")}.${validationHint}`;
+      .map((check) => `${check.name}: ${check.detail}`)
+      .join("; ")}.${validationHint}`;
     writeEvidence({
       evidencePath: args.evidencePath,
       ok: false,
@@ -140,7 +151,9 @@ async function main() {
     throw new Error(error);
   }
 
-  const retry = await postJson(`${args.bridgeUrl}/pending-replies/retry?limit=${args.limit}`);
+  const retry = await postJson(
+    `${args.bridgeUrl}/pending-replies/retry?limit=${args.limit}`,
+  );
   const after = await getJson(`${args.bridgeUrl}/pending-replies`);
   if (!Array.isArray(retry.sent) || retry.sent.length === 0) {
     const error = `Retry did not send any replies: ${JSON.stringify(retry)}`;
@@ -186,6 +199,8 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`[bluebubbles-e2e] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `[bluebubbles-e2e] ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 });

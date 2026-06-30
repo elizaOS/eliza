@@ -14,9 +14,9 @@ describe("redactSensitiveData", () => {
       password: "[REDACTED]",
     });
     expect(redactSensitiveData({ token: "abc" }).token).toBe("[REDACTED]");
-    expect(redactSensitiveData({ Authorization: "Bearer x" }).Authorization).toBe(
-      "[REDACTED]",
-    );
+    expect(
+      redactSensitiveData({ Authorization: "Bearer x" }).Authorization,
+    ).toBe("[REDACTED]");
     // substring matches
     expect(redactSensitiveData({ accessToken: "x" }).accessToken).toBe(
       "[REDACTED]",

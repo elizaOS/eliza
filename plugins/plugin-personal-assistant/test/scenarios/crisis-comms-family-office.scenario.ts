@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "crisis-comms-family-office",
-  title: "Assistant creates a crisis communication plan with channel-specific approvals",
+  title:
+    "Assistant creates a crisis communication plan with channel-specific approvals",
   domain: "executive.escalation",
   tags: ["lifeops", "executive-assistant", "messaging", "privacy"],
   isolation: "per-scenario",

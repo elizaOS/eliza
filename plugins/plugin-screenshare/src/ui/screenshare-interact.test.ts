@@ -224,7 +224,10 @@ describe("interact — terminal capability happy paths", () => {
         if (url === "/api/apps/screenshare/sessions") {
           return jsonResponse({ sessions: [sampleSession] });
         }
-        if (url === "/api/apps/screenshare/session" && init?.method === "POST") {
+        if (
+          url === "/api/apps/screenshare/session" &&
+          init?.method === "POST"
+        ) {
           return jsonResponse({
             session: sampleSession,
             token: "token-1",

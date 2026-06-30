@@ -13,8 +13,7 @@ export type HyperliquidClient = ElizaClient & {
   hyperliquidOrders(): Promise<HyperliquidOrdersResponse>;
 };
 
-const elizaClientPrototype =
-  ElizaClient.prototype as HyperliquidClient;
+const elizaClientPrototype = ElizaClient.prototype as HyperliquidClient;
 
 elizaClientPrototype.hyperliquidStatus = async function () {
   return this.fetch("/api/hyperliquid/status");

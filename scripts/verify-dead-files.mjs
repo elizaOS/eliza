@@ -17,8 +17,8 @@
  * Usage: node scripts/verify-dead-files.mjs <knip-results-dir>
  */
 import { execSync } from "node:child_process";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
 
 const REPO = process.cwd();
 const KDIR = process.argv[2];
@@ -39,8 +39,14 @@ for (const txt of readdirSync(KDIR)) {
   const lines = body.split("\n");
   let inFiles = false;
   for (const line of lines) {
-    if (/^Unused files/.test(line)) { inFiles = true; continue; }
-    if (/^Unused (dev)?[dD]ependencies/.test(line)) { inFiles = false; continue; }
+    if (/^Unused files/.test(line)) {
+      inFiles = true;
+      continue;
+    }
+    if (/^Unused (dev)?[dD]ependencies/.test(line)) {
+      inFiles = false;
+      continue;
+    }
     if (!inFiles) continue;
     const m = line.trim().match(/^(src\/\S+\.(tsx?|mts|cts))/);
     if (m && !INFRA.test(m[1])) candidates.push({ pkgDir, rel: m[1] });
@@ -73,9 +79,15 @@ for (const { pkgDir, rel } of candidates) {
   // 2. exports map mention (public subpath)
   let exported = false;
   try {
-    const pj = JSON.parse(readFileSync(join(REPO, pkgDir, "package.json"), "utf8"));
+    const pj = JSON.parse(
+      readFileSync(join(REPO, pkgDir, "package.json"), "utf8"),
+    );
     const exp = JSON.stringify(pj.exports || {});
-    if (exp.includes(`/${base}`) || exp.includes(rel.replace(/^src\//, "dist/").replace(/\.tsx?$/, ""))) exported = true;
+    if (
+      exp.includes(`/${base}`) ||
+      exp.includes(rel.replace(/^src\//, "dist/").replace(/\.tsx?$/, ""))
+    )
+      exported = true;
   } catch {}
   if (refs.length === 0 && !exported) {
     dead.push(full);
@@ -84,11 +96,21 @@ for (const { pkgDir, rel } of candidates) {
   }
 }
 
-console.log(`\n=== HIGH-CONFIDENCE DEAD (zero refs anywhere, ${dead.length}) ===`);
-dead.forEach((d) => console.log("  " + d));
-console.log(`\n=== LIKELY-USED (ref found — false positive, ${used.length}) ===`);
-used.slice(0, 25).forEach((u) =>
-  console.log(`  ${u.full}  ${u.exported ? "[exports]" : "[" + (u.refs[0] || "?") + "]"}`),
+console.log(
+  `\n=== HIGH-CONFIDENCE DEAD (zero refs anywhere, ${dead.length}) ===`,
 );
+dead.forEach((d) => console.log("  " + d));
+console.log(
+  `\n=== LIKELY-USED (ref found — false positive, ${used.length}) ===`,
+);
+used
+  .slice(0, 25)
+  .forEach((u) =>
+    console.log(
+      `  ${u.full}  ${u.exported ? "[exports]" : "[" + (u.refs[0] || "?") + "]"}`,
+    ),
+  );
 if (used.length > 25) console.log(`  ... +${used.length - 25} more`);
-console.log(`\nsummary: ${candidates.length} non-infra candidates -> ${dead.length} high-confidence dead, ${used.length} likely-used (FP)`);
+console.log(
+  `\nsummary: ${candidates.length} non-infra candidates -> ${dead.length} high-confidence dead, ${used.length} likely-used (FP)`,
+);

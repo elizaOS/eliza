@@ -6,12 +6,7 @@
   },
   "backends": {
     "default": "ros_real",
-    "allowed": [
-      "mock",
-      "ros_real",
-      "ros_sim",
-      "isaac"
-    ]
+    "allowed": ["mock", "ros_real", "ros_sim", "isaac"]
   },
   "safety": {
     "command_rate_limit_hz": 30,
@@ -22,4 +17,3 @@
     "trace_log_path": ""
   }
 }
-

@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "school-family-calendar-carpool",
-  title: "Assistant reconciles family school logistics with work calendar pressure",
+  title:
+    "Assistant reconciles family school logistics with work calendar pressure",
   domain: "executive.family",
   tags: ["lifeops", "executive-assistant", "family", "calendar"],
   isolation: "per-scenario",

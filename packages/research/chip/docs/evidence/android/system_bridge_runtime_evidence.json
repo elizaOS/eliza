@@ -14,11 +14,7 @@
   "observations": {
     "adb_connect_attempts": [
       {
-        "command": [
-          "adb",
-          "devices",
-          "-l"
-        ],
+        "command": ["adb", "devices", "-l"],
         "ok": true,
         "output": "List of devices attached"
       }

@@ -1,11 +1,7 @@
 {
   "claim_boundary": "Automated CAD-derived injection-molding DFM screen; not mold-flow, toolmaker signoff, or released tool design.",
   "status": "cad_dfm_inputs_ready",
-  "device_envelope_mm": [
-    78.0,
-    153.6,
-    11.8
-  ],
+  "device_envelope_mm": [78.0, 153.6, 11.8],
   "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
   "cases": [
     {
@@ -87,11 +83,7 @@
       "feature": "orange_back_shell_and_side_frame_outer_surfaces",
       "tool_action": "straight_pull_a_b_open_close",
       "pass": true,
-      "evidence": [
-        "orange_back_shell",
-        "orange_side_frame",
-        "draft_angle"
-      ],
+      "evidence": ["orange_back_shell", "orange_side_frame", "draft_angle"],
       "tooling_note": "Use the modeled mid-plane parting reference as a concept split; final shutoffs depend on production B-rep surfaces."
     },
     {
@@ -99,10 +91,7 @@
       "feature": "six_screw_boss_cores",
       "tool_action": "fixed_core_pins_from_b_side",
       "pass": true,
-      "evidence": [
-        "orange_screw_boss_1",
-        "screw_core_pin_clearance_1"
-      ],
+      "evidence": ["orange_screw_boss_1", "screw_core_pin_clearance_1"],
       "tooling_note": "Every boss needs a core pin and steel-safe local tuning to reduce sink/read-through."
     },
     {
@@ -110,10 +99,7 @@
       "feature": "eight_side_snap_hooks",
       "tool_action": "toolmaker_review_lifters_or_straight_pull_hook_redesign",
       "pass": true,
-      "evidence": [
-        "orange_snap_hook_1",
-        "orange_snap_hook_8"
-      ],
+      "evidence": ["orange_snap_hook_1", "orange_snap_hook_8"],
       "tooling_note": "Current snap hooks prove retention intent; toolmaker must approve lifter/slide strategy or revise hooks to straight-pull geometry."
     },
     {
@@ -138,10 +124,7 @@
       "feature": "power_and_volume_button_side_openings",
       "tool_action": "side_core_lifter_or_secondary_operation_decision",
       "pass": true,
-      "evidence": [
-        "power_button_cap",
-        "volume_button_cap"
-      ],
+      "evidence": ["power_button_cap", "volume_button_cap"],
       "tooling_note": "Button openings are side-wall features; choose a slide/lifter strategy or keep caps mounted through an insert before hard tooling."
     },
     {

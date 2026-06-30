@@ -12,14 +12,8 @@
       "ios",
       "android"
     ],
-    "transcriptionState": [
-      "off",
-      "on"
-    ],
-    "chimeIn": [
-      "should-respond",
-      "should-not-respond"
-    ],
+    "transcriptionState": ["off", "on"],
+    "chimeIn": ["should-respond", "should-not-respond"],
     "wakewordContext": [
       "idle-wake",
       "already-listening-wake-inert",
@@ -31,12 +25,7 @@
       "echo-self-voice",
       "overlapping-speech"
     ],
-    "voices": [
-      "owner",
-      "enrolled-contact",
-      "unknown",
-      "multi-speaker"
-    ]
+    "voices": ["owner", "enrolled-contact", "unknown", "multi-speaker"]
   },
   "host": {
     "platform": "darwin",

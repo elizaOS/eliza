@@ -57,7 +57,9 @@ describe("normalizeCompanionConfig", () => {
       "https://user:pass@agent.example.com",
       "not a url",
     ]) {
-      expect(normalizeCompanionConfig({ ...baseConfig, apiBaseUrl })).toBeNull();
+      expect(
+        normalizeCompanionConfig({ ...baseConfig, apiBaseUrl }),
+      ).toBeNull();
       expect(isValidApiBaseUrl(apiBaseUrl)).toBe(false);
     }
 

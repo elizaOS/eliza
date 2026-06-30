@@ -297,8 +297,16 @@ export async function collectTestTrajectories(
   let syntheticCount = 0;
   if (copied.length === 0 && roots.length === 0 && options.syntheticFallback) {
     const payload = syntheticTestTrajectoryRecord(generatedAt);
-    const outputPath = join(outputDir, "cases", "0001-dry-run-action-planner.json");
-    await writeFile(outputPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    const outputPath = join(
+      outputDir,
+      "cases",
+      "0001-dry-run-action-planner.json",
+    );
+    await writeFile(
+      outputPath,
+      `${JSON.stringify(payload, null, 2)}\n`,
+      "utf8",
+    );
     copied.push(summarizeCopied(outputPath, outputPath, payload));
     syntheticCount = 1;
   }

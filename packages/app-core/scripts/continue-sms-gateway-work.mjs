@@ -36,7 +36,8 @@ function parseArgs(argv) {
       return value;
     };
     if (arg === "--apply-dns") args.applyDns = true;
-    else if (arg === "--watch-seconds") args.watchSeconds = Number.parseInt(next(), 10);
+    else if (arg === "--watch-seconds")
+      args.watchSeconds = Number.parseInt(next(), 10);
     else if (arg === "--skip-watch") args.skipWatch = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());
@@ -51,7 +52,12 @@ function parseArgs(argv) {
   return args;
 }
 
-function runStep(name, command, args, { allowFailure = false, timeout = 300_000 } = {}) {
+function runStep(
+  name,
+  command,
+  args,
+  { allowFailure = false, timeout = 300_000 } = {},
+) {
   console.log(`[sms-gateway-continue] step=${name}`);
   const result = spawnSync(command, args, {
     encoding: "utf8",
@@ -85,26 +91,39 @@ function main() {
       "--apply",
     ]);
   }
-  runStep("homepage-public", "node", [script("check-homepage-public-readiness.mjs")], {
-    allowFailure: true,
-  });
-  runStep("bluebubbles-validate-no-send", "node", [
-    script("validate-bluebubbles-outbound.mjs"),
-  ], {
-    allowFailure: true,
-  });
-  if (!args.skipWatch && args.watchSeconds > 0) {
-    runStep("watch-physical-gateway", "node", [
-      script("watch-sms-gateway-readiness.mjs"),
-      "--timeout",
-      String(args.watchSeconds),
-      "--interval",
-      "5",
-      "--run-install",
-    ], {
+  runStep(
+    "homepage-public",
+    "node",
+    [script("check-homepage-public-readiness.mjs")],
+    {
       allowFailure: true,
-      timeout: (args.watchSeconds + 20) * 1000,
-    });
+    },
+  );
+  runStep(
+    "bluebubbles-validate-no-send",
+    "node",
+    [script("validate-bluebubbles-outbound.mjs")],
+    {
+      allowFailure: true,
+    },
+  );
+  if (!args.skipWatch && args.watchSeconds > 0) {
+    runStep(
+      "watch-physical-gateway",
+      "node",
+      [
+        script("watch-sms-gateway-readiness.mjs"),
+        "--timeout",
+        String(args.watchSeconds),
+        "--interval",
+        "5",
+        "--run-install",
+      ],
+      {
+        allowFailure: true,
+        timeout: (args.watchSeconds + 20) * 1000,
+      },
+    );
   }
   const status = runStep("status", "node", [script("sms-gateway-status.mjs")], {
     allowFailure: true,
@@ -116,6 +135,8 @@ function main() {
 try {
   main();
 } catch (error) {
-  console.error(`[sms-gateway-continue] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `[sms-gateway-continue] ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 }

@@ -37,21 +37,11 @@
     "pm_list_eliza": "adb: no devices/emulators found",
     "pm_path": "adb: no devices/emulators found",
     "role_holders": {
-      "android.app.role.ASSISTANT": [
-        "adb: no devices/emulators found"
-      ],
-      "android.app.role.BROWSER": [
-        "adb: no devices/emulators found"
-      ],
-      "android.app.role.DIALER": [
-        "adb: no devices/emulators found"
-      ],
-      "android.app.role.HOME": [
-        "adb: no devices/emulators found"
-      ],
-      "android.app.role.SMS": [
-        "adb: no devices/emulators found"
-      ]
+      "android.app.role.ASSISTANT": ["adb: no devices/emulators found"],
+      "android.app.role.BROWSER": ["adb: no devices/emulators found"],
+      "android.app.role.DIALER": ["adb: no devices/emulators found"],
+      "android.app.role.HOME": ["adb: no devices/emulators found"],
+      "android.app.role.SMS": ["adb: no devices/emulators found"]
     },
     "service_component": "ai.elizaos.app/.ElizaAgentService",
     "service_pid": 0,

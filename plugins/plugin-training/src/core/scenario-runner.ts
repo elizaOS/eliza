@@ -2,7 +2,10 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { trainingStateRoot } from "./training-config.js";
-import { defaultBunCommand, resolveWorkspaceRoot } from "./workspace-runtime.js";
+import {
+  defaultBunCommand,
+  resolveWorkspaceRoot,
+} from "./workspace-runtime.js";
 
 export interface ScenarioRunOptions {
   workspaceRoot?: string;
@@ -83,7 +86,11 @@ async function writeScenarioNativeManifest(input: {
       parsedTrajectories: rows,
     },
   };
-  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
   return manifestPath;
 }
 

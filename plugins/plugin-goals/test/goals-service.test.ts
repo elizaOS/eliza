@@ -9,7 +9,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
+import { ownerGoalsAction } from "../src/actions/goals.ts";
 import { GoalsRepository } from "../src/db/goals-repository.ts";
 import { GoalsServiceError } from "../src/goal-normalize.ts";
 import { createOwnerGoalsService } from "../src/goals-runtime.ts";
@@ -19,7 +19,6 @@ import {
   GoalsService,
   scoreGoalSimilarity,
 } from "../src/goals-service.ts";
-import { ownerGoalsAction } from "../src/actions/goals.ts";
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -70,7 +69,9 @@ function makeRuntime(): {
     executedSql.push(text);
     const normalized = text.replace(/\s+/g, " ").trim();
 
-    if (normalized.startsWith("SELECT * FROM app_goals.life_goal_definitions")) {
+    if (
+      normalized.startsWith("SELECT * FROM app_goals.life_goal_definitions")
+    ) {
       if (normalized.includes("AND id =")) {
         const idMatch = normalized.match(/AND id = '([^']+)'/);
         const id = idMatch?.[1];
@@ -79,9 +80,7 @@ function makeRuntime(): {
       }
       return { rows: [...goals.values()] };
     }
-    if (
-      normalized.startsWith("SELECT * FROM app_goals.life_goal_links")
-    ) {
+    if (normalized.startsWith("SELECT * FROM app_goals.life_goal_links")) {
       const goalMatch = normalized.match(/AND goal_id = '([^']+)'/);
       const goalId = goalMatch?.[1];
       return {
@@ -106,9 +105,7 @@ function makeRuntime(): {
       }
       return { rows: [] };
     }
-    if (
-      normalized.startsWith("DELETE FROM app_goals.life_goal_definitions")
-    ) {
+    if (normalized.startsWith("DELETE FROM app_goals.life_goal_definitions")) {
       const idMatch = normalized.match(/AND id = '([^']+)'/);
       if (idMatch?.[1]) goals.delete(idMatch[1]);
       return { rows: [] };
@@ -241,7 +238,10 @@ describe("scoreGoalSimilarity", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     } as const;
     const same = scoreGoalSimilarity({
-      reference: { title: "Run a marathon this year", description: "Train for a marathon" },
+      reference: {
+        title: "Run a marathon this year",
+        description: "Train for a marathon",
+      },
       candidate: base,
     });
     expect(same).toBeGreaterThanOrEqual(0.85);
@@ -258,8 +258,11 @@ describe("GoalsService CRUD", () => {
   let recordAudit: GoalsRecordAudit;
   let normalizeOwnership: GoalsNormalizeOwnership;
   let service: GoalsService;
-  const auditCalls: Array<{ eventType: string; ownerId: string; reason: string }> =
-    [];
+  const auditCalls: Array<{
+    eventType: string;
+    ownerId: string;
+    reason: string;
+  }> = [];
 
   beforeEach(() => {
     env = makeRuntime();
@@ -274,7 +277,10 @@ describe("GoalsService CRUD", () => {
       visibilityScope: "owner_only",
       contextPolicy: "explicit_only",
     });
-    service = new GoalsService(env.runtime, { recordAudit, normalizeOwnership });
+    service = new GoalsService(env.runtime, {
+      recordAudit,
+      normalizeOwnership,
+    });
   });
 
   it("creates a goal, records an audit, returns the record", async () => {
@@ -288,7 +294,10 @@ describe("GoalsService CRUD", () => {
     expect(record.goal.subjectType).toBe("owner");
     expect(record.links).toEqual([]);
     expect(auditCalls).toContainEqual(
-      expect.objectContaining({ eventType: "goal_created", reason: "goal created" }),
+      expect.objectContaining({
+        eventType: "goal_created",
+        reason: "goal created",
+      }),
     );
     // Persisted via INSERT, readable via listGoals.
     const all = await service.listGoals();
@@ -296,7 +305,9 @@ describe("GoalsService CRUD", () => {
   });
 
   it("short-circuits a near-duplicate active goal via dedup", async () => {
-    const first = await service.createGoal({ title: "Run a marathon this year" });
+    const first = await service.createGoal({
+      title: "Run a marathon this year",
+    });
     auditCalls.length = 0;
     const dup = await service.createGoal({
       title: "Run a marathon this year",

@@ -78,14 +78,10 @@
   ],
   "local_terminal_contract_source": "captured_public_pinout_expected_pins",
   "mechanical_pad_count": 1,
-  "mechanical_pads": [
-    "EP"
-  ],
+  "mechanical_pads": ["EP"],
   "model_binding_status": "blocked_pending_supplier_step_or_verified_package_drawing",
   "model_source": "local_development_envelope",
-  "non_signal_pad_contract": [
-    "EP"
-  ],
+  "non_signal_pad_contract": ["EP"],
   "non_signal_pad_contract_matches_pad_visuals": true,
   "non_signal_pad_contract_source": "derived_from_non_electrical_footprint_pads",
   "npth_mechanical_feature_contract": [],

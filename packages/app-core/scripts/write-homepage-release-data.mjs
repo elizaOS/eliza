@@ -568,7 +568,8 @@ function pickAssetByNamePattern(release, pattern) {
 const STATIC_ARTIFACT_ASSET_PATTERNS = {
   "elizaos-usb-installer-macos": /^elizaos-usb-installer-macos.*\.tar\.gz$/i,
   "elizaos-usb-installer-linux": /^elizaos-usb-installer-linux.*\.tar\.gz$/i,
-  "elizaos-usb-installer-windows": /^elizaos-usb-installer-windows.*\.(zip|exe)$/i,
+  "elizaos-usb-installer-windows":
+    /^elizaos-usb-installer-windows.*\.(zip|exe)$/i,
   "elizaos-setup-macos": /^elizaos-setup-macos.*\.tar\.gz$/i,
   "elizaos-setup-linux": /^elizaos-setup-linux.*\.tar\.gz$/i,
   "elizaos-setup-windows": /^elizaos-setup-windows.*\.(zip|exe)$/i,

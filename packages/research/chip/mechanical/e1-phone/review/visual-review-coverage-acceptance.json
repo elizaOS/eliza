@@ -12,180 +12,96 @@
       "view": "full_front_iso.png",
       "purpose": "front silhouette, orange side rail, black glass stack",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.05589
     },
     {
       "view": "full_back_iso.png",
       "purpose": "rear orange shell, camera window, and service features",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.05905
     },
     {
       "view": "rear_feature_detail.png",
       "purpose": "rear camera window, SIM edge, and service-label recess",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.11031
     },
     {
       "view": "full_left_side.png",
       "purpose": "left-side button protrusion and shell depth",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.03311
     },
     {
       "view": "full_bottom_port.png",
       "purpose": "USB-C, speaker grille, and microphone apertures",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.02453
     },
     {
       "view": "full_top_down.png",
       "purpose": "compact footprint, screen margin, buttons, and front features",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.11012
     },
     {
       "view": "exploded_iso.png",
       "purpose": "glass, display, shell, and component stack separation",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.07825
     },
     {
       "view": "component_stack.png",
       "purpose": "PCB, battery, camera, audio, haptic, and I/O placement",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.08534
     },
     {
       "view": "component-review-audio.png",
       "purpose": "speaker, earpiece, microphone, acoustic mesh, and port packaging",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.05649
     },
     {
       "view": "component-review-io-buttons.png",
       "purpose": "USB-C, side buttons, seals, and tactile actuation packaging",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.04622
     },
     {
       "view": "component-review-optical.png",
       "purpose": "front/rear cameras, flash, baffles, cover windows, and optical seals",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.05625
     },
     {
       "view": "mold_tooling.png",
       "purpose": "parting plane, runner, gate, ejector, and cooling placeholders",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
-      "channel_spans": [
-        255,
-        255,
-        255
-      ],
+      "size": [1350, 1650],
+      "channel_spans": [255, 255, 255],
       "nonwhite_pixel_ratio": 0.04154
     }
   ],

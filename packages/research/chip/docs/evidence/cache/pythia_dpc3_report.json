@@ -1,22 +1,7 @@
 {
   "algorithmic_scope": {
     "action_offsets_blocks": [
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      8,
-      16,
-      -1,
-      -2,
-      -3,
-      -4,
-      -8,
-      -16,
-      32,
-      0
+      1, 2, 3, 4, 5, 6, 8, 16, -1, -2, -3, -4, -8, -16, 32, 0
     ],
     "action_space_size": 16,
     "alpha": "1/8 (right-shift by 3)",
@@ -26,10 +11,7 @@
     "num_states": 16384,
     "reward_useful": 20,
     "reward_useless": -14,
-    "state_features": [
-      "pc_low_8_bits",
-      "page_offset_6_bits"
-    ],
+    "state_features": ["pc_low_8_bits", "page_offset_6_bits"],
     "update_rule": "tabular SARSA, Q(s,a) += alpha * (r + gamma * max_a' Q(s', a') - Q(s,a))"
   },
   "binary": "external/ChampSim/bin/champsim_pref_pythia",

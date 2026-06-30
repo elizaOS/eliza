@@ -31,10 +31,7 @@
     {
       "id": "bottom_microphone_ports",
       "opening": "dual bottom MEMS acoustic ports",
-      "seal_stack": [
-        "bottom_microphone_mesh_1",
-        "bottom_microphone_mesh_2"
-      ],
+      "seal_stack": ["bottom_microphone_mesh_1", "bottom_microphone_mesh_2"],
       "strategy": "individual hydrophobic meshes sit behind each molded microphone port",
       "cad_pass": true,
       "lab_closure": "microphone sensitivity/noise floor before and after dust/splash exposure"
@@ -42,9 +39,7 @@
     {
       "id": "top_microphone_port",
       "opening": "top MEMS acoustic port",
-      "seal_stack": [
-        "top_microphone_mesh"
-      ],
+      "seal_stack": ["top_microphone_mesh"],
       "strategy": "hydrophobic mesh behind the top port to keep the second microphone from being an unprotected ingress path",
       "cad_pass": true,
       "lab_closure": "top microphone sensitivity/noise floor before and after dust/splash exposure"
@@ -52,10 +47,7 @@
     {
       "id": "handset_earpiece_slot",
       "opening": "under-glass handset acoustic slot",
-      "seal_stack": [
-        "earpiece_gasket",
-        "handset_acoustic_mesh"
-      ],
+      "seal_stack": ["earpiece_gasket", "handset_acoustic_mesh"],
       "strategy": "compressed earpiece gasket and hydrophobic mesh behind handset slot",
       "cad_pass": true,
       "lab_closure": "receiver SPL/leak check plus splash exposure at earpiece slot"

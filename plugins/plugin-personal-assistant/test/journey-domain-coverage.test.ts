@@ -11,33 +11,6 @@
  * every variant the journey set requires without source-code edits.
  */
 
-import { describe, expect, it } from "vitest";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  DEFAULT_ESCALATION_LADDERS,
-  PRIORITY_DEFAULT_LADDER_KEYS,
-  registerDefaultEscalationLadders,
-  resolveEffectiveLadder,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import {
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  type ScheduledTaskRunnerHandle,
-  TestNoopScheduledTaskDispatcher,
-} from "@elizaos/plugin-scheduling";
-import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -48,6 +21,25 @@ import type {
   ScheduledTaskTrigger,
   SubjectStoreView,
 } from "@elizaos/plugin-scheduling";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  DEFAULT_ESCALATION_LADDERS,
+  PRIORITY_DEFAULT_LADDER_KEYS,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  resolveEffectiveLadder,
+  type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
+} from "@elizaos/plugin-scheduling";
+import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Test harness

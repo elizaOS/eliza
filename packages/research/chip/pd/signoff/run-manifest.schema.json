@@ -195,10 +195,7 @@
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "tool_digest": {
-      "oneOf": [
-        { "$ref": "#/$defs/sha256_digest" },
-        { "const": "unavailable" }
-      ]
+      "oneOf": [{ "$ref": "#/$defs/sha256_digest" }, { "const": "unavailable" }]
     },
     "unavailable_reason": { "type": "string", "minLength": 1 },
     "check": {

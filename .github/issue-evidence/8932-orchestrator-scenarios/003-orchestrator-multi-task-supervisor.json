@@ -2,13 +2,7 @@
   "id": "orchestrator-multi-task-supervisor",
   "title": "Orchestrator isolates concurrent tasks and posts a supervisor digest",
   "domain": "agent-orchestrator",
-  "tags": [
-    "orchestrator",
-    "multi-task",
-    "supervisor",
-    "pr",
-    "deterministic"
-  ],
+  "tags": ["orchestrator", "multi-task", "supervisor", "pr", "deterministic"],
   "status": "passed",
   "durationMs": 567,
   "turns": [
@@ -33,9 +27,7 @@
                 "orchestrator-scenario-session-1",
                 "orchestrator-scenario-session-2"
               ],
-              "forwardedTo": [
-                "orchestrator-scenario-session-1"
-              ],
+              "forwardedTo": ["orchestrator-scenario-session-1"],
               "events": [],
               "finalStatuses": {
                 "502639d6-e462-4f67-972b-2e8f37db324e": "active",
@@ -59,9 +51,7 @@
                   "orchestrator-scenario-session-1",
                   "orchestrator-scenario-session-2"
                 ],
-                "forwardedTo": [
-                  "orchestrator-scenario-session-1"
-                ],
+                "forwardedTo": ["orchestrator-scenario-session-1"],
                 "events": [],
                 "finalStatuses": {
                   "502639d6-e462-4f67-972b-2e8f37db324e": "active",
@@ -113,9 +103,7 @@
             "orchestrator-scenario-session-1",
             "orchestrator-scenario-session-2"
           ],
-          "forwardedTo": [
-            "orchestrator-scenario-session-1"
-          ],
+          "forwardedTo": ["orchestrator-scenario-session-1"],
           "events": [],
           "finalStatuses": {
             "502639d6-e462-4f67-972b-2e8f37db324e": "active",
@@ -139,9 +127,7 @@
               "orchestrator-scenario-session-1",
               "orchestrator-scenario-session-2"
             ],
-            "forwardedTo": [
-              "orchestrator-scenario-session-1"
-            ],
+            "forwardedTo": ["orchestrator-scenario-session-1"],
             "events": [],
             "finalStatuses": {
               "502639d6-e462-4f67-972b-2e8f37db324e": "active",

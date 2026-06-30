@@ -295,10 +295,7 @@ function missingVariantKernels(variant, capabilities) {
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i];
     const value = args[i + 1];
-    if (
-      flag === "--spec-type" &&
-      (value === "mtp" || value === "draft-mtp")
-    ) {
+    if (flag === "--spec-type" && (value === "mtp" || value === "draft-mtp")) {
       required.add("mtp");
     }
     if (

@@ -6,9 +6,5 @@
   "changed_pixel_pct": 99.99544270833334,
   "yaw_rate_command_rad_s": -8.0,
   "duration_s": 2.5,
-  "image_shape": [
-    480,
-    640,
-    3
-  ]
+  "image_shape": [480, 640, 3]
 }

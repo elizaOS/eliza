@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  ELIZA_ONE_BENCHMARK_TIERS,
   ELIZA_ONE_BENCHMARK_TIER_LIST,
+  ELIZA_ONE_BENCHMARK_TIERS,
   elizaOneActionBenchmarkPairs,
 } from "./eliza1-benchmark-recipe.js";
 import type {
@@ -151,9 +151,7 @@ function hasPositiveSummary(
   return keys.some((key) => (numberSummary(artifact, key) ?? 0) > 0);
 }
 
-function hasReadableSamplePreview(
-  artifact: TrainingAnalysisArtifact,
-): boolean {
+function hasReadableSamplePreview(artifact: TrainingAnalysisArtifact): boolean {
   const sampleKeys = [
     "samplePreviews",
     "feedSamplePreviews",
@@ -327,10 +325,9 @@ function hasImprovementComparisonRecord(comparison: ReadinessRecord): boolean {
 function hasSmallestTierComparison(
   artifact: TrainingAnalysisArtifact,
 ): boolean {
-  return modelBackedComparisonTierSet(
-    artifact,
-    hasBaseTrainedComparison,
-  ).has("2b");
+  return modelBackedComparisonTierSet(artifact, hasBaseTrainedComparison).has(
+    "2b",
+  );
 }
 
 function hasAllEliza1BenchmarkTierComparisons(
@@ -407,7 +404,7 @@ function modelVariantOf(artifact: TrainingAnalysisArtifact): string | null {
           ? payload.model_name
           : typeof payload.model === "string"
             ? payload.model
-          : "";
+            : "";
   if (/-base\b/.test(model)) return "base";
   if (/-trained\b/.test(model)) return "trained";
   return null;
@@ -447,7 +444,8 @@ function buildModelTrackingCheck(
       }
     }
     const hasAllEliza1Variants = ELIZA_ONE_BENCHMARK_TIERS.every(
-      (tier) => coverageSet.has(`${tier}:base`) && coverageSet.has(`${tier}:trained`),
+      (tier) =>
+        coverageSet.has(`${tier}:base`) && coverageSet.has(`${tier}:trained`),
     );
     if (hasAllEliza1Variants) {
       return {
@@ -458,13 +456,14 @@ function buildModelTrackingCheck(
         artifactPaths: artifacts
           .filter((artifact) => artifact.kind === "model")
           .map((artifact) => artifact.path),
-        note:
-          "Analysis coverage includes base and trained Eliza-1 model entries for every tier.",
+        note: "Analysis coverage includes base and trained Eliza-1 model entries for every tier.",
         recommendedAction: null,
       };
     }
   }
-  const modelArtifacts = artifacts.filter((artifact) => artifact.kind === "model");
+  const modelArtifacts = artifacts.filter(
+    (artifact) => artifact.kind === "model",
+  );
   const registryArtifacts = modelArtifacts.filter(hasModelOutputEvidence);
   const modelCoverage = new Set<string>();
   for (const artifact of registryArtifacts) {
@@ -474,8 +473,7 @@ function buildModelTrackingCheck(
   }
   const hasAllEliza1Variants = ELIZA_ONE_BENCHMARK_TIERS.every(
     (tier) =>
-      modelCoverage.has(`${tier}:base`) &&
-      modelCoverage.has(`${tier}:trained`),
+      modelCoverage.has(`${tier}:base`) && modelCoverage.has(`${tier}:trained`),
   );
   const appliedBundleArtifacts = modelArtifacts.filter(
     (artifact) =>
@@ -513,7 +511,8 @@ function buildModelTrackingCheck(
       status === "ready"
         ? null
         : {
-            label: "Stage or register concrete base/trained Eliza-1 model artifacts",
+            label:
+              "Stage or register concrete base/trained Eliza-1 model artifacts",
             capability: "terminal-training-stage-eliza1-bundle",
             params: { tier: "2b", apply: true },
           },
@@ -582,9 +581,7 @@ function readableSourceCoverageStatus(
     (key) => (coverage.dataSources[key] ?? 0) > 0,
   );
   if (presentSources.length === 0) return null;
-  if (
-    presentSources.every((key) => (coverage.readableSamples[key] ?? 0) > 0)
-  ) {
+  if (presentSources.every((key) => (coverage.readableSamples[key] ?? 0) > 0)) {
     return "ready";
   }
   return "partial";
@@ -597,17 +594,13 @@ function applyCoverageReadiness(
   if (!coverage) return checks;
   return checks.map((item) => {
     if (item.id === "readable_source_samples") {
-      return coverageCheck(
-        item,
-        readableSourceCoverageStatus(coverage),
-        {
-          artifactCount: coverage.readableSamples.total,
-          readyNote:
-            "Analysis coverage includes readable trajectory samples for every collected source category.",
-          partialNote:
-            "Analysis coverage found collected trajectory sources that do not all expose readable samples yet.",
-        },
-      );
+      return coverageCheck(item, readableSourceCoverageStatus(coverage), {
+        artifactCount: coverage.readableSamples.total,
+        readyNote:
+          "Analysis coverage includes readable trajectory samples for every collected source category.",
+        partialNote:
+          "Analysis coverage found collected trajectory sources that do not all expose readable samples yet.",
+      });
     }
     if (item.id === "eval_comparison") {
       const harnessComparisons =
@@ -706,11 +699,8 @@ function applyCoverageReadiness(
     if (item.id === "cerebras_reference") {
       return coverageCheck(
         item,
-        coverageTierStatus(
-          coverage,
-          ["2b"],
-          (tier) => tier.hasReference,
-        ) === "ready" ||
+        coverageTierStatus(coverage, ["2b"], (tier) => tier.hasReference) ===
+          "ready" ||
           coverage.benchmarks.tierCoverage.some((tier) => tier.hasReference)
           ? "ready"
           : coverage.benchmarks.matrices > 0
@@ -816,371 +806,377 @@ export function buildTrainingReadinessReportPayload(
 ): TrainingReadinessReport {
   const artifacts = analysis.manifest.artifacts;
   const coverage = analysis.manifest.coverage;
-  const checks = applyCoverageReadiness([
-    check(artifacts, {
-      id: "huggingface_training_data",
-      label: "Hugging Face training data",
-      ready: (artifact) =>
-        artifact.kind === "trajectory_dataset" &&
-        (schemaOf(artifact) === "eliza_huggingface_dataset_ingest" ||
-          sourceKindOf(artifact) === "huggingface_dataset") &&
-        (numberSummary(artifact, "downloadedFiles") ?? 0) > 0 &&
-        (numberSummary(artifact, "jsonlRows") ?? 0) > 0,
-      partial: (artifact) =>
-        artifact.kind === "trajectory_dataset" &&
-        (schemaOf(artifact) === "eliza_huggingface_dataset_ingest" ||
-          sourceKindOf(artifact) === "huggingface_dataset"),
-      readyNote: "Downloaded Hugging Face training rows are represented.",
-      partialNote:
-        "A Hugging Face ingest artifact is present, but it has no downloaded JSONL rows.",
-      missingNote:
-        "No Hugging Face training dataset ingest manifest was found.",
-      recommendedAction: {
-        label: "Download Hugging Face training files",
-        capability: "terminal-training-ingest-hf-dataset",
-        params: { dryRun: false },
-      },
-    }),
-    check(artifacts, {
-      id: "feed_generation",
-      label: "Feed generated trajectories",
-      ready: (artifact) =>
-        artifact.kind === "trajectory_dataset" &&
-        (schemaOf(artifact) === "feed_training_trajectory_export" ||
-          schemaOf(artifact) === "feed_parallel_generation") &&
-        !isDryRunArtifact(artifact) &&
-        hasPositiveSummary(artifact, [
-          "rows",
-          "trajectories",
-          "parsedTrajectories",
-          "agentsCreated",
-        ]),
-      partial: (artifact) =>
-        artifact.kind === "trajectory_dataset" &&
-        (schemaOf(artifact) === "feed_training_trajectory_export" ||
-          schemaOf(artifact) === "feed_parallel_generation"),
-      readyNote: "Feed generation artifacts include generated trajectory data.",
-      partialNote:
-        "A feed generation artifact is present, but it is a dry run or has no generated trajectory rows.",
-      missingNote: "No feed trajectory generation artifact was found.",
-      recommendedAction: {
-        label: "Generate feed training trajectories",
-        capability: "terminal-training-feed-generate",
-        params: {
-          dryRun: false,
-          archetypes: "trader",
-          numAgents: 1,
-          ticks: 1,
-          parallel: 1,
+  const checks = applyCoverageReadiness(
+    [
+      check(artifacts, {
+        id: "huggingface_training_data",
+        label: "Hugging Face training data",
+        ready: (artifact) =>
+          artifact.kind === "trajectory_dataset" &&
+          (schemaOf(artifact) === "eliza_huggingface_dataset_ingest" ||
+            sourceKindOf(artifact) === "huggingface_dataset") &&
+          (numberSummary(artifact, "downloadedFiles") ?? 0) > 0 &&
+          (numberSummary(artifact, "jsonlRows") ?? 0) > 0,
+        partial: (artifact) =>
+          artifact.kind === "trajectory_dataset" &&
+          (schemaOf(artifact) === "eliza_huggingface_dataset_ingest" ||
+            sourceKindOf(artifact) === "huggingface_dataset"),
+        readyNote: "Downloaded Hugging Face training rows are represented.",
+        partialNote:
+          "A Hugging Face ingest artifact is present, but it has no downloaded JSONL rows.",
+        missingNote:
+          "No Hugging Face training dataset ingest manifest was found.",
+        recommendedAction: {
+          label: "Download Hugging Face training files",
+          capability: "terminal-training-ingest-hf-dataset",
+          params: { dryRun: false },
         },
-      },
-    }),
-    check(artifacts, {
-      id: "natural_trajectories",
-      label: "Natural app trajectories",
-      ready: (artifact) =>
-        artifact.kind === "trajectory_bundle" &&
-        sourceLabelOf(artifact) === "training_collection_natural_trajectories" &&
-        hasPositiveSummary(artifact, [
-          "sanitizedTrajectoryCount",
-          "taskExamples",
-          "llmCalls",
-        ]),
-      partial: (artifact) =>
-        artifact.kind === "trajectory_bundle" &&
-        sourceLabelOf(artifact) === "training_collection_natural_trajectories",
-      readyNote:
-        "Natural app/runtime trajectory bundles include trajectory rows.",
-      partialNote:
-        "A natural app trajectory bundle is present, but it has no counted trajectory rows.",
-      missingNote:
-        "No natural app/runtime trajectory bundle was found.",
-      recommendedAction: {
-        label: "Collect natural app/runtime trajectories",
-        capability: "terminal-training-run-collection",
-        params: {
-          includeNaturalTrajectories: true,
-        },
-      },
-    }),
-    check(artifacts, {
-      id: "test_trajectories",
-      label: "Test trajectories",
-      ready: (artifact) =>
-        artifact.kind === "trajectory_dataset" &&
-        sourceKindOf(artifact) === "app_core_test_trajectory" &&
-        hasPositiveSummary(artifact, ["actions", "llmCalls"]),
-      partial: (artifact) =>
-        artifact.kind === "trajectory_dataset" &&
-        sourceKindOf(artifact) === "app_core_test_trajectory",
-      readyNote: "Test trajectory artifacts include action or LLM rows.",
-      partialNote:
-        "A test trajectory artifact is present, but it has no counted actions or LLM rows.",
-      missingNote: "No test trajectory artifact was found.",
-      recommendedAction: {
-        label: "Collect app-core test trajectories",
-        capability: "terminal-training-run-collection",
-        params: {
-          includeTestTrajectories: true,
-        },
-      },
-    }),
-    check(artifacts, {
-      id: "scenario_trajectories",
-      label: "Scenario trajectories",
-      ready: (artifact) =>
-        (artifact.kind === "scenario_run" &&
-          hasPositiveSummary(artifact, ["totalCount", "nativeRows"])) ||
-        (artifact.kind === "trajectory_dataset" &&
-          schemaOf(artifact) === "eliza_scenario_native_export" &&
-          hasPositiveSummary(artifact, ["rows", "parsedTrajectories"])),
-      partial: (artifact) =>
-        artifact.kind === "scenario_run" ||
-        (artifact.kind === "trajectory_dataset" &&
-          schemaOf(artifact) === "eliza_scenario_native_export"),
-      readyNote:
-        "Scenario run or native scenario export artifacts include scenario rows.",
-      partialNote:
-        "A scenario artifact is present, but it has no counted scenario or native trajectory rows.",
-      missingNote: "No scenario run or native scenario export was found.",
-      recommendedAction: {
-        label: "Run scenarios with native trajectory export",
-        capability: "terminal-training-run-scenarios",
-        params: {
-          dryRun: false,
-          exportNative: true,
-          useDeterministicProxy: true,
-        },
-      },
-    }),
-    check(artifacts, {
-      id: "readable_source_samples",
-      label: "Readable trajectory samples",
-      ready: (artifact) =>
-        (artifact.kind === "trajectory_bundle" ||
-          artifact.kind === "trajectory_dataset" ||
-          artifact.kind === "scenario_run") &&
-        hasReadableSamplePreview(artifact),
-      partial: (artifact) =>
-        artifact.kind === "trajectory_bundle" ||
-        artifact.kind === "trajectory_dataset" ||
-        artifact.kind === "scenario_run",
-      readyNote:
-        "Trajectory artifacts include readable input/output or trajectory sample previews for the HTML viewer.",
-      partialNote:
-        "Trajectory artifacts are present, but none expose readable sample previews yet.",
-      missingNote:
-        "No trajectory artifact with readable HTML-viewer samples was found.",
-      recommendedAction: {
-        label: "Build the training analysis viewer from collected artifacts",
-        capability: "terminal-training-build-analysis-index",
-        params: {},
-      },
-    }),
-    check(artifacts, {
-      id: "eval_comparison",
-      label: "Base vs trained Eliza harness eval comparison",
-      ready: (artifact) =>
-        (artifact.kind === "eval" &&
-          schemaOf(artifact) === "eliza_eval_comparison_artifact" &&
-          hasScoredEvalImprovement(artifact)) ||
-        (artifact.kind === "benchmark_matrix" &&
-          hasImprovementComparison(artifact)),
-      partial: (artifact) =>
-        (artifact.kind === "eval" &&
-          schemaOf(artifact) === "eliza_eval_comparison_artifact") ||
-        artifact.kind === "benchmark_matrix",
-      readyNote:
-        "A scored base-vs-trained Eliza harness or eval comparison with percentage improvement is present.",
-      partialNote:
-        "A comparison artifact is present, but it does not include base score, trained score, and percentage improvement from the Eliza harness.",
-      missingNote:
-        "No base-vs-trained Eliza harness eval comparison artifact was found.",
-      recommendedAction: actionBenchmarkPairCollectionAction(
-        "Run scored base-vs-trained Eliza harness eval comparison",
-        ["2b"],
-      ),
-    }),
-    check(artifacts, {
-      id: "agentic_benchmarks",
-      label: "Eliza harness benchmarks",
-      ready: (artifact) =>
-        artifact.kind === "eval" &&
-        isElizaHarnessActionBenchmark(artifact) &&
-        (typeof artifact.summary.accuracy === "number" ||
-          typeof artifact.summary.score === "number" ||
-          typeof artifact.summary.passRate === "number") &&
-        ((numberSummary(artifact, "total") ?? 1) > 0 ||
-          (numberSummary(artifact, "results") ?? 1) > 0),
-      partial: (artifact) =>
-        artifact.kind === "eval" && isElizaHarnessActionBenchmark(artifact),
-      readyNote: "Agentic benchmark artifacts include scored results.",
-      partialNote:
-        "An agentic benchmark artifact is present, but it has no score.",
-      missingNote: "No Eliza harness benchmark artifact was found.",
-      recommendedAction: {
-        label: "Run Eliza action-selection benchmark",
-        capability: "terminal-training-run-collection",
-        params: {
-          includeActionBenchmark: true,
-          includeBenchmarkMatrix: true,
-          actionBenchmark: {
+      }),
+      check(artifacts, {
+        id: "feed_generation",
+        label: "Feed generated trajectories",
+        ready: (artifact) =>
+          artifact.kind === "trajectory_dataset" &&
+          (schemaOf(artifact) === "feed_training_trajectory_export" ||
+            schemaOf(artifact) === "feed_parallel_generation") &&
+          !isDryRunArtifact(artifact) &&
+          hasPositiveSummary(artifact, [
+            "rows",
+            "trajectories",
+            "parsedTrajectories",
+            "agentsCreated",
+          ]),
+        partial: (artifact) =>
+          artifact.kind === "trajectory_dataset" &&
+          (schemaOf(artifact) === "feed_training_trajectory_export" ||
+            schemaOf(artifact) === "feed_parallel_generation"),
+        readyNote:
+          "Feed generation artifacts include generated trajectory data.",
+        partialNote:
+          "A feed generation artifact is present, but it is a dry run or has no generated trajectory rows.",
+        missingNote: "No feed trajectory generation artifact was found.",
+        recommendedAction: {
+          label: "Generate feed training trajectories",
+          capability: "terminal-training-feed-generate",
+          params: {
             dryRun: false,
-            useMocks: false,
-            runsPerCase: 1,
-            provider: "local-llama-cpp",
+            archetypes: "trader",
+            numAgents: 1,
+            ticks: 1,
+            parallel: 1,
+          },
+        },
+      }),
+      check(artifacts, {
+        id: "natural_trajectories",
+        label: "Natural app trajectories",
+        ready: (artifact) =>
+          artifact.kind === "trajectory_bundle" &&
+          sourceLabelOf(artifact) ===
+            "training_collection_natural_trajectories" &&
+          hasPositiveSummary(artifact, [
+            "sanitizedTrajectoryCount",
+            "taskExamples",
+            "llmCalls",
+          ]),
+        partial: (artifact) =>
+          artifact.kind === "trajectory_bundle" &&
+          sourceLabelOf(artifact) ===
+            "training_collection_natural_trajectories",
+        readyNote:
+          "Natural app/runtime trajectory bundles include trajectory rows.",
+        partialNote:
+          "A natural app trajectory bundle is present, but it has no counted trajectory rows.",
+        missingNote: "No natural app/runtime trajectory bundle was found.",
+        recommendedAction: {
+          label: "Collect natural app/runtime trajectories",
+          capability: "terminal-training-run-collection",
+          params: {
+            includeNaturalTrajectories: true,
+          },
+        },
+      }),
+      check(artifacts, {
+        id: "test_trajectories",
+        label: "Test trajectories",
+        ready: (artifact) =>
+          artifact.kind === "trajectory_dataset" &&
+          sourceKindOf(artifact) === "app_core_test_trajectory" &&
+          hasPositiveSummary(artifact, ["actions", "llmCalls"]),
+        partial: (artifact) =>
+          artifact.kind === "trajectory_dataset" &&
+          sourceKindOf(artifact) === "app_core_test_trajectory",
+        readyNote: "Test trajectory artifacts include action or LLM rows.",
+        partialNote:
+          "A test trajectory artifact is present, but it has no counted actions or LLM rows.",
+        missingNote: "No test trajectory artifact was found.",
+        recommendedAction: {
+          label: "Collect app-core test trajectories",
+          capability: "terminal-training-run-collection",
+          params: {
+            includeTestTrajectories: true,
+          },
+        },
+      }),
+      check(artifacts, {
+        id: "scenario_trajectories",
+        label: "Scenario trajectories",
+        ready: (artifact) =>
+          (artifact.kind === "scenario_run" &&
+            hasPositiveSummary(artifact, ["totalCount", "nativeRows"])) ||
+          (artifact.kind === "trajectory_dataset" &&
+            schemaOf(artifact) === "eliza_scenario_native_export" &&
+            hasPositiveSummary(artifact, ["rows", "parsedTrajectories"])),
+        partial: (artifact) =>
+          artifact.kind === "scenario_run" ||
+          (artifact.kind === "trajectory_dataset" &&
+            schemaOf(artifact) === "eliza_scenario_native_export"),
+        readyNote:
+          "Scenario run or native scenario export artifacts include scenario rows.",
+        partialNote:
+          "A scenario artifact is present, but it has no counted scenario or native trajectory rows.",
+        missingNote: "No scenario run or native scenario export was found.",
+        recommendedAction: {
+          label: "Run scenarios with native trajectory export",
+          capability: "terminal-training-run-scenarios",
+          params: {
+            dryRun: false,
+            exportNative: true,
+            useDeterministicProxy: true,
+          },
+        },
+      }),
+      check(artifacts, {
+        id: "readable_source_samples",
+        label: "Readable trajectory samples",
+        ready: (artifact) =>
+          (artifact.kind === "trajectory_bundle" ||
+            artifact.kind === "trajectory_dataset" ||
+            artifact.kind === "scenario_run") &&
+          hasReadableSamplePreview(artifact),
+        partial: (artifact) =>
+          artifact.kind === "trajectory_bundle" ||
+          artifact.kind === "trajectory_dataset" ||
+          artifact.kind === "scenario_run",
+        readyNote:
+          "Trajectory artifacts include readable input/output or trajectory sample previews for the HTML viewer.",
+        partialNote:
+          "Trajectory artifacts are present, but none expose readable sample previews yet.",
+        missingNote:
+          "No trajectory artifact with readable HTML-viewer samples was found.",
+        recommendedAction: {
+          label: "Build the training analysis viewer from collected artifacts",
+          capability: "terminal-training-build-analysis-index",
+          params: {},
+        },
+      }),
+      check(artifacts, {
+        id: "eval_comparison",
+        label: "Base vs trained Eliza harness eval comparison",
+        ready: (artifact) =>
+          (artifact.kind === "eval" &&
+            schemaOf(artifact) === "eliza_eval_comparison_artifact" &&
+            hasScoredEvalImprovement(artifact)) ||
+          (artifact.kind === "benchmark_matrix" &&
+            hasImprovementComparison(artifact)),
+        partial: (artifact) =>
+          (artifact.kind === "eval" &&
+            schemaOf(artifact) === "eliza_eval_comparison_artifact") ||
+          artifact.kind === "benchmark_matrix",
+        readyNote:
+          "A scored base-vs-trained Eliza harness or eval comparison with percentage improvement is present.",
+        partialNote:
+          "A comparison artifact is present, but it does not include base score, trained score, and percentage improvement from the Eliza harness.",
+        missingNote:
+          "No base-vs-trained Eliza harness eval comparison artifact was found.",
+        recommendedAction: actionBenchmarkPairCollectionAction(
+          "Run scored base-vs-trained Eliza harness eval comparison",
+          ["2b"],
+        ),
+      }),
+      check(artifacts, {
+        id: "agentic_benchmarks",
+        label: "Eliza harness benchmarks",
+        ready: (artifact) =>
+          artifact.kind === "eval" &&
+          isElizaHarnessActionBenchmark(artifact) &&
+          (typeof artifact.summary.accuracy === "number" ||
+            typeof artifact.summary.score === "number" ||
+            typeof artifact.summary.passRate === "number") &&
+          ((numberSummary(artifact, "total") ?? 1) > 0 ||
+            (numberSummary(artifact, "results") ?? 1) > 0),
+        partial: (artifact) =>
+          artifact.kind === "eval" && isElizaHarnessActionBenchmark(artifact),
+        readyNote: "Agentic benchmark artifacts include scored results.",
+        partialNote:
+          "An agentic benchmark artifact is present, but it has no score.",
+        missingNote: "No Eliza harness benchmark artifact was found.",
+        recommendedAction: {
+          label: "Run Eliza action-selection benchmark",
+          capability: "terminal-training-run-collection",
+          params: {
+            includeActionBenchmark: true,
+            includeBenchmarkMatrix: true,
+            actionBenchmark: {
+              dryRun: false,
+              useMocks: false,
+              runsPerCase: 1,
+              provider: "local-llama-cpp",
+              benchmark: "eliza_harness_action_selection",
+            },
+            actionBenchmarkPair: {
+              tier: "2b",
+              base: { variant: "base" },
+              trained: { variant: "trained" },
+            },
+          },
+        },
+      }),
+      check(artifacts, {
+        id: "benchmark_matrix",
+        label: "Benchmark matrix",
+        ready: (artifact) =>
+          artifact.kind === "benchmark_matrix" &&
+          hasPositiveSummary(artifact, ["rows", "comparisons"]) &&
+          hasRealBenchmarkMatrixRows(artifact),
+        partial: (artifact) => artifact.kind === "benchmark_matrix",
+        readyNote: "Benchmark matrix artifact includes rows or comparisons.",
+        partialNote:
+          "A benchmark matrix artifact is present, but it has no rows or comparisons.",
+        missingNote: "No benchmark matrix artifact was found.",
+        recommendedAction: actionBenchmarkPairCollectionAction(
+          "Generate benchmark matrix from Eliza harness artifacts",
+          ["2b"],
+        ),
+      }),
+      check(artifacts, {
+        id: "benchmark_case_provenance",
+        label: "Benchmark case provenance",
+        ready: (artifact) =>
+          artifact.kind === "benchmark_matrix" &&
+          hasBenchmarkCaseProvenance(artifact),
+        partial: (artifact) => artifact.kind === "benchmark_matrix",
+        readyNote:
+          "Benchmark matrix rows include Eliza harness case prompts, actions, and trajectory paths.",
+        partialNote:
+          "A benchmark matrix exists, but its rows do not include readable case provenance.",
+        missingNote:
+          "No benchmark matrix with Eliza harness case provenance was found.",
+        recommendedAction: actionBenchmarkPairCollectionAction(
+          "Run Eliza harness benchmark with trajectory capture",
+          ["2b"],
+        ),
+      }),
+      check(artifacts, {
+        id: "smallest_model_benchmark",
+        label: "Smallest Eliza-1 benchmark coverage",
+        ready: (artifact) =>
+          artifact.kind === "benchmark_matrix" &&
+          hasSmallestTierComparison(artifact),
+        partial: (artifact) => artifact.kind === "benchmark_matrix",
+        readyNote:
+          "Benchmark matrix includes scored coverage for the smallest Eliza-1 tier.",
+        partialNote:
+          "A benchmark matrix exists, but it does not prove scored smallest-tier coverage.",
+        missingNote:
+          "No benchmark matrix exists for the smallest Eliza-1 tier.",
+        recommendedAction: actionBenchmarkPairCollectionAction(
+          "Run smallest-tier base/trained Eliza harness benchmark",
+          ["2b"],
+        ),
+      }),
+      check(artifacts, {
+        id: "all_eliza1_tiers_benchmark",
+        label: "All Eliza-1 tier benchmark coverage",
+        ready: (artifact) =>
+          artifact.kind === "benchmark_matrix" &&
+          hasAllEliza1BenchmarkTierComparisons(artifact),
+        partial: (artifact) => artifact.kind === "benchmark_matrix",
+        readyNote:
+          "Benchmark matrix includes scored coverage for 2B, 4B, 9B, and 27B tiers.",
+        partialNote:
+          "A benchmark matrix exists, but it does not prove scored coverage for every Eliza-1 tier.",
+        missingNote:
+          "No benchmark matrix exists for all requested Eliza-1 tiers.",
+        recommendedAction: actionBenchmarkPairCollectionAction(
+          "Run all-tier base/trained Eliza harness benchmarks",
+          ELIZA_ONE_BENCHMARK_TIERS,
+        ),
+      }),
+      check(artifacts, {
+        id: "cerebras_reference",
+        label: "Cerebras reference benchmark",
+        ready: (artifact) =>
+          artifact.kind === "benchmark_matrix" &&
+          hasCerebrasReferenceComparison(artifact),
+        partial: (artifact) => artifact.kind === "benchmark_matrix",
+        readyNote: "Benchmark matrix includes a Cerebras reference comparison.",
+        partialNote:
+          "A benchmark matrix exists, but it does not prove a Cerebras reference comparison.",
+        missingNote: "No Cerebras reference benchmark artifact was found.",
+        recommendedAction: {
+          label: "Run benchmark against Cerebras GPT-120b",
+          capability: "terminal-training-run-benchmark-vs-cerebras",
+          params: {
+            tiers: ELIZA_ONE_BENCHMARK_TIER_LIST,
             benchmark: "eliza_harness_action_selection",
-          },
-          actionBenchmarkPair: {
-            tier: "2b",
-            base: { variant: "base" },
-            trained: { variant: "trained" },
+            variants: "both",
+            dryRun: false,
           },
         },
-      },
-    }),
-    check(artifacts, {
-      id: "benchmark_matrix",
-      label: "Benchmark matrix",
-      ready: (artifact) =>
-        artifact.kind === "benchmark_matrix" &&
-        hasPositiveSummary(artifact, ["rows", "comparisons"]) &&
-        hasRealBenchmarkMatrixRows(artifact),
-      partial: (artifact) => artifact.kind === "benchmark_matrix",
-      readyNote: "Benchmark matrix artifact includes rows or comparisons.",
-      partialNote:
-        "A benchmark matrix artifact is present, but it has no rows or comparisons.",
-      missingNote: "No benchmark matrix artifact was found.",
-      recommendedAction: actionBenchmarkPairCollectionAction(
-        "Generate benchmark matrix from Eliza harness artifacts",
-        ["2b"],
-      ),
-    }),
-    check(artifacts, {
-      id: "benchmark_case_provenance",
-      label: "Benchmark case provenance",
-      ready: (artifact) =>
-        artifact.kind === "benchmark_matrix" &&
-        hasBenchmarkCaseProvenance(artifact),
-      partial: (artifact) => artifact.kind === "benchmark_matrix",
-      readyNote:
-        "Benchmark matrix rows include Eliza harness case prompts, actions, and trajectory paths.",
-      partialNote:
-        "A benchmark matrix exists, but its rows do not include readable case provenance.",
-      missingNote:
-        "No benchmark matrix with Eliza harness case provenance was found.",
-      recommendedAction: actionBenchmarkPairCollectionAction(
-        "Run Eliza harness benchmark with trajectory capture",
-        ["2b"],
-      ),
-    }),
-    check(artifacts, {
-      id: "smallest_model_benchmark",
-      label: "Smallest Eliza-1 benchmark coverage",
-      ready: (artifact) =>
-        artifact.kind === "benchmark_matrix" &&
-        hasSmallestTierComparison(artifact),
-      partial: (artifact) => artifact.kind === "benchmark_matrix",
-      readyNote:
-        "Benchmark matrix includes scored coverage for the smallest Eliza-1 tier.",
-      partialNote:
-        "A benchmark matrix exists, but it does not prove scored smallest-tier coverage.",
-      missingNote: "No benchmark matrix exists for the smallest Eliza-1 tier.",
-      recommendedAction: actionBenchmarkPairCollectionAction(
-        "Run smallest-tier base/trained Eliza harness benchmark",
-        ["2b"],
-      ),
-    }),
-    check(artifacts, {
-      id: "all_eliza1_tiers_benchmark",
-      label: "All Eliza-1 tier benchmark coverage",
-      ready: (artifact) =>
-        artifact.kind === "benchmark_matrix" &&
-        hasAllEliza1BenchmarkTierComparisons(artifact),
-      partial: (artifact) => artifact.kind === "benchmark_matrix",
-      readyNote:
-        "Benchmark matrix includes scored coverage for 2B, 4B, 9B, and 27B tiers.",
-      partialNote:
-        "A benchmark matrix exists, but it does not prove scored coverage for every Eliza-1 tier.",
-      missingNote:
-        "No benchmark matrix exists for all requested Eliza-1 tiers.",
-      recommendedAction: actionBenchmarkPairCollectionAction(
-        "Run all-tier base/trained Eliza harness benchmarks",
-        ELIZA_ONE_BENCHMARK_TIERS,
-      ),
-    }),
-    check(artifacts, {
-      id: "cerebras_reference",
-      label: "Cerebras reference benchmark",
-      ready: (artifact) =>
-        artifact.kind === "benchmark_matrix" &&
-        hasCerebrasReferenceComparison(artifact),
-      partial: (artifact) => artifact.kind === "benchmark_matrix",
-      readyNote: "Benchmark matrix includes a Cerebras reference comparison.",
-      partialNote:
-        "A benchmark matrix exists, but it does not prove a Cerebras reference comparison.",
-      missingNote: "No Cerebras reference benchmark artifact was found.",
-      recommendedAction: {
-        label: "Run benchmark against Cerebras GPT-120b",
-        capability: "terminal-training-run-benchmark-vs-cerebras",
-        params: {
-          tiers: ELIZA_ONE_BENCHMARK_TIER_LIST,
-          benchmark: "eliza_harness_action_selection",
-          variants: "both",
-          dryRun: false,
+      }),
+      check(artifacts, {
+        id: "base_trained_improvement",
+        label: "Base vs trained improvement metrics",
+        ready: (artifact) =>
+          artifact.kind === "benchmark_matrix" &&
+          hasImprovementComparison(artifact),
+        partial: (artifact) => artifact.kind === "benchmark_matrix",
+        readyNote:
+          "Benchmark matrix includes base/trained scores with percentage improvement.",
+        partialNote:
+          "A benchmark matrix exists, but it does not prove base/trained percentage improvement.",
+        missingNote:
+          "No benchmark matrix exists with base/trained percentage improvement.",
+        recommendedAction: actionBenchmarkPairCollectionAction(
+          "Run base/trained Eliza harness improvement comparison",
+          ["2b"],
+        ),
+      }),
+      check(artifacts, {
+        id: "all_eliza1_tier_improvements",
+        label: "All Eliza-1 tier improvement metrics",
+        ready: (artifact) =>
+          artifact.kind === "benchmark_matrix" &&
+          hasAllEliza1TierImprovementComparisons(artifact),
+        partial: (artifact) => artifact.kind === "benchmark_matrix",
+        readyNote:
+          "Benchmark matrix includes percentage improvement for 2B, 4B, 9B, and 27B tiers.",
+        partialNote:
+          "A benchmark matrix exists, but it does not prove percentage improvement for every Eliza-1 tier.",
+        missingNote:
+          "No benchmark matrix exists with percentage improvement for every requested Eliza-1 tier.",
+        recommendedAction: actionBenchmarkPairCollectionAction(
+          "Run all-tier base/trained Eliza harness improvement comparison",
+          ELIZA_ONE_BENCHMARK_TIERS,
+        ),
+      }),
+      buildModelTrackingCheck(artifacts, coverage),
+      check(artifacts, {
+        id: "collection_manifest",
+        label: "Collection manifest",
+        ready: (artifact) => artifact.kind === "collection_run",
+        readyNote: "A collection manifest ties the run together.",
+        missingNote: "No training collection manifest was found.",
+        recommendedAction: {
+          label: "Run training collection",
+          capability: "terminal-training-run-collection",
+          params: {},
         },
-      },
-    }),
-    check(artifacts, {
-      id: "base_trained_improvement",
-      label: "Base vs trained improvement metrics",
-      ready: (artifact) =>
-        artifact.kind === "benchmark_matrix" &&
-        hasImprovementComparison(artifact),
-      partial: (artifact) => artifact.kind === "benchmark_matrix",
-      readyNote:
-        "Benchmark matrix includes base/trained scores with percentage improvement.",
-      partialNote:
-        "A benchmark matrix exists, but it does not prove base/trained percentage improvement.",
-      missingNote:
-        "No benchmark matrix exists with base/trained percentage improvement.",
-      recommendedAction: actionBenchmarkPairCollectionAction(
-        "Run base/trained Eliza harness improvement comparison",
-        ["2b"],
-      ),
-    }),
-    check(artifacts, {
-      id: "all_eliza1_tier_improvements",
-      label: "All Eliza-1 tier improvement metrics",
-      ready: (artifact) =>
-        artifact.kind === "benchmark_matrix" &&
-        hasAllEliza1TierImprovementComparisons(artifact),
-      partial: (artifact) => artifact.kind === "benchmark_matrix",
-      readyNote:
-        "Benchmark matrix includes percentage improvement for 2B, 4B, 9B, and 27B tiers.",
-      partialNote:
-        "A benchmark matrix exists, but it does not prove percentage improvement for every Eliza-1 tier.",
-      missingNote:
-        "No benchmark matrix exists with percentage improvement for every requested Eliza-1 tier.",
-      recommendedAction: actionBenchmarkPairCollectionAction(
-        "Run all-tier base/trained Eliza harness improvement comparison",
-        ELIZA_ONE_BENCHMARK_TIERS,
-      ),
-    }),
-    buildModelTrackingCheck(artifacts, coverage),
-    check(artifacts, {
-      id: "collection_manifest",
-      label: "Collection manifest",
-      ready: (artifact) => artifact.kind === "collection_run",
-      readyNote: "A collection manifest ties the run together.",
-      missingNote: "No training collection manifest was found.",
-      recommendedAction: {
-        label: "Run training collection",
-        capability: "terminal-training-run-collection",
-        params: {},
-      },
-    }),
-  ], coverage);
+      }),
+    ],
+    coverage,
+  );
   const counts = {
     checks: checks.length,
     ready: checks.filter((item) => item.status === "ready").length,

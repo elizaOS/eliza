@@ -62,16 +62,8 @@
       "eliza-evidence: status=PASS",
       "RESULT=0"
     ],
-    "cts_result": [
-      "CTS_SCOPE",
-      "NNAPI",
-      "RESULT=0"
-    ],
-    "nnapi_query_log": [
-      "e1-npu",
-      "NNAPI",
-      "accelerator"
-    ],
+    "cts_result": ["CTS_SCOPE", "NNAPI", "RESULT=0"],
+    "nnapi_query_log": ["e1-npu", "NNAPI", "accelerator"],
     "selinux_neverallow_log": [
       "sepolicy_neverallows",
       "e1_npu",
@@ -90,11 +82,7 @@
       "eliza-evidence: status=PASS",
       "RESULT=0"
     ],
-    "vts_result": [
-      "VTS_SCOPE",
-      "e1_npu",
-      "RESULT=0"
-    ]
+    "vts_result": ["VTS_SCOPE", "e1_npu", "RESULT=0"]
   },
   "required_statuses": {
     "aidl_or_hidl_hal_declared": "passed",

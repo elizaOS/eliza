@@ -16,14 +16,10 @@
     "skippedScenarioRows": 0,
     "unknownOutcomeRows": 0
   },
-  "runIds": [
-    "471802ef-d3e8-4d34-8420-a5b27e75c32f"
-  ],
+  "runIds": ["471802ef-d3e8-4d34-8420-a5b27e75c32f"],
   "scenarioIds": [
     "orchestrator-evidence-bundle",
     "orchestrator-grilling-happy-path"
   ],
-  "agentIds": [
-    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
-  ]
+  "agentIds": ["546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"]
 }

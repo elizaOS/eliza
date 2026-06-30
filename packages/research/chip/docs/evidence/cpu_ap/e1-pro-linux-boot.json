@@ -28,10 +28,7 @@
   "provenance": "simulator",
   "reached_userland": true,
   "recorded_at": "2026-05-22T19:56:30Z",
-  "reproduce": [
-    "source tools/env.sh",
-    "scripts/run_e1_linux_boot.sh"
-  ],
+  "reproduce": ["source tools/env.sh", "scripts/run_e1_linux_boot.sh"],
   "schema": "eliza.cpu_linux_boot.v1",
   "status": "pass",
   "substrate": "qemu-system-riscv64 (virt machine, functional ISA simulator)",

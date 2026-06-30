@@ -77,15 +77,51 @@
     "status": "pass",
     "collision_pairs_checked": 9,
     "pairs": [
-      {"parts": ["screen_cover_glass", "orange_side_frame"], "min_gap_mm": 0.05, "interference_volume_mm3": 0.0},
-      {"parts": ["screen_cover_glass", "display_lcm"], "min_gap_mm": 0.18, "interference_volume_mm3": 0.0},
-      {"parts": ["screen_cover_glass", "screen_adhesive_top"], "min_gap_mm": 0.06, "interference_volume_mm3": 0.0},
-      {"parts": ["screen_cover_glass", "front_camera_module"], "min_gap_mm": 2.6, "interference_volume_mm3": 0.0},
-      {"parts": ["screen_cover_glass", "front_camera_under_glass"], "min_gap_mm": 0.04, "interference_volume_mm3": 0.0},
-      {"parts": ["screen_cover_glass", "front_camera_black_mask_window"], "min_gap_mm": 0.04, "interference_volume_mm3": 0.0},
-      {"parts": ["screen_cover_glass", "earpiece_receiver"], "min_gap_mm": 2.95, "interference_volume_mm3": 0.0},
-      {"parts": ["screen_cover_glass", "handset_acoustic_slot"], "min_gap_mm": 0.15, "interference_volume_mm3": 0.0},
-      {"parts": ["screen_cover_glass", "handset_acoustic_mesh"], "min_gap_mm": 0.05, "interference_volume_mm3": 0.0}
+      {
+        "parts": ["screen_cover_glass", "orange_side_frame"],
+        "min_gap_mm": 0.05,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["screen_cover_glass", "display_lcm"],
+        "min_gap_mm": 0.18,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["screen_cover_glass", "screen_adhesive_top"],
+        "min_gap_mm": 0.06,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["screen_cover_glass", "front_camera_module"],
+        "min_gap_mm": 2.6,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["screen_cover_glass", "front_camera_under_glass"],
+        "min_gap_mm": 0.04,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["screen_cover_glass", "front_camera_black_mask_window"],
+        "min_gap_mm": 0.04,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["screen_cover_glass", "earpiece_receiver"],
+        "min_gap_mm": 2.95,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["screen_cover_glass", "handset_acoustic_slot"],
+        "min_gap_mm": 0.15,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["screen_cover_glass", "handset_acoustic_mesh"],
+        "min_gap_mm": 0.05,
+        "interference_volume_mm3": 0.0
+      }
     ],
     "screen_stack_scope": {
       "case": "screen_stack_to_orange_rails",
@@ -103,9 +139,21 @@
     "cover_glass_bbox_mm": [16.4, 53.2, -5.9, 25.6, 62.4, -5.35],
     "aperture_clears_cover_glass_xy": true,
     "pairs": [
-      {"parts": ["orange_back_shell", "rear_camera_cover_glass"], "min_gap_mm": 0.7, "interference_volume_mm3": 0.0},
-      {"parts": ["orange_back_shell", "rear_camera_lens_window"], "min_gap_mm": 1.9, "interference_volume_mm3": 0.0},
-      {"parts": ["orange_back_shell", "rear_camera_module"], "min_gap_mm": 0.5, "interference_volume_mm3": 0.0}
+      {
+        "parts": ["orange_back_shell", "rear_camera_cover_glass"],
+        "min_gap_mm": 0.7,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["orange_back_shell", "rear_camera_lens_window"],
+        "min_gap_mm": 1.9,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["orange_back_shell", "rear_camera_module"],
+        "min_gap_mm": 0.5,
+        "interference_volume_mm3": 0.0
+      }
     ],
     "optical_sightline": {
       "status": "pass",
@@ -136,10 +184,26 @@
     "static_interference_count": 0,
     "static_interference_volume_mm3": 0.0,
     "notable_static_pairs": [
-      {"parts": ["usb_c_receptacle", "usb_c_external_aperture"], "min_gap_mm": 0.105, "interference_volume_mm3": 0.0},
-      {"parts": ["usb_c_receptacle", "usb_c_perimeter_gasket_bottom"], "min_gap_mm": 0.17, "interference_volume_mm3": 0.0},
-      {"parts": ["usb_c_receptacle", "usb_c_perimeter_gasket_top"], "min_gap_mm": 0.47, "interference_volume_mm3": 0.0},
-      {"parts": ["usb_c_receptacle", "usb_c_internal_drain_shelf"], "min_gap_mm": 0.435, "interference_volume_mm3": 0.0}
+      {
+        "parts": ["usb_c_receptacle", "usb_c_external_aperture"],
+        "min_gap_mm": 0.105,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["usb_c_receptacle", "usb_c_perimeter_gasket_bottom"],
+        "min_gap_mm": 0.17,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["usb_c_receptacle", "usb_c_perimeter_gasket_top"],
+        "min_gap_mm": 0.47,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["usb_c_receptacle", "usb_c_internal_drain_shelf"],
+        "min_gap_mm": 0.435,
+        "interference_volume_mm3": 0.0
+      }
     ],
     "insertion_sweep": {
       "part": "usb_c_receptacle",
@@ -160,17 +224,50 @@
     "scope_interference_count": 0,
     "scope_interference_volume_mm3": 0.0,
     "notable_pairs": [
-      {"parts": ["battery_pouch", "main_pcb"], "min_gap_mm": 0.0, "interference_volume_mm3": 4454.4, "intentional_contact": true},
-      {"parts": ["battery_pouch", "split_interconnect_side_flex"], "min_gap_mm": 1.3, "interference_volume_mm3": 0.0},
-      {"parts": ["battery_pouch", "haptic_lra"], "min_gap_mm": 0.5, "interference_volume_mm3": 0.0},
-      {"parts": ["main_pcb", "haptic_lra"], "min_gap_mm": 0.5, "interference_volume_mm3": 0.0},
-      {"parts": ["split_interconnect_side_flex", "haptic_lra"], "min_gap_mm": 0.01, "interference_volume_mm3": 0.0}
+      {
+        "parts": ["battery_pouch", "main_pcb"],
+        "min_gap_mm": 0.0,
+        "interference_volume_mm3": 4454.4,
+        "intentional_contact": true
+      },
+      {
+        "parts": ["battery_pouch", "split_interconnect_side_flex"],
+        "min_gap_mm": 1.3,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["battery_pouch", "haptic_lra"],
+        "min_gap_mm": 0.5,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["main_pcb", "haptic_lra"],
+        "min_gap_mm": 0.5,
+        "interference_volume_mm3": 0.0
+      },
+      {
+        "parts": ["split_interconnect_side_flex", "haptic_lra"],
+        "min_gap_mm": 0.01,
+        "interference_volume_mm3": 0.0
+      }
     ],
     "assemblability_fpc": [
-      {"route": "display FPC", "min_clearance_mm": 0.11, "unpinched": true},
-      {"route": "battery/PMIC interconnect (side service loop)", "min_clearance_mm": 0.56, "unpinched": true},
-      {"route": "split top flex tail", "min_clearance_mm": 0.25, "unpinched": true},
-      {"route": "split bottom flex tail", "min_clearance_mm": 0.25, "unpinched": true}
+      { "route": "display FPC", "min_clearance_mm": 0.11, "unpinched": true },
+      {
+        "route": "battery/PMIC interconnect (side service loop)",
+        "min_clearance_mm": 0.56,
+        "unpinched": true
+      },
+      {
+        "route": "split top flex tail",
+        "min_clearance_mm": 0.25,
+        "unpinched": true
+      },
+      {
+        "route": "split bottom flex tail",
+        "min_clearance_mm": 0.25,
+        "unpinched": true
+      }
     ]
   },
   "side_buttons_review": {

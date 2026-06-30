@@ -20,8 +20,9 @@ export async function seedModelPricing(opts: {
   billingSource?: string;
   provider?: string;
 }): Promise<void> {
-  const { aiPricingRepository } =
-    await import("@elizaos/cloud-shared/db/repositories/ai-pricing");
+  const { aiPricingRepository } = await import(
+    "@elizaos/cloud-shared/db/repositories/ai-pricing"
+  );
 
   const base = {
     billing_source: opts.billingSource ?? "openai",

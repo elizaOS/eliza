@@ -50,9 +50,7 @@
         "measured_value_present": false,
         "parsed_measurements": {},
         "numeric_limit_pass": false,
-        "numeric_limit_failures": [
-          "missing_delta_e"
-        ],
+        "numeric_limit_failures": ["missing_delta_e"],
         "reviewer_present": false,
         "evidence_class": "",
         "evidence_class_allowed": false,
@@ -78,9 +76,7 @@
         "measured_value_present": false,
         "parsed_measurements": {},
         "numeric_limit_pass": false,
-        "numeric_limit_failures": [
-          "missing_gloss_gu_60"
-        ],
+        "numeric_limit_failures": ["missing_gloss_gu_60"],
         "reviewer_present": false,
         "evidence_class": "",
         "evidence_class_allowed": false,
@@ -105,9 +101,7 @@
         "measured_value_present": false,
         "parsed_measurements": {},
         "numeric_limit_pass": false,
-        "numeric_limit_failures": [
-          "missing_visible_defect_count"
-        ],
+        "numeric_limit_failures": ["missing_visible_defect_count"],
         "reviewer_present": false,
         "evidence_class": "",
         "evidence_class_allowed": false,
@@ -132,9 +126,7 @@
         "measured_value_present": false,
         "parsed_measurements": {},
         "numeric_limit_pass": false,
-        "numeric_limit_failures": [
-          "missing_a_surface_visible_defects"
-        ],
+        "numeric_limit_failures": ["missing_a_surface_visible_defects"],
         "reviewer_present": false,
         "evidence_class": "",
         "evidence_class_allowed": false,

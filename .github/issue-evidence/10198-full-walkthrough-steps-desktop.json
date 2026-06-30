@@ -192,9 +192,7 @@
       "dom": {
         "walletShell": true
       },
-      "assertions": [
-        "wallet shell / heading visible at /wallet"
-      ],
+      "assertions": ["wallet shell / heading visible at /wallet"],
       "screenshotRelPath": "desktop/07-wallet.png",
       "skipped": false,
       "skipReason": null,
@@ -376,9 +374,7 @@
       "dom": {
         "overlay": true
       },
-      "assertions": [
-        "Previous thread restored (thread-line visible)"
-      ],
+      "assertions": ["Previous thread restored (thread-line visible)"],
       "screenshotRelPath": "desktop/14-restore-chat.png",
       "skipped": false,
       "skipReason": null,
@@ -452,9 +448,7 @@
       "dom": {
         "composerValue": ""
       },
-      "assertions": [
-        "Composer cleared to empty draft"
-      ],
+      "assertions": ["Composer cleared to empty draft"],
       "screenshotRelPath": "desktop/17-clear-draft.png",
       "skipped": false,
       "skipReason": null,
@@ -477,9 +471,7 @@
       "dom": {
         "dataOpen": null
       },
-      "assertions": [
-        "Overlay collapsed from full (data-open no longer true)"
-      ],
+      "assertions": ["Overlay collapsed from full (data-open no longer true)"],
       "screenshotRelPath": "desktop/18-chat-pill.png",
       "skipped": false,
       "skipReason": null,
@@ -502,9 +494,7 @@
       "dom": {
         "dataOpen": "true"
       },
-      "assertions": [
-        "Overlay re-opened (data-open=true)"
-      ],
+      "assertions": ["Overlay re-opened (data-open=true)"],
       "screenshotRelPath": "desktop/19-chat-full-again.png",
       "skipped": false,
       "skipReason": null,
@@ -527,9 +517,7 @@
       "dom": {
         "composerFocused": true
       },
-      "assertions": [
-        "Composer is the focused element"
-      ],
+      "assertions": ["Composer is the focused element"],
       "screenshotRelPath": "desktop/20-input-focused.png",
       "skipped": false,
       "skipReason": null,
@@ -659,10 +647,7 @@
       "dom": {
         "home": true
       },
-      "assertions": [
-        "Returned to home/dashboard",
-        "Journey complete"
-      ],
+      "assertions": ["Returned to home/dashboard", "Journey complete"],
       "screenshotRelPath": "desktop/25-dashboard-rest.png",
       "skipped": false,
       "skipReason": null,

@@ -344,14 +344,20 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
   const baseSamples = await adapter.loadSamples(args.samples, {
     smoke: args.smoke,
   });
-  const counts = scenarioCounts(baseSamples.length, args.expandScenarios === true);
+  const counts = scenarioCounts(
+    baseSamples.length,
+    args.expandScenarios === true,
+  );
   if (args.countScenarios) {
     process.stdout.write(
       `vision-language ${args.benchmark} scenario counts: base=${counts.base} edge=${counts.edge} total=${counts.total}\n`,
     );
   }
   if (args.validateScenarios) {
-    const validation = validateSamples(baseSamples, args.expandScenarios === true);
+    const validation = validateSamples(
+      baseSamples,
+      args.expandScenarios === true,
+    );
     if (!validation.valid) {
       throw new Error(
         `invalid vision-language sample expansion for ${args.benchmark}: ${JSON.stringify(validation)}`,

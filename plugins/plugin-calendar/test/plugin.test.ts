@@ -1,6 +1,6 @@
+import { describe, expect, it } from "vitest";
 import { CalendarService, calendarPlugin } from "../src/index.js";
 import { CalendarMigrationService } from "../src/service/migration.js";
-import { describe, expect, it } from "vitest";
 
 describe("plugin-calendar surface", () => {
   it("registers data services, schema, and the calendar view", () => {

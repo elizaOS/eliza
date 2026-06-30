@@ -76,9 +76,7 @@ describe("COMPUTER_USE action approvals", () => {
     expect(approvalCall?.[0].text).toContain(
       "cua:approval_123_abc:approve=Approve",
     );
-    expect(approvalCall?.[0].text).toContain(
-      "cua:approval_123_abc:deny=Deny",
-    );
+    expect(approvalCall?.[0].text).toContain("cua:approval_123_abc:deny=Deny");
   });
 
   it("supports typed legacy approve/deny text for manual fallback", async () => {

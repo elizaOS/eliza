@@ -18,10 +18,7 @@ import { describe, expect, it } from "vitest";
 // serializes (routes.ts calls it directly); it lives in session-store and is a
 // thin wrapper over detectDesktopControlCapabilities().
 import { getScreenshareCapabilities } from "../session-store";
-import type {
-  CapabilitiesResponse,
-  Capability,
-} from "./screenshare-helpers";
+import type { CapabilitiesResponse, Capability } from "./screenshare-helpers";
 
 // getScreenshareCapabilities() in session-store.ts simply returns
 // detectDesktopControlCapabilities(); both are public re-exports.

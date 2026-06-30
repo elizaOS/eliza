@@ -137,26 +137,10 @@
     }
   ],
   "physical_stack_bounds_mm": {
-    "low": [
-      -40.55,
-      -76.8,
-      -5.9
-    ],
-    "high": [
-      40.55,
-      76.8,
-      5.9
-    ],
-    "span": [
-      81.1,
-      153.6,
-      11.8
-    ],
-    "nominal_envelope": [
-      78.0,
-      153.6,
-      11.8
-    ]
+    "low": [-40.55, -76.8, -5.9],
+    "high": [40.55, 76.8, 5.9],
+    "span": [81.1, 153.6, 11.8],
+    "nominal_envelope": [78.0, 153.6, 11.8]
   },
   "linked_fit_checks": {
     "usb_c_insertion_envelope": true,

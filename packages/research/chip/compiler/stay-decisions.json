@@ -44,9 +44,7 @@
       "bump_decision": "stay-and-wait",
       "bump_rationale": "v5.050 not yet tagged as of 2026-05-20. Our 5.049-devel snapshot is mid-cycle (46 commits past v5.048); upstream master is +107 from v5.048. Bumping to a raw master SHA would lose the OSS-CAD-Suite curated bundle and gain only in-flight fixes (e.g. #7616 unique_index, #7615 type-param order). Wait for v5.050 tag, then bump the whole oss-cad-suite drop together.",
       "upgrade_path_when_tagged": "Pull next oss-cad-suite nightly that includes Verilator v5.050; replace external/oss-cad-suite/ atomically; do not hand-swap the verilator binary inside the bundle.",
-      "watch_prs": [
-        "verilator/verilator next-tag cut (v5.050)"
-      ]
+      "watch_prs": ["verilator/verilator next-tag cut (v5.050)"]
     },
     {
       "tool": "Renode",

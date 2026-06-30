@@ -9,10 +9,7 @@
       "body": "torso_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "waist_yaw_link.STL",
-        "torso_collision.stl"
-      ],
+      "oem_baseline_meshes": ["waist_yaw_link.STL", "torso_collision.stl"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -23,10 +20,7 @@
       "body": "torso_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl",
-        "waist_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl", "waist_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -37,10 +31,7 @@
       "body": "torso_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl",
-        "waist_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl", "waist_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -51,9 +42,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -64,9 +53,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -77,10 +64,7 @@
       "body": "torso_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl",
-        "waist_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl", "waist_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -91,10 +75,7 @@
       "body": "torso_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl",
-        "waist_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl", "waist_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -105,10 +86,7 @@
       "body": "torso_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl",
-        "waist_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl", "waist_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -119,10 +97,7 @@
       "body": "torso_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl",
-        "waist_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl", "waist_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -133,9 +108,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -146,9 +119,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -159,9 +130,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -172,10 +141,7 @@
       "body": "torso_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl",
-        "waist_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl", "waist_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -186,9 +152,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -199,9 +163,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -212,9 +174,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "torso_collision.stl"
-      ],
+      "oem_baseline_meshes": ["torso_collision.stl"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -285,9 +245,7 @@
       "body": "pelvis",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "pelvis_link.STL"
-      ],
+      "oem_baseline_meshes": ["pelvis_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -298,9 +256,7 @@
       "body": "pelvis",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "pelvis_link.STL"
-      ],
+      "oem_baseline_meshes": ["pelvis_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -311,9 +267,7 @@
       "body": "pelvis",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "pelvis_link.STL"
-      ],
+      "oem_baseline_meshes": ["pelvis_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -324,9 +278,7 @@
       "body": "pelvis",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "pelvis_link.STL"
-      ],
+      "oem_baseline_meshes": ["pelvis_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -337,9 +289,7 @@
       "body": "pelvis",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "pelvis_link.STL"
-      ],
+      "oem_baseline_meshes": ["pelvis_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -350,9 +300,7 @@
       "body": "pelvis",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "pelvis_link.STL"
-      ],
+      "oem_baseline_meshes": ["pelvis_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -363,9 +311,7 @@
       "body": "pelvis",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "pelvis_link.STL"
-      ],
+      "oem_baseline_meshes": ["pelvis_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -376,9 +322,7 @@
       "body": "pelvis",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "pelvis_link.STL"
-      ],
+      "oem_baseline_meshes": ["pelvis_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -404,10 +348,7 @@
       "body": "torso_link",
       "source_kind": "parametric_donor_face_grid",
       "source_asset": "cad/source-assets/human-donor/eliza_face_donor.stl",
-      "oem_baseline_meshes": [
-        "head_yaw_link.STL",
-        "head_pitch_link.STL"
-      ],
+      "oem_baseline_meshes": ["head_yaw_link.STL", "head_pitch_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric donor grid loft"
@@ -418,10 +359,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "head_yaw_link.STL",
-        "head_pitch_link.STL"
-      ],
+      "oem_baseline_meshes": ["head_yaw_link.STL", "head_pitch_link.STL"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -432,10 +370,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "head_yaw_link.STL",
-        "head_pitch_link.STL"
-      ],
+      "oem_baseline_meshes": ["head_yaw_link.STL", "head_pitch_link.STL"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -446,10 +381,7 @@
       "body": "torso_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "head_yaw_link.STL",
-        "head_pitch_link.STL"
-      ],
+      "oem_baseline_meshes": ["head_yaw_link.STL", "head_pitch_link.STL"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -516,9 +448,7 @@
       "body": "left_shoulder_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_shoulder_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_shoulder_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -529,9 +459,7 @@
       "body": "left_shoulder_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_shoulder_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_shoulder_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -542,9 +470,7 @@
       "body": "left_shoulder_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_shoulder_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_shoulder_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -555,9 +481,7 @@
       "body": "right_shoulder_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_shoulder_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_shoulder_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -568,9 +492,7 @@
       "body": "right_shoulder_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_shoulder_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_shoulder_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -581,9 +503,7 @@
       "body": "right_shoulder_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_shoulder_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_shoulder_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -594,9 +514,7 @@
       "body": "left_elbow_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_elbow_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_elbow_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -607,9 +525,7 @@
       "body": "left_elbow_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_elbow_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_elbow_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -620,9 +536,7 @@
       "body": "left_elbow_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_elbow_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_elbow_link.STL"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -633,9 +547,7 @@
       "body": "left_elbow_link",
       "source_kind": "parametric_annular_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_elbow_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_elbow_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -646,9 +558,7 @@
       "body": "right_elbow_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_elbow_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_elbow_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -659,9 +569,7 @@
       "body": "right_elbow_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_elbow_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_elbow_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -672,9 +580,7 @@
       "body": "right_elbow_link",
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_elbow_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_elbow_link.STL"],
       "requires_oem_baseline": false,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -685,9 +591,7 @@
       "body": "right_elbow_link",
       "source_kind": "parametric_annular_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_elbow_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_elbow_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -713,9 +617,7 @@
       "body": "left_hip_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_hip_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_hip_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -726,9 +628,7 @@
       "body": "left_hip_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_hip_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_hip_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -754,9 +654,7 @@
       "body": "right_hip_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_hip_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_hip_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -767,9 +665,7 @@
       "body": "right_hip_yaw_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_hip_yaw_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_hip_yaw_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -780,10 +676,7 @@
       "body": "left_knee_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_knee_link.STL",
-        "left_knee_collision.STL"
-      ],
+      "oem_baseline_meshes": ["left_knee_link.STL", "left_knee_collision.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -794,9 +687,7 @@
       "body": "left_knee_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_knee_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_knee_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -807,9 +698,7 @@
       "body": "left_knee_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_knee_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_knee_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -834,9 +723,7 @@
       "body": "right_knee_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_knee_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_knee_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -847,9 +734,7 @@
       "body": "right_knee_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_knee_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_knee_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -860,9 +745,7 @@
       "body": "left_ankle_roll_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_ankle_roll_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_ankle_roll_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -873,9 +756,7 @@
       "body": "left_ankle_roll_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_ankle_roll_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_ankle_roll_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -886,9 +767,7 @@
       "body": "left_ankle_roll_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_ankle_roll_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_ankle_roll_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -899,9 +778,7 @@
       "body": "left_ankle_roll_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "left_ankle_roll_link.STL"
-      ],
+      "oem_baseline_meshes": ["left_ankle_roll_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -912,9 +789,7 @@
       "body": "right_ankle_roll_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_ankle_roll_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_ankle_roll_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -925,9 +800,7 @@
       "body": "right_ankle_roll_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_ankle_roll_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_ankle_roll_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -938,9 +811,7 @@
       "body": "right_ankle_roll_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_ankle_roll_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_ankle_roll_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"
@@ -951,9 +822,7 @@
       "body": "right_ankle_roll_link",
       "source_kind": "parametric_loft",
       "source_asset": null,
-      "oem_baseline_meshes": [
-        "right_ankle_roll_link.STL"
-      ],
+      "oem_baseline_meshes": ["right_ankle_roll_link.STL"],
       "requires_oem_baseline": true,
       "has_oem_baseline": true,
       "current_geometry_status": "parametric EVT envelope"

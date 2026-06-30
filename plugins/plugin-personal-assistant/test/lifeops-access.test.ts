@@ -55,24 +55,32 @@ beforeEach(() => {
 
 describe("hasLifeOpsAccess — owner gate", () => {
   it("denies when runtime/agentId is missing", async () => {
-    expect(await hasLifeOpsAccess(null as unknown as RuntimeArg, message("owner-1"))).toBe(
+    expect(
+      await hasLifeOpsAccess(null as unknown as RuntimeArg, message("owner-1")),
+    ).toBe(false);
+    expect(await hasLifeOpsAccess(runtime(undefined), message("owner-1"))).toBe(
       false,
     );
-    expect(await hasLifeOpsAccess(runtime(undefined), message("owner-1"))).toBe(false);
     expect(mocks.hasOwnerAccess).not.toHaveBeenCalled();
   });
 
   it("denies when the message entityId is missing or empty", async () => {
-    expect(await hasLifeOpsAccess(runtime("agent-1"), message(undefined))).toBe(false);
+    expect(await hasLifeOpsAccess(runtime("agent-1"), message(undefined))).toBe(
+      false,
+    );
     expect(await hasLifeOpsAccess(runtime("agent-1"), message(""))).toBe(false);
     expect(mocks.hasOwnerAccess).not.toHaveBeenCalled();
   });
 
   it("delegates to hasOwnerAccess for a well-formed owner request", async () => {
     mocks.hasOwnerAccess.mockResolvedValueOnce(true);
-    expect(await hasLifeOpsAccess(runtime("agent-1"), message("owner-1"))).toBe(true);
+    expect(await hasLifeOpsAccess(runtime("agent-1"), message("owner-1"))).toBe(
+      true,
+    );
     mocks.hasOwnerAccess.mockResolvedValueOnce(false);
-    expect(await hasLifeOpsAccess(runtime("agent-1"), message("owner-1"))).toBe(false);
+    expect(await hasLifeOpsAccess(runtime("agent-1"), message("owner-1"))).toBe(
+      false,
+    );
     expect(mocks.hasOwnerAccess).toHaveBeenCalledTimes(2);
   });
 });
@@ -137,9 +145,13 @@ describe("unavailable-message helpers", () => {
 
   it("distinguishes limited-access from not-connected wording", () => {
     expect(calendarReadUnavailableMessage(connected)).toMatch(/limited/i);
-    expect(calendarReadUnavailableMessage(disconnected)).toMatch(/not connected/i);
+    expect(calendarReadUnavailableMessage(disconnected)).toMatch(
+      /not connected/i,
+    );
     expect(calendarWriteUnavailableMessage(connected)).toMatch(/not granted/i);
-    expect(calendarWriteUnavailableMessage(disconnected)).toMatch(/not connected/i);
+    expect(calendarWriteUnavailableMessage(disconnected)).toMatch(
+      /not connected/i,
+    );
     expect(gmailReadUnavailableMessage(connected)).toMatch(/limited/i);
     expect(gmailReadUnavailableMessage(disconnected)).toMatch(/not connected/i);
     expect(gmailSendUnavailableMessage(connected)).toMatch(/not granted/i);

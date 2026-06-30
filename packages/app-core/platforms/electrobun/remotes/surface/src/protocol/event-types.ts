@@ -1,24 +1,4 @@
 export type {
-  AgentMessageParams,
-  AgentMessageResult,
-  AgentMessageStreamEvent,
-  AgentMessageStreamParams,
-  AgentMessageStreamStartResult,
-  AgentMessageStreamStatus,
-  AgentSummary,
-  ApiBridgeError,
-  ApiDiscoveryResult,
-  ConversationSummary,
-  RuntimeEventName,
-  RuntimeEventPayload,
-  RuntimeLogEntry as LogEntry,
-  RuntimeState,
-  RuntimeWorkerRequestMessage,
-  RuntimeWorkerResponseMessage,
-  StreamingRouteStatus,
-} from "../../../runtime/src/bun/protocol.ts";
-
-export type {
   FileListParams,
   FileListResult,
   FileReadTextParams,
@@ -30,22 +10,6 @@ export type {
   FileWriteTextParams,
   FileWriteTextResult,
 } from "../../../fs/src/bun/protocol.ts";
-
-export type {
-  PtyCommandRunParams,
-  PtyCommandRunResult,
-  PtyCreateSessionParams,
-  PtyCreateSessionResult,
-  PtyKillParams,
-  PtyOutputEntry,
-  PtyOutputTailParams,
-  PtyOutputTailResult,
-  PtyResizeParams,
-  PtySession,
-  PtyStatus,
-  PtyWriteParams,
-} from "../../../pty/src/bun/protocol.ts";
-
 export type {
   GitAddParams,
   GitBranch,
@@ -67,7 +31,6 @@ export type {
   GitStatusPayload,
   GitStatusResult,
 } from "../../../git/src/bun/protocol.ts";
-
 export type {
   Eliza1BundleTier,
   Eliza1VoiceComponent,
@@ -82,3 +45,36 @@ export type {
   LocalModelHubSnapshot,
   LocalModelInstalledEntry,
 } from "../../../local-model/src/bun/protocol.ts";
+export type {
+  PtyCommandRunParams,
+  PtyCommandRunResult,
+  PtyCreateSessionParams,
+  PtyCreateSessionResult,
+  PtyKillParams,
+  PtyOutputEntry,
+  PtyOutputTailParams,
+  PtyOutputTailResult,
+  PtyResizeParams,
+  PtySession,
+  PtyStatus,
+  PtyWriteParams,
+} from "../../../pty/src/bun/protocol.ts";
+export type {
+  AgentMessageParams,
+  AgentMessageResult,
+  AgentMessageStreamEvent,
+  AgentMessageStreamParams,
+  AgentMessageStreamStartResult,
+  AgentMessageStreamStatus,
+  AgentSummary,
+  ApiBridgeError,
+  ApiDiscoveryResult,
+  ConversationSummary,
+  RuntimeEventName,
+  RuntimeEventPayload,
+  RuntimeLogEntry as LogEntry,
+  RuntimeState,
+  RuntimeWorkerRequestMessage,
+  RuntimeWorkerResponseMessage,
+  StreamingRouteStatus,
+} from "../../../runtime/src/bun/protocol.ts";

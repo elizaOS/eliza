@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  EVAL_COMPARISON_ARTIFACT_SCHEMA,
-  buildLocalEvalComparisonArgs,
   buildEvalComparisonArtifactPayload,
+  buildLocalEvalComparisonArgs,
+  EVAL_COMPARISON_ARTIFACT_SCHEMA,
   runLocalEvalComparison,
   writeEvalComparisonArtifact,
 } from "./eval-comparison-artifact.js";

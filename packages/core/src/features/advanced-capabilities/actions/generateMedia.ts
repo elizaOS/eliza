@@ -152,9 +152,7 @@ function buildRequest(
 		mediaType,
 		prompt,
 		audioKind:
-			mediaType === "audio"
-				? (inferAudioKind(params) ?? "music")
-				: undefined,
+			mediaType === "audio" ? (inferAudioKind(params) ?? "music") : undefined,
 		size: readStringParam(params, "size"),
 		quality:
 			params.quality === "standard" || params.quality === "hd"

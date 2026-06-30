@@ -14,7 +14,7 @@
  * today; Linux/macOS once their headful CI lanes exist — see audit §3/§5).
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -50,8 +50,18 @@ const CAPABILITIES: Capability[] = [
   { cua: "screenshot", domain: "input", status: "have", verb: "screenshot" },
   { cua: "left_click", domain: "input", status: "have", verb: "click" },
   { cua: "right_click", domain: "input", status: "have", verb: "right_click" },
-  { cua: "double_click", domain: "input", status: "have", verb: "double_click" },
-  { cua: "middle_click", domain: "input", status: "have", verb: "middle_click" },
+  {
+    cua: "double_click",
+    domain: "input",
+    status: "have",
+    verb: "double_click",
+  },
+  {
+    cua: "middle_click",
+    domain: "input",
+    status: "have",
+    verb: "middle_click",
+  },
   {
     cua: "click_with_modifiers",
     domain: "input",
@@ -100,22 +110,84 @@ const CAPABILITIES: Capability[] = [
   // ── window ────────────────────────────────────────────────────────────────
   { cua: "window_list", domain: "window", status: "have", verb: "list" },
   { cua: "activate_window", domain: "window", status: "have", verb: "focus" },
-  { cua: "minimize_window", domain: "window", status: "have", verb: "minimize" },
-  { cua: "maximize_window", domain: "window", status: "have", verb: "maximize" },
+  {
+    cua: "minimize_window",
+    domain: "window",
+    status: "have",
+    verb: "minimize",
+  },
+  {
+    cua: "maximize_window",
+    domain: "window",
+    status: "have",
+    verb: "maximize",
+  },
   { cua: "restore_window", domain: "window", status: "have", verb: "restore" },
   { cua: "close_window", domain: "window", status: "have", verb: "close" },
-  { cua: "set_window_position", domain: "window", status: "have", verb: "move" },
+  {
+    cua: "set_window_position",
+    domain: "window",
+    status: "have",
+    verb: "move",
+  },
   // M12 window getters/setters — all landed.
-  { cua: "get_current_window_id", domain: "window", status: "have", verb: "get_current_window_id", milestone: "M12" },
-  { cua: "get_application_windows", domain: "window", status: "have", verb: "get_application_windows", milestone: "M12" },
-  { cua: "set_window_size (set_bounds)", domain: "window", status: "have", verb: "set_bounds", milestone: "M12" },
-  { cua: "get_window_size", domain: "window", status: "have", verb: "get_window_size", milestone: "M12" },
-  { cua: "get_window_position", domain: "window", status: "have", verb: "get_window_position", milestone: "M12" },
+  {
+    cua: "get_current_window_id",
+    domain: "window",
+    status: "have",
+    verb: "get_current_window_id",
+    milestone: "M12",
+  },
+  {
+    cua: "get_application_windows",
+    domain: "window",
+    status: "have",
+    verb: "get_application_windows",
+    milestone: "M12",
+  },
+  {
+    cua: "set_window_size (set_bounds)",
+    domain: "window",
+    status: "have",
+    verb: "set_bounds",
+    milestone: "M12",
+  },
+  {
+    cua: "get_window_size",
+    domain: "window",
+    status: "have",
+    verb: "get_window_size",
+    milestone: "M12",
+  },
+  {
+    cua: "get_window_position",
+    domain: "window",
+    status: "have",
+    verb: "get_window_position",
+    milestone: "M12",
+  },
   // open/launch are COMPUTER_USE verbs (implemented; launch returns a pid).
-  { cua: "open(target)", domain: "input", status: "have", verb: "open", milestone: "M12" },
-  { cua: "launch(app,args)->pid", domain: "input", status: "have", verb: "launch", milestone: "M12" },
+  {
+    cua: "open(target)",
+    domain: "input",
+    status: "have",
+    verb: "open",
+    milestone: "M12",
+  },
+  {
+    cua: "launch(app,args)->pid",
+    domain: "input",
+    status: "have",
+    verb: "launch",
+    milestone: "M12",
+  },
   // ── clipboard ───────────────────────────────────────────────────────────────
-  { cua: "copy_to_clipboard", domain: "clipboard", status: "have", verb: "read" },
+  {
+    cua: "copy_to_clipboard",
+    domain: "clipboard",
+    status: "have",
+    verb: "read",
+  },
   { cua: "set_clipboard", domain: "clipboard", status: "have", verb: "write" },
   // ── filesystem / shell (gated/internal today) ───────────────────────────────
   // Host file/shell route through the FILE / SHELL actions; sandbox guests get
@@ -127,7 +199,12 @@ const CAPABILITIES: Capability[] = [
     status: "partial",
     milestone: "M13",
   },
-  { cua: "run_command (CommandResult)", domain: "architecture", status: "partial", milestone: "M13" },
+  {
+    cua: "run_command (CommandResult)",
+    domain: "architecture",
+    status: "partial",
+    milestone: "M13",
+  },
   {
     cua: "read_bytes/write_bytes (base64 binary), create_dir, directory_exists, get_file_size",
     domain: "architecture",
@@ -135,8 +212,20 @@ const CAPABILITIES: Capability[] = [
     milestone: "M13 — file-ops binary I/O + executeFileAction",
   },
   // ── trycua blind spots — tracked decisions, not silent gaps (workflow audit) ──
-  { cua: "set_value (a11y element value write)", domain: "input", status: "have", verb: "set_value", milestone: "M12" },
-  { cua: "kill_app (process terminate)", domain: "input", status: "have", verb: "kill_app", milestone: "M12" },
+  {
+    cua: "set_value (a11y element value write)",
+    domain: "input",
+    status: "have",
+    verb: "set_value",
+    milestone: "M12",
+  },
+  {
+    cua: "kill_app (process terminate)",
+    domain: "input",
+    status: "have",
+    verb: "kill_app",
+    milestone: "M12",
+  },
   {
     cua: "zoom (region magnify for grounding)",
     domain: "architecture",
@@ -156,17 +245,64 @@ const CAPABILITIES: Capability[] = [
     na: "UX overlay tied to cua's recording; no agent-decision value",
   },
   // ── architecture ────────────────────────────────────────────────────────────
-  { cua: "agent_loop_registry", domain: "architecture", status: "partial", milestone: "M10" },
-  { cua: "predict_step/predict_click split", domain: "architecture", status: "partial", milestone: "M10" },
-  { cua: "callback_middleware (budget/retention/trajectory)", domain: "architecture", status: "partial", milestone: "M11" },
-  { cua: "vm/sandbox provider matrix", domain: "architecture", status: "partial", milestone: "M13" },
-  { cua: "daemon/RPC seam", domain: "architecture", status: "missing", milestone: "M13" },
-  { cua: "MCP server seam", domain: "architecture", status: "have", milestone: "src/mcp — tool catalog + dispatch + optional-SDK server" },
-  { cua: "eval harness (ScreenSpot/OSWorld/per-OS scenarios)", domain: "architecture", status: "partial", milestone: "M14" },
-  { cua: "low-token continuous screen description", domain: "architecture", status: "have" },
-  { cua: "accessibility tree grounding", domain: "architecture", status: "have" },
+  {
+    cua: "agent_loop_registry",
+    domain: "architecture",
+    status: "partial",
+    milestone: "M10",
+  },
+  {
+    cua: "predict_step/predict_click split",
+    domain: "architecture",
+    status: "partial",
+    milestone: "M10",
+  },
+  {
+    cua: "callback_middleware (budget/retention/trajectory)",
+    domain: "architecture",
+    status: "partial",
+    milestone: "M11",
+  },
+  {
+    cua: "vm/sandbox provider matrix",
+    domain: "architecture",
+    status: "partial",
+    milestone: "M13",
+  },
+  {
+    cua: "daemon/RPC seam",
+    domain: "architecture",
+    status: "missing",
+    milestone: "M13",
+  },
+  {
+    cua: "MCP server seam",
+    domain: "architecture",
+    status: "have",
+    milestone: "src/mcp — tool catalog + dispatch + optional-SDK server",
+  },
+  {
+    cua: "eval harness (ScreenSpot/OSWorld/per-OS scenarios)",
+    domain: "architecture",
+    status: "partial",
+    milestone: "M14",
+  },
+  {
+    cua: "low-token continuous screen description",
+    domain: "architecture",
+    status: "have",
+  },
+  {
+    cua: "accessibility tree grounding",
+    domain: "architecture",
+    status: "have",
+  },
   // ── mobile / AOSP ─────────────────────────────────────────────────────────────
-  { cua: "android tap/swipe + hardware keys", domain: "mobile", status: "have" },
+  {
+    cua: "android tap/swipe + hardware keys",
+    domain: "mobile",
+    status: "have",
+  },
   { cua: "android multitouch_gesture", domain: "mobile", status: "missing" },
   // ── deliberately not chased ──────────────────────────────────────────────────
   {
@@ -190,7 +326,10 @@ const CAPABILITIES: Capability[] = [
 ];
 
 const INPUT_VERBS = CAPABILITIES.filter(
-  (c) => (c.domain === "input" || (c.domain === "vision" && c.verb)) && c.status === "have" && c.verb,
+  (c) =>
+    (c.domain === "input" || (c.domain === "vision" && c.verb)) &&
+    c.status === "have" &&
+    c.verb,
 ).map((c) => c.verb as string);
 
 // Live action surface.

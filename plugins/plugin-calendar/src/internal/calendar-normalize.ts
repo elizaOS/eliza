@@ -1,10 +1,10 @@
 import {
   type CreateLifeOpsCalendarEventRequest,
+  LIFEOPS_CALENDAR_WINDOW_PRESETS,
   type LifeOpsCalendarEvent,
   type LifeOpsConnectorGrant,
   type LifeOpsGmailMessageSummary,
   type LifeOpsNextCalendarEventContext,
-  LIFEOPS_CALENDAR_WINDOW_PRESETS,
 } from "@elizaos/shared";
 import {
   DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS,
@@ -177,9 +177,7 @@ export function resolveNextCalendarEventWindow(args: {
 export function hasGoogleCalendarReadCapability(
   grant: LifeOpsConnectorGrant,
 ): boolean {
-  const capabilities = new Set(
-    normalizeGoogleCapabilities(grant.capabilities),
-  );
+  const capabilities = new Set(normalizeGoogleCapabilities(grant.capabilities));
   return (
     capabilities.has("google.calendar.read") ||
     capabilities.has("google.calendar.write")
@@ -189,9 +187,7 @@ export function hasGoogleCalendarReadCapability(
 export function hasGoogleCalendarWriteCapability(
   grant: LifeOpsConnectorGrant,
 ): boolean {
-  const capabilities = new Set(
-    normalizeGoogleCapabilities(grant.capabilities),
-  );
+  const capabilities = new Set(normalizeGoogleCapabilities(grant.capabilities));
   return capabilities.has("google.calendar.write");
 }
 

@@ -23,7 +23,12 @@ export default scenario({
       name: "identify-hold-custodians",
       text: "Counsel needs an emergency hold. Identify executive custodians, relevant threads, document systems, travel devices, and a deadline for acknowledgment.",
       plannerIncludesAny: ["OWNER_DOCUMENTS", "deadline", "privacy"],
-      responseIncludesAny: ["custodians", "threads", "devices", "acknowledgment"],
+      responseIncludesAny: [
+        "custodians",
+        "threads",
+        "devices",
+        "acknowledgment",
+      ],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },
     {

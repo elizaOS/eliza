@@ -25,9 +25,7 @@
   ],
   "CLOCK_PORT": "CLK_IN",
   "CLOCK_PERIOD": 13,
-  "VERILOG_DEFINES": [
-    "E1_PD_SMALL_DRAM"
-  ],
+  "VERILOG_DEFINES": ["E1_PD_SMALL_DRAM"],
   "SIGNOFF_SDC_FILE": "dir::../constraints/e1_soc_gf180.sdc",
   "IO_PIN_ORDER_CFG": "dir::../pin_order.cfg",
   "FP_SIZING": "absolute",

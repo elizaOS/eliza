@@ -1,7 +1,7 @@
+import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import { afterEach, describe, expect, it } from "vitest";
 import { LifeOpsRepository } from "../src/lifeops/repository.ts";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.ts";
-import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,

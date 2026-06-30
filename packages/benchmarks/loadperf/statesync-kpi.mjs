@@ -26,7 +26,7 @@
  * Exit: 0 pass, 1 budget fail, 2 skipped/unavailable.
  */
 
-import { recordResult, loadBudgets, sleep, ms } from "./lib.mjs";
+import { loadBudgets, ms, recordResult, sleep } from "./lib.mjs";
 
 const NOW = new Date().toISOString();
 const JSON_ONLY = process.argv.includes("--json");
@@ -43,12 +43,18 @@ function resolveWsUrl() {
   if (!url) {
     const base = process.env.LOADPERF_BASE_URL;
     if (!base) {
-      throw new Error("set LOADPERF_WS_URL or LOADPERF_BASE_URL to point at a server");
+      throw new Error(
+        "set LOADPERF_WS_URL or LOADPERF_BASE_URL to point at a server",
+      );
     }
-    const ws = base.replace(/^http:/, "ws:").replace(/^https:/, "wss:").replace(/\/$/, "");
+    const ws = base
+      .replace(/^http:/, "ws:")
+      .replace(/^https:/, "wss:")
+      .replace(/\/$/, "");
     url = `${ws}${WS_PATH.startsWith("/") ? WS_PATH : `/${WS_PATH}`}`;
   }
-  if (WS_TOKEN) url += `${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(WS_TOKEN)}`;
+  if (WS_TOKEN)
+    url += `${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(WS_TOKEN)}`;
   return url;
 }
 
@@ -126,7 +132,9 @@ async function main() {
         // ignore
       }
     }
-    return skip(new Error(`client connect failed: ${err?.message ?? String(err)}`));
+    return skip(
+      new Error(`client connect failed: ${err?.message ?? String(err)}`),
+    );
   }
 
   await sleep(OBSERVE_MS);
@@ -178,9 +186,24 @@ async function main() {
 
   const b = loadBudgets().statesync;
   const checks = [
-    { name: "broadcastP95Ms", value: skewP95, budget: b.broadcastP95Ms, unit: "ms" },
-    { name: "reconnectMs", value: reconnectMs, budget: b.reconnectMs, unit: "ms" },
-    { name: "maxDesyncEvents", value: desyncEvents, budget: b.maxDesyncEvents, unit: "count" },
+    {
+      name: "broadcastP95Ms",
+      value: skewP95,
+      budget: b.broadcastP95Ms,
+      unit: "ms",
+    },
+    {
+      name: "reconnectMs",
+      value: reconnectMs,
+      budget: b.reconnectMs,
+      unit: "ms",
+    },
+    {
+      name: "maxDesyncEvents",
+      value: desyncEvents,
+      budget: b.maxDesyncEvents,
+      unit: "count",
+    },
   ].map((c) => ({ ...c, pass: c.value != null && c.value <= c.budget }));
 
   const result = {
@@ -206,16 +229,23 @@ async function main() {
     console.log("\n=== State-sync KPI ===");
     console.log(`ws url:        ${wsUrl}`);
     console.log(`clients:       ${CLIENT_COUNT}`);
-    console.log(`broadcasts:    ${broadcastsObserved} (over ${ms(OBSERVE_MS)})`);
+    console.log(
+      `broadcasts:    ${broadcastsObserved} (over ${ms(OBSERVE_MS)})`,
+    );
     console.log(`skew p50/p95:  ${ms(skewP50)} / ${ms(skewP95)}`);
     console.log(`desync events: ${desyncEvents}`);
     console.log(`reconnect:     ${ms(reconnectMs)}`);
     console.log("\n-- budget checks --");
     for (const c of checks) {
-      const fmt = (v) => (v == null ? "—" : c.unit === "ms" ? ms(v) : String(v));
-      console.log(`  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${fmt(c.value)} / budget ${fmt(c.budget)}`);
+      const fmt = (v) =>
+        v == null ? "—" : c.unit === "ms" ? ms(v) : String(v);
+      console.log(
+        `  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${fmt(c.value)} / budget ${fmt(c.budget)}`,
+      );
     }
-    console.log(`\nresult: ${result.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`);
+    console.log(
+      `\nresult: ${result.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`,
+    );
   }
   process.exit(result.pass ? 0 : 1);
 }
@@ -224,7 +254,10 @@ function skip(err) {
   const payload = { skipped: true, error: err?.message ?? String(err) };
   const { file } = recordResult("statesync", payload, NOW);
   if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
-  else console.error(`[statesync-kpi] skipped: ${payload.error}\nrecorded -> ${file}`);
+  else
+    console.error(
+      `[statesync-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
+    );
   process.exit(2);
 }
 

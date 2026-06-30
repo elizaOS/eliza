@@ -14,7 +14,11 @@ function Harness({
   const [value, setValue] = useState<ElizaCloudTier>(initial);
   return (
     <div className="w-[260px]">
-      <CockpitTierToggle value={value} onChange={setValue} disabled={disabled} />
+      <CockpitTierToggle
+        value={value}
+        onChange={setValue}
+        disabled={disabled}
+      />
     </div>
   );
 }

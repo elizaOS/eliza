@@ -21,10 +21,6 @@
     "6b54fe78-afbd-4739-a78e-9b0b93d8e1a2",
     "d7087b64-c1b8-4544-84a6-f168c4848bb6"
   ],
-  "scenarioIds": [
-    "security.should-respond-injection-gate"
-  ],
-  "agentIds": [
-    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
-  ]
+  "scenarioIds": ["security.should-respond-injection-gate"],
+  "agentIds": ["546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"]
 }

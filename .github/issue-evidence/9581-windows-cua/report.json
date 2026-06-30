@@ -215,12 +215,7 @@
         "displays": [
           {
             "id": 0,
-            "bounds": [
-              0,
-              0,
-              1728,
-              1052
-            ],
+            "bounds": [0, 0, 1728, 1052],
             "scaleFactor": 1,
             "primary": true,
             "name": "\\\\.\\DISPLAY65"
@@ -238,12 +233,7 @@
       "details": {
         "display": {
           "id": 0,
-          "bounds": [
-            0,
-            0,
-            1728,
-            1052
-          ],
+          "bounds": [0, 0, 1728, 1052],
           "scaleFactor": 1,
           "primary": true,
           "name": "\\\\.\\DISPLAY65"
@@ -280,10 +270,7 @@
           "width": 1296,
           "height": 707
         },
-        "coordinate": [
-          758,
-          648
-        ],
+        "coordinate": [758, 648],
         "displayId": 0,
         "marker": "eliza-win-cua-1782858728896",
         "launchedPid": 19336

@@ -2,12 +2,7 @@
   "id": "orchestrator.grilling-evidence-bundle",
   "title": "Grilling: the git diff + test stdout reach the verifier",
   "domain": "agent-orchestrator",
-  "tags": [
-    "orchestrator",
-    "grilling",
-    "evidence",
-    "deterministic"
-  ],
+  "tags": ["orchestrator", "grilling", "evidence", "deterministic"],
   "status": "passed",
   "durationMs": 112,
   "turns": [],

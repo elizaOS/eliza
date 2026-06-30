@@ -83,21 +83,27 @@ if (!result.verified) {
     `verifyCoveQuote rejected real firmware output: ${result.reason} — ${result.detail}`,
   );
 }
-console.log("PASS verifyCoveQuote accepts real firmware output (verified:true)");
+console.log(
+  "PASS verifyCoveQuote accepts real firmware output (verified:true)",
+);
 console.log(`  trustedRotPublicKey (DeviceID): ${rotPubKey}`);
 console.log(`  aliasPublicKey:                 ${result.aliasPublicKey}`);
 
 // 4. The verified body must map into the normalized TeeEvidence shape.
 const evidence = coveQuoteToTeeEvidence(result);
 if (evidence.kind !== "cove" || evidence.provider !== "eliza-riscv") {
-  fail(`coveQuoteToTeeEvidence produced an unexpected shape: ${JSON.stringify(evidence)}`);
+  fail(
+    `coveQuoteToTeeEvidence produced an unexpected shape: ${JSON.stringify(evidence)}`,
+  );
 }
 for (const m of ["boot", "monitor", "os", "policy", "device", "agent"]) {
   if (typeof evidence.measurements[m] !== "string") {
     fail(`normalized evidence missing measurement: ${m}`);
   }
 }
-console.log("PASS coveQuoteToTeeEvidence maps the verified body to TeeEvidence");
+console.log(
+  "PASS coveQuoteToTeeEvidence maps the verified body to TeeEvidence",
+);
 
 // 5. Tamper proof: flip one nibble of a measurement; verification must fail.
 const tampered = JSON.parse(quoteJson);
@@ -134,5 +140,7 @@ console.log(
   `PASS wrong trust anchor is rejected (reason: ${wrongResult.reason})`,
 );
 
-console.log("\nCoVE quote round-trip PROVEN: real C firmware -> verifyCoveQuote(verified:true)");
+console.log(
+  "\nCoVE quote round-trip PROVEN: real C firmware -> verifyCoveQuote(verified:true)",
+);
 console.log(`canonical quote length: ${quoteJson.length} bytes`);

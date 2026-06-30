@@ -2,8 +2,8 @@ import { DEFAULT_PRIVACY_LEVEL, type PrivacyLevel } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   canSurfaceForAudience,
-  type LifeOpsAudience,
   LIFEOPS_REDACTED_PLACEHOLDER,
+  type LifeOpsAudience,
   redactedPlaceholder,
 } from "../src/lifeops/privacy.js";
 
@@ -53,9 +53,9 @@ describe("canSurfaceForAudience — privacy lattice", () => {
   });
 
   it("defaults to deny for an unknown privacy level", () => {
-    expect(
-      canSurfaceForAudience("nonsense" as PrivacyLevel, "team"),
-    ).toBe(false);
+    expect(canSurfaceForAudience("nonsense" as PrivacyLevel, "team")).toBe(
+      false,
+    );
   });
 });
 

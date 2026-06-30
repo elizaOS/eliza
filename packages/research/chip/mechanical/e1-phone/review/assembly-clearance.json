@@ -37,20 +37,14 @@
       "actual_mm": 0.0,
       "required_mm": 0.0,
       "pass": true,
-      "cap_to_gasket_gaps_mm": [
-        0.0,
-        0.0
-      ]
+      "cap_to_gasket_gaps_mm": [0.0, 0.0]
     },
     {
       "id": "battery_to_pcb_islands",
       "actual_mm": 0.5,
       "required_mm": 0.5,
       "pass": true,
-      "segment_gaps_mm": [
-        0.5,
-        0.5
-      ]
+      "segment_gaps_mm": [0.5, 0.5]
     },
     {
       "id": "battery_back_void_foam_to_pouch",
@@ -91,10 +85,7 @@
       "actual_mm": 1.118,
       "required_mm": 0.5,
       "pass": true,
-      "segment_gaps_mm": [
-        75.002,
-        1.118
-      ]
+      "segment_gaps_mm": [75.002, 1.118]
     },
     {
       "id": "haptic_to_sim_tray_keepout",
@@ -119,22 +110,14 @@
       "actual_mm": 5.4,
       "required_mm": 1.0,
       "pass": true,
-      "shield_to_antenna_keepout_gaps_mm": [
-        5.4,
-        108.4,
-        17.0
-      ]
+      "shield_to_antenna_keepout_gaps_mm": [5.4, 108.4, 17.0]
     },
     {
       "id": "snap_hooks_to_internal_components",
       "actual_mm": 1.35,
       "required_mm": 0.5,
       "pass": true,
-      "retention_to_internal_gaps_mm": [
-        4.45,
-        4.45,
-        1.35
-      ]
+      "retention_to_internal_gaps_mm": [4.45, 4.45, 1.35]
     }
   ],
   "checked_case_count": 18

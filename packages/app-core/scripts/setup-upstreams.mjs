@@ -72,23 +72,13 @@ export const ELIZA_BUILD_STEPS = [
     label: "@elizaos/security",
   },
   {
-    check: path.join(
-      "packages",
-      "plugin-remote-manifest",
-      "dist",
-      "index.js",
-    ),
+    check: path.join("packages", "plugin-remote-manifest", "dist", "index.js"),
     cwd: path.join("packages", "plugin-remote-manifest"),
     args: ["run", "build"],
     label: "@elizaos/plugin-remote-manifest",
   },
   {
-    check: path.join(
-      "packages",
-      "plugin-worker-runtime",
-      "dist",
-      "index.js",
-    ),
+    check: path.join("packages", "plugin-worker-runtime", "dist", "index.js"),
     cwd: path.join("packages", "plugin-worker-runtime"),
     args: ["run", "build"],
     label: "@elizaos/plugin-worker-runtime",

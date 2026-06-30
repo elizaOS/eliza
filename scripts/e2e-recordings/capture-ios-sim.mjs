@@ -165,7 +165,10 @@ async function main() {
         captureLog: logSink.logPath,
       },
     };
-    writeCaptureManifest(path.join(recordingResultDir, "manifest.json"), manifest);
+    writeCaptureManifest(
+      path.join(recordingResultDir, "manifest.json"),
+      manifest,
+    );
     writeCaptureManifest(path.join(evidenceDir, "manifest.json"), manifest);
     logSink.log(`capture artifacts written to ${evidenceDir}`);
   } catch (error) {
@@ -247,7 +250,10 @@ async function main() {
         captureLog: logSink.logPath,
       },
     };
-    writeCaptureManifest(path.join(recordingResultDir, "manifest.json"), manifest);
+    writeCaptureManifest(
+      path.join(recordingResultDir, "manifest.json"),
+      manifest,
+    );
     writeCaptureManifest(path.join(evidenceDir, "manifest.json"), manifest);
     throw error;
   } finally {

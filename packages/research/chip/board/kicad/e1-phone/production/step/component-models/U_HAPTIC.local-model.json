@@ -124,17 +124,7 @@
     }
   ],
   "pad_count": 9,
-  "pad_names": [
-    "A1",
-    "A2",
-    "A3",
-    "B1",
-    "B2",
-    "B3",
-    "C1",
-    "C2",
-    "C3"
-  ],
+  "pad_names": ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"],
   "pad_visual_count": 9,
   "pattern_binding_status": "pinout_bound_public_or_captured_contract",
   "pattern_bound": true,

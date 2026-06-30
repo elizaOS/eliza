@@ -7,8 +7,8 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -150,10 +150,12 @@ function asNumber(value: unknown): number | null {
 
 function truncateText(value: unknown, maxLength = 420): string {
   const text =
-    typeof value === "string" ? value : value == null ? "" : JSON.stringify(value);
-  return text.length > maxLength
-    ? `${text.slice(0, maxLength - 1)}…`
-    : text;
+    typeof value === "string"
+      ? value
+      : value == null
+        ? ""
+        : JSON.stringify(value);
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
 function summarizeTrajectoryFile(
@@ -228,7 +230,9 @@ function summarizeTrajectoryFile(
   };
 }
 
-function defaultNativeManifestPath(nativeJsonlPath?: string): string | undefined {
+function defaultNativeManifestPath(
+  nativeJsonlPath?: string,
+): string | undefined {
   if (!nativeJsonlPath) return undefined;
   return nativeJsonlPath.endsWith(".jsonl")
     ? `${nativeJsonlPath.slice(0, -".jsonl".length)}.manifest.json`

@@ -5,11 +5,7 @@
   "manual_visual_signoff_status": "blocked_manual_visual_review_open",
   "production_visual_signoff_ready": false,
   "open_manual_review_count": 5,
-  "device_envelope_mm": [
-    78.0,
-    153.6,
-    11.8
-  ],
+  "device_envelope_mm": [78.0, 153.6, 11.8],
   "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
   "screen_margin_mm": 0.45,
   "visual_deltas": {
@@ -22,10 +18,7 @@
     {
       "file": "component-review-audio.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.05649,
       "orange_pixel_ratio_of_nonwhite": 0.07121,
       "dark_pixel_ratio_of_nonwhite": 0.04999,
@@ -34,10 +27,7 @@
     {
       "file": "component-review-io-buttons.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.04622,
       "orange_pixel_ratio_of_nonwhite": 0.2167,
       "dark_pixel_ratio_of_nonwhite": 0.02408,
@@ -46,10 +36,7 @@
     {
       "file": "component-review-optical.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.05625,
       "orange_pixel_ratio_of_nonwhite": 0.15542,
       "dark_pixel_ratio_of_nonwhite": 0.03552,
@@ -58,10 +45,7 @@
     {
       "file": "component_stack.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.08534,
       "orange_pixel_ratio_of_nonwhite": 0.0077,
       "dark_pixel_ratio_of_nonwhite": 0.63941,
@@ -70,10 +54,7 @@
     {
       "file": "exploded_iso.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.07825,
       "orange_pixel_ratio_of_nonwhite": 0.46706,
       "dark_pixel_ratio_of_nonwhite": 0.51761,
@@ -82,10 +63,7 @@
     {
       "file": "full_back_iso.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.05905,
       "orange_pixel_ratio_of_nonwhite": 0.96871,
       "dark_pixel_ratio_of_nonwhite": 0.01669,
@@ -94,10 +72,7 @@
     {
       "file": "full_bottom_port.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.02453,
       "orange_pixel_ratio_of_nonwhite": 0.76678,
       "dark_pixel_ratio_of_nonwhite": 0.19533,
@@ -106,10 +81,7 @@
     {
       "file": "full_front_iso.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.05589,
       "orange_pixel_ratio_of_nonwhite": 0.49502,
       "dark_pixel_ratio_of_nonwhite": 0.48769,
@@ -118,10 +90,7 @@
     {
       "file": "full_left_side.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.03311,
       "orange_pixel_ratio_of_nonwhite": 0.92388,
       "dark_pixel_ratio_of_nonwhite": 0.04649,
@@ -130,10 +99,7 @@
     {
       "file": "full_top_down.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.11012,
       "orange_pixel_ratio_of_nonwhite": 0.03056,
       "dark_pixel_ratio_of_nonwhite": 0.9614,
@@ -142,10 +108,7 @@
     {
       "file": "mold_tooling.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.04154,
       "orange_pixel_ratio_of_nonwhite": 0.15405,
       "dark_pixel_ratio_of_nonwhite": 0.02458,
@@ -154,10 +117,7 @@
     {
       "file": "rear_feature_detail.png",
       "pass": true,
-      "size": [
-        1350,
-        1650
-      ],
+      "size": [1350, 1650],
       "nonwhite_pixel_ratio": 0.11031,
       "orange_pixel_ratio_of_nonwhite": 0.00606,
       "dark_pixel_ratio_of_nonwhite": 0.00943,

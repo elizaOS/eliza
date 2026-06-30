@@ -22,7 +22,11 @@ export default scenario({
       kind: "message",
       name: "triage-proxy-deadline",
       text: "I got a proxy vote package with a short deadline. Pull the ballot items, custodian portal steps, advisor recommendation, share count, and cut-off time.",
-      plannerIncludesAny: ["OWNER_DOCUMENTS", "OWNER_FINANCES", "SCHEDULED_TASKS"],
+      plannerIncludesAny: [
+        "OWNER_DOCUMENTS",
+        "OWNER_FINANCES",
+        "SCHEDULED_TASKS",
+      ],
       responseIncludesAny: ["ballot", "custodian", "advisor", "cut-off"],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },

@@ -1,10 +1,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  __resetFamilyRegistryForTests,
   APP_LIFEOPS_BUS_FAMILIES,
   createFamilyRegistry,
   getFamilyRegistry,
-  __resetFamilyRegistryForTests,
   registerAppLifeOpsBusFamilies,
   registerFamilyRegistry,
 } from "../src/lifeops/registries/family-registry.js";

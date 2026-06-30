@@ -16,9 +16,7 @@
       "@elizaos/plugin-vector-browser/register": [
         "../../plugins/plugin-vector-browser/src/register.ts"
       ],
-      "@elizaos/plugin-shopify": [
-        "../../plugins/plugin-shopify/src/index.ts"
-      ],
+      "@elizaos/plugin-shopify": ["../../plugins/plugin-shopify/src/index.ts"],
       "@elizaos/plugin-training": [
         "../../plugins/plugin-training/src/index.ts"
       ],

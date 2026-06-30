@@ -216,9 +216,9 @@ export class MockAgentServer {
       const list = this.waiters.get(event) ?? [];
       list.push(() => {
         clearTimeout(timer);
-        const frame = [...this.receivedFrames].reverse().find(
-          (f: ReceivedFrame) => f.header.type === type,
-        )!;
+        const frame = [...this.receivedFrames]
+          .reverse()
+          .find((f: ReceivedFrame) => f.header.type === type)!;
         resolve(frame);
       });
       this.waiters.set(event, list);

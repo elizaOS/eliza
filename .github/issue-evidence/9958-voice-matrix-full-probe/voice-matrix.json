@@ -12,14 +12,8 @@
       "ios",
       "android"
     ],
-    "transcriptionState": [
-      "off",
-      "on"
-    ],
-    "chimeIn": [
-      "should-respond",
-      "should-not-respond"
-    ],
+    "transcriptionState": ["off", "on"],
+    "chimeIn": ["should-respond", "should-not-respond"],
     "wakewordContext": [
       "idle-wake",
       "already-listening-wake-inert",
@@ -31,12 +25,7 @@
       "echo-self-voice",
       "overlapping-speech"
     ],
-    "voices": [
-      "owner",
-      "enrolled-contact",
-      "unknown",
-      "multi-speaker"
-    ]
+    "voices": ["owner", "enrolled-contact", "unknown", "multi-speaker"]
   },
   "host": {
     "platform": "darwin",
@@ -215,9 +204,7 @@
         "plugins/plugin-local-inference",
         "voice:bargein-bench"
       ],
-      "evidence": [
-        "plugins/plugin-local-inference/native/verify"
-      ],
+      "evidence": ["plugins/plugin-local-inference/native/verify"],
       "probe": {
         "available": false,
         "reason": "requires Linux runner; current=darwin"
@@ -239,13 +226,7 @@
         "voices": "owner"
       },
       "class": "desktop-live-voice",
-      "command": [
-        "bun",
-        "run",
-        "--cwd",
-        "packages/app",
-        "test:desktop:voice"
-      ],
+      "command": ["bun", "run", "--cwd", "packages/app", "test:desktop:voice"],
       "env": {
         "ELIZA_VOICE_DESKTOP_SELFTEST": "1"
       },
@@ -273,13 +254,7 @@
         "voices": "owner"
       },
       "class": "desktop-live-voice",
-      "command": [
-        "bun",
-        "run",
-        "--cwd",
-        "packages/app",
-        "test:desktop:voice"
-      ],
+      "command": ["bun", "run", "--cwd", "packages/app", "test:desktop:voice"],
       "env": {
         "ELIZA_VOICE_DESKTOP_SELFTEST": "1"
       },
@@ -319,9 +294,7 @@
         "--slug",
         "voice-ios"
       ],
-      "evidence": [
-        ".github/issue-evidence/9958-voice-ios-ios-sim.*"
-      ],
+      "evidence": [".github/issue-evidence/9958-voice-ios-ios-sim.*"],
       "probe": {
         "available": false,
         "reason": "set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets"
@@ -350,9 +323,7 @@
         "--package-path",
         "plugins/plugin-native-talkmode/ios"
       ],
-      "evidence": [
-        "plugins/plugin-native-talkmode/ios/Tests"
-      ],
+      "evidence": ["plugins/plugin-native-talkmode/ios/Tests"],
       "probe": {
         "available": true,
         "reason": "macOS Swift Package test toolchain is available"
@@ -381,9 +352,7 @@
         "--package-path",
         "plugins/plugin-native-swabble/ios"
       ],
-      "evidence": [
-        "plugins/plugin-native-swabble/ios/Tests"
-      ],
+      "evidence": ["plugins/plugin-native-swabble/ios/Tests"],
       "probe": {
         "available": true,
         "reason": "macOS Swift Package test toolchain is available"
@@ -412,10 +381,7 @@
         "packages/app",
         "test:e2e:android:local"
       ],
-      "evidence": [
-        "packages/app/test-results",
-        ".github/issue-evidence"
-      ],
+      "evidence": ["packages/app/test-results", ".github/issue-evidence"],
       "probe": {
         "available": false,
         "reason": "set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed"
@@ -444,9 +410,7 @@
         ":elizaos-capacitor-talkmode:testDebugUnitTest"
       ],
       "cwd": "packages/app-core/platforms/android",
-      "evidence": [
-        "plugins/plugin-native-talkmode/android/src/test/java"
-      ],
+      "evidence": ["plugins/plugin-native-talkmode/android/src/test/java"],
       "probe": {
         "available": true,
         "reason": "Android voice bridge Gradle project exists"
@@ -474,9 +438,7 @@
         ":elizaos-capacitor-swabble:testDebugUnitTest"
       ],
       "cwd": "packages/app-core/platforms/android",
-      "evidence": [
-        "plugins/plugin-native-swabble/android/src/test/java"
-      ],
+      "evidence": ["plugins/plugin-native-swabble/android/src/test/java"],
       "probe": {
         "available": true,
         "reason": "Android voice bridge Gradle project exists"
@@ -497,10 +459,7 @@
         "voices": "multi-speaker"
       },
       "class": "wakeword-device-gap",
-      "command": [
-        "node",
-        "packages/scripts/voice-openwakeword-eval.mjs"
-      ],
+      "command": ["node", "packages/scripts/voice-openwakeword-eval.mjs"],
       "evidence": [
         "$ELIZA_VOICE_MATRIX_OUT/wake.openwakeword.real-head/openwakeword-eval.json",
         "$ELIZA_VOICE_OPENWAKEWORD_REPORT"
@@ -526,13 +485,8 @@
         "voices": "owner"
       },
       "class": "stt-evaluation",
-      "command": [
-        "node",
-        "packages/scripts/stage-b-stt-bench.mjs"
-      ],
-      "evidence": [
-        ".github/issue-evidence/9958-stt-stage-b-eval"
-      ],
+      "command": ["node", "packages/scripts/stage-b-stt-bench.mjs"],
+      "evidence": [".github/issue-evidence/9958-stt-stage-b-eval"],
       "probe": {
         "available": true,
         "reason": "macOS on-device SFSpeechRecognizer + say/afconvert available for a real Stage-B latency/WER measurement"
@@ -554,10 +508,7 @@
         "voices": "multi-speaker"
       },
       "class": "stt-evaluation",
-      "command": [
-        "node",
-        "packages/scripts/voice-stage-b-eval.mjs"
-      ],
+      "command": ["node", "packages/scripts/voice-stage-b-eval.mjs"],
       "evidence": [
         "$ELIZA_VOICE_MATRIX_OUT/stt.stage-b.evaluation/stage-b-eval.json",
         "$ELIZA_VOICE_STAGE_B_REPORT"

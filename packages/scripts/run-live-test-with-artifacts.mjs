@@ -66,7 +66,9 @@ function parseArgs(argv) {
     throw new Error(`unknown argument before --: ${arg}`);
   }
   if (options.command.length === 0) {
-    throw new Error("missing command. Usage: node packages/scripts/run-live-test-with-artifacts.mjs --label name -- <command...>");
+    throw new Error(
+      "missing command. Usage: node packages/scripts/run-live-test-with-artifacts.mjs --label name -- <command...>",
+    );
   }
   return options;
 }
@@ -137,10 +139,23 @@ function number(value) {
 }
 
 function usageFrom(record) {
-  const usage = record?.usage && typeof record.usage === "object" ? record.usage : record || {};
+  const usage =
+    record?.usage && typeof record.usage === "object"
+      ? record.usage
+      : record || {};
   return {
-    promptTokens: number(usage.promptTokens ?? usage.prompt_tokens ?? usage.inputTokens ?? usage.input_tokens),
-    completionTokens: number(usage.completionTokens ?? usage.completion_tokens ?? usage.outputTokens ?? usage.output_tokens),
+    promptTokens: number(
+      usage.promptTokens ??
+        usage.prompt_tokens ??
+        usage.inputTokens ??
+        usage.input_tokens,
+    ),
+    completionTokens: number(
+      usage.completionTokens ??
+        usage.completion_tokens ??
+        usage.outputTokens ??
+        usage.output_tokens,
+    ),
     totalTokens: number(usage.totalTokens ?? usage.total_tokens),
     cacheReadInputTokens: number(
       usage.cacheReadInputTokens ??
@@ -200,9 +215,16 @@ function structuredLlmSummary(records) {
       summary.promptTokens += number(record.usage?.promptTokens);
       summary.completionTokens += number(record.usage?.completionTokens);
       const total = number(record.usage?.totalTokens);
-      summary.totalTokens += total || number(record.usage?.promptTokens) + number(record.usage?.completionTokens);
-      summary.cacheReadInputTokens += number(record.usage?.cacheReadInputTokens);
-      summary.cacheCreationInputTokens += number(record.usage?.cacheCreationInputTokens);
+      summary.totalTokens +=
+        total ||
+        number(record.usage?.promptTokens) +
+          number(record.usage?.completionTokens);
+      summary.cacheReadInputTokens += number(
+        record.usage?.cacheReadInputTokens,
+      );
+      summary.cacheCreationInputTokens += number(
+        record.usage?.cacheCreationInputTokens,
+      );
       return summary;
     },
     {
@@ -219,7 +241,10 @@ function structuredLlmSummary(records) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const label = options.label || options.command[0];
-  const runDir = path.join(options.reportRoot, `${timestampId()}-${slug(label)}`);
+  const runDir = path.join(
+    options.reportRoot,
+    `${timestampId()}-${slug(label)}`,
+  );
   mkdirSync(runDir, { recursive: true });
   const llmCallsJsonl = path.join(runDir, "llm-calls.jsonl");
   const startedAt = new Date();
@@ -286,10 +311,10 @@ async function main() {
       events.push({
         type: "exit",
         timestamp: new Date().toISOString(),
-        code: timedOut ? 124 : code ?? 1,
+        code: timedOut ? 124 : (code ?? 1),
         signal,
       });
-      resolve(timedOut ? 124 : code ?? 1);
+      resolve(timedOut ? 124 : (code ?? 1));
     });
   });
   const completedAt = new Date();
@@ -335,10 +360,20 @@ async function main() {
     allEvents.map((event) => JSON.stringify(event)).join("\n") + "\n",
     "utf8",
   );
-  writeFileSync(path.join(runDir, "report.json"), JSON.stringify(report, null, 2) + "\n", "utf8");
-  writeFileSync(path.join(runDir, "data.js"), `window.LIVE_TEST_RUN = ${JSON.stringify(report)};\n`, "utf8");
+  writeFileSync(
+    path.join(runDir, "report.json"),
+    JSON.stringify(report, null, 2) + "\n",
+    "utf8",
+  );
+  writeFileSync(
+    path.join(runDir, "data.js"),
+    `window.LIVE_TEST_RUN = ${JSON.stringify(report)};\n`,
+    "utf8",
+  );
   writeFileSync(path.join(runDir, "index.html"), html(), "utf8");
-  process.stdout.write(`\n[live-test-artifacts] viewer=${path.join(runDir, "index.html")}\n`);
+  process.stdout.write(
+    `\n[live-test-artifacts] viewer=${path.join(runDir, "index.html")}\n`,
+  );
   process.exit(exitCode);
 }
 

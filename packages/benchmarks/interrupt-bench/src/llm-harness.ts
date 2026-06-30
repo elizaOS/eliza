@@ -30,7 +30,9 @@ function harnessName(): string {
     process.env.BENCHMARK_HARNESS ||
     process.env.ELIZA_BENCH_HARNESS ||
     "eliza"
-  ).trim().toLowerCase();
+  )
+    .trim()
+    .toLowerCase();
 }
 
 function pythonExecutable(): string {
@@ -43,7 +45,9 @@ function extractJsonObject(raw: string): Record<string, unknown> {
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start < 0 || end <= start) {
-    throw new Error(`harness response did not contain JSON: ${raw.slice(0, 500)}`);
+    throw new Error(
+      `harness response did not contain JSON: ${raw.slice(0, 500)}`,
+    );
   }
   const parsed = JSON.parse(candidate.slice(start, end + 1));
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -66,11 +70,16 @@ function parseBridgePayload(stdout: string): { text: string; raw: unknown } {
       // Local benchmark server logs can precede the helper JSON.
     }
   }
-  throw new Error(`harness bridge returned no JSON payload: ${stdout.slice(-1000)}`);
+  throw new Error(
+    `harness bridge returned no JSON payload: ${stdout.slice(-1000)}`,
+  );
 }
 
-function normalizeStage1(parsed: Record<string, unknown>): ResponseHandlerResult {
-  const shouldRespond = parsed.shouldRespond === "IGNORE" ? "IGNORE" : "RESPOND";
+function normalizeStage1(
+  parsed: Record<string, unknown>,
+): ResponseHandlerResult {
+  const shouldRespond =
+    parsed.shouldRespond === "IGNORE" ? "IGNORE" : "RESPOND";
   return {
     shouldRespond,
     contexts: Array.isArray(parsed.contexts) ? parsed.contexts.map(String) : [],
@@ -112,7 +121,9 @@ function conversationText(input: HarnessCallInput): string {
 }
 
 function hasCancellationLanguage(text: string): boolean {
-  return /\b(stop|cancel|nvm|never mind|scratch that|actually don'?t|do not send|don'?t send)\b/i.test(text);
+  return /\b(stop|cancel|nvm|never mind|scratch that|actually don'?t|do not send|don'?t send)\b/i.test(
+    text,
+  );
 }
 
 function activeThreadIds(text: string): string[] {
@@ -128,7 +139,11 @@ function waitingThreadIds(text: string): string[] {
 }
 
 function newMessageText(text: string): string {
-  const matches = [...text.matchAll(/^## New message\s*\n\[([^\]]+)\]\s+([^:]+):\s*([\s\S]*?)(?:\n\nRespond with the JSON object only\.|$)/gim)];
+  const matches = [
+    ...text.matchAll(
+      /^## New message\s*\n\[([^\]]+)\]\s+([^:]+):\s*([\s\S]*?)(?:\n\nRespond with the JSON object only\.|$)/gim,
+    ),
+  ];
   const last = matches[matches.length - 1];
   return (last?.[3] ?? "").trim();
 }
@@ -148,9 +163,7 @@ function hasMeaningfulResponse(parsed: ResponseHandlerResult): boolean {
   );
 }
 
-function normalizedThreadOps(
-  parsed: ResponseHandlerResult,
-): HarnessThreadOp[] {
+function normalizedThreadOps(parsed: ResponseHandlerResult): HarnessThreadOp[] {
   return Array.isArray(parsed.threadOps)
     ? (parsed.threadOps as HarnessThreadOp[])
     : [];
@@ -174,7 +187,8 @@ function normalizeScenarioSemantics(
       ...parsed,
       shouldRespond: "RESPOND",
       replyText:
-        parsed.replyText.trim() || "Drafting an email to Bob about lunch tomorrow.",
+        parsed.replyText.trim() ||
+        "Drafting an email to Bob about lunch tomorrow.",
       addressedTo: [],
     };
   }
@@ -225,7 +239,8 @@ function normalizeScenarioSemantics(
     return {
       ...parsed,
       shouldRespond: "RESPOND",
-      replyText: parsed.replyText.trim() || "Scheduling Carol for Friday at 10am.",
+      replyText:
+        parsed.replyText.trim() || "Scheduling Carol for Friday at 10am.",
       threadOps: createOps,
     };
   }
@@ -242,7 +257,8 @@ function normalizeScenarioSemantics(
               ? {
                   ...op,
                   workThreadId:
-                    typeof op.workThreadId === "string" && op.workThreadId.trim()
+                    typeof op.workThreadId === "string" &&
+                    op.workThreadId.trim()
                       ? op.workThreadId
                       : activeIds[0],
                   instruction:
@@ -289,7 +305,8 @@ function normalizeScenarioSemantics(
                 ? {
                     ...op,
                     workThreadId:
-                      typeof op.workThreadId === "string" && op.workThreadId.trim()
+                      typeof op.workThreadId === "string" &&
+                      op.workThreadId.trim()
                         ? op.workThreadId
                         : activeIds[0],
                   }
@@ -372,7 +389,8 @@ function normalizeScenarioSemantics(
               type: "merge",
               sourceWorkThreadIds: activeIds,
               sourceRef: null,
-              instruction: "Handle the Black Friday email and landing page together.",
+              instruction:
+                "Handle the Black Friday email and landing page together.",
               reason: "User requested merging the two Black Friday tasks.",
             } as HarnessThreadOp,
           ];
@@ -421,7 +439,7 @@ function normalizeInterruptOps(
             reason:
               typeof record.reason === "string" && record.reason.trim()
                 ? record.reason
-            : "user cancelled",
+                : "user cancelled",
           };
         }
         if (record && record.type === "abort") {
@@ -478,32 +496,30 @@ function buildPrompt(input: HarnessCallInput): string {
 function payloadLatencyMs(raw: unknown): number | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const value = (raw as Record<string, unknown>).latency_ms;
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 export async function callHarnessStage1(
   input: HarnessCallInput,
 ): Promise<HarnessCallResult> {
   const started = Date.now();
-  const completed = spawnSync(
-    pythonExecutable(),
-    [BRIDGE_SCRIPT],
-    {
-      input: JSON.stringify({
-        prompt: buildPrompt(input),
-        context: {
-          benchmark: "interrupt_bench",
-          task_id: input.scenarioId,
-          harness: harnessName(),
-          call_index: input.callIndex,
-        },
-      }),
-      encoding: "utf8",
-      env: process.env,
-      timeout: input.timeoutMs ?? 120_000,
-      maxBuffer: 2 * 1024 * 1024,
-    },
-  );
+  const completed = spawnSync(pythonExecutable(), [BRIDGE_SCRIPT], {
+    input: JSON.stringify({
+      prompt: buildPrompt(input),
+      context: {
+        benchmark: "interrupt_bench",
+        task_id: input.scenarioId,
+        harness: harnessName(),
+        call_index: input.callIndex,
+      },
+    }),
+    encoding: "utf8",
+    env: process.env,
+    timeout: input.timeoutMs ?? 120_000,
+    maxBuffer: 2 * 1024 * 1024,
+  });
   const latencyMs = Date.now() - started;
   if (completed.error) throw completed.error;
   if (completed.status !== 0) {

@@ -12,14 +12,8 @@
       "ios",
       "android"
     ],
-    "transcriptionState": [
-      "off",
-      "on"
-    ],
-    "chimeIn": [
-      "should-respond",
-      "should-not-respond"
-    ],
+    "transcriptionState": ["off", "on"],
+    "chimeIn": ["should-respond", "should-not-respond"],
     "wakewordContext": [
       "idle-wake",
       "already-listening-wake-inert",
@@ -31,12 +25,7 @@
       "echo-self-voice",
       "overlapping-speech"
     ],
-    "voices": [
-      "owner",
-      "enrolled-contact",
-      "unknown",
-      "multi-speaker"
-    ]
+    "voices": ["owner", "enrolled-contact", "unknown", "multi-speaker"]
   },
   "host": {
     "platform": "darwin",
@@ -71,10 +60,7 @@
         "packages/app",
         "test:e2e:android:local"
       ],
-      "evidence": [
-        "packages/app/test-results",
-        ".github/issue-evidence"
-      ],
+      "evidence": ["packages/app/test-results", ".github/issue-evidence"],
       "probe": {
         "available": false,
         "reason": "set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed"
@@ -103,9 +89,7 @@
         ":elizaos-capacitor-talkmode:testDebugUnitTest"
       ],
       "cwd": "packages/app-core/platforms/android",
-      "evidence": [
-        "plugins/plugin-native-talkmode/android/src/test/java"
-      ],
+      "evidence": ["plugins/plugin-native-talkmode/android/src/test/java"],
       "probe": {
         "available": true,
         "reason": "command passed (2026-06-30T07:13:48.985Z)"
@@ -140,9 +124,7 @@
         ":elizaos-capacitor-swabble:testDebugUnitTest"
       ],
       "cwd": "packages/app-core/platforms/android",
-      "evidence": [
-        "plugins/plugin-native-swabble/android/src/test/java"
-      ],
+      "evidence": ["plugins/plugin-native-swabble/android/src/test/java"],
       "probe": {
         "available": true,
         "reason": "command passed (2026-06-30T07:13:49.525Z)"
@@ -170,10 +152,7 @@
         "voices": "multi-speaker"
       },
       "class": "stt-evaluation",
-      "command": [
-        "node",
-        "packages/scripts/voice-stage-b-eval.mjs"
-      ],
+      "command": ["node", "packages/scripts/voice-stage-b-eval.mjs"],
       "evidence": [
         "$ELIZA_VOICE_MATRIX_OUT/stt.stage-b.evaluation/stage-b-eval.json",
         "$ELIZA_VOICE_STAGE_B_REPORT"

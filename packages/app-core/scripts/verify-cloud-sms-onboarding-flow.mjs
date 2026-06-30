@@ -13,7 +13,11 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
-const defaultEnvFile = path.join(repoRoot, ".eliza-local", "bluebubbles-bridge.env");
+const defaultEnvFile = path.join(
+  repoRoot,
+  ".eliza-local",
+  "bluebubbles-bridge.env",
+);
 const defaultWebhookUrl =
   "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles";
 const defaultGatewayPhoneNumber = "+14159611510";
@@ -40,7 +44,8 @@ function parseArgs(argv) {
     webhookUrl: process.env.ELIZA_CLOUD_BLUEBUBBLES_URL ?? defaultWebhookUrl,
     secret: process.env.BLUEBUBBLES_GATEWAY_SECRET,
     sender: null,
-    gatewayPhone: process.env.BLUEBUBBLES_GATEWAY_PHONE_NUMBER ?? defaultGatewayPhoneNumber,
+    gatewayPhone:
+      process.env.BLUEBUBBLES_GATEWAY_PHONE_NUMBER ?? defaultGatewayPhoneNumber,
     bridge: process.env.BLUEBUBBLES_BRIDGE_ID ?? "bluebubbles",
     attempts: defaultAttempts,
     allowGatewayOverride: false,
@@ -59,7 +64,8 @@ function parseArgs(argv) {
     else if (arg === "--gateway-phone") args.gatewayPhone = next();
     else if (arg === "--bridge") args.bridge = next();
     else if (arg === "--attempts") args.attempts = Number.parseInt(next(), 10);
-    else if (arg === "--allow-gateway-override") args.allowGatewayOverride = true;
+    else if (arg === "--allow-gateway-override")
+      args.allowGatewayOverride = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());
       process.exit(0);
@@ -73,7 +79,9 @@ function parseArgs(argv) {
     args.secret = env.BLUEBUBBLES_GATEWAY_SECRET;
   }
   if (!args.secret) {
-    throw new Error("Gateway secret is required via --secret, BLUEBUBBLES_GATEWAY_SECRET, or .eliza-local/bluebubbles-bridge.env");
+    throw new Error(
+      "Gateway secret is required via --secret, BLUEBUBBLES_GATEWAY_SECRET, or .eliza-local/bluebubbles-bridge.env",
+    );
   }
   if (!args.sender) {
     args.sender = `+1415555${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -96,7 +104,11 @@ function parseArgs(argv) {
 function normalizeNorthAmericanPhone(value) {
   const digits = String(value ?? "").replace(/\D/g, "");
   const normalized =
-    digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : "";
+    digits.length === 10
+      ? `+1${digits}`
+      : digits.length === 11 && digits.startsWith("1")
+        ? `+${digits}`
+        : "";
   if (!normalized) {
     throw new Error(`Invalid gateway phone number: ${value}`);
   }
@@ -194,7 +206,9 @@ function mentionsStarterCredit(text) {
 
 function assertSmsSafeReply(label, text) {
   if (/[^\x09\x0A\x0D\x20-\x7E]/.test(text)) {
-    throw new Error(`${label} reply included non-ASCII SMS-hostile text: ${text}`);
+    throw new Error(
+      `${label} reply included non-ASCII SMS-hostile text: ${text}`,
+    );
   }
 }
 
@@ -213,7 +227,9 @@ async function verifyContinuationUrl(url) {
     throw new Error(`Continuation URL failed (${response.status}): ${url}`);
   }
   if (!body.includes('id="root"') || !body.includes("/assets/index-")) {
-    throw new Error(`Continuation URL did not return the homepage app shell: ${url}`);
+    throw new Error(
+      `Continuation URL did not return the homepage app shell: ${url}`,
+    );
   }
   return {
     status: response.status,
@@ -238,7 +254,8 @@ async function fetchWithRetry(args, url, init, label) {
     }
   }
 
-  const cause = lastError instanceof Error ? lastError : new Error(String(lastError));
+  const cause =
+    lastError instanceof Error ? lastError : new Error(String(lastError));
   throw new Error(`${label} fetch failed for ${url}: ${cause.message}`, {
     cause,
   });
@@ -265,7 +282,9 @@ async function main() {
     );
   }
   if (first.gatewayDeviceRegistered !== true) {
-    throw new Error(`Gateway device was not registered on first webhook: ${JSON.stringify(first)}`);
+    throw new Error(
+      `Gateway device was not registered on first webhook: ${JSON.stringify(first)}`,
+    );
   }
   assertGatewayIdentity("First", first, args);
 
@@ -273,10 +292,14 @@ async function main() {
   const secondReply = String(second.replyText ?? "");
   const loginUrl = extractFirstUrl(secondReply);
   if (second.success !== true || second.handled !== true) {
-    throw new Error(`Second webhook was not handled: ${JSON.stringify(second)}`);
+    throw new Error(
+      `Second webhook was not handled: ${JSON.stringify(second)}`,
+    );
   }
   if (second.gatewayDeviceRegistered !== true) {
-    throw new Error(`Gateway device was not registered on second webhook: ${JSON.stringify(second)}`);
+    throw new Error(
+      `Gateway device was not registered on second webhook: ${JSON.stringify(second)}`,
+    );
   }
   if (
     first.gatewayDeviceId &&
@@ -289,22 +312,36 @@ async function main() {
   }
   assertGatewayIdentity("Second", second, args);
   assertSmsSafeReply("Second", secondReply);
-  if (!loginUrl || !loginUrl.includes("/get-started/") || !loginUrl.includes("onboardingSession=")) {
-    throw new Error(`Second reply did not include a get-started onboarding link: ${secondReply}`);
+  if (
+    !loginUrl ||
+    !loginUrl.includes("/get-started/") ||
+    !loginUrl.includes("onboardingSession=")
+  ) {
+    throw new Error(
+      `Second reply did not include a get-started onboarding link: ${secondReply}`,
+    );
   }
   if (/[^\x20-\x7E]/.test(loginUrl) || loginUrl.includes("**")) {
-    throw new Error(`Second reply included a malformed onboarding link: ${loginUrl}`);
+    throw new Error(
+      `Second reply included a malformed onboarding link: ${loginUrl}`,
+    );
   }
   if (!mentionsStarterCredit(secondReply)) {
-    throw new Error(`Second reply did not mention starter credit: ${secondReply}`);
+    throw new Error(
+      `Second reply did not mention starter credit: ${secondReply}`,
+    );
   }
   if (/^\s*[*_`~]+\s*$/m.test(secondReply)) {
-    throw new Error(`Second reply included orphaned markdown punctuation: ${secondReply}`);
+    throw new Error(
+      `Second reply included orphaned markdown punctuation: ${secondReply}`,
+    );
   }
 
   const continuation = await verifyContinuationUrl(loginUrl);
   const stableGatewayId =
-    first.gatewayDeviceId && second.gatewayDeviceId ? first.gatewayDeviceId : "unreported";
+    first.gatewayDeviceId && second.gatewayDeviceId
+      ? first.gatewayDeviceId
+      : "unreported";
   console.log(
     `[cloud-sms-onboarding] sender=${args.sender} gateway=${args.gatewayPhone} registered=yes gatewayId=${stableGatewayId} device=${first.gatewayDevicePhoneNumber}/${first.gatewayDeviceBridgeId}/${first.gatewayDeviceProvider} first=handled second=login-link continuation=${continuation.status} ${continuation.url}`,
   );

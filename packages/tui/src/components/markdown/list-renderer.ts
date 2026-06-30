@@ -4,7 +4,11 @@
 
 import type { Token } from "marked";
 import type { ListToken } from "../../types/marked-tokens.js";
-import { hasNestedTokens, type InlineStyleContext, type MarkdownTheme } from "./types.js";
+import {
+  hasNestedTokens,
+  type InlineStyleContext,
+  type MarkdownTheme,
+} from "./types.js";
 
 /**
  * Context for list rendering operations.

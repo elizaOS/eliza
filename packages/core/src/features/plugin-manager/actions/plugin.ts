@@ -379,9 +379,7 @@ function buildResolverOptions(
 ): HandlerOptions {
 	const nested = readNestedParameters(options);
 	const seeded: ActionParameters =
-		nested && !Array.isArray(nested)
-			? { ...(nested as ActionParameters) }
-			: {};
+		nested && !Array.isArray(nested) ? { ...(nested as ActionParameters) } : {};
 
 	const name = normalizePluginNameInput(
 		readStringOption(options, "name") ??
@@ -391,7 +389,8 @@ function buildResolverOptions(
 	const source = readSourceOption(options);
 	const url = readStringOption(options, "url");
 	const version = readStringOption(options, "version");
-	const query = readStringOption(options, "query") ?? extractQueryFromText(text);
+	const query =
+		readStringOption(options, "query") ?? extractQueryFromText(text);
 	const intent = readStringOption(options, "intent");
 
 	if (name !== undefined) seeded.name = name;

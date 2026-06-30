@@ -23,7 +23,12 @@ export default scenario({
       name: "assemble-grant-diligence",
       text: "Prepare diligence for the emergency grant: nonprofit status, bank letter, board approval requirement, restricted-purpose language, matching deadline, and prior giving history.",
       plannerIncludesAny: ["OWNER_DOCUMENTS", "OWNER_FINANCES", "approval"],
-      responseIncludesAny: ["nonprofit", "bank letter", "board approval", "deadline"],
+      responseIncludesAny: [
+        "nonprofit",
+        "bank letter",
+        "board approval",
+        "deadline",
+      ],
       plannerExcludes: ["OWNER_HEALTH"],
     },
     {

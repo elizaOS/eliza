@@ -11,7 +11,8 @@
 
 import { readFileSync } from "node:fs";
 
-const pickString = (value) => (typeof value === "string" && value.trim() ? value : null);
+const pickString = (value) =>
+  typeof value === "string" && value.trim() ? value : null;
 
 /**
  * Read and parse an optimization artifact from disk. Returns `null` for a
@@ -45,13 +46,17 @@ export function resolveOptimizedSystemPrompt(artifact, benchmark) {
       ? artifact.benchmarks[benchmark]
       : null;
   if (perBenchmark && typeof perBenchmark === "object") {
-    const prompt = pickString(perBenchmark.systemPrompt) ?? pickString(perBenchmark.prompt);
+    const prompt =
+      pickString(perBenchmark.systemPrompt) ?? pickString(perBenchmark.prompt);
     if (prompt) return prompt;
   }
 
   const patches = Array.isArray(artifact.patches) ? artifact.patches : [];
   const patchByNode = (id) =>
-    patches.find((p) => p && typeof p === "object" && p.nodeId === id && pickString(p.prompt));
+    patches.find(
+      (p) =>
+        p && typeof p === "object" && p.nodeId === id && pickString(p.prompt),
+    );
 
   const systemAliases = ["system", "default", "system_prompt", "systemPrompt"];
   const matched =
@@ -63,6 +68,8 @@ export function resolveOptimizedSystemPrompt(artifact, benchmark) {
   const global = pickString(artifact.systemPrompt);
   if (global) return global;
 
-  const firstUsable = patches.find((p) => p && typeof p === "object" && pickString(p.prompt));
+  const firstUsable = patches.find(
+    (p) => p && typeof p === "object" && pickString(p.prompt),
+  );
   return firstUsable ? pickString(firstUsable.prompt) : null;
 }

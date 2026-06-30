@@ -79,7 +79,10 @@ const checks = [
   {
     id: "os-release-tests",
     command: "node",
-    args: ["--test", "packages/os/scripts/__tests__/os-release-scripts.test.mjs"],
+    args: [
+      "--test",
+      "packages/os/scripts/__tests__/os-release-scripts.test.mjs",
+    ],
   },
   {
     id: "os-tee-measurements-validator",
@@ -97,7 +100,9 @@ const checks = [
   {
     id: "chip-confidential-domain-contract",
     command: "python3",
-    args: ["packages/research/chip/scripts/check_tee_confidential_domain_contract.py"],
+    args: [
+      "packages/research/chip/scripts/check_tee_confidential_domain_contract.py",
+    ],
     env: { PYTHONDONTWRITEBYTECODE: "1" },
   },
   {

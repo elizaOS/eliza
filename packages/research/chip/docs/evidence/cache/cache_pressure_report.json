@@ -2,22 +2,9 @@
   "blocked_count": 5,
   "claim_allowed": false,
   "claim_boundary": "This cocotb report measures RTL pressure behavior only. It is not L5/L6 silicon, DRAM, LPDDR, Android, or phone bandwidth evidence.",
-  "cocotb_top_levels": [
-    "e1_l1d_cache",
-    "e1_l2_tb",
-    "e1_l3_tb",
-    "e1_slc_tb"
-  ],
-  "contention_agents": [
-    "cpu_miss_stream",
-    "display_qos"
-  ],
-  "coverage": [
-    "l1d",
-    "l2",
-    "l3",
-    "slc"
-  ],
+  "cocotb_top_levels": ["e1_l1d_cache", "e1_l2_tb", "e1_l3_tb", "e1_slc_tb"],
+  "contention_agents": ["cpu_miss_stream", "display_qos"],
+  "coverage": ["l1d", "l2", "l3", "slc"],
   "evidence_class": "rtl_cocotb_pressure_measurement",
   "false_claim_flags": {
     "claim_allowed": false,

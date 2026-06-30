@@ -11,9 +11,8 @@
 
 export {
   REMOTE_DESKTOP_ACTION_NAME,
-  remoteDesktopAction,
   type RemoteDesktopActionParams,
   type RemoteDesktopSubaction,
+  remoteDesktopAction,
+  remoteDesktopAction as default,
 } from "@elizaos/plugin-remote-desktop";
-
-export { remoteDesktopAction as default } from "@elizaos/plugin-remote-desktop";

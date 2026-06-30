@@ -356,9 +356,7 @@
       "id": "supplier_family_lock",
       "status": "blocked_no_supplier_evidence",
       "pass": false,
-      "required_evidence": [
-        "supplier-evidence-acceptance.json"
-      ]
+      "required_evidence": ["supplier-evidence-acceptance.json"]
     },
     {
       "id": "full_cad_boolean_interference",
@@ -417,9 +415,7 @@
       "id": "manufacturing_release_readiness",
       "status": "cad_package_pass",
       "pass": false,
-      "required_evidence": [
-        "manufacturing-readiness.json"
-      ]
+      "required_evidence": ["manufacturing-readiness.json"]
     }
   ],
   "missing_or_incomplete_items": [

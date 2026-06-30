@@ -1,4 +1,18 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import type { ScheduledTask } from "@elizaos/plugin-scheduling";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+} from "@elizaos/plugin-scheduling";
 import { describe, expect, it, vi } from "vitest";
 import type { ChannelContribution } from "../src/lifeops/channels/contract.js";
 import { registerDefaultChannelPack } from "../src/lifeops/channels/default-pack.js";
@@ -7,29 +21,7 @@ import {
   registerChannelRegistry,
 } from "../src/lifeops/channels/index.js";
 import type { DispatchResult } from "../src/lifeops/connectors/contract.js";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import {
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-} from "@elizaos/plugin-scheduling";
 import { createProductionScheduledTaskDispatcher } from "../src/lifeops/scheduled-task/runtime-wiring.js";
-import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
-import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import {
   createSendPolicyRegistry,
   registerSendPolicyRegistry,
