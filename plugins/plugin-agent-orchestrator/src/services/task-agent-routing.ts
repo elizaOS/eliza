@@ -115,10 +115,19 @@ export function resolveSpawnWorkdir(
   // as long as the project directory is named like the user refers to it.
   const detected = resolveWorkdirByConvention(runtime, task, userRequest);
   if (detected) return { workdir: detected };
+  const fallback = resolveDefaultSpawnWorkdir(runtime);
   if (expandedExplicit && fs.existsSync(expandedExplicit)) {
+    if (
+      fallback.isolate &&
+      path.resolve(expandedExplicit) === path.resolve(process.cwd())
+    ) {
+      logger.warn(
+        `[workdir-routes] Planner explicit workdir equals runtime cwd (${expandedExplicit}), ignoring it and using configured workspace ${fallback.workdir}`,
+      );
+      return { workdir: fallback.workdir, isolate: true };
+    }
     return { workdir: expandedExplicit };
   }
-  const fallback = resolveDefaultSpawnWorkdir(runtime);
   if (expandedExplicit) {
     logger.warn(
       `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
