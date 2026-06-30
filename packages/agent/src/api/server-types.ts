@@ -214,7 +214,7 @@ export interface ServerState {
    * coordinator relay), each of which createMemory()s + broadcasts the same
    * text. This bounded, time-windowed (roomId+text) tracker lets each sink
    * suppress a duplicate delivery of a reply already delivered moments ago.
-   * See {@link import("./delivery-dedupe.ts").shouldSuppressDuplicateDelivery}.
+   * See {@link import("./delivery-dedupe.ts").beginDelivery}.
    */
   deliveryDedupe?: import("./delivery-dedupe.ts").DeliveryDedupeState;
   /** Transient OAuth flow state for subscription auth. */
