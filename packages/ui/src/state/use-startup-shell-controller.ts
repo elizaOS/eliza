@@ -79,7 +79,6 @@ export function useStartupShellController(): StartupShellController {
   const {
     startupCoordinator,
     startupError,
-    firstRunComplete,
     firstRunCloudProvisionedContainer,
     retryStartup,
     setActionNotice,
@@ -88,7 +87,6 @@ export function useStartupShellController(): StartupShellController {
   } = useAppSelectorShallow((s) => ({
     startupCoordinator: s.startupCoordinator,
     startupError: s.startupError,
-    firstRunComplete: s.firstRunComplete,
     firstRunCloudProvisionedContainer: s.firstRunCloudProvisionedContainer,
     retryStartup: s.retryStartup,
     setActionNotice: s.setActionNotice,

@@ -33,6 +33,7 @@ Outputs:
 | Subset / superset | One type's property keys ⊆ another's | `extends` / `Pick` / `Omit` |
 | Structural near-duplicate | Jaccard ≥ 0.6 over `name:type` property signatures | merge / share via `@elizaos/core` |
 | Literal-set duplicate | String-literal unions, `enum`s, and `as const` maps that enumerate the **same value set** across ≥2 packages, even under different names | share one union in `@elizaos/core` |
+| Runtime schema ↔ exported type | `z.object(...)` and JSON-schema-like `{ type: "object", properties: ... }` validators whose key sets exactly match or strongly overlap exported TS object types | pair shared DTO with runtime validation, or keep separate with a reason |
 
 Plus a weak-type inventory (`as unknown as`, `as any`, explicit `: any`) — the
 actionable casts the `type-safety-ratchet` gates.
@@ -115,6 +116,7 @@ so re-runs stay low-noise. Every entry needs a written `reason`.
 | `name` | a whole same-name cluster (`{ "name": "Foo", "reason": "…" }`) |
 | `pairKey` | one subset/near-duplicate pair (the exact `a.file#a.name <=> b.file#b.name` key from `reports/type-duplication.json`) |
 | `memberKey` | one literal-set cluster (the `a\|b\|c` value key from the report) |
+| `schemaPairKey` | one runtime-schema/type match (`schema:<file>#<schema> <=> type:<file>#<type>`) |
 
 ## Advisory drift baseline
 

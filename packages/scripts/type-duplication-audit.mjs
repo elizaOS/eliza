@@ -26,16 +26,14 @@
  *                                   `SetupState` family ("idle"|"configuring"|
  *                                   "paired"|"error") consolidated into
  *                                   `@elizaos/core`.
+ *   5. runtime-schema/type match — zod `z.object(...)` and JSON-schema-like
+ *                                   `{ type: "object", properties: ... }`
+ *                                   objects whose keys match / strongly
+ *                                   overlap exported TypeScript object types.
  *
  * Weak-type inventory: per-site `as unknown as`, `as any`, explicit `: any`
  * (the actionable weak types). Bare `: unknown` is intentionally NOT flagged —
  * most are legitimate boundary types (#10195).
- *
- * NOT detected (deliberate deferral, #10201): zod/runtime-schema objects whose
- * shape equals an exported TS type. Reliably matching a zod schema to a type
- * needs schema-shape resolution that is heuristic and noisy; the deterministic
- * classes above already surface the high-confidence families. Re-evaluate once
- * the families they find are triaged.
  */
 
 import { execFileSync } from "node:child_process";
@@ -85,6 +83,11 @@ const NEAR_DUP_THRESHOLD = 0.6;
 // least this many members — two-member sets (`"asc"|"desc"`, `"on"|"off"`)
 // collide by accident across unrelated domains and would drown the report.
 const MIN_LITERAL_MEMBERS = 3;
+// Runtime-schema/type matching is intentionally conservative: tiny request
+// schemas collide constantly, so require a real property bag and strong key
+// overlap before surfacing a candidate.
+const MIN_SCHEMA_PROPS = 3;
+const SCHEMA_TYPE_OVERLAP_THRESHOLD = 0.8;
 
 const EXCLUDED_SEGMENTS = new Set([
   "__fixtures__",
@@ -170,6 +173,25 @@ function normalizeTypeText(text) {
   return text.replace(/\s+/g, " ").trim();
 }
 
+function propertyNameText(name, sourceFile) {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text;
+  if (ts.isNumericLiteral(name)) return String(name.text);
+  return name.getText(sourceFile);
+}
+
+function unwrapExpression(node) {
+  let current = node;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression?.(current) ||
+    ts.isTypeAssertionExpression?.(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
 // Collect the property signature set of an interface/type-literal declaration.
 // Returns null for declarations without a property bag (unions, aliases to
 // other names, enums) so they don't enter the shape-comparison passes.
@@ -189,7 +211,7 @@ function propertySignatures(node) {
   const props = new Map();
   for (const member of members) {
     if (!ts.isPropertySignature(member) || !member.name) continue;
-    const name = member.name.getText();
+    const name = propertyNameText(member.name, member.getSourceFile());
     const typeText = member.type
       ? normalizeTypeText(member.type.getText())
       : "any";
@@ -288,6 +310,142 @@ function constEnumLikeMembers(node) {
   return { name: decl.name.getText(), values };
 }
 
+function collectZodBindings(sourceFile) {
+  const namespaces = new Set();
+  const objectFunctions = new Set();
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "zod"
+    ) {
+      continue;
+    }
+
+    const clause = statement.importClause;
+    if (!clause) continue;
+    if (clause.name) namespaces.add(clause.name.text);
+
+    const bindings = clause.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) {
+      namespaces.add(bindings.name.text);
+    } else if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        const imported = element.propertyName?.text ?? element.name.text;
+        if (imported === "z") namespaces.add(element.name.text);
+        if (imported === "object") objectFunctions.add(element.name.text);
+      }
+    }
+  }
+
+  return { namespaces, objectFunctions };
+}
+
+function isZodObjectCall(node, zodBindings) {
+  if (!ts.isCallExpression(node)) return false;
+  const expr = node.expression;
+  if (ts.isIdentifier(expr)) {
+    return zodBindings.objectFunctions.has(expr.text);
+  }
+  return (
+    ts.isPropertyAccessExpression(expr) &&
+    expr.name.text === "object" &&
+    ts.isIdentifier(expr.expression) &&
+    zodBindings.namespaces.has(expr.expression.text)
+  );
+}
+
+function objectLiteralKeys(node, sourceFile) {
+  if (!ts.isObjectLiteralExpression(node)) return null;
+  const props = new Map();
+  for (const prop of node.properties) {
+    if (ts.isSpreadAssignment(prop)) return null;
+    if (ts.isPropertyAssignment(prop) && prop.name) {
+      props.set(propertyNameText(prop.name, sourceFile), "schema");
+    } else if (ts.isShorthandPropertyAssignment(prop)) {
+      props.set(prop.name.text, "schema");
+    } else {
+      return null;
+    }
+  }
+  return props;
+}
+
+function literalStringValue(node) {
+  const value = unwrapExpression(node);
+  return ts.isStringLiteral(value) ? value.text : null;
+}
+
+function propertyNamed(objectLiteral, name, sourceFile) {
+  return objectLiteral.properties.find(
+    (prop) =>
+      ts.isPropertyAssignment(prop) &&
+      prop.name &&
+      propertyNameText(prop.name, sourceFile) === name,
+  );
+}
+
+function jsonSchemaObjectProperties(node, sourceFile) {
+  const objectLiteral = unwrapExpression(node);
+  if (!ts.isObjectLiteralExpression(objectLiteral)) return null;
+
+  const typeProp = propertyNamed(objectLiteral, "type", sourceFile);
+  if (!typeProp || literalStringValue(typeProp.initializer) !== "object") {
+    return null;
+  }
+
+  const propertiesProp = propertyNamed(objectLiteral, "properties", sourceFile);
+  if (!propertiesProp) return null;
+  return objectLiteralKeys(
+    unwrapExpression(propertiesProp.initializer),
+    sourceFile,
+  );
+}
+
+function schemaOwnerName(node, sourceFile) {
+  let current = node;
+  let parent = node.parent;
+  while (parent) {
+    if (
+      ts.isPropertyAccessExpression(parent) ||
+      ts.isCallExpression(parent) ||
+      ts.isAsExpression(parent) ||
+      ts.isSatisfiesExpression?.(parent) ||
+      ts.isParenthesizedExpression(parent)
+    ) {
+      current = parent;
+      parent = parent.parent;
+      continue;
+    }
+    if (ts.isVariableDeclaration(parent) && parent.initializer === current) {
+      return parent.name.getText(sourceFile);
+    }
+    if (ts.isPropertyAssignment(parent) && parent.initializer === current) {
+      return propertyNameText(parent.name, sourceFile);
+    }
+    return null;
+  }
+  return null;
+}
+
+function jsonSchemaOwnerName(node, sourceFile) {
+  const parent = node.parent;
+  if (ts.isVariableDeclaration(parent) && parent.initializer === node) {
+    return parent.name.getText(sourceFile);
+  }
+  if (ts.isPropertyAssignment(parent) && parent.initializer === node) {
+    return propertyNameText(parent.name, sourceFile);
+  }
+  if (
+    (ts.isAsExpression(parent) || ts.isSatisfiesExpression?.(parent)) &&
+    parent.expression === node
+  ) {
+    return jsonSchemaOwnerName(parent, sourceFile);
+  }
+  return null;
+}
+
 // Stable, order-independent, de-duplicated identity key for a value set.
 function literalSetKey(values) {
   return [...new Set(values)].sort().join("|");
@@ -303,10 +461,12 @@ function collectFromSource(sourceText, relPath) {
     true,
     sourceFileKind(relPath),
   );
+  const zodBindings = collectZodBindings(sourceFile);
 
   const declarations = [];
   const weakTypes = [];
   const literalSets = [];
+  const runtimeSchemas = [];
 
   function lineOf(node) {
     return (
@@ -371,6 +531,19 @@ function collectFromSource(sourceText, relPath) {
     });
   }
 
+  function recordRuntimeSchema(name, schemaKind, props, node) {
+    if (!name || !props || props.size < MIN_SCHEMA_PROPS) return;
+    runtimeSchemas.push({
+      name,
+      kind: schemaKind,
+      file: relPath,
+      line: lineOf(node),
+      package: packageOf(relPath),
+      props: Object.fromEntries(props),
+      propCount: props.size,
+    });
+  }
+
   function visit(node) {
     const kind = declKind(node);
     if (kind && node.name) {
@@ -414,6 +587,27 @@ function collectFromSource(sourceText, relPath) {
       recordLiteralSet(constEnum.name, "as-const", constEnum.values, node);
     }
 
+    if (isZodObjectCall(node, zodBindings)) {
+      const arg = node.arguments[0];
+      const props = arg ? objectLiteralKeys(arg, sourceFile) : null;
+      recordRuntimeSchema(
+        schemaOwnerName(node, sourceFile),
+        "zod-object",
+        props,
+        node,
+      );
+    }
+
+    if (ts.isObjectLiteralExpression(node)) {
+      const props = jsonSchemaObjectProperties(node, sourceFile);
+      recordRuntimeSchema(
+        jsonSchemaOwnerName(node, sourceFile),
+        "json-schema-object",
+        props,
+        node,
+      );
+    }
+
     if (ts.isAsExpression(node)) {
       if (node.type.kind === ts.SyntaxKind.AnyKeyword) {
         recordWeak("asAny", node);
@@ -442,7 +636,7 @@ function collectFromSource(sourceText, relPath) {
   }
 
   visit(sourceFile);
-  return { declarations, weakTypes, literalSets };
+  return { declarations, weakTypes, literalSets, runtimeSchemas };
 }
 
 function jaccard(aKeys, bKeys) {
@@ -470,6 +664,7 @@ function loadAllowlist() {
     if (entry.pairKey) set.add(entry.pairKey);
     if (entry.name) set.add(`name:${entry.name}`);
     if (entry.memberKey) set.add(`literalSet:${entry.memberKey}`);
+    if (entry.schemaPairKey) set.add(`schemaPair:${entry.schemaPairKey}`);
   }
   return set;
 }
@@ -479,6 +674,10 @@ function pairKey(a, b) {
   const left = `${a.file}#${a.name}`;
   const right = `${b.file}#${b.name}`;
   return [left, right].sort().join(" <=> ");
+}
+
+function schemaTypePairKey(schema, decl) {
+  return `schema:${schema.file}#${schema.name} <=> type:${decl.file}#${decl.name}`;
 }
 
 function buildSameNameClusters(declarations, allowlist) {
@@ -689,6 +888,107 @@ function buildShapeCandidates(declarations, allowlist) {
   return { subsets, nearDuplicates };
 }
 
+function buildRuntimeSchemaMatches(runtimeSchemas, declarations, allowlist) {
+  const exportedTypes = declarations.filter(
+    (d) => d.exported && d.props && d.propCount >= MIN_SCHEMA_PROPS,
+  );
+  const byKey = new Map();
+  for (let i = 0; i < exportedTypes.length; i += 1) {
+    for (const key of Object.keys(exportedTypes[i].props)) {
+      let bucket = byKey.get(key);
+      if (!bucket) {
+        bucket = [];
+        byKey.set(key, bucket);
+      }
+      bucket.push(i);
+    }
+  }
+
+  const matches = [];
+  for (const schema of runtimeSchemas.filter(
+    (s) => s.propCount >= MIN_SCHEMA_PROPS,
+  )) {
+    const candidateIndices = new Set();
+    for (const key of Object.keys(schema.props)) {
+      const bucket = byKey.get(key);
+      if (!bucket || bucket.length > MAX_BUCKET) continue;
+      for (const idx of bucket) candidateIndices.add(idx);
+    }
+
+    const schemaKeys = Object.keys(schema.props);
+    const schemaKeySet = new Set(schemaKeys);
+    for (const idx of candidateIndices) {
+      const typeDecl = exportedTypes[idx];
+      const pair = schemaTypePairKey(schema, typeDecl);
+      if (allowlist.has(`schemaPair:${pair}`)) continue;
+
+      const typeKeys = Object.keys(typeDecl.props);
+      const typeKeySet = new Set(typeKeys);
+      const shared = schemaKeys.filter((key) => typeKeySet.has(key)).sort();
+      if (shared.length < MIN_SCHEMA_PROPS) continue;
+
+      const overlap = jaccard(schemaKeys, typeKeys);
+      const exact =
+        shared.length === schemaKeys.length &&
+        shared.length === typeKeys.length;
+      if (!exact && overlap < SCHEMA_TYPE_OVERLAP_THRESHOLD) continue;
+
+      const samePackage = schema.package === typeDecl.package;
+      const confidence = exact
+        ? samePackage
+          ? 0.95
+          : 0.9
+        : Number((overlap * (samePackage ? 0.95 : 0.9)).toFixed(3));
+      const relation = exact
+        ? "exact-key-match"
+        : schemaKeys.every((key) => typeKeySet.has(key))
+          ? "schema-subset-of-type"
+          : typeKeys.every((key) => schemaKeySet.has(key))
+            ? "type-subset-of-schema"
+            : "high-key-overlap";
+      const reason =
+        relation === "exact-key-match"
+          ? "Runtime schema keys exactly match an exported TypeScript object type."
+          : `Runtime schema and exported type share ${shared.length} keys with ${Number(overlap.toFixed(3))} Jaccard overlap.`;
+
+      matches.push({
+        schemaPairKey: pair,
+        relation,
+        schema: {
+          name: schema.name,
+          kind: schema.kind,
+          file: schema.file,
+          line: schema.line,
+          package: schema.package,
+          propCount: schema.propCount,
+        },
+        type: {
+          name: typeDecl.name,
+          kind: typeDecl.kind,
+          file: typeDecl.file,
+          line: typeDecl.line,
+          package: typeDecl.package,
+          propCount: typeDecl.propCount,
+        },
+        sharedKeys: shared,
+        sharedKeyCount: shared.length,
+        keyOverlap: Number(overlap.toFixed(3)),
+        confidence: Number(confidence.toFixed(3)),
+        reason,
+        action: "review shared type + runtime validation ownership",
+      });
+    }
+  }
+
+  return matches.sort(
+    (a, b) =>
+      b.confidence - a.confidence ||
+      b.sharedKeyCount - a.sharedKeyCount ||
+      a.schema.file.localeCompare(b.schema.file) ||
+      a.type.file.localeCompare(b.type.file),
+  );
+}
+
 function summarizeWeakTypes(weakTypes) {
   const counts = { asUnknownAs: 0, asAny: 0, explicitAny: 0 };
   for (const item of weakTypes) {
@@ -706,6 +1006,7 @@ function renderMarkdown(report) {
     subsets,
     nearDuplicates,
     literalSetClusters,
+    runtimeSchemaMatches,
     weakTypeCounts,
   } = report;
   const lines = [];
@@ -733,6 +1034,9 @@ function renderMarkdown(report) {
   );
   lines.push(
     `| Literal-set duplicate (≥ ${MIN_LITERAL_MEMBERS} members, multi-package) | ${literalSetClusters.length} |`,
+  );
+  lines.push(
+    `| Runtime schema ↔ exported type (key overlap ≥ ${SCHEMA_TYPE_OVERLAP_THRESHOLD}) | ${runtimeSchemaMatches.length} |`,
   );
   lines.push("");
   lines.push("## Weak-type inventory (actionable casts only)");
@@ -807,6 +1111,29 @@ function renderMarkdown(report) {
     );
   }
   lines.push("");
+  lines.push("## Top runtime schema ↔ exported type candidates");
+  lines.push("");
+  lines.push(
+    'Zod `z.object(...)` schemas and JSON-schema-like `{ type: "object", ' +
+      "properties: ... }` declarations whose property keys exactly match or " +
+      "strongly overlap exported TypeScript object types. These are review " +
+      "candidates for pairing shared DTOs with runtime validation — not proof " +
+      "that ownership is identical.",
+  );
+  lines.push("");
+  lines.push(
+    "| Runtime schema | Exported type | Shared keys | Key overlap | Confidence | Reason |",
+  );
+  lines.push("| --- | --- | --- | --- | --- | --- |");
+  for (const cand of runtimeSchemaMatches.slice(0, 25)) {
+    const shared = `\`${cand.sharedKeys.join("\\|")}\``;
+    lines.push(
+      `| \`${cand.schema.name}\` (${cand.schema.kind}, \`${cand.schema.file}:${cand.schema.line}\`) | ` +
+        `\`${cand.type.name}\` (${cand.type.kind}, \`${cand.type.file}:${cand.type.line}\`) | ` +
+        `${shared} | ${cand.keyOverlap} | ${cand.confidence} | ${cand.reason} |`,
+    );
+  }
+  lines.push("");
   lines.push("## Review workflow");
   lines.push("");
   lines.push(
@@ -823,7 +1150,8 @@ function renderMarkdown(report) {
       "`packages/scripts/type-duplication-audit.allowlist.json` with a written " +
       "`reason` so re-runs stay low-noise: `name` suppresses a same-name " +
       "cluster, `pairKey` a subset/near-duplicate pair, `memberKey` a " +
-      "literal-set cluster (the `a|b|c` value key from the report).",
+      "literal-set cluster (the `a|b|c` value key from the report), and " +
+      "`schemaPairKey` a runtime-schema/type pair.",
   );
   lines.push(
     "4. Triage guidance + the accepted/rejected family log live in " +
@@ -845,6 +1173,7 @@ const COUNT_LABELS = {
   subsets: "subset/superset candidates",
   nearDuplicates: "structural near-duplicates",
   literalSetClusters: "literal-set duplicates",
+  runtimeSchemaMatches: "runtime schema ↔ exported type matches",
   weakAsUnknownAs: "weak: as unknown as",
   weakAsAny: "weak: as any",
   weakExplicitAny: "weak: explicit : any",
@@ -856,6 +1185,7 @@ function countsFromReport(report) {
     subsets: report.subsets.length,
     nearDuplicates: report.nearDuplicates.length,
     literalSetClusters: report.literalSetClusters.length,
+    runtimeSchemaMatches: report.runtimeSchemaMatches.length,
     weakAsUnknownAs: report.weakTypeCounts.asUnknownAs,
     weakAsAny: report.weakTypeCounts.asAny,
     weakExplicitAny: report.weakTypeCounts.explicitAny,
@@ -1065,6 +1395,87 @@ function runSelfTest() {
     process.exit(1);
   }
 
+  // ── Runtime schema ↔ exported type matching (class 5) ────────────────
+  const schemaSample = collectFromSource(
+    `
+      import { z } from "zod";
+      export const UserDtoSchema = z.object({
+        id: z.string(),
+        name: z.string(),
+        active: z.boolean(),
+      });
+      export interface UserDto {
+        id: string;
+        name: string;
+        active: boolean;
+      }
+      export const FeatureFlagSchema = {
+        type: "object",
+        properties: {
+          key: { type: "string" },
+          enabled: { type: "boolean" },
+          owner: { type: "string" },
+        },
+      } as const;
+      export interface FeatureFlag {
+        key: string;
+        enabled: boolean;
+        owner: string;
+      }
+      export interface Unrelated {
+        latitude: number;
+        longitude: number;
+        altitude: number;
+      }
+    `,
+    "pkg-schema/src/schema.ts",
+  );
+  const schemaMatches = buildRuntimeSchemaMatches(
+    schemaSample.runtimeSchemas,
+    schemaSample.declarations,
+    new Set(),
+  );
+  const userSchemaMatch = schemaMatches.find(
+    (c) => c.schema.name === "UserDtoSchema" && c.type.name === "UserDto",
+  );
+  if (userSchemaMatch?.relation !== "exact-key-match") {
+    console.error(
+      `[type-duplication-audit] self-test FAILED: z.object schema did not match exported type (got ${JSON.stringify(userSchemaMatch)})`,
+    );
+    process.exit(1);
+  }
+  const jsonSchemaMatch = schemaMatches.find(
+    (c) =>
+      c.schema.name === "FeatureFlagSchema" && c.type.name === "FeatureFlag",
+  );
+  if (jsonSchemaMatch?.relation !== "exact-key-match") {
+    console.error(
+      `[type-duplication-audit] self-test FAILED: JSON-schema object did not match exported type (got ${JSON.stringify(jsonSchemaMatch)})`,
+    );
+    process.exit(1);
+  }
+  if (schemaMatches.some((c) => c.type.name === "Unrelated")) {
+    console.error(
+      "[type-duplication-audit] self-test FAILED: unrelated exported type should not match runtime schemas",
+    );
+    process.exit(1);
+  }
+  const schemaSuppressed = buildRuntimeSchemaMatches(
+    schemaSample.runtimeSchemas,
+    schemaSample.declarations,
+    new Set([`schemaPair:${userSchemaMatch.schemaPairKey}`]),
+  );
+  if (
+    schemaSuppressed.some(
+      (c) => c.schemaPairKey === userSchemaMatch.schemaPairKey,
+    )
+  ) {
+    console.error(
+      "[type-duplication-audit] self-test FAILED: allowlist schemaPairKey did not suppress schema/type match",
+    );
+    process.exit(1);
+  }
+
   // ── Advisory baseline drift compare ───────────────────────────────────
   const fakeReport = {
     generatedAt: "2026-01-01T00:00:00.000Z",
@@ -1074,12 +1485,14 @@ function runSelfTest() {
     subsets: [1],
     nearDuplicates: [],
     literalSetClusters: [1, 2, 3],
+    runtimeSchemaMatches: [1, 2],
     weakTypeCounts: { asUnknownAs: 5, asAny: 0, explicitAny: 7 },
   };
   const baseCounts = countsFromReport(fakeReport);
   if (
     baseCounts.sameName !== 2 ||
     baseCounts.literalSetClusters !== 3 ||
+    baseCounts.runtimeSchemaMatches !== 2 ||
     baseCounts.weakExplicitAny !== 7
   ) {
     console.error(
@@ -1104,7 +1517,7 @@ function runSelfTest() {
   }
 
   console.log(
-    "[type-duplication-audit] self-test passed (shape: duplicate + subset fire, distinct + tiny ignored; literal-set: cross-kind clusters, below-threshold + single-package ignored; allowlist suppresses; weak-types counted; baseline drift compares)",
+    "[type-duplication-audit] self-test passed (shape: duplicate + subset fire, distinct + tiny ignored; literal-set: cross-kind clusters, below-threshold + single-package ignored; runtime-schema/type matches fire; allowlist suppresses; weak-types counted; baseline drift compares)",
   );
 }
 
@@ -1117,15 +1530,15 @@ const files = trackedSourceFiles();
 const allDeclarations = [];
 const allWeakTypes = [];
 const allLiteralSets = [];
+const allRuntimeSchemas = [];
 for (const relPath of files) {
   const sourceText = readFileSync(path.join(ROOT, relPath), "utf8");
-  const { declarations, weakTypes, literalSets } = collectFromSource(
-    sourceText,
-    relPath,
-  );
+  const { declarations, weakTypes, literalSets, runtimeSchemas } =
+    collectFromSource(sourceText, relPath);
   allDeclarations.push(...declarations);
   allWeakTypes.push(...weakTypes);
   allLiteralSets.push(...literalSets);
+  allRuntimeSchemas.push(...runtimeSchemas);
 }
 
 const allowlist = loadAllowlist();
@@ -1135,6 +1548,11 @@ const { subsets, nearDuplicates } = buildShapeCandidates(
   allowlist,
 );
 const literalSetClusters = buildLiteralSetClusters(allLiteralSets, allowlist);
+const runtimeSchemaMatches = buildRuntimeSchemaMatches(
+  allRuntimeSchemas,
+  allDeclarations,
+  allowlist,
+);
 const weakTypeCounts = summarizeWeakTypes(allWeakTypes);
 
 const report = {
@@ -1146,11 +1564,14 @@ const report = {
     minProps: MIN_PROPS,
     nearDuplicateJaccard: NEAR_DUP_THRESHOLD,
     minLiteralMembers: MIN_LITERAL_MEMBERS,
+    minSchemaProps: MIN_SCHEMA_PROPS,
+    schemaTypeKeyOverlap: SCHEMA_TYPE_OVERLAP_THRESHOLD,
   },
   sameName,
   subsets,
   nearDuplicates,
   literalSetClusters,
+  runtimeSchemaMatches,
   weakTypeCounts,
   weakTypes: allWeakTypes,
 };
@@ -1174,6 +1595,9 @@ console.log(
 );
 console.log(
   `[type-duplication-audit] literal-set duplicates (≥ ${MIN_LITERAL_MEMBERS} members, multi-package): ${literalSetClusters.length}`,
+);
+console.log(
+  `[type-duplication-audit] runtime schema ↔ exported type matches (key overlap ≥ ${SCHEMA_TYPE_OVERLAP_THRESHOLD}): ${runtimeSchemaMatches.length}`,
 );
 console.log(
   `[type-duplication-audit] weak types — as unknown as: ${weakTypeCounts.asUnknownAs}, as any: ${weakTypeCounts.asAny}, explicit any: ${weakTypeCounts.explicitAny}`,

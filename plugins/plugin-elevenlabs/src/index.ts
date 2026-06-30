@@ -167,7 +167,9 @@ function getSetting(
   key: string,
   fallback?: string,
 ): string | undefined {
-  return resolveSetting(runtime, key, { defaultValue: fallback });
+  return fallback === undefined
+    ? resolveSetting(runtime, key)
+    : resolveSetting(runtime, key, { defaultValue: fallback });
 }
 
 function getBaseURL(runtime: IAgentRuntime): string {

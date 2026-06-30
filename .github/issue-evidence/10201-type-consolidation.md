@@ -1,9 +1,9 @@
 # #10201 — AST-assisted consolidation of duplicated DTOs and type-like objects
 
 Closing evidence. This PR (a) extends the type-duplication candidate-finder
-(#10195) with a new detector class, (b) consolidates one high-confidence type
-family end to end, (c) documents triage + records reviewed decisions, and (d)
-adds an advisory post-cleanup baseline.
+(#10195) with the detector classes #10201 called out, (b) consolidates one
+high-confidence type family end to end, (c) documents triage + records reviewed
+decisions, and (d) adds an advisory post-cleanup baseline.
 
 ## What shipped
 
@@ -11,29 +11,27 @@ adds an advisory post-cleanup baseline.
 | --- | --- |
 | Candidate report generatable offline, with paths/names/key-overlap/package/confidence/reason | `bun run audit:type-duplication` → `.github/issue-evidence/10195-type-duplication.md` (+ gitignored `reports/type-duplication.json`) |
 | New detector: repeated string-literal unions + enum-like objects | `type-duplication-audit.mjs` **class 4 "literal-set duplicate"** (string-union / `enum` / `as const`, clustered by value set across packages, even under different names) |
+| New detector: runtime schemas with the same shape as exported TS types | `type-duplication-audit.mjs` **class 5 "runtime schema ↔ exported type"** (`z.object(...)` and JSON-schema-like `{ type: "object", properties: ... }`, matched by exact / high-overlap key sets with confidence + reason) |
 | Run in CI/advisory mode without failing the build | `--check` (exits 0; `--strict` opt-in) + cheap `:self-test` wired into `quality.yml` / `quality-fork.yml` |
 | Review ≥1 high-confidence family end to end + consolidate safely with a boundary test | **connector-setup `SetupState` family** → `@elizaos/core` (below) |
 | Document triage of false positives + when not to consolidate | `packages/scripts/type-duplication-triage.md` |
 | Baseline only after the first human-reviewed cleanup | `packages/scripts/type-duplication-audit.baseline.json` (written post-consolidation) |
-
-Deliberate deferral (documented): zod/runtime-schema ↔ TS-type shape matching —
-heuristic and noisy; the deterministic classes already surface the
-high-confidence families. Re-evaluate after the current families are triaged.
 
 ## 1. Candidate report — before → after
 
 Finder run over the workspace (`git ls-files`, production `src/`, no
 `*.d.ts`/tests/build output).
 
-| Class | Before (HEAD, 9895 files) | After (9917 files) |
+| Class | Before (HEAD, 9895 files) | After (rebased tree, 9930 files) |
 | --- | --- | --- |
-| Same-name, multi-package | 2313 | **2307** |
-| Subset / superset | 8184 | 8238¹ |
-| Structural near-duplicate (Jaccard ≥ 0.6) | 2705 | 2701 |
-| Literal-set duplicate (≥3 members) | _(class did not exist)_ | **211** |
+| Same-name, multi-package | 2313 | **2231** |
+| Subset / superset | 8184 | 8174¹ |
+| Structural near-duplicate (Jaccard >= 0.6) | 2705 | 2624 |
+| Literal-set duplicate (>=3 members) | _(class did not exist)_ | **209** |
+| Runtime schema ↔ exported type (key overlap >=0.8) | _(class did not exist)_ | **510** |
 
-¹ Aggregate subset/near-dup counts shift with tree size (this PR adds the core
-contract module + two test files = +22 scanned declarations); the counts are
+¹ Aggregate subset/near-dup/schema counts shift with tree size (this PR adds
+tooling, evidence, tests, and the core contract module); the counts are
 **advisory**, not a pass/fail gate. The meaningful, targeted result is below.
 
 **The consolidated family disappears from the report:** `SetupState` was a
@@ -53,6 +51,14 @@ value set* across packages, e.g. (from the after-report):
 - `RoleName`/`RequiredRole`/`BoundaryRoleName`/`AppsRouteActorRole` = `ADMIN|GUEST|OWNER|USER` — 6 packages
 - `DocumentsViewState`/`HealthViewState`/… = `empty|error|loading|ready` — 6 packages
 - `HttpMethod`, `AgentWalletStatus`, the cloud-api status unions, …
+
+**The runtime-schema class works as intended** — it surfaces `z.object(...)` and
+JSON-schema-like runtime validators whose keys exactly match / strongly overlap
+exported TypeScript types, e.g. `BlueBubblesConfigSchema` ↔
+`BlueBubblesConfig`, `characterSchema` ↔ `Character`, `AppRunSummarySchema` ↔
+`AppRunSummary`, and `TokenPerformance` schema/type pairs. These are candidates
+for pairing shared DTOs with runtime validation; they still require ownership
+review before consolidation.
 
 ## 2. Reviewed decision notes (accepted / rejected families)
 
@@ -135,8 +141,8 @@ $ vitest run plugins/__tests__/setup-routes-contract.test.ts \
 $ node packages/scripts/type-duplication-audit.mjs --self-test
 [type-duplication-audit] self-test passed (shape: duplicate + subset fire,
 distinct + tiny ignored; literal-set: cross-kind clusters, below-threshold +
-single-package ignored; allowlist suppresses; weak-types counted; baseline
-drift compares)
+single-package ignored; runtime-schema/type matches fire; allowlist suppresses;
+weak-types counted; baseline drift compares)
 ```
 
 ## 6. Advisory baseline (`--check`)
@@ -144,29 +150,48 @@ drift compares)
 ```
 $ node packages/scripts/type-duplication-audit.mjs --check
 [type-duplication-audit] drift vs baseline (advisory):
-  = same-name multi-package clusters: 2307 / 2307 (0)
-  = subset/superset candidates: 8238 / 8238 (0)
-  = structural near-duplicates: 2701 / 2701 (0)
-  = literal-set duplicates: 211 / 211 (0)
-  = weak: as unknown as: 82 / 82 (0)
+  = same-name multi-package clusters: 2231 / 2231 (0)
+  = subset/superset candidates: 8174 / 8174 (0)
+  = structural near-duplicates: 2624 / 2624 (0)
+  = literal-set duplicates: 209 / 209 (0)
+  = runtime schema ↔ exported type matches: 510 / 510 (0)
+  = weak: as unknown as: 81 / 81 (0)
   = weak: as any: 0 / 0 (0)
   = weak: explicit : any: 126 / 126 (0)
 # exit 0  (advisory — only --strict turns growth into a non-zero exit)
 ```
 
-## 7. Typecheck / lint
+## 7. Type-safety ratchet
 
-- **Lint:** `biome check` over all 17 changed TS/JSON files — **clean, 0 warnings**.
-- **Types — connector files:** a scoped `tsgo` run with `@elizaos/core` mapped to
-  this branch's source typechecks the connector probe files with **0 errors in
-  any connector file and 0 "has no exported member"** — the new
-  `buildSetupError`/`SetupState`/`SetupStatusResponse`/`SetupErrorResponse`
-  exports resolve and are used correctly. (The full workspace typecheck — core +
-  every plugin, with dist build — is authoritative in CI; a full local run is
-  blocked only by the shared-worktree `@types/node` resolution quirk, unrelated
-  to this change.)
-- **Core module:** `packages/core/src/types/connector-setup.ts` produces 0 type
-  errors even when pulled into core's full source graph.
+```
+$ node packages/scripts/type-safety-ratchet.mjs
+[type-safety-ratchet] scanned 9930 tracked production source files
+[type-safety-ratchet] as unknown as: 81 / 81
+[type-safety-ratchet] as any: 0 / 0
+[type-safety-ratchet] explicit `: any` annotation: 126 / 126
+[type-safety-ratchet] @ts-expect-error / @ts-ignore: 0 / 0
+[type-safety-ratchet] non-null assertion (!): 565 / 565
+[type-safety-ratchet] `?? ""` (core/agent/app-core): 627 / 627
+[type-safety-ratchet] `?? []` (core/agent/app-core): 588 / 588
+[type-safety-ratchet] `?? {}` (core/agent/app-core): 377 / 377
+[type-safety-ratchet] `?? 0` (core/agent/app-core): 386 / 386
+```
+
+The iMessage cleanup removes production `as unknown as` double-casts from the
+files this PR touched, and the CLI cleanup removed six non-null assertions; the
+checked-in ratchet baseline was then synchronized after rebasing onto the latest
+`origin/develop`, whose tracked source set moved.
+
+## 8. Typecheck / lint
+
+- **Root verify:** `bun run verify` — full workspace typecheck + lint + audit
+  matrix, **495 successful / 495 total**.
+- **Boundary tests:** `bunx vitest run plugins/__tests__/setup-routes-contract.test.ts packages/core/src/types/connector-setup.test.ts` —
+  **2 test files / 63 tests passed**.
+- **Duplication audit:** `bun run audit:type-duplication:self-test` and
+  `bun run audit:type-duplication:check` — **passed**.
+- **Type-safety ratchet:** `node packages/scripts/type-safety-ratchet.mjs` —
+  **passed**.
 
 ## Evidence types — N/A
 

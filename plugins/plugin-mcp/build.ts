@@ -25,12 +25,7 @@ await buildPlugin({
   externals: "auto",
   externalsOptions: {
     // Transitive workspace + native deps the hand-list relied on.
-    extra: [
-      "@elizaos/shared",
-      "@elizaos/agent",
-      "@node-llama-cpp",
-      "node-llama-cpp",
-    ],
+    extra: ["@elizaos/shared", "@elizaos/agent", "@node-llama-cpp", "node-llama-cpp"],
   },
   targets: [
     {
