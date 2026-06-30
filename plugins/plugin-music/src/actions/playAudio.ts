@@ -105,43 +105,6 @@ function failureResult(
 }
 
 const PLAY_AUDIO_CONTEXTS = ["media", "automation"] as const;
-const PLAY_AUDIO_KEYWORDS = [
-  "play",
-  "song",
-  "track",
-  "music",
-  "audio",
-  "queue",
-  "youtube",
-  "spotify",
-  "soundcloud",
-  "stream",
-  "listen",
-  "reproduce",
-  "cancion",
-  "musica",
-  "escuchar",
-  "jouer",
-  "chanson",
-  "musique",
-  "écouter",
-  "spielen",
-  "lied",
-  "musik",
-  "ascolta",
-  "riproduci",
-  "canzone",
-  "再生",
-  "曲",
-  "音楽",
-  "播放",
-  "歌曲",
-  "音乐",
-  "재생",
-  "노래",
-  "음악",
-] as const;
-
 function selectedContextMatches(
   state: State | undefined,
   contexts: readonly string[],
@@ -169,24 +132,6 @@ function selectedContextMatches(
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
   return contexts.some((context) => selected.has(context));
-}
-
-function hasPlayAudioIntent(
-  message: Memory,
-  state: State | undefined,
-): boolean {
-  const text = [
-    typeof message.content.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  if (extractAudioUrl(text).url) return true;
-  return PLAY_AUDIO_KEYWORDS.some((keyword) =>
-    text.includes(keyword.toLowerCase()),
-  );
 }
 
 /**
@@ -597,10 +542,7 @@ export const playAudio: Action = {
     if (isPlaybackTransportControlOnlyMessage(text)) {
       return false;
     }
-    return (
-      selectedContextMatches(state, PLAY_AUDIO_CONTEXTS) ||
-      hasPlayAudioIntent(message, state)
-    );
+    return selectedContextMatches(state, PLAY_AUDIO_CONTEXTS);
   },
   handler: async (
     runtime: IAgentRuntime,
