@@ -205,6 +205,24 @@ describe("PhoneView — recent calls", () => {
     await screen.findByText("READ_CALL_LOG denied");
   });
 
+  it("does not fetch the call log when requestPermissions throws (#10196)", async () => {
+    // A failed permission request must block the read; otherwise we call
+    // listRecentCalls, which rejects and Capacitor logs the raw rejection.
+    phoneBridge.requestPermissions.mockRejectedValueOnce(
+      new Error("bridge unavailable"),
+    );
+    render(React.createElement(PhoneView));
+    await screen.findByText(/Phone access is needed/i);
+    expect(phoneBridge.listRecentCalls).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch the call log when phone permission is denied", async () => {
+    phoneBridge.requestPermissions.mockResolvedValueOnce({ phone: "denied" });
+    render(React.createElement(PhoneView));
+    await screen.findByText(/Phone access is needed/i);
+    expect(phoneBridge.listRecentCalls).not.toHaveBeenCalled();
+  });
+
   it("polls the recent call log on a quiet 20s interval", async () => {
     vi.useFakeTimers();
     try {
