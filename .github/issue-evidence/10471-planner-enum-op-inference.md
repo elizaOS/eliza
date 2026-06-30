@@ -24,3 +24,15 @@ FR  génère une musique douce           -> {"mediaType":"audio"}
 KO  고양이 비디오 만들어줘                       -> {"mediaType":"video"}
 ZH  做一段音乐                              -> {"mediaType":"audio"}
 ```
+
+## MESSAGE.action routing (op selected from 23-value enum)
+```
+JA(delete)   そのメッセージを削除して                       -> {"action":"delete"}
+ES(react)    reacciona a ese mensaje con un corazón -> {"action":"react"}
+DE(join)     tritt dem allgemeinen Kanal bei    -> {"action":"join"}
+FR(triage)   trie ma boîte de réception par priorité -> {"action":"triage"}
+KO(search)   메시지에서 비탈릭 검색해줘                     -> {"action":"search"}
+ZH(edit)     把那条消息编辑一下                          -> {"action":"edit"}
+```
+
+_All non-English MESSAGE ops resolve via the enum. The old `inferOp` English regexes (such as `delete|remove|unsend`, `react|reaction`, `join`) matched none of these inputs, so every case above was previously invisible to non-English users._
