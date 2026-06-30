@@ -56,7 +56,7 @@ export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
     id: input.roomId,
     name: `${input.sourceSlug} memory`,
     agentId: input.agentId,
-    source: "ocplatform-migration",
+    source: "openclaw-migration",
     // ChannelType.SELF - the agent's own memory room.
     type: "SELF",
     worldId,
@@ -66,7 +66,7 @@ export function assemblePayload(input: BuildArchiveInput): AssembledPayload {
     id: input.entityId,
     names: [input.character.name ?? input.sourceSlug],
     agentId: input.agentId,
-    metadata: { source: "ocplatform-migration" },
+    metadata: { source: "openclaw-migration" },
   };
 
   // The agent DB record: identity fields live here; the richer characterConfig
