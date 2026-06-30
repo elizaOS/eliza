@@ -349,6 +349,7 @@ jobs:
         env:
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           # The console's own canonical origin (OG/canonical tags, returnTo base).
           VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
@@ -558,6 +559,7 @@ jobs:
         env:
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           # The app's own canonical origin — its own subdomain, NOT the apex.
           NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
           # Steward tenant pin (same tenant as the console; one identity across
