@@ -5,19 +5,28 @@
  * `sync`, `reinject`, `list`, `list_ejected`, `search`, `details`,
  * `status`, `enable`, `disable`, `core_status`, `create`).
  *
- * Validate gates on owner role + a keyword heuristic + a lookup against
- * any pending PLUGIN_CREATE intent task in the same room (so the
+ * Validate gates on owner role + structured/context selection + a lookup
+ * against any pending PLUGIN_CREATE intent task in the same room (so the
  * multi-turn choice reply still resolves).
  *
  * Handler is pure dispatch — sub-handlers live under ./plugin-handlers/.
+ * Subaction routing goes through the shared `resolveActionArgs` substrate:
+ * structured planner/programmatic `action` enum first, then a single LLM
+ * extraction pass over the registered subactions for free-form requests.
  */
 
 import path from "node:path";
+import {
+	resolveActionArgs,
+	type SubactionsMap,
+} from "../../../actions/resolve-action-args.ts";
 import { logger } from "../../../logger.ts";
 import type {
 	Action,
+	ActionParameters,
 	ActionResult,
 	HandlerCallback,
+	HandlerOptions,
 } from "../../../types/components.ts";
 import type { Memory } from "../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
@@ -75,22 +84,93 @@ const SUBACTIONS: readonly PluginSubaction[] = [
 	"create",
 ] as const;
 
-const INSTALL_VERBS = /\binstall\b/i;
-const EJECT_VERBS = /\beject\b/i;
-const SYNC_VERBS = /\bsync\b/i;
-const REINJECT_VERBS = /\b(reinject|re-inject|unject)\b/i;
-const SEARCH_VERBS = /\b(search|find|look\s+for|discover)\b/i;
-const LIST_VERBS = /\b(list|show)\b/i;
-const DETAILS_VERBS =
-	/\b(details?|info|information|tell\s+me\s+more|more\s+about|describe)\b/i;
-const ENABLE_VERBS = /\b(enable|activate|turn\s+on|load)\b/i;
-const DISABLE_VERBS = /\b(disable|deactivate|turn\s+off|unload)\b/i;
-const CREATE_VERBS = /\b(create|build|make|new|scaffold|generate)\b/i;
-const PLUGIN_NOUN = /\bplugins?\b/i;
-const EJECTED_NOUN = /\bejected\b/i;
-const CORE_NOUN = /\bcore\b/i;
-const STATUS_NOUN = /\bstatus\b/i;
-const MANAGE_VERBS = /\b(manage|build|create|build|fix|update|edit)\b/i;
+interface PluginActionParams {
+	name?: string;
+	source?: "npm" | "git";
+	url?: string;
+	version?: string;
+	query?: string;
+	intent?: string;
+}
+
+/**
+ * Subaction contract surfaced to `resolveActionArgs`. Required keys gate
+ * extraction; the resolver picks the subaction from the structured `action`
+ * enum (planner) or a single LLM pass, then we fill machine-parsed plugin
+ * identifiers / queries below before dispatch.
+ */
+const PLUGIN_SUBACTIONS: SubactionsMap<PluginSubaction> = {
+	install: {
+		description: "Install a plugin from the registry by canonical name.",
+		descriptionCompressed: "install plugin from registry by name",
+		required: ["name"],
+		optional: ["source", "url", "version"],
+	},
+	eject: {
+		description: "Clone a registry plugin into the local plugins directory.",
+		descriptionCompressed: "eject (clone) registry plugin locally",
+		required: ["name"],
+	},
+	sync: {
+		description: "Pull upstream changes into an ejected (local) plugin.",
+		descriptionCompressed: "sync upstream into ejected plugin",
+		required: ["name"],
+	},
+	reinject: {
+		description: "Remove the local copy of an ejected plugin (re-inject).",
+		descriptionCompressed: "reinject (remove local copy of) ejected plugin",
+		required: ["name"],
+	},
+	list: {
+		description: "List the loaded / installed plugins.",
+		descriptionCompressed: "list loaded/installed plugins",
+		required: [],
+	},
+	list_ejected: {
+		description: "List the ejected (locally cloned) plugins.",
+		descriptionCompressed: "list ejected plugins",
+		required: [],
+	},
+	search: {
+		description: "Search the plugin registry for a free-form capability.",
+		descriptionCompressed: "search registry for plugins matching query",
+		required: ["query"],
+	},
+	details: {
+		description: "Show registry / runtime details for one plugin.",
+		descriptionCompressed: "show details for one plugin",
+		required: ["name"],
+	},
+	status: {
+		description:
+			"Report plugin runtime state (all plugins, or one when a name is given).",
+		descriptionCompressed: "report plugin runtime status",
+		required: [],
+		optional: ["name"],
+	},
+	enable: {
+		description: "Load (enable) a runtime-registered plugin.",
+		descriptionCompressed: "enable runtime plugin by name",
+		required: ["name"],
+	},
+	disable: {
+		description: "Unload (disable) a runtime-registered plugin.",
+		descriptionCompressed: "disable runtime plugin by name",
+		required: ["name"],
+	},
+	core_status: {
+		description: "Report the @elizaos/core ejection state.",
+		descriptionCompressed: "report @elizaos/core ejection status",
+		required: [],
+	},
+	create: {
+		description:
+			"Run the multi-turn create-or-edit flow that scaffolds a new plugin or edits an existing one.",
+		descriptionCompressed: "create/edit a plugin via the scaffold flow",
+		required: [],
+		optional: ["intent"],
+	},
+};
 
 type OwnerAccessFn = (
 	runtime: IAgentRuntime,
@@ -146,6 +226,12 @@ function readStringOption(
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * Normalize a structured subaction value supplied by the planner / a
+ * programmatic caller (the `action` / `subaction` / `mode` enum, including
+ * legacy aliases). This matches the model's structured English-enum output,
+ * not the user's free-form text.
+ */
 function normalizeSubaction(value: string): PluginSubaction | null {
 	const normalized = value.trim().toLowerCase().replace(/-/g, "_");
 	switch (normalized) {
@@ -178,6 +264,23 @@ function normalizeSubaction(value: string): PluginSubaction | null {
 	}
 }
 
+/**
+ * Read an explicit structured subaction from the call options. Covers the
+ * planner-supplied `action` enum, the legacy `mode` alias, and direct
+ * programmatic callers (top-level or nested under `parameters`). Returns
+ * `null` when the caller supplied no structured subaction — natural-language
+ * routing then falls through to `resolveActionArgs`.
+ */
+function readExplicitSubaction(
+	options: ActionOptions | undefined,
+): PluginSubaction | null {
+	const explicit =
+		readStringOption(options, "action") ??
+		readStringOption(options, "subaction") ??
+		readStringOption(options, "mode");
+	return explicit ? normalizeSubaction(explicit) : null;
+}
+
 function readSourceOption(
 	options: ActionOptions | undefined,
 ): "npm" | "git" | undefined {
@@ -186,48 +289,11 @@ function readSourceOption(
 	return undefined;
 }
 
-function inferMode(
-	text: string,
-	options?: Record<string, unknown>,
-): PluginSubaction | null {
-	const explicit =
-		readStringOption(options, "action") ??
-		readStringOption(options, "subaction") ??
-		readStringOption(options, "mode");
-	if (explicit) return normalizeSubaction(explicit);
-
-	const trimmed = text.trim();
-	if (!trimmed) return null;
-
-	if (CORE_NOUN.test(trimmed) && STATUS_NOUN.test(trimmed))
-		return "core_status";
-
-	if (LIST_VERBS.test(trimmed) && EJECTED_NOUN.test(trimmed))
-		return "list_ejected";
-	if (LIST_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "list";
-
-	if (
-		DETAILS_VERBS.test(trimmed) &&
-		(PLUGIN_NOUN.test(trimmed) || extractNameFromText(trimmed))
-	)
-		return "details";
-	if (STATUS_NOUN.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "status";
-	if (ENABLE_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "enable";
-	if (DISABLE_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed))
-		return "disable";
-	if (REINJECT_VERBS.test(trimmed)) return "reinject";
-	if (EJECT_VERBS.test(trimmed)) return "eject";
-	if (SYNC_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "sync";
-	if (INSTALL_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed))
-		return "install";
-	if (SEARCH_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "search";
-
-	if (CREATE_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "create";
-	if (MANAGE_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "create";
-
-	return null;
-}
-
+/**
+ * Machine extractor: pull a plugin package identifier (`@scope/plugin-x`,
+ * `plugin-x`, or a bare name after an operation verb) out of free-form text.
+ * Operates on plugin-identifier token shapes, not behavior-deciding NL.
+ */
 function extractNameFromText(text: string): string | undefined {
 	const scoped = text.match(/@[\w-]+\/(plugin-[\w.-]+)/);
 	if (scoped) return scoped[0];
@@ -300,6 +366,44 @@ function hasAccessContext(runtime: IAgentRuntime, message: Memory): boolean {
 	);
 }
 
+/**
+ * Seed `options.parameters` with machine-parsed plugin identifiers / query /
+ * source so `resolveActionArgs` can satisfy required params even when the LLM
+ * extraction does not surface them verbatim. Resolver-extracted values still
+ * win for any key the LLM does fill, since the seeded values are merged as
+ * planner params only when present.
+ */
+function buildResolverOptions(
+	options: Record<string, unknown> | undefined,
+	text: string,
+): HandlerOptions {
+	const nested = readNestedParameters(options);
+	const seeded: ActionParameters =
+		nested && !Array.isArray(nested)
+			? { ...(nested as ActionParameters) }
+			: {};
+
+	const name = normalizePluginNameInput(
+		readStringOption(options, "name") ??
+			readStringOption(options, "pluginId") ??
+			extractNameFromText(text),
+	);
+	const source = readSourceOption(options);
+	const url = readStringOption(options, "url");
+	const version = readStringOption(options, "version");
+	const query = readStringOption(options, "query") ?? extractQueryFromText(text);
+	const intent = readStringOption(options, "intent");
+
+	if (name !== undefined) seeded.name = name;
+	if (source !== undefined) seeded.source = source;
+	if (url !== undefined) seeded.url = url;
+	if (version !== undefined) seeded.version = version;
+	if (query !== undefined) seeded.query = query;
+	if (intent !== undefined) seeded.intent = intent;
+
+	return { ...(options as HandlerOptions), parameters: seeded };
+}
+
 export function createPluginAction(deps: PluginActionDeps = {}): Action {
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
 	const repoRoot = deps.repoRoot ?? defaultRepoRoot();
@@ -310,6 +414,66 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 	): Promise<boolean> => {
 		if (!hasAccessContext(runtime, message)) return false;
 		return ownerCheck(runtime, message);
+	};
+
+	const dispatch = async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		options: Record<string, unknown> | undefined,
+		callback: HandlerCallback | undefined,
+		subaction: PluginSubaction,
+		params: PluginActionParams,
+	): Promise<ActionResult> => {
+		logger.info(`[plugin-manager] MANAGE_PLUGINS mode=${subaction}`);
+		const text = message.content.text ?? "";
+		const name = params.name;
+
+		switch (subaction) {
+			case "install":
+				return runInstall({
+					runtime,
+					name: name ?? "",
+					source: params.source,
+					callback,
+				});
+			case "eject":
+				return runEject({ runtime, name: name ?? "", callback });
+			case "sync":
+				return runSync({ runtime, name: name ?? "", callback });
+			case "reinject":
+				return runReinject({ runtime, name: name ?? "", callback });
+			case "list":
+				return runList({ runtime, callback });
+			case "list_ejected":
+				return runListEjected({ runtime, callback });
+			case "search":
+				return runSearch({
+					runtime,
+					query: params.query ?? text,
+					callback,
+				});
+			case "details":
+				return runPluginDetails({ runtime, name: name ?? "", callback });
+			case "status":
+				return runPluginStatus({ runtime, name, callback });
+			case "enable":
+				return runEnablePlugin({ runtime, name: name ?? "", callback });
+			case "disable":
+				return runDisablePlugin({ runtime, name: name ?? "", callback });
+			case "core_status":
+				return runCoreStatus({ runtime, callback });
+			case "create":
+				return runCreate({
+					runtime,
+					message,
+					options,
+					callback,
+					intent: params.intent ?? readStringOption(options, "intent"),
+					choice: readStringOption(options, "choice"),
+					editTarget: readStringOption(options, "editTarget"),
+					repoRoot,
+				});
+		}
 	};
 
 	return {
@@ -432,7 +596,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		handler: async (
 			runtime: IAgentRuntime,
 			message: Memory,
-			_state?: State,
+			state?: State,
 			options?: Record<string, unknown>,
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
@@ -459,64 +623,55 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 				}
 			}
 
-			const mode = inferMode(text, options);
-			if (!mode) {
+			// Structured planner/programmatic subaction (incl. legacy `mode`
+			// alias + normalization aliases) routes directly; machine-parsed
+			// params are filled below. This is the planner-trust fast path.
+			const explicit = readExplicitSubaction(options);
+			const resolverOptions = buildResolverOptions(options, text);
+			if (explicit) {
+				const seededParams = (resolverOptions.parameters ??
+					{}) as PluginActionParams;
+				return dispatch(
+					runtime,
+					message,
+					options,
+					callback,
+					explicit,
+					seededParams,
+				);
+			}
+
+			const resolved = await resolveActionArgs<
+				PluginSubaction,
+				PluginActionParams
+			>({
+				runtime,
+				message,
+				state,
+				options: resolverOptions,
+				actionName: "MANAGE_PLUGINS",
+				subactions: PLUGIN_SUBACTIONS,
+			});
+
+			if (!resolved.ok) {
 				const reply =
 					'Tell me which plugin operation to run. Try: "install @elizaos/plugin-discord", "list ejected plugins", "search for plugins for blockchain", "create a new plugin for X".';
 				await callback?.({ text: reply });
-				return { success: false, text: reply };
+				return {
+					success: false,
+					text: reply,
+					data: { action: "clarify", missing: resolved.missing },
+				};
 			}
 
-			logger.info(`[plugin-manager] MANAGE_PLUGINS mode=${mode}`);
-
-			const name = normalizePluginNameInput(
-				readStringOption(options, "name") ??
-					readStringOption(options, "pluginId") ??
-					extractNameFromText(text),
+			return dispatch(
+				runtime,
+				message,
+				options,
+				callback,
+				resolved.subaction,
+				resolved.params,
 			);
-			const source = readSourceOption(options);
-			const query =
-				readStringOption(options, "query") ??
-				extractQueryFromText(text) ??
-				text;
-
-			switch (mode) {
-				case "install":
-					return runInstall({ runtime, name: name ?? "", source, callback });
-				case "eject":
-					return runEject({ runtime, name: name ?? "", callback });
-				case "sync":
-					return runSync({ runtime, name: name ?? "", callback });
-				case "reinject":
-					return runReinject({ runtime, name: name ?? "", callback });
-				case "list":
-					return runList({ runtime, callback });
-				case "list_ejected":
-					return runListEjected({ runtime, callback });
-				case "search":
-					return runSearch({ runtime, query, callback });
-				case "details":
-					return runPluginDetails({ runtime, name: name ?? "", callback });
-				case "status":
-					return runPluginStatus({ runtime, name, callback });
-				case "enable":
-					return runEnablePlugin({ runtime, name: name ?? "", callback });
-				case "disable":
-					return runDisablePlugin({ runtime, name: name ?? "", callback });
-				case "core_status":
-					return runCoreStatus({ runtime, callback });
-				case "create":
-					return runCreate({
-						runtime,
-						message,
-						options,
-						callback,
-						intent: readStringOption(options, "intent"),
-						choice: readStringOption(options, "choice"),
-						editTarget: readStringOption(options, "editTarget"),
-						repoRoot,
-					});
-			}
 		},
 
 		examples: [
