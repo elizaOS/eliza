@@ -752,6 +752,7 @@ export class TelegramService extends Service {
         bot,
         this.runtime,
         commandMessageManager,
+        accountId,
       );
     }
 
