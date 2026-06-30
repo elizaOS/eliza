@@ -7,10 +7,6 @@ import type {
 import type { AgentContext } from "../types/contexts";
 import { normalizeTopics } from "./builtin-field-evaluators";
 import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
-import {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "./stage1-honesty-detector";
 
 export type V5MessageHandlerOutput = MessageHandlerResult;
 
@@ -70,37 +66,9 @@ export function parseMessageHandlerOutput(
 
 	const extract = parseExtract(parsed);
 
-	// Stage-1 honesty suppression for the planning path (elizaOS/eliza#7620).
-	// When the model routes to a non-simple context OR populates candidate
-	// actions, the planner stage will produce the user-facing message and the
-	// Stage-1 `replyText` is intended to be a brief acknowledgement. Some
-	// safety-tuned hosted models (Cerebras-served `gpt-oss-120b`,
-	// GLM/Gemma-class dedicated endpoints, etc.) still emit a prompt-contract
-	// violation here even with the system-prompt rules in place: a refusal, a
-	// training-metadata/knowledge-cutoff leak, or a fabricated-moderation claim.
-	// We blank the reply when it matches any of these and route through planning
-	// for non-refusal honesty violations, so the user sees a fresh planner
-	// message instead. The simple path still preserves plain refusals: the model
-	// may legitimately decline unsafe requests there.
-	const nonSimpleContexts = contexts.filter(
-		(context) => context !== SIMPLE_CONTEXT_ID,
-	);
-	const forceHonestyPlanning =
-		processMessage === "RESPOND" &&
-		looksLikeNonRefusalStage1HonestyViolation(replyRaw);
-	const planningPath =
-		nonSimpleContexts.length > 0 ||
-		candidateActions.length > 0 ||
-		forceHonestyPlanning;
-	const reply =
-		planningPath && looksLikeStage1HonestyViolation(replyRaw) ? "" : replyRaw;
-
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
-		contexts:
-			forceHonestyPlanning && nonSimpleContexts.length === 0
-				? ["general"]
-				: contexts,
-		reply,
+		contexts,
+		reply: replyRaw,
 	};
 	if (candidateActions.length > 0) {
 		normalizedPlan.candidateActions = candidateActions;

@@ -127,10 +127,6 @@ import type {
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
-import {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "../runtime/stage1-honesty-detector";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -3842,11 +3838,6 @@ export function messageHandlerFromFieldResult(
 	);
 	const requestedPlanning =
 		initialPlanningContexts.length > 0 || validCandidateCount > 0;
-	const stage1HonestyViolation = looksLikeStage1HonestyViolation(replyTextRaw);
-	const forceHonestyPlanning =
-		processMessage === "RESPOND" &&
-		looksLikeNonRefusalStage1HonestyViolation(replyTextRaw);
-	const requestedPlanningForRouting = requestedPlanning || forceHonestyPlanning;
 	// The model can explicitly commit to delegation: for a genuine coding-work
 	// request it routes to a non-simple context of its OWN choosing AND names a
 	// runnable coding-delegation / spawn-class action in its OWN candidate list
@@ -3872,7 +3863,6 @@ export function messageHandlerFromFieldResult(
 	const preferCompleteDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
-		!stage1HonestyViolation &&
 		!modelCommittedToDelegation &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
@@ -3889,7 +3879,7 @@ export function messageHandlerFromFieldResult(
 		});
 	const shouldPlan =
 		!preemptDirect &&
-		requestedPlanningForRouting &&
+		requestedPlanning &&
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply;
 	const finalContexts =
@@ -3905,13 +3895,7 @@ export function messageHandlerFromFieldResult(
 						]),
 					)
 				: routedContexts;
-	// Stage-1 honesty suppression for the planning path (elizaOS/eliza#7620).
-	// Mirrors the logic in `parseMessageHandlerOutput`: when the planner is
-	// about to run, a prompt-contract violation in `replyText` from a
-	// safety-tuned hosted model — a refusal, a training-metadata/knowledge-cutoff
-	// leak, or a fabricated-moderation claim — is dropped so the planner's own
-	// message reaches the user instead.
-	const replyText = shouldPlan && stage1HonestyViolation ? "" : replyTextRaw;
+	const replyText = replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
@@ -4116,7 +4100,6 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	const normalized = replyText.trim();
 	if (normalized.length < 24) return false;
 	if (looksLikeProgressOnlyReply(normalized)) return false;
-	if (looksLikeStage1HonestyViolation(normalized)) return false;
 	return (
 		/[.!?。！？]$/u.test(normalized) || normalized.split(/\s+/u).length >= 8
 	);
