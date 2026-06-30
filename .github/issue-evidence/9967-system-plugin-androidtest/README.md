@@ -47,6 +47,26 @@ Pixel 6a (`bluejay`), **Android 16 / API 36**, serial `27051JEGR10034` — see
 | `TEST-results-Pixel6a-Android16.xml` | JUnit XML — `tests="3" failures="0" errors="0" skipped="0"` |
 | `ai.eliza.plugins.system.SystemDeviceReaderInstrumentedTest.html` | Gradle HTML report |
 
+## Visual evidence + emulator coverage
+
+The same instrumented tests also pass on an **Android 14 / API 34 emulator**
+(`emulator-am-instrument.txt` — `OK (3 tests)`), giving the "emulator + device"
+coverage the issue's AC asks for.
+
+A test-only `ReaderShowcaseActivity` (in `src/androidTest`, `setShowWhenLocked`)
+renders the **live** `SystemDeviceReader` output on-screen so the device reads can
+be captured visually:
+
+- `system-reader-showcase-emulator.png` — screenshot of the rendered live reads:
+  all four roles `available=true` from the live `RoleManager`, `brightness=0.40
+  mode=manual`, and the real `AudioManager` volumes (`music 5/15`, `ring 5/7`, …).
+- `system-reader-showcase-emulator.mp4` — screen recording (relaunch = a fresh
+  on-device read, then scroll through the data).
+
+(The attached physical Pixel 6a is secure-locked, so the rendered-view capture
+was done on the emulator; the instrumented tests were verified on **both** the
+Pixel and the emulator.)
+
 ## Second plugin: `@elizaos/capacitor-wifi`
 
 The same pattern applied to the launcher Wi-Fi view: `WiFiStateReader` (extracted
