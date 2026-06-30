@@ -85,11 +85,13 @@ read, and RSSI present-iff-connected with a plausible dBm value.
 
 ## Scope
 
-These are **five** columns of the #9967 work-order (System + Wi-Fi + Phone +
-Camera + Contacts). Contacts is a full **write→read round-trip** — insert a
-contact through the real ContactsProvider, read it back via the reader, assert
-the written name + phone, then clean up — the issue's "contact written/read"
-side-effect. They establish the reusable pattern — extract a `Context`-backed
+These are **six** columns of the #9967 work-order (System + Wi-Fi + Phone +
+Camera + Contacts + Messages). Contacts is a full **write→read round-trip** —
+insert a contact through the real ContactsProvider, read it back via the reader,
+assert the written name + phone, then clean up — the issue's "contact
+written/read" side-effect. Messages is an **emulator-orchestrated** SMS read:
+a marker SMS is injected (`adb emu sms send`) then read back via the reader
+(`Assume`-skips when absent, so it never reads a real device's private inbox). They establish the reusable pattern — extract a `Context`-backed
 reader, add `src/androidTest` + the instrumentation runner, run
 `connectedDebugAndroidTest` — that the remaining native plugins
 (messages/location/mobile-signals) can follow to reach the "every native plugin
