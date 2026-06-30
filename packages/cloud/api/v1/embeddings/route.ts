@@ -430,21 +430,38 @@ app.post("/", async (c) => {
     // dropped-bill, since billUsage runs exactly once).
     const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
     const settleBilling = async () => {
-      const billing = await billUsage(
-        {
-          organizationId: user.organization_id,
-          userId: user.id,
-          apiKeyId,
-          model,
-          provider,
-          billingSource,
-          // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,
-          // activate the existing billUsage affiliate branch (same as /v1/messages).
-          affiliateCode,
-        },
-        { inputTokens: actualTokens, outputTokens: 0 },
-        reservation,
-      );
+      let billing: Awaited<ReturnType<typeof billUsage>>;
+      try {
+        billing = await billUsage(
+          {
+            organizationId: user.organization_id,
+            userId: user.id,
+            apiKeyId,
+            model,
+            provider,
+            billingSource,
+            // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,
+            // activate the existing billUsage affiliate branch (same as /v1/messages).
+            affiliateCode,
+          },
+          { inputTokens: actualTokens, outputTokens: 0 },
+          reservation,
+        );
+      } catch (err) {
+        // billUsage throws BEFORE its reconcile (reconcile is its last meaningful
+        // step — only a logger.info + the return follow it), so on the SYNC-reserve
+        // path the upfront ~1.5x hold was never released → a permanent overcharge.
+        // Release it via the idempotent settler. Do NOT release on the OPTIMISTIC
+        // path: there reservedAmount=0 (no upfront hold) and the cron settles the
+        // KV pending-charge, so settleReservation(0) → ledgerSettler(0) would
+        // settle that charge at zero = a free embedding. usageService.create runs
+        // AFTER this (outside the try), so its failure can't reach here and
+        // double-refund an already-reconciled hold.
+        if (!optimisticReady && settleReservation) {
+          await settleReservation(0);
+        }
+        throw err;
+      }
 
       logger.info("[Embeddings] Complete", {
         model,
@@ -467,8 +484,11 @@ app.post("/", async (c) => {
       });
     };
 
-    // Past this point billing (which reconciles the reservation) owns the hold,
-    // so the catch must NOT also release it — that would double-refund.
+    // Past this point billing owns the hold. The ONLY safe release is the inner
+    // billUsage catch above (reconcile provably didn't run there). The .catch
+    // below logs whatever settleBilling rejects with — a usageService.create
+    // failure (reconcile already ran) or the inner catch's re-throw (hold already
+    // released) — and must NOT release again, or it would double-refund.
     billed = true;
     const billedPromise = settleBilling().catch((err) => {
       logger.error("[Embeddings] Failed to settle billing", {
