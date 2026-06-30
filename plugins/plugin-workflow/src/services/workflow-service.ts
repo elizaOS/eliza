@@ -108,6 +108,34 @@ const FIELD_TRANSFORM_TARGET_PATTERN =
   /\b(field|fields|value|values|data|item|items|metadata|json|property|properties)\b/;
 const NETWORK_REQUEST_PATTERN =
   /\b(http|https|url|api|request|fetch|call|post|get|put|patch|delete|webhook)\b/;
+const WORKFLOW_SEARCH_STOPWORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'automation',
+  'automations',
+  'can',
+  'do',
+  'find',
+  'for',
+  'have',
+  'i',
+  'list',
+  'me',
+  'my',
+  'of',
+  'please',
+  'search',
+  'show',
+  'that',
+  'the',
+  'to',
+  'what',
+  'which',
+  'workflow',
+  'workflows',
+]);
 
 function buildWorkflowSearchKeywords(prompt: string, keywords: string[]): string[] {
   const normalized = new Set(keywords.map((keyword) => keyword.toLowerCase()));
@@ -151,14 +179,25 @@ function normalizeGeneratedNodeParameterShapes(
   }
 }
 
-/**
- * Score a workflow against a lowercased query: name beats node type beats
- * description, and an exact/prefix name match beats a substring. Returns 0 for
- * no match. Pure + exported so the ranking is unit-testable without a DB.
- */
-export function scoreWorkflowMatch(workflow: WorkflowDefinitionResponse, query: string): number {
-  const q = query.trim().toLowerCase();
-  if (!q) return 0;
+function normalizeWorkflowSearchToken(token: string): string {
+  return token.length > 3 && token.endsWith('s') ? token.slice(0, -1) : token;
+}
+
+export function tokenizeWorkflowSearchQuery(query: string): string[] {
+  const normalized = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .map((token) => normalizeWorkflowSearchToken(token.trim()))
+    .filter(
+      (token, index, tokens) =>
+        token.length >= 2 &&
+        !WORKFLOW_SEARCH_STOPWORDS.has(token) &&
+        tokens.indexOf(token) === index
+    );
+  return normalized;
+}
+
+function scoreWorkflowMatchTerm(workflow: WorkflowDefinitionResponse, q: string): number {
   const name = String(workflow.name ?? '').toLowerCase();
   let score = 0;
   if (name === q) score += 100;
@@ -186,14 +225,35 @@ export function scoreWorkflowMatch(workflow: WorkflowDefinitionResponse, query: 
 }
 
 /**
+ * Score a workflow against a free-text query: name beats node type beats
+ * description, and an exact/prefix name match beats a substring. Sentence
+ * queries are tokenized with generic workflow/search words ignored. Returns 0
+ * for no match. Pure + exported so the ranking is unit-testable without a DB.
+ */
+export function scoreWorkflowMatch(workflow: WorkflowDefinitionResponse, query: string): number {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+
+  const phraseScore = scoreWorkflowMatchTerm(workflow, q);
+  const tokenScore = tokenizeWorkflowSearchQuery(q).reduce(
+    (total, token) => total + scoreWorkflowMatchTerm(workflow, token),
+    0
+  );
+
+  return Math.max(phraseScore, tokenScore);
+}
+
+/**
  * Rank workflows best-match-first for a free-text query, dropping non-matches.
- * An empty query returns the input order unchanged. Pure + exported (#8913).
+ * An empty or generic query returns the input order unchanged. Pure + exported
+ * (#8913).
  */
 export function rankWorkflowsByQuery(
   workflows: WorkflowDefinitionResponse[],
   query: string
 ): WorkflowDefinitionResponse[] {
   if (!query.trim()) return workflows;
+  if (tokenizeWorkflowSearchQuery(query).length === 0) return workflows;
   return workflows
     .map((workflow) => ({ workflow, score: scoreWorkflowMatch(workflow, query) }))
     .filter((entry) => entry.score > 0)
