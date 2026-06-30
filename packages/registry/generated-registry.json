@@ -656,6 +656,55 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-quantumscan": {
+      "git": {
+        "repo": "quantumscan-io/elizaos-plugin-quantumscan",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-quantumscan",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Post-quantum cryptography (PQC) vulnerability scanner for GitHub, GitLab, and Bitbucket repositories. Detects ECDSA, RSA, DH, AES-128, and other quantum-vulnerable algorithms. Returns risk scores and NIST FIPS 203/204/205 migration targets.",
+      "homepage": "https://quantumscan.io",
+      "topics": [
+        "security",
+        "pqc",
+        "post-quantum",
+        "cryptography",
+        "blockchain",
+        "nist",
+        "cbom",
+        "vulnerability-scanner",
+        "quantum-computing"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-reddit-search": {
       "git": {
         "repo": "xavier-arosemena/elizaos-plugin-reddit-search",
