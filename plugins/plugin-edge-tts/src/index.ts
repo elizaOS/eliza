@@ -79,6 +79,9 @@ function getSetting(
   key: string,
   fallback?: string
 ): string | undefined {
+  if (fallback === undefined) {
+    return resolveSetting(runtime, key);
+  }
   return resolveSetting(runtime, key, { defaultValue: fallback });
 }
 

@@ -56,7 +56,6 @@ import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
-import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
@@ -79,6 +78,7 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
+import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -1567,13 +1567,12 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
-  const { characterData, agentStatus, firstRunComplete } = useAppSelectorShallow(
-    (s) => ({
+  const { characterData, agentStatus, firstRunComplete } =
+    useAppSelectorShallow((s) => ({
       characterData: s.characterData,
       agentStatus: s.agentStatus,
       firstRunComplete: s.firstRunComplete,
-    }),
-  );
+    }));
   const slash = useSlashCommandController();
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
