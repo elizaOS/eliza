@@ -402,7 +402,7 @@ export function useFirstRunConductor(): void {
 
       return false;
     },
-    [seedTurn, replaceTurn, handleOutcome, completeFirstRun],
+    [seedTurn, replaceTurn, handleOutcome, completeFirstRun, seedError],
   );
   const handleActionRef = React.useRef(handleFirstRunAction);
   handleActionRef.current = handleFirstRunAction;
