@@ -28,14 +28,33 @@ mock.module("ai", () => ({
   streamText,
 }));
 
+// Controllable auth seam so tests can drive authed / authed-org-less / anonymous.
+let currentUserImpl: () => Promise<{
+  id: string;
+  organization_id?: string | null;
+} | null> = async () => ({ id: USER, organization_id: ORG });
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  getCurrentUser: mock(async () => ({ id: USER, organization_id: ORG })),
+  getCurrentUser: mock(() => currentUserImpl()),
 }));
 
+let anonymousUserImpl: (() => Promise<unknown>) | null = null;
 mock.module("@/lib/auth-anonymous", () => ({
   checkAnonymousLimit: mock(),
-  getAnonymousUser: mock(),
-  reserveAnonymousMessageSlot: mock(),
+  getAnonymousUser: mock(() =>
+    anonymousUserImpl ? anonymousUserImpl() : null,
+  ),
+  reserveAnonymousMessageSlot: mock(async () => ({
+    allowed: true,
+    remaining: 5,
+    limit: 10,
+  })),
+}));
+
+mock.module("@/lib/services/anonymous-sessions", () => ({
+  anonymousSessionsService: {
+    addTokenUsage: mock(async () => undefined),
+    refundMessageSlot: mock(async () => undefined),
+  },
 }));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
@@ -117,6 +136,8 @@ beforeEach(() => {
   ledger = makeLedgerReservation(100, 0.015);
   streamText.mockClear();
   streamTextImpl = null;
+  currentUserImpl = async () => ({ id: USER, organization_id: ORG });
+  anonymousUserImpl = null;
 });
 
 describe("/v1/chat streaming credit reservation", () => {
@@ -158,5 +179,71 @@ describe("/v1/chat streaming credit reservation", () => {
     await onAbort?.();
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+  });
+});
+
+describe("/v1/chat org-membership parity (#10557 part 2)", () => {
+  test("authenticated caller with NO organization is rejected 403, never reaches the model", async () => {
+    // The defense-in-depth gap: a null-org authenticated user would previously
+    // fall through to the anonymous no-op reservation and get unbounded free
+    // inference, exempt from the anon cap. Now mirror the sibling routes' org
+    // guard and 403 before any provider call.
+    currentUserImpl = async () => ({ id: USER, organization_id: null });
+    streamTextImpl = () => {
+      throw new Error("must not reach the model for an org-less authed user");
+    };
+
+    const response = await chatRoute.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(streamText).not.toHaveBeenCalled();
+    // No reservation was settled — the caller was rejected before any hold.
+    expect(ledger.reconcileCalls).toBe(0);
+  });
+
+  test("authenticated caller WITH an organization still streams normally (no regression)", async () => {
+    currentUserImpl = async () => ({ id: USER, organization_id: ORG });
+    streamTextImpl = () => ({
+      toUIMessageStreamResponse: () => new Response("stream-started"),
+    });
+
+    const response = await chatRoute.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(streamText).toHaveBeenCalledTimes(1);
+  });
+
+  test("genuine anonymous caller is NOT rejected by the org guard (free tier preserved)", async () => {
+    // No authed user → anonymous path. The org guard must not touch this caller;
+    // anonymous inference still works via the anonymous reservation.
+    currentUserImpl = async () => null;
+    anonymousUserImpl = async () => ({
+      user: { id: "anon-user", organization_id: undefined },
+      session: {
+        id: "anon-session",
+        session_token: "anon-token",
+        message_count: 0,
+      },
+    });
+    streamTextImpl = () => ({
+      toUIMessageStreamResponse: () => new Response("stream-started"),
+    });
+
+    const response = await chatRoute.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(streamText).toHaveBeenCalledTimes(1);
   });
 });
