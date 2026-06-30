@@ -122,7 +122,9 @@ const STATES = [
   { q: "?busy=Starting+your+agent%E2%80%A6", name: "busy", desktop: true },
 ];
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({
+  executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+});
 try {
   for (const view of [
     { w: 402, h: 874, tag: "mobile", scale: 2 },
