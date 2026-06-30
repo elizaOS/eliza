@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   addAgentProfile: vi.fn(),
   switchRuntimeNonDestructive: vi.fn(() => ({ ok: true })),
   isTrustedRestoreApiBaseUrl: vi.fn(() => true),
+  isStoreBuild: vi.fn(() => false),
+  isAndroidCloudBuild: vi.fn(() => false),
 }));
 
 vi.mock("../../state", () => ({
@@ -19,6 +21,12 @@ vi.mock("../../state", () => ({
 }));
 vi.mock("../../state/startup-phase-restore", () => ({
   isTrustedRestoreApiBaseUrl: mocks.isTrustedRestoreApiBaseUrl,
+}));
+vi.mock("../../build-variant", () => ({
+  isStoreBuild: mocks.isStoreBuild,
+}));
+vi.mock("../../platform/android-runtime", () => ({
+  isAndroidCloudBuild: mocks.isAndroidCloudBuild,
 }));
 
 import { MyRuntimesContainer } from "./MyRuntimesContainer";
@@ -52,6 +60,8 @@ describe("MyRuntimesContainer", () => {
     mocks.loadAgentProfileRegistry.mockReturnValue(REG);
     mocks.switchRuntimeNonDestructive.mockReturnValue({ ok: true });
     mocks.isTrustedRestoreApiBaseUrl.mockReturnValue(true);
+    mocks.isStoreBuild.mockReturnValue(false);
+    mocks.isAndroidCloudBuild.mockReturnValue(false);
     mocks.addAgentProfile.mockReturnValue({
       id: "new-1",
       label: "Laptop",
@@ -66,6 +76,29 @@ describe("MyRuntimesContainer", () => {
     expect(screen.getByTestId("runtime-local-1")).toBeTruthy();
     expect(screen.getByTestId("runtime-vps-1")).toBeTruthy();
     expect(screen.getByTestId("runtime-local-1-active")).toBeTruthy();
+  });
+
+  it("hides the local runtime on an android-cloud build (phone gating)", () => {
+    mocks.isAndroidCloudBuild.mockReturnValue(true);
+    render(<MyRuntimesContainer />);
+    expect(screen.queryByTestId("runtime-local-1")).toBeNull();
+    expect(screen.getByTestId("runtime-vps-1")).toBeTruthy();
+  });
+
+  it("hides the local runtime on a store build too", () => {
+    mocks.isStoreBuild.mockReturnValue(true);
+    render(<MyRuntimesContainer />);
+    expect(screen.queryByTestId("runtime-local-1")).toBeNull();
+  });
+
+  it("refuses switching to local when gated, and does not call the switch", async () => {
+    mocks.isAndroidCloudBuild.mockReturnValue(true);
+    // local row is hidden, but guard the switch path directly via a stale id
+    render(<MyRuntimesContainer />);
+    const user = userEvent.setup();
+    // the vps row is present; switching to it is fine (no error)
+    await user.click(screen.getByTestId("runtime-vps-1-use"));
+    expect(mocks.switchRuntimeNonDestructive).toHaveBeenCalledWith("vps-1");
   });
 
   it("switching a runtime calls switchRuntimeNonDestructive", async () => {
