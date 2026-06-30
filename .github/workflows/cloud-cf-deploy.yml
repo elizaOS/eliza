@@ -85,14 +85,11 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-api:
     name: Deploy API Worker
-    # GitHub-hosted (ephemeral, plentiful) instead of the shared hetzner-robot
-    # pool: under a hot develop push stream the self-hosted autoscaler recycles
-    # runner VMs mid-job, cancelling deploy-api right after "Set up job" (verified
-    # on an unsuperseded workflow_dispatch run — not concurrency, not checkout).
-    # A fresh ubuntu-latest VM per run sidesteps both the preemption and the
-    # stuck shared-workspace checkout. The Worker build/deploy are scoped to
-    # @elizaos/core + packages/cloud/api and fit a standard 16 GB hosted runner.
-    runs-on: ubuntu-latest
+    # Keep the deploy fleet configurable while Cloud ops converges on the
+    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
+    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
+    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     if: github.event_name != 'pull_request'
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -281,13 +278,11 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-console:
     name: Deploy Console (Pages · elizacloud.ai)
-    # GitHub-hosted (ephemeral, plentiful) instead of the shared hetzner-robot
-    # pool, for the same reason as deploy-api above: under a hot develop push
-    # stream the self-hosted autoscaler recycles runner VMs mid-job, cancelling
-    # this deploy right after the checkout starts (the #10353 reclaim). A fresh
-    # ubuntu-latest VM per run sidesteps both the preemption and the stuck
-    # shared-workspace checkout. The scoped vite build fits a 16 GB hosted runner.
-    runs-on: ubuntu-latest
+    # Keep the deploy fleet configurable while Cloud ops converges on the
+    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
+    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
+    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -493,13 +488,11 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
-    # GitHub-hosted (ephemeral, plentiful) instead of the shared hetzner-robot
-    # pool, for the same reason as deploy-api above: under a hot develop push
-    # stream the self-hosted autoscaler recycles runner VMs mid-job, cancelling
-    # this deploy right after the checkout starts (the #10353 reclaim). A fresh
-    # ubuntu-latest VM per run sidesteps both the preemption and the stuck
-    # shared-workspace checkout. The scoped vite build fits a 16 GB hosted runner.
-    runs-on: ubuntu-latest
+    # Keep the deploy fleet configurable while Cloud ops converges on the
+    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
+    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
+    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
