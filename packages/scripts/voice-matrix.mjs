@@ -273,6 +273,7 @@ const CELLS = [
     command: [
       "swift",
       "test",
+      "--disable-index-store",
       "--package-path",
       "plugins/plugin-native-talkmode/ios",
     ],
@@ -294,6 +295,7 @@ const CELLS = [
     command: [
       "swift",
       "test",
+      "--disable-index-store",
       "--package-path",
       "plugins/plugin-native-swabble/ios",
     ],

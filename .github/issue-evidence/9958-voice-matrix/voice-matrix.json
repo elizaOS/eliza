@@ -1,7 +1,7 @@
 {
   "schema": "eliza_voice_live_matrix_v1",
   "issue": 9958,
-  "generatedAt": "2026-06-29T23:17:01.230Z",
+  "generatedAt": "2026-06-30T00:04:12.979Z",
   "mode": "probe",
   "dimensions": {
     "platform": [
@@ -350,6 +350,7 @@
       "command": [
         "swift",
         "test",
+        "--disable-index-store",
         "--package-path",
         "plugins/plugin-native-talkmode/ios"
       ],
@@ -380,6 +381,7 @@
       "command": [
         "swift",
         "test",
+        "--disable-index-store",
         "--package-path",
         "plugins/plugin-native-swabble/ios"
       ],

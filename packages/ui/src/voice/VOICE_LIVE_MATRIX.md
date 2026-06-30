@@ -62,8 +62,8 @@ known to be present; it turns `pending` or `skip` into a failing exit.
 | `macos.electrobun.live-roundtrip` | headed Electrobun runner plus `capture:macos-desktop` | screen/video/log artifact when `ELIZA_VOICE_MACOS_ELECTROBUN_READY=1` |
 | `windows.electrobun.live-roundtrip` | headed Electrobun runner plus `capture:windows-desktop` | screen/video/log artifact when `ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1` |
 | `ios.sim-or-device.voice-roundtrip` | installed iOS simulator/device build plus `capture:ios-sim` | simulator screenshot/video/log when `ELIZA_VOICE_IOS_READY=1` |
-| `ios.talkmode.native-bridge` | `swift test --package-path plugins/plugin-native-talkmode/ios` | TalkMode transcript/permission/state/barge-in bridge tests |
-| `ios.swabble.native-bridge` | `swift test --package-path plugins/plugin-native-swabble/ios` | Swabble wake-firing -> JS bridge event tests |
+| `ios.talkmode.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-talkmode/ios` | TalkMode transcript/permission/state/barge-in bridge tests |
+| `ios.swabble.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-swabble/ios` | Swabble wake-firing -> JS bridge event tests |
 | `android.device.voice-roundtrip` | `packages/app test:e2e:android:local` | real WebView on-device STT -> agent -> TTS self-test |
 | `android.talkmode.native-bridge` | generated Android Gradle `:elizaos-capacitor-talkmode:testDebugUnitTest` | TalkMode capture lifecycle/transcript/permission/barge-in bridge tests |
 | `android.swabble.native-bridge` | generated Android Gradle `:elizaos-capacitor-swabble:testDebugUnitTest` | Swabble wake-firing -> JS bridge event tests |
