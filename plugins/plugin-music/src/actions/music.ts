@@ -553,6 +553,12 @@ export const musicAction: Action = {
       schema: { type: "array", items: { type: "string" } },
     },
     {
+      name: "targetId",
+      description: "Single routing or zone target id.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
       name: "prompt",
       description:
         "Suno generation prompt for action=generate/custom_generate.",
