@@ -59,7 +59,7 @@ beforeEach(() => {
 });
 
 describe("server wallet RPC lookup", () => {
-  test("looks the wallet up globally by client_address, not org-scoped", async () => {
+  test("looks the wallet up globally by client_address + EVM chain, not org-scoped", async () => {
     await executeServerWalletRpc({
       clientAddress: "0x0000000000000000000000000000000000000001",
       payload: {
@@ -76,10 +76,12 @@ describe("server wallet RPC lookup", () => {
     // column back-references its table (which exposes every column name).
     const sql = new PgDialect().sqlToQuery(capturedWhere as SQL).sql;
     expect(sql).toContain("client_address");
+    expect(sql).toContain("chain_type");
     // Must NOT org-scope: provision stores the row under the API-key owner's
     // org, the RPC signer resolves to a separate wallet-derived org, so an
     // org-scoped lookup would 404 every legitimate call (#10279). client_address
-    // is globally unique (proof-of-control at provision), so this is unambiguous.
+    // + chain_type is globally unique (proof-of-control at provision), so this
+    // is unambiguous while still supporting separate EVM and Solana wallets.
     expect(sql).not.toContain("organization_id");
     expect(signMessage).toHaveBeenCalledWith("steward-agent-1", "hello");
   });

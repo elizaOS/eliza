@@ -1,6 +1,6 @@
 /**
  * POST /api/v1/user/wallets/provision — provision a server-side wallet for the user's org.
- * Idempotent on (organization_id, client_address, chain_type).
+ * Idempotent on the authenticated organization's client_address + chain_type.
  */
 
 import { and, eq } from "drizzle-orm";
@@ -52,6 +52,7 @@ app.post("/", async (c) => {
     user = await requireUserOrApiKey(c);
     const body = await c.req.json();
     validated = provisionWalletSchema.parse(body);
+    const clientAddress = validated.clientAddress.toLowerCase();
 
     if (!user.organization?.id) {
       return c.json(
@@ -64,7 +65,7 @@ app.post("/", async (c) => {
       organizationId: user.organization.id,
       userId: user.id,
       characterId: validated.characterId || null,
-      clientAddress: validated.clientAddress,
+      clientAddress,
       chainType: validated.chainType,
       controlProof: {
         signature: validated.controlProof.signature as `0x${string}`,
@@ -119,7 +120,10 @@ app.post("/", async (c) => {
         .where(
           and(
             eq(agentServerWallets.organization_id, user.organization.id),
-            eq(agentServerWallets.client_address, validated.clientAddress),
+            eq(
+              agentServerWallets.client_address,
+              validated.clientAddress.toLowerCase(),
+            ),
             eq(agentServerWallets.chain_type, validated.chainType),
           ),
         )

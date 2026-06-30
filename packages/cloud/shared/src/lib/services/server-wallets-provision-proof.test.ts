@@ -3,8 +3,8 @@
  *
  * Provision is authenticated only by the org's API key, so without a
  * proof-of-control any org could claim an arbitrary `clientAddress` — squatting
- * the globally-unique row (a permanent DoS for the true key-holder) and
- * capturing that address's RPC routing. `provisionServerWallet` now requires a
+ * the globally-unique-per-chain row (a permanent DoS for the true key-holder)
+ * and capturing that address's RPC routing. `provisionServerWallet` now requires a
  * signature over `buildWalletProvisionChallenge` made with the clientAddress
  * key, and verifies it BEFORE touching Steward or the DB.
  *
@@ -124,7 +124,7 @@ describe("provisionServerWallet — proof-of-control gate", () => {
     // The gate passed → Steward + DB were reached exactly once.
     expect(createWallet).toHaveBeenCalledTimes(1);
     expect(insertedRows.length).toBe(1);
-    expect(insertedRows[0]?.client_address).toBe(CLIENT_ADDRESS);
+    expect(insertedRows[0]?.client_address).toBe(CLIENT_ADDRESS.toLowerCase());
   });
 
   test("rejects a proof signed by a DIFFERENT key (the squatting case)", async () => {

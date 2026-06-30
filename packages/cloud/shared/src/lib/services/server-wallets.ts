@@ -1,6 +1,6 @@
 import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk/wallet-provision-challenge";
 import { StewardApiError } from "@stwd/sdk";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { verifyMessage } from "viem";
 import { db } from "../../db/client";
 import { type AgentServerWallet, agentServerWallets } from "../../db/schemas/agent-server-wallets";
@@ -136,8 +136,9 @@ const PROVISION_PROOF_WINDOW_MS = 5 * 60 * 1000;
  * Proves the caller controls the `clientAddress` private key before a wallet is
  * provisioned under it. Provision is otherwise authenticated only by the org's
  * API key, so without this any org could claim an arbitrary address: the
- * globally-unique row then blocks the true key-holder's own provision (a
- * permanent DoS) and captures that address's RPC routing (`#10279`).
+ * globally-unique-per-chain row then blocks the true key-holder's own
+ * provision for that chain (a permanent DoS) and captures that address's RPC
+ * routing (`#10279`).
  *
  * The caller signs {@link buildWalletProvisionChallenge} with the clientAddress
  * key; we rebuild the identical message, verify the signature, enforce a
@@ -196,12 +197,13 @@ async function assertProvisionControlProof(params: {
 // ---------------------------------------------------------------------------
 
 export async function provisionServerWallet(params: ProvisionWalletParams) {
+  const clientAddress = params.clientAddress.toLowerCase();
   await assertProvisionControlProof({
-    clientAddress: params.clientAddress,
+    clientAddress,
     chainType: params.chainType,
     proof: params.controlProof,
   });
-  return provisionStewardWallet(params);
+  return provisionStewardWallet({ ...params, clientAddress });
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +286,7 @@ async function provisionStewardWallet({
 // ---------------------------------------------------------------------------
 
 export async function executeServerWalletRpc({ clientAddress, payload, signature }: ExecuteParams) {
+  const normalizedClientAddress = clientAddress.toLowerCase();
   // Timestamp check
   const now = Date.now();
   const RPC_TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
@@ -293,7 +296,7 @@ export async function executeServerWalletRpc({ clientAddress, payload, signature
 
   // Signature verification
   const isValid = await verifyMessage({
-    address: clientAddress as `0x${string}`,
+    address: normalizedClientAddress as `0x${string}`,
     message: JSON.stringify(payload),
     signature,
   });
@@ -303,20 +306,23 @@ export async function executeServerWalletRpc({ clientAddress, payload, signature
 
   // Nonce replay protection — TTL matches the timestamp window since older
   // payloads are already rejected by the timestamp check above.
-  const nonceKey = `rpc-nonce:${clientAddress}:${payload.nonce}`;
+  const nonceKey = `rpc-nonce:${normalizedClientAddress}:${payload.nonce}`;
   const nonceSet = await cache.setIfNotExists(nonceKey, "1", RPC_TIMESTAMP_WINDOW_MS);
   if (!nonceSet) {
     throw new RpcReplayError();
   }
 
-  // Look up wallet record. Global by client_address: the wallet-signature auth
-  // above already proves control of the key, and client_address is globally
-  // unique (proof-of-control at provision), so this is unambiguous. Scoping it
-  // to the RPC-signer's org would never match — provision stores the row under
-  // the API-key owner's org, the RPC signer resolves to a separate
-  // wallet-derived org (#10279).
+  // Look up the EVM wallet record globally by client_address + chain_type. The
+  // wallet-signature auth above already proves control of the key, and
+  // proof-of-control at provision keeps that pair unambiguous. Scoping it to the
+  // RPC-signer's org would never match — provision stores the row under the
+  // API-key owner's org, the RPC signer resolves to a separate wallet-derived
+  // org (#10279).
   const walletRecord = await db.query.agentServerWallets.findFirst({
-    where: eq(agentServerWallets.client_address, clientAddress),
+    where: and(
+      eq(agentServerWallets.client_address, normalizedClientAddress),
+      eq(agentServerWallets.chain_type, "evm"),
+    ),
   });
   if (!walletRecord) {
     throw new ServerWalletNotFoundError();

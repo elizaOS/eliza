@@ -444,7 +444,7 @@ export class ElizaCloudClient {
   /**
    * Provision a cloud-custodied server wallet tied to a local client address.
    * Idempotent server-side: returns the existing wallet if one already exists
-   * for the (user, clientAddress, chain) tuple.
+   * for the authenticated org's clientAddress + chain tuple.
    */
   async provisionWallet(input: {
     chainType: CloudChainType;

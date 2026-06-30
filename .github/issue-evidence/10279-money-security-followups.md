@@ -35,13 +35,17 @@ from migration 0038. So #10382's schema (composite) already drifts from the real
 
 `client_address` is a **global capability key by design** (the elizacloud client's `bridge-client.ts`
 documents that RPC "verifies the signature against the `client_address` registered at provision
-time" — org-agnostic; the agent holds the key). So the fix keeps the global unique + global RPC
-lookup and adds the one thing missing: **proof the provisioner controls the key.**
+time" — org-agnostic; the agent holds the key). So the fix keeps the lookup global, but scopes the
+uniqueness to `(client_address, chain_type)` so the same local agent key can provision both EVM and
+Solana wallets without allowing cross-org ambiguity.
 
-- **Revert #10382:** delete the orphan migration, restore `client_address` global-unique in the
-  schema (matches the un-migrated DB — no new migration needed), revert `executeServerWalletRpc` +
-  `rpc/route.ts` to the global lookup by `client_address`. Remove dead
+- **Revert #10382's org-scoped RPC:** delete the orphan org-scoped migration and restore
+  `executeServerWalletRpc` + `rpc/route.ts` to an org-agnostic lookup. Remove dead
   `getOrganizationIdForClientAddress`.
+- **Journal the real DB shape:** replace the old global `client_address` constraint with a
+  journaled global `(client_address, chain_type)` unique index. The EVM RPC path looks up
+  `(client_address, "evm")`; Solana provisioning remains possible for the same local key. Existing
+  rows are normalized to lower-case before the index is created, matching provision/RPC lookup.
 - **Wire contract:** `@elizaos/cloud-sdk` `buildWalletProvisionChallenge` — the exact string the
   client signs and the server rebuilds (single source of truth).
 - **Server gate** (`cloud-shared` `server-wallets.ts`): `provisionServerWallet` verifies a signature
@@ -55,9 +59,10 @@ lookup and adds the one thing missing: **proof the provisioner controls the key.
 
 ### Why proof-of-control closes the issue
 
-A squatter can no longer claim an address it does not control, so the global-unique row always
-belongs to the true key-holder: the DoS and the cross-tenant RPC mis-resolution are both gone, and
-the RPC lookup stays an unambiguous global lookup (works across the provision-org/RPC-org split).
+A squatter can no longer claim an address it does not control, so the globally-unique-per-chain row
+always belongs to the true key-holder: the DoS and the cross-tenant RPC mis-resolution are both
+gone, and the RPC lookup stays an unambiguous global lookup by `client_address + chain_type`
+(works across the provision-org/RPC-org split).
 
 ---
 
@@ -74,7 +79,7 @@ server-wallets-provision-proof.test.ts (6) — REAL viem keypairs/signatures; on
   ✓ rejects a replayed proof (same nonce twice)                     → ProvisionProofReplayError
   ✓ rejects when signed chainType ≠ requested                       → ProvisionProofInvalidError
 server-wallets.test.ts (RPC lookup, 1) — rewritten to render the WHERE to SQL (the old object-walk
-  was vacuous): asserts the lookup is GLOBAL by client_address and NOT org-scoped.
+  was vacuous): asserts the lookup is GLOBAL by client_address + chain_type and NOT org-scoped.
 ```
 
 Gated live e2e (`group-b-account-billing.test.ts`, `RUN_STEWARD_WALLET_E2E=1`): happy path now sends
@@ -85,10 +90,12 @@ on this branch.
 
 ## Verification
 
-- Typecheck (`tsgo`): `cloud-sdk`, `cloud-shared`, `cloud-api`, `plugin-elizacloud` — **0 errors**.
-- Lint (`biome`): clean across all changed files.
-- Migration: none added — the DB is already global-unique (0038); the orphan composite migration is
-  deleted and the schema reverted to match.
+- Focused tests: `bun test packages/cloud/sdk/src/wallet-provision-challenge.test.ts packages/cloud/shared/src/lib/services/server-wallets-provision-proof.test.ts packages/cloud/shared/src/lib/services/__tests__/server-wallets.test.ts` — **11 pass**.
+- Typecheck (`tsgo`): `cloud-sdk` — **0 errors**.
+- Typecheck (`tsgo`): `cloud-shared`, `cloud-api`, `plugin-elizacloud` — blocked by missing generated i18n/contracts artifacts outside this change (`validation-keyword-data`, `@elizaos/contracts`).
+- Lint (`biome`): clean across changed files.
+- Migration: added `0154_agent_server_wallets_client_address_chain_unique.sql`; the orphan
+  org-scoped `0153_agent_server_wallets_org_scoped_client_address.sql` is deleted.
 
 ## Screenshots
 
