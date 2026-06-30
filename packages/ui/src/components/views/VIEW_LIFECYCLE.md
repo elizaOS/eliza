@@ -117,6 +117,23 @@ expensive/leaking view is visible in saved artifacts and logs — not just
 devtools. A per-view rerender storm additionally trips the shared
 `eliza:render-telemetry` channel tagged with the offending `viewId`.
 
+### Two render-loop detectors, on purpose
+
+`ViewTelemetryProfiler` (systemic — one per mounted view via `KeepAliveViewHost`)
+and the hand-placed `useRenderGuard()` callsites are **not** redundant; they
+measure different things on the same `eliza:render-telemetry` channel:
+
+- `ViewTelemetryProfiler` counts React **commit** rate via `<Profiler>` — the
+  per-view systemic floor, source `"ReactProfiler"`. Every view is covered with
+  zero per-component bookkeeping.
+- `useRenderGuard()` counts a specific **component's render-function** invocation
+  rate, source `"useRenderGuard"` — finer-grained than commits, kept on the ~15
+  components most prone to a self-inflicted render loop (lists/editors). It
+  catches a component re-running far more often than it commits.
+
+So the systemic profiler is the gate every view passes; the guards stay as
+targeted high-resolution probes. Drain the ring by `source` to tell them apart.
+
 ## Eviction & memory budget
 
 `KeepAliveViewHost` renders `controller.getRenderSet()` (active ∪ retained
@@ -124,6 +141,17 @@ keep-alive) and the controller enforces the LRU + TTL + pressure eviction. The
 pure `view-memory-budget.ts` detector (`summarizeMemorySamples` +
 `shouldReportMemoryGrowth`) turns a series of heap samples from a repeated
 view-switch run into a leak verdict, mirroring `hooks/frame-budget.ts`.
+
+Eviction is also driven by **live heap**, not just the static
+`navigator.deviceMemory` hint: `state/bounded-view-lru.ts` reads
+`performance.memory.usedJSHeapSize` and, when usage crosses
+`HEAP_PRESSURE_RATIO` (0.8 of the engine limit), `isCacheMemoryConstrained()`
+drops every bounded cache (module, bundle, keep-alive) to its low-memory tier.
+`state/heap-pressure-monitor.ts` polls heap while the tab is visible and
+dispatches `eliza:heap-pressure` (the real signal — the non-standard
+`memorypressure` window event Chromium never fires), which both module caches
+listen for to force-evict idle entries. Every `module-cache-telemetry` event
+carries the live `jsHeapUsedSize` (#10196).
 
 ## What the tests catch
 
@@ -136,7 +164,20 @@ view-switch run into a leak verdict, mirroring `hooks/frame-budget.ts`.
 | bounded eviction + exemptions| `view-lifecycle.test.tsx`                                     |
 | full view-matrix coverage    | `view-lifecycle-matrix.test.ts` (every builtin tab)          |
 
-The browser harness is `__e2e__/run-view-lifecycle-e2e.mjs`
-(`bun run --cwd packages/ui test:view-lifecycle-e2e`): it drives the real
-`KeepAliveViewHost` over a synthetic view matrix and proves all of the above in
-headless Chromium, capturing screenshots + a walkthrough video + `telemetry.json`.
+Two harnesses, fast→real:
+
+- `__e2e__/run-view-lifecycle-e2e.mjs`
+  (`bun run --cwd packages/ui test:view-lifecycle-e2e`) drives the real
+  `KeepAliveViewHost` over a **synthetic** view matrix in headless Chromium — a
+  fast, server-less proof of the contract above.
+- `packages/app/test/ui-smoke/views-soak.spec.ts`
+  (`bun run --cwd packages/app audit:views`) is the **real-app** gate (#10196):
+  it boots the ui-smoke stack, enumerates **every** view from `GET /api/views`
+  (developer+preview on), opens + cycles each N times, drains
+  `__ELIZA_RENDER_TELEMETRY__` + `__ELIZA_MODULE_CACHE_TELEMETRY__` +
+  `performance.memory`, and fails on a render-loop, an unbounded cache, dead
+  telemetry plumbing, or a post-warmup heap leak. It writes a committed
+  scorecard under `.github/issue-evidence/10196-views-state/`. Run with
+  `ELIZA_UI_SMOKE_LIVE_STACK=1` to soak real plugin bundles (the stub backend's
+  builtin views are statically bundled, so the module-cache/eviction path is
+  exercised by the retained-lazy/DynamicViewLoader unit suites there).

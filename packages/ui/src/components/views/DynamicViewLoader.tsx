@@ -2,8 +2,8 @@
  * DynamicViewLoader — loads a view bundle from a remote URL at runtime.
  *
  * Each view lives behind a React.lazy boundary so it is only fetched when
- * first navigated to, and an ErrorBoundary wrapper prevents a failing view
- * from crashing the shell.
+ * first navigated to, and a per-view `ViewErrorBoundary` (markCrashed + crash
+ * telemetry) prevents a failing view from crashing the shell.
  *
  * Loaded modules are cached by bundleUrl so re-mounting does not re-fetch.
  *
@@ -86,9 +86,9 @@ import {
 import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
 import { PagePanel } from "../composites/page-panel/index.ts";
 import { Button } from "../ui/button.tsx";
-import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input.tsx";
 import { Spinner } from "../ui/spinner.tsx";
+import { ViewErrorBoundary } from "./ViewErrorBoundary";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 interface ViewBundleModule {
@@ -1386,19 +1386,23 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   return (
     <div ref={containerRef} className="contents">
       <AgentSurfaceProvider viewId={viewId} viewType={viewType}>
-        {/* Keyed by bundleUrl+reloadKey so a successful reload (refresh
-            capability / dev HMR / Retry) remounts the boundary with cleared
-            state instead of staying latched on a stale render crash. */}
-        <ErrorBoundary
+        {/* Per-view crash container. ViewErrorBoundary (not the generic
+            ErrorBoundary) so a remote/plugin-view render crash flows through
+            controller.markCrashed(viewId) + per-view crash telemetry + the
+            [ViewLifecycle] log line — the same isolation builtin views get via
+            KeepAliveViewHost (#10196). onRecover=recoverView also invalidates
+            the bundle cache on Retry. The outer key (bundleUrl+reloadKey) still
+            remounts the boundary on an external reload (refresh capability /
+            dev HMR) so a successful reload clears a latched crash. */}
+        <ViewErrorBoundary
           key={`${bundleUrl}:${reloadKey}`}
-          fallback={(error, resetErrorBoundary) => (
+          viewId={viewId}
+          onRecover={recoverView}
+          renderFallback={(error, recover) => (
             <ViewErrorState
               viewId={viewId}
               error={error}
-              onRetry={() => {
-                resetErrorBoundary();
-                recoverView();
-              }}
+              onRetry={recover}
               onBack={navigateToViews}
             />
           )}
@@ -1410,7 +1414,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           <SpatialSurface>
             <View {...viewProps} />
           </SpatialSurface>
-        </ErrorBoundary>
+        </ViewErrorBoundary>
         <AgentElementOverlay />
         <AgentSurfaceElementReporter />
       </AgentSurfaceProvider>
