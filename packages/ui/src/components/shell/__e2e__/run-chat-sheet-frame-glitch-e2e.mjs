@@ -36,13 +36,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
+import { builtinModules, createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
-import pixelmatch from "pixelmatch";
-import { PNG } from "pngjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +52,35 @@ const evidenceDir = join(
   "9142-frame-glitch",
 );
 const CANARY = process.argv.includes("--canary");
+
+const packageRequire = createRequire(join(repoRoot, "packages", "ui", "package.json"));
+const bunStoreRequire = createRequire(
+  join(repoRoot, "node_modules", ".bun", "node_modules", "package.json"),
+);
+
+function resolveHarnessPackage(name) {
+  try {
+    return packageRequire.resolve(name);
+  } catch (primaryError) {
+    try {
+      return bunStoreRequire.resolve(name);
+    } catch {
+      throw new Error(
+        `Unable to resolve ${name}. Run bun install from the repo root; ${name} must be available to the Node-run frame-glitch harness.`,
+        { cause: primaryError },
+      );
+    }
+  }
+}
+
+async function importHarnessPackage(name) {
+  return import(pathToFileURL(resolveHarnessPackage(name)).href);
+}
+
+const { build } = await importHarnessPackage("esbuild");
+const pixelmatchModule = await importHarnessPackage("pixelmatch");
+const pixelmatch = pixelmatchModule.default ?? pixelmatchModule;
+const { PNG } = await importHarnessPackage("pngjs");
 
 function ensureSharedI18nData() {
   const ensureScript = join(

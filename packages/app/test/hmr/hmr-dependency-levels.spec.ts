@@ -26,10 +26,6 @@ const LEVELS = [
   // so this source file is guaranteed in the live graph.
   { name: "@elizaos/shared", file: "packages/shared/src/character-presets.ts" },
   {
-    name: "plugin view companion",
-    file: "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
-  },
-  {
     name: "plugin view contacts",
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },

@@ -1,0 +1,73 @@
+{
+  "benchmark": "audit:views real-app soak",
+  "ui": "http://127.0.0.1:2138",
+  "api": "http://127.0.0.1:31337",
+  "views": 20,
+  "viewKinds": {
+    "system": 7,
+    "preview": 6,
+    "developer": 4,
+    "undefined": 3
+  },
+  "rounds": 6,
+  "activations": 120,
+  "telemetry": {
+    "before": {
+      "viewRuntime": 0,
+      "shows": 0,
+      "viewEvicts": 0,
+      "maxRenderCount": 0,
+      "module": 0,
+      "moduleEvicts": 0
+    },
+    "after": {
+      "viewRuntime": 37,
+      "shows": 37,
+      "viewEvicts": 0,
+      "maxRenderCount": 1,
+      "module": 36,
+      "moduleEvicts": 36
+    }
+  },
+  "heap": {
+    "startBytes": 239000000,
+    "endBytes": 239000000,
+    "samples": [
+      239000000,
+      239000000,
+      239000000,
+      239000000,
+      239000000,
+      239000000,
+      239000000
+    ],
+    "boundedRatio": 1
+  },
+  "checks": [
+    {
+      "ok": true,
+      "msg": "enumerated 20 registered views via /api/views"
+    },
+    {
+      "ok": true,
+      "msg": "view-runtime telemetry recorded real view mounts under churn (0 -> 37 'show' events)"
+    },
+    {
+      "ok": true,
+      "msg": "no per-view render storm: worst view renderCount = 1 (0 < n < 400)"
+    },
+    {
+      "ok": true,
+      "msg": "bounded caches evicted under churn (view-instance evicts=0, module-cache evicts=36) — the LRU prunes"
+    },
+    {
+      "ok": true,
+      "msg": "heap bounded across the soak: end 239.0MB / warm 239.0MB = 1.00x (< 2.2x; 0 = no perf.memory)"
+    },
+    {
+      "ok": true,
+      "msg": "no uncaught page errors during the soak ([])"
+    }
+  ],
+  "pass": true
+}

@@ -3581,42 +3581,6 @@
       ]
     },
     {
-      "name": "PLAY_EMOTE",
-      "description": "Play a one-shot emote animation on your 3D VRM avatar, then return to idle. ",
-      "parameters": [
-        {
-          "name": "emote",
-          "description": "Required emote ID to play once silently before returning to idle. ",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Play one-shot VRM avatar emote animation. Silent visual side-action.",
-      "similes": [
-        "EMOTE",
-        "ANIMATE",
-        "GESTURE",
-        "DANCE",
-        "WAVE",
-        "PLAY_ANIMATION",
-        "DO_EMOTE",
-        "PERFORM"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use PLAY_EMOTE with the provided parameters.",
-          "actions": ["PLAY_EMOTE"],
-          "params": {
-            "PLAY_EMOTE": {
-              "emote": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "PRIORITIZE",
       "description": "Rank owner open todos, message threads, pending decisions by urgency × importance. LLM pass. Subactions: rank_todos, rank_threads, rank_decisions.",
       "parameters": [

@@ -184,3 +184,72 @@ export function selectLruEvictions(
   });
   return ordered.slice(0, Math.min(overflow, ordered.length));
 }
+
+/** Minimal shape of a bounded module-cache entry the eviction planner reads. */
+export interface ModuleCacheEntryLike {
+  /** >0 while at least one mounted view holds the module; such entries are pinned. */
+  refCount: number;
+  /** `Date.now()` of the last acquire/release; the LRU + TTL ordering key. */
+  lastUsedAt: number;
+}
+
+/** Which phase of the prune selected an entry — drives the telemetry reason. */
+export type ModuleCacheEvictionPhase = "ttl" | "lru";
+
+export interface ModuleCacheEvictionPlanOptions {
+  /** Wall-clock reference (`Date.now()`); injected so the planner stays pure. */
+  now: number;
+  /** Idle TTL in ms; an idle entry past this is TTL-evicted. `0` evicts all idle. */
+  ttlMs: number;
+  /** Cap on total retained entries after the TTL sweep; overflow is LRU-evicted. */
+  maxEntries: number;
+  /** Force-evict every idle entry regardless of TTL (memory-pressure / app-pause). */
+  force: boolean;
+  /** Current `cache.size` (active + idle) the cap is measured against. */
+  totalSize: number;
+}
+
+/**
+ * Pure eviction planner shared by the two bounded module caches
+ * (`retained-lazy.tsx`, `components/views/DynamicViewLoader.tsx`), which
+ * previously each carried a byte-identical copy of this TTL-sweep + LRU-cap loop
+ * (#10196 — "the eviction policy is not centralized or independently testable").
+ *
+ * It reproduces that loop exactly: first every idle (`refCount === 0`) entry
+ * older than `ttlMs` (all of them when `force`) is selected oldest-first as a
+ * `"ttl"` eviction; then, if the cache would still exceed `maxEntries` after
+ * those, additional idle entries are selected oldest-first as `"lru"` evictions
+ * until the total is within the cap. Active (`refCount > 0`) entries are never
+ * selected. The caller maps each phase to its telemetry reason and runs its own
+ * `cleanup`, so behavior — including emit order — is unchanged.
+ */
+export function planModuleCacheEvictions<E extends ModuleCacheEntryLike>(
+  entries: readonly E[],
+  options: ModuleCacheEvictionPlanOptions,
+): { entry: E; phase: ModuleCacheEvictionPhase }[] {
+  const { now, ttlMs, maxEntries, force, totalSize } = options;
+  const idleOldestFirst = entries
+    .filter((entry) => entry.refCount === 0)
+    .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+
+  const plan: { entry: E; phase: ModuleCacheEvictionPhase }[] = [];
+  const ttlEvicted = new Set<E>();
+  for (const entry of idleOldestFirst) {
+    if (force || now - entry.lastUsedAt >= ttlMs) {
+      plan.push({ entry, phase: "ttl" });
+      ttlEvicted.add(entry);
+    }
+  }
+
+  // The original LRU phase re-reads `cache.size` AFTER the TTL deletes, then
+  // evicts the oldest still-idle entries until within the cap. Mirror that by
+  // shrinking the measured size by the TTL evictions and skipping them here.
+  let retainedSize = totalSize - ttlEvicted.size;
+  for (const entry of idleOldestFirst) {
+    if (retainedSize <= maxEntries) break;
+    if (ttlEvicted.has(entry)) continue;
+    plan.push({ entry, phase: "lru" });
+    retainedSize -= 1;
+  }
+  return plan;
+}

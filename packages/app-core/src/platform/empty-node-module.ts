@@ -146,7 +146,7 @@ export const validateMcpServerConfig = noop;
 
 // ── Extra @elizaos/agent browser aliases surfaced by plugin dist files ────────
 // Upstream's enumeration only walked app-core/dist; the broader plugin
-// graph (app-companion, app-knowledge, etc.) static-imports additional
+// graph (app-knowledge, etc.) static-imports additional
 // names. Append rather than edit upstream aliases to keep merge churn
 // minimal.
 export type AccountCredentialRecord = unknown;

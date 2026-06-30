@@ -4,7 +4,6 @@ import {
   PostCustomActionGenerateRequestSchema,
   PostCustomActionRequestSchema,
   PostCustomActionTestRequestSchema,
-  PostEmoteRequestSchema,
   PostIngestShareRequestSchema,
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
@@ -28,24 +27,6 @@ describe("PostIngestShareRequestSchema", () => {
   it("rejects extra fields", () => {
     expect(() =>
       PostIngestShareRequestSchema.parse({ source: "x", extra: 1 }),
-    ).toThrow();
-  });
-});
-
-describe("PostEmoteRequestSchema", () => {
-  it("accepts emoteId", () => {
-    expect(PostEmoteRequestSchema.parse({ emoteId: "wave" })).toEqual({
-      emoteId: "wave",
-    });
-  });
-
-  it("accepts empty body", () => {
-    expect(PostEmoteRequestSchema.parse({})).toEqual({});
-  });
-
-  it("rejects extra fields", () => {
-    expect(() =>
-      PostEmoteRequestSchema.parse({ emoteId: "x", looped: true }),
     ).toThrow();
   });
 });

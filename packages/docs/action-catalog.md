@@ -913,17 +913,6 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 - **Handler:** ✅ yes
 - **Examples:** ✅ yes
 
-## App / app-companion
-
-### PLAY_EMOTE
-
-- **File:** `eliza/plugins/plugin-companion/src/actions/emote.ts`
-- **Description:** Play a one-shot emote animation on your 3D VRM avatar, then return to idle.
-- **Similes:** `EMOTE`, `ANIMATE`, `GESTURE`, `DANCE`, `WAVE`, `PLAY_ANIMATION`, `DO_EMOTE`, `PERFORM`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
 ## Core / @elizaos/core / advanced-memory
 
 ### RESET_SESSION
@@ -948,7 +937,6 @@ Notable actions without examples (first 10):
   - `BROWSER_ACTION` (plugin-computeruse)
   - `FILE_ACTION` (plugin-computeruse)
   - `MANAGE_WINDOW` (plugin-computeruse)
-  - `PLAY_EMOTE` (app-app-companion)
   - `TERMINAL_ACTION` (plugin-computeruse)
   - `UPDATE_OWNER_PROFILE` (app-app-lifeops)
 

@@ -25,7 +25,6 @@ const repoRoot = resolve(
 );
 
 const PLUGIN_VIEW_MANIFESTS = [
-  "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",

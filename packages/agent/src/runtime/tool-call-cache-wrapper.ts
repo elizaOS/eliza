@@ -32,6 +32,8 @@ interface PerToolOverride {
   version?: string;
 }
 
+type CachedActionResult = ActionResult & { [key: string]: ToolOutput };
+
 export interface ToolCacheConfig {
   enabled?: boolean;
   memoryCapacity?: number;
@@ -77,6 +79,42 @@ function extractArgs(options: unknown): Record<string, unknown> {
   return {};
 }
 
+function isToolOutput(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+): value is ToolOutput {
+  if (
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    value === null
+  ) {
+    return true;
+  }
+  if (typeof value === "number") return Number.isFinite(value);
+  if (!value || typeof value !== "object") return false;
+
+  if (seen.has(value)) return false;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.every((entry) => isToolOutput(entry, seen));
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+
+  return Object.values(value).every((entry) => isToolOutput(entry, seen));
+}
+
+function isCachedActionResult(value: ToolOutput): value is CachedActionResult {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof value.success === "boolean"
+  );
+}
+
 /**
  * Wrap an Action's handler so cacheable tools route through the cache.
  * Non-cacheable actions are returned unchanged.
@@ -99,11 +137,11 @@ export function wrapActionWithCache(
   ) => {
     const args = extractArgs(options);
     const hit = cache.get(descriptor, args);
-    if (hit) return hit.output as unknown as ActionResult;
+    if (hit && isCachedActionResult(hit.output)) return hit.output;
 
     const result = await original(runtime, message, state, options, ...rest);
-    if (result !== undefined) {
-      cache.set(descriptor, args, result as unknown as ToolOutput);
+    if (result !== undefined && isToolOutput(result)) {
+      cache.set(descriptor, args, result);
     }
     return result;
   };

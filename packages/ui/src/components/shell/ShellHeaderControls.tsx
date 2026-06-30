@@ -7,7 +7,6 @@ import {
   PencilLine,
   Save,
   Smartphone,
-  UserRound,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -123,11 +122,6 @@ export function ShellHeaderControls({
     label: string;
     Icon: LucideIcon;
   }> = [
-    {
-      view: "companion",
-      label: t("header.companionMode"),
-      Icon: UserRound,
-    },
     {
       view: "character",
       label: t("header.characterMode"),

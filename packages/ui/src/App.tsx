@@ -73,7 +73,6 @@ import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
-import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
@@ -1080,7 +1079,6 @@ function renderStaticViewRouterTab({
     ),
     chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
-    companion: <ViewUnavailableFallback />,
     stream: <StreamView />,
     tasks: (
       <TabContentView>
@@ -1390,13 +1388,11 @@ function ShellBackButton({ onBack }: { onBack: () => void }): ReactNode {
 }
 
 type ShellContentProps = {
-  CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
   availableViewsForLayout: ViewRegistryEntry[];
   customActionsPanelOpen: boolean;
   desktopTabBar: ReactNode;
   isChat: boolean;
-  isCompanionTab: boolean;
   isFullBleed: boolean;
   screenBackgroundPolicy: AppShellBackgroundPolicy;
   setCustomActionsEditorOpen: (open: boolean) => void;
@@ -1409,19 +1405,6 @@ type ShellContentProps = {
   onClearViewLayout: () => void;
   onNavigateBack: () => void;
 };
-
-function CompanionShellContent(props: ShellContentProps): ReactNode {
-  if (
-    props.uiShellMode === "companion" &&
-    props.isCompanionTab &&
-    props.CompanionShell
-  ) {
-    const CompanionShell = props.CompanionShell;
-    return <CompanionShell tab="companion" actionNotice={props.actionNotice} />;
-  }
-  if (!props.isCompanionTab) return null;
-  return <div key="companion-shell" className={APP_SHELL_CLASS} />;
-}
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // The /chat route is the ambient conversational home: open space behind the
@@ -1522,8 +1505,6 @@ function FullBleedShellContent(props: ShellContentProps): ReactNode {
 function ShellContent(props: ShellContentProps): ReactNode {
   if (props.isFullBleed) return <FullBleedShellContent {...props} />;
   if (props.isChat) return <ChatRouteShellContent {...props} />;
-  const companionContent = CompanionShellContent(props);
-  if (companionContent) return companionContent;
   return <RoutedShellContent {...props} />;
 }
 
@@ -1675,8 +1656,6 @@ export function App() {
     uiShellMode: s.uiShellMode,
     t: s.t,
   }));
-  const { companionShell: CompanionShell } = useBootConfig();
-
   const isPopout = useIsPopout();
   const shellMode = useShellMode();
   // Auth gate — only active after the coordinator reaches "ready".
@@ -1823,7 +1802,6 @@ export function App() {
   >(null);
   const [desktopShuttingDown, setDesktopShuttingDown] = useState(false);
 
-  const isCompanionTab = tab === "companion";
   const isChat = tab === "chat";
   const isSettingsPage = tab === "settings";
   const isFullBleed = useTabIsFullBleed(tab);
@@ -2065,17 +2043,15 @@ export function App() {
 
   // shellContent is memoized before early returns to satisfy the Rules of Hooks.
   // Deps are local state/callbacks — not high-frequency AppContext fields like
-  // ptySessions/agentStatus — so CompanionSceneHost stays stable across polls.
+  // ptySessions/agentStatus — so the shell subtree stays stable across polls.
   const shellContent = useMemo(
     () => (
       <ShellContent
-        CompanionShell={CompanionShell}
         actionNotice={actionNotice}
         availableViewsForLayout={availableViewsForDesktopTabs}
         customActionsPanelOpen={customActionsPanelOpen}
         desktopTabBar={desktopTabBar}
         isChat={isChat}
-        isCompanionTab={isCompanionTab}
         isFullBleed={isFullBleed}
         screenBackgroundPolicy={screenBackgroundPolicy}
         setCustomActionsEditorOpen={setCustomActionsEditorOpen}
@@ -2090,10 +2066,8 @@ export function App() {
       />
     ),
     [
-      CompanionShell,
       tab,
       uiShellMode,
-      isCompanionTab,
       actionNotice,
       isChat,
       isFullBleed,

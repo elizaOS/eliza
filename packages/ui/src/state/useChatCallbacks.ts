@@ -24,7 +24,7 @@ import {
   isConversationRecord,
   normalizeConversationList,
 } from "./chat-conversation-guards";
-import type { AppState, LifecycleAction, UiShellMode } from "./internal";
+import type { AppState, LifecycleAction } from "./internal";
 import {
   type LoadConversationMessagesResult,
   loadActiveConversationId,
@@ -78,11 +78,6 @@ function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
     console.info(`[eliza][greeting] ${phase}`);
   }
 }
-
-import { isRoutineCodingAgentMessage } from "../chat";
-
-const COMPANION_STALE_THREAD_MAX_AGE_MS = 30 * 60 * 1000;
-const COMPANION_STALE_THREAD_VISIBLE_MESSAGE_LIMIT = 2;
 
 function isPersistedGreetingMessage(message: ConversationMessage): boolean {
   return (
@@ -324,34 +319,6 @@ export async function hydrateInitialConversation(
   }
 }
 
-function shouldStartFreshCompanionConversation(
-  messages: ConversationMessage[],
-  now = Date.now(),
-): boolean {
-  const visibleMessages = messages
-    .filter((message) => shouldKeepConversationMessage(message))
-    .filter((message) => !isRoutineCodingAgentMessage(message))
-    .slice(-COMPANION_STALE_THREAD_VISIBLE_MESSAGE_LIMIT);
-
-  if (visibleMessages.length === 0) {
-    return false;
-  }
-
-  if (
-    visibleMessages.length === 1 &&
-    isPersistedGreetingMessage(visibleMessages[0])
-  ) {
-    return false;
-  }
-
-  return visibleMessages.every((message) => {
-    if (!Number.isFinite(message.timestamp)) {
-      return false;
-    }
-    return now - message.timestamp > COMPANION_STALE_THREAD_MAX_AGE_MS;
-  });
-}
-
 // ── Deps interface ──────────────────────────────────────────────────
 
 export interface UseChatCallbacksDeps {
@@ -360,7 +327,6 @@ export interface UseChatCallbacksDeps {
 
   // UI state
   uiLanguage: string;
-  uiShellMode: UiShellMode;
   tab: Tab;
 
   // Agent status
@@ -415,7 +381,6 @@ export interface UseChatCallbacksDeps {
   chatSendNonceRef: MutableRefObject<number>;
   greetingFiredRef: MutableRefObject<boolean>;
   greetingInFlightConversationRef: MutableRefObject<string | null>;
-  companionStaleConversationRefreshRef: MutableRefObject<string | null>;
 
   // Lifecycle
   lifecycleAction: LifecycleAction | null;
@@ -519,12 +484,10 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   const {
     t,
     uiLanguage,
-    uiShellMode,
     tab,
     agentStatus,
     activeConversationId,
     companionMessageCutoffTs,
-    conversationMessages,
     ptySessions,
     setChatInput,
     setChatSending,
@@ -549,7 +512,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     chatSendNonceRef,
     greetingFiredRef,
     greetingInFlightConversationRef,
-    companionStaleConversationRefreshRef,
     lifecycleAction,
     beginLifecycleAction,
     finishLifecycleAction,
@@ -1061,36 +1023,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       setUnreadConversations,
     ],
   );
-
-  useEffect(() => {
-    if (uiShellMode !== "companion" || tab !== "companion") {
-      companionStaleConversationRefreshRef.current = null;
-      return;
-    }
-
-    if (!activeConversationId) {
-      return;
-    }
-
-    if (!shouldStartFreshCompanionConversation(conversationMessages)) {
-      companionStaleConversationRefreshRef.current = null;
-      return;
-    }
-
-    if (companionStaleConversationRefreshRef.current === activeConversationId) {
-      return;
-    }
-
-    companionStaleConversationRefreshRef.current = activeConversationId;
-    void handleNewConversation();
-  }, [
-    activeConversationId,
-    conversationMessages,
-    handleNewConversation,
-    tab,
-    uiShellMode,
-    companionStaleConversationRefreshRef,
-  ]);
 
   const handleSelectConversation = useCallback(
     async (id: string) => {

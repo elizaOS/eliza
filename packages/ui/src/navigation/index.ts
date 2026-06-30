@@ -36,11 +36,6 @@ export const APPS_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_APPS", true);
 
 /** Stream routes stay addressable; the nav hides the tab unless streaming is enabled. */
 export const STREAM_ENABLED = true;
-/** Companion tab — enabled by default; opt-out via VITE_ENABLE_COMPANION_MODE=false. */
-export const COMPANION_ENABLED = viteEnvFlagEnabled(
-  "VITE_ENABLE_COMPANION_MODE",
-  true,
-);
 
 /** Built-in tab identifiers. */
 export type BuiltinTab =
@@ -52,7 +47,6 @@ export type BuiltinTab =
   | "tasks"
   | "automations"
   | "browser"
-  | "companion"
   | "stream"
   | "apps"
   | "views"
@@ -286,7 +280,6 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   camera: "/camera",
   tasks: "/apps/tasks",
   browser: "/browser",
-  companion: "/companion",
   stream: "/stream",
   apps: "/apps",
   views: "/views",
@@ -385,8 +378,6 @@ const APPS_SUB_TABS: Record<string, Tab> = {
   // tools, but the renderer mounts the tab the original `targetTab` pointed
   // at (e.g. wallet for steward).
   inventory: "inventory",
-  // Note: "companion" is intentionally NOT here — /apps/companion is an app slug
-  // that AppsView auto-launches as an overlay, not a tool tab.
 };
 
 export function tabFromPath(pathname: string, basePath = ""): Tab | null {
@@ -401,14 +392,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     normalized === "/automations/node-catalog"
   ) {
     return "automations";
-  }
-
-  // Companion disabled unless explicitly feature-flagged
-  if (
-    !COMPANION_ENABLED &&
-    (normalized === "/character-select" || normalized === "/character/select")
-  ) {
-    return "chat";
   }
 
   // Apps disabled in production builds — redirect to chat
@@ -471,7 +454,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // `/contacts/tui` that are not built-in tabs; the Views tab can then match
   // the exact registry path and mount the remote bundle.
   const knownTab = PATH_TO_TAB.get(normalized);
-  if (knownTab === "companion") return "views";
   if (knownTab) return knownTab;
   if (APPS_ENABLED && normalized.startsWith("/") && normalized !== "/") {
     return "views";
@@ -525,8 +507,6 @@ export function titleForTab(tab: Tab): string {
       return "Camera";
     case "browser":
       return "Browser";
-    case "companion":
-      return "Companion";
     case "apps":
       return "Launcher";
     case "views":

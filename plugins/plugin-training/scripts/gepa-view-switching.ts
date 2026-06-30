@@ -43,7 +43,6 @@ const VIEW_IDS = [
   "documents",
   "relationships",
   "focus",
-  "companion",
   "task-coordinator",
   "none",
 ];

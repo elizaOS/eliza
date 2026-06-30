@@ -269,7 +269,7 @@ export async function runHydrating(
       void deps.loadCharacter();
     } else if (isRoot) deps.setTab(resolveDefaultLandingTab());
   }
-  if (urlTab && urlTab !== "chat" && urlTab !== "companion") {
+  if (urlTab && urlTab !== "chat") {
     deps.setTabRaw(urlTab);
     if (urlTab === "plugins") {
       void deps.loadPlugins();

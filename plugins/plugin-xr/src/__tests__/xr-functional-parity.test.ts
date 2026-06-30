@@ -1,5 +1,5 @@
 /**
- * Feature-by-feature functional parity validation for all 18 XR views.
+ * Feature-by-feature functional parity validation for all 14 XR views.
  *
  * The architectural guarantee: every XR view uses the SAME bundlePath
  * ("dist/views/bundle.js") and the SAME componentExport as the GUI view.
@@ -149,13 +149,6 @@ const PLUGIN_REGISTRY: Array<{
   requiredTerms: string[];
 }> = [
   {
-    pluginDir: "plugins/plugin-companion",
-    manifestPath: "plugins/plugin-companion/src/plugin.ts",
-    xrComponentSrc:
-      "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
-    requiredTerms: ["CompanionView", "CompanionSceneHost", "EmotePicker"],
-  },
-  {
     pluginDir: "plugins/plugin-contacts",
     manifestPath: "plugins/plugin-contacts/src/plugin.ts",
     xrComponentSrc:
@@ -249,12 +242,11 @@ const PLUGIN_REGISTRY: Array<{
     xrComponentSrc: "plugins/plugin-training/src/ui/FineTuningView.tsx",
     requiredTerms: ["FineTuningView", "useState"],
   },
-  {
-    pluginDir: "plugins/plugin-facewear",
-    manifestPath: "plugins/plugin-facewear/src/index.ts",
-    xrComponentSrc: "plugins/plugin-facewear/src/ui/SmartglassesView.tsx",
-    requiredTerms: ["SmartglassesView", "useState"],
-  },
+  // plugin-facewear is intentionally absent: its GUI surface is now a Settings
+  // section (registerSettingsSection in register.ts), not a standalone `viewType:
+  // "gui"` view, so it no longer fits the GUI-view===XR-view parity model. Its XR
+  // view is still covered by xr-feature-parity + xr-bundle-coverage and the
+  // plugin's own feature-parity tests.
 ];
 
 // ── TUI capability baseline (from plugin-tui-view-coverage.test.ts) ──────────
@@ -265,11 +257,6 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
   string,
   { srcFile: string; capabilities: string[] }
 > = {
-  "plugins/plugin-companion": {
-    srcFile:
-      "plugins/plugin-companion/src/components/companion/CompanionView.interact.ts",
-    capabilities: ["terminal-companion-state", "terminal-companion-emotes"],
-  },
   "plugins/plugin-contacts": {
     srcFile:
       "plugins/plugin-contacts/src/components/ContactsAppView.interact.ts",
@@ -313,7 +300,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("XR feature-by-feature functional parity — all 16 views", () => {
+describe("XR feature-by-feature functional parity — all 14 views", () => {
   // A. Shared bundle architecture ─────────────────────────────────────────────
 
   it("A — every XR view uses the same bundlePath as the GUI view (shared bundle = shared features)", () => {
@@ -410,7 +397,7 @@ describe("XR feature-by-feature functional parity — all 16 views", () => {
     );
   });
 
-  it("B — all 18 XR component sources use React hooks (useState/useEffect) for stateful UIs", () => {
+  it("B — all 14 XR component sources use React hooks (useState/useEffect) for stateful UIs", () => {
     const noHooks: string[] = [];
     for (const { pluginDir, xrComponentSrc } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
@@ -483,11 +470,11 @@ describe("XR feature-by-feature functional parity — all 16 views", () => {
 
   // Summary assertion ─────────────────────────────────────────────────────────
 
-  it("summary — all 16 plugins have XR views that are functionally identical to their GUI views", () => {
+  it("summary — all 14 plugins have XR views that are functionally identical to their GUI views", () => {
     // This test is a logical consequence of tests A, B, C, D above all passing.
     // It explicitly states the guarantee: same bundle + same component = same features.
     const xrPluginCount = PLUGIN_REGISTRY.length;
-    expect(xrPluginCount).toBe(16);
+    expect(xrPluginCount).toBe(14);
 
     for (const { pluginDir, manifestPath } of PLUGIN_REGISTRY) {
       const source = readFile(manifestPath);

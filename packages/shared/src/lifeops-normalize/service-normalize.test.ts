@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizeOptionalFiniteNumber,
+  normalizeOptionalIsoString,
+  normalizeOptionalNonNegativeInteger,
   normalizePhoneNumber,
   normalizePositiveInteger,
   normalizePriority,
@@ -69,5 +72,52 @@ describe("normalizeValidTimeZone", () => {
       "America/New_York",
     );
     expect(() => normalizeValidTimeZone("Mars/Phobos", "tz")).toThrow();
+  });
+});
+
+// Optional-wrapper normalizers (#8801 / #9943): the base normalizers are tested,
+// but these wrappers add the null/empty passthrough + the non-negative-integer
+// truncation/guard, which were untested.
+describe("normalizeOptionalFiniteNumber", () => {
+  it("maps null / undefined / empty string to null", () => {
+    for (const v of [null, undefined, ""]) {
+      expect(normalizeOptionalFiniteNumber(v, "f")).toBeNull();
+    }
+  });
+  it("passes a finite number or numeric string through", () => {
+    expect(normalizeOptionalFiniteNumber(5, "f")).toBe(5);
+    expect(normalizeOptionalFiniteNumber("5.5", "f")).toBe(5.5);
+  });
+  it("throws on a non-finite value", () => {
+    expect(() => normalizeOptionalFiniteNumber("abc", "f")).toThrow();
+  });
+});
+
+describe("normalizeOptionalNonNegativeInteger", () => {
+  it("maps empty to null", () => {
+    expect(normalizeOptionalNonNegativeInteger("", "f")).toBeNull();
+  });
+  it("truncates toward zero", () => {
+    expect(normalizeOptionalNonNegativeInteger(5.9, "f")).toBe(5);
+    expect(normalizeOptionalNonNegativeInteger("3", "f")).toBe(3);
+  });
+  it("rejects a negative value", () => {
+    expect(() => normalizeOptionalNonNegativeInteger(-1, "f")).toThrow(/zero or greater/);
+  });
+});
+
+describe("normalizeOptionalIsoString", () => {
+  it("maps null / undefined / empty to undefined", () => {
+    for (const v of [null, undefined, ""]) {
+      expect(normalizeOptionalIsoString(v, "f")).toBeUndefined();
+    }
+  });
+  it("normalizes a valid datetime to canonical ISO", () => {
+    expect(normalizeOptionalIsoString("2026-01-02T03:04:05Z", "f")).toBe(
+      "2026-01-02T03:04:05.000Z",
+    );
+  });
+  it("throws on an invalid datetime", () => {
+    expect(() => normalizeOptionalIsoString("not-a-date", "f")).toThrow();
   });
 });

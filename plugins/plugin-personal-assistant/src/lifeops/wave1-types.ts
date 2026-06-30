@@ -31,6 +31,12 @@ export type ScheduledTaskKind =
 
 export type ScheduledTaskPriority = "low" | "medium" | "high";
 
+export type TaskExecutionProfile =
+  | "foreground"
+  | "bg-light-30s"
+  | "bg-heavy-fgs"
+  | "notify-only";
+
 export type ScheduledTaskSource =
   | "default_pack"
   | "user_chat"
@@ -145,6 +151,7 @@ export interface ScheduledTask {
   createdBy: string;
   ownerVisible: boolean;
   metadata?: Record<string, unknown>;
+  executionProfile?: TaskExecutionProfile;
 }
 
 /**

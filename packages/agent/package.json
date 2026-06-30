@@ -275,6 +275,7 @@
     "@ai-sdk/google": "^3.0.75",
     "@ai-sdk/openai": "^3.0.58",
     "@clack/prompts": "^1.0.0",
+    "@electric-sql/pglite": "^0.4.0",
     "@elizaos/plugin-contacts": "workspace:*",
     "@elizaos/plugin-phone": "workspace:*",
     "@elizaos/plugin-wifi": "workspace:*",

@@ -342,6 +342,26 @@ export function writeStoredMediaFile(fileName: string, bytes: Buffer): boolean {
   }
 }
 
+/**
+ * Content-integrity check for a stored media file: the store is content-addressed
+ * (`<sha256>.<ext>`, the sha256 of the bytes — see how filenames are minted
+ * above), so the bytes MUST hash back to the name. Returns true only when
+ * `fileName` is a strict content-addressed name AND `sha256(bytes)` equals its
+ * 64-hex hash. Used at the restore/import boundary (#9963) to reject corrupt or
+ * tampered backup media instead of silently writing bytes under a hash that
+ * doesn't match their content — which would poison the dedup/capability
+ * invariant the whole store relies on.
+ */
+export function storedMediaContentMatchesName(
+  fileName: string,
+  bytes: Buffer,
+): boolean {
+  if (!MEDIA_FILE_NAME.test(fileName)) return false;
+  const expected = fileName.slice(0, 64);
+  const actual = crypto.createHash("sha256").update(bytes).digest("hex");
+  return actual === expected;
+}
+
 const DATA_URL_RE = /^data:([^;,]*)(;base64)?,([\s\S]*)$/;
 
 /** Persist a `data:` URL's bytes to the store; returns null for non-data URLs. */

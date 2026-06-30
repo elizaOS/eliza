@@ -2,7 +2,7 @@ import "./register-routes.ts";
 
 // Re-export the chain/address constants consumers import from the package root.
 // The app build aliases `@elizaos/plugin-wallet-ui` to THIS module (side-effect
-// entry, not the full barrel), so importers like plugin-companion's walletUtils
+// entry, not the full barrel), so wallet-consuming plugins
 // (`import { isBscChainName } from "@elizaos/plugin-wallet-ui"`) resolve here.
 export {
   BSC_GAS_READY_THRESHOLD,

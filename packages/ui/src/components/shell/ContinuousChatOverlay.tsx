@@ -931,7 +931,7 @@ const ThreadLine = React.memo(function ThreadLine({
                 "border",
                 isUser
                   ? "border-white/15 bg-black/30 text-white"
-                  : "border-white/10 bg-black/30 text-white",
+                  : "border-white/15 bg-black text-white",
                 FLOAT_SHADOW,
               )
             : isUser

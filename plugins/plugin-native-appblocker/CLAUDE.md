@@ -82,6 +82,7 @@ This plugin reads no environment variables. It requires OS-level permissions gra
 
 ## Conventions / gotchas
 
+- **Instrumented test (issue #9967).** The launchable-app enumeration (`PackageManager.queryIntentActivities(MAIN/LAUNCHER)`) lives in `InstalledAppsReader`; `getInstalledApps` delegates to it (JS shape unchanged) so an on-device `androidTest` drives the real `PackageManager` (permission-free positive read). Complements the `AppBlockerStateStore` block-state device test.
 - **Capacitor plugin, not elizaOS plugin**: this has no `Plugin` object shaped for `AgentRuntime`. Do not wire it into elizaOS plugin loading. The consuming app imports and uses `AppBlocker` from JS.
 - **Android blocking engine**: a foreground service (`AppBlockerForegroundService`) polls `UsageStatsManager.queryEvents` every 500 ms and shows a full-screen system overlay when a blocked app moves to foreground. The service is `START_STICKY`; it self-terminates if the block state is cleared or the timer expires.
 - **iOS engine**: uses `ManagedSettingsStore` to set `store.shield.applications`. No polling; the OS enforces the shield. `getInstalledApps` always returns `[]` on iOS because Family Controls does not expose an app list — use `selectApps` to let the user pick via `FamilyActivityPicker`.

@@ -73,15 +73,14 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
-// `@elizaos/plugin-personal-assistant` and `@elizaos/plugin-companion` are NOT
-// eagerly imported here. Both packages transitively import from
-// `@elizaos/agent` (e.g. `hasOwnerAccess` from this package's barrel) — a
-// top-level static import would form a module-init cycle that leaves named
-// exports (like a plugin's actions array) as `undefined`, crashing
-// `runtime.registerPlugin` when it iterates `plugin.actions`.
+// `@elizaos/plugin-personal-assistant` is NOT eagerly imported here. It
+// transitively imports from `@elizaos/agent` (e.g. `hasOwnerAccess` from this
+// package's barrel) — a top-level static import would form a module-init cycle
+// that leaves named exports (like a plugin's actions array) as `undefined`,
+// crashing `runtime.registerPlugin` when it iterates `plugin.actions`.
 //
-// Both still resolve at plugin-load time via headless dynamic-import
-// entrypoints in `plugin-resolver.ts`, after the static module graph has fully
+// It still resolves at plugin-load time via a headless dynamic-import
+// entrypoint in `plugin-resolver.ts`, after the static module graph has fully
 // evaluated, so the cycle never forms and browser-only UI exports stay out of
 // the agent process.
 // Keep this here as a single sentinel: if we ever need a static reference,
@@ -4435,7 +4434,7 @@ export async function startEliza(
   }
 
   // 7d. Register the roles capability (cheap, gates provider/action visibility).
-  //     The remaining core plugins (companion, app-control, device-filesystem,
+  //     The remaining core plugins (app-control, device-filesystem,
   //     shell, coding-tools, agent-skills, commands, google, lifeops, browser,
   //     video) are NOT essential to the chat path and are loaded in the
   //     background after the runtime is ready — see runDeferredBoot below.
@@ -5104,7 +5103,7 @@ export async function startEliza(
     return deferredResolvedPlugins;
   };
 
-  // Deferred boot: non-essential core plugins (companion, app-control,
+  // Deferred boot: non-essential core plugins (app-control,
   // device-filesystem, shell, coding-tools, agent-skills, commands, google,
   // lifeops, browser, video), auto-enabled providers/connectors, custom
   // plugins, plus the post-init tail. Runs in the background after the runtime
@@ -5211,8 +5210,7 @@ export async function startEliza(
     installActionAliases(runtime);
     // Same timing reason: validate the intent→action map only once the deferred
     // plugins have registered. Run during blocking init it would warn about
-    // actions like TASKS (agent-orchestrator) and PLAY_EMOTE (companion) that
-    // simply hadn't loaded yet.
+    // actions like TASKS (agent-orchestrator) that simply hadn't loaded yet.
     validateIntentActionMap(
       runtime.actions.map((a) => a.name),
       runtime.logger,

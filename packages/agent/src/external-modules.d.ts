@@ -826,9 +826,6 @@ declare module "@elizaos/ui" {
   export type BrandingConfig = AnyValue;
   export type CharacterCatalogData = AnyValue;
   export type CodingAgentTasksPanelProps = AnyValue;
-  export type CompanionInferenceNotice = AnyValue;
-  export type CompanionSceneStatus = AnyValue;
-  export type CompanionShellComponentProps = AnyValue;
   export type ConversationMessage = AnyValue;
   export type FeedActivityItem = AnyValue;
   export type FeedAgentGoal = AnyValue;
@@ -841,11 +838,7 @@ declare module "@elizaos/ui" {
   export type NetworkStatusChangeDetail = AnyValue;
   export type OverlayApp = AnyValue;
   export type OverlayAppContext = AnyValue;
-  export type ResolveCompanionInferenceNoticeArgs = AnyValue;
   export type ShareTargetPayload = AnyValue;
-  export type StewardApprovalQueueProps = AnyValue;
-  export type StewardLogoProps = AnyValue;
-  export type StewardTransactionHistoryProps = AnyValue;
   export type SurfaceTone = string;
 
   export interface IosLocalAgentNativeRequestOptions {
@@ -870,6 +863,7 @@ declare module "@elizaos/ui" {
   export const App: ComponentType<AnyValue>;
   export const AppProvider: ComponentType<AnyValue>;
   export const AppWindowRenderer: ComponentType<AnyValue>;
+  export const EmbeddedAppViewer: ComponentType<AnyValue>;
   export const Button: ComponentType<AnyValue>;
   export const CharacterEditor: ComponentType<AnyValue>;
   export const COMMAND_PALETTE_EVENT: string;

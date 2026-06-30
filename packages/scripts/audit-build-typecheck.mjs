@@ -37,7 +37,6 @@ const ALLOW = {
   // kept on `tsc` until those are resolved.
   tscTypecheck: new Set([
     "@elizaos/plugin-social-alpha",
-    "@elizaos/plugin-companion",
     "@elizaos/plugin-personal-assistant",
   ]),
 };

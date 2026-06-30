@@ -33,6 +33,10 @@ import {
   createHash,
   randomBytes,
 } from "node:crypto";
+import type {
+  SubAgentCredentialBridge,
+  SubAgentCredentialScope,
+} from "@elizaos/core";
 
 const TOKEN_BYTES = 32; // 256-bit
 const IV_BYTES = 12;
@@ -353,6 +357,165 @@ export function createCredentialTunnelService(options?: {
       const entry = byId.get(credentialScopeId);
       if (!entry) return false;
       return entry.keys.get(key)?.encrypted != null;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Bridge adapter factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Input the bridge adapter hands to its credential-collection dispatcher when a
+ * scope is declared. The dispatcher routes a `kind: "secret"` sensitive-request
+ * (with the tunnel routing identifiers below) to the owner via the registered
+ * delivery adapters and returns the ids of the requests it opened.
+ *
+ * Carries identifiers only — never the scoped token or a credential value.
+ */
+export interface CredentialBridgeDispatchInput {
+  childSessionId: string;
+  credentialScopeId: string;
+  credentialKeys: readonly string[];
+  actorPolicy: "owner_only" | "owner_or_linked_identity";
+  deliveryTarget: "dm" | "owner_app_inline";
+}
+
+/**
+ * The credential-collection dispatch dependency the bridge adapter composes
+ * with `tunnel.declareScope`. The parent-runtime wiring provides a registry-
+ * backed implementation; unit tests inject a stub. Returning an empty
+ * `sensitiveRequestIds` is valid — the in-thread credential prompt still
+ * surfaces the request to the owner.
+ */
+export interface CredentialBridgeDispatch {
+  dispatch(
+    input: CredentialBridgeDispatchInput,
+  ): Promise<{ sensitiveRequestIds: readonly string[] }>;
+}
+
+/**
+ * Combined runtime surface registered under BOTH well-known service names:
+ * - `SubAgentCredentialBridgeAdapter` — consumed by the orchestrator's bridge
+ *   routes (`requestCredentials` / `tryRetrieveCredential`).
+ * - `SubAgentCredentialBridge` — consumed by the core DECLARE/TUNNEL actions
+ *   (`declareScope` / `tunnelCredential`).
+ *
+ * One object, one source of truth: every entry point funnels through the same
+ * `CredentialTunnelService` + dispatch pipeline, so there is no duplicate
+ * scope-minting or delivery path.
+ */
+export interface SubAgentCredentialBridgeAdapter
+  extends SubAgentCredentialBridge {
+  requestCredentials(input: {
+    childSessionId: string;
+    credentialKeys: readonly string[];
+  }): Promise<{
+    credentialScopeId: string;
+    scopedToken: string;
+    expiresAt: number;
+    sensitiveRequestIds: readonly string[];
+  }>;
+  tryRetrieveCredential(input: {
+    childSessionId: string;
+    key: string;
+    scopedToken: string;
+  }): Promise<
+    | { status: "pending" }
+    | { status: "ready"; value: string }
+    | { status: "expired" }
+    | { status: "rejected"; reason: string }
+  >;
+}
+
+/**
+ * Build the parent-side credential bridge adapter. Composes the one-shot scope
+ * engine (`tunnel`) with the owner-facing collection dispatcher (`dispatch`).
+ *
+ * `requestCredentials` (bridge routes) and `declareScope` (DECLARE action) are
+ * the same operation — declare a one-shot scope, then dispatch a secret request
+ * to collect the value(s) — so both delegate to one internal helper.
+ */
+export function createSubAgentCredentialBridgeAdapter(deps: {
+  tunnel: CredentialTunnelService;
+  dispatch: CredentialBridgeDispatch;
+  /** Reserved for delivery context (logging/telemetry); unused by the engine. */
+  runtime?: unknown;
+}): SubAgentCredentialBridgeAdapter {
+  const { tunnel, dispatch } = deps;
+
+  async function declareAndDispatch(input: {
+    childSessionId: string;
+    credentialKeys: readonly string[];
+    actorPolicy: "owner_only" | "owner_or_linked_identity";
+    deliveryTarget: "dm" | "owner_app_inline";
+  }): Promise<SubAgentCredentialScope> {
+    const scope = tunnel.declareScope({
+      childSessionId: input.childSessionId,
+      credentialKeys: input.credentialKeys,
+    });
+    const { sensitiveRequestIds } = await dispatch.dispatch({
+      childSessionId: input.childSessionId,
+      credentialScopeId: scope.credentialScopeId,
+      credentialKeys: input.credentialKeys,
+      actorPolicy: input.actorPolicy,
+      deliveryTarget: input.deliveryTarget,
+    });
+    return {
+      credentialScopeId: scope.credentialScopeId,
+      scopedToken: scope.scopedToken,
+      expiresAt: scope.expiresAt,
+      sensitiveRequestIds,
+    };
+  }
+
+  return {
+    declareScope(input) {
+      return declareAndDispatch({
+        childSessionId: input.childSessionId,
+        credentialKeys: input.credentialKeys,
+        actorPolicy: input.actorPolicy ?? "owner_only",
+        deliveryTarget: input.deliveryTarget ?? "owner_app_inline",
+      });
+    },
+
+    requestCredentials(input) {
+      return declareAndDispatch({
+        childSessionId: input.childSessionId,
+        credentialKeys: input.credentialKeys,
+        actorPolicy: "owner_only",
+        deliveryTarget: "owner_app_inline",
+      });
+    },
+
+    async tunnelCredential(input) {
+      tunnel.tunnelCredential(input);
+    },
+
+    async tryRetrieveCredential({ childSessionId, key, scopedToken }) {
+      try {
+        const value = tunnel.retrieveCredential({
+          childSessionId,
+          key,
+          scopedToken,
+        });
+        return { status: "ready", value };
+      } catch (error) {
+        if (error instanceof CredentialScopeError) {
+          switch (error.code) {
+            case "no_ciphertext":
+              // The owner has not submitted the value yet — keep long-polling.
+              return { status: "pending" };
+            case "scope_expired":
+              return { status: "expired" };
+            default:
+              // already_redeemed / session_mismatch / key_not_in_scope /
+              // invalid_token / unknown_scope / invalid_input are terminal.
+              return { status: "rejected", reason: error.code };
+          }
+        }
+        throw error;
+      }
     },
   };
 }

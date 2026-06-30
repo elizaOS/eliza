@@ -1255,7 +1255,6 @@ for (const root of [
   }
   const forcedLiveStubs = new Map([
     ["@elizaos/app-model-tester", "model-tester"],
-    ["@elizaos/plugin-companion", "companion"],
     ["@elizaos/plugin-documents", "documents"],
     ["@elizaos/plugin-google", "google"],
     ["@elizaos/plugin-hyperliquid", "hyperliquid"],

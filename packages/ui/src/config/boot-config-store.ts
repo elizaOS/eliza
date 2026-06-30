@@ -11,13 +11,10 @@
 
 import type {
   AppBlockerSettingsCardProps,
-  StewardPolicyResult,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
 import type { ComponentType, ReactNode } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
-import type { Tab } from "../navigation";
-import type { ActionNotice } from "../state/action-notice";
 import type { BrandingConfig } from "./branding";
 
 export { syncBrandEnvToEliza, syncElizaEnvToBrand } from "@elizaos/core";
@@ -76,11 +73,6 @@ export interface ClientMiddleware {
   desktopPermissions?: boolean;
 }
 
-export interface CompanionShellComponentProps {
-  tab: Tab;
-  actionNotice: ActionNotice | null;
-}
-
 /** Where a home tile sends you. Mirrors HomeTileTarget in shell/HomeScreen. */
 export type HomeScreenNavTarget =
   | { kind: "tab"; tab: string }
@@ -92,30 +84,6 @@ export interface HomeScreenComponentProps {
   onOpenTile: (target: HomeScreenNavTarget) => void;
   /** Render the AOSP-only native-OS tiles (phone/contacts/messages). */
   showNativeOsTiles?: boolean;
-}
-
-export type CompanionInferenceNotice =
-  | { kind: "cloud"; variant: "danger" | "warn"; tooltip: string }
-  | { kind: "settings"; variant: "warn"; tooltip: string };
-
-export interface ResolveCompanionInferenceNoticeArgs {
-  elizaCloudConnected: boolean;
-  elizaCloudAuthRejected: boolean;
-  elizaCloudCreditsError: string | null | undefined;
-  elizaCloudEnabled: boolean;
-  chatLastUsageModel?: string;
-  hasInterruptedAssistant: boolean;
-  t: (key: string) => string;
-}
-
-export interface CompanionSceneStatus {
-  avatarReady: boolean;
-  teleportKey: string;
-}
-
-export interface CompanionVectorBrowserRuntime {
-  THREE: unknown;
-  createVectorBrowserRenderer: () => Promise<unknown>;
 }
 
 export interface CodingAgentTasksPanelProps {
@@ -132,92 +100,6 @@ export interface PtyConsoleDrawerProps {
 
 export interface FineTuningViewProps {
   contentHeader?: ReactNode;
-}
-
-export interface StewardLogoProps {
-  size?: number;
-  className?: string;
-}
-
-export type AppBootStewardTxStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "signed"
-  | "broadcast"
-  | "confirmed"
-  | "failed";
-
-export interface AppBootStewardTxRecord {
-  id: string;
-  agentId: string;
-  status: AppBootStewardTxStatus;
-  request: {
-    agentId: string;
-    tenantId: string;
-    to: string;
-    value: string;
-    data?: string;
-    chainId: number;
-  };
-  txHash?: string;
-  policyResults: StewardPolicyResult[];
-  createdAt: string;
-  signedAt?: string;
-  confirmedAt?: string;
-}
-
-export interface AppBootStewardPendingApproval {
-  queueId: string;
-  status: "pending" | "approved" | "rejected";
-  requestedAt: string;
-  transaction: AppBootStewardTxRecord;
-}
-
-export interface AppBootStewardApprovalActionResponse {
-  ok: boolean;
-  txHash?: string;
-  error?: string;
-}
-
-export interface StewardApprovalQueueProps {
-  embedded?: boolean;
-  refreshKey?: number | string;
-  getStewardPending: () => Promise<AppBootStewardPendingApproval[]>;
-  approveStewardTx: (
-    txId: string,
-  ) => Promise<AppBootStewardApprovalActionResponse>;
-  rejectStewardTx: (
-    txId: string,
-    reason?: string,
-  ) => Promise<AppBootStewardApprovalActionResponse>;
-  copyToClipboard: (text: string) => Promise<void>;
-  setActionNotice: (
-    text: string,
-    tone?: "info" | "success" | "error",
-    ttlMs?: number,
-  ) => void;
-  onPendingCountChange?: (count: number) => void;
-}
-
-export interface StewardTransactionHistoryProps {
-  embedded?: boolean;
-  getStewardHistory: (opts?: {
-    status?: string;
-    limit?: number;
-    offset?: number;
-  }) => Promise<{
-    records: AppBootStewardTxRecord[];
-    total: number;
-    offset: number;
-    limit: number;
-  }>;
-  copyToClipboard: (text: string) => Promise<void>;
-  setActionNotice: (
-    text: string,
-    tone?: "info" | "success" | "error",
-    ttlMs?: number,
-  ) => void;
 }
 
 export interface AppBootConfig {
@@ -253,24 +135,6 @@ export interface AppBootConfig {
    * shows its own logo, not the elizaOS mark). Receives an optional className.
    */
   brandMark?: ComponentType<{ className?: string }>;
-  /** Companion shell implementation provided by the host app. */
-  companionShell?: ComponentType<CompanionShellComponentProps>;
-  /** Companion cloud/settings warning resolver provided by the host app. */
-  resolveCompanionInferenceNotice?: (
-    args: ResolveCompanionInferenceNoticeArgs,
-  ) => CompanionInferenceNotice | null;
-  /** Companion warning button implementation provided by the host app. */
-  companionInferenceAlertButton?: ComponentType<{
-    notice: CompanionInferenceNotice;
-    onClick: () => void;
-    onPointerDown?: (...args: unknown[]) => unknown;
-  }>;
-  /** Companion global overlay implementation provided by the host app. */
-  companionGlobalOverlay?: ComponentType<Record<string, never>>;
-  /** Companion scene state hook provided by the host app. */
-  useCompanionSceneStatus?: () => CompanionSceneStatus;
-  /** Optional vector browser runtime owned by the host app. */
-  companionVectorBrowser?: CompanionVectorBrowserRuntime;
   /** Coding-agent tasks panel provided by the host app. */
   codingAgentTasksPanel?: ComponentType<CodingAgentTasksPanelProps>;
   /** Coding-agent settings panel provided by the host app. */
@@ -287,12 +151,6 @@ export interface AppBootConfig {
   appBlockerSettingsCard?: ComponentType<AppBlockerSettingsCardProps>;
   /** Website blocker settings card provided by the host app. */
   websiteBlockerSettingsCard?: ComponentType<WebsiteBlockerSettingsCardProps>;
-  /** Steward brand mark provided by the host app. */
-  stewardLogo?: ComponentType<StewardLogoProps>;
-  /** Steward approval queue provided by the host app. */
-  stewardApprovalQueue?: ComponentType<StewardApprovalQueueProps>;
-  /** Steward transaction history provided by the host app. */
-  stewardTransactionHistory?: ComponentType<StewardTransactionHistoryProps>;
   /** Shortcut behavior switches. Natural-language shortcuts are off by default. */
   shortcutFlags?: {
     naturalLanguage?: boolean;

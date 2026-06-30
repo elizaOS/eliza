@@ -71,7 +71,6 @@ type PluginViewManifestContract = {
 };
 
 const PLUGIN_VIEW_MANIFESTS = [
-  "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
@@ -136,18 +135,6 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/app-core": null,
-  "@elizaos/plugin-companion/components/companion/CompanionShell":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/companion-app":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/companion-scene-status-context":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice":
-    "plugins/plugin-companion/src/plugin.ts",
   "@elizaos/plugin-contacts": "plugins/plugin-contacts/src/plugin.ts",
   "@elizaos/plugin-native-settings": null,
   "@elizaos/plugin-facewear": "plugins/plugin-facewear/src/index.ts",
@@ -177,12 +164,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
 };
 
 const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
-  {
-    manifestPath: "plugins/plugin-companion/src/plugin.ts",
-    id: "companion",
-    viewType: "xr",
-    path: "/companion",
-  },
   {
     manifestPath: "plugins/plugin-contacts/src/plugin.ts",
     id: "contacts",

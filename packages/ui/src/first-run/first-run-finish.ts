@@ -37,7 +37,6 @@ import {
   savePersistedActiveServer,
 } from "../state";
 import type { ActionBanner } from "../state/action-banner";
-import type { CompleteFirstRunOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import {
@@ -82,10 +81,7 @@ export interface FirstRunFinishPorts {
   setTab: (tab: string) => void;
   switchAgentProfile: (profileId: string) => void;
   /** Injected client-side finalizer (flips firstRunComplete; never POSTs). */
-  completeFirstRun: (
-    landingTab?: string,
-    options?: CompleteFirstRunOptions,
-  ) => void;
+  completeFirstRun: (landingTab?: string) => void;
   /** Status text (e.g. "Starting local agent") surfaced into the chat transcript. */
   onStatus?: (text: string | null) => void;
 }
@@ -435,7 +431,7 @@ async function finishLocal(
   }
   clearPersistedFirstRunState();
   ports.onStatus?.(null);
-  ports.completeFirstRun("chat", { launchCompanionOverlay: true });
+  ports.completeFirstRun("chat");
   return { kind: "done" };
 }
 
@@ -504,7 +500,7 @@ async function finishRemote(
   await persistFirstRun(plan, ports);
   clearPersistedFirstRunState();
   ports.onStatus?.(null);
-  ports.completeFirstRun("chat", { launchCompanionOverlay: true });
+  ports.completeFirstRun("chat");
   return { kind: "done" };
 }
 
@@ -573,7 +569,7 @@ export async function bindCloudAgent(
   }
   clearPersistedFirstRunState();
   ports.onStatus?.(null);
-  ports.completeFirstRun("chat", { launchCompanionOverlay: true });
+  ports.completeFirstRun("chat");
 
   // Seamless shared→dedicated cloud-agent handoff (background). Flag OFF →
   // `selectedAgent` is the dedicated agent itself and this branch is skipped.

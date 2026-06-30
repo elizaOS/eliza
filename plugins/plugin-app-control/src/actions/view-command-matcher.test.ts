@@ -31,7 +31,6 @@ describe("matchViewCommand — explicit user examples", () => {
 		["show my files", "documents"],
 		["switch to focus mode", "focus"],
 		["open my goals", "goals"],
-		["show me my companion", "companion"],
 		// coding cockpit — wins over task-coordinator's bare "coding"
 		["open the cockpit", "cockpit"],
 		["open coding cockpit", "cockpit"],
@@ -112,8 +111,6 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"can you summarize this article",
 		"i love using this app",
 		"remind me to call mom", // a task, not a view command
-		"run the companion avatar wave emote action",
-		"make my avatar wave",
 		"how are you doing today",
 		"",
 		"   ",

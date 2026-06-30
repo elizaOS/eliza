@@ -15,7 +15,7 @@ const baseAliases = Array.isArray(baseConfig.resolve?.alias)
 // tab-switch interaction (test/documents-view.test.tsx, jsdom via per-file
 // directive). The base config supplies the @elizaos/* source aliases that
 // routes.test.ts needs; the React aliases below pin a single React copy so
-// jsdom does not mix the workspace and hoisted peers (mirrors plugin-companion).
+// jsdom does not mix the workspace and hoisted peers.
 const liveOnlyExcludes = [
   "dist/**",
   "**/node_modules/**",

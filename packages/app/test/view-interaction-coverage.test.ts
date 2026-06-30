@@ -106,18 +106,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["todos decomposed view", "/todos"],
     },
   ],
-  companion: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Drives companion chat dock, emote picker, microphone toggles, and VRM canvas drag controls.",
-      signals: [
-        "companion interactions",
-        "emote-picker",
-        "companion-vrm-canvas",
-      ],
-    },
-  ],
   contacts: [
     {
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",

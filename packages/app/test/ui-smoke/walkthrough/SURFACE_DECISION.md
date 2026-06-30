@@ -41,8 +41,7 @@ the composer, and step 14 deletes the **draft** — all overlay-native.
 - **If the journey is later extended** to edit/delete a *sent* message, that step
   must run against desktop `ChatView` (e.g. via the Electrobun harness) and the
   spec must document the surface switch — see the desktop chat specs under
-  `packages/app/test/ui-smoke/` (`chat-view-memory-stability.spec.ts`,
-  `chat-viewmanager-companion-interactions.spec.ts`).
+  `packages/app/test/ui-smoke/` (`chat-view-memory-stability.spec.ts`).
 
 ## Follow-up
 

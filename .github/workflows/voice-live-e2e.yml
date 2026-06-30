@@ -423,6 +423,8 @@ jobs:
     timeout-minutes: 90
     env:
       ELIZA_VOICE_MACOS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY }}
+      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_TEST_PACKAGED_LAUNCHER_PATH }}
+      ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -446,7 +448,7 @@ jobs:
       - name: Run macOS Electrobun matrix
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix"
+          bun run voice:matrix -- --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix"
 
       - name: Upload macOS Electrobun matrix
         if: always()
@@ -463,6 +465,8 @@ jobs:
     timeout-minutes: 90
     env:
       ELIZA_VOICE_WINDOWS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY }}
+      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_TEST_PACKAGED_LAUNCHER_PATH }}
+      ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -487,7 +491,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix"
+          bun run voice:matrix -- --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix"
 
       - name: Upload Windows Electrobun matrix
         if: always()
@@ -504,6 +508,8 @@ jobs:
     timeout-minutes: 90
     env:
       ELIZA_VOICE_IOS_READY: ${{ vars.ELIZA_VOICE_IOS_READY }}
+      ELIZA_IOS_APP_ID: ${{ vars.ELIZA_IOS_APP_ID }}
+      ELIZA_VOICE_IOS_APP_ID: ${{ vars.ELIZA_VOICE_IOS_APP_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -527,7 +533,7 @@ jobs:
       - name: Run iOS matrix
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
+          bun run voice:matrix -- --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
 
       - name: Upload iOS matrix
         if: always()
@@ -544,6 +550,9 @@ jobs:
     timeout-minutes: 120
     env:
       ELIZA_VOICE_ANDROID_READY: ${{ vars.ELIZA_VOICE_ANDROID_READY }}
+      ELIZA_ANDROID_APP_ID: ${{ vars.ELIZA_ANDROID_APP_ID }}
+      ELIZA_VOICE_ANDROID_APP_ID: ${{ vars.ELIZA_VOICE_ANDROID_APP_ID }}
+      ELIZA_VOICE_STAGE_B_REPORT: ${{ vars.ELIZA_VOICE_STAGE_B_REPORT }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -570,7 +579,7 @@ jobs:
       - name: Run Android matrix
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --platform android --out "$RUNNER_TEMP/voice-android-matrix"
+          bun run voice:matrix -- --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
 
       - name: Upload Android matrix
         if: always()

@@ -2,10 +2,12 @@
 /**
  * Ensure avatar assets (VRMs, animations, backgrounds) are present in the app.
  *
- * On a fresh clone, the companion plugin's public/vrms/ and animations/
- * may be empty or contain only Git LFS pointers.  This script clones the
+ * On a fresh clone, the app's public/vrms/ and public/animations/ may be
+ * empty or contain only Git LFS pointers.  This script clones the
  * elizaos/avatars repository (org-owned) into a temp directory and copies
- * the assets into eliza/plugins/plugin-companion/public/.
+ * the assets into the app public dir (apps/app/public/) — the same target
+ * the sibling process-vrms.mjs writes and the static file server serves
+ * /vrms and /animations from.
  *
  * Run automatically via the `postinstall` hook, or manually:
  *   node scripts/ensure-avatars.mjs
@@ -37,7 +39,7 @@ const cleanupHelperScript = join(
   "scripts",
   "rm-path-recursive.mjs",
 );
-const PUBLIC = join(ROOT, "eliza", "plugins", "app-companion", "public");
+const PUBLIC = join(ROOT, "apps", "app", "public");
 const VRMS_DIR = join(PUBLIC, "vrms");
 const ANIMATIONS_DIR = join(PUBLIC, "animations");
 const BUNDLED_VRM_SOURCE_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -324,7 +326,7 @@ export function runEnsureAvatars({
     const message = err instanceof Error ? err.message : String(err);
     logError(`${TAG} Failed to clone avatar assets: ${message}`);
     logError(
-      `${TAG} You can manually clone: git clone ${AVATARS_REPO} /tmp/avatars && cp -r /tmp/avatars/vrms/ packages/app/public/vrms/ && cp -r /tmp/avatars/animations/ packages/app/public/animations/`,
+      `${TAG} You can manually clone: git clone ${AVATARS_REPO} /tmp/avatars && cp -r /tmp/avatars/vrms/ apps/app/public/vrms/ && cp -r /tmp/avatars/animations/ apps/app/public/animations/`,
     );
     return { cloned: false, reason: "clone-failed", error: message };
   } finally {

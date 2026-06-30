@@ -21,6 +21,22 @@ export async function ensureTaskWorkdir(taskId: string): Promise<string> {
   return dir;
 }
 
+/**
+ * Configured workspace-root env keys, in the same precedence the spawn path
+ * (`resolveDefaultSpawnWorkdir` in task-agent-routing.ts) honors. An operator
+ * who points the runtime at a coding workspace (e.g. ELIZA_WORKSPACE_DIR or
+ * ELIZA_ACP_WORKSPACE_ROOT = /workspace) expects HTTP-spawned agents to be
+ * allowed to run THERE, not only under ~/.eliza/workspaces or process.cwd().
+ * Reading from process.env here keeps this validator runtime-handle-free.
+ */
+const WORKSPACE_ROOT_ENV_KEYS = [
+  "ELIZA_ACP_WORKSPACE_ROOT",
+  "ACPX_DEFAULT_CWD",
+  "ELIZA_WORKSPACE_DIR",
+  "ELIZA_CODING_WORKSPACE",
+  "ELIZA_CODING_DIRECTORY",
+] as const;
+
 export async function resolveAllowedWorkdir(
   rawWorkdir: string,
 ): Promise<string> {
@@ -37,11 +53,23 @@ export async function resolveAllowedWorkdir(
     () => workspaceBaseDirResolved,
   );
   const cwdReal = await realpath(cwdResolved).catch(() => cwdResolved);
-  if (
-    ![workspaceBaseDirReal, cwdReal].some((prefix) =>
-      isInside(prefix, resolvedReal),
-    )
-  ) {
+
+  // Also allow any explicitly-configured workspace root. This keeps the HTTP
+  // task-agent spawn path (which calls this validator) consistent with the
+  // chat-action spawn path, which already lands sessions under the configured
+  // root. Without this, a configured /workspace root is rejected as "not within
+  // workspace base directory or cwd" even though the operator set it.
+  const configuredRoots: string[] = [];
+  for (const key of WORKSPACE_ROOT_ENV_KEYS) {
+    const raw = process.env[key]?.trim();
+    if (!raw) continue;
+    const rootResolved = path.resolve(raw);
+    const rootReal = await realpath(rootResolved).catch(() => rootResolved);
+    configuredRoots.push(rootReal);
+  }
+
+  const allowedPrefixes = [workspaceBaseDirReal, cwdReal, ...configuredRoots];
+  if (!allowedPrefixes.some((prefix) => isInside(prefix, resolvedReal))) {
     throw new Error("workdir must be within workspace base directory or cwd");
   }
 

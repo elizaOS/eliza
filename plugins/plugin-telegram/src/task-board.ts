@@ -11,8 +11,105 @@
  * post-or-edit manager takes injected `post`/`edit` so it tests with mocks.
  */
 
-import type { IAgentRuntime, Service } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Service, UUID } from "@elizaos/core";
+import { logger, stringToUuid } from "@elizaos/core";
+
+/**
+ * Durable store for the board's message id per (chat, thread) key, so the board
+ * survives an agent restart instead of re-posting a duplicate (#8902 AC3). The
+ * default is an in-process map (lost on restart); the Telegram service wires the
+ * runtime-memory-backed store below in production.
+ */
+export interface BoardMessageStore {
+  load(key: string): Promise<number | undefined> | number | undefined;
+  save(key: string, messageId: number): Promise<void> | void;
+  forget(key: string): Promise<void> | void;
+}
+
+/** In-process board store — fast, but the board is forgotten on restart. */
+export function createInMemoryBoardStore(): BoardMessageStore {
+  const map = new Map<string, number>();
+  return {
+    load: (key) => map.get(key),
+    save: (key, messageId) => {
+      map.set(key, messageId);
+    },
+    forget: (key) => {
+      map.delete(key);
+    },
+  };
+}
+
+const BOARD_MEMORY_TABLE = "telegram_task_board";
+
+/**
+ * Runtime-memory-backed board store (#8902 AC3): persists the board message id
+ * keyed by (chat, thread) so `/tasks` after a restart edits the existing pinned
+ * board instead of posting a duplicate. Keyed by a deterministic UUID derived
+ * from the board key; upserts via getMemoryById → updateMemory/createMemory;
+ * `forget` tombstones the id (no hard-delete in the memory API) so a deleted
+ * board is re-posted. All operations are best-effort — a store failure degrades
+ * to "post a fresh board", never throws into the command path.
+ */
+export function createRuntimeMemoryBoardStore(
+  runtime: IAgentRuntime,
+): BoardMessageStore {
+  const idFor = (key: string): UUID => stringToUuid(`tg-task-board:${key}`);
+  const roomFor = (key: string): UUID =>
+    stringToUuid(`tg-task-board-room:${key}`);
+  const readId = (mem: Memory | null): number | undefined => {
+    const v = (mem?.content as { boardMessageId?: unknown } | undefined)
+      ?.boardMessageId;
+    return typeof v === "number" ? v : undefined;
+  };
+  return {
+    async load(key) {
+      try {
+        return readId(await runtime.getMemoryById(idFor(key)));
+      } catch {
+        return undefined;
+      }
+    },
+    async save(key, messageId) {
+      const id = idFor(key);
+      const content = { boardMessageId: messageId, boardKey: key } as const;
+      try {
+        const existing = await runtime.getMemoryById(id);
+        if (existing) {
+          await runtime.updateMemory({ id, content });
+          return;
+        }
+        await runtime.createMemory(
+          {
+            id,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            roomId: roomFor(key),
+            content,
+          } as Memory,
+          BOARD_MEMORY_TABLE,
+        );
+      } catch (error) {
+        logger.warn(
+          `[TelegramTaskBoard] failed to persist board id: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    },
+    async forget(key) {
+      try {
+        const id = idFor(key);
+        if (await runtime.getMemoryById(id)) {
+          // No hard-delete on the memory API — tombstone the id so load() misses.
+          await runtime.updateMemory({ id, content: { boardKey: key } });
+        }
+      } catch {
+        // best-effort
+      }
+    },
+  };
+}
 
 /** A task reduced to what a board line needs. */
 export interface TaskBoardEntry {
@@ -87,6 +184,17 @@ export interface TaskBoardDeps {
     text: string,
     threadId?: number,
   ) => Promise<void>;
+  /**
+   * Pin a freshly-posted board so it stays at the top of the chat (#8902 AC1).
+   * Best-effort and only on a NEW post (an in-place edit keeps the existing pin).
+   */
+  pin?: (
+    chatId: number | string,
+    messageId: number,
+    threadId?: number,
+  ) => Promise<void>;
+  /** Durable board-message-id store (#8902 AC3). Defaults to in-process. */
+  store?: BoardMessageStore;
 }
 
 /**
@@ -95,9 +203,11 @@ export interface TaskBoardDeps {
  * deleted) falls back to posting a fresh board so the user always gets one.
  */
 export class TelegramTaskBoard {
-  private readonly boardMsgByKey = new Map<string, number>();
+  private readonly store: BoardMessageStore;
 
-  constructor(private readonly deps: TaskBoardDeps) {}
+  constructor(private readonly deps: TaskBoardDeps) {
+    this.store = deps.store ?? createInMemoryBoardStore();
+  }
 
   private key(chatId: number | string, threadId?: number): string {
     return `${chatId}:${threadId ?? ""}`;
@@ -111,7 +221,7 @@ export class TelegramTaskBoard {
   ): Promise<number> {
     const text = composeTaskBoard(entries);
     const key = this.key(chatId, threadId);
-    const existing = this.boardMsgByKey.get(key);
+    const existing = await this.store.load(key);
     if (existing !== undefined) {
       try {
         await this.deps.edit(chatId, existing, text, threadId);
@@ -123,17 +233,29 @@ export class TelegramTaskBoard {
             error instanceof Error ? error.message : String(error)
           }`,
         );
-        this.boardMsgByKey.delete(key);
+        await this.store.forget(key);
       }
     }
     const { messageId } = await this.deps.post(chatId, text, threadId);
-    this.boardMsgByKey.set(key, messageId);
+    await this.store.save(key, messageId);
+    // Pin only a freshly-posted board (#8902 AC1) — an edit keeps the prior pin.
+    if (this.deps.pin) {
+      try {
+        await this.deps.pin(chatId, messageId, threadId);
+      } catch (error) {
+        logger.warn(
+          `[TelegramTaskBoard] pin failed (board still posted): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
     return messageId;
   }
 
   /** Forget a stored board (e.g. when a chat is reset). */
-  forget(chatId: number | string, threadId?: number): void {
-    this.boardMsgByKey.delete(this.key(chatId, threadId));
+  async forget(chatId: number | string, threadId?: number): Promise<void> {
+    await this.store.forget(this.key(chatId, threadId));
   }
 }
 
@@ -158,6 +280,11 @@ interface TaskBoardBot {
       text: string,
       extra?: { message_thread_id?: number },
     ) => Promise<{ message_id: number }>;
+    pinChatMessage: (
+      chatId: number | string,
+      messageId: number,
+      extra?: { disable_notification?: boolean },
+    ) => Promise<unknown>;
   };
 }
 
@@ -192,6 +319,16 @@ export function registerTelegramTaskBoardCommand(
     edit: async (chatId, messageId, text, threadId) => {
       await messageManager.editMessage(chatId, messageId, text, threadId);
     },
+    // Pin the freshly-posted board so it stays at the top (#8902 AC1); quiet so
+    // it doesn't ping everyone.
+    pin: async (chatId, messageId) => {
+      await bot.telegram.pinChatMessage(chatId, messageId, {
+        disable_notification: true,
+      });
+    },
+    // Persist the board message id so `/tasks` after a restart edits the pinned
+    // board instead of posting a duplicate (#8902 AC3).
+    store: createRuntimeMemoryBoardStore(runtime),
   });
   bot.command("tasks", async (ctx) => {
     const chatId = ctx.chat?.id;

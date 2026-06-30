@@ -13,7 +13,6 @@ const nodeModulesDir = path.join(repoRoot, "node_modules");
 const cleanupHelperPath = path.join(scriptDir, "rm-path-recursive.mjs");
 
 const optionalPackages = [
-  "@elizaos/plugin-companion",
   "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-documents",
   "@elizaos/plugin-personal-assistant",
@@ -30,8 +29,6 @@ const stubSource = `const optionalStub = Object.freeze({
   routes: [],
 });
 
-export const EMOTE_BY_ID = Object.freeze({});
-export const EMOTE_CATALOG = Object.freeze([]);
 export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = Object.freeze([]);
 export const appPlugin = optionalStub;
 export const defaultPlugin = optionalStub;

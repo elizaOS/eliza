@@ -30,9 +30,11 @@ export type HyperliquidFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+type HyperliquidEnv = Record<string, string | undefined>;
+
 export interface HyperliquidRouteState {
   fetchImpl?: HyperliquidFetch;
-  env?: NodeJS.ProcessEnv;
+  env?: HyperliquidEnv;
   now?: () => Date;
 }
 
@@ -291,7 +293,7 @@ export function createHyperliquidInfoClient({
   };
 }
 
-function resolveHyperliquidConfig(env: NodeJS.ProcessEnv): HyperliquidConfig {
+function resolveHyperliquidConfig(env: HyperliquidEnv): HyperliquidConfig {
   const managedVaultAddress = readFirstValidAddress(env, [
     STEWARD_EVM_ADDRESS_ENV_KEY,
     MANAGED_EVM_ADDRESS_ENV_KEY,
@@ -370,7 +372,7 @@ function resolveCredentialMode({
 }
 
 function readFirstValidAddress(
-  env: NodeJS.ProcessEnv,
+  env: HyperliquidEnv,
   keys: string[],
 ): string | null {
   for (const key of keys) {
@@ -381,7 +383,7 @@ function readFirstValidAddress(
 }
 
 function readFirstValidPrivateKey(
-  env: NodeJS.ProcessEnv,
+  env: HyperliquidEnv,
   keys: string[],
 ): string | null {
   for (const key of keys) {
@@ -392,7 +394,7 @@ function readFirstValidPrivateKey(
 }
 
 function readEnvString(
-  env: NodeJS.ProcessEnv,
+  env: HyperliquidEnv,
   key: string,
 ): string | undefined {
   const value = env[key]?.trim();

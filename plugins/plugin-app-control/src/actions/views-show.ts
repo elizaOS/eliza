@@ -187,10 +187,6 @@ const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 		viewId: "relationships",
 	},
 	{
-		re: /\b(my companion|the companion|companion view|my avatar)\b/i,
-		viewId: "companion",
-	},
-	{
 		re: /\b(my (settings|preferences)|(change|update|edit|open|go to|show|take me to) (my |the |app )?(settings|preferences|configuration)|app settings|settings (page|screen|menu)|configure (the )?app)\b/i,
 		viewId: "settings",
 	},

@@ -114,6 +114,7 @@ Extend `MobileSignalsSnapshot` or `MobileSignalsHealthSnapshot` in `src/definiti
 
 ## Conventions / gotchas
 
+- **Instrumented test (issue #9967).** The `PACKAGE_USAGE_STATS` reads (AppOps `GET_USAGE_STATS` check + `UsageStatsManager.queryUsageStats`) live in `UsageStatsReader`; the plugin delegates to it (single source) so an on-device `androidTest` can drive the real provider. The permission is special-access, so the harness grants it host-side (`appops set <pkg> android:get_usage_stats allow`) and the usage tests `Assume`-skip when absent — verified positive on an API-34 emulator (real foreground-usage history).
 - This is a **Capacitor plugin**, not an elizaOS action/provider/service plugin. There is no `Plugin` object registered with `AgentRuntime`. It is consumed by a Capacitor-enabled mobile/web app.
 - The web fallback (`src/web.ts`) always returns `status: "not-applicable"` for `checkPermissions` and `false` for health capabilities. Do not add health data to the web path.
 - `rawUsageExportAvailable` is permanently `false` in `MobileSignalsScreenTimeStatus` — this is intentional (Apple does not expose raw usage export).

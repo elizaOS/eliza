@@ -204,11 +204,97 @@ export type AgentBackupSnapshotType = "auto" | "manual" | "pre-shutdown" | "pre-
  */
 export type AgentBackupKind = "full" | "incremental";
 
+export interface AgentBackupFileEntry {
+  path: string;
+  sha256: string;
+  size: number;
+  mode?: number;
+  mtimeMs?: number;
+  bytesBase64: string;
+}
+
+export interface AgentBackupFileSet {
+  kind: "file-set";
+  rootLabel: "state-dir" | "pglite-dir";
+  rootPath?: string;
+  files: AgentBackupFileEntry[];
+  sha256: string;
+}
+
+export interface AgentBackupPostgresTable {
+  name: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+}
+
+export interface AgentBackupPostgresDump {
+  kind: "postgres-rows";
+  tables: AgentBackupPostgresTable[];
+  sha256: string;
+}
+
+export interface AgentBackupManifest {
+  schemaVersion: 1;
+  format: "elizaos.agent-backup";
+  createdAt: string;
+  agentId: string;
+  components: {
+    database: {
+      kind: "pglite-files" | "postgres-rows" | "none";
+      pglite?: AgentBackupFileSet;
+      postgres?: AgentBackupPostgresDump;
+      reason?: string;
+      sha256: string;
+    };
+    media: AgentBackupFileSet;
+    vault: AgentBackupFileSet;
+    character: {
+      runtimeCharacter: unknown;
+      configFile?: AgentBackupFileEntry;
+      sha256: string;
+    };
+    stateFiles: AgentBackupFileSet;
+  };
+  integrity: {
+    componentHashes: Record<string, string>;
+  };
+}
+
 export interface AgentBackupStateData {
   memories: Array<{ role: string; text: string; timestamp: number }>;
   config: Record<string, unknown>;
   workspaceFiles: Record<string, string>;
+  /**
+   * Real full-agent backup manifest returned by the deployed @elizaos/agent
+   * image. The legacy fields above remain for compatibility with older
+   * template images and cloud UI summaries, but this manifest is the durable
+   * restore surface: DB, media, vault, character, and remaining state-dir files.
+   */
+  manifest?: AgentBackupManifest;
 }
+
+export interface AgentBackupDeltaData {
+  filesChanged: Record<string, string>;
+  filesRemoved: string[];
+  configChanged: Record<string, unknown>;
+  configRemoved: string[];
+  memoriesBaseCount: number;
+  memoriesAppended: AgentBackupStateData["memories"];
+}
+
+export type AgentBackupPlainStateData = AgentBackupStateData | AgentBackupDeltaData;
+
+export interface EncryptedAgentBackupStateData {
+  kind: "encrypted-agent-backup-state";
+  algorithm: "kms-aes-256-gcm";
+  ciphertext: string;
+  nonce: string;
+  auth_tag: string;
+  kms_key_id: string;
+  kms_key_version: number;
+}
+
+export type AgentBackupStoredStateData = AgentBackupPlainStateData | EncryptedAgentBackupStateData;
 
 export const agentSandboxBackups = pgTable(
   "agent_sandbox_backups",
@@ -221,8 +307,10 @@ export const agentSandboxBackups = pgTable(
     /**
      * For `full` backups, `state_data` is the complete state. For
      * `incremental` backups, it is the `BackupDelta` against `parent_backup_id`.
+     * The repository encrypts both shapes at rest and decrypts them before
+     * returning an AgentSandboxBackup to callers.
      */
-    state_data: jsonb("state_data").$type<AgentBackupStateData>().notNull(),
+    state_data: jsonb("state_data").$type<AgentBackupStoredStateData>().notNull(),
     state_data_storage: text("state_data_storage").notNull().default("inline"),
     state_data_key: text("state_data_key"),
     size_bytes: bigint("size_bytes", { mode: "number" }),
@@ -242,5 +330,13 @@ export const agentSandboxBackups = pgTable(
 
 export type AgentSandbox = InferSelectModel<typeof agentSandboxes>;
 export type NewAgentSandbox = InferInsertModel<typeof agentSandboxes>;
-export type AgentSandboxBackup = InferSelectModel<typeof agentSandboxBackups>;
-export type NewAgentSandboxBackup = InferInsertModel<typeof agentSandboxBackups>;
+export type StoredAgentSandboxBackup = InferSelectModel<typeof agentSandboxBackups>;
+export type AgentSandboxBackup = Omit<StoredAgentSandboxBackup, "state_data"> & {
+  state_data: AgentBackupPlainStateData;
+};
+export type NewAgentSandboxBackup = Omit<
+  InferInsertModel<typeof agentSandboxBackups>,
+  "state_data"
+> & {
+  state_data: AgentBackupStoredStateData;
+};

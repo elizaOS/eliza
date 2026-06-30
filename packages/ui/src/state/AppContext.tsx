@@ -54,7 +54,6 @@ import {
   useChatComposerDraftPersistence,
 } from "./ChatComposerContext.hooks";
 import { ChatTurnStatusCtx } from "./ChatTurnStatusContext.hooks";
-import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext.hooks";
@@ -147,20 +146,9 @@ function AppProviderInner({
   // --- Display preferences (extracted to useDisplayPreferences) ---
   const displayPrefs = useDisplayPreferences();
   const {
-    state: {
-      uiTheme,
-      uiThemeMode,
-      companionVrmPowerMode,
-      companionAnimateWhenHidden,
-      companionHalfFramerateMode,
-      backgroundConfig,
-      canUndoBackground,
-    },
+    state: { uiTheme, uiThemeMode, backgroundConfig, canUndoBackground },
     setUiTheme,
     setUiThemeMode,
-    setCompanionVrmPowerMode,
-    setCompanionAnimateWhenHidden,
-    setCompanionHalfFramerateMode,
     setBackgroundConfig,
     undoBackgroundConfig,
   } = displayPrefs;
@@ -345,7 +333,6 @@ function AppProviderInner({
     chatSendNonceRef,
     greetingFiredRef,
     greetingInFlightConversationRef,
-    companionStaleConversationRefreshRef,
     autonomousStoreRef,
     autonomousEventsRef,
     autonomousLatestEventIdRef,
@@ -917,7 +904,6 @@ function AppProviderInner({
       activeGamePostMessagePayload,
       activeGameSession,
       gameOverlayEnabled,
-      companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
       activeTerminalSessionId,
@@ -1194,7 +1180,6 @@ function AppProviderInner({
   const chatCallbacks = useChatCallbacks({
     t,
     uiLanguage,
-    uiShellMode,
     tab,
     agentStatus,
     chatInput,
@@ -1226,7 +1211,6 @@ function AppProviderInner({
     chatSendNonceRef,
     greetingFiredRef,
     greetingInFlightConversationRef,
-    companionStaleConversationRefreshRef,
     lifecycleAction,
     beginLifecycleAction,
     finishLifecycleAction,
@@ -1409,7 +1393,6 @@ function AppProviderInner({
   // ── First-run callbacks (extracted to useFirstRunCallbacks) ──────
   const firstRunCallbacks = useFirstRunCallbacks({
     firstRun,
-    setActiveOverlayApp,
     setSetupStep,
     setFirstRunMode,
     setFirstRunActiveGuide,
@@ -1585,8 +1568,6 @@ function AppProviderInner({
         appRuns: setAppRuns,
         activeGameRunId: setActiveGameRunId,
         gameOverlayEnabled: setGameOverlayEnabled,
-        companionAppRunning: (v: boolean) =>
-          setActiveOverlayApp(v ? "@elizaos/plugin-companion" : null),
         activeOverlayApp: setActiveOverlayApp,
         activeInboxChat: setActiveInboxChat,
         activeTerminalSessionId: setActiveTerminalSessionId,
@@ -1856,29 +1837,6 @@ function AppProviderInner({
 
   // Cloud auth-rejected effect is now inside useCloudState.
 
-  const companionSceneConfig = useMemo(
-    () => ({
-      selectedVrmIndex,
-      customVrmUrl,
-      customWorldUrl,
-      uiTheme,
-      tab,
-      companionVrmPowerMode,
-      companionHalfFramerateMode,
-      companionAnimateWhenHidden,
-    }),
-    [
-      selectedVrmIndex,
-      customVrmUrl,
-      customWorldUrl,
-      uiTheme,
-      tab,
-      companionVrmPowerMode,
-      companionHalfFramerateMode,
-      companionAnimateWhenHidden,
-    ],
-  );
-
   // chatInput/chatSending/chatPendingImages live in ChatComposerContext so that
   // keystrokes don't cascade through AppContext to all subscribers.
   const composerValue = useMemo(
@@ -1971,9 +1929,6 @@ function AppProviderInner({
       uiThemeMode,
       backgroundConfig,
       canUndoBackground,
-      companionVrmPowerMode,
-      companionAnimateWhenHidden,
-      companionHalfFramerateMode,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2235,7 +2190,6 @@ function AppProviderInner({
       activeGamePostMessageAuth,
       activeGameSession,
       gameOverlayEnabled,
-      companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
       activeTerminalSessionId,
@@ -2260,9 +2214,6 @@ function AppProviderInner({
       setUiThemeMode,
       setBackgroundConfig,
       undoBackgroundConfig,
-      setCompanionVrmPowerMode,
-      setCompanionAnimateWhenHidden,
-      setCompanionHalfFramerateMode,
       handleStart,
       handleStop,
 
@@ -2390,9 +2341,6 @@ function AppProviderInner({
       uiThemeMode,
       backgroundConfig,
       canUndoBackground,
-      companionVrmPowerMode,
-      companionAnimateWhenHidden,
-      companionHalfFramerateMode,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2661,7 +2609,6 @@ function AppProviderInner({
       activeGamePostMessageAuth,
       activeGameSession,
       gameOverlayEnabled,
-      companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
       activeTerminalSessionId,
@@ -2686,9 +2633,6 @@ function AppProviderInner({
       setUiThemeMode,
       setBackgroundConfig,
       undoBackgroundConfig,
-      setCompanionVrmPowerMode,
-      setCompanionAnimateWhenHidden,
-      setCompanionHalfFramerateMode,
       handleStart,
       handleStop,
       handleRestart,
@@ -2834,23 +2778,21 @@ function AppProviderInner({
   return (
     <AppBootContext.Provider value={bootConfigValue}>
       <BrandingContext.Provider value={mergedBranding}>
-        <CompanionSceneConfigCtx.Provider value={companionSceneConfig}>
-          <PtySessionsCtx.Provider value={ptySessionsValue}>
-            <ConversationMessagesCtx.Provider value={conversationMessagesValue}>
-              <ChatTurnStatusCtx.Provider value={chatTurnStatusValue}>
-                <ChatInputRefCtx.Provider value={chatInputRef}>
-                  <ChatComposerCtx.Provider value={composerValue}>
-                    <AppContext.Provider value={value}>
-                      {children}
-                      <ConfirmDialog {...modalProps} />
-                      <PromptDialog {...promptModalProps} />
-                    </AppContext.Provider>
-                  </ChatComposerCtx.Provider>
-                </ChatInputRefCtx.Provider>
-              </ChatTurnStatusCtx.Provider>
-            </ConversationMessagesCtx.Provider>
-          </PtySessionsCtx.Provider>
-        </CompanionSceneConfigCtx.Provider>
+        <PtySessionsCtx.Provider value={ptySessionsValue}>
+          <ConversationMessagesCtx.Provider value={conversationMessagesValue}>
+            <ChatTurnStatusCtx.Provider value={chatTurnStatusValue}>
+              <ChatInputRefCtx.Provider value={chatInputRef}>
+                <ChatComposerCtx.Provider value={composerValue}>
+                  <AppContext.Provider value={value}>
+                    {children}
+                    <ConfirmDialog {...modalProps} />
+                    <PromptDialog {...promptModalProps} />
+                  </AppContext.Provider>
+                </ChatComposerCtx.Provider>
+              </ChatInputRefCtx.Provider>
+            </ChatTurnStatusCtx.Provider>
+          </ConversationMessagesCtx.Provider>
+        </PtySessionsCtx.Provider>
       </BrandingContext.Provider>
     </AppBootContext.Provider>
   );

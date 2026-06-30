@@ -90,7 +90,6 @@ function getTestFallbackValue(): AppContextValue {
       get(_target, prop) {
         if (prop === "t") return identityT;
         if (prop === "uiLanguage") return "en";
-        if (prop === "companionHalfFramerateMode") return "when_saving_power";
         if (prop === "navigation") return navigation;
         return noop;
       },

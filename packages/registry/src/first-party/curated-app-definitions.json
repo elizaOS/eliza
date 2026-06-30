@@ -1,10 +1,5 @@
 [
   {
-    "slug": "companion",
-    "canonicalName": "@elizaos/plugin-companion",
-    "aliases": []
-  },
-  {
     "slug": "contacts",
     "canonicalName": "@elizaos/plugin-contacts",
     "aliases": []

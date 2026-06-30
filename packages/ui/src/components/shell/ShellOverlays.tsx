@@ -9,7 +9,6 @@ import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useAppSelector } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import type { ActionNotice } from "../../state/types";
-import { CompanionGlobalOverlay as GlobalEmoteOverlay } from "../companion/injected";
 import { Spinner } from "../ui/spinner";
 import { BugReportModal } from "./BugReportModal";
 import { CommandPalette } from "./CommandPalette";
@@ -109,7 +108,6 @@ export function ShellOverlays({
       <BugReportModal />
       <ComputerUseApprovalOverlay />
       <ShortcutsOverlay />
-      <GlobalEmoteOverlay />
       {actionNotice && (
         <div
           className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-sm text-sm font-medium z-[10000] flex items-center gap-2.5 max-w-[min(92vw,28rem)] ${

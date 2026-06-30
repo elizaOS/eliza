@@ -4,7 +4,7 @@
  *
  * Walks the seam between the W1-A `ScheduledTask` runner and the W1-C
  * first-run flow:
- *   1. Run first-run defaults to seed gm/gn/checkin/morning-brief tasks.
+ *   1. Run first-run defaults to seed gm/gn/checkin/morning-brief/local-backup tasks.
  *   2. Confirm the cached fallback records have the expected shape.
  *   3. Wire those records into a fresh in-memory runner and confirm the
  *      runner can apply verbs against them (acknowledge, complete).
@@ -14,33 +14,6 @@
  * end-to-end without needing a database.
  */
 
-import { describe, expect, it } from "vitest";
-import {
-  FirstRunService,
-  readFallbackScheduledTasks,
-} from "../src/lifeops/first-run/service.ts";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import {
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
-} from "@elizaos/plugin-scheduling";
-import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -48,6 +21,25 @@ import type {
   ScheduledTask,
   SubjectStoreView,
 } from "@elizaos/plugin-scheduling";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  TestNoopScheduledTaskDispatcher,
+} from "@elizaos/plugin-scheduling";
+import { describe, expect, it } from "vitest";
+import {
+  FirstRunService,
+  readFallbackScheduledTasks,
+} from "../src/lifeops/first-run/service.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 
 function makeFreshRunner() {
@@ -91,7 +83,7 @@ function makeFreshRunner() {
 }
 
 describe("J2 — spine + first-run integration", () => {
-  it("first-run defaults seed four task records → spine runner can apply verbs", async () => {
+  it("first-run defaults seed task records → spine runner can apply verbs", async () => {
     const runtime = createMinimalRuntimeStub();
     const service = new FirstRunService(runtime);
 
@@ -102,17 +94,24 @@ describe("J2 — spine + first-run integration", () => {
     // Step 2: provide wake time → completes.
     const done = await service.runDefaultsPath({ wakeTime: "6:30am" });
     expect(done.status).toBe("ok");
-    expect(done.scheduledTasks.length).toBe(5);
+    expect(done.scheduledTasks.length).toBe(6);
 
     const cached = await readFallbackScheduledTasks(runtime);
-    expect(cached.length).toBe(5);
+    expect(cached.length).toBe(6);
     const slots = new Set(
       cached
         .map((t) => t.input.metadata?.slot)
         .filter((s): s is string => typeof s === "string"),
     );
     expect(slots).toEqual(
-      new Set(["gm", "gn", "checkin", "morningBrief", "weeklyReview"]),
+      new Set([
+        "gm",
+        "gn",
+        "checkin",
+        "morningBrief",
+        "weeklyReview",
+        "localBackup",
+      ]),
     );
 
     // Step 3: pipe the cached inputs into a fresh in-memory runner — this
@@ -127,27 +126,31 @@ describe("J2 — spine + first-run integration", () => {
       const t = await runner.schedule(cachedRec.input);
       scheduled.push(t);
     }
-    expect(scheduled.length).toBe(5);
+    expect(scheduled.length).toBe(6);
     expect(scheduled.every((t) => t.state.status === "scheduled")).toBe(true);
 
     // Step 4: apply lifecycle verbs across the seeded tasks.
-    const ackTask = scheduled[0]!;
+    const ackTask = scheduled.at(0);
+    if (!ackTask) throw new Error("expected an ack task");
     const acknowledged = await runner.apply(ackTask.taskId, "acknowledge");
     expect(acknowledged.state.status).toBe("acknowledged");
 
-    const completeTask = scheduled[1]!;
+    const completeTask = scheduled.at(1);
+    if (!completeTask) throw new Error("expected a complete task");
     const completed = await runner.apply(completeTask.taskId, "complete", {
       reason: "user did the thing",
     });
     expect(completed.state.status).toBe("completed");
 
-    const skipTask = scheduled[2]!;
+    const skipTask = scheduled.at(2);
+    if (!skipTask) throw new Error("expected a skip task");
     const skipped = await runner.apply(skipTask.taskId, "skip", {
       reason: "user said skip",
     });
     expect(skipped.state.status).toBe("skipped");
 
-    const snoozeTask = scheduled[3]!;
+    const snoozeTask = scheduled.at(3);
+    if (!snoozeTask) throw new Error("expected a snooze task");
     const snoozed = await runner.apply(snoozeTask.taskId, "snooze", {
       minutes: 30,
     });
@@ -164,19 +167,19 @@ describe("J2 — spine + first-run integration", () => {
     // First boot on an already-initialized runtime that never ran first-run:
     // the full default pack materializes in the spine store.
     const firstBoot = await service.seedDefaultPackOnBoot();
-    expect(firstBoot.seeded.length).toBe(5);
+    expect(firstBoot.seeded.length).toBe(6);
     const afterFirst = await runner.list();
-    expect(afterFirst.length).toBe(5);
+    expect(afterFirst.length).toBe(6);
 
     // Second boot: per-key marker short-circuits before scheduling, so the
-    // spine store still holds exactly five rows (no duplicates).
+    // spine store still holds exactly six rows (no duplicates).
     const secondBoot = await new FirstRunService(runtime, {
       runner,
     }).seedDefaultPackOnBoot();
     expect(secondBoot.seeded.length).toBe(0);
-    expect(secondBoot.skipped.length).toBe(5);
+    expect(secondBoot.skipped.length).toBe(6);
     const afterSecond = await runner.list();
-    expect(afterSecond.length).toBe(5);
+    expect(afterSecond.length).toBe(6);
   });
 
   it("first-run replay path leaves scheduled inputs idempotent under the runner", async () => {
@@ -201,7 +204,7 @@ describe("J2 — spine + first-run integration", () => {
 
     // Inputs that have an idempotencyKey should resolve to the same taskId.
     for (let i = 0; i < cached.length; i += 1) {
-      if (cached[i]!.input.idempotencyKey) {
+      if (cached[i]?.input.idempotencyKey) {
         expect(secondPass[i]).toBe(firstPass[i]);
       }
     }

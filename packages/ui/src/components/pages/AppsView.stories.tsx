@@ -33,8 +33,8 @@ export const WalletEnabled: Story = {
 export const WithFavoritesAndRecents: Story = {
   decorators: [
     mockApp({
-      favoriteApps: ["companion", "feed", "wallet"],
-      recentApps: ["feed", "companion"],
+      favoriteApps: ["feed", "wallet"],
+      recentApps: ["feed"],
     }),
   ],
 };

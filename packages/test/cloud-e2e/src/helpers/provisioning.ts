@@ -10,6 +10,13 @@ import { expect } from "@playwright/test";
 
 const CRON_SECRET = "test-cron-secret";
 
+function authHeaders(apiKey: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    "X-API-Key": apiKey,
+  };
+}
+
 export interface ProvisioningEndpoints {
   apiUrl: string;
   controlPlaneUrl?: string;
@@ -33,7 +40,7 @@ export async function createCloudAgent(
   const res = await fetch(`${endpoints.apiUrl}/api/v1/eliza/agents`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      ...authHeaders(apiKey),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -126,7 +133,7 @@ export async function startAgentProvisioning(
     `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/provision`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: authHeaders(apiKey),
     },
   );
   expect(
@@ -187,7 +194,7 @@ export async function agentLifecycleAction(
     `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/${action}`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: authHeaders(apiKey),
     },
   );
   const text = await res.text();
@@ -218,11 +225,75 @@ export async function listBackups(
 ): Promise<BackupSummary[]> {
   const res = await fetch(
     `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/backups`,
-    { headers: { Authorization: `Bearer ${apiKey}` } },
+    { headers: authHeaders(apiKey) },
   );
-  expect(res.status, `backups list returned ${res.status}`).toBe(200);
+  expect(
+    res.status,
+    `backups list returned ${res.status}: ${await res.clone().text()}`,
+  ).toBe(200);
   const body = (await res.json()) as { data?: BackupSummary[] };
   return body.data ?? [];
+}
+
+export async function createManualSnapshot(
+  endpoints: ProvisioningEndpoints,
+  apiKey: string,
+  sandboxId: string,
+): Promise<{ jobId: string; status: string }> {
+  const res = await fetch(
+    `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/snapshot`,
+    {
+      method: "POST",
+      headers: authHeaders(apiKey),
+    },
+  );
+  expect(
+    res.status,
+    `manual snapshot returned ${res.status}: ${await res.clone().text()}`,
+  ).toBe(202);
+  const body = (await res.json()) as {
+    data?: { jobId?: string; status?: string };
+  };
+  expect(body.data?.jobId, "expected snapshot job id").toBeTruthy();
+  return {
+    jobId: body.data?.jobId as string,
+    status: body.data?.status ?? "",
+  };
+}
+
+export async function restoreBackup(
+  endpoints: ProvisioningEndpoints,
+  apiKey: string,
+  sandboxId: string,
+  backupId?: string,
+): Promise<{
+  restoredFromBackupId?: string;
+  snapshotType?: string;
+  createdAt?: string;
+}> {
+  const res = await fetch(
+    `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/restore`,
+    {
+      method: "POST",
+      headers: {
+        ...authHeaders(apiKey),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(backupId ? { backupId } : {}),
+    },
+  );
+  expect(
+    res.status,
+    `restore returned ${res.status}: ${await res.clone().text()}`,
+  ).toBe(200);
+  const body = (await res.json()) as {
+    data?: {
+      restoredFromBackupId?: string;
+      snapshotType?: string;
+      createdAt?: string;
+    };
+  };
+  return body.data ?? {};
 }
 
 export async function runScheduledBackups(
@@ -258,7 +329,7 @@ export async function listActiveBillingResources(
   apiKey: string,
 ): Promise<ActiveBillingResourceSummary[]> {
   const res = await fetch(`${endpoints.apiUrl}/api/v1/billing/active`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: authHeaders(apiKey),
   });
   expect(
     res.status,
@@ -301,7 +372,7 @@ export async function sendAgentBridgeRequest(
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        ...authHeaders(apiKey),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(rpc),
@@ -324,7 +395,7 @@ export async function getSandboxState(
   const res = await fetch(
     `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}`,
     {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: authHeaders(apiKey),
     },
   );
   const text = await res.text();

@@ -226,8 +226,6 @@ This was extended into broad, **enforced** interaction coverage:
   `/documents` view path collides with the built-in `documents` tab
   (`/character/documents`) via `App.tsx` `findView`, so it stays tracked debt
   (`MAX_INTERACTION_DEBT = 1`) until that path is disambiguated.
-- `chat-viewmanager-companion-interactions.spec.ts` — view-catalog refresh,
-  companion TUI controls.
 
 **Enforcement:** `view-interaction-coverage.test.ts` now runs with
 `INTERACTION_DEBT = {}` and `MAX_INTERACTION_DEBT = 0` — every view-matrix entry

@@ -139,6 +139,7 @@ import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudPairRoute } from "./cloud-pair-route";
+import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
@@ -792,6 +793,14 @@ async function handleCompatRouteInner(
     if (await handleSecretsManagerRoute(req, res, url.pathname, method)) {
       return true;
     }
+  }
+
+  // Owner-only credential-tunnel submit: redeems a tunnel-routed secret request
+  // into the parent runtime's one-shot CredentialTunnelService (never the agent
+  // secret store). OWNER role enforces the `owner_only` actor policy.
+  if (method === "POST" && url.pathname === "/api/credential-tunnel/submit") {
+    if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
+    return handleCredentialTunnelRoute(req, res, state, method, url.pathname);
   }
 
   // `/api/cloud/compat/*` and `/api/cloud/billing/*` dispatch above this

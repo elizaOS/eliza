@@ -22,7 +22,6 @@ const VIEW_IDS = [
   "smartglasses",
   "wallet",
   "messages",
-  "companion",
   "training",
   "phone",
 ];

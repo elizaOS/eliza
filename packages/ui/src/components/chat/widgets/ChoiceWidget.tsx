@@ -150,7 +150,7 @@ export function ChoiceWidget({
         )
       ) : null}
       {selected ? (
-        <span className="text-2xs text-muted" role="status">
+        <span className="sr-only" role="status">
           Selected: {selected.label}
         </span>
       ) : null}

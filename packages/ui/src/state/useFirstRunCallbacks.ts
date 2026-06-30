@@ -39,14 +39,14 @@ import {
   resolveSetupPreviousStep,
 } from "../first-run/setup-steps";
 import type { UiLanguage } from "../i18n";
-import { APPS_ENABLED, COMPANION_ENABLED, type Tab } from "../navigation";
+import type { Tab } from "../navigation";
 import {
   clearPersistedActiveServer,
   clearPersistedSetupStep,
   createPersistedActiveServer,
   savePersistedActiveServer,
 } from "./internal";
-import type { AppState, CompleteFirstRunOptions, SetupStep } from "./types";
+import type { AppState, SetupStep } from "./types";
 import type { FirstRunStateHook } from "./useFirstRunState";
 
 // ── Helpers copied from AppContext (module-level, no React deps) ──────────
@@ -68,24 +68,6 @@ function isPrivateNetworkHost(host: string): boolean {
     return true;
   }
   return false;
-}
-
-function replaceNavigationPathForCompanionLaunch(): void {
-  if (typeof window === "undefined") return;
-  const path = "/apps/companion";
-  try {
-    if (window.location.protocol === "file:") {
-      window.location.hash = path;
-    } else {
-      window.history.replaceState(
-        null,
-        "",
-        `${path}${window.location.search}${window.location.hash}`,
-      );
-    }
-  } catch {
-    /* ignore — sandboxed iframe */
-  }
 }
 
 function normalizeRemoteApiBaseInput(rawValue: string): string {
@@ -118,8 +100,6 @@ function normalizeRemoteApiBaseInput(rawValue: string): string {
 export interface FirstRunCallbacksDeps {
   /** Full result of useFirstRunState — state + all dispatch helpers. */
   firstRun: FirstRunStateHook;
-
-  setActiveOverlayApp: (appName: string | null) => void;
 
   /**
    * Compat setter functions that already wrap firstRun.setField / dispatch.
@@ -173,7 +153,6 @@ export interface FirstRunCallbacksDeps {
 export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
   const {
     firstRun,
-    setActiveOverlayApp,
     setSetupStep,
     setFirstRunMode: _setFirstRunMode,
     setFirstRunActiveGuide,
@@ -219,10 +198,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
   // ── completeFirstRun ────────────────────────────────────────────
 
   const completeFirstRun = useCallback(
-    (
-      landingTab: Tab = defaultLandingTab,
-      options?: CompleteFirstRunOptions,
-    ) => {
+    (landingTab: Tab = defaultLandingTab) => {
       clearPersistedSetupStep();
       firstRunCompletionCommittedRef.current = true;
       _setFirstRunMode("basic");
@@ -237,17 +213,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
       setFirstRunComplete(true);
       coordinatorFirstRunCompleteRef.current?.();
       initialTabSetRef.current = true;
-      const launchCompanionOverlay =
-        options?.launchCompanionOverlay === true &&
-        COMPANION_ENABLED &&
-        APPS_ENABLED;
-      if (launchCompanionOverlay && landingTab !== "chat") {
-        setActiveOverlayApp("@elizaos/plugin-companion");
-        replaceNavigationPathForCompanionLaunch();
-        setTab("apps");
-      } else {
-        setTab(landingTab);
-      }
+      setTab(landingTab);
       void loadCharacter();
     },
     [
@@ -258,7 +224,6 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
       setFirstRunDetectedProviders,
       _setFirstRunMode,
       setPostFirstRunChecklistDismissed,
-      setActiveOverlayApp,
       setTab,
       defaultLandingTab,
       loadCharacter,
