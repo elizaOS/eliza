@@ -193,9 +193,8 @@ function readAttachmentId(params: Record<string, unknown>): string | null {
 	return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function readAttachmentActionKind(
+export function readAttachmentActionKind(
 	params: Record<string, unknown>,
-	message: Memory,
 ): AttachmentAction {
 	const raw = params.action ?? params.subaction ?? params.op;
 	if (typeof raw === "string") {
@@ -207,11 +206,10 @@ function readAttachmentActionKind(
 			return normalized as AttachmentAction;
 		}
 	}
-	const text =
-		typeof message.content.text === "string" ? message.content.text : "";
-	return /\bsave\b[\s\S]{0,60}\b(?:document|doc|note|knowledge)\b/i.test(text)
-		? "save_as_document"
-		: "read";
+	// #10471: no English NL keyword inference — the planner emits the `action`
+	// enum (declared in the param schema) for any language. Default to the
+	// non-destructive `read`; `save_as_document` is selected via the enum.
+	return "read";
 }
 
 function readStringParam(
@@ -358,7 +356,7 @@ export const readAttachmentAction: Action = {
 	) => {
 		try {
 			const params = getActionParams(_options);
-			const action = readAttachmentActionKind(params, message);
+			const action = readAttachmentActionKind(params);
 			const messageWithParams: Memory = {
 				...message,
 				content: {
