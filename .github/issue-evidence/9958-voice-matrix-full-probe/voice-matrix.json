@@ -1,7 +1,7 @@
 {
   "schema": "eliza_voice_live_matrix_v1",
   "issue": 9958,
-  "generatedAt": "2026-06-30T06:45:47.854Z",
+  "generatedAt": "2026-06-30T06:57:29.880Z",
   "mode": "probe",
   "dimensions": {
     "platform": [
@@ -324,7 +324,7 @@
       ],
       "probe": {
         "available": false,
-        "reason": "set ELIZA_VOICE_IOS_READY=1 after installing a current iOS simulator/device build with voice assets"
+        "reason": "set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets"
       },
       "cwd": ".",
       "env": {},

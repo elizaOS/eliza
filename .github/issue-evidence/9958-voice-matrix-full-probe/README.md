@@ -22,6 +22,9 @@ Manual review:
   shows the old broad workbench placeholder for openWakeWord.
 - Reviewed `index.html`; it renders the same refreshed validator commands and
   explicit missing-report reasons for openWakeWord and Stage-B.
+- Reviewed the iOS live row; without `ELIZA_VOICE_IOS_READY=1`, it now says the
+  runner must boot an iOS simulator and install the current app build with voice
+  assets before capture.
 
 Hardware-unavailable cells remain explicit skips. They are not platform
 coverage.

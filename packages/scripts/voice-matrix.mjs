@@ -472,6 +472,90 @@ function hasPackagedDesktopLauncher(platform) {
   return false;
 }
 
+function oneLine(text) {
+  return String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function readDefaultIosAppId() {
+  const fromEnv =
+    process.env.ELIZA_VOICE_IOS_APP_ID?.trim() ||
+    process.env.ELIZA_IOS_APP_ID?.trim();
+  if (fromEnv) return fromEnv;
+
+  const appConfigPath = path.join(REPO_ROOT, "packages/app/app.config.ts");
+  try {
+    const source = fs.readFileSync(appConfigPath, "utf8");
+    return source.match(/\bappId:\s*["']([^"']+)["']/)?.[1] ?? "ai.elizaos.app";
+  } catch {
+    return "ai.elizaos.app";
+  }
+}
+
+function simctl(args) {
+  return spawnSync("xcrun", ["simctl", ...args], {
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+}
+
+function bootedIosSimulator() {
+  const result = simctl(["list", "devices", "booted", "--json"]);
+  if (result.status !== 0) {
+    const detail = oneLine(result.stderr || result.stdout);
+    return {
+      device: null,
+      reason: `xcrun simctl list devices booted failed${detail ? `: ${detail}` : ""}`,
+    };
+  }
+
+  let json;
+  try {
+    json = JSON.parse(result.stdout || "{}");
+  } catch (error) {
+    return {
+      device: null,
+      reason: `xcrun simctl list devices booted returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  for (const [runtime, devices] of Object.entries(json.devices ?? {})) {
+    if (!String(runtime).toLowerCase().includes("ios")) continue;
+    for (const device of Array.isArray(devices) ? devices : []) {
+      if (device?.state === "Booted" && device?.udid) {
+        return {
+          device: {
+            udid: device.udid,
+            name: device.name ?? device.udid,
+            runtime,
+          },
+          reason: null,
+        };
+      }
+    }
+  }
+
+  return {
+    device: null,
+    reason:
+      "ELIZA_VOICE_IOS_READY=1 but no booted iOS simulator is available; boot a simulator and install the current app before capture",
+  };
+}
+
+function installedIosAppContainer(udid, appId) {
+  const result = simctl(["get_app_container", udid, appId, "data"]);
+  const containerPath = oneLine(result.stdout);
+  if (result.status === 0 && containerPath) {
+    return { path: containerPath, reason: null };
+  }
+  const detail = oneLine(result.stderr || result.stdout);
+  return {
+    path: null,
+    reason: `ELIZA_VOICE_IOS_READY=1 but ${appId} is not installed on booted simulator ${udid}; build/redeploy the current iOS app before capture${detail ? ` (${detail})` : ""}`,
+  };
+}
+
 function runCapture(command, cwd, extraEnv = {}, context = {}) {
   const startedAt = new Date().toISOString();
   const result = spawnSync(command[0], command.slice(1), {
@@ -622,10 +706,24 @@ function probeCell(cell) {
         return {
           available: false,
           reason:
-            "set ELIZA_VOICE_IOS_READY=1 after installing a current iOS simulator/device build with voice assets",
+            "set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets",
         };
       }
-      return { available: true, reason: "iOS voice capture runner enabled" };
+      {
+        const booted = bootedIosSimulator();
+        if (!booted.device) {
+          return { available: false, reason: booted.reason };
+        }
+        const appId = readDefaultIosAppId();
+        const container = installedIosAppContainer(booted.device.udid, appId);
+        if (!container.path) {
+          return { available: false, reason: container.reason };
+        }
+        return {
+          available: true,
+          reason: `iOS voice capture runner enabled for ${appId} on ${booted.device.name} (${booted.device.udid})`,
+        };
+      }
     case "swiftPackage":
       if (process.platform !== "darwin")
         return {
