@@ -2500,6 +2500,13 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "limit": 2,
             "seeds": 1,
         },
+        "recall_bench": {
+            "tier": "smoke",
+        },
+        "trajectory_replay": {
+            "traj_set": str((benchmarks_root / "eliza-adapter" / "fixtures" / "replay").resolve()),
+            "baseline": "fixture-baseline",
+        },
     }
     registry_dir_map = {
         "context_bench": "context-bench",
@@ -2513,6 +2520,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "lifeops_bench": "lifeops-bench",
         "voicebench_quality": "voicebench-quality",
         "vision_language": "vision-language",
+        "recall_bench": "recall-bench",
+        "trajectory_replay": "standard",
         "mmlu": "standard",
         "humaneval": "standard",
         "gsm8k": "standard",

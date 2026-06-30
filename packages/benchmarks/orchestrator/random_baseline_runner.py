@@ -126,6 +126,27 @@ def _realm_payload(score: float) -> dict[str, Any]:
     }
 
 
+def _recall_bench_payload(score: float) -> dict[str, Any]:
+    return {
+        "benchmark": "recall-bench",
+        "tier": "synthetic-calibration",
+        "corpus": {
+            "documents": 2,
+            "facts": 2,
+            "queries": 2,
+        },
+        "metrics": {
+            "overall_recall_at_5": score,
+            "overall_ndcg_at_5": score,
+            "overall_p95_latency_ms": 1.0,
+        },
+        "failOpen": {
+            "recallDrop": score,
+            "observable": True,
+        },
+    }
+
+
 def _scambench_payload(score: float) -> dict[str, Any]:
     return {
         "metrics": {
@@ -690,6 +711,7 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "orchestrator_lifecycle": ("orchestrator-lifecycle-results.json", lambda score: {"metrics": {"overall_score": score, "scenario_pass_rate": score, "clarification_success_rate": score, "interruption_handling_rate": score}}),
     "osworld": ("osworld-results.json", _osworld_payload),
     "personality_bench": ("report.json", _personality_payload),
+    "recall_bench": ("recall-bench-results.json", _recall_bench_payload),
     "rlm_bench": ("rlm-results.json", _rlm_payload),
     "social_alpha": ("benchmark_results_random_v1.json", _social_alpha_payload),
     "solana": ("eliza_random_v1_metrics.json", _solana_payload),
@@ -698,6 +720,7 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "swe_bench_orchestrated": ("swe-bench-orchestrated-results.json", _swe_bench_orchestrated_payload),
     "tau_bench": ("tau-bench-results.json", _tau_bench_payload),
     "terminal_bench": ("terminal-bench-results.json", _terminal_bench_payload),
+    "trajectory_replay": ("trajectory-replay-results.json", _metrics_score_payload),
     "trust": ("trust-results.json", _trust_payload),
     "vending_bench": ("vending-bench-results.json", _vending_payload),
     "visualwebbench": ("visualwebbench-results.json", _visualwebbench_payload),
