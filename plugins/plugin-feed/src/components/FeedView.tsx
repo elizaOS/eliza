@@ -1,16 +1,16 @@
 /**
- * FeedView — the single GUI/XR data wrapper for the Feed operator surface.
+ * FeedView — the GUI/XR wrapper the view bundle exports (`componentExport:
+ * "FeedView"`).
  *
- * It owns the live Feed data (the ten `getFeed*` loaders, the 12s refresh poll,
- * the pause/resume autonomy control, and the suggested-prompt send) and renders
- * the one presentational {@link FeedSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The TUI
- * surface renders the same `FeedSpatialView` through the terminal registry (see
- * `register-terminal-view.tsx`).
- *
- * This is the single GUI/XR surface the view bundle exports (`componentExport:
- * "FeedView"`); there is no separate operator-surface component.
+ * On the **GUI** surface it embeds the full Feed web app, authenticated as the
+ * agent: the run's `viewer` carries the `FEED_AUTH` session token, and
+ * {@link EmbeddedAppViewer} performs the `*_READY` → auth postMessage handshake
+ * so the real product UI loads signed in. A cross-origin iframe cannot render in
+ * XR or a terminal, so the **XR** surface (and the TUI surface, via
+ * `register-terminal-view.tsx`) instead render the operator dashboard: this
+ * wrapper owns the live Feed data (the ten `getFeed*` loaders, the 12s refresh
+ * poll, the pause/resume autonomy control, the suggested-prompt send) feeding the
+ * one presentational {@link FeedSpatialView}.
  */
 
 import {
@@ -24,8 +24,10 @@ import {
   selectLatestRunForApp,
 } from "@elizaos/app-core/ui-compat";
 
+import { EmbeddedAppViewer } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
+import { getActiveViewModality } from "@elizaos/ui/platform";
 import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -64,6 +66,15 @@ export function FeedView() {
     () => selectLatestRunForApp(FEED_APP_NAME, appRuns),
     [appRuns],
   );
+
+  // On the GUI surface, open the full Feed web app authenticated as the agent
+  // (the run's viewer carries the FEED_AUTH session token) instead of the
+  // operator dashboard. A cross-origin iframe can't render in XR/TUI, so those
+  // modalities keep the spatial operator dashboard below.
+  const viewerUrl = run?.viewer?.url ?? "";
+  const viewerAuthMessage = run?.viewer?.authMessage ?? null;
+  const showEmbeddedApp =
+    getActiveViewModality() === "gui" && viewerUrl.length > 0;
 
   const [agentStatus, setAgentStatus] = useState<FeedAgentStatus | null>(null);
   const [portfolio, setPortfolio] = useState<FeedSnapshot["portfolio"]>(null);
@@ -173,16 +184,19 @@ export function FeedView() {
   }, [run]);
 
   useEffect(() => {
+    // The embedded full app loads its own data — only the operator dashboard
+    // (XR/TUI) needs these loaders.
+    if (showEmbeddedApp) return;
     void loadDashboard();
-  }, [loadDashboard]);
+  }, [loadDashboard, showEmbeddedApp]);
 
   useEffect(() => {
-    if (!run) return;
+    if (showEmbeddedApp || !run) return;
     const timer = window.setInterval(() => {
       void loadDashboard();
     }, 12_000);
     return () => window.clearInterval(timer);
-  }, [loadDashboard, run]);
+  }, [loadDashboard, run, showEmbeddedApp]);
 
   const toggleAutonomy = useCallback(async () => {
     if (!run) return;
@@ -292,6 +306,19 @@ export function FeedView() {
         : "inactive"
       : "disabled",
   });
+
+  // GUI: render the full Feed web app, authenticated as the agent via the
+  // viewer's FEED_AUTH postMessage handshake.
+  if (showEmbeddedApp) {
+    return (
+      <EmbeddedAppViewer
+        viewerUrl={viewerUrl}
+        authMessage={viewerAuthMessage}
+        sandbox={run?.viewer?.sandbox ?? undefined}
+        title="Feed"
+      />
+    );
+  }
 
   return (
     <div
