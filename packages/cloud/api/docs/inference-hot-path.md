@@ -293,3 +293,80 @@ The money-safety invariants (no double-charge under an atomic backend, no
 free-forever on cache failure, fail-safe `+Inf` threshold, uncollected→slow-path)
 are unit-tested; the residuals above are the explicit boundary of what unit tests
 on the in-memory adapter can prove about the production KV backend.
+
+---
+
+## Tier 3 — DB-backed pending-charge + settlement ledger (IMPLEMENTED — flag-gated, default OFF)
+
+The "documented next step" above is now built: a real database table
+(`inference_pending_charges`, migration `0153`) that is the durable, exactly-once
+replacement for the KV pending-charge backstop. It is selected by
+`INFERENCE_BILLING_LEDGER="db"` (default `kv` = the KV backstop). Code lives in
+`@/lib/services/inference-billing-ledger` (`admitInferenceChargeViaLedger`,
+`createLedgerDebitSettler`, `sweepStalePendingInferenceChargesDb`,
+`resolveInferenceBillingLedger`); the chat + embeddings routes and the
+`sweep-inference-charges` cron dispatch to it when the flag is `db`.
+
+It closes the three KV-inherent residuals point-for-point:
+
+1. **Hard concurrent-overdraw bound (was BILL-2 redux).** Admission is ONE atomic
+   statement that locks the org row (`SELECT … FOR UPDATE`), subtracts the SUM of
+   the org's still-`pending` charges from its balance, and inserts a `pending`
+   row ONLY when `balance > threshold` AND `balance − in-flight ≥ estimate`.
+   Concurrent admissions for one org serialize on the row lock, so a burst can
+   never *collectively* overdraw — the gate is the admission, not a stale hint.
+   (Residual window: between an inline settle's atomic claim and its `deductCredits`
+   commit a charge is briefly out of `pending_sum` but not yet in the balance, a
+   sub-RTT transient over-admit that the `CHECK(>=0)` still backstops — strictly
+   tighter than the KV soft bound.)
+2. **True exactly-once settlement.** `request_id` is the table PK and the settle
+   is an atomic `UPDATE … SET status='settled' WHERE status='pending' RETURNING`.
+   Only one of {inline settler, cron sweep} can ever transition a row, so they can
+   never both charge a request — removing the KV double-bill possibility. The
+   actual debit then funnels through the single audited `creditsService.deductCredits`
+   (atomic balance guard + all notifications), so there is one credit-mutation
+   codepath. This also means the cron needs **no** KV-style single-flight lock —
+   overlapping sweeps are safe.
+3. **Age-ordered sweep drain.** The sweep selects `status='pending' AND
+   enqueued_at < cutoff ORDER BY enqueued_at ASC LIMIT batch` over a partial index
+   and loops batches until the backlog is empty (bounded by `maxBatches`, which is
+   `log`-surfaced when hit) — no silent `maxKeys` cap.
+
+`uncollected` becomes a first-class row state (auditable) instead of log-only: a
+debit the DB refuses (would overdraw) marks the row `uncollected`, drops the
+org-balance hint, and the org's NEXT admission reads the now-depleted balance and
+self-heals onto the synchronous-reserve path (402). Bounded over-spend, never
+free-forever.
+
+What the ledger does NOT change: pricing lookups remain per-request, and the
+admission still reads a balance (now under a lock, fresh) — the Tier-2 caveat that
+"zero DB reads pre-forward" holds for AUTH+MODERATION (Tier 1) and not for the
+billing gate still stands. The win is correctness-at-scale, not a further latency
+cut; the admission's single locked round-trip is comparable to the synchronous
+reserve it replaces while additionally bounding overdraw.
+
+### Rollout (Tier 3)
+
+Same soak-then-cutover discipline as Tier 1/2, and orthogonal to them
+(`INFERENCE_BILLING_LEDGER` is independent of `INFERENCE_HOT_PATH_CACHE` and
+`INFERENCE_OPTIMISTIC_BILLING`; the ledger still requires
+`INFERENCE_OPTIMISTIC_BILLING="true"`). Default `""`/`kv` everywhere = no behavior
+change. To cut over: ship migration `0153`, flip `INFERENCE_BILLING_LEDGER="db"`
+in staging, drive load, watch `[InferenceLedger] uncollected inference charge`
+and the sweep stats (`settled`/`skipped`/`capHit`), then flip prod. Revert =
+flag back to `""` (the KV backstop is unchanged and still wired). The KV backstop
+stays as the rollback target during the migration; once the DB ledger is soaked
+in prod, the KV pending-charge path can be retired.
+
+### Tests (Tier 3)
+
+`packages/cloud/shared/src/lib/services/__tests__/inference-billing-ledger.test.ts`
+drives the REAL SQL against in-process PGlite (the same honest pattern as
+`credits-deduct-guard.test.ts`): admission (affordable / threshold gate / **hard
+overdraw bound** via seeded in-flight rows / unknown org / `+Inf` threshold /
+idempotent re-delivery / a concurrent burst that cannot collectively overdraw);
+settle (actual debit / **exactly-once** double-settle no-op / `settle(0)` /
+**uncollected** under `CHECK(>=0)`); sweep (stale-vs-young / inline-then-sweep no
+double-charge / age-ordered multi-batch drain). The migration file itself is
+applied to PGlite and asserted (`inference-pending-charges-migration.test.ts`):
+table + PK + both partial indexes exist, and re-applying is idempotent.
