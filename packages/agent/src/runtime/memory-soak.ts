@@ -115,10 +115,26 @@ export async function runSoak(options: SoakOptions): Promise<SoakResult> {
     });
   }
 
+  // A zero-iteration soak yields no samples — there is no baseline/growth to
+  // report, so return an explicit all-zero result rather than coalescing
+  // missing data to 0 downstream. Narrowing first/last to a defined sample lets
+  // the slope math run on a guaranteed-non-empty series.
+  const first = samples[0];
+  const last = samples.at(-1);
+  if (!first || !last) {
+    return {
+      samples,
+      baselineHeapMb: 0,
+      peakHeapMb: 0,
+      growthMb: 0,
+      slopeMbPerIter: 0,
+    };
+  }
+
   const heapSeries = samples.map((s) => s.heapUsedMb);
-  const baselineHeapMb = heapSeries[0] ?? 0;
-  const peakHeapMb = heapSeries.length ? Math.max(...heapSeries) : 0;
-  const growthMb = (heapSeries.at(-1) ?? 0) - baselineHeapMb;
+  const baselineHeapMb = first.heapUsedMb;
+  const peakHeapMb = Math.max(...heapSeries);
+  const growthMb = last.heapUsedMb - baselineHeapMb;
 
   return {
     samples,
