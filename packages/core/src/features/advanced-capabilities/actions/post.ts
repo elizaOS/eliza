@@ -654,16 +654,6 @@ export const postAction: Action = {
 		refreshDescriptions(postAction, runtime);
 		return hasActionContext(message, state, {
 			contexts: POST_CONTEXTS,
-			keywords: [
-				"post",
-				"tweet",
-				"cast",
-				"publish",
-				"feed",
-				"timeline",
-				"search posts",
-				"read feed",
-			],
 		});
 	},
 	handler: async (

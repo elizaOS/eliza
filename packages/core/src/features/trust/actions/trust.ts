@@ -261,24 +261,6 @@ export const trustAction: Action = {
 		if (!hasTrustEngine(runtime)) return false;
 		return hasActionContext(message, state, {
 			contexts: ["admin", "settings", "agent_internal"],
-			keywords: [
-				"trust score",
-				"trust profile",
-				"trust level",
-				"trust rating",
-				"record trust",
-				"trust interaction",
-				"trust evidence",
-				"request elevation",
-				"elevate permissions",
-				"temporary access",
-				"grant me access",
-				"update role",
-				"change role",
-				"assign role",
-				"make admin",
-				"set permissions",
-			],
 		});
 	},
 

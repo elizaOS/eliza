@@ -182,25 +182,6 @@ export const characterAction: Action = {
 		}
 		return hasActionContext(message, state, {
 			contexts: ["settings", "agent_internal", "media", "admin"],
-			keywords: [
-				"personality",
-				"character",
-				"tone",
-				"style",
-				"behavior",
-				"voice",
-				"bio",
-				"name",
-				"system prompt",
-				"rename",
-				"persist character",
-				"save character",
-				"respond in",
-				"be more",
-				"be less",
-				"change how you",
-				"update yourself",
-			],
 		});
 	},
 

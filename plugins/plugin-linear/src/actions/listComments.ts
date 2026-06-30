@@ -55,10 +55,7 @@ export const listCommentsAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
-    validateLinearActionIntent(runtime, message, state, {
-      keywords: ["list", "comments", "linear", "issue"],
-      regexAlternation: "list|comments|linear|issue",
-    }),
+    validateLinearActionIntent(runtime, message, state),
 
   async handler(
     runtime: IAgentRuntime,

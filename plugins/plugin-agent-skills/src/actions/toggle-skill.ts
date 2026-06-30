@@ -74,18 +74,7 @@ export const toggleSkillAction = {
 			schema: { type: "boolean" },
 		},
 	],
-	validate: createAgentSkillsActionValidator({
-		keywords: [
-			"enable",
-			"disable",
-			"toggle",
-			"skill",
-			"activate",
-			"deactivate",
-		],
-		regex:
-			/\b(?:enable|disable|toggle|activate|deactivate|turn\s+on|turn\s+off)\b.*\bskill\b|\bskill\b.*\b(?:enable|disable|toggle|activate|deactivate)\b/i,
-	}),
+	validate: createAgentSkillsActionValidator(),
 
 	handler: async (
 		runtime: IAgentRuntime,

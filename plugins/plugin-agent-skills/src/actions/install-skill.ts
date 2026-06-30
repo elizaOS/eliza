@@ -51,11 +51,7 @@ export const installSkillAction = {
 			schema: { type: "string" },
 		},
 	],
-	validate: createAgentSkillsActionValidator({
-		keywords: ["install", "download", "add", "get", "skill"],
-		regex:
-			/\b(?:install|download|add|get)\b.*\bskill\b|\bskill\b.*\b(?:install|download|add)\b/i,
-	}),
+	validate: createAgentSkillsActionValidator(),
 
 	handler: async (
 		runtime: IAgentRuntime,

@@ -103,10 +103,7 @@ export const searchIssuesAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
-    validateLinearActionIntent(runtime, message, state, {
-      keywords: ["search", "linear", "issues"],
-      regexAlternation: "search|linear|issues",
-    }),
+    validateLinearActionIntent(runtime, message, state),
 
   async handler(
     runtime: IAgentRuntime,
