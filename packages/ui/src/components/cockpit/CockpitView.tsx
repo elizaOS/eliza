@@ -39,8 +39,8 @@ export interface CockpitViewProps {
  *   - the **new-session** form (mode picker → create-task `providerPolicy`).
  *
  * The driver bubble (host chat) manages these rooms; tapping a room drills into
- * its focused session pane (transcript + `TaskInspector` controls + a real-CLI
- * terminal toggle + Fast/Smart tier toggle), and the bubble then drives THAT
+ * its focused session pane (transcript + `TaskInspector` controls + a terminal-
+ * output watch toggle + Fast/Smart tier toggle), and the bubble then drives THAT
  * task — all wired by the container (`CockpitRoute`). The "My Runtimes" switcher
  * lives in Settings.
  */
