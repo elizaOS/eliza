@@ -10,6 +10,11 @@ export {
   createWorkspaceBenchmarkExecutor,
 } from "./adapter.js";
 export {
+  createChromiumBenchmarkExecutor,
+  launchChromiumBenchmarkBrowser,
+  resolveChromiumExecutablePath,
+} from "./chromium-executor.js";
+export {
   type BenchmarkPolicy,
   type BenchmarkPolicyInput,
   NoopPolicy,
