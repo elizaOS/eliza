@@ -38,15 +38,19 @@ describe("emitCredentialPrompt (#8907)", () => {
     );
   });
 
-  it("falls back to a reply instruction when no app URL is configured", async () => {
+  it("posts only the announcement (no reply-with-secret instruction) when no app URL is configured", async () => {
     const { runtime, send } = makeRuntime();
-    await emitCredentialPrompt({
+    const ok = await emitCredentialPrompt({
       runtime: runtime as never,
       metadata: { roomId: ROOM, source: "telegram" },
       credentialKeys: ["KEY"],
     });
+    expect(ok).toBe(true);
     const [, content] = send.mock.calls[0];
-    expect(content.text).toContain("Reply here");
+    expect(content.text).toContain("KEY");
+    // Secrets never transit chat text: the dead "Reply here" fallback that
+    // instructed pasting a secret nothing captures is gone.
+    expect(content.text).not.toContain("Reply here");
   });
 
   it("is a no-op when the session has no origin room", async () => {
