@@ -56,6 +56,18 @@ const evidenceDir = join(
 );
 const CANARY = process.argv.includes("--canary");
 
+function ensureSharedI18nData() {
+  const ensureScript = join(
+    repoRoot,
+    "packages",
+    "app-core",
+    "scripts",
+    "ensure-shared-i18n-data.mjs",
+  );
+  if (!existsSync(ensureScript)) return;
+  execFileSync(process.execPath, [ensureScript], { stdio: "inherit" });
+}
+
 let failures = 0;
 function assert(cond, msg) {
   console.log(`${cond ? "✓" : "✗"} ${msg}`);
@@ -124,6 +136,7 @@ const stubNodeBuiltins = {
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 await mkdir(evidenceDir, { recursive: true });
+ensureSharedI18nData();
 
 const result = await build({
   entryPoints: [join(here, "chat-sheet-fixture.tsx")],
