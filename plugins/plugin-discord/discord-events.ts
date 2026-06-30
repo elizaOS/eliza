@@ -100,7 +100,6 @@ export interface DiscordServiceInternals {
  */
 interface EventListenerConfig {
 	listenCids: string[];
-	debounceMs: number;
 	channelDebounceMs: number;
 	responseCooldownMs: number;
 	recentContextTtlMs: number;
@@ -126,17 +125,6 @@ function parseEventListenerConfig(
 						.map((s) => s.trim())
 						.filter((s) => s.length > 0)
 				: [];
-
-	const debounceMsSetting = service.runtime.getSetting("DISCORD_DEBOUNCE_MS") as
-		| string
-		| number
-		| undefined;
-	const debounceMs =
-		typeof debounceMsSetting === "number"
-			? debounceMsSetting
-			: typeof debounceMsSetting === "string" && debounceMsSetting.trim()
-				? Number.parseInt(debounceMsSetting, 10) || 400
-				: 400;
 
 	const channelDebounceMsSetting = service.runtime.getSetting(
 		"DISCORD_CHANNEL_DEBOUNCE_MS",
@@ -179,7 +167,6 @@ function parseEventListenerConfig(
 
 	return {
 		listenCids,
-		debounceMs,
 		channelDebounceMs,
 		responseCooldownMs,
 		recentContextTtlMs,
