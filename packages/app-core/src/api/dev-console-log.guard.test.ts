@@ -25,20 +25,36 @@ describe("isAllowedDevConsoleLogPath", () => {
   });
 
   it("allows the dev-console log under the state dir (incl. nested)", () => {
-    expect(isAllowedDevConsoleLogPath(join(stateDir, "desktop-dev-console.log"))).toBe(true);
-    expect(isAllowedDevConsoleLogPath(join(stateDir, "logs", "desktop-dev-console.log"))).toBe(true);
+    expect(
+      isAllowedDevConsoleLogPath(join(stateDir, "desktop-dev-console.log")),
+    ).toBe(true);
+    expect(
+      isAllowedDevConsoleLogPath(
+        join(stateDir, "logs", "desktop-dev-console.log"),
+      ),
+    ).toBe(true);
   });
 
   it("rejects a wrong basename", () => {
-    expect(isAllowedDevConsoleLogPath(join(stateDir, "secrets.log"))).toBe(false);
-    expect(isAllowedDevConsoleLogPath(join(stateDir, "desktop-dev-console.log.bak"))).toBe(false);
+    expect(isAllowedDevConsoleLogPath(join(stateDir, "secrets.log"))).toBe(
+      false,
+    );
+    expect(
+      isAllowedDevConsoleLogPath(join(stateDir, "desktop-dev-console.log.bak")),
+    ).toBe(false);
   });
 
   it("rejects a path outside the state dir", () => {
-    expect(isAllowedDevConsoleLogPath("/etc/desktop-dev-console.log")).toBe(false);
+    expect(isAllowedDevConsoleLogPath("/etc/desktop-dev-console.log")).toBe(
+      false,
+    );
   });
 
   it("rejects a traversal that escapes the state dir", () => {
-    expect(isAllowedDevConsoleLogPath(join(stateDir, "..", "desktop-dev-console.log"))).toBe(false);
+    expect(
+      isAllowedDevConsoleLogPath(
+        join(stateDir, "..", "desktop-dev-console.log"),
+      ),
+    ).toBe(false);
   });
 });

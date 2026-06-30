@@ -9,12 +9,7 @@ import { isSafeCommand } from "../utils/pathUtils";
  */
 describe("isSafeCommand", () => {
   it("allows ordinary commands (including a single pipe)", () => {
-    for (const c of [
-      "ls -la",
-      "echo hello world",
-      "git status",
-      "cat file.txt | grep needle",
-    ]) {
+    for (const c of ["ls -la", "echo hello world", "git status", "cat file.txt | grep needle"]) {
       expect(isSafeCommand(c)).toBe(true);
     }
   });

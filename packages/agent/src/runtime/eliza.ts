@@ -1304,6 +1304,13 @@ export function ensureProvisionedCloudContainerConfig(
     );
   }
 
+  const finalTopology = resolveElizaCloudTopology(
+    config as Record<string, unknown>,
+  );
+  logger.info(
+    `[eliza][cloud-topology] provisioned=true changed=${changed} -> runtime=${finalTopology.runtime} inference=${finalTopology.services.inference}`,
+  );
+
   return changed;
 }
 

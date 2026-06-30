@@ -102,7 +102,9 @@ describe("normalizeOptionalNonNegativeInteger", () => {
     expect(normalizeOptionalNonNegativeInteger("3", "f")).toBe(3);
   });
   it("rejects a negative value", () => {
-    expect(() => normalizeOptionalNonNegativeInteger(-1, "f")).toThrow(/zero or greater/);
+    expect(() => normalizeOptionalNonNegativeInteger(-1, "f")).toThrow(
+      /zero or greater/,
+    );
   });
 });
 
