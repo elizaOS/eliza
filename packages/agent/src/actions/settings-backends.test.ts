@@ -57,4 +57,26 @@ describe("readBackendRouting", () => {
       readBackendRouting({ env: { ELIZA_BACKEND_ROUTING: "{not json" } }),
     ).toEqual({});
   });
+
+  it("carries the operator allow lock-list", () => {
+    const routing = readBackendRouting({
+      env: {
+        ELIZA_BACKEND_ROUTING: JSON.stringify({
+          coding: { default: "claude", allow: ["claude", "codex"] },
+        }),
+      },
+    });
+    expect(routing.allow).toEqual(["claude", "codex"]);
+  });
+
+  it("drops non-string entries from allow", () => {
+    const routing = readBackendRouting({
+      env: {
+        ELIZA_BACKEND_ROUTING: JSON.stringify({
+          coding: { allow: ["claude", 42, null, "codex"] },
+        }),
+      },
+    });
+    expect(routing.allow).toEqual(["claude", "codex"]);
+  });
 });

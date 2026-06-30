@@ -549,6 +549,8 @@ async function handleSet(
 interface CodingAxisRouting {
   default?: string;
   byTag?: Record<string, string>;
+  /** Operator lock-list constraining every resolved backend (orchestrator-side). */
+  allow?: string[];
 }
 
 export function normalizeCodingBackend(value: unknown): string | undefined {
@@ -559,6 +561,28 @@ export function normalizeCodingBackend(value: unknown): string | undefined {
   return (CODING_BACKENDS as readonly string[]).includes(resolved)
     ? resolved
     : undefined;
+}
+
+/** Parse a `{ coding: {...} }`-shaped routing object into a CodingAxisRouting. */
+function parseCodingAxisObject(parsed: unknown): CodingAxisRouting {
+  const coding =
+    isRecord(parsed) && isRecord(parsed.coding) ? parsed.coding : {};
+  const out: CodingAxisRouting = {};
+  if (typeof coding.default === "string") out.default = coding.default;
+  if (isRecord(coding.byTag)) {
+    const byTag: Record<string, string> = {};
+    for (const [k, val] of Object.entries(coding.byTag)) {
+      if (typeof val === "string") byTag[k.toLowerCase()] = val;
+    }
+    if (Object.keys(byTag).length > 0) out.byTag = byTag;
+  }
+  if (Array.isArray(coding.allow)) {
+    const allow = coding.allow.filter(
+      (v): v is string => typeof v === "string",
+    );
+    if (allow.length > 0) out.allow = allow;
+  }
+  return out;
 }
 
 export function readBackendRouting(config: {
@@ -575,23 +599,36 @@ export function readBackendRouting(config: {
   } else {
     parsed = raw;
   }
-  const coding =
-    isRecord(parsed) && isRecord(parsed.coding) ? parsed.coding : {};
-  const out: CodingAxisRouting = {};
-  if (typeof coding.default === "string") out.default = coding.default;
-  if (isRecord(coding.byTag)) {
-    const byTag: Record<string, string> = {};
-    for (const [k, val] of Object.entries(coding.byTag)) {
-      if (typeof val === "string") byTag[k.toLowerCase()] = val;
-    }
-    if (Object.keys(byTag).length > 0) out.byTag = byTag;
+  return parseCodingAxisObject(parsed);
+}
+
+/**
+ * The EFFECTIVE coding routing the orchestrator actually uses — its resolver
+ * reads `character.settings.routing.coding` first, then the
+ * `ELIZA_BACKEND_ROUTING` config-env JSON. Mirror that precedence so show/set
+ * report and mutate what truly takes effect (a character-declared policy would
+ * otherwise silently shadow a config-env write).
+ */
+function readEffectiveCodingRouting(
+  runtime: IAgentRuntime,
+  config: { env?: Record<string, unknown> },
+): { routing: CodingAxisRouting; source: "character" | "env" | "none" } {
+  const fromCharacter = parseCodingAxisObject(
+    runtime.character?.settings?.routing,
+  );
+  if (fromCharacter.default || fromCharacter.byTag || fromCharacter.allow) {
+    return { routing: fromCharacter, source: "character" };
   }
-  return out;
+  const fromEnv = readBackendRouting(config);
+  if (fromEnv.default || fromEnv.byTag || fromEnv.allow) {
+    return { routing: fromEnv, source: "env" };
+  }
+  return { routing: {}, source: "none" };
 }
 
 function handleShowBackends(runtime: IAgentRuntime): ActionResult {
   const config = loadElizaConfig() as { env?: Record<string, unknown> };
-  const coding = readBackendRouting(config);
+  const { routing: coding } = readEffectiveCodingRouting(runtime, config);
   const brain =
     (typeof runtime.getSetting === "function"
       ? (runtime.getSetting("ELIZA_BRAIN_PROVIDER") as string | null)
@@ -603,6 +640,11 @@ function handleShowBackends(runtime: IAgentRuntime): ActionResult {
     for (const [tag, backend] of Object.entries(coding.byTag)) {
       codingLines.push(`- coding when ${tag}: ${backend}`);
     }
+  }
+  if (coding.allow && coding.allow.length > 0) {
+    codingLines.push(
+      `- coding allowed (lock-list): ${coding.allow.join(", ")}`,
+    );
   }
   const text = [
     "Current backend routing:",
@@ -658,18 +700,39 @@ function handleSetBackend(
     : "";
 
   const config = loadElizaConfig() as { env?: Record<string, unknown> };
-  const coding = readBackendRouting(config);
+  // Start from the EFFECTIVE routing (character first, else env) so we mutate
+  // whatever currently wins and preserve any operator allow lock-list.
+  const { routing: coding } = readEffectiveCodingRouting(runtime, config);
   if (tag) {
     coding.byTag = { ...(coding.byTag ?? {}), [tag]: backend };
   } else {
     coding.default = backend;
   }
-  const routing = { coding };
+
+  // Persist to the config-env JSON for durability across restarts.
   config.env = {
     ...(config.env ?? {}),
-    ELIZA_BACKEND_ROUTING: JSON.stringify(routing),
+    ELIZA_BACKEND_ROUTING: JSON.stringify({ coding }),
   };
   saveElizaConfig(config as Parameters<typeof saveElizaConfig>[0]);
+
+  // Also write through to the in-memory character at the HIGHEST precedence the
+  // orchestrator reads. Without this, a character that already declares
+  // routing.coding would shadow the config-env write and the command would
+  // report success with zero effect. Mutating the live character makes the
+  // change effective on the next spawn with no restart, shadow-proof.
+  const character = runtime.character as
+    | { settings?: { routing?: { coding?: CodingAxisRouting } } }
+    | undefined;
+  if (character) {
+    character.settings ??= {};
+    const settings = character.settings as {
+      routing?: { coding?: CodingAxisRouting };
+    };
+    settings.routing ??= {};
+    settings.routing.coding = coding;
+  }
+
   const scope = tag ? `${tag} coding tasks` : "coding tasks (default)";
   return ok(
     `Routing ${scope} to \`${backend}\`. Takes effect on the next sub-agent spawn — no restart.`,
