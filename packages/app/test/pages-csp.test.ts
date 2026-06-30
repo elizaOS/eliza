@@ -20,10 +20,11 @@ describe("Pages CSP", () => {
     expect(csp.length).toBeLessThan(1900);
   });
 
-  it("allows the weather widget's coarse IP location fallback", () => {
+  it("allows weather fetches without enabling browser IP geolocation calls", () => {
     const csp = getHeaderLine("Content-Security-Policy");
 
     expect(csp).toContain("connect-src");
-    expect(csp).toContain("https://ipapi.co");
+    expect(csp).toContain("https://api.open-meteo.com");
+    expect(csp).not.toContain("https://ipapi.co");
   });
 });
