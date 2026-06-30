@@ -1,0 +1,11 @@
+Pixel 6a
+Pixel 6a
+16
+36
+3
+
+Emulator
+sdk_gphone64_x86_64
+14
+34
+3

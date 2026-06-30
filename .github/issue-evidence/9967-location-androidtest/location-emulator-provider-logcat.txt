@@ -1,0 +1,4 @@
+06-30 00:54:58.246  8857  8876 I TestRunner: started: readProviderStatus_matchesRealLocationManagerProviders(ai.eliza.plugins.location.LocationDeviceReaderInstrumentedTest)
+06-30 00:54:58.255  8857  8876 I GrantPermissionCallable: Permission: android.permission.ACCESS_FINE_LOCATION is already granted!
+06-30 00:54:58.256  8857  8876 I GrantPermissionCallable: Permission: android.permission.ACCESS_COARSE_LOCATION is already granted!
+06-30 00:54:58.263  8857  8876 I TestRunner: finished: readProviderStatus_matchesRealLocationManagerProviders(ai.eliza.plugins.location.LocationDeviceReaderInstrumentedTest)

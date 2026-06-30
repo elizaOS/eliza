@@ -1,8 +1,13 @@
 package ai.eliza.plugins.location
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationManager
+import android.os.Build
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -30,7 +35,30 @@ import java.util.concurrent.atomic.AtomicReference
  * blocking variant the on-device test drives. Requires
  * `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION`.
  */
-class LocationFixReader(context: Context) {
+class LocationFixReader(private val context: Context) {
+
+    data class ProviderStatus(
+        val gpsEnabled: Boolean,
+        val networkEnabled: Boolean,
+        val passiveEnabled: Boolean,
+        val enabledProviders: List<String>,
+    )
+
+    data class Coordinates(
+        val latitude: Double,
+        val longitude: Double,
+        val altitude: Double?,
+        val accuracy: Double,
+        val altitudeAccuracy: Double?,
+        val speed: Double?,
+        val heading: Double?,
+        val timestamp: Long,
+    )
+
+    data class PositionResult(
+        val coords: Coordinates,
+        val cached: Boolean,
+    )
 
     private val fusedClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context.applicationContext)
@@ -43,6 +71,64 @@ class LocationFixReader(context: Context) {
         "passive" -> Priority.PRIORITY_PASSIVE
         else -> Priority.PRIORITY_HIGH_ACCURACY
     }
+
+    fun hasForegroundPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ) == PackageManager.PERMISSION_GRANTED
+
+    fun readBackgroundPermissionStatus(foregroundStatus: String): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return foregroundStatus
+
+        val backgroundGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+
+        return when {
+            backgroundGranted -> "granted"
+            foregroundStatus != "granted" -> "denied"
+            else -> "prompt"
+        }
+    }
+
+    fun readProviderStatus(): ProviderStatus {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val enabledProviders = manager.getProviders(true).sorted()
+        return ProviderStatus(
+            gpsEnabled = LocationManager.GPS_PROVIDER in enabledProviders,
+            networkEnabled = LocationManager.NETWORK_PROVIDER in enabledProviders,
+            passiveEnabled = LocationManager.PASSIVE_PROVIDER in enabledProviders,
+            enabledProviders = enabledProviders,
+        )
+    }
+
+    fun buildPositionResult(location: Location, cached: Boolean): PositionResult =
+        PositionResult(
+            coords = Coordinates(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                altitude = if (location.hasAltitude()) location.altitude else null,
+                accuracy = location.accuracy.toDouble(),
+                altitudeAccuracy = if (
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    location.hasVerticalAccuracy()
+                ) {
+                    location.verticalAccuracyMeters.toDouble()
+                } else {
+                    null
+                },
+                speed = if (location.hasSpeed()) location.speed.toDouble() else null,
+                heading = if (location.hasBearing()) location.bearing.toDouble() else null,
+                timestamp = location.time,
+            ),
+            cached = cached,
+        )
 
     /** The fresh-fix request the plugin's `requestFreshLocation` issues. */
     fun buildCurrentLocationRequest(priority: Int, timeoutMs: Long, maxAgeMs: Long): CurrentLocationRequest =
