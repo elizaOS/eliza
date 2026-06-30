@@ -109,6 +109,21 @@ jobs:
       - name: Chat overlay perf gate
         run: bun run --cwd packages/ui test:chat-perf-gate
 
+      # #9142 Part 2: capture a dense CDP frame burst across the pill→open spring
+      # (animations ON) and run the single-frame-flash + two-pills-crossfade
+      # detectors. The harness was merged (#10356/#10374) but ran in NO workflow,
+      # so a transient glitch could still ship. Run under bun (resolves the
+      # esbuild/pixelmatch/pngjs deps directly, regardless of the node-run
+      # portability fallback in #10400).
+      - name: Frame-glitch (transient) e2e
+        run: bun packages/ui/src/components/shell/__e2e__/run-chat-sheet-frame-glitch-e2e.mjs
+
+      # Self-test: --canary injects a one-frame wrong state and asserts the
+      # detectors FIRE on it; the harness exits 0 iff they do (and non-zero if it
+      # has gone blind). This guards against the detectors silently degrading.
+      - name: Frame-glitch canary self-test
+        run: bun packages/ui/src/components/shell/__e2e__/run-chat-sheet-frame-glitch-e2e.mjs --canary
+
       - name: Upload gesture videos + screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -119,5 +134,6 @@ jobs:
             packages/ui/src/components/shell/__e2e__/output/
             packages/ui/src/components/shell/__e2e__/output-chatux/
             packages/ui/src/components/shell/__e2e__/output-perf-gate/
+            packages/ui/src/components/shell/__e2e__/output-frame-glitch/
           if-no-files-found: warn
           retention-days: 14
