@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
+import { type IAgentRuntime, logger, ModelType, type Plugin, resolveSetting } from "@elizaos/core";
 import { EdgeTTS } from "node-edge-tts";
 
 /**
@@ -68,6 +68,10 @@ const VOICE_PRESETS: Record<string, string> = {
   // Direct Edge TTS voice names pass through
 };
 
+// Runtime per-agent setting first, then `process.env`, then the fallback.
+// Thin wrapper over core `resolveSetting` so the precedence lives in one
+// canonical place; the env fallback uses dotenv semantics (trimmed; empty
+// strings treated as unset).
 function getSetting(runtime: IAgentRuntime | null, key: string): string | undefined;
 function getSetting(runtime: IAgentRuntime | null, key: string, fallback: string): string;
 function getSetting(
@@ -75,11 +79,7 @@ function getSetting(
   key: string,
   fallback?: string
 ): string | undefined {
-  const envValue =
-    typeof process !== "undefined" && (process as { env?: Record<string, string> }).env
-      ? (process as { env: Record<string, string> }).env[key]
-      : undefined;
-  return (runtime?.getSetting(key) as string | undefined) ?? envValue ?? fallback;
+  return resolveSetting(runtime, key, { defaultValue: fallback });
 }
 
 function getEdgeTTSSettings(runtime: IAgentRuntime | null): EdgeTTSSettings {
