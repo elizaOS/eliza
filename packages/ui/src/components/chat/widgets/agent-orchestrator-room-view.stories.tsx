@@ -1,7 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
-import type { OrchestratorRoomRosterOverview } from "../../../api/client-types-cloud";
-import { OrchestratorRoomView } from "./agent-orchestrator-room-view";
+import type {
+  CodingAgentOrchestratorStatus,
+  OrchestratorRoomRosterOverview,
+} from "../../../api/client-types-cloud";
+import {
+  OrchestratorRoomView,
+  OrchestratorRoomViewSkeleton,
+} from "./agent-orchestrator-room-view";
 
 // The widget lives in the chat sidebar, render stories in a matching column.
 function Sidebar({ children }: { children: ReactNode }) {
@@ -96,6 +102,38 @@ const rooms: OrchestratorRoomRosterOverview = {
   ],
 };
 
+/** Cheap orchestrator-wide counts that drive the always-on status line, even
+ * when there are no rooms yet. */
+const status: CodingAgentOrchestratorStatus = {
+  taskCount: 3,
+  activeTaskCount: 2,
+  pausedTaskCount: 0,
+  blockedTaskCount: 0,
+  validatingTaskCount: 1,
+  sessionCount: 4,
+  activeSessionCount: 3,
+  usage: {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    state: "measured",
+    byProvider: [],
+  },
+  byStatus: {} as CodingAgentOrchestratorStatus["byStatus"],
+};
+
+const idleStatus: CodingAgentOrchestratorStatus = {
+  ...status,
+  taskCount: 0,
+  activeTaskCount: 0,
+  validatingTaskCount: 0,
+  sessionCount: 0,
+  activeSessionCount: 0,
+};
+
 const meta = {
   title: "Chat/Widgets/OrchestratorRooms",
   component: OrchestratorRoomView,
@@ -112,17 +150,35 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** No active rooms: the empty state that explains where rooms come from. */
+/** No active rooms, zero counts: the friendly empty state that tells the user
+ * how to make a room appear. This is the common first-run view. */
 export const Empty: Story = {
-  args: { rooms: { rooms: [] } },
+  args: { rooms: { rooms: [] }, status: idleStatus },
+};
+
+/** Empty board but the orchestrator is clearly alive: the status line shows live
+ * tasks/agents even before a room roster exists. */
+export const EmptyWithLiveCounts: Story = {
+  args: { rooms: { rooms: [] }, status },
+};
+
+/** First-load placeholder: a quiet skeleton inside the section frame instead of
+ * the widget vanishing. */
+export const Loading: Story = {
+  render: () => <OrchestratorRoomViewSkeleton />,
 };
 
 /** The live board: a multi-party room and a single-agent room side by side. */
 export const LiveRooms: Story = {
-  args: { rooms },
+  args: { rooms, status },
+};
+
+/** Last poll failed but we kept the last-good roster: a subtle hint, no crash. */
+export const StaleAfterError: Story = {
+  args: { rooms, status, staleHint: true },
 };
 
 /** A single multi-party room with a running tool, a worker, and an idle agent. */
 export const MultiPartyRoom: Story = {
-  args: { rooms: { rooms: [rooms.rooms[0]] } },
+  args: { rooms: { rooms: [rooms.rooms[0]] }, status },
 };

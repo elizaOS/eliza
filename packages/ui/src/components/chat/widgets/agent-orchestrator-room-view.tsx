@@ -12,6 +12,7 @@
 import { Bot, CircleUser, Users, Workflow, Wrench } from "lucide-react";
 import { useMemo } from "react";
 import type {
+  CodingAgentOrchestratorStatus,
   OrchestratorRoomParticipant,
   OrchestratorRoomRoster,
   OrchestratorRoomRosterOverview,
@@ -224,7 +225,58 @@ function RoomCard({
 
 export interface OrchestratorRoomViewProps {
   rooms: OrchestratorRoomRosterOverview | null;
+  /** Cheap orchestrator-wide counts, used for the always-on status line so the
+   * system reads as alive even with zero rooms. */
+  status?: CodingAgentOrchestratorStatus | null;
+  /** When the last poll failed but we kept the last-good roster, set this to
+   * surface a subtle non-blocking hint instead of a red crash. */
+  staleHint?: boolean;
   t?: TranslateFn;
+}
+
+/** One-line, icon-first status strip: a live task count + an active-agent count
+ * derived from the cheap status payload. Always rendered (even at zero) so the
+ * widget proves the orchestrator is alive before any room exists. */
+function StatusLine({
+  status,
+  t,
+}: {
+  status: CodingAgentOrchestratorStatus;
+  t: TranslateFn;
+}) {
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5 pb-1.5 text-3xs text-muted"
+      data-testid="orchestrator-room-status-line"
+    >
+      <span
+        className="inline-flex items-center gap-1"
+        title={t("agentorchestrator.activeTasks", {
+          defaultValue: "{{count}} active tasks",
+          count: status.activeTaskCount,
+        })}
+      >
+        <Workflow className="h-3 w-3" />
+        <span className="tabular-nums">{status.activeTaskCount}</span>
+        <span>
+          {t("agentorchestrator.tasksLower", { defaultValue: "tasks" })}
+        </span>
+      </span>
+      <span
+        className="inline-flex items-center gap-1"
+        title={t("agentorchestrator.activeSessions", {
+          defaultValue: "{{count}} active sessions",
+          count: status.activeSessionCount,
+        })}
+      >
+        <Bot className="h-3 w-3" />
+        <span className="tabular-nums">{status.activeSessionCount}</span>
+        <span>
+          {t("agentorchestrator.agentsLower", { defaultValue: "agents" })}
+        </span>
+      </span>
+    </div>
+  );
 }
 
 /**
@@ -235,6 +287,8 @@ export interface OrchestratorRoomViewProps {
  */
 export function OrchestratorRoomView({
   rooms,
+  status = null,
+  staleHint = false,
   t = fallbackTranslate,
 }: OrchestratorRoomViewProps) {
   // Surface every non-terminal room so an operator sees the full live board, not
@@ -252,6 +306,17 @@ export function OrchestratorRoomView({
     [liveRooms],
   );
 
+  const staleNotice = staleHint ? (
+    <p
+      className="px-0.5 pb-1 text-3xs text-muted/60"
+      data-testid="orchestrator-room-stale"
+    >
+      {t("agentorchestrator.couldNotRefresh", {
+        defaultValue: "couldn't refresh, showing last known",
+      })}
+    </p>
+  ) : null;
+
   if (liveRooms.length === 0) {
     return (
       <WidgetSection
@@ -259,14 +324,16 @@ export function OrchestratorRoomView({
         icon={<Users className="h-4 w-4" />}
         testId="chat-widget-rooms"
       >
+        {status ? <StatusLine status={status} t={t} /> : null}
+        {staleNotice}
         <EmptyWidgetState
           icon={<Users className="h-5 w-5" />}
           title={t("agentorchestrator.noRooms", {
-            defaultValue: "No active task rooms.",
+            defaultValue: "No active coding tasks",
           })}
           description={t("agentorchestrator.noRoomsHint", {
             defaultValue:
-              "Sub-agents spawned for a coding task appear here as a live swarm.",
+              "ask me to build something or spawn a sub-agent to see live task rooms here.",
           })}
         />
       </WidgetSection>
@@ -294,10 +361,44 @@ export function OrchestratorRoomView({
       }
       testId="chat-widget-rooms"
     >
+      {status ? <StatusLine status={status} t={t} /> : null}
+      {staleNotice}
       <div className="space-y-2" data-testid="orchestrator-room-list">
         {liveRooms.map((room) => (
           <RoomCard key={room.taskId} room={room} t={t} />
         ))}
+      </div>
+    </WidgetSection>
+  );
+}
+
+/**
+ * First-load skeleton for the room widget. Renders inside the same WidgetSection
+ * frame so the title is stable and the user sees a quiet placeholder instead of
+ * the widget vanishing (the old container returned null while loading).
+ */
+export function OrchestratorRoomViewSkeleton({
+  t = fallbackTranslate,
+}: {
+  t?: TranslateFn;
+}) {
+  return (
+    <WidgetSection
+      title={t("agentorchestrator.rooms", { defaultValue: "Task rooms" })}
+      icon={<Users className="h-4 w-4" />}
+      testId="chat-widget-rooms"
+    >
+      <div
+        className="space-y-2"
+        data-testid="orchestrator-room-skeleton"
+        aria-hidden="true"
+      >
+        <div className="h-3 w-24 animate-pulse rounded-sm bg-muted/15" />
+        <div className="space-y-1.5 rounded-sm border border-border/40 bg-bg-accent/20 p-2">
+          <div className="h-3 w-32 animate-pulse rounded-sm bg-muted/15" />
+          <div className="h-2.5 w-20 animate-pulse rounded-sm bg-muted/10" />
+          <div className="h-2.5 w-24 animate-pulse rounded-sm bg-muted/10" />
+        </div>
       </div>
     </WidgetSection>
   );

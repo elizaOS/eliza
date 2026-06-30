@@ -49,6 +49,7 @@ import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities"
 import type { AccountsListResponse } from "../../../api/client-agent";
 import type {
   AppRunSummary,
+  CodingAgentOrchestratorStatus,
   OrchestratorAccountOverview,
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
@@ -64,7 +65,10 @@ import {
   fallbackTranslate,
   OrchestratorAccountsView,
 } from "./agent-orchestrator-accounts-view";
-import { OrchestratorRoomView } from "./agent-orchestrator-room-view";
+import {
+  OrchestratorRoomView,
+  OrchestratorRoomViewSkeleton,
+} from "./agent-orchestrator-room-view";
 import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
@@ -779,17 +783,39 @@ function OrchestratorRoomWidget(_props: ChatSidebarWidgetProps) {
   const [rooms, setRooms] = useState<OrchestratorRoomRosterOverview | null>(
     null,
   );
+  const [status, setStatus] = useState<CodingAgentOrchestratorStatus | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
+  // True only after a poll fails while we still have a last-good roster. Drives
+  // the subtle "couldn't refresh" hint instead of a red crash or a blank widget.
+  const [staleHint, setStaleHint] = useState(false);
 
   const refresh = useCallback(async () => {
-    try {
-      const next = await client.getOrchestratorRooms();
-      setRooms(next);
-    } catch {
-      // Leave the last good roster in place on a transient poll failure.
-    } finally {
-      setLoading(false);
+    // Rooms + status fire together so even a zero-room board can show a live
+    // task/agent count. Settled (not all-or-nothing) so one failing call never
+    // blanks the widget; each result updates independently, last-good stays.
+    const [roomsRes, statusRes] = await Promise.allSettled([
+      client.getOrchestratorRooms(),
+      client.getOrchestratorStatus(),
+    ]);
+
+    let anyFailed = false;
+    if (roomsRes.status === "fulfilled") {
+      setRooms(roomsRes.value);
+    } else {
+      anyFailed = true;
     }
+    if (statusRes.status === "fulfilled") {
+      setStatus(statusRes.value);
+    } else {
+      anyFailed = true;
+    }
+
+    // Only flag stale once we have something good to keep showing; the very
+    // first failed load falls through to the empty state, not a stale hint.
+    setStaleHint(anyFailed);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -800,10 +826,22 @@ function OrchestratorRoomWidget(_props: ChatSidebarWidgetProps) {
   // window stops polling the orchestrator API.
   useIntervalWhenDocumentVisible(() => void refresh(), 15_000);
 
-  if (loading) return null;
-  if ((rooms?.rooms?.length ?? 0) === 0) return null;
+  // First load: a quiet skeleton inside the section frame, never a blank gap.
+  if (loading && rooms === null) {
+    return <OrchestratorRoomViewSkeleton t={t} />;
+  }
 
-  return <OrchestratorRoomView rooms={rooms} t={t} />;
+  // Always render the view from here on. With zero rooms it shows a friendly
+  // empty state plus the live task/agent counts, so the user always sees the
+  // orchestrator is alive and knows how to make a room appear.
+  return (
+    <OrchestratorRoomView
+      rooms={rooms}
+      status={status}
+      staleHint={staleHint}
+      t={t}
+    />
+  );
 }
 
 export const AGENT_ORCHESTRATOR_PLUGIN_WIDGETS: ChatSidebarWidgetDefinition[] =

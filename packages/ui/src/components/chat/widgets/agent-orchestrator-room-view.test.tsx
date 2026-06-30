@@ -1,10 +1,37 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { OrchestratorRoomRosterOverview } from "../../../api/client-types-cloud";
-import { OrchestratorRoomView } from "./agent-orchestrator-room-view";
+import type {
+  CodingAgentOrchestratorStatus,
+  OrchestratorRoomRosterOverview,
+} from "../../../api/client-types-cloud";
+import {
+  OrchestratorRoomView,
+  OrchestratorRoomViewSkeleton,
+} from "./agent-orchestrator-room-view";
 
 afterEach(cleanup);
+
+const status: CodingAgentOrchestratorStatus = {
+  taskCount: 3,
+  activeTaskCount: 2,
+  pausedTaskCount: 0,
+  blockedTaskCount: 0,
+  validatingTaskCount: 1,
+  sessionCount: 4,
+  activeSessionCount: 3,
+  usage: {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    state: "measured",
+    byProvider: [],
+  },
+  byStatus: {} as CodingAgentOrchestratorStatus["byStatus"],
+};
 
 const rooms: OrchestratorRoomRosterOverview = {
   rooms: [
@@ -56,9 +83,39 @@ const rooms: OrchestratorRoomRosterOverview = {
 };
 
 describe("OrchestratorRoomView", () => {
-  it("renders an empty state when there are no live rooms", () => {
+  it("renders a friendly empty state with a hint when there are no live rooms", () => {
     render(<OrchestratorRoomView rooms={{ rooms: [] }} />);
-    expect(screen.getByText("No active task rooms.")).toBeTruthy();
+    // The section frame still renders (never null), so the title is present.
+    expect(screen.getByTestId("chat-widget-rooms")).toBeTruthy();
+    expect(screen.getByText("No active coding tasks")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "ask me to build something or spawn a sub-agent to see live task rooms here.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows the live task/agent status line even with zero rooms", () => {
+    render(<OrchestratorRoomView rooms={{ rooms: [] }} status={status} />);
+    const line = screen.getByTestId("orchestrator-room-status-line");
+    // activeTaskCount + activeSessionCount surface so the system reads as alive.
+    expect(within(line).getByText("2")).toBeTruthy();
+    expect(within(line).getByText("3")).toBeTruthy();
+    expect(within(line).getByText("tasks")).toBeTruthy();
+    expect(within(line).getByText("agents")).toBeTruthy();
+  });
+
+  it("surfaces a subtle stale hint (not a crash) when a refresh failed", () => {
+    render(<OrchestratorRoomView rooms={{ rooms: [] }} staleHint />);
+    expect(
+      screen.getByText("couldn't refresh, showing last known"),
+    ).toBeTruthy();
+  });
+
+  it("renders the skeleton inside the section frame, never a blank gap", () => {
+    render(<OrchestratorRoomViewSkeleton />);
+    expect(screen.getByTestId("chat-widget-rooms")).toBeTruthy();
+    expect(screen.getByTestId("orchestrator-room-skeleton")).toBeTruthy();
   });
 
   it("hides terminal (done/failed/archived) rooms from the live board", () => {
