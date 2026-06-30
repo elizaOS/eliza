@@ -27,6 +27,13 @@ vi.mock("@elizaos/core", () => {
       TEXT_LARGE: "TEXT_LARGE",
       TEXT_SMALL: "TEXT_SMALL",
     },
+    gateDestructiveConfirmation: vi.fn(async (args) => {
+      await args.callback?.({
+        text: args.prompt,
+        source: args.message?.content?.source,
+      });
+      return { status: "pending" };
+    }),
     getActiveRoutingContextsForTurn: vi.fn(() => []),
     parseKeyValueXml: (xml: string) => {
       const result: Record<string, string> = {};
