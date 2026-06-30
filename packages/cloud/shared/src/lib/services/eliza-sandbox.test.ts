@@ -1535,6 +1535,21 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   const FROM_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000aaa";
   const TO_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
 
+  function runtimeHealthResponse(
+    body: Record<string, unknown> = {
+      ready: true,
+      runtime: "ok",
+      database: "ok",
+      plugins: { failed: 0 },
+    },
+    status = 200,
+  ): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   // A live fleet-managed agent: running, with an old node/container, and
   // docker_image === null so the "custom image" guard does not reject it.
   function liveAgentRow(): AgentSandbox {
@@ -1604,6 +1619,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     const stop = mock(async () => {});
     const stopOnSpecificNode = mock(async () => {});
     Object.assign(provider, { create, checkHealth, stop, stopOnSpecificNode });
+    globalThis.fetch = mock(async () => runtimeHealthResponse()) as unknown as typeof fetch;
     return {
       provider: provider as unknown as SandboxProvider,
       create,
@@ -1696,6 +1712,60 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     }
   });
 
+  test("(b2) blue runtime readiness gate FAILS → blue torn down, NO snapshot or swap", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    const healthFetch = mock(async () =>
+      runtimeHealthResponse({
+        ready: false,
+        runtime: "ok",
+        database: "ok",
+        plugins: { failed: 1 },
+        agentState: "starting",
+        startup: { lastError: "migration failed" },
+      }),
+    );
+    globalThis.fetch = healthFetch as unknown as typeof fetch;
+    const svc = new ElizaSandboxService(provider);
+    const snapshotSpy = spyOn(
+      svc as unknown as {
+        snapshot: (...a: unknown[]) => Promise<{ success: boolean }>;
+      },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    let transactionCalled = false;
+    upgradeTransactionImpl = async () => {
+      transactionCalled = true;
+      return false as never;
+    };
+    try {
+      const res = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("Blue runtime readiness gate failed");
+      expect(res.error).toContain("ready=false");
+      expect(res.error).toContain("plugins.failed=1");
+      expect(res.error).toContain("migration failed");
+      expect(healthFetch).toHaveBeenCalledTimes(1);
+      expect(snapshotSpy).not.toHaveBeenCalled();
+      expect(transactionCalled).toBe(false);
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      expect(stopOnSpecificNode).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(checkHealth).toHaveBeenCalledTimes(1);
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  }, 20_000);
+
   test("(c) happy path → atomic swap writes blue's node/container/bridge + image_digest=toDigest", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
@@ -1769,6 +1839,46 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  });
+
+  test("(c2) pre-upgrade snapshot failure → blue torn down, NO swap", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const snapshotSpy = spyOn(
+      svc as unknown as {
+        snapshot: (...a: unknown[]) => Promise<{ success: boolean; error?: string }>;
+      },
+      "snapshot",
+    ).mockResolvedValue({ success: false, error: "manifest missing" });
+    let transactionCalled = false;
+    upgradeTransactionImpl = async () => {
+      transactionCalled = true;
+      return false as never;
+    };
+    try {
+      const res = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("Pre-upgrade snapshot failed");
+      expect(res.error).toContain("manifest missing");
+      expect(snapshotSpy).toHaveBeenCalledWith(AGENT, ORG, "pre-upgrade");
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      expect(stopOnSpecificNode).not.toHaveBeenCalled();
+      expect(transactionCalled).toBe(false);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(checkHealth).toHaveBeenCalledTimes(1);
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
       snapshotSpy.mockRestore();
     }
   });

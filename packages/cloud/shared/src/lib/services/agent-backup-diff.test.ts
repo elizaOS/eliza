@@ -21,6 +21,7 @@ function state(overrides: Partial<AgentBackupStateData> = {}): AgentBackupStateD
     memories: overrides.memories ?? [],
     config: overrides.config ?? {},
     workspaceFiles: overrides.workspaceFiles ?? {},
+    manifest: overrides.manifest,
   };
 }
 
@@ -191,6 +192,36 @@ describe("planIncrementalBackup", () => {
     expect(planIncrementalBackup({ base, next, chainDepth: 20, maxChainDepth: 20 }).kind).toBe(
       "full",
     );
+  });
+
+  test("forces full when a full-agent manifest is present", () => {
+    const base = state({ workspaceFiles: { a: "1" } });
+    const next = state({
+      workspaceFiles: { a: "1", b: "2" },
+      manifest: {
+        schemaVersion: 1,
+        format: "elizaos.agent-backup",
+        createdAt: "2026-06-29T00:00:00.000Z",
+        agentId: "agent-id",
+        components: {
+          database: { kind: "none", reason: "fixture", sha256: "db" },
+          media: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "media" },
+          vault: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "vault" },
+          character: { runtimeCharacter: { name: "agent" }, sha256: "character" },
+          stateFiles: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "state" },
+        },
+        integrity: {
+          componentHashes: {
+            database: "db",
+            media: "media",
+            vault: "vault",
+            character: "character",
+            stateFiles: "state",
+          },
+        },
+      },
+    });
+    expect(planIncrementalBackup({ base, next, chainDepth: 1 }).kind).toBe("full");
   });
 });
 

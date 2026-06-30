@@ -627,7 +627,7 @@ export class FirstRunService {
   }
 
   private formatDefaultsCompleteMessage(taskCount: number): string {
-    return `Defaults applied — ${taskCount} routines set up (gm, gn, daily check-in, morning brief, plus a paused weekly review you can turn on anytime).`;
+    return `Defaults applied — ${taskCount} routines set up (gm, gn, daily check-in, morning brief, encrypted local backups, plus a paused weekly review you can turn on anytime).`;
   }
 
   private formatCustomizeCompleteMessage(

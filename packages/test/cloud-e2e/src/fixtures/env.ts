@@ -14,6 +14,7 @@ export interface StackUrls {
 
 export const PLAYWRIGHT_TEST_AUTH_SECRET =
   "playwright-local-auth-secret-32bytes";
+const CLOUD_E2E_LOCAL_ROOT_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
 /**
  * Strip env vars that announce the current process was launched via bun
@@ -54,6 +55,11 @@ export function buildSharedEnv(
     BUN_OPTIONS: withBunSourceCondition(process.env.BUN_OPTIONS),
     NODE_ENV: "test",
     CLOUD_E2E: "1",
+    // Cross-process encrypted rows (API-key secrets, backups) must be
+    // decryptable by the runner, Worker, and control-plane test processes.
+    ELIZA_KMS_BACKEND: process.env.ELIZA_KMS_BACKEND ?? "local",
+    ELIZA_LOCAL_ROOT_KEY:
+      process.env.ELIZA_LOCAL_ROOT_KEY ?? CLOUD_E2E_LOCAL_ROOT_KEY,
     // Mocks
     MOCK_REDIS: "1",
     MOCK_HETZNER_LATENCY: "0",

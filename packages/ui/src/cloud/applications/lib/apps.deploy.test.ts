@@ -98,7 +98,12 @@ describe("apps lib mutations (#9145)", () => {
     await createApp(input);
     expect(apiMock).toHaveBeenCalledWith("/api/v1/apps", {
       method: "POST",
-      json: { skipGitHubRepo: false, name: "n", app_url: "https://x", allowed_origins: [] },
+      json: {
+        skipGitHubRepo: false,
+        name: "n",
+        app_url: "https://x",
+        allowed_origins: [],
+      },
     });
   });
 

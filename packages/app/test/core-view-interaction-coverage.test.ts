@@ -144,7 +144,7 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
         signals: [
           "voice settings: the auto-learn toggle flips state",
           "capabilities settings: the Wallet switch fires the real config write",
-          "backup & reset settings: Export opens its modal",
+          "backup & reset settings: Back Up opens its modal",
         ],
       },
       {

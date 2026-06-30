@@ -19,7 +19,11 @@
 // ============================================================================
 
 import * as React from "react";
-import type { ConversationMessage, ConversationSecretRequest } from "../api";
+import type {
+  ConversationMessage,
+  ConversationSecretRequest,
+  LocalAgentBackupMetadata,
+} from "../api";
 import { client } from "../api";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { startTutorial } from "../components/pages/tutorial/tutorial-controller";
@@ -52,6 +56,9 @@ function cloudFailureMessage(err: unknown): string {
     : "Couldn't connect to Eliza Cloud. Pick how to run your agent again.";
 }
 
+const RESTORE_GREETING =
+  "I found an existing local backup for this device. Restore it before setup, or start fresh?";
+
 function makeTurn(
   id: string,
   text: string,
@@ -67,11 +74,32 @@ function makeTurn(
   };
 }
 
+function newestLocalBackup(
+  backups: LocalAgentBackupMetadata[],
+): LocalAgentBackupMetadata | null {
+  return (
+    backups
+      .slice()
+      .sort(
+        (a, b) =>
+          Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
+          b.fileName.localeCompare(a.fileName),
+      )[0] ?? null
+  );
+}
+
 const RUNTIME_CHOICE = [
   "[CHOICE:first-run id=runtime]",
   `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)`,
   `${FIRST_RUN_ACTION_PREFIX}runtime:local=On this device`,
   `${FIRST_RUN_ACTION_PREFIX}runtime:other=Bring your own keys`,
+  "[/CHOICE]",
+].join("\n");
+
+const BACKUP_RESTORE_CHOICE = [
+  "[CHOICE:first-run id=backup-restore]",
+  `${FIRST_RUN_ACTION_PREFIX}backup-restore:latest=Restore latest backup`,
+  `${FIRST_RUN_ACTION_PREFIX}backup-restore:start-fresh=Start fresh`,
   "[/CHOICE]",
 ].join("\n");
 
@@ -152,6 +180,10 @@ export function useFirstRunConductor(): void {
     preferAgentId?: string;
     forceCreate?: boolean;
   }>({});
+  const latestLocalBackupRef = React.useRef<LocalAgentBackupMetadata | null>(
+    null,
+  );
+  const restoringBackupRef = React.useRef(false);
   // Set true once provisioning's completeFirstRun fired; the REAL store
   // completeFirstRun is deferred to the tutorial-or-skip pick.
   const provisionedRef = React.useRef(false);
@@ -183,6 +215,29 @@ export function useFirstRunConductor(): void {
       ),
     );
   }, [seedTurn]);
+
+  const seedRuntimeChoice = React.useCallback(() => {
+    seedTurn(
+      makeTurn("first-run:greeting", `${GREETING}\n\n${RUNTIME_CHOICE}`),
+    );
+  }, [seedTurn]);
+
+  const seedBackupRestoreChoice = React.useCallback(
+    (backups: LocalAgentBackupMetadata[]) => {
+      latestLocalBackupRef.current = newestLocalBackup(backups);
+      if (!latestLocalBackupRef.current) {
+        seedRuntimeChoice();
+        return;
+      }
+      seedTurn(
+        makeTurn(
+          "first-run:backup-restore",
+          `${RESTORE_GREETING}\n\n${BACKUP_RESTORE_CHOICE}`,
+        ),
+      );
+    },
+    [seedRuntimeChoice, seedTurn],
+  );
 
   // Ports for the headless finish use case. completeFirstRun is INTERCEPTED:
   // provisioning calls it, we record + offer the tutorial, and only flip the
@@ -343,6 +398,50 @@ export function useFirstRunConductor(): void {
         return true;
       }
 
+      if (group === "backup-restore") {
+        if (id === "start-fresh") {
+          latestLocalBackupRef.current = null;
+          seedRuntimeChoice();
+          return true;
+        }
+
+        if (id === "latest") {
+          const backup = latestLocalBackupRef.current;
+          if (!backup || restoringBackupRef.current) return true;
+          restoringBackupRef.current = true;
+          seedTurn(
+            makeTurn(
+              "first-run:backup-restore-status",
+              "Restoring the latest local backup...",
+            ),
+          );
+          void client
+            .restoreLocalAgentBackup(backup.fileName)
+            .then(() => {
+              seedTurn(
+                makeTurn(
+                  "first-run:backup-restore-complete",
+                  "Backup restored. Restart the agent to use the restored state.",
+                ),
+              );
+            })
+            .catch((error) => {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              seedTurn(
+                makeTurn(
+                  `first-run:backup-restore-error:${Date.now()}`,
+                  `Restore failed: ${message}\n\n${BACKUP_RESTORE_CHOICE}`,
+                ),
+              );
+            })
+            .finally(() => {
+              restoringBackupRef.current = false;
+            });
+          return true;
+        }
+      }
+
       if (group === "provider") {
         if (id === "elizacloud") {
           draftRef.current = {
@@ -402,7 +501,14 @@ export function useFirstRunConductor(): void {
 
       return false;
     },
-    [seedTurn, replaceTurn, handleOutcome, completeFirstRun, seedError],
+    [
+      seedTurn,
+      seedRuntimeChoice,
+      replaceTurn,
+      handleOutcome,
+      completeFirstRun,
+      seedError,
+    ],
   );
   const handleActionRef = React.useRef(handleFirstRunAction);
   handleActionRef.current = handleFirstRunAction;
@@ -415,13 +521,25 @@ export function useFirstRunConductor(): void {
     }
     resetFirstRunPersistGuard();
     setFirstRunActionHandler((value) => handleActionRef.current(value));
-    seedTurn(
-      makeTurn("first-run:greeting", `${GREETING}\n\n${RUNTIME_CHOICE}`),
-    );
+    let cancelled = false;
+    void client
+      .listLocalAgentBackups()
+      .then((backups) => {
+        if (cancelled) return;
+        if (backups.length > 0) {
+          seedBackupRestoreChoice(backups);
+          return;
+        }
+        seedRuntimeChoice();
+      })
+      .catch(() => {
+        if (!cancelled) seedRuntimeChoice();
+      });
     return () => {
+      cancelled = true;
       setFirstRunActionHandler(null);
     };
-  }, [active, seedTurn]);
+  }, [active, seedBackupRestoreChoice, seedRuntimeChoice]);
 }
 
 /** Mount point — call once inside the AppContext provider tree. Renders null. */

@@ -48,6 +48,7 @@ import type {
   CloudOAuthInitiateResponse,
   CloudStatus,
   CloudTwitterOAuthInitiateResponse,
+  LocalAgentBackupMetadata,
   SandboxBrowserEndpoints,
   SandboxPlatformStatus,
   SandboxScreenshotPayload,
@@ -1187,6 +1188,12 @@ declare module "./client-base" {
       agentId: string;
       agentName: string;
       counts: Record<string, number>;
+    }>;
+    listLocalAgentBackups(): Promise<LocalAgentBackupMetadata[]>;
+    createLocalAgentBackup(): Promise<LocalAgentBackupMetadata>;
+    restoreLocalAgentBackup(fileName: string): Promise<{
+      restored: true;
+      requiresRestart: true;
     }>;
     getSandboxPlatform(): Promise<SandboxPlatformStatus>;
     getSandboxBrowser(): Promise<SandboxBrowserEndpoints>;
@@ -2468,6 +2475,40 @@ ElizaClient.prototype.importAgent = async function (
     agentName: string;
     counts: Record<string, number>;
   };
+};
+
+ElizaClient.prototype.listLocalAgentBackups = async function (
+  this: ElizaClient,
+) {
+  const response = await this.fetch<{ backups: LocalAgentBackupMetadata[] }>(
+    "/api/backups",
+  );
+  return response.backups;
+};
+
+ElizaClient.prototype.createLocalAgentBackup = async function (
+  this: ElizaClient,
+) {
+  const response = await this.fetch<{ backup: LocalAgentBackupMetadata }>(
+    "/api/backups",
+    {
+      method: "POST",
+    },
+  );
+  return response.backup;
+};
+
+ElizaClient.prototype.restoreLocalAgentBackup = async function (
+  this: ElizaClient,
+  fileName,
+) {
+  return this.fetch<{ restored: true; requiresRestart: true }>(
+    "/api/backups/restore",
+    {
+      method: "POST",
+      body: JSON.stringify({ fileName }),
+    },
+  );
 };
 
 ElizaClient.prototype.getSandboxPlatform = async function (this: ElizaClient) {

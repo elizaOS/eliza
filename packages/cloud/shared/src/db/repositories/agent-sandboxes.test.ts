@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -29,15 +29,27 @@ const ensureAgentSandboxSchema = mock(async () => {});
 // Read-side select() chain: select(...).from(...).where(clause) -> rows.
 // `where` captures the clause into the shared `capturedWhere` so a test can
 // assert on the generated SQL, mirroring the write-side capture above.
+let selectRows: unknown[] = [];
+
+function chainableRows(): unknown[] & {
+  limit: () => unknown[];
+  orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
+} {
+  const rows = [...selectRows] as unknown[] & {
+    limit: () => unknown[];
+    orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
+  };
+  rows.limit = () => rows;
+  rows.orderBy = () => rows;
+  return rows;
+}
+
 const selectWhere = mock((clause: SQL) => {
   capturedWhere = clause;
   // Most readers await the where() result directly (an array). Queries that
-  // paginate (e.g. listRunningWithDigestOtherThan) chain `.limit(n)` after
-  // where(); expose a chainable limit() that yields the same array so both
-  // shapes resolve to `[]`.
-  const rows: unknown[] = [];
-  (rows as unknown as { limit: () => unknown[] }).limit = () => rows;
-  return rows;
+  // paginate or sort chain `.limit(n)` / `.orderBy(...)` after `where()`;
+  // expose those methods so all shapes resolve to the configured rows.
+  return chainableRows();
 });
 const selectFrom = mock(() => ({ where: selectWhere }));
 const select = mock(() => ({ from: selectFrom }));
@@ -52,6 +64,10 @@ mock.module("../ensure-agent-sandbox-schema", () => ({
 }));
 
 describe("AgentSandboxesRepository", () => {
+  beforeEach(() => {
+    selectRows = [];
+  });
+
   test("allows sleeping agents to take the provisioning lock for wake", async () => {
     capturedWhere = undefined;
 
@@ -205,5 +221,116 @@ describe("AgentSandboxesRepository", () => {
     expect(sql).toContain("node_id");
     expect(sql).toContain("container_name");
     expect(sql).toContain("is not null");
+  });
+
+  test("backup inserts encrypt state_data at rest and hydration returns plaintext", async () => {
+    const originalEnv = {
+      NODE_ENV: process.env.NODE_ENV,
+      SQL_HEAVY_PAYLOAD_STORAGE: process.env.SQL_HEAVY_PAYLOAD_STORAGE,
+      HEAVY_PAYLOAD_STORAGE: process.env.HEAVY_PAYLOAD_STORAGE,
+    };
+    process.env.NODE_ENV = "test";
+    process.env.SQL_HEAVY_PAYLOAD_STORAGE = "inline";
+    process.env.HEAVY_PAYLOAD_STORAGE = "inline";
+
+    const { resetKmsClientForTests } = await import("../crypto/kms-client");
+    const { isEncryptedAgentBackupStateData } = await import("../crypto/agent-backups");
+    const { hydrateAgentSandboxBackup, prepareAgentBackupInsertData } = await import(
+      "./agent-sandboxes"
+    );
+
+    resetKmsClientForTests();
+
+    const backupId = "55555555-5555-4555-8555-555555555555";
+    const sandboxRecordId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+    const organizationId = "22222222-2222-4222-8222-222222222222";
+    const createdAt = new Date("2026-06-20T00:00:00.000Z");
+    const stateData = {
+      memories: [{ role: "user", text: "secret pre-wipe memory", timestamp: 1 }],
+      config: { token: "secret-config" },
+      workspaceFiles: { "notes.txt": "secret workspace file" },
+    };
+
+    try {
+      const insertData = await prepareAgentBackupInsertData(
+        {
+          id: backupId,
+          sandbox_record_id: sandboxRecordId,
+          snapshot_type: "manual",
+          state_data: stateData,
+          size_bytes: JSON.stringify(stateData).length,
+          backup_kind: "full",
+          parent_backup_id: null,
+          content_hash: "hash",
+          created_at: createdAt,
+        },
+        organizationId,
+      );
+
+      expect(isEncryptedAgentBackupStateData(insertData.state_data)).toBe(true);
+      expect(JSON.stringify(insertData.state_data)).not.toContain("secret pre-wipe memory");
+      expect(JSON.stringify(insertData.state_data)).not.toContain("secret-config");
+
+      const hydrated = await hydrateAgentSandboxBackup({
+        id: backupId,
+        sandbox_record_id: sandboxRecordId,
+        snapshot_type: "manual",
+        state_data: insertData.state_data,
+        state_data_storage: "inline",
+        state_data_key: null,
+        size_bytes: JSON.stringify(stateData).length,
+        backup_kind: "full",
+        parent_backup_id: null,
+        content_hash: "hash",
+        created_at: createdAt,
+      });
+
+      expect(hydrated.state_data).toEqual(stateData);
+    } finally {
+      resetKmsClientForTests();
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+
+  test("backup metadata listing does not hydrate encrypted state payloads", async () => {
+    selectRows = [
+      {
+        id: "55555555-5555-4555-8555-555555555555",
+        sandbox_record_id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+        snapshot_type: "auto",
+        state_data: {
+          kind: "encrypted-agent-backup-state",
+          algorithm: "kms-aes-256-gcm",
+          ciphertext: "invalid",
+          nonce: "invalid",
+          auth_tag: "invalid",
+          kms_key_id: "invalid",
+          kms_key_version: 1,
+        },
+        state_data_storage: "inline",
+        state_data_key: null,
+        size_bytes: 120,
+        backup_kind: "full",
+        parent_backup_id: null,
+        content_hash: "hash",
+        created_at: new Date("2026-06-20T00:00:00.000Z"),
+      },
+    ];
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    const rows = await new AgentSandboxesRepository().listBackupMetadata(
+      "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe("55555555-5555-4555-8555-555555555555");
+    expect(rows[0]?.snapshot_type).toBe("auto");
   });
 });

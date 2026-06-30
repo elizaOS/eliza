@@ -99,6 +99,15 @@ export interface CloudCredits {
   topUpUrl?: string;
 }
 
+export interface LocalAgentBackupMetadata {
+  fileName: string;
+  path: string;
+  createdAt: string;
+  agentId: string;
+  stateSha256: string;
+  sizeBytes: number;
+}
+
 export interface CloudBillingPaymentMethod {
   id: string;
   type: string;
