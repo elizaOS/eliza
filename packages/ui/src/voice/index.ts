@@ -10,6 +10,10 @@ export {
 export * from "./character-voice-config";
 export * from "./emotion";
 export {
+  DESKTOP_FUSED_WAKE_MESSAGE,
+  registerDesktopFusedWake,
+} from "./fused-wake-desktop-bridge";
+export {
   installJniVoiceHarness,
   type JniVoiceControl,
   type JniVoiceStatus,
@@ -48,10 +52,6 @@ export {
   type UseWakeListenWindowOptions,
   useWakeListenWindow,
 } from "./useWakeListenWindow";
-export {
-  DESKTOP_FUSED_WAKE_MESSAGE,
-  registerDesktopFusedWake,
-} from "./fused-wake-desktop-bridge";
 export {
   createVoiceCapture,
   type VoiceCaptureBackend,

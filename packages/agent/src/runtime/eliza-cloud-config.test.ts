@@ -1,5 +1,6 @@
+import { logger } from "@elizaos/core";
 import { resolveElizaCloudTopology } from "@elizaos/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   applyCloudConfigToEnv,
@@ -48,6 +49,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const k of ENV_KEYS) {
     const v = savedEnv[k];
     if (v === undefined) delete process.env[k];
@@ -150,6 +152,64 @@ describe("provisioned cloud container topology (#9887)", () => {
       transport: "cloud-proxy",
       smallModel: "small-from-config-env",
     });
+  });
+
+  it("preserves the worker-written managed cloud config shape from #9887", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    const infoSpy = vi
+      .spyOn(logger, "info")
+      .mockImplementation(() => undefined);
+
+    const config: ElizaConfig = {
+      logging: { level: "info" },
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      linkedAccounts: {
+        elizacloud: {
+          status: "linked",
+          source: "api-key",
+        },
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+          smallModel: "gpt-oss-120b",
+          largeModel: "zai-glm-4.7",
+        },
+        embeddings: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        baseUrl: "https://api.elizacloud.ai/api/v1",
+        agentId: "agent-test",
+      },
+    } as ElizaConfig;
+
+    const changed = ensureProvisionedCloudContainerConfig(config);
+    applyCloudConfigToEnv(config);
+    const topology = resolveElizaCloudTopology(
+      config as Record<string, unknown>,
+    );
+    const names = collectPluginNames(config);
+
+    expect(changed).toBe(false);
+    expect(topology.runtime).toBe("cloud");
+    expect(topology.services.inference).toBe(true);
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
+    expect(process.env.SMALL_MODEL).toBe("gpt-oss-120b");
+    expect(process.env.LARGE_MODEL).toBe("zai-glm-4.7");
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(infoSpy).toHaveBeenCalledWith(
+      "[eliza][cloud-topology] provisioned=true changed=false -> runtime=cloud inference=true",
+    );
   });
 
   it("uses a real config.env cloud key when config.cloud carries the redacted placeholder", () => {

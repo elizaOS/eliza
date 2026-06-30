@@ -51,6 +51,7 @@ const result = await Bun.build({
 		"./src/runtime/index.ts",
 		"./src/routes/index.ts",
 		"./src/services/index.ts",
+		"./src/voice-wake.ts",
 		"./src/voice-workbench.ts",
 	],
 	outdir: "dist",
@@ -74,6 +75,7 @@ console.log("📝 Generating TypeScript declarations...");
 await $`tsc --emitDeclarationOnly --declaration --declarationDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet();
 
 await import(new URL("./dist/local-inference-routes.js", import.meta.url).href);
+await import(new URL("./dist/voice-wake.js", import.meta.url).href);
 await import(new URL("./dist/voice-workbench.js", import.meta.url).href);
 
 console.log(

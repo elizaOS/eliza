@@ -1,5 +1,5 @@
-import { Glasses } from "lucide-react";
 import { registerSettingsSection } from "@elizaos/ui/components/settings/settings-section-registry";
+import { Glasses } from "lucide-react";
 import { WearablesSettingsSection } from "./components/WearablesSettingsSection.tsx";
 
 // Wearable hardware (XR headsets + Even Realities smartglasses) is configuration,

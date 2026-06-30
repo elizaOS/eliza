@@ -104,7 +104,9 @@ describe("EmbeddedAppViewer", () => {
   });
 
   it("does not run the handshake when no auth payload is supplied", () => {
-    render(<EmbeddedAppViewer viewerUrl="https://app.example/feed" title="X" />);
+    render(
+      <EmbeddedAppViewer viewerUrl="https://app.example/feed" title="X" />,
+    );
     const iframe = screen.getByTestId(
       "embedded-app-viewer-iframe",
     ) as HTMLIFrameElement;

@@ -100,6 +100,7 @@ import { getDesktopManager } from "./native/desktop";
 import type { NativeEditorId } from "./native/editor-bridge";
 import { getEditorBridge } from "./native/editor-bridge";
 import { getFileWatcher } from "./native/file-watcher";
+import { getFusedWakeManager } from "./native/fused-wake";
 import { getGatewayDiscovery } from "./native/gateway";
 import { getGpuWindowManager } from "./native/gpu-window";
 import { getLocationManager } from "./native/location";
@@ -118,7 +119,6 @@ import {
   restartSteward,
   startSteward,
 } from "./native/steward";
-import { getFusedWakeManager } from "./native/fused-wake";
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
 import {

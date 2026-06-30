@@ -868,6 +868,16 @@ declare module "@elizaos/ui" {
   export const COMMAND_PALETTE_EVENT: string;
   export const CONNECT_EVENT: string;
   export const ELIZA_DEFAULT_THEME: string;
+  export type EmbeddedAppViewerStatus = "loading" | "ready" | "authenticated";
+  export interface EmbeddedAppViewerProps {
+    viewerUrl: string;
+    authMessage?: AnyValue | null;
+    sandbox?: string;
+    title: string;
+    className?: string;
+    onStatusChange?: (status: EmbeddedAppViewerStatus) => void;
+  }
+  export const EmbeddedAppViewer: ComponentType<EmbeddedAppViewerProps>;
   export const ErrorBoundary: ComponentType<AnyValue>;
   export const Input: ComponentType<AnyValue>;
   export const IOS_LOCAL_AGENT_IPC_BASE: string;
