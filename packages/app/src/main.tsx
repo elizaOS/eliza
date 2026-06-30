@@ -1765,7 +1765,10 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
 }
 
 function handleDeepLink(url: string): void {
-  const firstRunRemote = parseFirstRunRemoteConnectDeepLink(url, APP_URL_SCHEME);
+  const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
+    url,
+    APP_URL_SCHEME,
+  );
   if (firstRunRemote) {
     connectFirstRunRemoteDeepLink(firstRunRemote.apiBase);
     return;

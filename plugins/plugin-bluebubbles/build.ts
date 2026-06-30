@@ -8,8 +8,8 @@
 import { buildPlugin } from "../plugin-build";
 
 await buildPlugin({
-  name: "@elizaos/plugin-bluebubbles",
-  clean: true,
-  targets: [],
-  dtsProject: "tsconfig.json",
+	name: "@elizaos/plugin-bluebubbles",
+	clean: true,
+	targets: [],
+	dtsProject: "tsconfig.json",
 });

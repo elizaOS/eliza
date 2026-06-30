@@ -1003,7 +1003,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       ? appendChatOverlayShellModeParam(baseRendererUrl)
       : requestedShellMode && requestedShellMode !== "full"
         ? appendShellModeParam(baseRendererUrl, requestedShellMode)
-      : baseRendererUrl;
+        : baseRendererUrl;
   const buildInfo = await BuildConfig.get();
   const mainWindowPartition = resolveMainWindowPartition(process.env, {
     platform: process.platform,

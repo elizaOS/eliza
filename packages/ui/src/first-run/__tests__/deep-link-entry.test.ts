@@ -349,17 +349,14 @@ describe("parseFirstRunRemoteConnectDeepLink", () => {
     ).toEqual({ apiBase: "https://agent.example.com" });
   });
 
-  it.each(["apiBase", "url", "host"])(
-    "accepts the %s query alias",
-    (key) => {
-      expect(
-        parseFirstRunRemoteConnectDeepLink(
-          `eliza://first-run/runtime/remote?${key}=https://agent.example.com`,
-          URL_SCHEME,
-        ),
-      ).toEqual({ apiBase: "https://agent.example.com" });
-    },
-  );
+  it.each(["apiBase", "url", "host"])("accepts the %s query alias", (key) => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        `eliza://first-run/runtime/remote?${key}=https://agent.example.com`,
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "https://agent.example.com" });
+  });
 
   it("returns null for a bare remote link with no URL (falls through to pre-select)", () => {
     expect(
