@@ -45,6 +45,11 @@ class LocationPlugin : Plugin() {
     // Cache the last known location for maxAge support
     private var lastKnownLocation: Location? = null
 
+    // The fused current-location fetch (priority map + request build + getCurrentLocation)
+    // lives in LocationFixReader so it is exercisable by an instrumented androidTest
+    // without an Activity/Bridge (issue #9967). The watch path keeps its own client.
+    private val reader by lazy { LocationFixReader(context) }
+
     override fun load() {
         super.load()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(activity)
@@ -97,15 +102,11 @@ class LocationPlugin : Plugin() {
 
     /** Request a fresh location using CurrentLocationRequest. */
     private fun requestFreshLocation(call: PluginCall, priority: Int, timeout: Double, maxAge: Double) {
-        val request = CurrentLocationRequest.Builder()
-            .setPriority(priority)
-            .setMaxUpdateAgeMillis(maxAge.toLong())
-            .setDurationMillis(timeout.toLong())
-            .build()
+        val request = reader.buildCurrentLocationRequest(priority, timeout.toLong(), maxAge.toLong())
 
         try {
-            fusedLocationClient?.getCurrentLocation(request, null)
-                ?.addOnSuccessListener { location ->
+            reader.getCurrentLocation(request)
+                .addOnSuccessListener { location ->
                     if (location != null) {
                         lastKnownLocation = location
                         call.resolve(buildLocationResult(location, cached = false))
@@ -115,7 +116,7 @@ class LocationPlugin : Plugin() {
                         call.reject("Unable to get location")
                     }
                 }
-                ?.addOnFailureListener { e ->
+                .addOnFailureListener { e ->
                     val code = if (e is SecurityException) "PERMISSION_DENIED" else "POSITION_UNAVAILABLE"
                     val err = buildErrorEvent(code, "Location error: ${e.message}")
                     notifyListeners("error", err)
@@ -257,16 +258,7 @@ class LocationPlugin : Plugin() {
     }
 
     /** Map accuracy string from JS to Play Services Priority constant. */
-    private fun mapAccuracyToPriority(accuracy: String): Int {
-        return when (accuracy) {
-            "best" -> Priority.PRIORITY_HIGH_ACCURACY
-            "high" -> Priority.PRIORITY_HIGH_ACCURACY
-            "medium" -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
-            "low" -> Priority.PRIORITY_LOW_POWER
-            "passive" -> Priority.PRIORITY_PASSIVE
-            else -> Priority.PRIORITY_HIGH_ACCURACY
-        }
-    }
+    private fun mapAccuracyToPriority(accuracy: String): Int = reader.mapAccuracyToPriority(accuracy)
 
     private fun buildPermissionResult(): JSObject {
         val locationState = getPermissionState("location")
