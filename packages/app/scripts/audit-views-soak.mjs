@@ -77,7 +77,7 @@ await page.waitForTimeout(1500);
 
 const heap = async () =>
   page.evaluate(() =>
-    performance && performance.memory ? performance.memory.usedJSHeapSize : 0,
+    performance?.memory ? performance.memory.usedJSHeapSize : 0,
   );
 const drain = async () =>
   page.evaluate(() => {
@@ -136,7 +136,7 @@ for (let r = 0; r < ROUNDS; r++) {
     }
   }
   // force GC if exposed, then sample heap after each full sweep
-  await page.evaluate(() => window.gc && window.gc()).catch(() => {});
+  await page.evaluate(() => window.gc?.()).catch(() => {});
   heapSamples.push(await heap());
 }
 
