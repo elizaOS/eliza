@@ -95,10 +95,12 @@ import {
   createBasicCapabilitiesPlugin,
   createMessageMemory,
   type Entity,
+  listAppRoutePluginLoaders,
   type LogEntry,
   logger,
   type Plugin,
   type Provider,
+  type Route,
   stringToUuid,
   type TargetInfo,
   type UUID,
@@ -140,6 +142,66 @@ type AppCoreRuntimeModule = {
   getBuildVariant: () => "store" | "direct";
   isStoreBuild: () => boolean;
 };
+
+/**
+ * Drain the global app-route plugin loader registry and push each loaded
+ * plugin's rawPath routes onto runtime.routes. App-route plugins register a
+ * loader via registerAppRoutePluginLoader (a side-effect-safe registration that
+ * survives bundler tree-shaking) instead of exposing routes through
+ * Plugin.routes directly. packages/app-core drains this registry during its
+ * boot; the headless agent-server boot did not, so route surfaces like
+ * /api/coding-agents/* and /api/orchestrator/* never mounted even when the
+ * owning plugin's services were registered. This mirrors app-core's
+ * registerAppRoutePlugins: load loaders concurrently, then push rawPath routes
+ * directly (no /<pluginName>/ prefix) so tryHandleRuntimePluginRoute matches.
+ */
+async function registerHeadlessAppRoutePlugins(runtime: {
+  routes: Route[];
+}): Promise<void> {
+  const loaders = listAppRoutePluginLoaders();
+  if (loaders.length === 0) return;
+  const loaded = await Promise.all(
+    loaders.map(async ({ id, load }) => {
+      try {
+        return await load();
+      } catch (err) {
+        const name = err instanceof Error ? err.name : "";
+        if (name === "OptionalAppRoutePluginUnavailableError") {
+          logger.debug(
+            `[eliza] App route plugin ${id} unavailable, skipping route registration`,
+          );
+          return null;
+        }
+        logger.warn(
+          `[eliza] Failed to register app route plugin ${id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        return null;
+      }
+    }),
+  );
+  for (const plugin of loaded) {
+    if (!plugin || !plugin.routes?.length) continue;
+    const existing = new Set(
+      runtime.routes.map((r) => `${r.type}:${r.path}`),
+    );
+    let added = 0;
+    for (const route of plugin.routes) {
+      const routePath = route.path.startsWith("/")
+        ? route.path
+        : `/${route.path}`;
+      const key = `${route.type}:${routePath}`;
+      if (existing.has(key)) continue;
+      existing.add(key);
+      runtime.routes.push({ ...route, path: routePath });
+      added += 1;
+    }
+    logger.info(
+      `[eliza] Registered app route plugin: ${plugin.name} (${added} routes)`,
+    );
+  }
+}
 
 let _appCoreRuntimePromise: Promise<AppCoreRuntimeModule> | null = null;
 function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
@@ -5140,6 +5202,20 @@ export async function startEliza(
       });
       bootTimer.lap("deferred:core-plugin-waves");
     }
+
+    // Drain app-route plugin loaders into runtime.routes. App-route plugins
+    // (e.g. @elizaos/plugin-agent-orchestrator:routes) register a loader on a
+    // global registry via registerAppRoutePluginLoader rather than exposing
+    // their HTTP routes through Plugin.routes directly. packages/app-core's
+    // boot path drains this registry, but the headless agent-server boot did
+    // not, so /api/coding-agents/* and /api/orchestrator/* 404ed even though
+    // the orchestrator plugin's services were registered. This MUST run after
+    // the deferred plugin wave (the orchestrator loads deferred, ~5s after
+    // runtime.initialize), otherwise the registry is still empty. Mirror
+    // app-core's registerAppRoutePlugins: load each loader and push its rawPath
+    // routes onto runtime.routes so tryHandleRuntimePluginRoute can dispatch.
+    await registerHeadlessAppRoutePlugins(runtime);
+    bootTimer.lap("deferred:app-route-plugins");
 
     await runTeeBootGate();
     bootTimer.lap("deferred:tee-gate");
