@@ -19,6 +19,10 @@ import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
+  FIRST_RUN_ACTION_PREFIX,
+  tryHandleFirstRunAction,
+} from "../first-run/first-run-action-channel";
+import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
 } from "../first-run/mobile-runtime-mode";
@@ -52,10 +56,6 @@ import {
 import { ChatTurnStatusCtx } from "./ChatTurnStatusContext.hooks";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
-import {
-  FIRST_RUN_ACTION_PREFIX,
-  tryHandleFirstRunAction,
-} from "../first-run/first-run-action-channel";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext.hooks";
 import {
@@ -964,7 +964,7 @@ function AppProviderInner({
   const forceLocalBootstrapRef = forceLocalBootstrapRefFromHook;
   // exportBusyRef and importBusyRef are now managed inside useExportImportState (exportImportHook)
   // walletApiKeySavingRef is now managed inside useWalletState (walletHook)
-  // elizaCloudLoginBusyRef, elizaCloudAuthNoticeSentRef, handleCloudLoginRef
+  // elizaCloudLoginBusyRef, elizaCloudAuthNoticeSentRef
   // are now managed inside useCloudState (cloudHook)
 
   // --- Confirm Modal ---
@@ -1445,13 +1445,11 @@ function AppProviderInner({
     client,
   });
   const {
-    handleFirstRunNext,
     handleFirstRunBack,
     handleFirstRunJumpToStep,
     goToFirstRunStep,
     handleFirstRunRemoteConnect,
     handleFirstRunUseLocalBackend,
-    handleCloudFirstRunFinish,
     applyDetectedProviders,
     completeFirstRun,
   } = firstRunCallbacks;
@@ -2361,7 +2359,6 @@ function AppProviderInner({
       handleCharacterArrayInput,
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
-      handleFirstRunNext,
       handleFirstRunBack,
       handleFirstRunJumpToStep,
       goToFirstRunStep,
@@ -2371,7 +2368,6 @@ function AppProviderInner({
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
-      handleCloudFirstRunFinish,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,
@@ -2785,7 +2781,6 @@ function AppProviderInner({
       handleCharacterArrayInput,
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
-      handleFirstRunNext,
       handleFirstRunBack,
       handleFirstRunJumpToStep,
       goToFirstRunStep,
@@ -2795,7 +2790,6 @@ function AppProviderInner({
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
-      handleCloudFirstRunFinish,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,

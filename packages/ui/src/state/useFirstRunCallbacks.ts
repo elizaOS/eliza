@@ -1,22 +1,20 @@
 /**
  * First-run callbacks — extracted from AppContext.
  *
- * Holds all the callback functions for the first-run setup:
- * completeFirstRun, runFirstRunChatHandoff, handleFirstRunFinish,
- * advanceFirstRun / handleFirstRunNext, revertFirstRun /
- * handleFirstRunBack, handleFirstRunJumpToStep, goToFirstRunStep,
- * applyResetConnectionWizardToHostingStep, handleCloudFirstRunFinish,
- * handleFirstRunUseLocalBackend, handleFirstRunRemoteConnect,
- * and applyDetectedProviders.
+ * Holds the callback functions for the first-run setup:
+ * completeFirstRun, goToFirstRunStep, applyResetConnectionWizardToHostingStep,
+ * revertFirstRun / handleFirstRunBack, handleFirstRunJumpToStep,
+ * handleFirstRunUseLocalBackend, handleFirstRunRemoteConnect, and
+ * applyDetectedProviders.
+ *
+ * The legacy full-screen step-machine finish chain (runFirstRunChatHandoff /
+ * handleFirstRunFinish / advanceFirstRun / handleFirstRunNext /
+ * handleCloudFirstRunFinish) was removed in #9952: onboarding now runs in the
+ * chat, and the single provisioning path lives in
+ * `first-run/first-run-finish.ts` driven by `use-first-run-conductor.ts`.
  */
 
-import { Capacitor } from "@capacitor/core";
-import {
-  buildWalletRpcUpdateRequest,
-  getDefaultStylePreset,
-} from "@elizaos/shared";
 import { type RefObject, useCallback } from "react";
-import type { StylePreset, VoiceConfig } from "../api";
 import { ElizaClient } from "../api/client-base";
 
 type FirstRunClient = Pick<
@@ -32,78 +30,20 @@ type FirstRunClient = Pick<
   | "updateConfig"
 >;
 
-const ensureFirstRunAgentRunning = async (
-  client: FirstRunClient,
-): Promise<void> => {
-  try {
-    const status = await client.getStatus();
-    if (status?.state !== "running" && status?.state !== "starting") {
-      await client.startAgent();
-    }
-  } catch {
-    // Non-fatal: agent manager may not be ready yet. First-run will retry.
-  }
-};
-
-type NativeAgentPlugin = {
-  start?: () => Promise<unknown>;
-};
-
-async function startNativeAgentIfAvailable(): Promise<void> {
-  try {
-    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
-      Plugins?: Record<string, NativeAgentPlugin | undefined>;
-    };
-    const registeredAgent =
-      capacitorWithPlugins.Plugins?.Agent ??
-      Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
-    await registeredAgent.start?.();
-  } catch {
-    const agentPluginId = "@elizaos/capacitor-agent";
-    const { Agent } = await import(/* @vite-ignore */ agentPluginId);
-    await (Agent as NativeAgentPlugin | undefined)?.start?.();
-  }
-}
-
-function shouldUseIosCloudLocalAgent(): boolean {
-  try {
-    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
-  } catch {
-    return false;
-  }
-}
-
-import {
-  getDesktopRuntimeMode,
-  invokeDesktopBridgeRequest,
-  type scanProviderCredentials,
-} from "../bridge";
-import { getBootConfig } from "../config/boot-config";
-import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
-import { buildFirstRunRuntimeConfig } from "../first-run/first-run-config";
-import {
-  IOS_LOCAL_AGENT_IPC_BASE,
-  persistMobileRuntimeModeForServerTarget,
-} from "../first-run/mobile-runtime-mode";
-import { isElizaCloudFirstRunTarget } from "../first-run/runtime-target";
+import type { scanProviderCredentials } from "../bridge";
+import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
 import {
   canRevertSetupTo,
   getFlaminaTopicForSetupStep,
   getSetupStepIndex,
-  resolveSetupNextStep,
   resolveSetupPreviousStep,
-  shouldSkipConnectionStepsForCloudProvisionedContainer,
-  shouldUseCloudSetupFastTrack,
 } from "../first-run/setup-steps";
 import type { UiLanguage } from "../i18n";
 import { APPS_ENABLED, COMPANION_ENABLED, type Tab } from "../navigation";
-import { PREMADE_VOICES } from "../voice/types";
 import {
   clearPersistedActiveServer,
   clearPersistedSetupStep,
   createPersistedActiveServer,
-  type FirstRunNextOptions,
-  loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "./internal";
 import type { AppState, CompleteFirstRunOptions, SetupStep } from "./types";
@@ -171,114 +111,6 @@ function normalizeRemoteApiBaseInput(rawValue: string): string {
   parsed.search = "";
   parsed.hash = "";
   return parsed.toString().replace(/\/+$/, "");
-}
-
-function resolveSelectedFirstRunStyle(args: {
-  styles: readonly StylePreset[] | undefined;
-  firstRunStyle: string;
-  selectedVrmIndex: number;
-  uiLanguage: UiLanguage;
-}): StylePreset {
-  const styles = args.styles ?? [];
-  return (
-    styles.find((style) => style.id === args.firstRunStyle) ??
-    styles.find(
-      (style) =>
-        typeof style.avatarIndex === "number" &&
-        style.avatarIndex === args.selectedVrmIndex,
-    ) ??
-    styles[0] ??
-    getDefaultStylePreset(args.uiLanguage)
-  );
-}
-
-export function buildFirstRunStyleVoiceConfig(args: {
-  style: StylePreset | undefined;
-  voiceProvider: string;
-  voiceApiKey: string;
-  cloudTtsSelected: boolean;
-}): VoiceConfig | null {
-  const { style, voiceProvider, voiceApiKey, cloudTtsSelected } = args;
-  const voicePresetId = style?.voicePresetId?.trim();
-  if (!voicePresetId) {
-    return null;
-  }
-  const presetVoice = PREMADE_VOICES.find(
-    (voice) => voice.id === voicePresetId,
-  );
-  if (!presetVoice) {
-    return null;
-  }
-
-  const trimmedVoiceApiKey = voiceApiKey.trim();
-  const mode =
-    voiceProvider === "elevenlabs" && trimmedVoiceApiKey
-      ? "own-key"
-      : cloudTtsSelected
-        ? "cloud"
-        : undefined;
-
-  return {
-    provider: "elevenlabs",
-    ...(mode ? { mode } : {}),
-    elevenlabs: {
-      voiceId: presetVoice.voiceId,
-      ...(mode === "own-key" ? { apiKey: trimmedVoiceApiKey } : {}),
-    },
-  };
-}
-
-async function persistFirstRunStyleVoice(args: {
-  style: StylePreset | undefined;
-  voiceProvider: string;
-  voiceApiKey: string;
-  cloudTtsSelected: boolean;
-  clientRef: Pick<FirstRunClient, "updateConfig">;
-}): Promise<void> {
-  const voiceConfig = buildFirstRunStyleVoiceConfig(args);
-  if (!voiceConfig) {
-    return;
-  }
-
-  await args.clientRef.updateConfig({
-    messages: {
-      tts: voiceConfig,
-    },
-  });
-}
-
-export function buildFirstRunCapabilitySubmitPayload(args: {
-  firstRunFeatureTelegram: boolean;
-  firstRunFeatureDiscord: boolean;
-  firstRunFeatureBrowser: boolean;
-  firstRunFeatureComputerUse: boolean;
-}): {
-  connectors?: Record<string, { enabled: true; managed: true }>;
-  features?: Record<string, { enabled: true }>;
-} {
-  const connectors =
-    args.firstRunFeatureTelegram || args.firstRunFeatureDiscord
-      ? {
-          ...(args.firstRunFeatureTelegram
-            ? { telegram: { enabled: true as const, managed: true as const } }
-            : {}),
-          ...(args.firstRunFeatureDiscord
-            ? { discord: { enabled: true as const, managed: true as const } }
-            : {}),
-        }
-      : undefined;
-  const featureEntries: Record<string, { enabled: true }> = {};
-  if (args.firstRunFeatureBrowser)
-    featureEntries.browser = { enabled: true as const };
-  if (args.firstRunFeatureComputerUse)
-    featureEntries.computeruse = { enabled: true as const };
-  const features =
-    Object.keys(featureEntries).length > 0 ? featureEntries : undefined;
-
-  return {
-    ...(connectors ? { connectors } : {}),
-    ...(features ? { features } : {}),
-  };
 }
 
 // ── Hook deps ─────────────────────────────────────────────────────────────
@@ -357,23 +189,15 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
     setFirstRunRemoteError,
     setFirstRunRemoteConnected,
     setPostFirstRunChecklistDismissed,
-    setBrowserEnabled,
-    setComputerUseEnabled,
     setFirstRunComplete,
     coordinatorFirstRunCompleteRef,
     initialTabSetRef,
     setTab,
     defaultLandingTab,
     loadCharacter,
-    uiLanguage,
-    selectedVrmIndex,
-    walletConfig,
-    elizaCloudConnected,
     setActionNotice,
     retryStartup,
-    setWalletEnabled,
     forceLocalBootstrapRef,
-    addDeferredFirstRunTask,
     client,
   } = deps;
 
@@ -382,32 +206,10 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
     state: {
       step: setupStep,
       mode: firstRunMode,
-      options: firstRunOptions,
-      name: firstRunName,
-      style: firstRunStyle,
-      serverTarget: firstRunRuntimeTarget,
-      cloudApiKey: firstRunCloudApiKey,
-      provider: firstRunProvider,
-      apiKey: firstRunApiKey,
-      voiceProvider: firstRunVoiceProvider,
-      voiceApiKey: firstRunVoiceApiKey,
-      smallModel: firstRunSmallModel,
-      largeModel: firstRunLargeModel,
-      openRouterModel: firstRunOpenRouterModel,
-      primaryModel: firstRunPrimaryModel,
       detectedProviders: firstRunDetectedProviders,
       remoteApiBase: firstRunRemoteApiBase,
       remoteToken: firstRunRemoteToken,
       remote: firstRunRemote,
-      rpcSelections: firstRunRpcSelections,
-      rpcKeys: firstRunRpcKeys,
-      featureTelegram: firstRunFeatureTelegram,
-      featureDiscord: firstRunFeatureDiscord,
-      featurePhone: firstRunFeaturePhone,
-      featureCrypto: firstRunFeatureCrypto,
-      featureBrowser: firstRunFeatureBrowser,
-      featureComputerUse: firstRunFeatureComputerUse,
-      cloudProvisionedContainer,
     },
     completionCommittedRef: firstRunCompletionCommittedRef,
   } = firstRun;
@@ -463,418 +265,6 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
       coordinatorFirstRunCompleteRef,
       initialTabSetRef,
     ],
-  );
-
-  // ── runFirstRunChatHandoff ──────────────────────────────────────
-  // DEAD PATH (#9952): this is the legacy duplicate of the provisioning logic
-  // now owned by the headless `first-run/first-run-finish.ts` use case driven by
-  // the in-chat conductor. Its only callers — `handleFirstRunFinish` /
-  // `handleCloudFirstRunFinish` — are the old onboarding-step entry points and
-  // are never invoked now that the full-screen wizard is gone, so there is no
-  // double-POST. It is left in place because its many `deps` (firstRunRpcKeys,
-  // wallet/computer-use setters, …) are shared with the surviving step-machine
-  // callbacks; excising it cleanly is a separate FirstRunCallbacksDeps refactor.
-  // TODO(#9952 follow-up): delete this + handleFirstRunFinish/handleCloudFirstRunFinish.
-
-  const runFirstRunChatHandoff = useCallback(
-    async (options?: FirstRunNextOptions) => {
-      if (!firstRunOptions) return;
-
-      try {
-        const firstRunRunMode =
-          firstRunMode === "elizacloudonly"
-            ? "cloud"
-            : firstRunMode === "basic" || firstRunMode === "advanced"
-              ? "local"
-              : "";
-        const useCloudFastTrack = shouldUseCloudSetupFastTrack({
-          cloudProvisionedContainer,
-          elizaCloudConnected,
-          firstRunRunMode,
-          firstRunProvider,
-        });
-        const firstRunCapabilityPayload = buildFirstRunCapabilitySubmitPayload({
-          firstRunFeatureTelegram,
-          firstRunFeatureDiscord,
-          firstRunFeatureBrowser,
-          firstRunFeatureComputerUse,
-        });
-        const shouldApplyLocalCapabilities = setupStep === "capabilities";
-        const applySelectedLocalCapabilities = () => {
-          if (!shouldApplyLocalCapabilities) return;
-          setWalletEnabled?.(firstRunFeatureCrypto);
-          setBrowserEnabled?.(firstRunFeatureBrowser);
-          setComputerUseEnabled?.(firstRunFeatureComputerUse);
-        };
-
-        const runtimeConfig = buildFirstRunRuntimeConfig({
-          firstRunRuntimeTarget,
-          firstRunCloudApiKey,
-          firstRunProvider,
-          firstRunApiKey,
-          omitRuntimeProvider: options?.omitRuntimeProvider,
-          firstRunVoiceProvider,
-          firstRunVoiceApiKey,
-          firstRunPrimaryModel,
-          firstRunOpenRouterModel,
-          firstRunRemoteConnected: firstRunRemote.status === "connected",
-          firstRunRemoteApiBase,
-          firstRunRemoteToken,
-          firstRunSmallModel,
-          firstRunLargeModel,
-          firstRunFeatureTelegram,
-          firstRunFeatureDiscord,
-          firstRunFeaturePhone,
-          firstRunFeatureCrypto,
-          firstRunFeatureBrowser,
-        });
-
-        const rpcSel = firstRunRpcSelections as Record<string, string>;
-        const rpcK = firstRunRpcKeys as Record<string, string>;
-        const nextWalletConfig = buildWalletRpcUpdateRequest({
-          walletConfig,
-          rpcFieldValues: rpcK,
-          selectedProviders: {
-            evm: rpcSel.evm,
-            bsc: rpcSel.bsc,
-            solana: rpcSel.solana,
-          },
-        });
-
-        if (useCloudFastTrack) {
-          const style = resolveSelectedFirstRunStyle({
-            styles: firstRunOptions.styles,
-            firstRunStyle,
-            selectedVrmIndex,
-            uiLanguage,
-          });
-          const defaultName =
-            style.name ?? getDefaultStylePreset(uiLanguage).name;
-          const fastTrackSandboxMode = isElizaCloudFirstRunTarget(
-            firstRunRuntimeTarget,
-          )
-            ? "standard"
-            : "off";
-
-          await client.submitFirstRun({
-            name: firstRunName || defaultName,
-            sandboxMode: fastTrackSandboxMode as "off",
-            bio: style?.bio ?? ["An autonomous AI agent."],
-            systemPrompt:
-              style?.system?.replace(
-                /\{\{name\}\}/g,
-                firstRunName || defaultName,
-              ) ??
-              `You are ${firstRunName || defaultName}, an autonomous AI agent powered by elizaOS.`,
-            style: style?.style,
-            adjectives: style?.adjectives,
-            postExamples: style?.postExamples,
-            messageExamples: style?.messageExamples,
-            topics: style?.topics,
-            avatarIndex: style?.avatarIndex ?? 1,
-            language: uiLanguage,
-            presetId: style?.id ?? getDefaultStylePreset(uiLanguage).id,
-            deploymentTarget: runtimeConfig.deploymentTarget,
-            ...(runtimeConfig.linkedAccounts
-              ? { linkedAccounts: runtimeConfig.linkedAccounts }
-              : {}),
-            ...(runtimeConfig.serviceRouting
-              ? { serviceRouting: runtimeConfig.serviceRouting }
-              : {}),
-            ...(runtimeConfig.credentialInputs
-              ? { credentialInputs: runtimeConfig.credentialInputs }
-              : {}),
-            ...firstRunCapabilityPayload,
-            walletConfig: nextWalletConfig,
-          } as Parameters<FirstRunClient["submitFirstRun"]>[0]);
-          try {
-            await persistFirstRunStyleVoice({
-              style,
-              voiceProvider: firstRunVoiceProvider,
-              voiceApiKey: firstRunVoiceApiKey,
-              cloudTtsSelected:
-                runtimeConfig.serviceRouting?.tts?.transport ===
-                  "cloud-proxy" &&
-                runtimeConfig.serviceRouting?.tts?.backend === "elizacloud",
-              clientRef: client,
-            });
-          } catch {
-            // voice preset persistence is best-effort
-          }
-
-          applySelectedLocalCapabilities();
-          if (runtimeConfig.needsProviderSetup) {
-            setActionNotice(
-              "Choose a chat provider in Settings to start chatting.",
-              "info",
-              6000,
-            );
-            completeFirstRun("settings");
-            return;
-          }
-          await ensureFirstRunAgentRunning(client);
-
-          completeFirstRun("chat", { launchCompanionOverlay: true });
-          return;
-        }
-
-        const style = resolveSelectedFirstRunStyle({
-          styles: firstRunOptions.styles,
-          firstRunStyle,
-          selectedVrmIndex,
-          uiLanguage,
-        });
-
-        const systemPrompt = style?.system
-          ? style.system.replace(/\{\{name\}\}/g, firstRunName)
-          : `You are ${firstRunName}, an autonomous AI agent powered by elizaOS. ${firstRunOptions.sharedStyleRules}`;
-
-        const isSandboxMode = isElizaCloudFirstRunTarget(firstRunRuntimeTarget);
-        const isLocalMode =
-          firstRunRuntimeTarget === "local" || !firstRunRuntimeTarget;
-        const isRemoteMode = firstRunRuntimeTarget === "remote";
-
-        // The deployment target persisted to eliza.json. For a cloud-hosted
-        // agent (topology 3) the renderer only learns the agent's reachable URL
-        // after provisioning, so the cloud branch below augments this with the
-        // resolved cloud agent base. That base is what the desktop main process
-        // reads next boot to skip the embedded agent (resolveCloudHostedAgentApiBase).
-        let submitDeploymentTarget = runtimeConfig.deploymentTarget;
-
-        if (isSandboxMode) {
-          const cloudApiBase =
-            client.getBaseUrl().trim() ||
-            getBootConfig().cloudApiBase ||
-            "https://www.elizacloud.ai";
-          const authToken = String(
-            (globalThis as Record<string, unknown>)
-              .__ELIZA_CLOUD_AUTH_TOKEN__ ?? "",
-          );
-
-          if (!authToken) {
-            throw new Error(
-              "Eliza Cloud authentication required. Please log in first.",
-            );
-          }
-
-          // Reuse the user's existing cloud agent instead of creating a new one
-          // on every setup (matches finishCloud). Returns a valid per-agent REST
-          // adapter base, never the agent-id-less collection URL.
-          //
-          // Honor a remembered choice: if a cloud:<agentId> server is already
-          // persisted, pass that id as preferAgentId so we re-bind it instead of
-          // silently auto-reusing whatever pickPreferredCloudAgent picks. The
-          // full picker UI on this mobile-callback path (it has no React step
-          // machine) is a follow-up — the controller path (web/desktop) is the
-          // primary picker surface.
-          const rememberedActive = loadPersistedActiveServer();
-          const rememberedCloudAgentId =
-            rememberedActive?.kind === "cloud" &&
-            rememberedActive.id?.startsWith("cloud:")
-              ? rememberedActive.id.slice("cloud:".length)
-              : "";
-          const preferAgentId =
-            rememberedCloudAgentId && !rememberedCloudAgentId.includes("/")
-              ? rememberedCloudAgentId
-              : null;
-          const selectedAgent = await client.selectOrProvisionCloudAgent({
-            cloudApiBase,
-            authToken,
-            name: firstRunName,
-            bio: style?.bio ?? ["An autonomous AI agent."],
-            ...(preferAgentId ? { preferAgentId } : {}),
-            // This legacy callback path does not own the shared→dedicated
-            // handoff supervisor; keep it dedicated-direct even when
-            // preferSharedCloudTier is default-on. The controller path owns the
-            // shared bridge and background handoff.
-            onProgress: () => {},
-          });
-
-          const iosCloudLocalAgent = shouldUseIosCloudLocalAgent();
-          const cloudAgentApiBase = iosCloudLocalAgent
-            ? IOS_LOCAL_AGENT_IPC_BASE
-            : selectedAgent.apiBase;
-          client.setBaseUrl(cloudAgentApiBase);
-          client.setToken(authToken);
-          persistMobileRuntimeModeForServerTarget(firstRunRuntimeTarget);
-          savePersistedActiveServer(
-            createPersistedActiveServer({
-              kind: "cloud",
-              id: `cloud:${selectedAgent.agentId}`,
-              apiBase: cloudAgentApiBase,
-              accessToken: authToken,
-              label: firstRunName || "Eliza Cloud",
-            }),
-          );
-          // Persist the resolved cloud agent URL into the deployment target so
-          // the desktop main process can auto-skip the embedded agent next boot
-          // (topology 3). The iOS on-device shared runtime (IPC base) is NOT a
-          // remote agent — it boots locally — so its non-http base is excluded.
-          if (!iosCloudLocalAgent && cloudAgentApiBase.startsWith("http")) {
-            submitDeploymentTarget = {
-              ...submitDeploymentTarget,
-              remoteApiBase: cloudAgentApiBase,
-            };
-          }
-        } else if (isLocalMode) {
-          const desktopRuntimeMode = await getDesktopRuntimeMode().catch(
-            () => null,
-          );
-          const shouldStartEmbeddedDesktopRuntime =
-            !desktopRuntimeMode || desktopRuntimeMode.mode === "local";
-
-          if (shouldStartEmbeddedDesktopRuntime) {
-            try {
-              await invokeDesktopBridgeRequest({
-                rpcMethod: "agentStart",
-                ipcChannel: "agent:start",
-              });
-            } catch {
-              try {
-                await startNativeAgentIfAvailable();
-              } catch {
-                /* dev mode where agent is already running */
-              }
-            }
-          }
-
-          const localDeadline = Date.now() + 120_000;
-          let pollMs = 1000;
-          while (Date.now() < localDeadline) {
-            try {
-              await client.getAuthStatus();
-              break;
-            } catch {
-              await new Promise((r) => setTimeout(r, pollMs));
-              pollMs = Math.min(pollMs * 1.5, 5000);
-            }
-          }
-
-          savePersistedActiveServer(
-            createPersistedActiveServer({ kind: "local" }),
-          );
-        } else if (isRemoteMode) {
-          savePersistedActiveServer(
-            createPersistedActiveServer({
-              kind: "remote",
-              apiBase: firstRunRemoteApiBase,
-              accessToken: firstRunRemoteToken || undefined,
-            }),
-          );
-        }
-
-        const sandboxMode = isSandboxMode ? "standard" : "off";
-        await client.submitFirstRun({
-          name: firstRunName,
-          sandboxMode: sandboxMode as "off",
-          bio: style?.bio ?? ["An autonomous AI agent."],
-          systemPrompt,
-          style: style?.style,
-          adjectives: style?.adjectives,
-          topics: style?.topics,
-          postExamples: style?.postExamples,
-          messageExamples: style?.messageExamples,
-          avatarIndex: style?.avatarIndex ?? selectedVrmIndex,
-          language: uiLanguage,
-          presetId:
-            (style?.id ?? firstRunStyle) ||
-            getDefaultStylePreset(uiLanguage).id,
-          deploymentTarget: submitDeploymentTarget,
-          ...(runtimeConfig.linkedAccounts
-            ? { linkedAccounts: runtimeConfig.linkedAccounts }
-            : {}),
-          ...(runtimeConfig.serviceRouting
-            ? { serviceRouting: runtimeConfig.serviceRouting }
-            : {}),
-          ...(runtimeConfig.credentialInputs
-            ? { credentialInputs: runtimeConfig.credentialInputs }
-            : {}),
-          ...firstRunCapabilityPayload,
-          walletConfig: nextWalletConfig,
-        } as Parameters<FirstRunClient["submitFirstRun"]>[0]);
-        try {
-          await persistFirstRunStyleVoice({
-            style,
-            voiceProvider: firstRunVoiceProvider,
-            voiceApiKey: firstRunVoiceApiKey,
-            cloudTtsSelected:
-              runtimeConfig.serviceRouting?.tts?.transport === "cloud-proxy" &&
-              runtimeConfig.serviceRouting?.tts?.backend === "elizacloud",
-            clientRef: client,
-          });
-        } catch {
-          // voice preset persistence is best-effort
-        }
-
-        applySelectedLocalCapabilities();
-        if (runtimeConfig.needsProviderSetup) {
-          setActionNotice(
-            "Choose a chat provider in Settings to start chatting.",
-            "info",
-            6000,
-          );
-          completeFirstRun("settings");
-          return;
-        }
-        await ensureFirstRunAgentRunning(client);
-
-        completeFirstRun("chat", { launchCompanionOverlay: true });
-      } catch (err) {
-        const message =
-          err instanceof Error && err.message.trim()
-            ? `Failed to complete firstRun: ${err.message}`
-            : "Failed to complete firstRun.";
-        setActionNotice(message, "error", 8000);
-      }
-    },
-    [
-      firstRunOptions,
-      firstRunStyle,
-      firstRunName,
-      firstRunRuntimeTarget,
-      firstRunCloudApiKey,
-      firstRunSmallModel,
-      firstRunLargeModel,
-      setupStep,
-      firstRunProvider,
-      firstRunApiKey,
-      firstRunRemoteApiBase,
-      firstRunRemote,
-      firstRunRemoteToken,
-      firstRunOpenRouterModel,
-      firstRunPrimaryModel,
-      firstRunFeatureTelegram,
-      firstRunFeatureDiscord,
-      firstRunFeaturePhone,
-      firstRunFeatureCrypto,
-      firstRunFeatureBrowser,
-      firstRunFeatureComputerUse,
-      firstRunVoiceProvider,
-      firstRunVoiceApiKey,
-      selectedVrmIndex,
-      uiLanguage,
-      firstRunRpcSelections,
-      firstRunRpcKeys,
-      setBrowserEnabled,
-      setComputerUseEnabled,
-      walletConfig,
-      firstRunMode,
-      elizaCloudConnected,
-      cloudProvisionedContainer,
-      completeFirstRun,
-      client,
-      setActionNotice,
-      setWalletEnabled,
-    ],
-  );
-
-  // ── handleFirstRunFinish ────────────────────────────────────────
-
-  const handleFirstRunFinish = useCallback(
-    async (options?: FirstRunNextOptions) => {
-      await runFirstRunChatHandoff(options);
-    },
-    [runFirstRunChatHandoff],
   );
 
   // ── goToFirstRunStep ───────────────────────────────────────────
@@ -948,60 +338,6 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
     setFirstRunRemoteError,
     setFirstRunRemoteToken,
   ]);
-
-  // ── advanceFirstRun / handleFirstRunNext ─────────────────────
-
-  const advanceFirstRun = useCallback(
-    async (options?: FirstRunNextOptions) => {
-      if (
-        shouldSkipConnectionStepsForCloudProvisionedContainer({
-          currentStep: setupStep,
-          cloudProvisionedContainer,
-        })
-      ) {
-        await handleFirstRunFinish(options);
-        return;
-      }
-
-      if (setupStep === "model" && options?.allowPermissionBypass) {
-        if (options.skipTask) addDeferredFirstRunTask(options.skipTask);
-      }
-
-      if (setupStep === "connection") {
-        await ensureStoreBuildWorkspaceFolder();
-      }
-
-      const nextStep = resolveSetupNextStep(setupStep);
-
-      if (!nextStep) {
-        await handleFirstRunFinish(options);
-        return;
-      }
-
-      if (nextStep) {
-        setSetupStep(nextStep);
-        setFirstRunActiveGuide(
-          firstRunMode === "advanced"
-            ? getFlaminaTopicForSetupStep(nextStep)
-            : null,
-        );
-      }
-    },
-    [
-      handleFirstRunFinish,
-      firstRunMode,
-      setupStep,
-      setSetupStep,
-      setFirstRunActiveGuide,
-      cloudProvisionedContainer,
-      addDeferredFirstRunTask,
-    ],
-  );
-
-  const handleFirstRunNext = useCallback(
-    async (options?: FirstRunNextOptions) => advanceFirstRun(options),
-    [advanceFirstRun],
-  );
 
   // ── revertFirstRun / handleFirstRunBack ──────────────────────
 
@@ -1160,12 +496,6 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
     setFirstRunRuntimeTarget,
   ]);
 
-  // ── handleCloudFirstRunFinish ──────────────────────────────────
-
-  const handleCloudFirstRunFinish = useCallback(async () => {
-    await runFirstRunChatHandoff();
-  }, [runFirstRunChatHandoff]);
-
   // ── applyDetectedProviders ───────────────────────────────────────
 
   const applyDetectedProviders = useCallback(
@@ -1179,18 +509,13 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
 
   return {
     completeFirstRun,
-    runFirstRunChatHandoff,
-    handleFirstRunFinish,
     goToFirstRunStep,
     applyResetConnectionWizardToHostingStep,
-    advanceFirstRun,
-    handleFirstRunNext,
     revertFirstRun,
     handleFirstRunBack,
     handleFirstRunJumpToStep,
     handleFirstRunUseLocalBackend,
     handleFirstRunRemoteConnect,
-    handleCloudFirstRunFinish,
     applyDetectedProviders,
   };
 }
