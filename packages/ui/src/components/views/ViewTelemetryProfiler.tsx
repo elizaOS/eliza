@@ -36,6 +36,7 @@ import {
   WINDOW_MS,
 } from "../../hooks/useRenderGuard";
 import { snapshotResourceCounters } from "../../perf/resource-counters";
+import { readJsHeap } from "../../state/bounded-view-lru";
 import { useViewLifecycle } from "../../state/useViewLifecycle";
 import type { ViewLifecyclePhase } from "../../state/view-lifecycle-types";
 import {
@@ -43,17 +44,6 @@ import {
   installViewRuntimeTelemetryRing,
   type ViewRuntimeTelemetryReason,
 } from "../../view-runtime-telemetry";
-
-interface PerfMemory {
-  usedJSHeapSize?: number;
-}
-
-function readJsHeapUsedSize(): number | undefined {
-  if (typeof performance === "undefined") return undefined;
-  const memory = (performance as Performance & { memory?: PerfMemory }).memory;
-  const used = memory?.usedJSHeapSize;
-  return typeof used === "number" && Number.isFinite(used) ? used : undefined;
-}
 
 export interface ViewTelemetryProfilerProps {
   viewId: string;
@@ -133,7 +123,7 @@ export function ViewTelemetryProfiler({
         renderCount: renderCount.current,
         lastCommitMs: lastCommitMs.current,
         commitDurationP95Ms: percentile(commitDurations.current, 95),
-        jsHeapUsedSize: readJsHeapUsedSize(),
+        jsHeapUsedSize: readJsHeap()?.usedJSHeapSize,
         activeSubscriptions: snap.activeSubscriptions,
         pendingTimers: snap.pendingTimers,
         heavyResources: snap.heavyResources,

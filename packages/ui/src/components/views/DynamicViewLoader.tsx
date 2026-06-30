@@ -261,10 +261,10 @@ function installBundleCacheLifecycle(): void {
       pruneBundleModuleCache({ force: true, reason: "app-pause" }),
     );
   };
-  // Real heap-driven eviction (#10196): ViewTelemetryProfiler dispatches this
-  // when live usedJSHeapSize crosses HEAP_PRESSURE_RATIO. Unlike the
-  // never-fired `memorypressure` window event, this actually feeds live heap
-  // into the cache.
+  // Real heap-driven eviction (#10196): the shared heap-pressure monitor
+  // (installHeapPressureMonitor) dispatches this when live usedJSHeapSize
+  // crosses HEAP_PRESSURE_RATIO. Unlike the never-fired `memorypressure`
+  // window event, this actually feeds live heap into the cache.
   pruneBundleCacheOnHeapPressure = () => {
     scheduleIdleWork(() =>
       pruneBundleModuleCache({ force: true, reason: "heap-pressure" }),

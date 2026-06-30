@@ -12,6 +12,7 @@ import {
   RetainedLazyComponent,
   type RetainedLazyModule,
 } from "./retained-lazy";
+import { __resetHeapPressureMonitorForTests } from "./state/heap-pressure-monitor";
 
 interface TestProps {
   label: string;
@@ -36,6 +37,7 @@ describe("RetainedLazyComponent", () => {
   afterEach(() => {
     cleanup();
     __resetRetainedLazyModulesForTests();
+    __resetHeapPressureMonitorForTests();
     delete (window as Partial<Window>).requestIdleCallback;
   });
 
