@@ -48,6 +48,10 @@ const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
 // The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
 // dedicated tool run via `audit:app`, not part of the default e2e smoke.
 const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
+// The view soak (#10196) walks every /api/views entry × N cycles, draining the
+// render + module-cache telemetry rings + heap. Dedicated tool run via
+// `audit:views`, not part of the default smoke.
+const AUDIT_VIEWS_SPEC = /views-soak\.spec\.ts/;
 const recording = !!process.env.E2E_RECORD;
 const videoMode =
   process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
@@ -87,7 +91,7 @@ export default defineConfig({
       // The voice button-press spec needs the fake-audio launch flags; it runs
       // in the dedicated `chromium-voice-mic` project below, not here. The
       // all-views aesthetic audit runs only via the `audit:app` project.
-      testIgnore: [VOICE_MIC_SPEC, AUDIT_APP_SPEC],
+      testIgnore: [VOICE_MIC_SPEC, AUDIT_APP_SPEC, AUDIT_VIEWS_SPEC],
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumExecutablePath
@@ -146,6 +150,22 @@ export default defineConfig({
         ...(chromiumExecutablePath
           ? { launchOptions: { executablePath: chromiumExecutablePath } }
           : {}),
+      },
+    },
+    {
+      // View soak (#10196) — run with `audit:views` (`--project=audit-views`).
+      // Needs precise heap + a callable gc() to sample retained memory between
+      // cycles; the default audit-app project deliberately does not set these.
+      name: "audit-views",
+      testMatch: AUDIT_VIEWS_SPEC,
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: {
+          args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"],
+          ...(chromiumExecutablePath
+            ? { executablePath: chromiumExecutablePath }
+            : {}),
+        },
       },
     },
   ],

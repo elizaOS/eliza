@@ -1,0 +1,13 @@
+[
+  {
+    "source": "dynamic-view",
+    "action": "load",
+    "key": "/api/views/training/bundle.js?v=ui-smoke::FineTuningView",
+    "activeCount": 1,
+    "idleCount": 0,
+    "cacheSize": 1,
+    "jsHeapUsedSize": 57534055,
+    "at": 1782798711076,
+    "route": "/training"
+  }
+]
