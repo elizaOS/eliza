@@ -1,34 +1,15 @@
-import { execSync, spawnSync } from "node:child_process";
-import { join } from "node:path";
+#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-bluebubbles.
+ * tsc-only (non-bundled) plugin: no Bun.build step — the shared driver cleans
+ * dist then runs `tsc --project tsconfig.json --noCheck` via the empty-targets
+ * path.
+ */
+import { buildPlugin } from "../plugin-build";
 
-const distDir = join(import.meta.dirname, "dist");
-const rmRecursiveScript = join(
-	import.meta.dirname,
-	"..",
-	"..",
-	"packages",
-	"scripts",
-	"rm-path-recursive.mjs",
-);
-
-function rmRecursive(targetPath: string) {
-	const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
-		stdio: "inherit",
-	});
-	if (result.status !== 0) {
-		throw new Error(
-			`failed to remove generated BlueBubbles build output ${targetPath}`,
-		);
-	}
-}
-
-// Clean
-rmRecursive(distDir);
-
-// Build
-execSync("bunx tsc -p tsconfig.json --noCheck", {
-	cwd: import.meta.dirname,
-	stdio: "inherit",
+await buildPlugin({
+  name: "@elizaos/plugin-bluebubbles",
+  clean: true,
+  targets: [],
+  dtsProject: "tsconfig.json",
 });
-
-console.log("Build complete: plugin-bluebubbles");
