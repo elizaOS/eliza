@@ -354,12 +354,16 @@ It closes the three KV-inherent residuals point-for-point:
    a retention window, so a caller-supplied `request_id` cannot pin an immortal row
    and the table stays bounded.
 
-`uncollected` is a first-class row state (auditable) instead of log-only: a debit
-the DB refuses (would overdraw) marks the row `uncollected`, drops the org-balance
-hint, and the org's NEXT admission reads the now-depleted balance and self-heals
-onto the synchronous-reserve path (402) — which re-engages the low-credit /
-auto-top-up / waifu notifications that the optimistic debit deliberately does not
-fire. Bounded over-spend, never free-forever.
+A successful debit fires the SAME post-debit notifications every other billing
+path does — low-credits email, auto-top-up check, and the waifu hosted-agent pause
+webhook — via the shared `creditsService.notifyBalanceDecrease`, so an org draining
+through optimistic inference still gets low-balance warnings (the ledger mutates
+the balance with its own transactional SQL rather than through `deductCredits`, so
+this parity is explicit, not inherited). `uncollected` is a first-class row state
+(auditable) instead of log-only: a debit the DB refuses (would overdraw) marks the
+row `uncollected`, drops the org-balance hint, and the org's NEXT admission reads
+the now-depleted balance and self-heals onto the synchronous-reserve path (402).
+Bounded over-spend, never free-forever.
 
 The cron sweeps **both** backends (`db` + `kv`) on every run regardless of the
 flag — each is idempotent and a cheap no-op when empty — so a flag flip (or

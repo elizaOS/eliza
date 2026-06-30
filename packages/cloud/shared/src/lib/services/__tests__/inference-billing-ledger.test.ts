@@ -23,7 +23,7 @@
  * Self-skips if PGlite is unavailable (mirrors the sibling suite).
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -51,6 +51,7 @@ const USER_ID = "00000000-0000-0000-0000-00000000ce02";
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let ledger: typeof import("../inference-billing-ledger");
+let creditsService: typeof import("../credits").creditsService;
 let pgliteReady = true;
 
 let chargeSeq = 0;
@@ -130,6 +131,7 @@ beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ledger = await import("../inference-billing-ledger");
+    ({ creditsService } = await import("../credits"));
 
     const ddl = [
       `CREATE TABLE IF NOT EXISTS organizations (
@@ -455,6 +457,53 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
       expect(await readBalance()).toBeCloseTo(10, 6);
       expect(await debitCount()).toBe(0);
       expect((await pendingRows())[0]).toMatchObject({ status: "settled", actual: 0 });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "fires the low-credit/auto-top-up/waifu notifications on a successful debit (parity with deductCredits)",
+    async () => {
+      if (!pgliteReady) return;
+      const notify = spyOn(creditsService, "notifyBalanceDecrease");
+      try {
+        const reqId = nextRequestId();
+        await ledger.admitInferenceChargeViaLedger({
+          charge: charge(reqId),
+          estimatedCostUsd: 3,
+          thresholdUsd: 1,
+        });
+        await ledger.createLedgerDebitSettler(charge(reqId))(2);
+        // The org drained $2 → it must get the same low-balance notifications every
+        // other billing path fires (so a hosted agent is told to pause, etc.).
+        expect(notify).toHaveBeenCalledTimes(1);
+        const [org, newBalance] = notify.mock.calls[0];
+        expect(org).toBe(ORG_ID);
+        expect(newBalance).toBeCloseTo(8, 6);
+      } finally {
+        notify.mockRestore();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "does NOT fire balance-decrease notifications when nothing was debited (settle(0) / uncollected)",
+    async () => {
+      if (!pgliteReady) return;
+      const notify = spyOn(creditsService, "notifyBalanceDecrease");
+      try {
+        const reqId = nextRequestId();
+        await ledger.admitInferenceChargeViaLedger({
+          charge: charge(reqId),
+          estimatedCostUsd: 3,
+          thresholdUsd: 1,
+        });
+        await ledger.createLedgerDebitSettler(charge(reqId))(0); // claims, charges nothing
+        expect(notify).not.toHaveBeenCalled();
+      } finally {
+        notify.mockRestore();
+      }
     },
     PGLITE_TIMEOUT,
   );

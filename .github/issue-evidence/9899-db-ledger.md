@@ -63,14 +63,30 @@ under-bills one request. Documented as a tracked follow-up, not a regression.
 7 findings were adversarially **refuted** (e.g. sub-µ$ rounding, a markUncollected
 race) and correctly dropped. Full reasoning archived in the workflow transcript.
 
-## Test evidence — 97 pass / 0 fail (real DB, no larp)
+A **second** review pass over the *revised* code confirmed the runtime money-safety
+is correct (no new bugs from the transaction/advisory-lock rewrite) and surfaced
+two quality gaps, both now fixed:
+
+- **Advisory-lock bound was untested** (the behavioral suite passes identically with
+  or without the lock because single-connection PGlite serializes anyway). Added
+  `inference-billing-ledger-advisory-lock.test.ts` — mirroring `signup-grant-guard.test.ts`,
+  it asserts the per-org `pg_advisory_xact_lock` is acquired BEFORE the in-flight
+  `SUM`; **proven to fail** when the lock SQL is dropped/neutralized.
+- **Notification divergence** — the ledger debit skipped the low-credit email +
+  auto-top-up + waifu (hosted-agent pause) notifications that `deductCredits` fires.
+  Extracted `creditsService.notifyBalanceDecrease` and call it from both the
+  synchronous reserve and the ledger settle → full parity, with tests asserting it
+  fires on a debit and not on `settle(0)`.
+
+## Test evidence — 101 pass / 0 fail (real DB, no larp)
 
 Every test drives the **real SQL against in-process PGlite** (same pattern as the
 audited `credits-deduct-guard.test.ts`); only fire-and-forget non-billing
 side-effects (email/webhook/auto-top-up) are stubbed.
 
 ```
-inference-billing-ledger.test.ts              18 pass   (admission/settle/sweep/concurrency/recovery/GC)
+inference-billing-ledger.test.ts              20 pass   (admission/settle/sweep/concurrency/recovery/GC/notify-parity)
+inference-billing-ledger-advisory-lock.test.ts 2 pass   (lock acquired before SUM — fails if the lock is dropped)
 inference-pending-charges-migration.test.ts    6 pass   (journal reg + real-DB apply + idempotent)
 cron/sweep-inference-charges/route.test.ts     4 pass   (sweeps both backends)
 inference-billing-fast-path.test.ts           28 pass   (KV path — no regression)
@@ -78,10 +94,10 @@ inference-billing-cache-failure.test.ts        2 pass
 inference-auth-context.test.ts                12 pass
 inference-auth-lifecycle.test.ts               7 pass
 inference-hot-path-benchmark.test.ts           3 pass
-credits-deduct-guard.test.ts                   9 pass   (credit mutation — no regression)
+credits-deduct-guard.test.ts                   9 pass   (credit mutation + notifyBalanceDecrease — no regression)
 credits-reconcile.test.ts                      8 pass
 ------------------------------------------------------------
-TOTAL                                         97 pass / 0 fail
+TOTAL                                        101 pass / 0 fail
 ```
 
 New-file typecheck: clean (only pre-existing i18n/hono-dup/stripe-version noise).

@@ -45,7 +45,7 @@ import { CacheInvalidation } from "../cache/invalidation";
 import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import type { CreditReconciliationResult } from "./credits";
+import { type CreditReconciliationResult, creditsService } from "./credits";
 import { invalidateOrgBalanceHint } from "./inference-auth-cache";
 
 export type InferenceBillingLedger = "db" | "kv";
@@ -289,6 +289,20 @@ async function settleLedgerCharge(
     await CacheInvalidation.onCreditMutation(ctx.organizationId).catch(() => {});
     invalidateOrganizationCache(ctx.organizationId).catch(() => {});
     invalidateOrgBalanceHint(ctx.organizationId).catch(() => {});
+    // Parity with deductCredits: fire low-credits email + auto-top-up + the waifu
+    // hosted-agent pause webhook so an org draining via optimistic inference still
+    // gets low-balance warnings (the ledger debits with its own SQL, not deductCredits).
+    if (outcome.newBalance !== undefined) {
+      creditsService.notifyBalanceDecrease(ctx.organizationId, outcome.newBalance, {
+        user_id: ctx.userId,
+        requestId: ctx.requestId,
+        model: ctx.model,
+        provider: ctx.provider,
+        billingSource: ctx.billingSource,
+        type: "inference_optimistic_ledger",
+        source,
+      });
+    }
   } else if (outcome.uncollected) {
     logger.error("[InferenceLedger] uncollected inference charge", {
       organizationId: ctx.organizationId,
