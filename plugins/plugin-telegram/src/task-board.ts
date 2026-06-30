@@ -11,8 +11,8 @@
  * post-or-edit manager takes injected `post`/`edit` so it tests with mocks.
  */
 
-import type { IAgentRuntime, Service } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Service, UUID } from "@elizaos/core";
+import { createUniqueUuid, logger } from "@elizaos/core";
 
 /** A task reduced to what a board line needs. */
 export interface TaskBoardEntry {
@@ -87,6 +87,28 @@ export interface TaskBoardDeps {
     text: string,
     threadId?: number,
   ) => Promise<void>;
+  /** Best-effort pin for a newly posted board message. */
+  pin?: (
+    chatId: number | string,
+    messageId: number,
+    threadId?: number,
+  ) => Promise<void>;
+  /** Load a persisted board message id for this chat/thread. */
+  loadMessageId?: (
+    chatId: number | string,
+    threadId?: number,
+  ) => Promise<number | undefined>;
+  /** Persist the board message id for this chat/thread. */
+  saveMessageId?: (
+    chatId: number | string,
+    messageId: number,
+    threadId?: number,
+  ) => Promise<void>;
+  /** Forget a persisted board message id after deletion/edit failure. */
+  forgetMessageId?: (
+    chatId: number | string,
+    threadId?: number,
+  ) => Promise<void>;
 }
 
 /**
@@ -111,7 +133,11 @@ export class TelegramTaskBoard {
   ): Promise<number> {
     const text = composeTaskBoard(entries);
     const key = this.key(chatId, threadId);
-    const existing = this.boardMsgByKey.get(key);
+    let existing = this.boardMsgByKey.get(key);
+    if (existing === undefined && this.deps.loadMessageId) {
+      existing = await this.deps.loadMessageId(chatId, threadId);
+      if (existing !== undefined) this.boardMsgByKey.set(key, existing);
+    }
     if (existing !== undefined) {
       try {
         await this.deps.edit(chatId, existing, text, threadId);
@@ -124,16 +150,28 @@ export class TelegramTaskBoard {
           }`,
         );
         this.boardMsgByKey.delete(key);
+        await this.deps.forgetMessageId?.(chatId, threadId);
       }
     }
     const { messageId } = await this.deps.post(chatId, text, threadId);
     this.boardMsgByKey.set(key, messageId);
+    await this.deps.saveMessageId?.(chatId, messageId, threadId);
+    try {
+      await this.deps.pin?.(chatId, messageId, threadId);
+    } catch (error) {
+      logger.warn(
+        `[TelegramTaskBoard] pin failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     return messageId;
   }
 
   /** Forget a stored board (e.g. when a chat is reset). */
   forget(chatId: number | string, threadId?: number): void {
     this.boardMsgByKey.delete(this.key(chatId, threadId));
+    void this.deps.forgetMessageId?.(chatId, threadId);
   }
 }
 
@@ -158,6 +196,11 @@ interface TaskBoardBot {
       text: string,
       extra?: { message_thread_id?: number },
     ) => Promise<{ message_id: number }>;
+    pinChatMessage?: (
+      chatId: number | string,
+      messageId: number,
+      extra?: { disable_notification?: boolean },
+    ) => Promise<unknown>;
   };
 }
 
@@ -189,9 +232,22 @@ export function registerTelegramTaskBoardCommand(
       );
       return { messageId: sent.message_id };
     },
+    pin: bot.telegram.pinChatMessage
+      ? async (chatId, messageId) => {
+          await bot.telegram.pinChatMessage?.(chatId, messageId, {
+            disable_notification: true,
+          });
+        }
+      : undefined,
     edit: async (chatId, messageId, text, threadId) => {
       await messageManager.editMessage(chatId, messageId, text, threadId);
     },
+    loadMessageId: (chatId, threadId) =>
+      loadPersistedTaskBoardMessageId(runtime, chatId, threadId),
+    saveMessageId: (chatId, messageId, threadId) =>
+      savePersistedTaskBoardMessageId(runtime, chatId, messageId, threadId),
+    forgetMessageId: (chatId, threadId) =>
+      forgetPersistedTaskBoardMessageId(runtime, chatId, threadId),
   });
   bot.command("tasks", async (ctx) => {
     const chatId = ctx.chat?.id;
@@ -209,6 +265,84 @@ export function registerTelegramTaskBoardCommand(
     }
   });
   return board;
+}
+
+function taskBoardMemoryIds(
+  runtime: IAgentRuntime,
+  chatId: number | string,
+  threadId?: number,
+): { id: UUID; roomId: UUID; metadata: Record<string, unknown> } {
+  const key = `${chatId}:${threadId ?? ""}`;
+  return {
+    id: createUniqueUuid(runtime, `telegram-task-board-memory:${key}`) as UUID,
+    roomId: createUniqueUuid(
+      runtime,
+      `telegram-task-board-room:${key}`,
+    ) as UUID,
+    metadata: {
+      type: "telegram_task_board",
+      chatId: String(chatId),
+      threadId: threadId ?? null,
+    },
+  };
+}
+
+export async function loadPersistedTaskBoardMessageId(
+  runtime: IAgentRuntime,
+  chatId: number | string,
+  threadId?: number,
+): Promise<number | undefined> {
+  const { id } = taskBoardMemoryIds(runtime, chatId, threadId);
+  const memory = await runtime.getMemoryById(id).catch(() => null);
+  const metadata = memory?.metadata as Record<string, unknown> | undefined;
+  const messageId = metadata?.messageId;
+  return typeof messageId === "number" && Number.isFinite(messageId)
+    ? messageId
+    : undefined;
+}
+
+export async function savePersistedTaskBoardMessageId(
+  runtime: IAgentRuntime,
+  chatId: number | string,
+  messageId: number,
+  threadId?: number,
+): Promise<void> {
+  const { id, roomId, metadata } = taskBoardMemoryIds(
+    runtime,
+    chatId,
+    threadId,
+  );
+  const nextMetadata = { ...metadata, messageId };
+  const existing = await runtime.getMemoryById(id).catch(() => null);
+  if (existing) {
+    await runtime.updateMemory({ id, metadata: nextMetadata });
+    return;
+  }
+  await runtime.createMemory(
+    {
+      id,
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      roomId,
+      content: {
+        text: `Telegram task board ${chatId}${threadId ? `/${threadId}` : ""}`,
+        source: "telegram",
+        type: "telegram_task_board",
+      },
+      metadata: nextMetadata,
+    } as Memory,
+    "memories",
+    true,
+  );
+}
+
+export async function forgetPersistedTaskBoardMessageId(
+  runtime: IAgentRuntime,
+  chatId: number | string,
+  threadId?: number,
+): Promise<void> {
+  const { id } = taskBoardMemoryIds(runtime, chatId, threadId);
+  await runtime.deleteMemory(id).catch(() => undefined);
 }
 
 /**

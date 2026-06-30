@@ -35,11 +35,15 @@ describe("TelegramTaskBoard (#8902)", () => {
   it("posts on first render, then edits the same message in place", async () => {
     const post = vi.fn(async () => ({ messageId: 42 }));
     const edit = vi.fn(async () => undefined);
-    const board = new TelegramTaskBoard({ post, edit });
+    const pin = vi.fn(async () => undefined);
+    const saveMessageId = vi.fn(async () => undefined);
+    const board = new TelegramTaskBoard({ post, edit, pin, saveMessageId });
 
     const id1 = await board.render(100, entries);
     expect(id1).toBe(42);
     expect(post).toHaveBeenCalledTimes(1);
+    expect(pin).toHaveBeenCalledWith(100, 42, undefined);
+    expect(saveMessageId).toHaveBeenCalledWith(100, 42, undefined);
     expect(edit).not.toHaveBeenCalled();
 
     // second render → edits message 42 (no new post = no flooding)
@@ -50,6 +54,20 @@ describe("TelegramTaskBoard (#8902)", () => {
     expect(post).toHaveBeenCalledTimes(1);
     expect(edit).toHaveBeenCalledTimes(1);
     expect(edit).toHaveBeenCalledWith(100, 42, expect.any(String), undefined);
+  });
+
+  it("loads a persisted board id so a fresh instance edits after restart", async () => {
+    const post = vi.fn(async () => ({ messageId: 99 }));
+    const edit = vi.fn(async () => undefined);
+    const loadMessageId = vi.fn(async () => 42);
+    const board = new TelegramTaskBoard({ post, edit, loadMessageId });
+
+    const id = await board.render(100, entries, 7);
+
+    expect(id).toBe(42);
+    expect(loadMessageId).toHaveBeenCalledWith(100, 7);
+    expect(edit).toHaveBeenCalledWith(100, 42, expect.any(String), 7);
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("keeps separate boards per chat/thread", async () => {
@@ -69,10 +87,12 @@ describe("TelegramTaskBoard (#8902)", () => {
       .mockResolvedValueOnce({ messageId: 1 })
       .mockResolvedValueOnce({ messageId: 2 });
     const edit = vi.fn().mockRejectedValueOnce(new Error("message not found"));
-    const board = new TelegramTaskBoard({ post, edit });
+    const forgetMessageId = vi.fn(async () => undefined);
+    const board = new TelegramTaskBoard({ post, edit, forgetMessageId });
     await board.render(100, entries); // posts msg 1
     const id = await board.render(100, entries); // edit fails → reposts msg 2
     expect(id).toBe(2);
     expect(post).toHaveBeenCalledTimes(2);
+    expect(forgetMessageId).toHaveBeenCalledWith(100, undefined);
   });
 });
