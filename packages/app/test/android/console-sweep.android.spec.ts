@@ -19,12 +19,15 @@ const ROUTES: RouteCase[] = [
   })),
 ];
 const seen = new Set<string>();
-const UNIQUE_ROUTES = ROUTES.filter((r) =>
-  seen.has(r.path) ? false : (seen.add(r.path), true),
-);
+const UNIQUE_ROUTES = ROUTES.filter((r) => {
+  if (seen.has(r.path)) return false;
+  seen.add(r.path);
+  return true;
+});
 
 // Known-noisy patterns to ignore (dev warnings, not defects).
-const IGNORE = /DevTools|Download the React|\[vite\]|HMR|deprecat|favicon|sourcemap/i;
+const IGNORE =
+  /DevTools|Download the React|\[vite\]|HMR|deprecat|favicon|sourcemap/i;
 
 test.describe("android console-error sweep (real backend)", () => {
   test("every shipping view renders without console errors / exceptions", async ({
@@ -37,10 +40,14 @@ test.describe("android console-error sweep (real backend)", () => {
       if (msg.type() !== "error") return;
       const text = msg.text();
       if (IGNORE.test(text)) return;
-      (errorsByRoute[current] ??= []).push(`console.error: ${text.slice(0, 160)}`);
+      errorsByRoute[current] ??= [];
+      errorsByRoute[current].push(`console.error: ${text.slice(0, 160)}`);
     });
     page.on("pageerror", (err) => {
-      (errorsByRoute[current] ??= []).push(`pageerror: ${String(err.message).slice(0, 160)}`);
+      errorsByRoute[current] ??= [];
+      errorsByRoute[current].push(
+        `pageerror: ${String(err.message).slice(0, 160)}`,
+      );
     });
 
     await waitForShellReady(page);
@@ -52,23 +59,33 @@ test.describe("android console-error sweep (real backend)", () => {
         await expect(page.locator("#root")).toBeVisible({ timeout: 30_000 });
         await page.waitForTimeout(1200); // let the view settle / async errors surface
       } catch (e) {
-        (errorsByRoute[current] ??= []).push(`navigation-error: ${String(e).slice(0, 120)}`);
+        errorsByRoute[current] ??= [];
+        errorsByRoute[current].push(
+          `navigation-error: ${String(e).slice(0, 120)}`,
+        );
       }
     }
 
     const dirty = Object.entries(errorsByRoute).filter(([, e]) => e.length);
-    console.log(`\n=== console-error sweep: ${UNIQUE_ROUTES.length} views walked ===`);
+    console.log(
+      `\n=== console-error sweep: ${UNIQUE_ROUTES.length} views walked ===`,
+    );
     if (!dirty.length) {
-      console.log("CLEAN: no console errors / exceptions on any shipping view.");
+      console.log(
+        "CLEAN: no console errors / exceptions on any shipping view.",
+      );
     } else {
       for (const [route, errs] of dirty) {
         console.log(`  ${route}:`);
-        for (const e of [...new Set(errs)].slice(0, 4)) console.log(`     ${e}`);
+        for (const e of [...new Set(errs)].slice(0, 4))
+          console.log(`     ${e}`);
       }
     }
     // Hard exceptions/pageerrors are defects; console.error alone is reported but not failed.
     const hardFailures = dirty.filter(([, errs]) =>
-      errs.some((e) => e.startsWith("pageerror") || e.startsWith("navigation-error")),
+      errs.some(
+        (e) => e.startsWith("pageerror") || e.startsWith("navigation-error"),
+      ),
     );
     expect(
       hardFailures.map(([r]) => r),
