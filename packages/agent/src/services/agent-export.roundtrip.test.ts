@@ -18,6 +18,7 @@
  * would only add boot flakiness without testing anything more of this code.
  */
 
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -227,7 +228,11 @@ const ROOM1 = uuid(20);
 const ROOM2 = uuid(21);
 const USER1 = uuid(30);
 const USER2 = uuid(31);
-const MEDIA_SHA = "c".repeat(64);
+// Content-addressed media: the store names every file `<sha256(bytes)>.<ext>`,
+// and restore now integrity-gates that the bytes hash to their name (#9963), so
+// the fixture must derive its filename from the real digest of its bytes.
+const MEDIA_BYTES = Buffer.from("PNGBYTES-round-trip");
+const MEDIA_SHA = createHash("sha256").update(MEDIA_BYTES).digest("hex");
 const MEDIA_FILE = `${MEDIA_SHA}.png`;
 const PASSWORD = "round-trip-pass-123";
 
@@ -346,7 +351,7 @@ describe("#9963 agent export → import round-trip", () => {
     process.env.ELIZA_STATE_DIR = stateDir;
     process.env.MILADY_STATE_DIR = stateDir;
     // The content-addressed media byte the exported memory references.
-    writeStoredMediaFile(MEDIA_FILE, Buffer.from("PNGBYTES-round-trip"));
+    writeStoredMediaFile(MEDIA_FILE, MEDIA_BYTES);
   });
   afterAll(() => {
     rmSync(stateDir, { recursive: true, force: true });
@@ -394,9 +399,7 @@ describe("#9963 agent export → import round-trip", () => {
 
     // 4b. The content-addressed media bytes were restored by content — the exact
     // bytes the export referenced, re-materialized from the encrypted buffer.
-    expect(readStoredMediaBytes(MEDIA_FILE)).toEqual(
-      Buffer.from("PNGBYTES-round-trip"),
-    );
+    expect(readStoredMediaBytes(MEDIA_FILE)).toEqual(MEDIA_BYTES);
 
     // 5. The target store actually holds the restored rows.
     expect(target.worlds).toHaveLength(1);
@@ -489,7 +492,7 @@ describe("#9963 agent export → import round-trip", () => {
       media: [
         {
           fileName: MEDIA_FILE,
-          base64: Buffer.from("PNGBYTES-round-trip").toString("base64"),
+          base64: MEDIA_BYTES.toString("base64"),
         },
       ] as never,
     });

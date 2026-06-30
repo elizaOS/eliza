@@ -96,6 +96,39 @@ describe('GET /workflows', () => {
 
     expect((service.listWorkflows as ReturnType<typeof mock>).mock.calls[0][0]).toBe('user-42');
   });
+
+  // #8913: `?q=` routes through the ranked free-text search, not the plain list.
+  test('?q= performs a ranked search (searchWorkflows, not listWorkflows)', async () => {
+    const { runtime, service } = runtimeWithService();
+    const req = createRouteRequest({ query: { q: 'deploy gmail', userId: 'user-42' } });
+    const { res, getResult } = createRouteResponse();
+
+    await listHandler(req, res, runtime);
+
+    const search = service.searchWorkflows as ReturnType<typeof mock>;
+    expect(search.mock.calls.length).toBe(1);
+    expect(search.mock.calls[0][0]).toBe('deploy gmail');
+    expect(search.mock.calls[0][1]).toBe('user-42');
+    // The plain-list path must NOT be taken when a query is present.
+    expect((service.listWorkflows as ReturnType<typeof mock>).mock.calls.length).toBe(0);
+
+    const { body } = getResult();
+    const data = body as { success: boolean; data: Array<{ id: string }> };
+    expect(data.success).toBe(true);
+    expect(data.data[0].id).toBe('wf-match');
+  });
+
+  // A blank/whitespace-only `q` falls through to the plain list (the `q?.trim()` guard).
+  test('blank ?q= falls through to listWorkflows', async () => {
+    const { runtime, service } = runtimeWithService();
+    const req = createRouteRequest({ query: { q: '   ' } });
+    const { res } = createRouteResponse();
+
+    await listHandler(req, res, runtime);
+
+    expect((service.searchWorkflows as ReturnType<typeof mock>).mock.calls.length).toBe(0);
+    expect((service.listWorkflows as ReturnType<typeof mock>).mock.calls.length).toBe(1);
+  });
 });
 
 describe('POST /workflows', () => {

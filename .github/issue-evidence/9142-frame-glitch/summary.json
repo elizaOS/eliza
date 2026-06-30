@@ -5,7 +5,7 @@
   "startState": "INPUT",
   "endState": "OPEN_HALF_OR_OVER",
   "frames": 34,
-  "samples": 140,
+  "samples": 142,
   "recording": "transition.gif",
   "crossfade": {
     "pillMax": 1,
@@ -22,20 +22,20 @@
     30497,
     44574,
     58234,
-    59359,
-    1455,
-    1889,
-    1463,
+    59278,
+    1433,
+    1468,
+    1845,
     1873,
     1438,
-    1424,
+    2120,
     1867,
-    0,
+    2106,
     1409,
-    1425,
-    0,
+    1856,
+    1416,
     1418,
-    0,
+    1423,
     0,
     0,
     1406,
@@ -313,8 +313,8 @@
       "state": "CLOSED"
     },
     {
-      "pill": 0,
-      "grabber": 1,
+      "pill": 1,
+      "grabber": 0,
       "state": "CLOSED"
     },
     {
@@ -341,6 +341,16 @@
       "pill": 0,
       "grabber": 1,
       "state": "CLOSED"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
     },
     {
       "pill": 0,
