@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@elizaos/ui/components/ui/select";
 import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
-import { getBootConfig, type AppBootConfig } from "@elizaos/ui/config";
+import { type AppBootConfig, getBootConfig } from "@elizaos/ui/config";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { WorkspaceLayout } from "@elizaos/ui/layouts";
 import { Escape } from "@elizaos/ui/spatial";
