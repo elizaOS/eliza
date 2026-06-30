@@ -1228,6 +1228,14 @@ async function handleStream(
 
         controller.enqueue(sse("message_stop", { type: "message_stop" }));
       } catch (error) {
+        // Backstop: this catch can run even when the AI SDK never invokes (or
+        // doesn't await) onError — e.g. a fullStream `error` part re-thrown here,
+        // or a controller.enqueue throw on client disconnect racing ahead of
+        // onAbort. Settle the reservation here too so the upfront hold is never
+        // leaked (a permanent overcharge). The settler is first-call-wins
+        // idempotent, so this cannot double-refund if onError already won the
+        // race. Mirrors the /v1/chat/completions backstop.
+        await settleReservation(0);
         const message = error instanceof Error ? error.message : String(error);
         logger.error("[Messages API] Stream error", { error: message });
         controller.enqueue(
