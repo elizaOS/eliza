@@ -272,7 +272,13 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-console:
     name: Deploy Console (Pages · elizacloud.ai)
-    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hetzner-robot"]') }}
+    # GitHub-hosted (ephemeral, plentiful) instead of the shared hetzner-robot
+    # pool, for the same reason as deploy-api above: under a hot develop push
+    # stream the self-hosted autoscaler recycles runner VMs mid-job, cancelling
+    # this deploy right after the checkout starts (the #10353 reclaim). A fresh
+    # ubuntu-latest VM per run sidesteps both the preemption and the stuck
+    # shared-workspace checkout. The scoped vite build fits a 16 GB hosted runner.
+    runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -295,7 +301,7 @@ jobs:
           # retries instead of burning the whole step budget (the #10310 stuck-checkout).
           fetched=
           for attempt in 1 2; do
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 --filter=blob:none origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
@@ -477,7 +483,13 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
-    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hetzner-robot"]') }}
+    # GitHub-hosted (ephemeral, plentiful) instead of the shared hetzner-robot
+    # pool, for the same reason as deploy-api above: under a hot develop push
+    # stream the self-hosted autoscaler recycles runner VMs mid-job, cancelling
+    # this deploy right after the checkout starts (the #10353 reclaim). A fresh
+    # ubuntu-latest VM per run sidesteps both the preemption and the stuck
+    # shared-workspace checkout. The scoped vite build fits a 16 GB hosted runner.
+    runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -500,7 +512,7 @@ jobs:
           # retries instead of burning the whole step budget (the #10310 stuck-checkout).
           fetched=
           for attempt in 1 2; do
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 --filter=blob:none origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
