@@ -580,11 +580,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         }
       }
       if (textContains) {
-        if (
-          !String(m.content.text ?? "")
-            .toLowerCase()
-            .includes(textContains)
-        ) {
+        const text = (m.content as { text?: unknown } | undefined)?.text;
+        if (typeof text !== "string" || !text.toLowerCase().includes(textContains)) {
           return false;
         }
       }

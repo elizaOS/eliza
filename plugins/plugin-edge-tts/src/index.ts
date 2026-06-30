@@ -79,10 +79,9 @@ function getSetting(
   key: string,
   fallback?: string
 ): string | undefined {
-  if (fallback === undefined) {
-    return resolveSetting(runtime, key);
-  }
-  return resolveSetting(runtime, key, { defaultValue: fallback });
+  return fallback === undefined
+    ? resolveSetting(runtime, key)
+    : resolveSetting(runtime, key, { defaultValue: fallback });
 }
 
 function getEdgeTTSSettings(runtime: IAgentRuntime | null): EdgeTTSSettings {

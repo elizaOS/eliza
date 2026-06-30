@@ -74,7 +74,10 @@ import {
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
-import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
+import {
+  parseFirstRunRemoteConnectDeepLink,
+  routeFirstRunDeepLink,
+} from "@elizaos/ui/first-run/deep-link-handler";
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
@@ -407,6 +410,7 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
+const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
@@ -823,6 +827,29 @@ function parseIosOnboardingSmokeRequest(raw: string | null): {
   }
 }
 
+async function waitForIosOnboardingElement<T extends Element>(
+  selector: string,
+  options?: { timeoutMs?: number; visible?: boolean },
+): Promise<T> {
+  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  let lastElement: Element | null = null;
+  while (Date.now() < deadline) {
+    lastElement = document.querySelector(selector);
+    if (lastElement) {
+      const visible =
+        !options?.visible ||
+        (lastElement instanceof HTMLElement &&
+          lastElement.offsetParent !== null);
+      if (visible) return lastElement as T;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out waiting for iOS onboarding selector ${selector}${lastElement ? " to become visible" : ""}`,
+  );
+}
+
 function readIosOnboardingSmokeStorageSnapshot(): Record<
   string,
   string | null
@@ -859,22 +886,48 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
 
   iosOnboardingSmokeStarted = true;
   const request = parseIosOnboardingSmokeRequest(rawRequest);
-  // QUARANTINED (#10322): #9952 moved onboarding into the in-chat
-  // ContinuousChatOverlay and removed the remote-connect-at-URL surface this
-  // smoke drove (first-run-remote-address / choice-remote / choice-connect /
-  // first-run-chat). Device remote-connect onboarding needs a product redesign
-  // before this lane can be rewritten, so skip cleanly — the harness treats a
-  // `phase: "skipped"` result as a pass — instead of timing out against
-  // selectors that no longer exist.
+  await writeIosOnboardingSmokeResult({
+    ok: false,
+    phase: "running",
+    startedAt: new Date().toISOString(),
+    apiBase: request.apiBase,
+  });
   try {
+    // The harness fires the `<scheme>://first-run/runtime/remote?api=…` deep
+    // link after launch; the app connects to the remote and completes first-run
+    // on its own (CONNECT_EVENT → adopt → startup re-poll). This verifier only
+    // proves the post-connect surface, so it is decoupled from the onboarding
+    // DOM — no remote-address field to fill, resilient to the in-chat redesign.
+    const home = await waitForIosOnboardingElement<HTMLElement>(
+      '[data-testid="home-launcher-surface"][data-page="home"]',
+      { visible: true },
+    );
+    const composer = await waitForIosOnboardingElement<HTMLElement>(
+      '[data-testid="chat-composer-textarea"]',
+      { visible: true },
+    );
+
+    const onboardingHidden = !document.querySelector(
+      '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
+    );
+
     await writeIosOnboardingSmokeResult({
-      ok: false,
-      skipped: true,
-      phase: "skipped",
+      ok: true,
+      phase: "complete",
       finishedAt: new Date().toISOString(),
       apiBase: request.apiBase,
-      reason:
-        "remote-connect-at-URL onboarding removed by #9952; device redesign pending — see https://github.com/elizaOS/eliza/issues/10322",
+      homeVisible: Boolean(home),
+      composerVisible: Boolean(composer),
+      onboardingHidden,
+      storage: readIosOnboardingSmokeStorageSnapshot(),
+    });
+  } catch (error) {
+    await writeIosOnboardingSmokeResult({
+      ok: false,
+      phase: "failed",
+      finishedAt: new Date().toISOString(),
+      apiBase: request.apiBase,
+      error: error instanceof Error ? error.message : String(error),
       storage: readIosOnboardingSmokeStorageSnapshot(),
     });
   } finally {
@@ -1674,7 +1727,49 @@ async function initializeNetworkListener(): Promise<void> {
 // `assetlinks.json` + `apple-app-site-association` served from eliza.app).
 const APP_LINK_HOSTS = ["eliza.app"];
 
+// Device/desktop "connect to a remote agent at a URL" first-run onboarding:
+// `<scheme>://first-run/runtime/remote?api=<url>`. The host (a desktop/cloud
+// agent) emits this as a link/QR; opening it on a fresh device connects to that
+// remote and lands on home. Routed through the same hardened CONNECT_EVENT path
+// as `<scheme>://connect?url=` (trust-policy gated, token never accepted from a
+// deep link) but with `completeFirstRun` so it also finishes onboarding.
+function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
+  let validatedUrl: URL;
+  try {
+    validatedUrl = new URL(rawApiBase);
+  } catch {
+    console.error(`${APP_LOG_PREFIX} Invalid first-run remote URL format`);
+    return;
+  }
+  if (validatedUrl.protocol !== "https:" && validatedUrl.protocol !== "http:") {
+    console.error(
+      `${APP_LOG_PREFIX} Invalid first-run remote URL protocol:`,
+      validatedUrl.protocol,
+    );
+    return;
+  }
+  if (!isTrustedDeepLinkApiBaseUrl(validatedUrl)) {
+    console.warn(
+      `${APP_LOG_PREFIX} Rejected untrusted first-run remote host:`,
+      validatedUrl.hostname,
+    );
+    return;
+  }
+  // SECURITY: never accept a bearer token from an OS-delivered deep link (see
+  // the `connect` case below). A pairing-disabled remote that needs a token is
+  // connected via the trusted in-app Settings entry instead.
+  dispatchAppEvent(CONNECT_EVENT, {
+    gatewayUrl: validatedUrl.href,
+    completeFirstRun: true,
+  });
+}
+
 function handleDeepLink(url: string): void {
+  const firstRunRemote = parseFirstRunRemoteConnectDeepLink(url, APP_URL_SCHEME);
+  if (firstRunRemote) {
+    connectFirstRunRemoteDeepLink(firstRunRemote.apiBase);
+    return;
+  }
   if (routeFirstRunDeepLink(url, APP_URL_SCHEME)) {
     return;
   }

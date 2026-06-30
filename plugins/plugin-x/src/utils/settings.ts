@@ -17,8 +17,7 @@ export function getSetting(
   key: string,
   defaultValue?: string,
 ): string | undefined {
-  if (defaultValue === undefined) {
-    return resolveSetting(runtime, key);
-  }
-  return resolveSetting(runtime, key, { defaultValue });
+  return defaultValue === undefined
+    ? resolveSetting(runtime, key)
+    : resolveSetting(runtime, key, { defaultValue });
 }

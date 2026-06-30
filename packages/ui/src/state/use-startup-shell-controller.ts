@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type { StartupShellView } from "../components/shell/startup-shell-types";
 import { CONNECT_EVENT } from "../events";
+import { adoptRemoteAgentFirstRun } from "../first-run/adopt-remote-first-run";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
 import { applyLaunchConnection } from "../platform";
@@ -74,7 +75,7 @@ export interface StartupShellController {
 
 export function useStartupShellController(): StartupShellController {
   // Granular shallow selector instead of useApp() so the startup controller
-  // re-renders only when one of the eight fields it reads changes, not on every
+  // re-renders only when one of the seven fields it reads changes, not on every
   // app-store field update (#9141 gap 2 — useApp() → useAppSelector migration).
   const {
     startupCoordinator,
@@ -84,6 +85,7 @@ export function useStartupShellController(): StartupShellController {
     setActionNotice,
     setState,
     t,
+    uiLanguage,
   } = useAppSelectorShallow((s) => ({
     startupCoordinator: s.startupCoordinator,
     startupError: s.startupError,
@@ -92,6 +94,7 @@ export function useStartupShellController(): StartupShellController {
     setActionNotice: s.setActionNotice,
     setState: s.setState,
     t: s.t,
+    uiLanguage: s.uiLanguage,
   }));
   const phase = startupCoordinator.phase;
   const [showBootstrap, setShowBootstrap] = useState(false);
@@ -107,18 +110,33 @@ export function useStartupShellController(): StartupShellController {
       const detail = (event as CustomEvent<unknown>).detail;
       const payload =
         detail && typeof detail === "object" && !Array.isArray(detail)
-          ? (detail as { gatewayUrl?: unknown; token?: unknown })
+          ? (detail as {
+              gatewayUrl?: unknown;
+              token?: unknown;
+              completeFirstRun?: unknown;
+              skipConfirm?: unknown;
+            })
           : null;
       if (typeof payload?.gatewayUrl !== "string") {
         return;
       }
 
-      // CONNECT_EVENT is only ever dispatched from an OS-delivered `connect`
-      // deep link (attacker-reachable). Repointing the agent API base to a
-      // non-loopback host is security-sensitive, so require explicit user
-      // confirmation for any remote target; the local-agent (loopback) connect
-      // stays frictionless.
-      if (!isLoopbackGatewayHost(payload.gatewayUrl)) {
+      // `completeFirstRun` marks the connected remote as this device's finished
+      // first-run target (device/desktop remote-connect-at-URL onboarding), so
+      // it lands on home instead of re-showing onboarding on the next launch.
+      const completeFirstRun = payload.completeFirstRun === true;
+      // `skipConfirm` is set ONLY by trusted in-app callers (the Settings
+      // "Connect a remote agent" entry, where the user just typed the URL).
+      // OS-delivered deep links never set it, so they keep the confirmation.
+      const skipConfirm = payload.skipConfirm === true;
+
+      // CONNECT_EVENT is dispatched from an OS-delivered `connect`/`first-run`
+      // deep link (attacker-reachable) as well as the trusted Settings entry.
+      // Repointing the agent API base to a non-loopback host is
+      // security-sensitive, so require explicit user confirmation for any remote
+      // target from an untrusted source; the local-agent (loopback) connect and
+      // the trusted in-app entry stay frictionless.
+      if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
         const approved = await confirmDesktopAction({
           type: "warning",
           title: "Connect to this server?",
@@ -147,6 +165,17 @@ export function useStartupShellController(): StartupShellController {
         setState("firstRunRemoteToken", connection.token ?? "");
         setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
+        if (completeFirstRun) {
+          // Adopt the remote as this device's completed first-run target. Probes
+          // first, so an already-configured host is used as-is (no clobber) and
+          // a fresh host is marked complete — either way the startup re-poll
+          // below lands on home rather than onboarding.
+          await adoptRemoteAgentFirstRun(client, {
+            apiBase: connection.apiBase,
+            token: connection.token,
+            uiLanguage,
+          });
+        }
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
       } catch (err) {
@@ -162,7 +191,7 @@ export function useStartupShellController(): StartupShellController {
 
     document.addEventListener(CONNECT_EVENT, handleConnect);
     return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
-  }, [retryStartup, setActionNotice, setState]);
+  }, [retryStartup, setActionNotice, setState, uiLanguage]);
 
   useEffect(() => {
     void ensureStoreBuildWorkspaceFolder();

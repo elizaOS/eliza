@@ -33,11 +33,11 @@ type AssignmentScopeOwner = {
   userId?: string;
 };
 
-type NormalizedScopeOwner = {
-  scope: VertexTuningScope;
-  organizationId?: string;
-  userId?: string;
-};
+type NormalizedScopeOwner =
+  | { scope: "global"; organizationId?: undefined; userId?: undefined }
+  | { scope: "organization"; organizationId: string; userId?: undefined }
+  | { scope: "user"; organizationId: string; userId: string };
+type SqlCondition = ReturnType<typeof eq>;
 
 export interface RecordSubmittedVertexTuningJobInput extends AssignmentScopeOwner {
   vertexJobName: string;
@@ -72,8 +72,6 @@ export interface ResolvedModelPreferences {
   sources: Partial<Record<ModelPreferenceKey, VertexModelAssignmentWithModel>>;
 }
 
-type VisibilityCondition = ReturnType<typeof eq>;
-
 function isTerminalJobState(state: TuningJob["state"]): boolean {
   return (
     state === "JOB_STATE_SUCCEEDED" ||
@@ -105,76 +103,124 @@ function normalizeScopeOwner(input: AssignmentScopeOwner): NormalizedScopeOwner 
   }
 }
 
+function allConditions(...conditions: SqlCondition[]): SqlCondition {
+  const condition = and(...conditions);
+  if (!condition) {
+    throw new Error("Expected at least one SQL condition");
+  }
+  return condition;
+}
+
+function anyCondition(conditions: [SqlCondition, ...SqlCondition[]]): SqlCondition {
+  if (conditions.length === 1) {
+    return conditions[0];
+  }
+  const condition = or(...conditions);
+  if (!condition) {
+    throw new Error("Expected at least one SQL condition");
+  }
+  return condition;
+}
+
 function buildVisibilityCondition(viewer: ViewerScope) {
-  const clauses: [VisibilityCondition, ...VisibilityCondition[]] = [
-    eq(vertexTuningJobs.scope, "global"),
-  ];
+  const clauses: [SqlCondition, ...SqlCondition[]] = [eq(vertexTuningJobs.scope, "global")];
 
   if (viewer.organizationId && isValidUUID(viewer.organizationId)) {
-    const organizationClause = and(
-      eq(vertexTuningJobs.scope, "organization"),
-      eq(vertexTuningJobs.organization_id, viewer.organizationId),
+    clauses.push(
+      allConditions(
+        eq(vertexTuningJobs.scope, "organization"),
+        eq(vertexTuningJobs.organization_id, viewer.organizationId),
+      ),
     );
-    if (organizationClause) clauses.push(organizationClause);
   }
 
   if (viewer.userId && isValidUUID(viewer.userId)) {
-    const userClause = and(
-      eq(vertexTuningJobs.scope, "user"),
-      eq(vertexTuningJobs.user_id, viewer.userId),
+    clauses.push(
+      allConditions(
+        eq(vertexTuningJobs.scope, "user"),
+        eq(vertexTuningJobs.user_id, viewer.userId),
+      ),
     );
-    if (userClause) clauses.push(userClause);
   }
 
-  return clauses.length === 1 ? clauses[0] : (or(...clauses) ?? clauses[0]);
+  return anyCondition(clauses);
 }
 
 function buildModelVisibilityCondition(viewer: ViewerScope) {
-  const clauses: [VisibilityCondition, ...VisibilityCondition[]] = [
-    eq(vertexTunedModels.source_scope, "global"),
-  ];
+  const clauses: [SqlCondition, ...SqlCondition[]] = [eq(vertexTunedModels.source_scope, "global")];
 
   if (viewer.organizationId && isValidUUID(viewer.organizationId)) {
-    const organizationClause = and(
-      eq(vertexTunedModels.source_scope, "organization"),
-      eq(vertexTunedModels.organization_id, viewer.organizationId),
+    clauses.push(
+      allConditions(
+        eq(vertexTunedModels.source_scope, "organization"),
+        eq(vertexTunedModels.organization_id, viewer.organizationId),
+      ),
     );
-    if (organizationClause) clauses.push(organizationClause);
   }
 
   if (viewer.userId && isValidUUID(viewer.userId)) {
-    const userClause = and(
-      eq(vertexTunedModels.source_scope, "user"),
-      eq(vertexTunedModels.user_id, viewer.userId),
+    clauses.push(
+      allConditions(
+        eq(vertexTunedModels.source_scope, "user"),
+        eq(vertexTunedModels.user_id, viewer.userId),
+      ),
     );
-    if (userClause) clauses.push(userClause);
   }
 
-  return clauses.length === 1 ? clauses[0] : (or(...clauses) ?? clauses[0]);
+  return anyCondition(clauses);
 }
 
 function buildAssignmentVisibilityCondition(viewer: ViewerScope) {
-  const clauses: [VisibilityCondition, ...VisibilityCondition[]] = [
-    eq(vertexModelAssignments.scope, "global"),
-  ];
+  const clauses: [SqlCondition, ...SqlCondition[]] = [eq(vertexModelAssignments.scope, "global")];
 
   if (viewer.organizationId && isValidUUID(viewer.organizationId)) {
-    const organizationClause = and(
-      eq(vertexModelAssignments.scope, "organization"),
-      eq(vertexModelAssignments.organization_id, viewer.organizationId),
+    clauses.push(
+      allConditions(
+        eq(vertexModelAssignments.scope, "organization"),
+        eq(vertexModelAssignments.organization_id, viewer.organizationId),
+      ),
     );
-    if (organizationClause) clauses.push(organizationClause);
   }
 
   if (viewer.userId && isValidUUID(viewer.userId)) {
-    const userClause = and(
-      eq(vertexModelAssignments.scope, "user"),
-      eq(vertexModelAssignments.user_id, viewer.userId),
+    clauses.push(
+      allConditions(
+        eq(vertexModelAssignments.scope, "user"),
+        eq(vertexModelAssignments.user_id, viewer.userId),
+      ),
     );
-    if (userClause) clauses.push(userClause);
   }
 
-  return clauses.length === 1 ? clauses[0] : (or(...clauses) ?? clauses[0]);
+  return anyCondition(clauses);
+}
+
+function buildActiveAssignmentCondition(
+  owner: NormalizedScopeOwner,
+  slot: VertexTuningSlot,
+): SqlCondition {
+  switch (owner.scope) {
+    case "global":
+      return allConditions(
+        eq(vertexModelAssignments.scope, "global"),
+        eq(vertexModelAssignments.slot, slot),
+        eq(vertexModelAssignments.is_active, true),
+      );
+    case "organization":
+      return allConditions(
+        eq(vertexModelAssignments.scope, "organization"),
+        eq(vertexModelAssignments.organization_id, owner.organizationId),
+        eq(vertexModelAssignments.slot, slot),
+        eq(vertexModelAssignments.is_active, true),
+      );
+    case "user":
+      return allConditions(
+        eq(vertexModelAssignments.scope, "user"),
+        eq(vertexModelAssignments.organization_id, owner.organizationId),
+        eq(vertexModelAssignments.user_id, owner.userId),
+        eq(vertexModelAssignments.slot, slot),
+        eq(vertexModelAssignments.is_active, true),
+      );
+  }
 }
 
 function getScopePriority(scope: VertexTuningScope): number {
@@ -512,33 +558,7 @@ export class VertexModelRegistryService {
         throw new Error("Tuned model not found");
       }
 
-      let scopeCondition;
-      switch (owner.scope) {
-        case "global":
-          scopeCondition = and(
-            eq(vertexModelAssignments.scope, "global"),
-            eq(vertexModelAssignments.slot, params.slot),
-            eq(vertexModelAssignments.is_active, true),
-          );
-          break;
-        case "organization":
-          scopeCondition = and(
-            eq(vertexModelAssignments.scope, "organization"),
-            eq(vertexModelAssignments.organization_id, owner.organizationId!),
-            eq(vertexModelAssignments.slot, params.slot),
-            eq(vertexModelAssignments.is_active, true),
-          );
-          break;
-        case "user":
-          scopeCondition = and(
-            eq(vertexModelAssignments.scope, "user"),
-            eq(vertexModelAssignments.organization_id, owner.organizationId!),
-            eq(vertexModelAssignments.user_id, owner.userId!),
-            eq(vertexModelAssignments.slot, params.slot),
-            eq(vertexModelAssignments.is_active, true),
-          );
-          break;
-      }
+      const scopeCondition = buildActiveAssignmentCondition(owner, params.slot);
 
       await tx
         .update(vertexModelAssignments)
@@ -547,7 +567,7 @@ export class VertexModelRegistryService {
           deactivated_at: new Date(),
           updated_at: new Date(),
         })
-        .where(scopeCondition!);
+        .where(scopeCondition);
 
       const [assignment] = await tx
         .insert(vertexModelAssignments)
@@ -581,33 +601,7 @@ export class VertexModelRegistryService {
     const owner = normalizeScopeOwner(params);
     const now = new Date();
 
-    let scopeCondition;
-    switch (owner.scope) {
-      case "global":
-        scopeCondition = and(
-          eq(vertexModelAssignments.scope, "global"),
-          eq(vertexModelAssignments.slot, params.slot),
-          eq(vertexModelAssignments.is_active, true),
-        );
-        break;
-      case "organization":
-        scopeCondition = and(
-          eq(vertexModelAssignments.scope, "organization"),
-          eq(vertexModelAssignments.organization_id, owner.organizationId!),
-          eq(vertexModelAssignments.slot, params.slot),
-          eq(vertexModelAssignments.is_active, true),
-        );
-        break;
-      case "user":
-        scopeCondition = and(
-          eq(vertexModelAssignments.scope, "user"),
-          eq(vertexModelAssignments.organization_id, owner.organizationId!),
-          eq(vertexModelAssignments.user_id, owner.userId!),
-          eq(vertexModelAssignments.slot, params.slot),
-          eq(vertexModelAssignments.is_active, true),
-        );
-        break;
-    }
+    const scopeCondition = buildActiveAssignmentCondition(owner, params.slot);
 
     const result = await dbWrite
       .update(vertexModelAssignments)
@@ -616,7 +610,7 @@ export class VertexModelRegistryService {
         deactivated_at: now,
         updated_at: now,
       })
-      .where(scopeCondition!)
+      .where(scopeCondition)
       .returning({ id: vertexModelAssignments.id });
 
     return result.length;
