@@ -1,6 +1,6 @@
 /**
  * POST /api/v1/user/wallets/provision — provision a server-side wallet for the user's org.
- * Idempotent on (organization_id, client_address, chain_type).
+ * Idempotent on the authenticated organization's client_address + chain_type.
  */
 
 import { and, eq } from "drizzle-orm";
@@ -19,33 +19,26 @@ import { provisionServerWallet } from "@/lib/services/server-wallets";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const SOLANA_BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-
-const provisionWalletSchema = z
-  .object({
-    chainType: z.enum(["evm", "solana"]),
-    clientAddress: z.string().min(10),
-    characterId: z.string().uuid().optional().nullable(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.chainType === "evm" && !isAddress(data.clientAddress)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invalid EVM address",
-        path: ["clientAddress"],
-      });
-    }
-    if (
-      data.chainType === "solana" &&
-      !SOLANA_BASE58.test(data.clientAddress)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invalid Solana address (base58, 32–44 chars)",
-        path: ["clientAddress"],
-      });
-    }
-  });
+// `clientAddress` is always the agent's local EVM key — the same address is
+// registered for both evm and solana wallets and is what signs RPC + the
+// provision control-proof, so it is EVM-validated regardless of chainType.
+const provisionWalletSchema = z.object({
+  chainType: z.enum(["evm", "solana"]),
+  clientAddress: z.string().refine((value) => isAddress(value), {
+    message: "Invalid EVM address",
+  }),
+  characterId: z.string().uuid().optional().nullable(),
+  // Proof the caller controls the clientAddress key (signed challenge); see
+  // buildWalletProvisionChallenge. Required — without it any org could squat an
+  // arbitrary address (#10279).
+  controlProof: z.object({
+    signature: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]+$/, "signature must be 0x-prefixed hex"),
+    timestamp: z.number().int().positive(),
+    nonce: z.string().min(1),
+  }),
+});
 
 const app = new Hono<AppEnv>();
 
@@ -59,6 +52,7 @@ app.post("/", async (c) => {
     user = await requireUserOrApiKey(c);
     const body = await c.req.json();
     validated = provisionWalletSchema.parse(body);
+    const clientAddress = validated.clientAddress.toLowerCase();
 
     if (!user.organization?.id) {
       return c.json(
@@ -71,8 +65,13 @@ app.post("/", async (c) => {
       organizationId: user.organization.id,
       userId: user.id,
       characterId: validated.characterId || null,
-      clientAddress: validated.clientAddress,
+      clientAddress,
       chainType: validated.chainType,
+      controlProof: {
+        signature: validated.controlProof.signature as `0x${string}`,
+        timestamp: validated.controlProof.timestamp,
+        nonce: validated.controlProof.nonce,
+      },
     });
 
     return c.json({
@@ -92,6 +91,18 @@ app.post("/", async (c) => {
       );
     }
 
+    if (error instanceof Error && error.name === "ProvisionProofExpiredError") {
+      return c.json({ success: false, error: error.message }, 400);
+    }
+
+    if (error instanceof Error && error.name === "ProvisionProofInvalidError") {
+      return c.json({ success: false, error: error.message }, 401);
+    }
+
+    if (error instanceof Error && error.name === "ProvisionProofReplayError") {
+      return c.json({ success: false, error: error.message }, 409);
+    }
+
     if (
       error instanceof Error &&
       error.name === "WalletAlreadyExistsError" &&
@@ -109,7 +120,10 @@ app.post("/", async (c) => {
         .where(
           and(
             eq(agentServerWallets.organization_id, user.organization.id),
-            eq(agentServerWallets.client_address, validated.clientAddress),
+            eq(
+              agentServerWallets.client_address,
+              validated.clientAddress.toLowerCase(),
+            ),
             eq(agentServerWallets.chain_type, validated.chainType),
           ),
         )

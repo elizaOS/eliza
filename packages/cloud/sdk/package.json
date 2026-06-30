@@ -31,6 +31,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./wallet-provision-challenge": {
+      "types": "./dist/wallet-provision-challenge.d.ts",
+      "eliza-source": {
+        "types": "./src/wallet-provision-challenge.ts",
+        "import": "./src/wallet-provision-challenge.ts",
+        "default": "./src/wallet-provision-challenge.ts"
+      },
+      "import": "./dist/wallet-provision-challenge.js",
+      "default": "./dist/wallet-provision-challenge.js"
+    },
     "./cloud-setup-session": {
       "types": "./dist/cloud-setup-session/index.d.ts",
       "import": "./dist/cloud-setup-session/index.js",

@@ -21,3 +21,8 @@ export {
   ElizaCloudPublicRoutesClient,
 } from "./public-routes.js";
 export type * from "./types.js";
+export {
+  buildWalletProvisionChallenge,
+  WALLET_PROVISION_CHALLENGE_PREFIX,
+  type WalletProvisionChallengeInput,
+} from "./wallet-provision-challenge.js";

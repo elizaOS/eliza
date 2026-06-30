@@ -1065,6 +1065,13 @@
       "when": 1780186800000,
       "tag": "0153_inference_pending_charges",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1780273200000,
+      "tag": "0154_agent_server_wallets_client_address_chain_unique",
+      "breakpoints": true
     }
   ]
 }
