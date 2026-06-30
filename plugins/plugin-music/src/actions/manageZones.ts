@@ -10,6 +10,14 @@ import type {
 import { logger } from "@elizaos/core";
 import type { ZoneManager } from "../router";
 
+type ZoneCommand =
+  | { operation: "create"; zoneName: string; targetIds: string[] }
+  | { operation: "delete"; zoneName: string }
+  | { operation: "show"; zoneName: string }
+  | { operation: "list" }
+  | { operation: "add"; zoneName: string; targetId: string }
+  | { operation: "remove"; zoneName: string; targetId: string };
+
 interface MusicZoneService extends Service {
   capabilityDescription: string;
   stop(): Promise<void>;
@@ -74,28 +82,65 @@ function readParams(options: unknown): Record<string, unknown> {
   return { ...direct, ...parameters };
 }
 
-function zoneTextFromOptions(options: unknown): string | null {
+function normalizeZoneOperation(
+  value: unknown,
+): ZoneCommand["operation"] | null {
+  if (typeof value !== "string") return null;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  return normalized === "create" ||
+    normalized === "delete" ||
+    normalized === "show" ||
+    normalized === "list" ||
+    normalized === "add" ||
+    normalized === "remove"
+    ? normalized
+    : null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function readStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => readString(item))
+      .filter((item): item is string => Boolean(item));
+  }
+  return [];
+}
+
+function readTargetIds(params: Record<string, unknown>): string[] {
+  const targetIds = readStringArray(params.targetIds);
+  const targetId = readString(params.targetId);
+  return targetId ? [...targetIds, targetId] : targetIds;
+}
+
+function zoneCommandFromOptions(options: unknown): ZoneCommand | null {
   const params = readParams(options);
-  const operation =
-    typeof params.operation === "string" ? params.operation.toLowerCase() : "";
-  const zoneName =
-    typeof params.zoneName === "string" ? params.zoneName.trim() : "";
-  const targetIds = Array.isArray(params.targetIds)
-    ? params.targetIds.filter(
-        (target): target is string => typeof target === "string",
-      )
-    : [];
-  if (operation === "create" && zoneName && targetIds.length > 0) {
-    return `create zone ${zoneName} with ${targetIds.join(", ")}`;
+  const operation = normalizeZoneOperation(params.operation);
+  if (!operation) return null;
+
+  if (operation === "list") return { operation };
+
+  const zoneName = readString(params.zoneName);
+  if (!zoneName) return null;
+
+  if (operation === "create") {
+    const targetIds = readTargetIds(params);
+    return targetIds.length > 0 ? { operation, zoneName, targetIds } : null;
   }
-  if (operation === "delete" && zoneName) return `delete zone ${zoneName}`;
-  if (operation === "show" && zoneName) return `show zone ${zoneName}`;
-  if (operation === "list") return "list zones";
-  if (operation === "add" && zoneName && targetIds[0]) {
-    return `add ${targetIds[0]} to zone ${zoneName}`;
+  if (operation === "delete" || operation === "show") {
+    return { operation, zoneName };
   }
-  if (operation === "remove" && zoneName && targetIds[0]) {
-    return `remove ${targetIds[0]} from zone ${zoneName}`;
+  const targetId = readTargetIds(params)[0];
+  if ((operation === "add" || operation === "remove") && targetId) {
+    return { operation, zoneName, targetId };
   }
   return null;
 }
@@ -149,7 +194,7 @@ export const manageZones = {
       return false;
     }
     if (selectedContextMatches(state, ZONE_CONTEXTS)) return true;
-    return zoneTextFromOptions(options) !== null;
+    return zoneCommandFromOptions(options) !== null;
   },
 
   handler: async (
@@ -160,7 +205,6 @@ export const manageZones = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const timeoutMs = 10_000;
-    const maxCommandBytes = 2000;
     const source = message.content.source || "unknown";
     const effectiveCallback: HandlerCallback = callback ?? (async () => []);
     try {
@@ -180,16 +224,11 @@ export const manageZones = {
         });
       }
 
-      const text = (
-        zoneTextFromOptions(_options)?.toLowerCase() ||
-        message.content.text?.toLowerCase() ||
-        ""
-      ).slice(0, maxCommandBytes);
+      const command = zoneCommandFromOptions(_options);
 
-      // Parse command
-      if (text.includes("create zone")) {
+      if (command?.operation === "create") {
         return Promise.race([
-          handleCreateZone(zoneManager, text, effectiveCallback, source),
+          handleCreateZone(zoneManager, command, effectiveCallback, source),
           new Promise<never>((_, reject) =>
             setTimeout(
               () => reject(new Error("zone operation timed out")),
@@ -197,16 +236,24 @@ export const manageZones = {
             ),
           ),
         ]);
-      } else if (text.includes("delete zone") || text.includes("remove zone")) {
-        return handleDeleteZone(zoneManager, text, effectiveCallback, source);
-      } else if (/\b(?:list|show)\s+zones?\b/.test(text)) {
-        return handleListZones(zoneManager, text, effectiveCallback, source);
-      } else if (/\badd\s+.+\s+to zone\b/.test(text)) {
-        return handleAddToZone(zoneManager, text, effectiveCallback, source);
-      } else if (/\bremove\s+.+\s+from zone\b/.test(text)) {
+      } else if (command?.operation === "delete") {
+        return handleDeleteZone(
+          zoneManager,
+          command.zoneName,
+          effectiveCallback,
+          source,
+        );
+      } else if (
+        command?.operation === "list" ||
+        command?.operation === "show"
+      ) {
+        return handleListZones(zoneManager, command, effectiveCallback, source);
+      } else if (command?.operation === "add") {
+        return handleAddToZone(zoneManager, command, effectiveCallback, source);
+      } else if (command?.operation === "remove") {
         return handleRemoveFromZone(
           zoneManager,
-          text,
+          command,
           effectiveCallback,
           source,
         );
@@ -260,6 +307,12 @@ export const manageZones = {
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
+    {
+      name: "targetId",
+      description: "Single target id to create, add, or remove from a zone.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
 
   examples: [
@@ -309,33 +362,12 @@ export const manageZones = {
 
 async function handleCreateZone(
   zoneManager: ZoneManager,
-  text: string,
+  command: Extract<ZoneCommand, { operation: "create" }>,
   callback: HandlerCallback,
   source: string,
 ): Promise<ActionResult> {
-  // Parse: "create zone <name> with <targetIds>"
-  const match = text.match(/create zone (\w+[\w-]*) with (.+)/);
-  if (!match) {
-    return emit(
-      callback,
-      source,
-      "Invalid format. Use: create zone <name> with <targetId1>, <targetId2>, ...",
-      false,
-      {
-        error: "INVALID_CREATE_ZONE_FORMAT",
-      },
-    );
-  }
-
-  const [, zoneName, targetsStr] = match;
-  const targetIds = [
-    ...new Set(
-      targetsStr
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ),
-  ];
+  const { zoneName } = command;
+  const targetIds = [...new Set(command.targetIds)];
   const zone = zoneManager.create(zoneName, targetIds);
   logger.log(
     `[ManageZones] Created zone "${zone.name}" with targets: ${zone.targetIds.join(", ")}`,
@@ -355,25 +387,10 @@ async function handleCreateZone(
 
 async function handleDeleteZone(
   zoneManager: ZoneManager,
-  text: string,
+  zoneName: string,
   callback: HandlerCallback,
   source: string,
 ): Promise<ActionResult> {
-  // Parse: "delete zone <name>"
-  const match = text.match(/(?:delete|remove) zone (\w+[\w-]*)/);
-  if (!match) {
-    return emit(
-      callback,
-      source,
-      "Invalid format. Use: delete zone <name>",
-      false,
-      {
-        error: "INVALID_DELETE_ZONE_FORMAT",
-      },
-    );
-  }
-
-  const [, zoneName] = match;
   if (!zoneManager.delete(zoneName)) {
     return emit(callback, source, `Zone "${zoneName}" not found`, false, {
       error: "ZONE_NOT_FOUND",
@@ -389,22 +406,21 @@ async function handleDeleteZone(
 
 async function handleListZones(
   zoneManager: ZoneManager,
-  text: string,
+  command: Extract<ZoneCommand, { operation: "list" | "show" }>,
   callback: HandlerCallback,
   source: string,
 ): Promise<ActionResult> {
-  const detailMatch = text.match(/show zone (\w+[\w-]*)/);
-  if (detailMatch) {
-    const zone = zoneManager.get(detailMatch[1]);
+  if (command.operation === "show") {
+    const zone = zoneManager.get(command.zoneName);
     if (!zone) {
       return emit(
         callback,
         source,
-        `Zone "${detailMatch[1]}" not found`,
+        `Zone "${command.zoneName}" not found`,
         false,
         {
           error: "ZONE_NOT_FOUND",
-          zoneName: detailMatch[1],
+          zoneName: command.zoneName,
         },
       );
     }
@@ -446,56 +462,28 @@ Use "show zone <name>" for details`,
 
 async function handleAddToZone(
   zoneManager: ZoneManager,
-  text: string,
+  command: Extract<ZoneCommand, { operation: "add" }>,
   callback: HandlerCallback,
   source: string,
 ): Promise<ActionResult> {
-  // Parse: "add <targetId> to zone <name>"
-  const match = text.match(/add (.+?) to zone (\w+[\w-]*)/);
-  if (!match) {
-    return emit(
-      callback,
-      source,
-      "Invalid format. Use: add <targetId> to zone <name>",
-      false,
-      {
-        error: "INVALID_ADD_TO_ZONE_FORMAT",
-      },
-    );
-  }
-
-  const [, targetId, zoneName] = match;
-  zoneManager.addTarget(zoneName, targetId.trim());
+  const { targetId, zoneName } = command;
+  zoneManager.addTarget(zoneName, targetId);
   logger.log(`[ManageZones] Added "${targetId}" to zone "${zoneName}"`);
 
   return emit(callback, source, `Added target to zone "${zoneName}"`, true, {
     zoneName,
-    targetId: targetId.trim(),
+    targetId,
   });
 }
 
 async function handleRemoveFromZone(
   zoneManager: ZoneManager,
-  text: string,
+  command: Extract<ZoneCommand, { operation: "remove" }>,
   callback: HandlerCallback,
   source: string,
 ): Promise<ActionResult> {
-  // Parse: "remove <targetId> from zone <name>"
-  const match = text.match(/remove (.+?) from zone (\w+[\w-]*)/);
-  if (!match) {
-    return emit(
-      callback,
-      source,
-      "Invalid format. Use: remove <targetId> from zone <name>",
-      false,
-      {
-        error: "INVALID_REMOVE_FROM_ZONE_FORMAT",
-      },
-    );
-  }
-
-  const [, targetId, zoneName] = match;
-  zoneManager.removeTarget(zoneName, targetId.trim());
+  const { targetId, zoneName } = command;
+  zoneManager.removeTarget(zoneName, targetId);
   logger.log(`[ManageZones] Removed "${targetId}" from zone "${zoneName}"`);
 
   return emit(
@@ -505,7 +493,7 @@ async function handleRemoveFromZone(
     true,
     {
       zoneName,
-      targetId: targetId.trim(),
+      targetId,
     },
   );
 }

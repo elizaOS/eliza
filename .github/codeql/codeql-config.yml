@@ -1,10 +1,86 @@
 name: elizaOS CodeQL
 
-# Keep the default CodeQL query selection. This config only documents files
-# that are intentionally not parseable source.
+# Keep the default CodeQL query selection. This config narrows what the JS/TS
+# extractor ingests so the build-mode:none database stops OOMing (exit 137 in
+# the dataflow queries). For interpreted/no-build languages, paths-ignore
+# filters EXTRACTED files (not just reported results), so excluding generated
+# build output and non-product trees genuinely shrinks the DB + mmap footprint.
+# Every glob below targets build artifacts, vendored-dependency trees, or
+# non-product (research/eval/demo) code. ZERO product server/runtime/security
+# source is excluded: packages/core, agent/src, app-core/src, app/src, ui/src,
+# cloud/**, security, vault, feed/packages/api, and plugins/** all stay scanned.
 paths-ignore:
   # WHY: this benchmark fixture is deliberately invalid TypeScript; the Solana
   # runner test writes bad code here to assert syntax failures are reported
   # cleanly. Analyzing it adds noisy parser diagnostics without adding security
   # coverage.
   - packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts
+
+  # WHY: installed dependencies, not first-party source (CodeQL skips these by
+  # default; listed explicitly to also drop the vendored llama.cpp webui
+  # node_modules JS the extractor would otherwise ingest).
+  - '**/node_modules/**'
+  # WHY: compiled JS build output mirroring src/*.ts (the real source stays).
+  # #1 OOM driver by file count (packages/app-core/scripts/bun-riscv64/dist
+  # alone is ~88k generated .js).
+  - '**/dist/**'
+  # WHY: compiled bundles, not source (e.g. packages/app/electrobun/build, ~18.5k
+  # generated .js). The app's real UI source in packages/app/src stays.
+  - '**/build/**'
+  # WHY: Next.js build output; each SSR route bundle inlines ~22MB of deps
+  # (packages/feed/**/.next). The feed's true source in src + api stays.
+  - '**/.next/**'
+  # WHY: repeated example-app build output (numbered .next-build-NNNN dirs).
+  - '**/.next-build-*/**'
+  # WHY: Turbo task cache, never source.
+  - '**/.turbo/**'
+  # WHY: test-coverage reports, generated artifacts.
+  - '**/coverage/**'
+  # WHY: generic build/export output dir, generated not authored.
+  - '**/out/**'
+  # WHY: Python virtualenvs ship vendored JS (trame, litellm swagger-ui) that
+  # bloats ingest; never product source.
+  - '**/.venv/**'
+  - '**/venv/**'
+  # WHY: vendored Python deps (site-packages) that include bundled JS; not source.
+  - '**/site-packages/**'
+  # WHY: Storybook build output (packages/ui/storybook-static); ui's real source
+  # in packages/ui/src stays.
+  - '**/storybook-static/**'
+  # WHY: fully bundled mobile agent build output (packages/agent/dist-mobile*),
+  # 107MB across 2 files; the real agent source in packages/agent/src stays.
+  - '**/dist-mobile/**'
+  - '**/dist-mobile-ios/**'
+  # WHY: Playwright HTML run reports, generated test artifacts.
+  - '**/playwright-report/**'
+  # WHY: the web bundle baked into the iOS IPA at build time — a compiled copy
+  # of app source already analyzed in packages/app/src.
+  - '**/ios/App/App/public/**'
+  # WHY: the web bundle baked into the Android APK at build time — a compiled
+  # copy of app source already analyzed elsewhere.
+  - '**/android/app/src/main/assets/public/**'
+  - '**/platforms/android/app/src/main/assets/public/**'
+  # WHY: transient desktop-shell build-probe bundles under platforms/*/tmp
+  # (~21MB each); pure throwaway build output.
+  - '**/platforms/*/tmp/**'
+  # WHY: minified bundles are unreadable generated output, not source.
+  - '**/*.min.js'
+  # WHY: vendored Bun-from-source toolchain build cache (~88k generated .js); the
+  # single largest OOM contributor. Lives under scripts/, not src/.
+  - packages/app-core/scripts/bun-riscv64/**
+  # WHY: ML research code + datasets + vendored .venv JS; not shipped product and
+  # not a JS/TS attack surface (Python pipelines).
+  - packages/research/**
+  # WHY: eval/benchmark harnesses, fixtures, and datasets; not deployed product,
+  # no live untrusted-input surface.
+  - packages/benchmarks/**
+  # WHY: 37 standalone reference/demo apps (documentation samples), not the
+  # shipped product handling untrusted input.
+  - packages/examples/**
+  # WHY: device/OS images, OS landing page, robotics; not a server/runtime
+  # untrusted-input surface.
+  - packages/os/**
+  # WHY: Docusaurus docs site; marketing/docs, not product runtime.
+  - packages/docs/**
+  # WHY: marketing site; not an untrusted-input runtime surface.
+  - packages/homepage/**

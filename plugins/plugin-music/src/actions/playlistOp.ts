@@ -59,40 +59,21 @@ function normalizeOp(value: unknown): PlaylistOp | null {
   return null;
 }
 
-function readPlaylistOp(options: Record<string, unknown>, messageText: string) {
+function readPlaylistOp(options: Record<string, unknown>) {
   return (
     normalizeOp(options.subaction) ??
     normalizeOp(options.playlistOp) ??
-    normalizeOp(options.op) ??
-    inferOpFromText(messageText)
+    normalizeOp(options.op)
   );
-}
-
-function inferOpFromText(text: string): PlaylistOp | null {
-  const lower = text.toLowerCase();
-  if (/\b(add|put)\b.+\b(to|in)\b.+\bplaylist\b/.test(lower)) return "add";
-  if (/\b(delete|remove)\b.+\bplaylist\b/.test(lower)) return "delete";
-  if (/\b(load|play|restore)\b.+\bplaylist\b/.test(lower)) return "load";
-  if (/\b(save|create|store)\b.+\bplaylist\b/.test(lower)) return "save";
-  return null;
 }
 
 function readPlaylistName(
   options: Record<string, unknown>,
-  messageText: string,
-  fallbackPattern?: RegExp,
 ): string | undefined {
-  const direct = options.playlistName ?? options.name;
+  const direct = options.playlistName ?? options.name ?? options.playlist;
   if (typeof direct === "string" && direct.trim().length > 0) {
     return direct.trim();
   }
-  const pattern =
-    fallbackPattern ??
-    /(?:save|load|create|store|restore|delete|remove|play).*?playlist.*?(?:named|called|as)?\s*["']?([^"']+)["']?/i;
-  const match = messageText.match(pattern);
-  if (match?.[1]) return match[1].trim();
-  const quoted = messageText.match(/["']([^"']+)["']/);
-  if (quoted?.[1]) return quoted[1].trim();
   return undefined;
 }
 
@@ -146,10 +127,8 @@ async function handleSave(
     return { success: false, error: "Missing user id" };
   }
 
-  const messageText = message.content.text || "";
   const playlistName =
-    readPlaylistName(options, messageText) ||
-    `Playlist ${new Date().toLocaleDateString()}`;
+    readPlaylistName(options) || `Playlist ${new Date().toLocaleDateString()}`;
 
   const tracks: Array<{ url: string; title: string; duration?: number }> = [];
   if (currentTrack) {
@@ -242,8 +221,7 @@ async function handleLoad(
     return { success: false, error: "No playlists available" };
   }
 
-  const messageText = message.content.text || "";
-  const requestedName = readPlaylistName(options, messageText);
+  const requestedName = readPlaylistName(options);
 
   let selected: Playlist | undefined;
   if (requestedName) {
@@ -320,8 +298,7 @@ async function handleDelete(
     return { success: false, error: "No playlists available" };
   }
 
-  const messageText = message.content.text || "";
-  const playlistName = readPlaylistName(options, messageText);
+  const playlistName = readPlaylistName(options);
 
   if (!playlistName) {
     const list = playlists.map((p) => `"${p.name}"`).join(", ");
@@ -375,7 +352,6 @@ async function handleAdd(
   options: Record<string, unknown>,
   callback: HandlerCallback,
 ): Promise<ActionResult> {
-  const messageText = message.content.text || "";
   const directSong =
     typeof options.song === "string" && options.song.trim().length > 0
       ? options.song.trim()
@@ -385,18 +361,10 @@ async function handleAdd(
         : typeof options.query === "string" && options.query.trim().length > 0
           ? options.query.trim()
           : undefined;
-  const directName = readPlaylistName(options, "");
+  const directName = readPlaylistName(options);
 
-  let songQuery = directSong;
-  let playlistName = directName;
-
-  if (!songQuery || !playlistName) {
-    const match = messageText.match(/add\s+(.+?)\s+to\s+(?:playlist\s+)?(.+)/i);
-    if (match) {
-      songQuery ||= match[1].trim();
-      playlistName ||= match[2].trim();
-    }
-  }
+  const songQuery = directSong;
+  const playlistName = directName;
 
   if (!songQuery || songQuery.length < 3) {
     const text =
@@ -575,12 +543,12 @@ export const playlistOpExamples: ActionExample[][] = [
 
 export async function validatePlaylistOp(
   _runtime: IAgentRuntime,
-  message: Memory,
+  _message: Memory,
   _state?: State,
   options?: Record<string, unknown>,
 ): Promise<boolean> {
   const merged = mergedOptions(options);
-  return Boolean(readPlaylistOp(merged, message.content.text ?? ""));
+  return Boolean(readPlaylistOp(merged));
 }
 
 export async function handlePlaylistOp(
@@ -592,7 +560,7 @@ export async function handlePlaylistOp(
 ): Promise<ActionResult | undefined> {
   if (!callback) return { success: false, error: "Missing callback" };
   const merged = mergedOptions(options);
-  const op = readPlaylistOp(merged, message.content.text ?? "");
+  const op = readPlaylistOp(merged);
   if (!op) {
     const text =
       "Could not determine playlist op. Use subaction=save, load, delete, or add.";

@@ -118,13 +118,22 @@ export const swapTemplate = `Given the recent messages and wallet information be
 Extract the following information about the requested token swap:
 - Input token symbol or address (the token being sold)
 - Output token symbol or address (the token being bought)
-- Amount to swap: Must be a string representing the amount in ether (only number without coin symbol, e.g., "0.1")
+- How much to swap, expressed structurally:
+  - amountMode: one of "absolute", "half", "max", "percent"
+    - "absolute" when the user named a concrete amount (e.g. "swap 1.5 ETH")
+    - "half" when the user wants half of their balance (e.g. "half", "50%", "mitad")
+    - "max" when the user wants all of their balance (e.g. "all", "everything", "100%", "todo")
+    - "percent" when the user named a different percentage (e.g. "30%", "swap 30% of my ETH")
+  - amount: the concrete number as a string, only when amountMode is "absolute" (e.g. "0.1"); empty otherwise
+  - amountPercent: the integer percentage 1-100, only when amountMode is "percent"; empty otherwise
 - Chain to execute on
 
 Respond using plain key/value text like this:
 inputToken: token symbol or address being sold, or empty
 outputToken: token symbol or address being bought, or empty
-amount: amount as string (e.g. 0.1), or empty
+amountMode: one of absolute | half | max | percent
+amount: amount as string (e.g. 0.1) when amountMode is absolute, otherwise empty
+amountPercent: integer 1-100 when amountMode is percent, otherwise empty
 chain: chain from {{supportedChains}}, or empty
 
 IMPORTANT: Your response must ONLY contain the key/value fields above. No preamble or explanation.`;
