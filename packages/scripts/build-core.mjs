@@ -37,6 +37,10 @@ export function buildCoreTurboArgs(extra = []) {
 
 function main() {
   const extra = process.argv.slice(2);
+  console.log(
+    `[build-core] building ${CORE_BUILD_PACKAGES.length} core packages via turbo` +
+      (extra.length ? ` (extra args: ${extra.join(" ")})` : ""),
+  );
   const result = spawnSync(
     process.execPath,
     [RUN_TURBO, ...buildCoreTurboArgs(extra)],
@@ -44,9 +48,17 @@ function main() {
   );
   if (result.error) {
     console.error(
-      `[build-core] failed to start turbo: ${result.error.message}`,
+      `[build-core] could not start turbo: ${result.error.message}\n` +
+        `[build-core] re-run after \`bun install\`: bun run build:core`,
     );
     process.exit(1);
+  }
+  if (result.status !== 0) {
+    console.error(
+      `[build-core] turbo failed (exit ${result.status ?? "signal"}) building ` +
+        `the ${CORE_BUILD_PACKAGES.length} core packages. The failing package + ` +
+        `error are in turbo's output above. Re-run: bun run build:core`,
+    );
   }
   process.exit(result.status ?? 1);
 }

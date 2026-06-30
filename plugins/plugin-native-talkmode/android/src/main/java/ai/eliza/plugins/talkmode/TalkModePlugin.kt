@@ -1622,7 +1622,7 @@ class TalkModePlugin : Plugin() {
         val conn = openTtsConnection(voiceId, apiKey, request)
         activePcmConnection = conn
         try {
-            val payload = buildRequestPayload(request)
+            val payload = ElevenLabsPayload.buildRequestPayload(request)
             conn.outputStream.use { it.write(payload.toByteArray()) }
 
             val code = conn.responseCode
@@ -1692,60 +1692,10 @@ class TalkModePlugin : Plugin() {
         conn.connectTimeout = 30_000
         conn.readTimeout = 30_000
         conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Accept", resolveAcceptHeader(request.outputFormat))
+        conn.setRequestProperty("Accept", ElevenLabsPayload.resolveAcceptHeader(request.outputFormat))
         conn.setRequestProperty("xi-api-key", apiKey)
         conn.doOutput = true
         return conn
-    }
-
-    private fun resolveAcceptHeader(outputFormat: String?): String {
-        val normalized = outputFormat?.trim()?.lowercase().orEmpty()
-        return if (normalized.startsWith("pcm_")) "audio/pcm" else "audio/mpeg"
-    }
-
-    /**
-     * Build the full JSON request payload with all ElevenLabs voice_settings.
-     */
-    private fun buildRequestPayload(request: ElevenLabsRequest): String {
-        val sb = StringBuilder()
-        sb.append("{")
-        sb.append("\"text\":").append(jsonString(request.text))
-        request.modelId?.takeIf { it.isNotEmpty() }?.let {
-            sb.append(",\"model_id\":").append(jsonString(it))
-        }
-        request.outputFormat?.takeIf { it.isNotEmpty() }?.let {
-            sb.append(",\"output_format\":").append(jsonString(it))
-        }
-        request.seed?.let { sb.append(",\"seed\":$it") }
-        request.normalize?.let { sb.append(",\"apply_text_normalization\":").append(jsonString(it)) }
-        request.language?.let { sb.append(",\"language_code\":").append(jsonString(it)) }
-
-        // voice_settings sub-object
-        val vsEntries = mutableListOf<String>()
-        request.speed?.let { vsEntries.add("\"speed\":$it") }
-        request.stability?.let { vsEntries.add("\"stability\":$it") }
-        request.similarity?.let { vsEntries.add("\"similarity_boost\":$it") }
-        request.style?.let { vsEntries.add("\"style\":$it") }
-        request.speakerBoost?.let { vsEntries.add("\"use_speaker_boost\":$it") }
-        if (vsEntries.isNotEmpty()) {
-            sb.append(",\"voice_settings\":{")
-            sb.append(vsEntries.joinToString(","))
-            sb.append("}")
-        }
-
-        sb.append("}")
-        return sb.toString()
-    }
-
-    /** Escape a string for JSON. */
-    private fun jsonString(value: String): String {
-        val escaped = value
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
-        return "\"$escaped\""
     }
 
     private suspend fun speakWithSystemTts(text: String, call: PluginCall) {
@@ -2091,20 +2041,4 @@ class TalkModePlugin : Plugin() {
         scope.cancel()
     }
 
-    // ── Data class ──────────────────────────────────────────────────────
-
-    private data class ElevenLabsRequest(
-        val text: String,
-        val modelId: String?,
-        val outputFormat: String?,
-        val speed: Double?,
-        val stability: Double?,
-        val similarity: Double?,
-        val style: Double?,
-        val speakerBoost: Boolean?,
-        val seed: Long?,
-        val normalize: String?,
-        val language: String?,
-        val latencyTier: Int?
-    )
 }

@@ -592,24 +592,35 @@ export class CreditsService {
             });
         }
 
-        // Check if auto top-up should be triggered
-        this.checkAndTriggerAutoTopUp(organizationId, result.newBalance).catch((error) => {
-          logger.error("[CreditsService] Failed to check auto top-up:", error);
-        });
-
-        // Queue low credits email
-        this.queueLowCreditsEmail(organizationId, result.newBalance).catch((error) => {
-          logger.error("[CreditsService] Failed to queue low credits email:", error);
-        });
-
-        // Notify waifu so a hosted agent can downgrade or pause itself when it
-        // runs low / out of credits. Fire-and-forget: a webhook delivery
-        // problem must never block the billing path.
-        this.notifyWaifuCredits(organizationId, result.newBalance, metadata).catch((error) => {
-          logger.error("[CreditsService] Failed to notify waifu credit webhook:", error);
-        });
+        this.notifyBalanceDecrease(organizationId, result.newBalance, metadata);
       }
       return result;
+    });
+  }
+
+  /**
+   * Fire the post-debit notifications a balance decrease triggers: auto-top-up
+   * check, low-credits email, and the waifu webhook that lets a hosted agent
+   * downgrade/pause itself when it runs low. Fire-and-forget — a notification
+   * failure must never block the billing path. Exposed (not inlined) so EVERY
+   * debit path stays at parity: the synchronous reserve calls it here, and the
+   * optimistic inference ledger (`inference-billing-ledger.ts`), which mutates the
+   * balance with its own transactional SQL rather than through `deductCredits`,
+   * calls it after a successful debit so its orgs still get low-balance warnings.
+   */
+  notifyBalanceDecrease(
+    organizationId: string,
+    newBalance: number,
+    metadata?: Record<string, unknown>,
+  ): void {
+    this.checkAndTriggerAutoTopUp(organizationId, newBalance).catch((error) => {
+      logger.error("[CreditsService] Failed to check auto top-up:", error);
+    });
+    this.queueLowCreditsEmail(organizationId, newBalance).catch((error) => {
+      logger.error("[CreditsService] Failed to queue low credits email:", error);
+    });
+    this.notifyWaifuCredits(organizationId, newBalance, metadata).catch((error) => {
+      logger.error("[CreditsService] Failed to notify waifu credit webhook:", error);
     });
   }
 

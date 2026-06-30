@@ -1,7 +1,7 @@
 {
   "schema": "eliza_voice_live_matrix_v1",
   "issue": 9958,
-  "generatedAt": "2026-06-30T05:06:04.844Z",
+  "generatedAt": "2026-06-30T06:45:47.854Z",
   "mode": "probe",
   "dimensions": {
     "platform": [
@@ -41,7 +41,7 @@
   "host": {
     "platform": "darwin",
     "arch": "arm64",
-    "hostname": "Mac.localdomain",
+    "hostname": "Shaws-MacBook-Pro.local",
     "runnerOs": null,
     "runnerArch": null
   },
@@ -498,19 +498,16 @@
       },
       "class": "wakeword-device-gap",
       "command": [
-        "bun",
-        "run",
-        "--cwd",
-        "plugins/plugin-local-inference",
-        "voice:workbench",
-        "--real"
+        "node",
+        "packages/scripts/voice-openwakeword-eval.mjs"
       ],
       "evidence": [
-        "$VOICE_REAL_MATRIX_OUT/voice-workbench-real"
+        "$ELIZA_VOICE_MATRIX_OUT/wake.openwakeword.real-head/openwakeword-eval.json",
+        "$ELIZA_VOICE_OPENWAKEWORD_REPORT"
       ],
       "probe": {
         "available": false,
-        "reason": "ELIZA_OPENWAKEWORD_REAL_READY is not set for a real wake-word head run"
+        "reason": "ELIZA_VOICE_OPENWAKEWORD_REPORT is not set to a reviewed real-head openWakeWord JSON report"
       },
       "cwd": ".",
       "env": {},
@@ -558,16 +555,16 @@
       },
       "class": "stt-evaluation",
       "command": [
-        "bun",
-        "packages/scripts/voice-matrix.mjs",
-        "--stage-b-eval-placeholder"
+        "node",
+        "packages/scripts/voice-stage-b-eval.mjs"
       ],
       "evidence": [
-        ".github/issue-evidence/9147-voice-asr-m4max.md"
+        "$ELIZA_VOICE_MATRIX_OUT/stt.stage-b.evaluation/stage-b-eval.json",
+        "$ELIZA_VOICE_STAGE_B_REPORT"
       ],
       "probe": {
         "available": false,
-        "reason": "iOS battery/energy telemetry and the Android SpeechRecognizer (NNAPI) arm need paired device runners with power telemetry (the Apple latency/WER arm is covered by stt.stage-b.apple-sfspeech)"
+        "reason": "ELIZA_VOICE_STAGE_B_REPORT is not set to a reviewed iOS+Android+fused ASR Stage-B JSON report"
       },
       "cwd": ".",
       "env": {},

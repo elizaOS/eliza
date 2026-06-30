@@ -1,0 +1,8 @@
+
+ai.eliza.plugins.system.SystemDeviceReaderInstrumentedTest:...
+
+Time: 0.073
+
+OK (3 tests)
+
+

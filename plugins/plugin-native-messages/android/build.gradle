@@ -14,6 +14,9 @@ android {
     defaultConfig {
         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
         targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
+        // Instrumented (androidTest) runner — exercises MessagesReader's real
+        // content://sms query on an emulator (issue #9967).
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -32,4 +35,10 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+
+    // Instrumented test deps (issue #9967 — on-device SMS read).
+    androidTestImplementation "androidx.test:core:1.5.0"
+    androidTestImplementation "androidx.test:runner:1.5.2"
+    androidTestImplementation "androidx.test:rules:1.5.0"
+    androidTestImplementation "androidx.test.ext:junit:1.1.5"
 }

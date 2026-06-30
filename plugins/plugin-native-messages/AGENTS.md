@@ -71,6 +71,7 @@ Both permissions are declared in `android/src/main/AndroidManifest.xml`. The hos
 ## Conventions / gotchas
 
 - **Android only.** The web fallback exists solely to satisfy Capacitor's plugin registration contract. Do not add real web logic here.
+- **Instrumented test (issue #9967).** The `content://sms` query lives in `MessagesReader`; an on-device read test (`android/src/androidTest/.../MessagesReaderInstrumentedTest.kt`, `GrantPermissionRule`) reads back a marker SMS. It is **emulator-orchestrated** (`adb -s <emulator> emu sms send <number> "…Eliza-9967-SMS-roundtrip…"` then `connectedDebugAndroidTest`/`am instrument`) and `Assume`-skips when the marker is absent, so it never reads a real device's private inbox. `listMessages` delegates to the reader (JS shape unchanged).
 - **Multipart SMS.** `sendSms` uses `SmsManager.divideMessage` and tracks one `BroadcastReceiver` delivery intent per part; the call resolves only after all parts confirm. Do not assume a single `sendTextMessage` call for long messages.
 - **Delivery receipt vs. sent receipt.** The BroadcastReceiver listens for `SENT` status only. Delivery receipts (`DELIVERED`) are not tracked.
 - **Limit clamp.** `listMessages` rejects if `limit` is outside `[1, 500]`. The Android SMS provider can be large; do not request unbounded results.

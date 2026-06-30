@@ -262,6 +262,40 @@ describe("FeedView — unified GUI/XR operator surface", () => {
     expect(screen.getByText("Trim BTC exposure.")).toBeTruthy();
   });
 
+  it("embeds the full Feed app authenticated as the agent when the run has a viewer (GUI)", async () => {
+    appState.appRuns = [
+      makeRun({
+        viewer: {
+          url: "https://feed.example/app",
+          postMessageAuth: true,
+          sandbox: "allow-scripts allow-same-origin",
+          authMessage: {
+            type: "FEED_AUTH",
+            authToken: "tok-alice",
+            sessionToken: "tok-alice",
+            agentId: "agent-alice",
+            characterId: "agent-alice",
+          },
+        },
+      }),
+    ];
+    render(React.createElement(FeedView));
+
+    // The full Feed web app is embedded (authenticated via the viewer handshake),
+    // not the operator dashboard.
+    const iframe = await screen.findByTestId("embedded-app-viewer-iframe");
+    expect(iframe.getAttribute("src")).toBe("https://feed.example/app");
+    expect(iframe.getAttribute("sandbox")).toBe(
+      "allow-scripts allow-same-origin",
+    );
+    expect(iframe.getAttribute("title")).toBe("Feed");
+
+    // None of the operator-dashboard loaders fire on the GUI embed path.
+    expect(feedClient.getFeedAgentStatus).not.toHaveBeenCalled();
+    expect(feedClient.getFeedTeamDashboard).not.toHaveBeenCalled();
+    expect(screen.queryByText("BTC above 100k")).toBeNull();
+  });
+
   it("pauses autonomy via the toggle-autonomy control and refreshes", async () => {
     appState.appRuns = [makeRun()]; // controls: ["pause"] -> action "pause"
     render(React.createElement(FeedView));

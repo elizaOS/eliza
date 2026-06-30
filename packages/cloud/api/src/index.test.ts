@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import cloudApiWorker, {
+  getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
   getFrontendAliasSyntheticResponse,
   redirectFrontendHost,
@@ -63,6 +64,26 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
+  test("proxies app frontend aliases to the app Pages project", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://app.elizacloud.ai/?runtime=first-run"),
+    );
+
+    expect(target?.toString()).toBe(
+      "https://eliza-app.pages.dev/?runtime=first-run",
+    );
+  });
+
+  test("proxies staging app frontend aliases to the app Pages develop branch", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://app-staging.elizacloud.ai/?runtime=first-run"),
+    );
+
+    expect(target?.toString()).toBe(
+      "https://develop.eliza-app.pages.dev/?runtime=first-run",
+    );
+  });
+
   test("proxies staging API aliases to the staging API worker", () => {
     const target = getFrontendAliasProxyTarget(
       new URL("https://staging.elizacloud.ai/api/health"),
@@ -71,6 +92,73 @@ describe("cloud-api worker entrypoint", () => {
     expect(target?.toString()).toBe(
       "https://api-staging.elizacloud.ai/api/health",
     );
+  });
+
+  test("proxies staging app API aliases to the staging API worker", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://app-staging.elizacloud.ai/api/health"),
+    );
+
+    expect(target?.toString()).toBe(
+      "https://api-staging.elizacloud.ai/api/health",
+    );
+  });
+
+  test("exposes frontend alias API targets for in-process handling", () => {
+    const target = getFrontendAliasApiProxyTarget(
+      new URL("https://app-staging.elizacloud.ai/api/status"),
+    );
+
+    expect(target?.toString()).toBe(
+      "https://api-staging.elizacloud.ai/api/status",
+    );
+  });
+
+  test("handles app-staging API health in-process without external proxying", async () => {
+    const originalFetch = globalThis.fetch;
+    let didProxyExternally = false;
+
+    globalThis.fetch = (() => {
+      didProxyExternally = true;
+      return Promise.resolve(new Response("ok", { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    try {
+      const response = await cloudApiWorker.fetch(
+        new Request("https://app-staging.elizacloud.ai/api/health", {
+          headers: {
+            "cf-connecting-ip": "203.0.113.7",
+            "cf-ray": "test-ray",
+            host: "app-staging.elizacloud.ai",
+          },
+        }),
+        {} as never,
+        {} as never,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ status: "ok" });
+      expect(didProxyExternally).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("routes app-staging custom domain to the staging Worker", async () => {
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      env?: {
+        staging?: {
+          routes?: Array<{ pattern?: string }>;
+        };
+      };
+    };
+
+    const stagingRoutes =
+      config.env?.staging?.routes?.map((route) => route.pattern) ?? [];
+
+    expect(stagingRoutes).toContain("app-staging.elizacloud.ai/*");
   });
 
   test("feed.elizacloud.ai is inert when FEED_ORIGIN_HOST is unset", () => {

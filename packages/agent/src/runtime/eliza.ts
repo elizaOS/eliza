@@ -31,11 +31,11 @@ import {
   startMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
-import { startMemoryWatchdog } from "./memory-watchdog.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
+import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
 import {
   type PluginResolutionPhase,
@@ -94,6 +94,7 @@ import {
   type Component,
   createBasicCapabilitiesPlugin,
   createMessageMemory,
+  drainAppRoutePluginLoaders,
   type Entity,
   type LogEntry,
   logger,
@@ -5140,6 +5141,22 @@ export async function startEliza(
       });
       bootTimer.lap("deferred:core-plugin-waves");
     }
+
+    // Drain app-route plugin loaders into runtime.routes. App-route plugins
+    // (e.g. @elizaos/plugin-agent-orchestrator:routes) register a loader on a
+    // global registry via registerAppRoutePluginLoader rather than exposing
+    // their HTTP routes through Plugin.routes directly. packages/app-core's
+    // boot path drains this registry, but the headless agent-server boot did
+    // not, so /api/coding-agents/* and /api/orchestrator/* 404ed even though
+    // the orchestrator plugin's services were registered. This MUST run after
+    // the deferred plugin wave (the orchestrator loads deferred, ~5s after
+    // runtime.initialize), otherwise the registry is still empty. Mirror
+    // app-core's registerAppRoutePlugins: load each loader and push its rawPath
+    // routes onto runtime.routes so tryHandleRuntimePluginRoute can dispatch.
+    // The drain is idempotent (dedups by type:path), so in a combined app-core
+    // deployment where app-core also drains the registry, neither double-mounts.
+    await drainAppRoutePluginLoaders(runtime);
+    bootTimer.lap("deferred:app-route-plugins");
 
     await runTeeBootGate();
     bootTimer.lap("deferred:tee-gate");

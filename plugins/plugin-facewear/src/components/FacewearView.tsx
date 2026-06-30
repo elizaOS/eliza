@@ -31,11 +31,15 @@ import {
   isProfileConnected,
 } from "./facewear-profiles.ts";
 
-/** Route a connect/manage request the same way the legacy dashboard does. */
+/** Route a connect/manage request from the Settings → Wearables host. */
 function routeConnect(deviceType: FacewearDeviceType): void {
   if (typeof window === "undefined") return;
   if (deviceType === "even-realities") {
-    window.location.assign("/apps/smartglasses");
+    // Smartglasses is now a sibling tab in the Wearables settings section, not a
+    // standalone route — ask the host section to switch to it.
+    window.dispatchEvent(
+      new CustomEvent("wearables:select-tab", { detail: "smartglasses" }),
+    );
     return;
   }
   window.open("/api/xr/connect", "_blank", "noopener,noreferrer");

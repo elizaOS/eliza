@@ -11,6 +11,7 @@ import { getGpuWindowManager } from "./gpu-window";
 import { getLocationManager } from "./location";
 import { getMusicPlayerManager } from "./music-player";
 import { getPermissionManager } from "./permissions";
+import { getFusedWakeManager } from "./fused-wake";
 import { getRemotePluginHost } from "./remote-plugin-host";
 import { getScreenCaptureManager } from "./screencapture";
 import { isStewardLocalEnabled, stopSteward } from "./steward";
@@ -40,6 +41,7 @@ export function initializeNativeModules(
   screencapture.setSendToWebview(sendToWebview);
   screencapture.setMainWebview(mainWindow.webview);
   getSwabbleManager().setSendToWebview(sendToWebview);
+  getFusedWakeManager().setSendToWebview(sendToWebview);
   getTalkModeManager().setSendToWebview(sendToWebview);
 }
 
@@ -62,6 +64,7 @@ async function disposeNativeModulesOnce(): Promise<void> {
     ["permissions", getPermissionManager()],
     ["screencapture", getScreenCaptureManager()],
     ["swabble", getSwabbleManager()],
+    ["fused-wake", getFusedWakeManager()],
     ["talkmode", getTalkModeManager()],
     ["music-player", getMusicPlayerManager()],
   ] as const;

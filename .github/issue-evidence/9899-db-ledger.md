@@ -22,37 +22,82 @@ discipline the issue itself prescribed.
 
 ## Residuals closed (each point-for-point)
 
-1. **Hard concurrent-overdraw bound** — admission is one atomic `FOR UPDATE` +
-   `SUM(pending)` statement; a same-org burst serializes and cannot collectively
-   overdraw (was: KV soft bound via threshold only).
-2. **True exactly-once settlement** — `request_id` PK + atomic
-   `UPDATE … WHERE status='pending'` claim; inline settler and cron sweep can
-   never both charge (was: KV near-atomic get-then-delete → rare double-bill). No
-   single-flight lock needed anymore.
-3. **Age-ordered sweep drain** — `ORDER BY enqueued_at LIMIT batch` loop over a
-   partial index, no silent `maxKeys` cap (was: unordered bounded prefix scan).
+1. **Hard concurrent-overdraw bound** — admission runs in a transaction behind a
+   per-org `pg_advisory_xact_lock`, then reads the in-flight `SUM` of `pending`
+   rows; the lock serializes admissions so each reads the SUM only after the prior
+   commits → a same-org burst cannot collectively overdraw (was: KV soft bound).
+2. **True exactly-once, crash-safe settlement** — `request_id` PK + an atomic
+   `UPDATE … WHERE status='pending'` claim that runs in the SAME transaction as the
+   debit; a crash between them rolls back (row stays `pending`, sweep recovers) and
+   no over-admit window is ever visible (was: KV near-atomic get-then-delete → rare
+   double-bill; a first cut also had a claim→debit crash window). No single-flight
+   lock needed.
+3. **Age-ordered sweep drain + bounded growth** — `ORDER BY enqueued_at LIMIT
+   batch` loop over a partial index with an in-SQL (timezone-safe) cutoff, no
+   silent cap; GCs terminal rows past retention (was: unordered bounded prefix
+   scan). The cron sweeps both backends so a flag flip can't orphan rows.
 
 Plus `uncollected` becomes a first-class auditable row state; the org self-heals
 onto the synchronous-reserve path on a refused debit.
 
-## Test evidence — 90 pass / 0 fail (real DB, no larp)
+## Adversarial hardening (5-lens review, 3-vote verify)
+
+After the first cut, a multi-agent adversarial review (5 money-safety lenses; each
+finding confirmed/refuted by 3 independent skeptics) was run over the ledger — the
+same discipline the Tier 1/2 design received. It confirmed 11 of 18 findings; the
+material ones were **fixed**, and the design above is the corrected version:
+
+| # | Confirmed defect | Fix |
+|---|---|---|
+| 3 / 10 (HIGH) | Admission `SUM` reads a stale MVCC snapshot under READ COMMITTED — `FOR UPDATE` on the org row does NOT serialize a cross-table SUM, so a same-org burst over-admits on real Postgres (the headline "hard bound" was false; PGlite's single connection hid it) | Admission now runs in a transaction behind a per-org `pg_advisory_xact_lock`, so the in-flight `SUM` is read only after concurrent admissions commit |
+| 1 (HIGH) | claim and debit were separate auto-commit statements; a crash between them stranded the row `settled` with no debit, unrecoverable by the sweep (lost charge) | claim + debit now run in **one transaction** — a crash rolls back the claim, the row stays `pending`, the sweep recovers it |
+| 6 (MED) | settle-window: between claim and debit a charge was out of `pending_sum` and not yet in balance → transient over-admit | closed by the same single-transaction settle (no intermediate state is ever visible) |
+| 7 / 11 (HIGH/LOW) | sweep cutoff built as a client-side UTC `toISOString()` string vs a `timestamp`-without-tz column → skew under non-UTC session tz | cutoff computed **in SQL** (`enqueued_at < NOW() − interval`) — timezone-consistent |
+| 9 (MED) | a flag flip between admit-time and sweep-time orphaned rows on the inactive backend | cron now sweeps **both** backends every run (idempotent) |
+| 2 (LOW) | rows never GC'd → unbounded growth + a reused `request_id` pins an immortal row | sweep GCs terminal rows past a 24h retention window |
+| 4 / 8 (MED/LOW) | tests asserted a bound PGlite can't prove; lost-charge path untested | concurrency test now documents the PGlite limitation; added dropped-inline-recovery + GC tests |
+
+Confirmed parity residual **not** changed (it is a product-semantics call, shared
+with the KV backstop): `billUsage` throwing after billable output → `settle(0)`
+under-bills one request. Documented as a tracked follow-up, not a regression.
+7 findings were adversarially **refuted** (e.g. sub-µ$ rounding, a markUncollected
+race) and correctly dropped. Full reasoning archived in the workflow transcript.
+
+A **second** review pass over the *revised* code confirmed the runtime money-safety
+is correct (no new bugs from the transaction/advisory-lock rewrite) and surfaced
+two quality gaps, both now fixed:
+
+- **Advisory-lock bound was untested** (the behavioral suite passes identically with
+  or without the lock because single-connection PGlite serializes anyway). Added
+  `inference-billing-ledger-advisory-lock.test.ts` — mirroring `signup-grant-guard.test.ts`,
+  it asserts the per-org `pg_advisory_xact_lock` is acquired BEFORE the in-flight
+  `SUM`; **proven to fail** when the lock SQL is dropped/neutralized.
+- **Notification divergence** — the ledger debit skipped the low-credit email +
+  auto-top-up + waifu (hosted-agent pause) notifications that `deductCredits` fires.
+  Extracted `creditsService.notifyBalanceDecrease` and call it from both the
+  synchronous reserve and the ledger settle → full parity, with tests asserting it
+  fires on a debit and not on `settle(0)`.
+
+## Test evidence — 101 pass / 0 fail (real DB, no larp)
 
 Every test drives the **real SQL against in-process PGlite** (same pattern as the
 audited `credits-deduct-guard.test.ts`); only fire-and-forget non-billing
 side-effects (email/webhook/auto-top-up) are stubbed.
 
 ```
-inference-billing-ledger.test.ts              15 pass   (admission/settle/sweep/concurrency)
+inference-billing-ledger.test.ts              20 pass   (admission/settle/sweep/concurrency/recovery/GC/notify-parity)
+inference-billing-ledger-advisory-lock.test.ts 2 pass   (lock acquired before SUM — fails if the lock is dropped)
 inference-pending-charges-migration.test.ts    6 pass   (journal reg + real-DB apply + idempotent)
+cron/sweep-inference-charges/route.test.ts     4 pass   (sweeps both backends)
 inference-billing-fast-path.test.ts           28 pass   (KV path — no regression)
 inference-billing-cache-failure.test.ts        2 pass
 inference-auth-context.test.ts                12 pass
 inference-auth-lifecycle.test.ts               7 pass
 inference-hot-path-benchmark.test.ts           3 pass
-credits-deduct-guard.test.ts                   9 pass   (credit mutation — no regression)
+credits-deduct-guard.test.ts                   9 pass   (credit mutation + notifyBalanceDecrease — no regression)
 credits-reconcile.test.ts                      8 pass
 ------------------------------------------------------------
-TOTAL                                         90 pass / 0 fail
+TOTAL                                        101 pass / 0 fail
 ```
 
 New-file typecheck: clean (only pre-existing i18n/hono-dup/stripe-version noise).

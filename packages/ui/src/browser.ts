@@ -31,6 +31,7 @@ export * from "./cache-telemetry.ts";
 export * from "./chat/index.ts";
 export * from "./components/apps/AppWindowRenderer.helpers.ts";
 export * from "./components/apps/AppWindowRenderer.tsx";
+export * from "./components/apps/EmbeddedAppViewer.tsx";
 export * from "./components/apps/extensions/registry.ts";
 export * from "./components/apps/extensions/surface.helpers.ts";
 export * from "./components/apps/extensions/surface.tsx";

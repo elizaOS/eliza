@@ -47,6 +47,7 @@
     "validate:android-aosp-evidence": "node scripts/validate-platform-evidence.mjs docs/android-aosp-validation.json",
     "capture:macos-desktop-evidence": "bun scripts/capture-macos-desktop-evidence.mjs",
     "capture:windows-desktop-evidence": "bun scripts/capture-windows-desktop-evidence.mjs",
+    "record:windows-cua-input": "bun scripts/record-windows-cua-input.mjs",
     "validate:macos-desktop-evidence": "node scripts/validate-platform-evidence.mjs docs/macos-desktop-validation.json",
     "validate:linux-desktop-evidence": "node scripts/validate-platform-evidence.mjs docs/linux-desktop-validation.json",
     "validate:windows-desktop-evidence": "node scripts/validate-platform-evidence.mjs docs/windows-desktop-validation.json"

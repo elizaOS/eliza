@@ -118,6 +118,7 @@ import {
   restartSteward,
   startSteward,
 } from "./native/steward";
+import { getFusedWakeManager } from "./native/fused-wake";
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
 import {
@@ -311,6 +312,7 @@ export function buildBunRpcHandlers({
   const permissions = getPermissionManager();
   const screencapture = getScreenCaptureManager();
   const swabble = getSwabbleManager();
+  const fusedWake = getFusedWakeManager();
   const talkmode = getTalkModeManager();
   const musicPlayer = getMusicPlayerManager();
   const browserWorkspace = getBrowserWorkspaceManager();
@@ -1262,6 +1264,12 @@ export function buildBunRpcHandlers({
     swabbleAudioChunk: async (
       params: Parameters<typeof swabble.audioChunk>[0],
     ) => swabble.audioChunk(params),
+
+    // ---- Fused on-device wake (#10351) ----
+    fusedWakeStart: async (params: Parameters<typeof fusedWake.start>[0]) =>
+      fusedWake.start(params),
+    fusedWakeStop: async () => fusedWake.stop(),
+    fusedWakeIsListening: async () => fusedWake.isListening(),
 
     // ---- TalkMode ----
     talkmodeStart: async () => talkmode.start(),

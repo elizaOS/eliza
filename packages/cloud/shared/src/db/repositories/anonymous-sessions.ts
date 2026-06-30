@@ -1,4 +1,4 @@
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type AnonymousSession, anonymousSessions } from "../schemas";
@@ -106,6 +106,47 @@ export class AnonymousSessionsRepository {
     }
 
     return session;
+  }
+
+  /**
+   * Atomically reserves one free-message slot before a stream starts.
+   *
+   * The conditional WHERE is the limit check: under concurrent requests only
+   * rows still below messages_limit are incremented and returned.
+   */
+  async reserveMessageSlot(sessionId: string): Promise<AnonymousSession | null> {
+    const [session] = await dbWrite
+      .update(anonymousSessions)
+      .set({
+        message_count: sql`${anonymousSessions.message_count} + 1`,
+        last_message_at: new Date(),
+      })
+      .where(
+        and(
+          eq(anonymousSessions.id, sessionId),
+          lt(anonymousSessions.message_count, anonymousSessions.messages_limit),
+        ),
+      )
+      .returning();
+
+    return session ?? null;
+  }
+
+  /**
+   * Refunds a pre-stream anonymous free-message reservation.
+   *
+   * The guard keeps repeated abort/error paths from driving the counter below 0.
+   */
+  async refundMessageSlot(sessionId: string): Promise<AnonymousSession | null> {
+    const [session] = await dbWrite
+      .update(anonymousSessions)
+      .set({
+        message_count: sql`${anonymousSessions.message_count} - 1`,
+      })
+      .where(and(eq(anonymousSessions.id, sessionId), gt(anonymousSessions.message_count, 0)))
+      .returning();
+
+    return session ?? null;
   }
 
   /**

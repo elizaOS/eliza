@@ -35,6 +35,7 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 mock.module("@/lib/auth-anonymous", () => ({
   checkAnonymousLimit: mock(),
   getAnonymousUser: mock(),
+  reserveAnonymousMessageSlot: mock(),
 }));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({

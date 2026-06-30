@@ -69,13 +69,15 @@ export const VIEW_CASES: ViewCase[] = (
     ["task-coordinator", "tui", "/task-coordinator"],
     ["orchestrator", "gui", "/orchestrator"],
     ["orchestrator", "tui", "/orchestrator"],
+    // The coding cockpit is a developer-only, GUI-only plugin view.
+    ["cockpit", "gui", "/cockpit"],
     ["trajectory-logger", "gui", "/trajectory-logger"],
     ["trajectory-logger", "tui", "/trajectory-logger"],
     ["training", "gui", "/apps/fine-tuning"],
     ["training", "tui", "/apps/fine-tuning"],
-    ["facewear", "gui", "/apps/facewear"],
+    // Facewear + smartglasses GUI config now lives under Settings -> Wearables,
+    // not as standalone launcher views; only the agent TUI surface remains.
     ["facewear", "tui", "/apps/facewear"],
-    ["smartglasses", "gui", "/apps/smartglasses"],
     ["smartglasses", "tui", "/apps/smartglasses"],
   ] satisfies ViewCaseTuple[]
 ).map(([id, viewType, viewPath, options]) => ({

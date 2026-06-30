@@ -358,15 +358,11 @@ const CELLS = [
       voices: "multi-speaker",
     },
     class: "wakeword-device-gap",
-    command: [
-      "bun",
-      "run",
-      "--cwd",
-      "plugins/plugin-local-inference",
-      "voice:workbench",
-      "--real",
+    command: ["node", "packages/scripts/voice-openwakeword-eval.mjs"],
+    evidence: [
+      "$ELIZA_VOICE_MATRIX_OUT/wake.openwakeword.real-head/openwakeword-eval.json",
+      "$ELIZA_VOICE_OPENWAKEWORD_REPORT",
     ],
-    evidence: ["$VOICE_REAL_MATRIX_OUT/voice-workbench-real"],
     probe: "openWakeWord",
   },
   {
@@ -529,14 +525,27 @@ function probeCell(cell) {
         reason: "Linux fused voice environment is provisioned",
       };
     case "openWakeWord":
-      if (!process.env.ELIZA_OPENWAKEWORD_REAL_READY) {
+      if (!process.env.ELIZA_VOICE_OPENWAKEWORD_REPORT?.trim()) {
         return {
           available: false,
           reason:
-            "ELIZA_OPENWAKEWORD_REAL_READY is not set for a real wake-word head run",
+            "ELIZA_VOICE_OPENWAKEWORD_REPORT is not set to a reviewed real-head openWakeWord JSON report",
         };
       }
-      return { available: true, reason: "real openWakeWord head gate enabled" };
+      if (
+        !fs.existsSync(
+          path.resolve(REPO_ROOT, process.env.ELIZA_VOICE_OPENWAKEWORD_REPORT),
+        )
+      ) {
+        return {
+          available: true,
+          reason: `openWakeWord report configured but missing: ${process.env.ELIZA_VOICE_OPENWAKEWORD_REPORT}`,
+        };
+      }
+      return {
+        available: true,
+        reason: `openWakeWord report configured: ${process.env.ELIZA_VOICE_OPENWAKEWORD_REPORT}`,
+      };
     case "macosElectrobun":
       if (process.platform !== "darwin")
         return {

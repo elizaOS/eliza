@@ -1,7 +1,7 @@
 # Voice Live Matrix
 
-Generated: 2026-06-30T05:06:04.844Z
-Host: darwin arm64 (Mac.localdomain)
+Generated: 2026-06-30T06:45:47.854Z
+Host: darwin arm64 (Shaws-MacBook-Pro.local)
 
 | Cell | Status | Platform | Class | Probe / Result | Command |
 |---|---:|---|---|---|---|
@@ -18,9 +18,9 @@ Host: darwin arm64 (Mac.localdomain)
 | `android.device.voice-roundtrip` | skip | android | mobile-live-voice | set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed | `bun run --cwd packages/app test:e2e:android:local` |
 | `android.talkmode.native-bridge` | pending | android | native-bridge-unit | Android voice bridge Gradle project exists | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest` |
 | `android.swabble.native-bridge` | pending | android | native-bridge-unit | Android voice bridge Gradle project exists | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest` |
-| `wake.openwakeword.real-head` | skip | linux | wakeword-device-gap | ELIZA_OPENWAKEWORD_REAL_READY is not set for a real wake-word head run | `bun run --cwd plugins/plugin-local-inference voice:workbench --real` |
+| `wake.openwakeword.real-head` | skip | linux | wakeword-device-gap | ELIZA_VOICE_OPENWAKEWORD_REPORT is not set to a reviewed real-head openWakeWord JSON report | `node packages/scripts/voice-openwakeword-eval.mjs` |
 | `stt.stage-b.apple-sfspeech` | pending | macos-electrobun | stt-evaluation | macOS on-device SFSpeechRecognizer + say/afconvert available for a real Stage-B latency/WER measurement | `node packages/scripts/stage-b-stt-bench.mjs` |
-| `stt.stage-b.evaluation` | skip | android | stt-evaluation | iOS battery/energy telemetry and the Android SpeechRecognizer (NNAPI) arm need paired device runners with power telemetry (the Apple latency/WER arm is covered by stt.stage-b.apple-sfspeech) | `bun packages/scripts/voice-matrix.mjs --stage-b-eval-placeholder` |
+| `stt.stage-b.evaluation` | skip | android | stt-evaluation | ELIZA_VOICE_STAGE_B_REPORT is not set to a reviewed iOS+Android+fused ASR Stage-B JSON report | `node packages/scripts/voice-stage-b-eval.mjs` |
 
 ## Summary
 

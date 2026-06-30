@@ -26,6 +26,15 @@ export const LOW_MEMORY_DEVICE_GB = 4;
  */
 export const HEAP_PRESSURE_RATIO = 0.8;
 
+/**
+ * Document event the shared heap-pressure monitor dispatches when live
+ * `usedJSHeapSize` crosses {@link HEAP_PRESSURE_RATIO} (#10196). The bounded
+ * caches (`DynamicViewLoader`, `retained-lazy`) listen for it and force-evict
+ * idle entries — the real heap-driven trigger, as opposed to the non-standard
+ * `memorypressure` window event Chromium never fires. See heap-pressure-monitor.
+ */
+export const HEAP_PRESSURE_EVENT = "eliza:heap-pressure";
+
 // Module-cache tiers (extracted verbatim from retained-lazy.tsx so its behavior
 // and existing test are unchanged).
 export const DEFAULT_RETAINED_MODULE_TTL_MS = 5 * 60_000;

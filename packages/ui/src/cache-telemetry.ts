@@ -21,6 +21,9 @@ export interface ModuleCacheTelemetryEvent {
     | "ttl"
     | "lru"
     | "memorypressure"
+    // Live `usedJSHeapSize` crossed HEAP_PRESSURE_RATIO (#10196) — the real
+    // heap-driven eviction, as opposed to the never-fired `memorypressure`.
+    | "heap-pressure"
     | "visibility-hidden"
     | "app-pause"
     | "invalidate"

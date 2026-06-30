@@ -54,9 +54,16 @@ Registered as `@elizaos/plugin-facewear` (opt-in, category `hardware`). Connects
 | views route | `routes/views.ts` | View catalog endpoint |
 
 ### Views
-Two registered view surfaces (`gui`/`tui`/`xr` variants):
-- `facewear` — `/apps/facewear` — main facewear manager (`FacewearView`)
-- `smartglasses` — `/apps/smartglasses` — Even Realities pairing + diagnostics (`SmartglassesView`)
+The **GUI config lives in Settings → Wearables**, not the top-level launcher.
+`register.ts` registers one combined `wearables` settings section
+(`WearablesSettingsSection`, group `system`) with two internal tabs:
+`FacewearView` (XR headset manager) and `SmartglassesView` (Even Realities
+pairing + diagnostics). The `facewear`/`smartglasses` view declarations in
+`index.ts` remain (`visibleInManager:false`, `desktopTabEnabled:false`,
+modalities `xr`/`tui`) only so the agent keeps serving the in-headset XR view
+host and terminal (TUI) surfaces, and `FACEWEAR_*`/`SMARTGLASSES_*`/`XR_*`
+actions still resolve. Do **not** re-add a `gui` modality or `app.navTabs` for
+these — wearable hardware is configuration.
 
 ## Layout
 

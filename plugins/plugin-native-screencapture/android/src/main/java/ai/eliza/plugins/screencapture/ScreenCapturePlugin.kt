@@ -559,7 +559,7 @@ class ScreenCapturePlugin : Plugin() {
         pendingRecordingOptions = null
 
         val fps = config.fps
-        val bitrate = config.bitrate ?: estimateBitrate(screenWidth, screenHeight, fps)
+        val bitrate = config.bitrate ?: RecordingConfigResolver.estimateBitrate(screenWidth, screenHeight, fps)
 
         val fileName = "screen_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.mp4"
         outputFile = File(context.cacheDir, fileName)
@@ -747,62 +747,18 @@ class ScreenCapturePlugin : Plugin() {
 
     // ── Recording config parsing ────────────────────────────────────────
 
-    private data class RecordingConfig(
-        val quality: String? = null,
-        val maxDuration: Double? = null,
-        val maxFileSize: Long? = null,
-        val fps: Int = 30,
-        val bitrate: Int? = null,
-        val captureMicrophone: Boolean = false,
-        val captureSystemAudio: Boolean = false
-    )
-
-    private fun parseRecordingConfig(call: PluginCall): RecordingConfig {
-        val quality = call.getString("quality")
-        val maxDuration = call.getDouble("maxDuration")
-        val maxFileSize = call.getLong("maxFileSize")
-        val captureMicrophone = call.getBoolean("captureMicrophone") ?: false
-        val captureSystemAudio = call.getBoolean("captureSystemAudio") ?: false
-
-        // Apply quality presets or use explicit values
-        val presetFps: Int
-        val presetBitrate: Int?
-        when (quality?.lowercase()) {
-            "low" -> {
-                presetFps = 15
-                presetBitrate = estimateBitrate(screenWidth, screenHeight, 15) / 2
-            }
-            "medium" -> {
-                presetFps = 24
-                presetBitrate = null // use estimate
-            }
-            "high" -> {
-                presetFps = 30
-                presetBitrate = null // use estimate
-            }
-            "highest" -> {
-                presetFps = 60
-                presetBitrate = estimateBitrate(screenWidth, screenHeight, 60) * 2
-            }
-            else -> {
-                presetFps = 30
-                presetBitrate = null
-            }
-        }
-
-        val fps = call.getInt("fps") ?: presetFps
-        val bitrate = call.getInt("bitrate") ?: presetBitrate
-
-        return RecordingConfig(
-            quality = quality,
-            maxDuration = maxDuration,
-            maxFileSize = maxFileSize,
-            fps = fps.coerceIn(1, 60),
-            bitrate = bitrate,
-            captureMicrophone = captureMicrophone,
-            captureSystemAudio = captureSystemAudio
+    private fun parseRecordingConfig(call: PluginCall): RecordingConfig =
+        RecordingConfigResolver.resolve(
+            quality = call.getString("quality"),
+            fpsOverride = call.getInt("fps"),
+            bitrateOverride = call.getInt("bitrate"),
+            maxDuration = call.getDouble("maxDuration"),
+            maxFileSize = call.getLong("maxFileSize"),
+            captureMicrophone = call.getBoolean("captureMicrophone") ?: false,
+            captureSystemAudio = call.getBoolean("captureSystemAudio") ?: false,
+            screenWidth = screenWidth,
+            screenHeight = screenHeight,
         )
-    }
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -818,16 +774,6 @@ class ScreenCapturePlugin : Plugin() {
         } else 0L
         val activeDuration = totalElapsed - pausedDurationMs - currentPauseDuration
         return activeDuration.toDouble() / 1000.0
-    }
-
-    /**
-     * Estimate a reasonable video bitrate based on resolution and frame rate.
-     * Ported from classic ScreenRecordManager.
-     */
-    private fun estimateBitrate(width: Int, height: Int, fps: Int): Int {
-        val pixels = width.toLong() * height.toLong()
-        val raw = (pixels * fps.toLong() * 2L).toInt()
-        return raw.coerceIn(1_000_000, 12_000_000)
     }
 
     private fun permissionString(status: com.getcapacitor.PermissionState?): String {

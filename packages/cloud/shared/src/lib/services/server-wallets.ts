@@ -1,5 +1,5 @@
 import { StewardApiError } from "@stwd/sdk";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { verifyMessage } from "viem";
 import { db } from "../../db/client";
 import { type AgentServerWallet, agentServerWallets } from "../../db/schemas/agent-server-wallets";
@@ -70,6 +70,7 @@ export interface RpcPayload {
 
 export interface ExecuteParams {
   clientAddress: string;
+  organizationId: string;
   payload: RpcPayload;
   signature: `0x${string}`;
 }
@@ -182,11 +183,16 @@ async function provisionStewardWallet({
 /** Returns the organization_id that owns the server wallet for this client address, or null if none. */
 export async function getOrganizationIdForClientAddress(
   clientAddress: string,
+  organizationId?: string,
 ): Promise<string | null> {
+  const conditions = [eq(agentServerWallets.client_address, clientAddress)];
+  if (organizationId) {
+    conditions.push(eq(agentServerWallets.organization_id, organizationId));
+  }
   const row = await db
     .select({ organization_id: agentServerWallets.organization_id })
     .from(agentServerWallets)
-    .where(eq(agentServerWallets.client_address, clientAddress))
+    .where(and(...conditions))
     .limit(1);
   return row[0]?.organization_id ?? null;
 }
@@ -195,7 +201,12 @@ export async function getOrganizationIdForClientAddress(
 // RPC execution — top-level (validates signature, routes by provider)
 // ---------------------------------------------------------------------------
 
-export async function executeServerWalletRpc({ clientAddress, payload, signature }: ExecuteParams) {
+export async function executeServerWalletRpc({
+  clientAddress,
+  organizationId,
+  payload,
+  signature,
+}: ExecuteParams) {
   // Timestamp check
   const now = Date.now();
   const RPC_TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
@@ -223,7 +234,10 @@ export async function executeServerWalletRpc({ clientAddress, payload, signature
 
   // Look up wallet record
   const walletRecord = await db.query.agentServerWallets.findFirst({
-    where: eq(agentServerWallets.client_address, clientAddress),
+    where: and(
+      eq(agentServerWallets.client_address, clientAddress),
+      eq(agentServerWallets.organization_id, organizationId),
+    ),
   });
   if (!walletRecord) {
     throw new ServerWalletNotFoundError();

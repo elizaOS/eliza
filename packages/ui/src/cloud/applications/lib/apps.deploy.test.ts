@@ -67,7 +67,7 @@ describe("apps lib mutations (#9145)", () => {
     await expect(checkAppNameAvailable("x")).resolves.toBe(false);
   });
 
-  it("createApp POSTs the input and returns the record + one-time key", async () => {
+  it("createApp POSTs the input with skipGitHubRepo:true (deployable template app) and returns the record + one-time key", async () => {
     apiMock.mockResolvedValue({ app: { id: "a" }, apiKey: "k" });
     const input = {
       name: "n",
@@ -78,9 +78,27 @@ describe("apps lib mutations (#9145)", () => {
       app: { id: "a" },
       apiKey: "k",
     });
+    // The dashboard front door MUST request a template app so the server stamps
+    // a deployable image — otherwise the created app has no image and DEPLOY
+    // throws "build-from-repo is disabled / no image to deploy".
     expect(apiMock).toHaveBeenCalledWith("/api/v1/apps", {
       method: "POST",
-      json: input,
+      json: { skipGitHubRepo: true, ...input },
+    });
+  });
+
+  it("createApp leaves an explicit skipGitHubRepo:false intact (caller override)", async () => {
+    apiMock.mockResolvedValue({ app: { id: "a" }, apiKey: "k" });
+    const input = {
+      name: "n",
+      app_url: "https://x",
+      allowed_origins: [],
+      skipGitHubRepo: false,
+    };
+    await createApp(input);
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/apps", {
+      method: "POST",
+      json: { skipGitHubRepo: false, name: "n", app_url: "https://x", allowed_origins: [] },
     });
   });
 

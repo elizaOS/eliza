@@ -10,6 +10,14 @@ export {
   createWorkspaceBenchmarkExecutor,
 } from "./adapter.js";
 export {
+  type ChromiumBenchmarkEngine,
+  createChromiumBenchmarkEngine,
+  createChromiumBenchmarkExecutor,
+  launchChromiumBenchmarkBrowser,
+  resolveChromiumExecutable,
+  resolveChromiumExecutablePath,
+} from "./chromium-executor.js";
+export {
   type BenchmarkPolicy,
   type BenchmarkPolicyInput,
   NoopPolicy,
@@ -33,3 +41,17 @@ export type {
   BenchmarkTask,
   BrowserCommandExecutor,
 } from "./types.js";
+export {
+  type Box,
+  centerGrounder,
+  cornerGrounder,
+  type Grounder,
+  type GroundingSample,
+  type GroundingSampleResult,
+  type GroundingScore,
+  type Point,
+  pointInBox,
+  scoreWebGrounding,
+  WEB_GROUNDING_TASKS,
+  type WebGroundingTask,
+} from "./web-grounding.js";

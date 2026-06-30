@@ -37,12 +37,15 @@ class PhonePlugin : Plugin() {
 
     @PluginMethod
     fun getStatus(call: PluginCall) {
-        val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+        // Device read is delegated to PhoneStatusReader so it can be exercised by
+        // an instrumented androidTest without a Capacitor Bridge (issue #9967);
+        // the JS wire shape below is unchanged.
+        val status = PhoneStatusReader(context).readStatus()
         val result = JSObject()
-        result.put("hasTelecom", telecom != null)
-        result.put("canPlaceCalls", hasPermission(Manifest.permission.CALL_PHONE))
-        result.put("defaultDialerPackage", telecom?.defaultDialerPackage)
-        result.put("isDefaultDialer", telecom?.defaultDialerPackage == context.packageName)
+        result.put("hasTelecom", status.hasTelecom)
+        result.put("canPlaceCalls", status.canPlaceCalls)
+        result.put("defaultDialerPackage", status.defaultDialerPackage)
+        result.put("isDefaultDialer", status.isDefaultDialer)
         call.resolve(result)
     }
 

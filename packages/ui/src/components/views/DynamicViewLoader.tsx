@@ -60,7 +60,11 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "../../state/app-store.ts";
-import { isUnderMemoryPressure } from "../../state/bounded-view-lru";
+import {
+  HEAP_PRESSURE_EVENT,
+  isUnderMemoryPressure,
+} from "../../state/bounded-view-lru";
+import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
@@ -117,6 +121,7 @@ const LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES = 2;
 
 let bundleCacheLifecycleInstalled = false;
 let pruneBundleCacheOnPressure: (() => void) | null = null;
+let pruneBundleCacheOnHeapPressure: (() => void) | null = null;
 let pruneBundleCacheOnVisibilityHidden: (() => void) | null = null;
 let pruneBundleCacheOnAppPause: (() => void) | null = null;
 
@@ -251,9 +256,19 @@ function pruneBundleModuleCache(
 function installBundleCacheLifecycle(): void {
   if (bundleCacheLifecycleInstalled || typeof window === "undefined") return;
   bundleCacheLifecycleInstalled = true;
+  installHeapPressureMonitor();
   pruneBundleCacheOnPressure = () => {
     scheduleIdleWork(() =>
       pruneBundleModuleCache({ force: true, reason: "memorypressure" }),
+    );
+  };
+  // Real heap-driven eviction (#10196): the shared heap-pressure monitor
+  // (installHeapPressureMonitor) dispatches this when live usedJSHeapSize
+  // crosses HEAP_PRESSURE_RATIO. Unlike the never-fired `memorypressure`
+  // window event, this actually feeds live heap into the cache.
+  pruneBundleCacheOnHeapPressure = () => {
+    scheduleIdleWork(() =>
+      pruneBundleModuleCache({ force: true, reason: "heap-pressure" }),
     );
   };
   pruneBundleCacheOnVisibilityHidden = () => {
@@ -269,6 +284,10 @@ function installBundleCacheLifecycle(): void {
     );
   };
   window.addEventListener("memorypressure", pruneBundleCacheOnPressure);
+  document.addEventListener(
+    HEAP_PRESSURE_EVENT,
+    pruneBundleCacheOnHeapPressure,
+  );
   document.addEventListener(
     "visibilitychange",
     pruneBundleCacheOnVisibilityHidden,
@@ -290,6 +309,12 @@ export function __resetDynamicViewLoaderCacheForTests(): void {
   if (typeof window !== "undefined" && pruneBundleCacheOnPressure) {
     window.removeEventListener("memorypressure", pruneBundleCacheOnPressure);
   }
+  if (typeof document !== "undefined" && pruneBundleCacheOnHeapPressure) {
+    document.removeEventListener(
+      HEAP_PRESSURE_EVENT,
+      pruneBundleCacheOnHeapPressure,
+    );
+  }
   if (typeof document !== "undefined" && pruneBundleCacheOnVisibilityHidden) {
     document.removeEventListener(
       "visibilitychange",
@@ -300,6 +325,7 @@ export function __resetDynamicViewLoaderCacheForTests(): void {
     document.removeEventListener(APP_PAUSE_EVENT, pruneBundleCacheOnAppPause);
   }
   pruneBundleCacheOnPressure = null;
+  pruneBundleCacheOnHeapPressure = null;
   pruneBundleCacheOnVisibilityHidden = null;
   pruneBundleCacheOnAppPause = null;
   bundleCacheLifecycleInstalled = false;

@@ -1159,10 +1159,22 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         @unknown default: speechStatus = "prompt"
         }
 
-        return TalkModeBridgeContract.permissionPayload(
+        // TalkModeBridgeContract.permissionPayload defines the canonical shape
+        // ([String: Any] for parity with the other payloads + their tests). A
+        // Capacitor JSObject is [String: any JSValue], so bridge the contract's
+        // String fields explicitly rather than returning [String: Any] directly
+        // (Any does not conform to JSValue — the implicit conversion fails to
+        // type-check).
+        var result = JSObject()
+        for (key, value) in TalkModeBridgeContract.permissionPayload(
             microphone: micStatus,
             speechRecognition: speechStatus
-        )
+        ) {
+            if let stringValue = value as? String {
+                result[key] = stringValue
+            }
+        }
+        return result
     }
 
     // MARK: - Audio Session

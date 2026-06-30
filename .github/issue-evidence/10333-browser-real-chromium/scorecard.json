@@ -1,0 +1,209 @@
+{
+  "benchmark": "miniwob++",
+  "engine": "chromium",
+  "executablePath": "C:\\Users\\Administrator\\AppData\\Local\\ms-playwright\\chromium-1228\\chrome-win64\\chrome.exe",
+  "policy": "oracle",
+  "seed": 0,
+  "total": 6,
+  "solved": 6,
+  "successRate": 1,
+  "episodes": [
+    {
+      "task": "click-button",
+      "seed": 0,
+      "engine": "chromium",
+      "utterance": "Click the button labelled \"THREE\".",
+      "reward": 1,
+      "success": true,
+      "steps": 2,
+      "trajectory": [
+        {
+          "action": {
+            "type": "click",
+            "selector": "#btn-0",
+            "note": "button \"THREE\""
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "done",
+            "note": "oracle plan exhausted"
+          },
+          "resultMode": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "task": "click-link",
+      "seed": 0,
+      "engine": "chromium",
+      "utterance": "Click the link \"Home\".",
+      "reward": 1,
+      "success": true,
+      "steps": 2,
+      "trajectory": [
+        {
+          "action": {
+            "type": "click",
+            "selector": "#lnk-0",
+            "note": "link \"Home\""
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "done",
+            "note": "oracle plan exhausted"
+          },
+          "resultMode": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "task": "enter-text",
+      "seed": 0,
+      "engine": "chromium",
+      "utterance": "Enter \"Tobias\" into the text field and press Submit.",
+      "reward": 1,
+      "success": true,
+      "steps": 3,
+      "trajectory": [
+        {
+          "action": {
+            "type": "type",
+            "selector": "#tt",
+            "value": "Tobias",
+            "note": "enter \"Tobias\""
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "click",
+            "selector": "#submit",
+            "note": "submit"
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "done",
+            "note": "oracle plan exhausted"
+          },
+          "resultMode": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "task": "enter-text-dynamic",
+      "seed": 0,
+      "engine": "chromium",
+      "utterance": "Enter \"Tobias100\" into the text field and press Submit.",
+      "reward": 1,
+      "success": true,
+      "steps": 3,
+      "trajectory": [
+        {
+          "action": {
+            "type": "type",
+            "selector": "#tt",
+            "value": "Tobias100",
+            "note": "enter \"Tobias100\""
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "click",
+            "selector": "#submit",
+            "note": "submit"
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "done",
+            "note": "oracle plan exhausted"
+          },
+          "resultMode": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "task": "click-checkboxes",
+      "seed": 0,
+      "engine": "chromium",
+      "utterance": "Select lemon. Leave the rest unchecked.",
+      "reward": 1,
+      "success": true,
+      "steps": 2,
+      "trajectory": [
+        {
+          "action": {
+            "type": "check",
+            "selector": "#cb-2",
+            "note": "check lemon"
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "done",
+            "note": "oracle plan exhausted"
+          },
+          "resultMode": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "task": "multistep-purchase",
+      "seed": 0,
+      "engine": "chromium",
+      "utterance": "Open the catalog, then buy the featured item.",
+      "reward": 1,
+      "success": true,
+      "steps": 3,
+      "trajectory": [
+        {
+          "action": {
+            "type": "click",
+            "selector": "#go-catalog",
+            "note": "open catalog"
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "click",
+            "selector": "#buy",
+            "note": "buy featured item"
+          },
+          "resultMode": "web",
+          "error": null
+        },
+        {
+          "action": {
+            "type": "done",
+            "note": "oracle plan exhausted"
+          },
+          "resultMode": null,
+          "error": null
+        }
+      ]
+    }
+  ]
+}

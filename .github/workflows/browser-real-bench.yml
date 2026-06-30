@@ -1,0 +1,80 @@
+name: Browser Real-Chromium Benchmark
+
+# The deferred "Needs CI infra" lane of #9476, tracked by #10333: run the
+# plugin-browser MiniWoB++ benchmark suite against a REAL Chromium engine
+# (puppeteer-core) instead of JSDOM web mode. The `*.real.test.ts` lane is
+# excluded from the default `vitest run` and self-skips without a Chromium
+# binary, so it ONLY executes here, after `bunx playwright install chromium`
+# (mirroring scenario-pr.yml's `app-browser-core`). Gated like the other heavy
+# real lanes — nightly + on-demand + on changes to the benchmark/executor — not
+# on every PR.
+
+on:
+  schedule:
+    # 10:00 UTC daily — after the external-API live lanes settle.
+    - cron: "0 10 * * *"
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "plugins/plugin-browser/src/benchmark/**"
+      - "plugins/plugin-browser/scripts/run-miniwob-chromium-benchmark.mjs"
+      - ".github/workflows/browser-real-bench.yml"
+
+concurrency:
+  group: browser-real-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  NODE_VERSION: "24"
+  BUN_VERSION: "canary"
+
+jobs:
+  miniwob-chromium:
+    name: MiniWoB++ on real Chromium
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Real Chromium for the engine lane — the same pattern scenario-pr.yml's
+      # app-browser-core uses. resolveChromiumExecutablePath() picks it up via
+      # playwright-core, so no extra env wiring is needed.
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run MiniWoB++ on real Chromium (engine-parity lane)
+        run: bunx vitest run --config plugins/plugin-browser/vitest.real.config.ts plugins/plugin-browser/src/benchmark/__tests__/miniwob-chromium.real.test.ts
+
+      - name: Generate run-report artifacts (oracle + noop)
+        run: |
+          bun run --cwd plugins/plugin-browser bench:miniwob:chromium --policy oracle --seeds 3
+          bun run --cwd plugins/plugin-browser bench:miniwob:chromium --policy noop --seeds 2
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: miniwob-chromium-run
+          path: .github/issue-evidence/10333-browser-real-chromium/*.json
+          if-no-files-found: warn
