@@ -18,6 +18,7 @@
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A5105A0000000000000002 /* ElizaAppIntents.swift */; };
 		MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = MIPL00010000000000000002 /* ElizaIntentPlugin.swift */; };
+		AWDG00010000000000000001 /* AgentWatchdog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AWDG00010000000000000002 /* AgentWatchdog.swift */; };
 		PRIVACYAPP000000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = PRIVACYAPP000000000000002 /* PrivacyInfo.xcprivacy */; };
 		PRIVACYWBCB00000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = PRIVACYWBCB00000000000002 /* PrivacyInfo.xcprivacy */; };
 		SCENEDEL00000000000001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCENEDEL00000000000002 /* SceneDelegate.swift */; };
@@ -86,6 +87,7 @@
 		E1A5105A0000000000000002 /* ElizaAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaAppIntents.swift; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 		MIPL00010000000000000002 /* ElizaIntentPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaIntentPlugin.swift; sourceTree = "<group>"; };
+		AWDG00010000000000000002 /* AgentWatchdog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWatchdog.swift; sourceTree = "<group>"; };
 		PRIVACYAPP000000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		PRIVACYWBCB00000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		SCENEDEL00000000000002 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -175,6 +177,7 @@
 				SCENEDEL00000000000002 /* SceneDelegate.swift */,
 				E1A5105A0000000000000002 /* ElizaAppIntents.swift */,
 				MIPL00010000000000000002 /* ElizaIntentPlugin.swift */,
+				AWDG00010000000000000002 /* AgentWatchdog.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -458,6 +461,7 @@
 				SCENEDEL00000000000001 /* SceneDelegate.swift in Sources */,
 				E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */,
 				MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */,
+				AWDG00010000000000000001 /* AgentWatchdog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
