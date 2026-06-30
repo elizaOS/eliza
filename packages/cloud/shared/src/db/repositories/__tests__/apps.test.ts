@@ -339,6 +339,88 @@ describe("AppsRepository.listByOrganization", () => {
   });
 });
 
+describe("App-auth attribution grants", () => {
+  test("connectUser upgrades an existing analytics-created app user to an OAuth grant", async () => {
+    if (!pgliteReady) return;
+    const appOrg = await seedOrg();
+    const callerOrg = await seedOrg();
+    const appOwner = await seedUser(appOrg);
+    const caller = await seedUser(callerOrg);
+    const app = await createApp({
+      name: "OAuth Upgrade",
+      organization_id: appOrg,
+      created_by_user_id: appOwner,
+    });
+
+    await appsRepository.trackAppUserActivity(app.id, caller, "0.01", {
+      route: "messages",
+    });
+    const before = await appsRepository.findAppUser(app.id, caller);
+    expect(before?.signup_source).toBeNull();
+
+    const action = await appsRepository.connectUser({
+      appId: app.id,
+      userId: caller,
+      signupSource: "oauth",
+      ipAddress: "203.0.113.10",
+      userAgent: "test-agent",
+    });
+
+    expect(action).toBe("updated");
+    const after = await appsRepository.findAppUser(app.id, caller);
+    expect(after?.signup_source).toBe("oauth");
+    expect(after?.ip_address).toBe("203.0.113.10");
+    expect(after?.user_agent).toBe("test-agent");
+  });
+
+  test("X-App-Id attribution requires same org or an OAuth app-auth grant", async () => {
+    if (!pgliteReady) return;
+    const appOrg = await seedOrg();
+    const callerOrg = await seedOrg();
+    const appOwner = await seedUser(appOrg);
+    const sameOrgUser = await seedUser(appOrg);
+    const caller = await seedUser(callerOrg);
+    const app = await createApp({
+      name: "Monetized App",
+      organization_id: appOrg,
+      created_by_user_id: appOwner,
+      monetization_enabled: true,
+    });
+
+    const sameOrg = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
+      id: sameOrgUser,
+      organization_id: appOrg,
+    });
+    expect(sameOrg?.id).toBe(app.id);
+
+    const crossOrgBefore = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
+      id: caller,
+      organization_id: callerOrg,
+    });
+    expect(crossOrgBefore).toBeUndefined();
+
+    await appsRepository.trackAppUserActivity(app.id, caller, "0.01", {
+      route: "messages",
+    });
+    const analyticsOnly = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
+      id: caller,
+      organization_id: callerOrg,
+    });
+    expect(analyticsOnly).toBeUndefined();
+
+    await appsRepository.connectUser({
+      appId: app.id,
+      userId: caller,
+      signupSource: "oauth",
+    });
+    const oauthGranted = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
+      id: caller,
+      organization_id: callerOrg,
+    });
+    expect(oauthGranted?.id).toBe(app.id);
+  });
+});
+
 describe("AppsRepository.listAll", () => {
   test("filters by is_active / is_approved", async () => {
     if (!pgliteReady) return;

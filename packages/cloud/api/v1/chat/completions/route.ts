@@ -809,16 +809,20 @@ export async function handleChatCompletionsPOST(
     }
 
     // 2. Check for app monetization
-    const appId = req.headers.get("X-App-Id");
+    const requestedAppId = req.headers.get("X-App-Id");
+    let appId: string | null = null;
     let useAppCredits = false;
     let monetizedApp: Awaited<ReturnType<typeof appsService.getById>> | null =
       null;
 
-    if (appId) {
-      monetizedApp = await appsService.getById(appId);
-      if (monetizedApp?.monetization_enabled) {
-        useAppCredits = true;
-      }
+    if (requestedAppId) {
+      monetizedApp =
+        (await appsService.getAuthorizedMonetizedAppForUser(
+          requestedAppId,
+          user,
+        )) ?? null;
+      appId = monetizedApp?.id ?? null;
+      useAppCredits = Boolean(monetizedApp);
     }
 
     // 3. Parse request — guard a malformed/empty body to a 400 instead of a 500.
