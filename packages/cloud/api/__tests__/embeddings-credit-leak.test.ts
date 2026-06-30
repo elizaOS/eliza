@@ -282,3 +282,30 @@ describe("embeddings — success settles to actual usage exactly once", () => {
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - ACTUAL, 10);
   });
 });
+
+describe("embeddings — sync billUsage failure releases the upfront hold", () => {
+  test("billUsage throwing before its reconcile (sync reserve) refunds the hold exactly once", async () => {
+    const ledger = makeLedgerReservation(100, 0.01);
+    reserveCredits.mockResolvedValue(ledger.reservation);
+    embed.mockResolvedValue({ embedding: [0.1, 0.2], usage: { tokens: 5 } });
+    // billUsage throws BEFORE its internal reconcile (e.g. calculateCost or the
+    // affiliate lookup fails) — reconcile never runs, so on the SYNC-reserve path
+    // the upfront hold must be released by the route's inner catch (not leaked).
+    billUsage.mockRejectedValue(new Error("billing pipeline error"));
+
+    const { ctx, scheduled } = makeExecutionCtx();
+    // The vectors were already returned; billing is deferred via waitUntil, so the
+    // request still succeeds even though the deferred billing throws.
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+    );
+    expect(res.status).toBe(200);
+
+    await Promise.all(scheduled);
+    // The inner catch released the hold exactly once (reconcile(0)); balance fully
+    // restored — no permanent overcharge, and not double-refunded.
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+  });
+});
