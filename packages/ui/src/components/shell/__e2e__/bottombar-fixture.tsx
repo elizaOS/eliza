@@ -81,24 +81,6 @@ function BottomBarShell() {
     setTimeout(() => setVisionActive(false), 1200);
   }, [send]);
 
-  // Test hooks so the runner can force a state deterministically (same typed
-  // `window as {…}` idiom the sibling chat-sheet fixture uses).
-  React.useEffect(() => {
-    const w = window as {
-      __setPhase?: (p: ShellPhase) => void;
-      __setRecording?: (r: boolean) => void;
-      __captureVision?: () => void;
-    };
-    w.__setPhase = (p) => setPhase(p);
-    w.__setRecording = (r) => setRecording(r);
-    w.__captureVision = () => captureVision();
-    return () => {
-      w.__setPhase = undefined;
-      w.__setRecording = undefined;
-      w.__captureVision = undefined;
-    };
-  }, [captureVision]);
-
   return (
     <>
       {/* Desktop-like wallpaper behind the transparent chromeless bar, so the
