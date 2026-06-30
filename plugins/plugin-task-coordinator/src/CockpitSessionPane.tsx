@@ -31,8 +31,8 @@ import {
   client,
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
+  useRegisterViewChatBinding,
 } from "@elizaos/ui";
-import { useRegisterViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
 import { ArrowLeft, ScrollText, SquareTerminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CockpitTerminalPanel } from "./CockpitTerminalPanel";

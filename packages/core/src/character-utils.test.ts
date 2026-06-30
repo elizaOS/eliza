@@ -53,6 +53,12 @@ describe("secret get/set/has/delete are immutable", () => {
 		expect(hasCharacterSecret(c, "A")).toBe(true);
 		expect(listCharacterSecretKeys(base())).toEqual(["A"]);
 	});
+
+	it("listCharacterSecretKeys returns an empty list when secrets are absent", () => {
+		expect(listCharacterSecretKeys({ name: "NoSecrets" } as Character)).toEqual(
+			[],
+		);
+	});
 });
 
 describe("mergeCharacterSecrets", () => {

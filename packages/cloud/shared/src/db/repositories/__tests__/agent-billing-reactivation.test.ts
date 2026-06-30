@@ -88,7 +88,10 @@ async function billingStatusOf(id: string): Promise<string> {
 async function billableIds(): Promise<string[]> {
   const now = new Date();
   const rebillCutoff = new Date(now.getTime() - 60 * 60 * 1000);
-  const { runningSandboxes } = await agentBillingRepository.listBillableSandboxes(now, rebillCutoff);
+  const { runningSandboxes } = await agentBillingRepository.listBillableSandboxes(
+    now,
+    rebillCutoff,
+  );
   return runningSandboxes.map((s) => s.id);
 }
 

@@ -52,8 +52,7 @@ function createRuntime(opts: {
 	const service = createStubPluginManager(opts.calls);
 	return {
 		agentId: "agent-id",
-		getService: (name: string) =>
-			name === "plugin_manager" ? service : null,
+		getService: (name: string) => (name === "plugin_manager" ? service : null),
 		useModel: opts.useModel ?? vi.fn(),
 		logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 	} as unknown as IAgentRuntime;
