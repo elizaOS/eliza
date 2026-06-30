@@ -230,21 +230,17 @@ export const searchIssuesAction: Action = {
         }
       }
 
-      if (!filters.team) {
+      // Scope to the default team unless the caller explicitly asked for all
+      // teams. `allTeams` is a structured filter the model sets (#10470) — the
+      // previous English-keyword guess (text includes "all" + "issue"/"bug"/
+      // "task") never worked for other languages or phrasings.
+      if (!filters.team && filters.allTeams !== true) {
         const defaultTeamKey =
           linearService.getDefaultTeamKey(accountId) ??
           (runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string);
         if (defaultTeamKey) {
-          const searchingAllIssues =
-            content.toLowerCase().includes("all") &&
-            (content.toLowerCase().includes("issue") ||
-              content.toLowerCase().includes("bug") ||
-              content.toLowerCase().includes("task"));
-
-          if (!searchingAllIssues) {
-            filters.team = defaultTeamKey;
-            logger.info(`Applying default team filter: ${defaultTeamKey}`);
-          }
+          filters.team = defaultTeamKey;
+          logger.info(`Applying default team filter: ${defaultTeamKey}`);
         }
       }
 
