@@ -376,11 +376,22 @@ class RedeemableEarningsService {
      * internal callers.
      */
     requireSufficientBalance?: boolean;
+    /**
+     * When true, the debit is IDEMPOTENT on `sourceId`: a retry that reuses the
+     * same source_id (e.g. a money-out payout's idempotency key) finds the prior
+     * adjustment ledger row under the per-user advisory lock and returns it
+     * without debiting again. Required for real money-out debits whose caller's
+     * downstream side-effect (a Stripe transfer) is itself idempotent — without
+     * this, a same-key retry double-DEBITs the ledger while the transfer replays
+     * once. Default false preserves the additive reconciliation behavior.
+     */
+    dedupeBySourceId?: boolean;
   }): Promise<{
     success: boolean;
     newBalance: number;
     ledgerEntryId: string;
     error?: string;
+    deduplicated?: boolean;
   }> {
     const {
       userId,
@@ -390,6 +401,7 @@ class RedeemableEarningsService {
       description,
       metadata = {},
       requireSufficientBalance = false,
+      dedupeBySourceId = false,
     } = params;
 
     if (amount <= 0) {
@@ -428,8 +440,38 @@ class RedeemableEarningsService {
           ledgerEntryId: "",
           skipped: true,
           insufficient: false,
+          deduplicated: false,
           currentBalance: 0,
         };
+      }
+
+      // Idempotency guard: a retry that reuses the same sourceId must not debit
+      // twice. Under the per-user advisory lock the check-then-debit is atomic,
+      // so an existing adjustment row for this (source, source_id) means the
+      // debit already committed on a prior call — return it unchanged.
+      if (dedupeBySourceId) {
+        const [existingAdjustment] = await tx
+          .select({ id: redeemableEarningsLedger.id })
+          .from(redeemableEarningsLedger)
+          .where(
+            and(
+              eq(redeemableEarningsLedger.user_id, userId),
+              eq(redeemableEarningsLedger.entry_type, "adjustment"),
+              eq(redeemableEarningsLedger.earnings_source, source),
+              eq(redeemableEarningsLedger.source_id, ledgerSourceId),
+            ),
+          )
+          .limit(1);
+        if (existingAdjustment) {
+          return {
+            earnings,
+            ledgerEntryId: existingAdjustment.id,
+            skipped: false,
+            insufficient: false,
+            deduplicated: true,
+            currentBalance: Number(earnings.available_balance),
+          };
+        }
       }
 
       // Fail-closed money-out guard (computed under the row lock, on the
@@ -441,6 +483,7 @@ class RedeemableEarningsService {
           ledgerEntryId: "",
           skipped: false,
           insufficient: true,
+          deduplicated: false,
           currentBalance: Number(earnings.available_balance),
         };
       }
@@ -492,9 +535,24 @@ class RedeemableEarningsService {
         ledgerEntryId: ledgerEntry.id,
         skipped: false,
         insufficient: false,
+        deduplicated: false,
         currentBalance: 0,
       };
     });
+
+    if (result.deduplicated) {
+      logger.info("[RedeemableEarnings] reduceEarnings deduplicated by sourceId (retry)", {
+        userId: `${userId.slice(0, 8)}...`,
+        source,
+        sourceId: `${sourceId.slice(0, 8)}...`,
+      });
+      return {
+        success: true,
+        newBalance: Number(result.earnings?.available_balance ?? 0),
+        ledgerEntryId: result.ledgerEntryId,
+        deduplicated: true,
+      };
+    }
 
     if (result.insufficient) {
       return {
