@@ -15,6 +15,7 @@
  */
 
 import {
+  clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
@@ -44,6 +45,7 @@ import {
   hasStewardLoginLauncher,
   launchStewardLogin,
 } from "./cloud-steward-login";
+import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import { scrubPersistedActiveServerToken } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
 
@@ -900,6 +902,21 @@ export function useCloudState({
         // an at-rest JWT leak readable by XSS / plugin views. Keep the server
         // selection (kind/apiBase/label) so we know where to re-authenticate.
         scrubPersistedActiveServerToken();
+        // SECURITY: scrubbing active-server.accessToken alone is incomplete —
+        // the LIVE cloud bearer also lives in (a) localStorage steward_session_token
+        // (the JWT read on every /api/* call), (b) per-agent-profile accessToken
+        // copies, and (c) the in-memory __ELIZA_CLOUD_AUTH_TOKEN__ global. Clear
+        // all of them on an explicit disconnect so no usable credential survives
+        // at rest / in memory (XSS / same-origin plugin views).
+        clearStoredStewardToken();
+        scrubPersistedAgentProfileTokens();
+        try {
+          delete (globalThis as Record<string, unknown>)
+            .__ELIZA_CLOUD_AUTH_TOKEN__;
+        } catch {
+          (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+            undefined;
+        }
         if (wasConnected) {
           setActionNotice("Disconnected from Eliza Cloud.", "success");
         }
