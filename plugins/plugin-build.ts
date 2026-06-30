@@ -10,6 +10,7 @@
  */
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import {
   type ExternalsFromPackageJsonOptions,
@@ -117,14 +118,30 @@ const REWRITE_DIST_IMPORTS = resolve(
   "rewrite-dist-relative-imports-node-esm.mjs",
 );
 
-const TSC_BIN = resolve(
-  import.meta.dir,
-  "..",
-  "node_modules",
-  "typescript",
-  "bin",
-  "tsc",
-);
+/**
+ * Absolute path to the workspace `tsc` JS entry. Resolved via node module
+ * resolution so it works regardless of the node_modules layout — a fresh CI
+ * checkout, a hoisted/symlinked install, or a git worktree that borrows a
+ * parent's node_modules — instead of assuming a fixed `../node_modules/...`
+ * offset (which is absent in a worktree). `buildPlugin` runs it as
+ * `node ${TSC_BIN}`, so it needs no `node_modules/.bin` on PATH: `Bun.$`
+ * resolves commands from the bun process's startup PATH, which a bare
+ * `bun test` step does not extend (only `bun run` does).
+ */
+const TSC_BIN = (() => {
+  try {
+    return createRequire(import.meta.url).resolve("typescript/bin/tsc");
+  } catch {
+    return resolve(
+      import.meta.dir,
+      "..",
+      "node_modules",
+      "typescript",
+      "bin",
+      "tsc",
+    );
+  }
+})();
 
 /**
  * Recursively move every file under `fromDir` into `toDir`, preserving the
