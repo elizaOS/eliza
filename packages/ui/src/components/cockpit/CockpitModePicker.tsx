@@ -3,22 +3,20 @@ import { SegmentedControl } from "../ui/segmented-control";
 import {
   type CockpitModeBadge,
   type CockpitModeConfig,
+  COCKPIT_MODE_OPTIONS,
   type ElizaCloudTier,
   optionIdForConfig,
   tierForConfig,
-  visibleCockpitModeOptions,
 } from "./cockpit-modes";
 
 const BADGE_LABEL: Record<CockpitModeBadge, string> = {
   cloud: "Cloud",
   sub: "Subscription",
-  exp: "Experimental",
 };
 
 const BADGE_CLASS: Record<CockpitModeBadge, string> = {
   cloud: "text-accent border-accent/30 bg-accent-subtle",
   sub: "text-muted border-border",
-  exp: "text-destructive border-destructive/40",
 };
 
 export interface CockpitModePickerProps {
@@ -26,26 +24,23 @@ export interface CockpitModePickerProps {
   value: CockpitModeConfig;
   /** Called with the new config when the user picks a mode or flips the tier. */
   onChange: (config: CockpitModeConfig) => void;
-  /** Arm the TOS-unsafe experimental options (hidden by default). */
-  experimentalEnabled?: boolean;
   disabled?: boolean;
   className?: string;
 }
 
 /**
  * The per-session mode picker for the coding cockpit. Presentational: it renders
- * the four locked modes as selectable cards and, for Eliza Cloud, a Fast/Smart
- * tier toggle. It emits a {@link CockpitModeConfig}; the app layer lowers that
- * to the orchestrator create-task `providerPolicy`.
+ * the three sanctioned modes as selectable cards and, for Eliza Cloud, a
+ * Fast/Smart tier toggle. It emits a {@link CockpitModeConfig}; the app layer
+ * lowers that to the orchestrator create-task `providerPolicy`.
  */
 export function CockpitModePicker({
   value,
   onChange,
-  experimentalEnabled = false,
   disabled = false,
   className,
 }: CockpitModePickerProps) {
-  const options = visibleCockpitModeOptions(experimentalEnabled);
+  const options = COCKPIT_MODE_OPTIONS;
   const selectedId = optionIdForConfig(value);
   const tier = tierForConfig(value);
 

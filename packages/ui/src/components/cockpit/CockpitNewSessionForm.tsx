@@ -21,8 +21,6 @@ export interface CockpitNewSessionFormProps {
   onCreate: (input: CodingAgentCreateTaskInput) => void | Promise<void>;
   /** Initial mode (defaults to Eliza Cloud · Fast). */
   defaultMode?: CockpitModeConfig;
-  /** Arm the TOS-unsafe experimental options in the picker. */
-  experimentalEnabled?: boolean;
   /** Parent-controlled in-flight flag (disables submit + shows "Starting…"). */
   busy?: boolean;
   className?: string;
@@ -39,7 +37,6 @@ export interface CockpitNewSessionFormProps {
 export function CockpitNewSessionForm({
   onCreate,
   defaultMode = DEFAULT_MODE,
-  experimentalEnabled = false,
   busy = false,
   className,
 }: CockpitNewSessionFormProps) {
@@ -85,12 +82,7 @@ export function CockpitNewSessionForm({
 
       <div className="flex flex-col gap-1.5">
         <span className="text-xs font-semibold text-muted">Mode</span>
-        <CockpitModePicker
-          value={mode}
-          onChange={setMode}
-          experimentalEnabled={experimentalEnabled}
-          disabled={busy}
-        />
+        <CockpitModePicker value={mode} onChange={setMode} disabled={busy} />
       </div>
 
       <Button

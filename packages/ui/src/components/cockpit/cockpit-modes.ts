@@ -1,20 +1,13 @@
 /**
- * Client-side cockpit mode descriptors — the app-facing mirror of the
- * orchestrator's canonical `cockpit-mode.ts`
- * (`plugins/plugin-agent-orchestrator/src/services/cockpit-mode.ts`).
+ * Client-side cockpit mode descriptors and the lowering from a picked mode to
+ * the orchestrator create-task body. This is the single source of truth for the
+ * cockpit's mode → `providerPolicy` mapping (the UI library owns it; the picker
+ * must not import a plugin).
  *
- * The picker lives in the UI library and must not import a plugin, so the mode
- * *shape* is mirrored here (it is an interface contract, not logic) and the
- * display metadata that drives the picker lives here as its source of truth.
- * The app layer lowers a {@link CockpitModeConfig} to the orchestrator
- * create-task body (`providerPolicy`) — the canonical lowering is the plugin's
- * `cockpitModeToProviderPolicy`.
- *
- * The four modes (locked product vision):
+ * The three sanctioned modes:
  *   1. Eliza Cloud = eliza-code on Cerebras, fast/smart tier (gpt-oss-120b / zai-glm-4.7)
  *   2. OpenCode on Cerebras
  *   3. Claude / Codex via the TOS-safe subscription connector
- *   4. Experimental TOS-unsafe Claude / Codex (gated)
  */
 
 import type {
@@ -25,13 +18,13 @@ import type {
 /** Eliza Cloud inference tiers. `small` is fast; `large` is smart. */
 export type ElizaCloudTier = "small" | "large";
 
-/** Canonical Cerebras model id per tier (mirrors the plugin's source of truth). */
+/** Canonical Cerebras model id per tier. */
 export const ELIZA_CLOUD_TIER_MODEL: Record<ElizaCloudTier, string> = {
   small: "gpt-oss-120b",
   large: "zai-glm-4.7",
 };
 
-/** One cockpit session's mode (shape-mirror of the orchestrator's union). */
+/** One cockpit session's mode. */
 export type CockpitModeConfig =
   | { mode: "eliza-cloud"; agentType: "elizaos"; tier: ElizaCloudTier }
   | { mode: "opencode"; agentType: "opencode"; model?: string }
@@ -40,25 +33,13 @@ export type CockpitModeConfig =
       agentType: "claude" | "codex";
       auth?: "subscription" | "api_keys";
       model?: string;
-    }
-  | {
-      mode: "experimental";
-      agentType: "claude" | "codex";
-      proxy: "anthropic-proxy" | "codex-cli";
-      model?: string;
     };
 
 /** Stable id for one selectable picker option (tier is chosen separately). */
-export type CockpitModeOptionId =
-  | "eliza-cloud"
-  | "opencode"
-  | "claude"
-  | "codex"
-  | "claude-experimental"
-  | "codex-experimental";
+export type CockpitModeOptionId = "eliza-cloud" | "opencode" | "claude" | "codex";
 
 /** Badge kind → drives the chip's accent styling. */
-export type CockpitModeBadge = "cloud" | "sub" | "exp";
+export type CockpitModeBadge = "cloud" | "sub";
 
 /** A selectable option shown in the picker. */
 export interface CockpitModeOption {
@@ -66,14 +47,12 @@ export interface CockpitModeOption {
   title: string;
   subtitle: string;
   badge: CockpitModeBadge;
-  /** TOS-unsafe — only shown when the experimental gate is armed. */
-  experimental?: boolean;
   /** Build the concrete config for this option at the given Eliza Cloud tier
    * (tier is ignored by non-cloud options). */
   toConfig: (tier: ElizaCloudTier) => CockpitModeConfig;
 }
 
-/** The picker's options, in display order. Experimental ones are gated. */
+/** The picker's options, in display order. */
 export const COCKPIT_MODE_OPTIONS: readonly CockpitModeOption[] = [
   {
     id: "eliza-cloud",
@@ -103,40 +82,7 @@ export const COCKPIT_MODE_OPTIONS: readonly CockpitModeOption[] = [
     badge: "sub",
     toConfig: () => ({ mode: "subscription", agentType: "codex" }),
   },
-  {
-    id: "claude-experimental",
-    title: "Claude",
-    subtitle: "Replay proxy · TOS-unsafe",
-    badge: "exp",
-    experimental: true,
-    toConfig: () => ({
-      mode: "experimental",
-      agentType: "claude",
-      proxy: "anthropic-proxy",
-    }),
-  },
-  {
-    id: "codex-experimental",
-    title: "Codex",
-    subtitle: "Replay proxy · TOS-unsafe",
-    badge: "exp",
-    experimental: true,
-    toConfig: () => ({
-      mode: "experimental",
-      agentType: "codex",
-      proxy: "codex-cli",
-    }),
-  },
 ];
-
-/** The picker options visible given whether the experimental gate is armed. */
-export function visibleCockpitModeOptions(
-  experimentalEnabled: boolean,
-): CockpitModeOption[] {
-  return COCKPIT_MODE_OPTIONS.filter(
-    (o) => experimentalEnabled || !o.experimental,
-  );
-}
 
 /** Map a concrete config back to the picker option id it represents. */
 export function optionIdForConfig(
@@ -149,10 +95,6 @@ export function optionIdForConfig(
       return "opencode";
     case "subscription":
       return config.agentType;
-    case "experimental":
-      return config.agentType === "claude"
-        ? "claude-experimental"
-        : "codex-experimental";
   }
 }
 
@@ -168,8 +110,7 @@ export type ProviderSource =
   | "eliza-cloud"
   | "local";
 
-/** The inference/credential source label for a mode (mirrors the orchestrator
- * canonical `cockpit-mode.ts`). */
+/** The inference/credential source label for a mode. */
 export function cockpitModeProviderSource(
   config: CockpitModeConfig,
 ): ProviderSource {
@@ -179,7 +120,6 @@ export function cockpitModeProviderSource(
       // Both run on Eliza Cloud / Cerebras.
       return "eliza-cloud";
     case "subscription":
-    case "experimental":
       return config.agentType === "claude" ? "user-claude" : "user-openai";
   }
 }
@@ -194,10 +134,9 @@ export function cockpitModeModel(
 }
 
 /**
- * Lower a cockpit mode to the orchestrator's create-task `providerPolicy`.
- * The server-canonical lowering is the plugin's `cockpitModeToProviderPolicy`;
- * this client mirror produces the identical `{preferredFramework, providerSource,
- * model}` the create-task route's `asProviderPolicy` parser accepts.
+ * Lower a cockpit mode to the orchestrator's create-task `providerPolicy` —
+ * the `{preferredFramework, providerSource, model}` the create-task route's
+ * `asProviderPolicy` parser accepts.
  */
 export function cockpitModeToProviderPolicy(
   config: CockpitModeConfig,

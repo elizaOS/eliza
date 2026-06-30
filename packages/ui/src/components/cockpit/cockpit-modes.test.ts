@@ -9,7 +9,7 @@ import {
 
 describe("cockpit-modes lowering", () => {
   describe("cockpitModeProviderSource", () => {
-    it("eliza-cloud + opencode source from eliza-cloud; subscription/experimental from the vendor", () => {
+    it("eliza-cloud + opencode source from eliza-cloud; subscription from the vendor", () => {
       expect(
         cockpitModeProviderSource({
           mode: "eliza-cloud",
@@ -28,13 +28,6 @@ describe("cockpit-modes lowering", () => {
       ).toBe("user-claude");
       expect(
         cockpitModeProviderSource({ mode: "subscription", agentType: "codex" }),
-      ).toBe("user-openai");
-      expect(
-        cockpitModeProviderSource({
-          mode: "experimental",
-          agentType: "codex",
-          proxy: "codex-cli",
-        }),
       ).toBe("user-openai");
     });
   });

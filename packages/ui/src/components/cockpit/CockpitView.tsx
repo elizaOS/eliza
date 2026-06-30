@@ -15,8 +15,6 @@ export interface CockpitViewProps {
   onCreateSession: (input: CodingAgentCreateTaskInput) => void | Promise<void>;
   /** In-flight spawn (disables the form + shows "Starting…"). */
   busy?: boolean;
-  /** Arm the TOS-unsafe experimental modes in the picker. */
-  experimentalEnabled?: boolean;
   /** A surfaced error (e.g. spawn or roster fetch failed). */
   error?: string | null;
   className?: string;
@@ -33,14 +31,13 @@ export interface CockpitViewProps {
  *   - the **new-session** form (mode picker → create-task `providerPolicy`).
  *
  * The driver bubble (host chat) manages these rooms; tapping a room drills into
- * the workbench task-room (wired by the container). Real-CLI terminal +
- * "My Runtimes" switcher are phase-2 additions.
+ * the workbench task-room (wired by the container). The "My Runtimes" runtime
+ * switcher lives in Settings.
  */
 export function CockpitView({
   rooms,
   onCreateSession,
   busy = false,
-  experimentalEnabled = false,
   error = null,
   className,
 }: CockpitViewProps) {
@@ -73,11 +70,7 @@ export function CockpitView({
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-txt">New session</h2>
-        <CockpitNewSessionForm
-          onCreate={onCreateSession}
-          busy={busy}
-          experimentalEnabled={experimentalEnabled}
-        />
+        <CockpitNewSessionForm onCreate={onCreateSession} busy={busy} />
       </section>
     </div>
   );

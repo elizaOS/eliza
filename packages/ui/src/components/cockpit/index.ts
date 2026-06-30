@@ -21,7 +21,6 @@ export {
   ELIZA_CLOUD_TIER_MODEL,
   optionIdForConfig,
   tierForConfig,
-  visibleCockpitModeOptions,
 } from "./cockpit-modes";
 export type { MyRuntimesContainerProps } from "./MyRuntimesContainer";
 export { MyRuntimesContainer } from "./MyRuntimesContainer";
