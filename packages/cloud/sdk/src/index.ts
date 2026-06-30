@@ -1,3 +1,8 @@
+export {
+  APP_AUTHORIZE_PATH,
+  type BuildAppAuthorizeUrlOptions,
+  buildAppAuthorizeUrl,
+} from "./app-auth.js";
 export { createElizaCloudClient, ElizaCloudClient } from "./client.js";
 export {
   CloudApiClient,
