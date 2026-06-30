@@ -7,31 +7,34 @@ import {
   seedAppStorage,
 } from "./helpers";
 import {
+  completeCloudOnboardingToHome,
   completeOnboardingToHome,
+  expectChatFirstOnboarding,
+  injectCloudAuthToken,
   injectFullCapabilityHost,
+  installCloudRoutes,
   installHomeRoutes,
   makeScreenshotter,
+  type OnboardingRouteState,
   settleHomeEntrance,
   swipeLeftToLauncher,
 } from "./onboarding-to-home.shared";
 
-// CRITICAL FLOW — completing onboarding lands on the HOME screen (the floating
-// chat overlay over the home widgets), and a swipe-left flips to the
-// launcher.
+// CRITICAL FLOW (#9952) — onboarding is now PART OF THE CHAT. A fresh profile
+// (firstRunComplete=false) paints the homescreen + the auto-opened REAL floating
+// ContinuousChatOverlay, and a headless conductor seeds the onboarding as inline
+// chat messages: greeting → runtime CHOICE → (Cloud OAuth | provider CHOICE) →
+// tutorial CHOICE. There is NO separate full-screen onboarding surface anymore.
 //
-// This boots a fresh device (no first-run-complete), drives the REAL onboarding
-// UI to completion via the simplest non-cloud path — Local runtime →
-// on-device ("all-local") inference — which calls
-// completeFirstRun("chat", { launchCompanionOverlay: true }). That sets the tab
-// to "chat" → ChatRouteShellContent → HomeScreenMount(initialPage="home") →
-// HomeLauncherSurface(home=HomeScreen[<WidgetHost slot="home">],
-// launcher=LauncherSurface). So the post-onboarding landing is the home:
-// the ContinuousChatOverlay composer is present AND the home widget host renders
-// its seeded per-plugin cards. A real left-flick on the home page then pans the
-// rail to the launcher (data-page="launcher") and reveals a launcher tile.
+// These specs boot a fresh device (no first-run-complete) and drive the in-chat
+// flow in the REAL shell to completion, then assert the post-onboarding landing
+// is the HOME (the ContinuousChatOverlay composer over the home widgets) and that
+// POST /api/first-run fired exactly once. Covered paths: chat-first + gate-absent
+// assertion, Local/on-device, Cloud (OAuth card mocked at the network boundary +
+// cloud-agent pick), tutorial-or-skip (both branches), and POST-once.
 //
-// The fixtures, route mocks, and flow helpers are shared with the mobile-
-// viewport lane (onboarding-to-home-mobile.spec.ts) via onboarding-to-home.shared.
+// The fixtures, route mocks, and flow helpers are shared with the mobile-viewport
+// lane (onboarding-to-home-mobile.spec.ts) via onboarding-to-home.shared.
 
 const SCREENSHOT_DIR = path.join(
   process.cwd(),
@@ -40,7 +43,9 @@ const SCREENSHOT_DIR = path.join(
 );
 const screenshot = makeScreenshotter(SCREENSHOT_DIR);
 
-test.describe("onboarding → home → launcher", () => {
+const desktopClick = (locator: Locator) => locator.click();
+
+test.describe("in-chat onboarding → home → launcher", () => {
   test.beforeEach(({ page }) => {
     installPageDiagnosticsGuard(page);
   });
@@ -49,27 +54,30 @@ test.describe("onboarding → home → launcher", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("completing onboarding lands on the home and swipe-left opens the launcher", async ({
+  test("Local onboarding lands on the home and swipe-left opens the launcher", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
-    // No Electrobun RPC bridge is injected (matching first-run-startup.spec): the
-    // local first-run path's bridge calls (getDesktopRuntimeMode → null,
-    // agentStart → null) are non-throwing no-ops, and waitForAgentApi falls back
-    // to the HTTP GET /api/auth/status mocked below, which resolves on the first
-    // poll. Injecting a partial bridge could change which startup gate fires.
+    // No Electrobun RPC bridge is injected: the local first-run path's bridge
+    // calls (getDesktopRuntimeMode → null, agentStart → null) are non-throwing
+    // no-ops, and waitForAgentApi falls back to the HTTP GET /api/auth/status
+    // mocked below, which resolves on the first poll.
     await injectFullCapabilityHost(page);
-    await installHomeRoutes(page);
+    const state = await installHomeRoutes(page);
     // Fresh device: no persisted first-run completion (mobile-runtime-mode left
     // unset so the local desktop path is taken).
     await seedAppStorage(page, { "eliza:first-run-complete": "" });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    const { surface } = await completeOnboardingToHome(
-      page,
-      (locator: Locator) => locator.click(),
-    );
+    // Capture the chat-first onboarding landing before driving it.
+    await expectChatFirstOnboarding(page);
+    await screenshot(page, "onboarding-chat-first");
+
+    const { surface } = await completeOnboardingToHome(page, desktopClick, {
+      state,
+      tutorial: "skip",
+    });
 
     // Capture the populated home.
     await settleHomeEntrance(page);
@@ -77,5 +85,55 @@ test.describe("onboarding → home → launcher", () => {
 
     await swipeLeftToLauncher(page, surface);
     await screenshot(page, "launcher");
+  });
+
+  test("Cloud onboarding connects, binds an agent, and lands on the home", async ({
+    page,
+  }) => {
+    await injectFullCapabilityHost(page);
+    await injectCloudAuthToken(page);
+    const state = await installHomeRoutes(page);
+    await installCloudRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const { surface } = await completeCloudOnboardingToHome(
+      page,
+      desktopClick,
+      {
+        state,
+        tutorial: "skip",
+      },
+    );
+    await settleHomeEntrance(page);
+    await screenshot(page, "cloud-home");
+    expect(await surface.getAttribute("data-page")).toBe("home");
+  });
+
+  test("tutorial CHOICE 'Take the tutorial' completes onboarding and launches the tour", async ({
+    page,
+  }) => {
+    await injectFullCapabilityHost(page);
+    const state: OnboardingRouteState = await installHomeRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    // Same Local path, but pick "Take the tutorial" at the final CHOICE — it
+    // still flips firstRunComplete and lands on the home, AND launches the
+    // interactive tutorial spotlight overlay.
+    await completeOnboardingToHome(page, desktopClick, {
+      state,
+      tutorial: "start",
+    });
+
+    // The interactive tutorial overlay is now active (startTutorial fired):
+    // its spotlight renders over the shell.
+    await expect(page.getByTestId("tutorial-spotlight")).toBeVisible({
+      timeout: 30_000,
+    });
+    await settleHomeEntrance(page);
+    await screenshot(page, "tutorial-start");
   });
 });

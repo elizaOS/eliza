@@ -104,7 +104,7 @@ Use `notifyListeners("eventName", data)` in the Kotlin plugin and `System.addLis
 - **WRITE_SETTINGS is a special permission** — it cannot be requested via `requestPermissions`; the user must be redirected to `openWriteSettings()`. Check `canWriteSettings` in the `DeviceSettingsStatus` response before calling `setScreenBrightness`.
 - **Role queries require Android 10+** — `getStatus()` returns an empty `roles` array on Android < 10 (it does not reject). `requestRole()` rejects on Android < 10.
 - **Build output** — `dist/esm/` is produced by `tsc`, then Rollup bundles it to `dist/plugin.js` (IIFE) and `dist/plugin.cjs.js` (CJS). The Android AAR is built separately by Gradle inside the host Capacitor project.
-- **Test suite** — `src/web.test.ts` contains Vitest unit tests for the web fallback layer. Run with `bun run --cwd plugins/plugin-native-system test`. Android Kotlin code still requires manual device testing or Android emulator verification.
+- **Test suite** — `src/web.test.ts` contains Vitest unit tests for the web fallback layer (`bun run --cwd plugins/plugin-native-system test`). The Android Kotlin device reads are covered by an **instrumented test**, `android/src/androidTest/.../SystemDeviceReaderInstrumentedTest.kt`, run on a real device/emulator via `./gradlew :elizaos-capacitor-system:connectedDebugAndroidTest` from `packages/app-core/platforms/android` (issue #9967). The reads live in `SystemDeviceReader` precisely so they are exercisable without a Capacitor `Bridge`/WebView; `SystemPlugin` delegates to it and marshals the result into the unchanged JS shape.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests

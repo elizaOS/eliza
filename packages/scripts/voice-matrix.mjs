@@ -37,10 +37,17 @@ const DIMENSIONS = {
   voices: ["owner", "enrolled-contact", "unknown", "multi-speaker"],
 };
 
+const UI_SMOKE_MATRIX_ENV = {
+  ELIZA_UI_SMOKE_SKIP_BUILD: "1",
+  ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1",
+  ELIZA_UI_SMOKE_SKIP_CORE_BUILD: "1",
+};
+
 const CELLS = [
   {
     id: "web.fake-mic.roundtrip",
-    title: "Web fake-device mic capture -> ASR -> agent -> TTS",
+    title:
+      "Web fake-device mic capture -> ASR -> agent -> local TTS + barge-in",
     platform: "web",
     dimensions: {
       transcriptionState: "off",
@@ -49,7 +56,7 @@ const CELLS = [
       noiseRejection: "quiet",
       voices: "owner",
     },
-    class: "live-client-audio",
+    class: "live-client-audio-barge-in",
     command: [
       "bun",
       "run",
@@ -58,7 +65,7 @@ const CELLS = [
       "test:e2e",
       "test/ui-smoke/voice-realaudio.spec.ts",
     ],
-    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    env: UI_SMOKE_MATRIX_ENV,
     evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
     probe: "web",
   },
@@ -83,7 +90,7 @@ const CELLS = [
       "test:e2e",
       "test/ui-smoke/transcript-realaudio.spec.ts",
     ],
-    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    env: UI_SMOKE_MATRIX_ENV,
     evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
     probe: "web",
   },
@@ -107,7 +114,7 @@ const CELLS = [
       "test:e2e",
       "test/ui-smoke/voice-workbench-respond-no-respond.spec.ts",
     ],
-    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    env: UI_SMOKE_MATRIX_ENV,
     evidence: [
       ".github/issue-evidence/8785-voice-headful",
       "packages/app/test-results",
@@ -176,20 +183,11 @@ const CELLS = [
       voices: "owner",
     },
     class: "desktop-live-voice",
-    command: [
-      "bun",
-      "run",
-      "--cwd",
-      "packages/app",
-      "capture:macos-desktop",
-      "--",
-      "--issue",
-      ISSUE,
-      "--slug",
-      "voice-macos-electrobun",
-    ],
+    command: ["bun", "run", "--cwd", "packages/app", "test:desktop:voice"],
+    env: { ELIZA_VOICE_DESKTOP_SELFTEST: "1" },
     evidence: [
-      `.github/issue-evidence/${ISSUE}-voice-macos-electrobun-macos-desktop.*`,
+      "$ELIZA_VOICE_MATRIX_OUT/macos.electrobun.live-roundtrip",
+      "packages/app/test-results",
     ],
     probe: "macosElectrobun",
   },
@@ -206,20 +204,11 @@ const CELLS = [
       voices: "owner",
     },
     class: "desktop-live-voice",
-    command: [
-      "bun",
-      "run",
-      "--cwd",
-      "packages/app",
-      "capture:windows-desktop",
-      "--",
-      "--issue",
-      ISSUE,
-      "--slug",
-      "voice-windows-electrobun",
-    ],
+    command: ["bun", "run", "--cwd", "packages/app", "test:desktop:voice"],
+    env: { ELIZA_VOICE_DESKTOP_SELFTEST: "1" },
     evidence: [
-      `.github/issue-evidence/${ISSUE}-voice-windows-electrobun-windows-desktop.*`,
+      "$ELIZA_VOICE_MATRIX_OUT/windows.electrobun.live-roundtrip",
+      "packages/app/test-results",
     ],
     probe: "windowsElectrobun",
   },
@@ -266,6 +255,7 @@ const CELLS = [
     command: [
       "swift",
       "test",
+      "--disable-index-store",
       "--package-path",
       "plugins/plugin-native-talkmode/ios",
     ],
@@ -287,6 +277,7 @@ const CELLS = [
     command: [
       "swift",
       "test",
+      "--disable-index-store",
       "--package-path",
       "plugins/plugin-native-swabble/ios",
     ],
@@ -323,8 +314,13 @@ const CELLS = [
       voices: "owner",
     },
     class: "native-bridge-unit",
-    command: ["./gradlew", ":elizaos-capacitor-talkmode:testDebugUnitTest"],
-    cwd: "packages/app/android",
+    command: [
+      "./gradlew",
+      "-p",
+      "../../../scripts/android-voice-bridge-gradle",
+      ":elizaos-capacitor-talkmode:testDebugUnitTest",
+    ],
+    cwd: "packages/app-core/platforms/android",
     evidence: ["plugins/plugin-native-talkmode/android/src/test/java"],
     probe: "androidGradle",
   },
@@ -340,8 +336,13 @@ const CELLS = [
       voices: "owner",
     },
     class: "native-bridge-unit",
-    command: ["./gradlew", ":elizaos-capacitor-swabble:testDebugUnitTest"],
-    cwd: "packages/app/android",
+    command: [
+      "./gradlew",
+      "-p",
+      "../../../scripts/android-voice-bridge-gradle",
+      ":elizaos-capacitor-swabble:testDebugUnitTest",
+    ],
+    cwd: "packages/app-core/platforms/android",
     evidence: ["plugins/plugin-native-swabble/android/src/test/java"],
     probe: "androidGradle",
   },
@@ -357,21 +358,34 @@ const CELLS = [
       voices: "multi-speaker",
     },
     class: "wakeword-device-gap",
-    command: [
-      "bun",
-      "run",
-      "--cwd",
-      "plugins/plugin-local-inference",
-      "voice:workbench",
-      "--real",
+    command: ["node", "packages/scripts/voice-openwakeword-eval.mjs"],
+    evidence: [
+      "$ELIZA_VOICE_MATRIX_OUT/wake.openwakeword.real-head/openwakeword-eval.json",
+      "$ELIZA_VOICE_OPENWAKEWORD_REPORT",
     ],
-    evidence: ["$VOICE_REAL_MATRIX_OUT/voice-workbench-real"],
     probe: "openWakeWord",
+  },
+  {
+    id: "stt.stage-b.apple-sfspeech",
+    title:
+      "Stage-B STT Apple arm: real on-device SFSpeechRecognizer latency/WER over synthesised speech (quiet + 10dB noise)",
+    platform: "macos-electrobun",
+    dimensions: {
+      transcriptionState: "on",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "noisy-reverberant",
+      voices: "owner",
+    },
+    class: "stt-evaluation",
+    command: ["node", "packages/scripts/stage-b-stt-bench.mjs"],
+    evidence: [".github/issue-evidence/9958-stt-stage-b-eval"],
+    probe: "stageBSttApple",
   },
   {
     id: "stt.stage-b.evaluation",
     title:
-      "Stage-B STT evaluation: iOS SFSpeechRecognizer vs Android SpeechRecognizer vs fused ASR",
+      "Stage-B STT evaluation: iOS battery/energy + Android SpeechRecognizer (NNAPI) vs fused ASR",
     platform: "android",
     dimensions: {
       transcriptionState: "on",
@@ -381,12 +395,11 @@ const CELLS = [
       voices: "multi-speaker",
     },
     class: "stt-evaluation",
-    command: [
-      "bun",
-      "packages/scripts/voice-matrix.mjs",
-      "--stage-b-eval-placeholder",
+    command: ["node", "packages/scripts/voice-stage-b-eval.mjs"],
+    evidence: [
+      "$ELIZA_VOICE_MATRIX_OUT/stt.stage-b.evaluation/stage-b-eval.json",
+      "$ELIZA_VOICE_STAGE_B_REPORT",
     ],
-    evidence: [".github/issue-evidence/9147-voice-asr-m4max.md"],
     probe: "stageBStt",
   },
 ];
@@ -398,15 +411,12 @@ function parseArgs(argv) {
     platforms: new Set(),
     includeHeavy: false,
     requireGreen: false,
-    stageBPlaceholder: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
     if (token === "--run") args.run = true;
     else if (token === "--include-heavy") args.includeHeavy = true;
     else if (token === "--require-green") args.requireGreen = true;
-    else if (token === "--stage-b-eval-placeholder")
-      args.stageBPlaceholder = true;
     else if (token === "--out") args.out = argv[++i] ?? args.out;
     else if (token === "--platform") {
       for (const p of String(argv[++i] ?? "").split(",")) {
@@ -422,12 +432,211 @@ function commandExists(name) {
   return spawnSync(cmd, [name], { stdio: "ignore" }).status === 0;
 }
 
-function runCapture(command, cwd, extraEnv = {}) {
+function findFiles(root, predicate, found = []) {
+  if (!fs.existsSync(root)) return found;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) findFiles(fullPath, predicate, found);
+    else if (entry.isFile() && predicate(fullPath)) found.push(fullPath);
+  }
+  return found;
+}
+
+function hasPackagedDesktopLauncher(platform) {
+  const explicit = process.env.ELIZA_TEST_PACKAGED_LAUNCHER_PATH?.trim();
+  if (explicit) return fs.existsSync(explicit);
+  const roots = [
+    path.join(REPO_ROOT, "packages/app-core/platforms/electrobun/build"),
+    path.join(REPO_ROOT, "packages/app-core/platforms/electrobun/artifacts"),
+  ];
+  if (platform === "darwin") {
+    return roots.some(
+      (root) =>
+        findFiles(root, (fullPath) =>
+          fullPath.endsWith(
+            `${path.sep}Contents${path.sep}MacOS${path.sep}launcher`,
+          ),
+        ).length > 0,
+    );
+  }
+  if (platform === "win32") {
+    return roots.some(
+      (root) =>
+        findFiles(
+          root,
+          (fullPath) =>
+            path.basename(fullPath).toLowerCase() === "launcher.exe",
+        ).length > 0,
+    );
+  }
+  return false;
+}
+
+function oneLine(text) {
+  return String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function readDefaultIosAppId() {
+  const fromEnv =
+    process.env.ELIZA_VOICE_IOS_APP_ID?.trim() ||
+    process.env.ELIZA_IOS_APP_ID?.trim();
+  if (fromEnv) return fromEnv;
+
+  const appConfigPath = path.join(REPO_ROOT, "packages/app/app.config.ts");
+  try {
+    const source = fs.readFileSync(appConfigPath, "utf8");
+    return source.match(/\bappId:\s*["']([^"']+)["']/)?.[1] ?? "ai.elizaos.app";
+  } catch {
+    return "ai.elizaos.app";
+  }
+}
+
+function readDefaultAndroidAppId() {
+  const fromEnv =
+    process.env.ELIZA_VOICE_ANDROID_APP_ID?.trim() ||
+    process.env.ELIZA_ANDROID_APP_ID?.trim() ||
+    process.env.ELIZA_APP_ID?.trim();
+  if (fromEnv) return fromEnv;
+
+  const appConfigPath = path.join(REPO_ROOT, "packages/app/app.config.ts");
+  try {
+    const source = fs.readFileSync(appConfigPath, "utf8");
+    return source.match(/\bappId:\s*["']([^"']+)["']/)?.[1] ?? "ai.elizaos.app";
+  } catch {
+    return "ai.elizaos.app";
+  }
+}
+
+function simctl(args) {
+  return spawnSync("xcrun", ["simctl", ...args], {
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+}
+
+function adb(args) {
+  return spawnSync("adb", args, {
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+}
+
+function attachedAndroidDevice() {
+  const result = adb(["devices"]);
+  if (result.status !== 0) {
+    const detail = oneLine(result.stderr || result.stdout);
+    return {
+      serial: null,
+      reason: `adb devices failed${detail ? `: ${detail}` : ""}`,
+    };
+  }
+
+  const rows = String(result.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/))
+    .filter(([serial]) => serial && serial !== "List");
+  const requested = process.env.ANDROID_SERIAL?.trim();
+  if (requested) {
+    const row = rows.find(([serial]) => serial === requested);
+    if (row?.[1] === "device") return { serial: requested, reason: null };
+    return {
+      serial: null,
+      reason: `ELIZA_VOICE_ANDROID_READY=1 but ANDROID_SERIAL=${requested} is not attached in device state`,
+    };
+  }
+
+  const device = rows.find(([, state]) => state === "device");
+  if (device?.[0]) return { serial: device[0], reason: null };
+  return {
+    serial: null,
+    reason:
+      "ELIZA_VOICE_ANDROID_READY=1 but no Android device/emulator is attached in device state; attach a device/emulator and install the current app before capture",
+  };
+}
+
+function installedAndroidApp(serial, appId) {
+  const result = adb(["-s", serial, "shell", "pm", "path", appId]);
+  if (result.status === 0 && /^package:/m.test(result.stdout ?? "")) {
+    return { installed: true, reason: null };
+  }
+  const detail = oneLine(result.stderr || result.stdout);
+  return {
+    installed: false,
+    reason: `ELIZA_VOICE_ANDROID_READY=1 but ${appId} is not installed on Android device ${serial}; build/redeploy the current APK before capture${detail ? ` (${detail})` : ""}`,
+  };
+}
+
+function bootedIosSimulator() {
+  const result = simctl(["list", "devices", "booted", "--json"]);
+  if (result.status !== 0) {
+    const detail = oneLine(result.stderr || result.stdout);
+    return {
+      device: null,
+      reason: `xcrun simctl list devices booted failed${detail ? `: ${detail}` : ""}`,
+    };
+  }
+
+  let json;
+  try {
+    json = JSON.parse(result.stdout || "{}");
+  } catch (error) {
+    return {
+      device: null,
+      reason: `xcrun simctl list devices booted returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  for (const [runtime, devices] of Object.entries(json.devices ?? {})) {
+    if (!String(runtime).toLowerCase().includes("ios")) continue;
+    for (const device of Array.isArray(devices) ? devices : []) {
+      if (device?.state === "Booted" && device?.udid) {
+        return {
+          device: {
+            udid: device.udid,
+            name: device.name ?? device.udid,
+            runtime,
+          },
+          reason: null,
+        };
+      }
+    }
+  }
+
+  return {
+    device: null,
+    reason:
+      "ELIZA_VOICE_IOS_READY=1 but no booted iOS simulator is available; boot a simulator and install the current app before capture",
+  };
+}
+
+function installedIosAppContainer(udid, appId) {
+  const result = simctl(["get_app_container", udid, appId, "data"]);
+  const containerPath = oneLine(result.stdout);
+  if (result.status === 0 && containerPath) {
+    return { path: containerPath, reason: null };
+  }
+  const detail = oneLine(result.stderr || result.stdout);
+  return {
+    path: null,
+    reason: `ELIZA_VOICE_IOS_READY=1 but ${appId} is not installed on booted simulator ${udid}; build/redeploy the current iOS app before capture${detail ? ` (${detail})` : ""}`,
+  };
+}
+
+function runCapture(command, cwd, extraEnv = {}, context = {}) {
   const startedAt = new Date().toISOString();
   const result = spawnSync(command[0], command.slice(1), {
     cwd: path.resolve(REPO_ROOT, cwd ?? "."),
     encoding: "utf8",
-    env: { ...process.env, ...extraEnv },
+    env: {
+      ...process.env,
+      ...(context.matrixOut
+        ? { ELIZA_VOICE_MATRIX_OUT: context.matrixOut }
+        : {}),
+      ...(context.cellId ? { ELIZA_VOICE_MATRIX_CELL_ID: context.cellId } : {}),
+      ...extraEnv,
+    },
     maxBuffer: 64 * 1024 * 1024,
   });
   return {
@@ -468,14 +677,27 @@ function probeCell(cell) {
         reason: "Linux fused voice environment is provisioned",
       };
     case "openWakeWord":
-      if (!process.env.ELIZA_OPENWAKEWORD_REAL_READY) {
+      if (!process.env.ELIZA_VOICE_OPENWAKEWORD_REPORT?.trim()) {
         return {
           available: false,
           reason:
-            "ELIZA_OPENWAKEWORD_REAL_READY is not set for a real wake-word head run",
+            "ELIZA_VOICE_OPENWAKEWORD_REPORT is not set to a reviewed real-head openWakeWord JSON report",
         };
       }
-      return { available: true, reason: "real openWakeWord head gate enabled" };
+      if (
+        !fs.existsSync(
+          path.resolve(REPO_ROOT, process.env.ELIZA_VOICE_OPENWAKEWORD_REPORT),
+        )
+      ) {
+        return {
+          available: true,
+          reason: `openWakeWord report configured but missing: ${process.env.ELIZA_VOICE_OPENWAKEWORD_REPORT}`,
+        };
+      }
+      return {
+        available: true,
+        reason: `openWakeWord report configured: ${process.env.ELIZA_VOICE_OPENWAKEWORD_REPORT}`,
+      };
     case "macosElectrobun":
       if (process.platform !== "darwin")
         return {
@@ -489,9 +711,24 @@ function probeCell(cell) {
             "set ELIZA_VOICE_MACOS_ELECTROBUN_READY=1 on a macOS Electrobun voice runner with loopback mic/audio capture",
         };
       }
+      if (!process.env.ELIZA_VOICE_DESKTOP_API_BASE?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_DESKTOP_API_BASE is not set to a real app-core API base",
+        };
+      }
+      if (!hasPackagedDesktopLauncher("darwin")) {
+        return {
+          available: false,
+          reason:
+            "packaged macOS Electrobun launcher is missing; build/redeploy the latest desktop app before capture",
+        };
+      }
       return {
         available: true,
-        reason: "macOS Electrobun voice runner enabled",
+        reason:
+          "macOS Electrobun voice runner enabled with packaged launcher and API base",
       };
     case "windowsElectrobun":
       if (process.platform !== "win32")
@@ -506,9 +743,24 @@ function probeCell(cell) {
             "set ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1 on a Windows Electrobun voice runner with loopback mic/audio capture",
         };
       }
+      if (!process.env.ELIZA_VOICE_DESKTOP_API_BASE?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_DESKTOP_API_BASE is not set to a real app-core API base",
+        };
+      }
+      if (!hasPackagedDesktopLauncher("win32")) {
+        return {
+          available: false,
+          reason:
+            "packaged Windows Electrobun launcher is missing; build/redeploy the latest desktop app before capture",
+        };
+      }
       return {
         available: true,
-        reason: "Windows Electrobun voice runner enabled",
+        reason:
+          "Windows Electrobun voice runner enabled with packaged launcher and API base",
       };
     case "ios":
       if (process.platform !== "darwin")
@@ -522,10 +774,24 @@ function probeCell(cell) {
         return {
           available: false,
           reason:
-            "set ELIZA_VOICE_IOS_READY=1 after installing a current iOS simulator/device build with voice assets",
+            "set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets",
         };
       }
-      return { available: true, reason: "iOS voice capture runner enabled" };
+      {
+        const booted = bootedIosSimulator();
+        if (!booted.device) {
+          return { available: false, reason: booted.reason };
+        }
+        const appId = readDefaultIosAppId();
+        const container = installedIosAppContainer(booted.device.udid, appId);
+        if (!container.path) {
+          return { available: false, reason: container.reason };
+        }
+        return {
+          available: true,
+          reason: `iOS voice capture runner enabled for ${appId} on ${booted.device.name} (${booted.device.udid})`,
+        };
+      }
     case "swiftPackage":
       if (process.platform !== "darwin")
         return {
@@ -548,14 +814,26 @@ function probeCell(cell) {
             "set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed",
         };
       }
-      return { available: true, reason: "Android voice runner enabled" };
+      {
+        const device = attachedAndroidDevice();
+        if (!device.serial) return { available: false, reason: device.reason };
+        const appId = readDefaultAndroidAppId();
+        const app = installedAndroidApp(device.serial, appId);
+        if (!app.installed) return { available: false, reason: app.reason };
+        return {
+          available: true,
+          reason: `Android voice runner enabled for ${appId} on ${device.serial}`,
+        };
+      }
     case "androidGradle": {
-      const androidDir = path.join(REPO_ROOT, "packages", "app", "android");
+      const androidDir = path.join(
+        REPO_ROOT,
+        cell.cwd ?? "packages/app-core/platforms/android",
+      );
       if (!fs.existsSync(androidDir)) {
         return {
           available: false,
-          reason:
-            "packages/app/android is not generated; run packages/app cap:sync:android or build:android first",
+          reason: `${path.relative(REPO_ROOT, androidDir)} is not generated; run packages/app cap:sync:android or build:android first`,
         };
       }
       const gradlew = path.join(
@@ -567,17 +845,66 @@ function probeCell(cell) {
           available: false,
           reason: "generated Android project has no Gradle wrapper",
         };
+      const bridgeProjectDir = path.join(
+        REPO_ROOT,
+        "packages",
+        "scripts",
+        "android-voice-bridge-gradle",
+      );
+      if (!fs.existsSync(path.join(bridgeProjectDir, "settings.gradle")))
+        return {
+          available: false,
+          reason: "Android voice bridge Gradle project is missing",
+        };
       return {
         available: true,
-        reason: "generated Android Gradle project exists",
+        reason: "Android voice bridge Gradle project exists",
       };
     }
-    case "stageBStt":
+    case "stageBSttApple":
+      if (process.platform !== "darwin")
+        return {
+          available: false,
+          reason: `Apple SFSpeechRecognizer Stage-B arm requires macOS; current=${process.platform}`,
+        };
+      if (!commandExists("swift"))
+        return {
+          available: false,
+          reason:
+            "swift toolchain not available to build the Stage-B recognizer",
+        };
+      if (!commandExists("say") || !commandExists("afconvert"))
+        return {
+          available: false,
+          reason:
+            "macOS say/afconvert not available for on-device speech synthesis",
+        };
       return {
-        available: false,
+        available: true,
         reason:
-          "Stage-B STT battery/latency evaluation needs paired iOS+Android device runners and power telemetry",
+          "macOS on-device SFSpeechRecognizer + say/afconvert available for a real Stage-B latency/WER measurement",
       };
+    case "stageBStt": {
+      const report = process.env.ELIZA_VOICE_STAGE_B_REPORT?.trim();
+      if (!report) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_STAGE_B_REPORT is not set to a reviewed iOS+Android+fused ASR Stage-B JSON report",
+        };
+      }
+      const reportPath = path.resolve(REPO_ROOT, report);
+      if (!fs.existsSync(reportPath)) {
+        return {
+          available: true,
+          reason: `Stage-B report configured but missing: ${path.relative(REPO_ROOT, reportPath)}`,
+        };
+      }
+      return {
+        available: true,
+        reason: `Stage-B report configured: ${path.relative(REPO_ROOT, reportPath)}`,
+      };
+    }
     default:
       return { available: false, reason: `unknown probe ${cell.probe}` };
   }
@@ -657,25 +984,28 @@ code{font-size:12px}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (args.stageBPlaceholder) {
-    console.error(
-      "Stage-B STT evaluation must run on paired iOS/Android device lanes with power telemetry.",
-    );
-    process.exit(2);
-  }
 
+  const outDir = path.resolve(REPO_ROOT, args.out);
   const selected = CELLS.filter(
     (cell) =>
       args.platforms.size === 0 ||
       args.platforms.has(cell.platform) ||
       args.platforms.has(cell.id),
   );
+  const platformFilters = Array.from(args.platforms).sort();
+  const selectionError =
+    args.platforms.size > 0 && selected.length === 0
+      ? `no voice matrix cells matched --platform=${platformFilters.join(",")}`
+      : null;
   const cells = [];
   for (const cell of selected) {
     const probe = probeCell(cell);
     let execution = null;
     if (args.run && probe.available) {
-      execution = runCapture(cell.command, cell.cwd, cell.env);
+      execution = runCapture(cell.command, cell.cwd, cell.env, {
+        matrixOut: outDir,
+        cellId: cell.id,
+      });
       probe.reason =
         execution.exitCode === 0
           ? `command passed (${execution.finishedAt})`
@@ -709,6 +1039,11 @@ async function main() {
     generatedAt: new Date().toISOString(),
     mode: args.run ? "run" : "probe",
     dimensions: DIMENSIONS,
+    selection: {
+      platformFilters,
+      matched: selected.length,
+      error: selectionError,
+    },
     host: {
       platform: process.platform,
       arch: process.arch,
@@ -720,7 +1055,6 @@ async function main() {
     cells,
   };
 
-  const outDir = path.resolve(REPO_ROOT, args.out);
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(
     path.join(outDir, "voice-matrix.json"),
@@ -737,8 +1071,10 @@ async function main() {
   console.log(
     `[voice:matrix] pass=${summary.pass} fail=${summary.fail} pending=${summary.pending} skip=${summary.skip}`,
   );
+  if (selectionError) console.error(`[voice:matrix] ${selectionError}`);
 
   if (
+    selectionError ||
     summary.fail > 0 ||
     (args.requireGreen && (summary.pending > 0 || summary.skip > 0))
   ) {

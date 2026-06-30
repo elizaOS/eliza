@@ -3,7 +3,7 @@
  *
  * Each Electrobun app window mounts exactly one of:
  *   1. an internal-tool tab component (plugins, skills, lifeops, …)
- *   2. a registered overlay app's Component (e.g. companion)
+ *   2. a registered overlay app's Component
  *   3. a registry/catalog app viewer iframe (with postMessage auth handshake)
  *
  * The renderer never mounts the main shell (sidebars, header, chat panes).
@@ -549,8 +549,8 @@ function resolveAppShellPageFromSlug(
 /**
  * Reverse-lookup an overlay app name from its slug.
  *
- * Overlay apps register by package name (e.g. `@elizaos/plugin-companion`); the
- * slug is `getAppSlug(name)`. We iterate the registry to find a match.
+ * Overlay apps register by package name; the slug is `getAppSlug(name)`. We
+ * iterate the registry to find a match.
  */
 function resolveOverlayAppNameFromSlug(slug: string): string | null {
   for (const app of getAvailableOverlayApps()) {

@@ -107,7 +107,6 @@ export function setActiveViewElements(
  *
  * Verified action names (2026-05-31):
  *   TASKS      — plugin-agent-orchestrator tasks action (coding/orchestration)
- *   PLAY_EMOTE — plugin-companion/src/actions/emote.ts
  *   RUNTIME    — packages/agent/src/actions/runtime.ts (restart/config ops)
  *
  * Verified action names + view ids (2026-06-02) — view id from each plugin's
@@ -140,7 +139,6 @@ export function setActiveViewElements(
  *              relationship graph via GET /api/lifeops/{entities,relationships})
  */
 export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
-  companion: ["PLAY_EMOTE"],
   "task-coordinator": ["TASKS"],
   orchestrator: ["TASKS"],
   "trajectory-logger": ["TASKS"],

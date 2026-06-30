@@ -5,10 +5,8 @@ import type { Tweet } from "./client";
 import { TwitterInteractionClient } from "./interactions";
 import type { TwitterClientState } from "./types";
 
-// The published `@elizaos/core` ESM entry used by vitest omits the prompt
-// helpers (`composePromptFromState`, `parseJSONObjectFromText`) that production
-// resolves from the node build. Back the bare specifier with the node build so
-// the action-decision/quote-generation flow exercised here matches runtime.
+// The lightweight plugin test shim for `@elizaos/core` omits prompt helpers used
+// by this action-decision flow. Use the node source entry for this suite.
 vi.mock("@elizaos/core", async () => {
   const node = await import("@elizaos/core/node");
   return node;

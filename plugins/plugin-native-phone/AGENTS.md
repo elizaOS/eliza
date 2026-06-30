@@ -76,6 +76,7 @@ No environment variables. No runtime config keys. Android permissions are declar
 
 - This is a **Capacitor plugin**, not an elizaOS `Plugin` (no actions/providers/evaluators array). Registering it requires adding it to the Capacitor app's plugin list in the Android host project.
 - The Capacitor plugin name is `"ElizaPhone"` — this must match the `@CapacitorPlugin(name = "ElizaPhone")` annotation in Kotlin exactly.
+- **Instrumented test (issue #9967).** The dialer-status device read lives in `PhoneStatusReader` so it can be exercised on a real device/emulator via `./gradlew :elizaos-capacitor-phone:connectedDebugAndroidTest` (from `packages/app-core/platforms/android`) without a Capacitor `Bridge`/WebView; `getStatus` delegates to it (JS shape unchanged).
 - Agent-authored transcripts are stored in Android `SharedPreferences` under the key `"eliza_phone_call_transcripts"`. They are merged into `CallLogEntry` fields `agentTranscript`, `agentSummary`, `agentTranscriptUpdatedAt` at read time. The system-level `transcription` field (from the OS) is a separate field.
 - `listRecentCalls` caps at 500 entries (enforced server-side in Kotlin). Passing `limit > 500` or `limit <= 0` results in a rejected call.
 - The web fallback for `listRecentCalls` returns `{ calls: [] }` rather than throwing, so call-log-reading code on web will silently get no results rather than an error.

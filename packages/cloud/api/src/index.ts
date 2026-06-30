@@ -24,6 +24,14 @@ const FRONTEND_ALIAS_TARGETS: Record<
   string,
   { appHost: string; apiHost: string }
 > = {
+  "app.elizacloud.ai": {
+    appHost: "eliza-app.pages.dev",
+    apiHost: "api.elizacloud.ai",
+  },
+  "app-staging.elizacloud.ai": {
+    appHost: "develop.eliza-app.pages.dev",
+    apiHost: "api-staging.elizacloud.ai",
+  },
   "staging.elizacloud.ai": {
     appHost: "develop.eliza-cloud-enq.pages.dev",
     apiHost: "api-staging.elizacloud.ai",
@@ -126,6 +134,21 @@ const FEED_OBSERVABILITY_SCRIPT_PATHS = new Set([
   "/_vercel/speed-insights/script.js",
 ]);
 const FEED_PRESET_PFP_PATTERN = /^\/assets\/user-pfps\/pfp-\d{3}\.png$/;
+const FRONTEND_ALIAS_PROXY_HEADER_DENYLIST = new Set([
+  "cdn-loop",
+  "connection",
+  "forwarded",
+  "host",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "x-forwarded-for",
+  "x-real-ip",
+]);
 
 export function getFrontendAliasProxyTarget(
   url: URL,
@@ -147,13 +170,32 @@ export function getFrontendAliasProxyTarget(
   const target = FRONTEND_ALIAS_TARGETS[hostname];
   if (!target) return null;
 
-  const isBackendPath =
+  const apiTarget = getFrontendAliasApiProxyTarget(url);
+  if (apiTarget) return apiTarget;
+
+  const targetUrl = new URL(url);
+  targetUrl.hostname = target.appHost;
+  return targetUrl;
+}
+
+function isFrontendAliasBackendPath(url: URL): boolean {
+  return (
     url.pathname === "/api" ||
     url.pathname.startsWith("/api/") ||
     url.pathname === "/steward" ||
-    url.pathname.startsWith("/steward/");
+    url.pathname.startsWith("/steward/")
+  );
+}
+
+export function getFrontendAliasApiProxyTarget(url: URL): URL | null {
+  const hostname = normalizeHostname(url.hostname);
+  if (!hostname) return null;
+
+  const target = FRONTEND_ALIAS_TARGETS[hostname];
+  if (!target || !isFrontendAliasBackendPath(url)) return null;
+
   const targetUrl = new URL(url);
-  targetUrl.hostname = isBackendPath ? target.apiHost : target.appHost;
+  targetUrl.hostname = target.apiHost;
   return targetUrl;
 }
 
@@ -195,12 +237,26 @@ function proxyFrontendAliasRequest(
   );
   if (!targetUrl) return null;
 
-  const headers = new Headers(request.headers);
+  return fetch(
+    targetUrl.toString(),
+    createFrontendAliasProxyInit(request, url),
+  );
+}
+
+function createFrontendAliasProxyInit(request: Request, url: URL): RequestInit {
+  const headers = new Headers();
+  for (const [name, value] of request.headers) {
+    const headerName = name.toLowerCase();
+    if (
+      FRONTEND_ALIAS_PROXY_HEADER_DENYLIST.has(headerName) ||
+      headerName.startsWith("cf-")
+    ) {
+      continue;
+    }
+    headers.append(name, value);
+  }
+
   const connectingIp = request.headers.get("cf-connecting-ip");
-  headers.delete("host");
-  headers.delete("forwarded");
-  headers.delete("x-forwarded-for");
-  headers.delete("x-real-ip");
   if (connectingIp) {
     headers.set("x-forwarded-for", connectingIp);
     headers.set("x-real-ip", connectingIp);
@@ -218,7 +274,7 @@ function proxyFrontendAliasRequest(
     init.body = request.body;
   }
 
-  return fetch(new Request(targetUrl, init));
+  return init;
 }
 
 function proxyGeneratedAgentRequest(
@@ -248,6 +304,19 @@ export default {
     ctx: ExecutionContext,
   ) => {
     const url = new URL(request.url);
+    const frontendAliasApiTarget = getFrontendAliasApiProxyTarget(url);
+    if (frontendAliasApiTarget) {
+      if (frontendAliasApiTarget.pathname === "/api/health") {
+        return healthResponse(env);
+      }
+
+      const apiRequest = new Request(
+        frontendAliasApiTarget.toString(),
+        createFrontendAliasProxyInit(request, url),
+      );
+      return (await getApp()).fetch(apiRequest, env, ctx);
+    }
+
     const frontendAliasResponse = proxyFrontendAliasRequest(request, url, env);
     if (frontendAliasResponse) return frontendAliasResponse;
     const agentProxyResponse = proxyGeneratedAgentRequest(request, env, url);

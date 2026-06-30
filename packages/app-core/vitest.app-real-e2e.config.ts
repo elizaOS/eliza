@@ -11,7 +11,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Config for the `test/app/*.{real,live}.e2e.test.ts` browser-driven real e2e
- * suite (qa-checklist, first-run-companion, memory-relationships,
+ * suite (qa-checklist, memory-relationships,
  * streaming-visible-text). These drive a real renderer via puppeteer/playwright
  * against a real app-core runtime + a real model provider; each self-skips
  * (`describeIf`/CAN_RUN) unless `ELIZA_LIVE_TEST=1` + a provider is present.

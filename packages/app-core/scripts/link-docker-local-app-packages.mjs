@@ -41,7 +41,6 @@ const localPackages = [
   // @elizaos/plugin-worker-runtime. Keep it linked so those historical imports
   // resolve inside local Docker app packages.
   "eliza/packages/plugin-worker-runtime",
-  "eliza/plugins/plugin-companion",
   "eliza/plugins/plugin-documents",
   "eliza/plugins/plugin-personal-assistant",
   "eliza/plugins/plugin-task-coordinator",

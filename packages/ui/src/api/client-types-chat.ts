@@ -199,6 +199,17 @@ export interface SensitiveRequestDelivery {
   instruction?: string;
   privateRouteRequired?: boolean;
   canCollectValueInCurrentChannel?: boolean;
+  /**
+   * Present only when this secret request collects a credential for a blocked
+   * coding sub-agent. Identifiers only — the scoped token and the value are
+   * NEVER serialized here. When set, `SensitiveRequestBlock` tunnels the value
+   * to the waiting child via `client.tunnelCredential` instead of writing it to
+   * the agent secret store (the two paths are mutually exclusive).
+   */
+  tunnel?: {
+    credentialScopeId: string;
+    childSessionId: string;
+  };
 }
 
 export interface SensitiveRequestFormField {
@@ -321,6 +332,30 @@ export interface ConversationMessage {
     userName?: string;
     isOwner?: boolean;
   };
+}
+
+/**
+ * Runtime guard for a {@link ConversationMessage} — validates the four required
+ * fields (`id`, `role`, `text`, `timestamp`) of an untrusted value before it is
+ * trusted as a message. Server/connector responses (e.g. `sendInboxMessage`)
+ * are appended straight into the rendered message list; a malformed payload
+ * (missing id/role/timestamp, an unexpected role) must NOT be `as`-cast into
+ * state where it breaks keying/rendering. Use this at the API boundary instead
+ * of `value as ConversationMessage`.
+ */
+export function isConversationMessage(
+  value: unknown,
+): value is ConversationMessage {
+  if (typeof value !== "object" || value === null) return false;
+  const m = value as Record<string, unknown>;
+  return (
+    typeof m.id === "string" &&
+    m.id.length > 0 &&
+    (m.role === "user" || m.role === "assistant") &&
+    typeof m.text === "string" &&
+    typeof m.timestamp === "number" &&
+    Number.isFinite(m.timestamp)
+  );
 }
 
 /** One keyword-search hit from `GET /api/conversations/messages/search`. */

@@ -35,6 +35,7 @@ import { BootTimer } from "./boot-timer.ts";
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
+import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
 import {
   type PluginResolutionPhase,
@@ -72,15 +73,14 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
-// `@elizaos/plugin-personal-assistant` and `@elizaos/plugin-companion` are NOT
-// eagerly imported here. Both packages transitively import from
-// `@elizaos/agent` (e.g. `hasOwnerAccess` from this package's barrel) — a
-// top-level static import would form a module-init cycle that leaves named
-// exports (like a plugin's actions array) as `undefined`, crashing
-// `runtime.registerPlugin` when it iterates `plugin.actions`.
+// `@elizaos/plugin-personal-assistant` is NOT eagerly imported here. It
+// transitively imports from `@elizaos/agent` (e.g. `hasOwnerAccess` from this
+// package's barrel) — a top-level static import would form a module-init cycle
+// that leaves named exports (like a plugin's actions array) as `undefined`,
+// crashing `runtime.registerPlugin` when it iterates `plugin.actions`.
 //
-// Both still resolve at plugin-load time via headless dynamic-import
-// entrypoints in `plugin-resolver.ts`, after the static module graph has fully
+// It still resolves at plugin-load time via a headless dynamic-import
+// entrypoint in `plugin-resolver.ts`, after the static module graph has fully
 // evaluated, so the cycle never forms and browser-only UI exports stay out of
 // the agent process.
 // Keep this here as a single sentinel: if we ever need a static reference,
@@ -93,6 +93,7 @@ import {
   type Component,
   createBasicCapabilitiesPlugin,
   createMessageMemory,
+  drainAppRoutePluginLoaders,
   type Entity,
   type LogEntry,
   logger,
@@ -4433,7 +4434,7 @@ export async function startEliza(
   }
 
   // 7d. Register the roles capability (cheap, gates provider/action visibility).
-  //     The remaining core plugins (companion, app-control, device-filesystem,
+  //     The remaining core plugins (app-control, device-filesystem,
   //     shell, coding-tools, agent-skills, commands, google, lifeops, browser,
   //     video) are NOT essential to the chat path and are loaded in the
   //     background after the runtime is ready — see runDeferredBoot below.
@@ -5102,7 +5103,7 @@ export async function startEliza(
     return deferredResolvedPlugins;
   };
 
-  // Deferred boot: non-essential core plugins (companion, app-control,
+  // Deferred boot: non-essential core plugins (app-control,
   // device-filesystem, shell, coding-tools, agent-skills, commands, google,
   // lifeops, browser, video), auto-enabled providers/connectors, custom
   // plugins, plus the post-init tail. Runs in the background after the runtime
@@ -5139,6 +5140,22 @@ export async function startEliza(
       });
       bootTimer.lap("deferred:core-plugin-waves");
     }
+
+    // Drain app-route plugin loaders into runtime.routes. App-route plugins
+    // (e.g. @elizaos/plugin-agent-orchestrator:routes) register a loader on a
+    // global registry via registerAppRoutePluginLoader rather than exposing
+    // their HTTP routes through Plugin.routes directly. packages/app-core's
+    // boot path drains this registry, but the headless agent-server boot did
+    // not, so /api/coding-agents/* and /api/orchestrator/* 404ed even though
+    // the orchestrator plugin's services were registered. This MUST run after
+    // the deferred plugin wave (the orchestrator loads deferred, ~5s after
+    // runtime.initialize), otherwise the registry is still empty. Mirror
+    // app-core's registerAppRoutePlugins: load each loader and push its rawPath
+    // routes onto runtime.routes so tryHandleRuntimePluginRoute can dispatch.
+    // The drain is idempotent (dedups by type:path), so in a combined app-core
+    // deployment where app-core also drains the registry, neither double-mounts.
+    await drainAppRoutePluginLoaders(runtime);
+    bootTimer.lap("deferred:app-route-plugins");
 
     await runTeeBootGate();
     bootTimer.lap("deferred:tee-gate");
@@ -5193,8 +5210,7 @@ export async function startEliza(
     installActionAliases(runtime);
     // Same timing reason: validate the intent→action map only once the deferred
     // plugins have registered. Run during blocking init it would warn about
-    // actions like TASKS (agent-orchestrator) and PLAY_EMOTE (companion) that
-    // simply hadn't loaded yet.
+    // actions like TASKS (agent-orchestrator) that simply hadn't loaded yet.
     validateIntentActionMap(
       runtime.actions.map((a) => a.name),
       runtime.logger,
@@ -5259,6 +5275,10 @@ export async function startEliza(
   bootTimer.summary();
   void recordBootTelemetry(bootTimer.getSummary());
   startMemorySampler({ intervalMs: 30_000 });
+  // Proactively bounce the runtime before an OOM kill when RSS climbs past the
+  // configured threshold (opt-in via ELIZA_MEMORY_WATCHDOG). Restarts cleanly
+  // through requestRestart()/the supervisor — never a silent process.exit.
+  startMemoryWatchdog();
   // #10203: a `ready`-point fault fires once the agent has reached steady boot.
   await maybeInjectFault("ready");
 

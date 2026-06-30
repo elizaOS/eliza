@@ -15,7 +15,11 @@
  */
 
 import { useSearchParams } from "react-router-dom";
-import { DashboardErrorState, DashboardLoadingState } from "../../cloud-ui";
+import {
+  DashboardErrorState,
+  DashboardLoadingState,
+  PageHeaderProvider,
+} from "../../cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AnalyticsPageClient } from "./_components/analytics-page-client";
 import {
@@ -65,10 +69,14 @@ export default function AnalyticsPage() {
     );
   }
 
+  // AnalyticsPageClient sets the page header; this standalone route has no
+  // ancestor PageHeaderProvider, so supply one here.
   return (
-    <AnalyticsPageClient
-      data={breakdown.data}
-      projectionsData={projections.data}
-    />
+    <PageHeaderProvider>
+      <AnalyticsPageClient
+        data={breakdown.data}
+        projectionsData={projections.data}
+      />
+    </PageHeaderProvider>
   );
 }

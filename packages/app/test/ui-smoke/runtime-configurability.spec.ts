@@ -7,16 +7,15 @@ import {
 } from "./helpers";
 
 // "Local, Cloud, etc. all work out of the box and are successfully
-// configurable." The production web bundle is cloud-only, so the onboarding
-// runtime selector normally shows Cloud alone (see first-run-startup.spec.ts).
-// This spec injects the host signals a desktop/device shell sets before React
-// boots — an API base (flips `cloudOnly` → false) and the Electrobun window
-// marker (flips `canSelectLocalRuntime` → true) — so the full runtime matrix
-// renders: Cloud, Local, Remote. It then drives each branch (including the
-// Local → provider sub-choice) to prove every runtime is reachable and
-// configurable, not just displayed. The single first-run surface is the in-chat
-// FirstRunChat (StartupScreen → FirstRunChat); the full-screen onboarding gate
-// was removed.
+// configurable." Onboarding now happens IN the chat (#9952): a fresh profile
+// auto-opens the REAL floating ContinuousChatOverlay and the headless conductor
+// seeds the runtime question as inline ChoiceWidgets — Cloud (Eliza Cloud
+// managed) / On this device / Bring your own keys. This spec lands on that
+// in-chat surface and drives each branch (including the Local → provider
+// sub-choice) to prove every runtime is reachable and configurable, not just
+// displayed. The full-screen onboarding gate and the separate Remote-connect
+// form were removed — "Bring your own keys" runs the local backend with the
+// other-provider default.
 
 async function fulfillJson(
   route: Route,
@@ -56,23 +55,26 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
 }
 
 // Pretend to be a host that owns its hardware AND injects a loopback backend —
-// the shape every desktop / device shell presents to the renderer. Both globals
-// must exist before main.tsx evaluates, so this runs as an init script.
+// the shape every desktop / device shell presents to the renderer.
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
+      window.location.origin;
+    (window as unknown as Record<string, unknown>).__ELIZA_API_BASE__ =
       window.location.origin;
     (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
 }
 
-async function expectFirstRun(page: Page) {
-  const firstRun = page.getByTestId("first-run-chat");
-  await expect(firstRun).toBeVisible({ timeout: 20_000 });
-  return firstRun;
+async function expectInChatFirstRun(page: Page): Promise<void> {
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
+  await expect(
+    chatOverlay.getByText("Let's get you set up", { exact: false }),
+  ).toBeVisible({ timeout: 15_000 });
 }
 
-test("first-run exposes local, cloud, and remote runtimes and each is configurable", async ({
+test("in-chat first-run exposes cloud, local, and bring-your-own-keys runtimes and Local is configurable", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -83,44 +85,37 @@ test("first-run exposes local, cloud, and remote runtimes and each is configurab
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const firstRun = await expectFirstRun(page);
-  await expect(page.getByTestId("first-run-greeting")).toBeVisible({
-    timeout: 15_000,
-  });
+  await expectInChatFirstRun(page);
 
-  // All three runtimes are offered as in-chat ChoiceWidget options on a
-  // full-capability host.
-  const cloud = page.getByTestId("choice-cloud");
-  const local = page.getByTestId("choice-local");
-  const remote = page.getByTestId("choice-remote");
+  // All three runtimes are offered as inline ChoiceWidget options.
+  const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
+  const local = page.getByTestId("choice-__first_run__:runtime:local");
+  const other = page.getByTestId("choice-__first_run__:runtime:other");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
   await expect(local).toBeVisible();
-  await expect(remote).toBeVisible();
+  await expect(other).toBeVisible();
 
   // Local is configurable: selecting it advances to the provider sub-choice,
-  // where both Eliza Cloud and the on-device default are offered.
+  // where the on-device default, Eliza Cloud inference, and other are offered.
   await local.click();
-  await expect(page.getByTestId("choice-elizacloud")).toBeVisible({
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId("choice-on-device")).toBeVisible();
-  await expect(page.getByText("Where should I run my AI?")).toBeVisible();
-
-  // Remote is configurable: selecting it advances to the endpoint + token form
-  // so another device can point at this machine. Back returns to the options.
-  await remote.click();
-  await expect(page.getByTestId("first-run-remote-address")).toBeVisible({
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId("choice-connect")).toBeVisible();
-  await page.getByTestId("choice-back").click();
-  await expect(cloud).toBeVisible({ timeout: 10_000 });
+  await expect(
+    page.getByTestId("choice-__first_run__:provider:on-device"),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByTestId("choice-__first_run__:provider:elizacloud"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("choice-__first_run__:provider:other"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Which model provider should", { exact: false }),
+  ).toBeVisible();
 
   await expectNoRenderTelemetryErrors(page, "runtime configurability");
-  await expect(firstRun).toBeVisible();
+  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible();
 });
 
-test("first-run survives browser back and forward while runtime choices churn", async ({
+test("in-chat first-run survives browser back and forward while it churns", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -129,26 +124,18 @@ test("first-run survives browser back and forward while runtime choices churn", 
   await injectFullCapabilityHost(page);
   await seedAppStorage(page, { "eliza:first-run-complete": "" });
 
-  // runtimeTarget=remote opens the first-run flow directly on the remote connect
-  // form (the controller seeds step="remote" for that target).
-  await page.goto("/?runtime=first-run&runtimeTarget=remote", {
-    waitUntil: "domcontentloaded",
-  });
-  await expectFirstRun(page);
-  await expect(page.getByPlaceholder("https://agent.example.com")).toBeVisible({
-    timeout: 15_000,
-  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expectInChatFirstRun(page);
 
-  // Churn the runtime target via the URL + browser history; the first-run
-  // surface must survive every transition without crashing or freezing.
-  await page.goto("/?runtime=first-run&runtimeTarget=local", {
-    waitUntil: "domcontentloaded",
-  });
-  await expectFirstRun(page);
+  // Churn navigation via the browser history; the in-chat first-run surface must
+  // survive every transition without crashing or freezing (the conductor re-seeds
+  // the greeting into the live transcript on each shell remount).
+  await page.goto("/?runtime=first-run", { waitUntil: "domcontentloaded" });
+  await expectInChatFirstRun(page);
   await page.goBack({ waitUntil: "domcontentloaded" });
-  await expectFirstRun(page);
+  await expectInChatFirstRun(page);
   await page.goForward({ waitUntil: "domcontentloaded" });
-  await expectFirstRun(page);
+  await expectInChatFirstRun(page);
 
   await expectNoRenderTelemetryErrors(page, "runtime browser history");
 });

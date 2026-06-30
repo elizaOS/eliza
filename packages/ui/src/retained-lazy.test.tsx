@@ -12,6 +12,7 @@ import {
   RetainedLazyComponent,
   type RetainedLazyModule,
 } from "./retained-lazy";
+import { __resetHeapPressureMonitorForTests } from "./state/heap-pressure-monitor";
 
 interface TestProps {
   label: string;
@@ -36,6 +37,7 @@ describe("RetainedLazyComponent", () => {
   afterEach(() => {
     cleanup();
     __resetRetainedLazyModulesForTests();
+    __resetHeapPressureMonitorForTests();
     delete (window as Partial<Window>).requestIdleCallback;
   });
 
@@ -175,5 +177,54 @@ describe("RetainedLazyComponent", () => {
         }),
       ]),
     );
+  });
+
+  it("evicts inactive modules on live heap pressure and emits the heap value (#10196)", async () => {
+    Object.defineProperty(performance, "memory", {
+      configurable: true,
+      value: { usedJSHeapSize: 950, jsHeapSizeLimit: 1000 },
+    });
+    const events: ModuleCacheTelemetryEvent[] = [];
+    const onTelemetry = (event: Event) => {
+      events.push((event as CustomEvent<ModuleCacheTelemetryEvent>).detail);
+    };
+    window.addEventListener(MODULE_CACHE_TELEMETRY_EVENT, onTelemetry);
+    const cleanupModule = vi.fn();
+    const loader = vi.fn(
+      async (): Promise<RetainedLazyModule<TestProps>> => ({
+        default: function TestPanel({ label }: TestProps) {
+          return <div>{label}</div>;
+        },
+        cleanup: cleanupModule,
+      }),
+    );
+
+    const rendered = render(
+      <RetainedLazyComponent
+        loader={loader}
+        componentProps={{ label: "heap panel" }}
+      />,
+    );
+    await screen.findByText("heap panel");
+    rendered.unmount();
+
+    // The real heap-driven signal (the never-fired `memorypressure` is replaced
+    // by HEAP_PRESSURE_EVENT, sourced from the heap monitor).
+    document.dispatchEvent(new CustomEvent("eliza:heap-pressure"));
+    await waitFor(() => expect(cleanupModule).toHaveBeenCalledTimes(1));
+    window.removeEventListener(MODULE_CACHE_TELEMETRY_EVENT, onTelemetry);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "retained-lazy",
+          action: "evict",
+          reason: "heap-pressure",
+          // Every cache event now carries the live heap reading.
+          usedJSHeapSize: 950,
+        }),
+      ]),
+    );
+    delete (performance as { memory?: unknown }).memory;
   });
 });

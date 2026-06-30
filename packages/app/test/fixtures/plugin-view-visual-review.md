@@ -9,8 +9,6 @@ Review rubric:
 
 | View | Type | Path | Likes | Concerns | Next proof |
 | --- | --- | --- | --- | --- | --- |
-| `companion` | `gui` | `/companion` | Avatar-first surface with dedicated emote controls and visual scene affordances. | Needs screenshot pass for avatar framing, emote overlay polish, and non-text control density. | Verify avatar asset loads, emote controls render as icons, and scene is nonblank in visual smoke artifacts. |
-| `companion` | `tui` | `/companion` | Terminal contract exposes companion state and emote commands. | Needs command-output review for terse, scan-friendly status. | Confirm every terminal command returns command-specific output and no pending states. |
 | `contacts` | `gui` | `/contacts` | Familiar contact-list workflow and clear account/contact actions. | Needs visual pass for list density and empty/error states. | Verify create/import/search controls, contact rows, and avatar/initial indicators. |
 | `contacts` | `tui` | `/contacts` | Terminal view has list/create/import command surface. | Needs proof that command output remains compact and structured. | Click every terminal command and verify semantic output. |
 | `hyperliquid` | `gui` | `/hyperliquid` | Market/trading domain has strong metric-card potential. | Needs screenshot review for chart/table density and risk/status indicators. | Verify market, execution, and account panels render without broken assets. |
@@ -63,7 +61,5 @@ Review rubric:
 | `trajectory-logger` | `tui` | `/trajectory-logger` | TUI covers list/open/filter/refresh. | Needs output proof for filter changes. | Verify commands update or report trajectory state. |
 | `training` | `gui` | `/apps/fine-tuning` | Fine-tuning workflow has rich pipeline/status opportunities. | Needs dense multi-section review and prose pruning. | Verify dataset, job, benchmark, eval, model activation, and readiness states. |
 | `training` | `tui` | `/apps/fine-tuning` | TUI exposes extensive training/eval/benchmark commands. | Needs broad command-output proof and timeout review. | Verify all terminal commands settle with clear result categories. |
-| `facewear` | `gui` | `/apps/facewear` | Device management uses platform/status concepts well. | Needs native bridge/device asset and permission-state review. | Verify connect, diagnostics, emulator, headset, and hardware-check controls. |
 | `facewear` | `tui` | `/apps/facewear` | TUI covers device connect, diagnostics, emulator, and setup commands. | Needs command-output proof across device unavailable states. | Verify every command returns meaningful mocked status. |
-| `smartglasses` | `gui` | `/apps/smartglasses` | Smartglasses setup has device-specific status and event affordances. | Needs prose reduction and event-log visual review. | Verify setup, Wi-Fi, diagnostics, events, and bridge-only states. |
 | `smartglasses` | `tui` | `/apps/smartglasses` | TUI covers smartglasses setup/status/diagnostics. | Needs command-output proof for native bridge unavailable states. | Verify all commands settle and expose device state. |

@@ -2,7 +2,7 @@
  * Discord local connector setup HTTP routes.
  *
  * Implements the shared setup contract defined in
- * `@elizaos/app-core/api/setup-contract.ts`:
+ * `@elizaos/core` (`packages/core/src/types/connector-setup.ts`):
  *
  *   GET  /api/setup/discord/status   connection + auth status
  *   POST /api/setup/discord/start    start OAuth authorize flow
@@ -17,31 +17,16 @@
  * canonical paths without the plugin-name prefix.
  */
 
-import type {
-	IAgentRuntime,
-	Route,
-	RouteRequest,
-	RouteResponse,
+import {
+	buildSetupError,
+	type IAgentRuntime,
+	type Route,
+	type RouteRequest,
+	type RouteResponse,
+	type SetupState,
+	type SetupStatusResponse,
 } from "@elizaos/core";
 import { DISCORD_LOCAL_SERVICE_NAME } from "./discord-local-service";
-
-// ── Setup contract types (mirror @elizaos/app-core/api/setup-contract) ──
-
-type SetupState = "idle" | "configuring" | "paired" | "error";
-
-interface SetupStatusResponse<TDetail = unknown> {
-	connector: string;
-	state: SetupState;
-	detail?: TDetail;
-}
-
-interface SetupErrorResponse {
-	error: { code: string; message: string };
-}
-
-function setupError(code: string, message: string): SetupErrorResponse {
-	return { error: { code, message } };
-}
 
 // ── Discord types ───────────────────────────────────────────────────────
 
@@ -152,7 +137,7 @@ async function handleStart(
 		res
 			.status(503)
 			.json(
-				setupError(
+				buildSetupError(
 					"service_unavailable",
 					"discord-local service not registered",
 				),
@@ -176,7 +161,7 @@ async function handleStart(
 		res
 			.status(500)
 			.json(
-				setupError(
+				buildSetupError(
 					"internal_error",
 					`failed to authorize discord-local: ${err instanceof Error ? err.message : String(err)}`,
 				),
@@ -196,7 +181,7 @@ async function handleCancel(
 		res
 			.status(503)
 			.json(
-				setupError(
+				buildSetupError(
 					"service_unavailable",
 					"discord-local service not registered",
 				),
@@ -213,7 +198,7 @@ async function handleCancel(
 		res
 			.status(500)
 			.json(
-				setupError(
+				buildSetupError(
 					"internal_error",
 					`failed to disconnect discord-local: ${err instanceof Error ? err.message : String(err)}`,
 				),

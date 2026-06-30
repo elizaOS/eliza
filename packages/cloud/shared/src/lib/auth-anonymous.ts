@@ -79,6 +79,46 @@ export async function checkAnonymousLimit(sessionId: string): Promise<{
   };
 }
 
+export async function reserveAnonymousMessageSlot(sessionId: string): Promise<{
+  allowed: boolean;
+  reason?: "message_limit" | "hourly_limit";
+  remaining: number;
+  limit: number;
+}> {
+  const session = await anonymousSessionsService.getByToken(sessionId);
+
+  if (!session) {
+    throw new Error("Session not found");
+  }
+
+  const reserved = await anonymousSessionsService.reserveMessageSlot(session.id);
+  if (!reserved) {
+    return {
+      allowed: false,
+      reason: "message_limit",
+      remaining: 0,
+      limit: session.messages_limit,
+    };
+  }
+
+  const rateLimitResult = await anonymousSessionsService.checkRateLimit(session.id);
+  if (!rateLimitResult.allowed) {
+    await anonymousSessionsService.refundMessageSlot(session.id);
+    return {
+      allowed: false,
+      reason: "hourly_limit",
+      remaining: 0,
+      limit: ANON_HOURLY_LIMIT,
+    };
+  }
+
+  return {
+    allowed: true,
+    remaining: Math.max(0, reserved.messages_limit - reserved.message_count),
+    limit: reserved.messages_limit,
+  };
+}
+
 export async function getAnonymousUser(request: Request): Promise<{
   user: UserWithOrganization;
   session: NonNullable<Awaited<ReturnType<typeof anonymousSessionsService.getByToken>>>;

@@ -14,7 +14,6 @@ import {
   PostCustomActionGenerateRequestSchema,
   PostCustomActionRequestSchema,
   PostCustomActionTestRequestSchema,
-  PostEmoteRequestSchema,
   PostIngestShareRequestSchema,
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
@@ -67,39 +66,6 @@ function resolveTerminalShellCommand(): {
       (process.env.ELIZA_PLATFORM === "android" ? "/system/bin/sh" : "/bin/sh"),
     argsFor: (command) => ["-c", command],
   };
-}
-
-type CompanionEmote = {
-  id: string;
-  path: string;
-  duration?: number;
-  loop?: boolean;
-  [key: string]: unknown;
-};
-
-const COMPANION_EMOTES_MODULE: string = "@elizaos/plugin-companion";
-let companionEmotesPromise: Promise<{
-  catalog: CompanionEmote[];
-  byId: Map<string, CompanionEmote>;
-}> | null = null;
-
-async function loadCompanionEmotes(): Promise<{
-  catalog: CompanionEmote[];
-  byId: Map<string, CompanionEmote>;
-}> {
-  companionEmotesPromise ??= import(/* @vite-ignore */ COMPANION_EMOTES_MODULE)
-    .then((loaded) => {
-      const catalog = Array.isArray(loaded.EMOTE_CATALOG)
-        ? (loaded.EMOTE_CATALOG as CompanionEmote[])
-        : [];
-      const byId =
-        loaded.EMOTE_BY_ID instanceof Map
-          ? (loaded.EMOTE_BY_ID as Map<string, CompanionEmote>)
-          : new Map(catalog.map((emote) => [emote.id, emote]));
-      return { catalog, byId };
-    })
-    .catch(() => ({ catalog: [], byId: new Map<string, CompanionEmote>() }));
-  return companionEmotesPromise;
 }
 
 function toTerminalRunRequestBody(
@@ -231,44 +197,6 @@ export async function handleMiscRoutes(
     } else {
       json(res, { items: state.shareIngestQueue });
     }
-    return true;
-  }
-
-  // ── GET /api/emotes ──────────────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/emotes") {
-    const emotes = await loadCompanionEmotes();
-    json(res, { emotes: emotes.catalog });
-    return true;
-  }
-
-  // ── POST /api/emote ─────────────────────────────────────────────────
-  if (method === "POST" && pathname === "/api/emote") {
-    const rawEmote = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawEmote === null) return true;
-    const parsedEmote = PostEmoteRequestSchema.safeParse(rawEmote);
-    if (!parsedEmote.success) {
-      error(
-        res,
-        parsedEmote.error.issues[0]?.message ?? "Invalid request body",
-        400,
-      );
-      return true;
-    }
-    const body = parsedEmote.data;
-    const emotes = await loadCompanionEmotes();
-    const emote = body.emoteId ? emotes.byId.get(body.emoteId) : undefined;
-    if (!emote) {
-      error(res, `Unknown emote: ${body.emoteId ?? "(none)"}`);
-      return true;
-    }
-    state.broadcastWs?.({
-      type: "emote",
-      emoteId: emote.id,
-      path: emote.path,
-      duration: emote.duration,
-      loop: false,
-    });
-    json(res, { ok: true });
     return true;
   }
 

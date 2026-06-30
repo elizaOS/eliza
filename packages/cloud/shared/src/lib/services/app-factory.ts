@@ -162,9 +162,10 @@ export class AppFactoryService {
     }
 
     // TEMPLATE-IMAGE WIRING (the launch blocker): a TEMPLATE app — one created
-    // WITHOUT a user repo (createGitHubRepo === false, the path the agent's
-    // CREATE_APP / `skipGitHubRepo: true` uses) — has neither a build pipeline
-    // nor a repo image, so the deploy runner's `resolveImageRef` would throw
+    // WITHOUT a user repo (createGitHubRepo === false, which is what both front
+    // doors send as `skipGitHubRepo: true`: the agent's CREATE_APP action and the
+    // dashboard Create App dialog) — has neither a build pipeline nor a repo
+    // image, so the deploy runner's `resolveImageRef` would throw
     // "no image to deploy". Stamp a first-party, allowlisted template image as
     // `metadata.imageTag` at create time so create -> deploy resolves to a
     // prebuilt, allowlisted image. Repo-backed apps are intentionally LEFT

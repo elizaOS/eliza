@@ -117,7 +117,6 @@ const renderActionSchema = z.enum([
 
 const secondarySurfaceSchema = z.enum([
   "chat-apps-section",
-  "companion-shell",
   "settings-integrations",
   // OS-mode launcher. OS-level system entries (contacts, phone, wifi) set
   // `visible: false` + `pinTo: ["os-shell"]` so they are hidden from the

@@ -1,0 +1,750 @@
+// ============================================================================
+// Headless first-run "finish" use case.
+//
+// This is the SINGLE provisioning implementation for completing onboarding.
+// It owns no presentation — the in-chat first-run conductor
+// (`use-first-run-conductor.ts`) calls these functions and renders the seeded
+// chat messages. All product decisions (default provider, needsProviderSetup,
+// the POST body) live in the pure config layer (`first-run-config.ts` /
+// `first-run.ts`); this module wires the ports.
+//
+// Extracted from the former `use-first-run-controller.ts` React hook (the
+// full-screen onboarding wizard, now deleted). The finish bodies are moved
+// here verbatim apart from replacing React state/setters with injected ports
+// and funneling EVERY `POST /api/first-run` through the single `persistFirstRun`
+// helper (idempotency-guarded), so a completed onboarding posts exactly once.
+// ============================================================================
+
+import { Capacitor } from "@capacitor/core";
+import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import {
+  getCloudAuthToken,
+  isDirectCloudSharedAgentBase,
+} from "../api/client-cloud";
+import type { CloudCompatAgent } from "../api/client-types-cloud";
+import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
+import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
+import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
+import { getBootConfig } from "../config/boot-config";
+import type { UiLanguage } from "../i18n";
+import { isAndroid, isDesktopPlatform, isIOS } from "../platform/init";
+import {
+  addAgentProfile,
+  createPersistedActiveServer,
+  loadPersistedActiveServer,
+  removeAgentProfile,
+  savePersistedActiveServer,
+} from "../state";
+import type { ActionBanner } from "../state/action-banner";
+import { isCloudStatusAuthenticated } from "../utils";
+import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
+import {
+  buildFirstRunSubmitPlan,
+  clearPersistedFirstRunState,
+  type FirstRunProfileDraft,
+  type FirstRunRuntime,
+  firstRunDownloadsLocalModel,
+  firstRunNeedsCloudConnect,
+  firstRunRuntimeTarget,
+  normalizeFirstRunName,
+  validateFirstRunSubmitDraft,
+} from "./first-run";
+import {
+  ANDROID_LOCAL_AGENT_LABEL,
+  ANDROID_LOCAL_AGENT_SERVER_ID,
+  MOBILE_LOCAL_AGENT_LABEL,
+  MOBILE_LOCAL_AGENT_SERVER_ID,
+  persistMobileRuntimeModeForServerTarget,
+} from "./mobile-runtime-mode";
+import { resolveFirstRunLocalAgentApiBase } from "./runtime-target";
+
+const FIRST_RUN_AGENT_WAIT_MS = 180_000;
+
+type NativeAgentPlugin = {
+  start?: (options?: { apiBase?: string; mode?: string }) => Promise<unknown>;
+};
+
+// ── Injected ports — the store seams the finish logic needs ──────────────────
+
+export interface FirstRunFinishPorts {
+  uiLanguage: UiLanguage;
+  elizaCloudConnected: boolean;
+  handleCloudLogin: (prePoppedWindow?: Window | null) => Promise<void>;
+  /** Pre-opened popup window for the cloud-login redirect (popup-blocker safe). */
+  preOpenWindow?: () => Window | null;
+  setRuntimeState: (
+    key: FirstRunRuntimeStateKey,
+    value: string | boolean,
+  ) => void;
+  showActionBanner: (banner: ActionBanner) => void;
+  setTab: (tab: string) => void;
+  switchAgentProfile: (profileId: string) => void;
+  /** Injected client-side finalizer (flips firstRunComplete; never POSTs). */
+  completeFirstRun: (landingTab?: string) => void;
+  /** Status text (e.g. "Starting local agent") surfaced into the chat transcript. */
+  onStatus?: (text: string | null) => void;
+}
+
+type FirstRunRuntimeStateKey =
+  | "firstRunRuntimeTarget"
+  | "firstRunProvider"
+  | "firstRunRemoteApiBase"
+  | "firstRunRemoteToken"
+  | "firstRunRemoteConnected"
+  | "firstRunName";
+
+// ── Finish outcomes — translated by the conductor into seeded chat turns ─────
+
+export type FirstRunFinishOutcome =
+  | { kind: "done" }
+  | { kind: "needs-cloud-login"; fallbackUrl?: string }
+  | { kind: "pick-cloud-agent"; agents: CloudCompatAgent[] }
+  | { kind: "error"; message: string };
+
+// ── Exactly-once POST funnel ─────────────────────────────────────────────────
+
+let firstRunPersisted = false;
+
+/** Reset the once-only guard (tests + a fresh re-entry into onboarding). */
+export function resetFirstRunPersistGuard(): void {
+  firstRunPersisted = false;
+}
+
+/**
+ * The SOLE call site of `client.submitFirstRun` (= POST /api/first-run). Local
+ * and remote always persist once; cloud persists once iff the bound cloud agent
+ * host owns the app-shell routes. The module-scoped guard plus the server-side
+ * `meta.firstRunComplete` make a re-tapped first-run choice idempotent.
+ */
+async function persistFirstRun(
+  plan: ReturnType<typeof buildFirstRunSubmitPlan>,
+  ports: FirstRunFinishPorts,
+  opts: { viaAppShellOrigin?: boolean } = {},
+): Promise<void> {
+  if (firstRunPersisted) return;
+  if (opts.viaAppShellOrigin) {
+    const currentBase =
+      typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+    client.setBaseUrl(null);
+    try {
+      await client.submitFirstRun(plan.payload);
+    } finally {
+      client.setBaseUrl(currentBase || null);
+    }
+  } else {
+    await client.submitFirstRun(plan.payload);
+  }
+  firstRunPersisted = true;
+  if (plan.runtimeConfig.needsProviderSetup) {
+    ports.showActionBanner({
+      text: "Choose a model provider in Settings before sending the first message.",
+      actionLabel: "Open Settings",
+      onAction: () => ports.setTab("settings"),
+    });
+  }
+}
+
+// ── Module helpers (moved from the controller) ───────────────────────────────
+
+function isHttpLoopbackBase(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    return (
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "::1" ||
+      url.hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function shouldUseAppShellLocalAgentProxy(apiBase: string): boolean {
+  if (!isHttpLoopbackBase(apiBase)) return false;
+  if (typeof window === "undefined") return false;
+  const { origin, protocol } = window.location;
+  if (protocol !== "http:" && protocol !== "https:") return false;
+  try {
+    return new URL(apiBase).origin !== origin;
+  } catch {
+    return false;
+  }
+}
+
+function shouldSubmitFirstRunViaAppShellOrigin(
+  runtime: FirstRunRuntime,
+  baseUrl: string,
+): boolean {
+  if (runtime !== "local") return false;
+  return shouldUseAppShellLocalAgentProxy(baseUrl);
+}
+
+function localAgentClientBase(apiBase: string): string | null {
+  return shouldUseAppShellLocalAgentProxy(apiBase) ? null : apiBase;
+}
+
+function localAgentFetchBase(apiBase: string): string {
+  return shouldUseAppShellLocalAgentProxy(apiBase) &&
+    typeof window !== "undefined"
+    ? window.location.origin
+    : apiBase;
+}
+
+function canProbeCloudStatus(): boolean {
+  const baseUrl =
+    typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
+  if (!supportsFullAppShellRoutes(baseUrl)) return false;
+  if (baseUrl) return true;
+  if (typeof window !== "undefined" && window.location.port === "2138") {
+    return false;
+  }
+  return true;
+}
+
+async function getCloudStatusIfSupported() {
+  if (!canProbeCloudStatus()) return null;
+  return client.getCloudStatus().catch(() => null);
+}
+
+function readSyncOnDeviceAgentBearer(): string | null {
+  try {
+    const bridge = (
+      globalThis as typeof globalThis & {
+        ElizaNative?: { getLocalAgentToken?: () => string | null };
+      }
+    ).ElizaNative;
+    const token = bridge?.getLocalAgentToken?.();
+    if (typeof token !== "string") return null;
+    const trimmed = token.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function startMobileLocalAgent(): Promise<void> {
+  if (!isAndroid && !isIOS) return;
+  try {
+    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
+      Plugins?: Record<string, NativeAgentPlugin | undefined>;
+    };
+    const registeredAgent =
+      capacitorWithPlugins.Plugins?.Agent ??
+      Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
+    await registeredAgent.start?.({
+      apiBase: resolveFirstRunLocalAgentApiBase(),
+      mode: "local",
+    });
+  } catch {
+    const agentPluginId = "@elizaos/capacitor-agent";
+    const { Agent } = await import(/* @vite-ignore */ agentPluginId);
+    await (Agent as NativeAgentPlugin | undefined)?.start?.({
+      apiBase: resolveFirstRunLocalAgentApiBase(),
+      mode: "local",
+    });
+  }
+}
+
+async function startLocalRuntime(): Promise<void> {
+  if (isDesktopPlatform()) {
+    try {
+      const desktopRuntimeMode = await getDesktopRuntimeMode().catch(
+        () => null,
+      );
+      if (desktopRuntimeMode && desktopRuntimeMode.mode !== "local") {
+        return;
+      }
+      await invokeDesktopBridgeRequest({
+        rpcMethod: "agentStart",
+        ipcChannel: "agent:start",
+      });
+      return;
+    } catch (error) {
+      try {
+        await client.getAuthStatus();
+        return;
+      } catch {
+        throw error;
+      }
+    }
+  }
+  await startMobileLocalAgent();
+}
+
+async function waitForAgentApi(): Promise<void> {
+  const deadline = Date.now() + FIRST_RUN_AGENT_WAIT_MS;
+  let delayMs = 750;
+  while (Date.now() < deadline) {
+    try {
+      await client.getAuthStatus();
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      delayMs = Math.min(Math.round(delayMs * 1.35), 4_000);
+    }
+  }
+  throw new Error(
+    "The agent API did not become ready before the first-run deadline.",
+  );
+}
+
+/**
+ * Newest-first, running-prioritized order — mirrors pickPreferredCloudAgent
+ * (client-cloud.ts) so the picker's top-of-list matches the silent auto-default.
+ */
+function sortCloudAgentsForPicker(
+  agents: CloudCompatAgent[],
+): CloudCompatAgent[] {
+  return [...agents]
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    .sort((a, b) => {
+      const aRunning = a.status === "running" ? 0 : 1;
+      const bRunning = b.status === "running" ? 0 : 1;
+      return aRunning - bRunning;
+    });
+}
+
+function normalizeRemoteTarget(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error("Enter a remote agent URL.");
+  const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error("Enter a valid remote agent URL.");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Remote agents must use HTTP or HTTPS.");
+  }
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function syncIdentity(
+  sourceDraft: FirstRunProfileDraft,
+  ports: FirstRunFinishPorts,
+): void {
+  const agentName = normalizeFirstRunName(sourceDraft.agentName);
+  if (agentName) {
+    ports.setRuntimeState("firstRunName", agentName);
+  }
+}
+
+// ── Local runtime finish ─────────────────────────────────────────────────────
+
+async function finishLocal(
+  sourceDraft: FirstRunProfileDraft,
+  ports: FirstRunFinishPorts,
+): Promise<FirstRunFinishOutcome> {
+  syncIdentity(sourceDraft, ports);
+  // Local + cloud-inference (hybrid) routes inference through Eliza Cloud, so
+  // connect the cloud account first.
+  if (firstRunNeedsCloudConnect(sourceDraft, ports.elizaCloudConnected)) {
+    ports.setRuntimeState("firstRunRuntimeTarget", "elizacloud-hybrid");
+    ports.setRuntimeState("firstRunProvider", "elizacloud");
+    const authWindow = ports.preOpenWindow?.() ?? null;
+    await ports.handleCloudLogin(authWindow);
+    const cloudStatus = await getCloudStatusIfSupported();
+    let cloudConnectedForFinish = isCloudStatusAuthenticated(
+      Boolean(cloudStatus?.connected),
+      cloudStatus?.reason,
+    );
+    if (!cloudConnectedForFinish && getCloudAuthToken(client)) {
+      cloudConnectedForFinish = true;
+    }
+    if (!cloudConnectedForFinish) {
+      return { kind: "needs-cloud-login" };
+    }
+  }
+  const serverTarget = firstRunRuntimeTarget(
+    sourceDraft.runtime,
+    sourceDraft.localInference,
+  );
+  persistMobileRuntimeModeForServerTarget(serverTarget);
+  ports.setRuntimeState("firstRunRuntimeTarget", serverTarget);
+  ports.onStatus?.("Starting local agent");
+  const apiBase = resolveFirstRunLocalAgentApiBase();
+  const clientBase = localAgentClientBase(apiBase);
+  client.setBaseUrl(clientBase);
+  client.setToken(isAndroid || isIOS ? readSyncOnDeviceAgentBearer() : null);
+  await startLocalRuntime();
+  await waitForAgentApi();
+  if (isAndroid || isIOS) {
+    savePersistedActiveServer({
+      id: isAndroid
+        ? ANDROID_LOCAL_AGENT_SERVER_ID
+        : MOBILE_LOCAL_AGENT_SERVER_ID,
+      kind: "remote",
+      label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
+      apiBase,
+    });
+    addAgentProfile({
+      kind: "remote",
+      label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
+      apiBase,
+    });
+  } else if (clientBase) {
+    savePersistedActiveServer({
+      id: "local:desktop",
+      kind: "remote",
+      label: "Local agent",
+      apiBase: clientBase,
+    });
+    addAgentProfile({
+      kind: "remote",
+      label: "Local agent",
+      apiBase: clientBase,
+    });
+  } else {
+    savePersistedActiveServer({
+      id: "local:app-shell",
+      kind: "local",
+      label: "Local agent",
+    });
+    addAgentProfile({ kind: "local", label: "Local agent" });
+  }
+  ports.onStatus?.("Saving first-run profile");
+  const plan = buildFirstRunSubmitPlan({
+    draft: { ...sourceDraft, runtime: "local" },
+    uiLanguage: ports.uiLanguage,
+  });
+  const currentBase =
+    typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+  await persistFirstRun(plan, ports, {
+    viaAppShellOrigin: shouldSubmitFirstRunViaAppShellOrigin(
+      "local",
+      currentBase.trim(),
+    ),
+  });
+  if (firstRunDownloadsLocalModel(sourceDraft.localInference)) {
+    void autoDownloadRecommendedLocalModelInBackground(
+      localAgentFetchBase(apiBase),
+    );
+  }
+  clearPersistedFirstRunState();
+  ports.onStatus?.(null);
+  ports.completeFirstRun("chat");
+  return { kind: "done" };
+}
+
+// ── Remote runtime finish ────────────────────────────────────────────────────
+
+async function finishRemote(
+  sourceDraft: FirstRunProfileDraft,
+  ports: FirstRunFinishPorts,
+): Promise<FirstRunFinishOutcome> {
+  syncIdentity(sourceDraft, ports);
+  const apiBase = normalizeRemoteTarget(sourceDraft.remoteApiBase);
+  const accessToken = sourceDraft.remoteToken.trim();
+  ports.onStatus?.("Checking remote agent");
+  client.setBaseUrl(apiBase);
+  client.setToken(accessToken || null);
+  const auth = await client.getAuthStatus();
+  if (auth.required && !accessToken) {
+    if (auth.pairingEnabled) {
+      const profile = addAgentProfile({
+        kind: "remote",
+        label: apiBase,
+        apiBase,
+      });
+      savePersistedActiveServer({
+        id: `remote:${apiBase}`,
+        kind: "remote",
+        label: apiBase,
+        apiBase,
+      });
+      persistMobileRuntimeModeForServerTarget("remote");
+      ports.setRuntimeState("firstRunRuntimeTarget", "remote");
+      ports.setRuntimeState("firstRunRemoteApiBase", apiBase);
+      clearPersistedFirstRunState();
+      ports.onStatus?.(null);
+      ports.switchAgentProfile(profile.id);
+      return { kind: "done" };
+    }
+    throw new Error(
+      "This remote agent requires an access token. Enter the host's connection key, or enable pairing on the host.",
+    );
+  }
+  await client.getFirstRunStatus();
+  savePersistedActiveServer({
+    id: `remote:${apiBase}`,
+    kind: "remote",
+    label: apiBase,
+    apiBase,
+    ...(accessToken ? { accessToken } : {}),
+  });
+  addAgentProfile({
+    kind: "remote",
+    label: apiBase,
+    apiBase,
+    ...(accessToken ? { accessToken } : {}),
+  });
+  persistMobileRuntimeModeForServerTarget("remote");
+  ports.setRuntimeState("firstRunRuntimeTarget", "remote");
+  ports.setRuntimeState("firstRunRemoteApiBase", apiBase);
+  ports.setRuntimeState("firstRunRemoteToken", accessToken);
+  ports.setRuntimeState("firstRunRemoteConnected", true);
+  ports.onStatus?.("Saving first-run profile");
+  const plan = buildFirstRunSubmitPlan({
+    draft: { ...sourceDraft, runtime: "remote" },
+    uiLanguage: ports.uiLanguage,
+  });
+  await persistFirstRun(plan, ports);
+  clearPersistedFirstRunState();
+  ports.onStatus?.(null);
+  ports.completeFirstRun("chat");
+  return { kind: "done" };
+}
+
+// ── Cloud runtime finish ─────────────────────────────────────────────────────
+
+/**
+ * The provisioning tail of the cloud flow — both the silent auto-create path (0
+ * agents) and the picker's pick / create-new feed their choice
+ * (preferAgentId / forceCreate) into the SAME provisioning call.
+ */
+export async function bindCloudAgent(
+  sourceDraft: FirstRunProfileDraft,
+  authToken: string,
+  opts: { preferAgentId?: string | null; forceCreate?: boolean },
+  ports: FirstRunFinishPorts,
+): Promise<FirstRunFinishOutcome> {
+  ports.onStatus?.("Setting up your cloud agent");
+  const plan = buildFirstRunSubmitPlan({
+    draft: { ...sourceDraft, runtime: "cloud" },
+    uiLanguage: ports.uiLanguage,
+  });
+  const name =
+    typeof plan.payload.name === "string" ? plan.payload.name : "Eliza";
+  const bio = Array.isArray(plan.payload.bio)
+    ? plan.payload.bio.filter(
+        (entry): entry is string => typeof entry === "string",
+      )
+    : ["An autonomous AI agent."];
+  const selectedAgent = await client.selectOrProvisionCloudAgent({
+    cloudApiBase: getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
+    authToken,
+    name,
+    bio,
+    ...(opts.preferAgentId ? { preferAgentId: opts.preferAgentId } : {}),
+    ...(opts.forceCreate ? { forceCreate: true } : {}),
+    ...(getBootConfig().preferSharedCloudTier
+      ? { preferSharedTier: true }
+      : {}),
+    onProgress: (status, detail) => ports.onStatus?.(detail ?? status),
+  });
+  const cloudAgentApiBase = selectedAgent.apiBase;
+  client.setBaseUrl(cloudAgentApiBase);
+  client.setToken(authToken);
+  const activeServer = createPersistedActiveServer({
+    kind: "cloud",
+    id: `cloud:${selectedAgent.agentId}`,
+    apiBase: cloudAgentApiBase,
+    accessToken: authToken,
+  });
+  savePersistedActiveServer(activeServer);
+  const sharedAgentProfile = addAgentProfile({
+    kind: "cloud",
+    label: activeServer.label,
+    ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
+    ...(activeServer.accessToken
+      ? { accessToken: activeServer.accessToken }
+      : {}),
+  });
+  persistMobileRuntimeModeForServerTarget("elizacloud");
+  ports.onStatus?.("Saving first-run profile");
+  // Direct Cloud agent bases are chat runtimes, not full app-shell setup
+  // servers — they do not own /api/first-run. Only persist when the bound base
+  // owns the app-shell routes.
+  if (supportsFullAppShellRoutes(cloudAgentApiBase)) {
+    await persistFirstRun(plan, ports);
+  }
+  clearPersistedFirstRunState();
+  ports.onStatus?.(null);
+  ports.completeFirstRun("chat");
+
+  // Seamless shared→dedicated cloud-agent handoff (background). Flag OFF →
+  // `selectedAgent` is the dedicated agent itself and this branch is skipped.
+  if (
+    getBootConfig().preferSharedCloudTier &&
+    selectedAgent.created &&
+    isDirectCloudSharedAgentBase(cloudAgentApiBase)
+  ) {
+    const sharedAgentId = selectedAgent.agentId;
+    const cloudApiBase =
+      getBootConfig().cloudApiBase || "https://www.elizacloud.ai";
+    const createDedicatedHandoffTarget = async (): Promise<string> => {
+      const dedicated = await client.createCloudCompatAgent({
+        agentName: name,
+        ...(bio.length ? { agentConfig: { bio } } : {}),
+        forceCreate: true,
+      });
+      if (dedicated.success && dedicated.data.agentId) {
+        return dedicated.data.agentId;
+      }
+      throw new Error(
+        dedicated.success
+          ? "Dedicated agent creation returned no agent id."
+          : (dedicated.data.message ?? "Dedicated agent creation failed."),
+      );
+    };
+    runCloudAgentHandoff(
+      sharedAgentId,
+      async () => {
+        const dedicatedAgentId = await createDedicatedHandoffTarget();
+        return await client.startCloudAgentHandoff({
+          agentId: sharedAgentId,
+          sharedApiBase: cloudAgentApiBase,
+          conversationId: sharedAgentId,
+          dedicatedAgentId,
+          cloudApiBase,
+          authToken,
+          onSwitch: (containerBase) => {
+            silentlyRepointToDedicated({
+              containerBase,
+              authToken,
+              dedicatedAgentId,
+            });
+          },
+        });
+      },
+      () => {
+        removeAgentProfile(sharedAgentProfile.id);
+        void client
+          .deleteSharedBridgeAgent(sharedAgentId, {
+            cloudApiBase,
+            authToken,
+          })
+          .then((res) => {
+            if (!res.success) {
+              console.warn(
+                `[firstRunFinish] shared bridge delete failed (leaked row ${sharedAgentId}): ${res.error ?? "unknown"}`,
+              );
+            }
+          });
+      },
+    );
+  }
+  return { kind: "done" };
+}
+
+/**
+ * Cloud finish entry: connect Eliza Cloud (Steward), then list the user's cloud
+ * agents. 0 agents → auto-provision; ≥1 → return `pick-cloud-agent` so the
+ * conductor seeds a `[CHOICE:first-run id=cloud-agent]` block.
+ */
+export async function listOrAutoProvisionCloudAgent(
+  sourceDraft: FirstRunProfileDraft,
+  ports: FirstRunFinishPorts,
+): Promise<FirstRunFinishOutcome> {
+  syncIdentity(sourceDraft, ports);
+  ports.setRuntimeState(
+    "firstRunRuntimeTarget",
+    firstRunRuntimeTarget("cloud"),
+  );
+  ports.setRuntimeState("firstRunProvider", "elizacloud");
+  let cloudConnectedForFinish = ports.elizaCloudConnected;
+  if (!cloudConnectedForFinish) {
+    const cloudStatus = await getCloudStatusIfSupported();
+    cloudConnectedForFinish = isCloudStatusAuthenticated(
+      Boolean(cloudStatus?.connected),
+      cloudStatus?.reason,
+    );
+  }
+  if (firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish)) {
+    const authWindow = ports.preOpenWindow?.() ?? null;
+    await ports.handleCloudLogin(authWindow);
+    const cloudStatus = await getCloudStatusIfSupported();
+    cloudConnectedForFinish = isCloudStatusAuthenticated(
+      Boolean(cloudStatus?.connected),
+      cloudStatus?.reason,
+    );
+    if (!cloudConnectedForFinish && getCloudAuthToken(client)) {
+      cloudConnectedForFinish = true;
+    }
+    if (!cloudConnectedForFinish) {
+      return { kind: "needs-cloud-login" };
+    }
+  }
+  const authToken = getCloudAuthToken(client) ?? "";
+  if (!authToken) {
+    return { kind: "error", message: "Eliza Cloud authentication required." };
+  }
+  let list: { success: boolean; data: CloudCompatAgent[]; error?: string };
+  try {
+    list = await client.getCloudCompatAgents();
+  } catch (err) {
+    list = {
+      success: false,
+      data: [],
+      error: err instanceof Error ? err.message : "Could not load your agents.",
+    };
+  }
+  if (!list.success) {
+    return {
+      kind: "error",
+      message: list.error ?? "Could not load your agents. Try again.",
+    };
+  }
+  if (list.data.length === 0) {
+    return bindCloudAgent(
+      sourceDraft,
+      authToken,
+      { forceCreate: false },
+      ports,
+    );
+  }
+  return {
+    kind: "pick-cloud-agent",
+    agents: sortCloudAgentsForPicker(list.data),
+  };
+}
+
+// ── Router entry — validate + route by runtime ───────────────────────────────
+
+export async function runFirstRunFinish(
+  sourceDraft: FirstRunProfileDraft,
+  ports: FirstRunFinishPorts,
+): Promise<FirstRunFinishOutcome> {
+  const validation = validateFirstRunSubmitDraft(sourceDraft);
+  if (!validation.valid) {
+    return {
+      kind: "error",
+      message:
+        validation.message ?? "Check your first-run details and try again.",
+    };
+  }
+  try {
+    if (sourceDraft.runtime === "remote") {
+      return await finishRemote(sourceDraft, ports);
+    }
+    if (sourceDraft.runtime === "cloud") {
+      return await listOrAutoProvisionCloudAgent(sourceDraft, ports);
+    }
+    return await finishLocal(sourceDraft, ports);
+  } catch (err) {
+    ports.onStatus?.(null);
+    return {
+      kind: "error",
+      message: err instanceof Error ? err.message : "First-run setup failed.",
+    };
+  }
+}
+
+/** Re-read the active cloud agent id (for the picker's "already bound" guard). */
+export function readActiveCloudAgentId(): string | null {
+  const active = loadPersistedActiveServer();
+  if (active?.kind !== "cloud") return null;
+  const id = active.id?.startsWith("cloud:")
+    ? active.id.slice("cloud:".length)
+    : "";
+  return id && !id.includes("/") ? id : null;
+}

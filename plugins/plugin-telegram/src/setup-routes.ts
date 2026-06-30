@@ -16,13 +16,14 @@
  * canonical `/api/setup/telegram/...` paths without the plugin-name prefix.
  */
 
-import type {
-  IAgentRuntime,
-  Route,
-  RouteRequest,
-  RouteResponse,
+import {
+  type IAgentRuntime,
+  logger,
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+  type SetupState,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 
@@ -33,9 +34,9 @@ interface TelegramBotInfo {
   username: string;
 }
 
-/** Canonical setup state matching `SetupState` in app-core setup-contract.ts. */
-type SetupState = "idle" | "configuring" | "paired" | "error";
-
+// `SetupState` is the canonical connector lifecycle union from @elizaos/core.
+// The response below specializes the generic `SetupStatusResponse<TDetail>`
+// with Telegram's connector literal + detail shape, so it stays local.
 interface SetupStatusResponse {
   connector: "telegram";
   state: SetupState;

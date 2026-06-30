@@ -95,53 +95,28 @@ class CameraPlugin : Plugin() {
     @PluginMethod
     fun getDevices(call: PluginCall) {
         try {
-            val cameraManager =
-                context.getSystemService(android.content.Context.CAMERA_SERVICE) as CameraManager
+            // Device enumeration is delegated to CameraDeviceReader so it can be
+            // exercised by an instrumented androidTest without a Capacitor Bridge
+            // (issue #9967); the JS array shape below is unchanged.
             val devices = JSArray()
-
-            for (cameraId in cameraManager.cameraIdList) {
-                val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-
-                val direction = when (facing) {
-                    CameraCharacteristics.LENS_FACING_FRONT -> "front"
-                    CameraCharacteristics.LENS_FACING_BACK -> "back"
-                    else -> "external"
-                }
-
-                val hasFlash =
-                    characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
-                val maxZoom =
-                    characteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)
-                        ?: 1f
-
-                val streamConfigMap =
-                    characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                val outputSizes =
-                    streamConfigMap?.getOutputSizes(android.graphics.ImageFormat.JPEG) ?: arrayOf()
-
+            for (device in CameraDeviceReader(context).readDevices()) {
                 val resolutions = JSArray()
-                outputSizes.take(10).forEach { size ->
+                device.resolutions.forEach { size ->
                     resolutions.put(JSObject().apply {
                         put("width", size.width)
                         put("height", size.height)
                     })
                 }
-
-                val fpsRanges =
-                    characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
                 val frameRates = JSArray()
-                val rateSet = mutableSetOf<Int>()
-                fpsRanges?.forEach { range -> rateSet.add(range.upper) }
-                rateSet.sortedDescending().forEach { frameRates.put(it) }
+                device.frameRates.forEach { frameRates.put(it) }
 
                 devices.put(JSObject().apply {
-                    put("deviceId", cameraId)
-                    put("label", "Camera $cameraId ($direction)")
-                    put("direction", direction)
-                    put("hasFlash", hasFlash)
+                    put("deviceId", device.deviceId)
+                    put("label", "Camera ${device.deviceId} (${device.direction})")
+                    put("direction", device.direction)
+                    put("hasFlash", device.hasFlash)
                     put("hasZoom", true)
-                    put("maxZoom", maxZoom.toDouble())
+                    put("maxZoom", device.maxZoom)
                     put("supportedResolutions", resolutions)
                     put("supportedFrameRates", frameRates)
                 })

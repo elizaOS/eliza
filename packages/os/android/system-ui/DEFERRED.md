@@ -43,9 +43,6 @@ for this session.
 - **Wallpaper / clouds.** Re-export `SlowClouds` from
   `@elizaos/ui/backgrounds` once that module exists, then pass it into
   `<LockScreen cloudsModule={<SlowClouds />} />`.
-- **CompanionBar.** Once `packages/ui/src/desktop-runtime/` exports a
-  `CompanionBar` component + types, pass it to
-  `<LockScreen companionBar={<CompanionBar … />} />`.
 
 ## Markers in source
 

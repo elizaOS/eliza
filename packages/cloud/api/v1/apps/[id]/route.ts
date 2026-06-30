@@ -13,6 +13,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appCleanupService } from "@/lib/services/app-cleanup";
 import { appsService } from "@/lib/services/apps";
+import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -80,6 +81,31 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
       },
       400,
     );
+  }
+
+  // SECURITY: linked_character_ids on the generic update path must enforce the
+  // SAME ownership guard the dedicated PUT /apps/:id/characters route does —
+  // otherwise a caller can link another org's PRIVATE character id and read its
+  // metadata back via GET /apps/:id/characters (cross-tenant disclosure).
+  if (validationResult.data.linked_character_ids) {
+    for (const characterId of validationResult.data.linked_character_ids) {
+      const character = await charactersService.getById(characterId);
+      if (!character) {
+        return c.json(
+          { success: false, error: `Character not found: ${characterId}` },
+          404,
+        );
+      }
+      if (character.user_id !== user.id && !character.is_public) {
+        return c.json(
+          {
+            success: false,
+            error: `Not authorized to link character: ${characterId}`,
+          },
+          403,
+        );
+      }
+    }
   }
 
   const updateData = {

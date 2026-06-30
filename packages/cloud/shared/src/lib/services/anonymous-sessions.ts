@@ -31,6 +31,14 @@ class AnonymousSessionsService {
     return anonymousSessionsRepository.incrementMessageCount(sessionId);
   }
 
+  async reserveMessageSlot(sessionId: string) {
+    return anonymousSessionsRepository.reserveMessageSlot(sessionId);
+  }
+
+  async refundMessageSlot(sessionId: string) {
+    return anonymousSessionsRepository.refundMessageSlot(sessionId);
+  }
+
   async checkRateLimit(
     sessionId: string,
   ): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {

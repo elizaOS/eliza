@@ -18,6 +18,14 @@ const MESSAGES_PER_ROOM = 10;
 /** Maximum client_chat rooms to scan (most recent activity wins). */
 const MAX_ROOMS = 3;
 
+function memoryCreatedAt(memory: Memory): number {
+  return typeof memory.createdAt === "number" ? memory.createdAt : 0;
+}
+
+function memoryText(memory: Memory): string {
+  return typeof memory.content.text === "string" ? memory.content.text : "";
+}
+
 /**
  * Fetch recent messages from the owner's client_chat rooms.
  * Returns messages newest-first, capped to a sensible limit.
@@ -50,8 +58,8 @@ async function fetchOwnerChatMessages(
 
   // Sort newest-first (getMemoriesByRoomIds default may vary)
   memories.sort((a, b) => {
-    const ta = a.createdAt ?? 0;
-    const tb = b.createdAt ?? 0;
+    const ta = memoryCreatedAt(a);
+    const tb = memoryCreatedAt(b);
     return tb - ta;
   });
 
@@ -66,7 +74,7 @@ function formatMessages(messages: Memory[], agentId: string): string {
 
   const lines = ordered.map((m) => {
     const sender = m.entityId === agentId ? "Agent" : "Owner";
-    const text = (m.content as { text?: string })?.text ?? "";
+    const text = memoryText(m);
     return `[${sender}] ${text.substring(0, 200)}`;
   });
 

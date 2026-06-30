@@ -47,28 +47,49 @@ bun run voice:matrix -- --run --platform android
 bun run voice:matrix -- --run --platform linux
 ```
 
-Use `--require-green` only on a lane where every selected hardware dependency is
-known to be present; it turns `pending` or `skip` into a failing exit.
+Use `--require-green` on any opted-in hardware lane; it turns `pending` or
+`skip` into a failing exit so a readiness variable cannot produce green evidence
+while a device, app install, model, or reviewed report is missing.
+`--platform` accepts a platform value or exact cell ID; a supplied filter that
+matches no cells is a failing configuration and is recorded in
+`selection.error`.
+
+To validate the Stage-B STT benchmark cell, point the matrix at the reviewed
+report:
+
+```bash
+ELIZA_VOICE_STAGE_B_REPORT=.github/issue-evidence/9958-stage-b/report.json \
+  bun run voice:matrix -- --run --platform stt.stage-b.evaluation
+```
+
+To validate the real openWakeWord head wake-context cell, point the matrix at the
+reviewed report:
+
+```bash
+ELIZA_VOICE_OPENWAKEWORD_REPORT=.github/issue-evidence/9958-openwakeword/report.json \
+  bun run voice:matrix -- --run --platform wake.openwakeword.real-head
+```
 
 ## Cells
 
 | Cell | Existing runner | Evidence |
 | --- | --- | --- |
-| `web.fake-mic.roundtrip` | `packages/app` Playwright `voice-realaudio.spec.ts` with Chromium fake audio capture | real browser getUserMedia/WAV encode/client ASR post, screenshots/video when recorded |
-| `web.fake-mic.transcript-roundtrip` | `packages/app` Playwright `transcript-realaudio.spec.ts` | capture -> transcript record -> player -> chat attachment, plus voice-control bridge START/STOP parity with the slash/button path |
+| `web.fake-mic.roundtrip` | `packages/app` Playwright `voice-realaudio.spec.ts` with Chromium fake audio capture | real browser getUserMedia/WAV encode/client ASR post, local-inference Web Audio TTS start, START_TRANSCRIPTION barge-in disconnect, and second real WAV drain |
+| `web.fake-mic.transcript-roundtrip` | `packages/app` Playwright `transcript-realaudio.spec.ts` | capture -> transcript record -> player -> chat attachment, plus agent-action START/STOP parity with the slash/button path |
 | `web.workbench.respond-no-respond` | headful workbench Playwright scenario | chime-in should-respond/should-not-respond UI behavior |
 | `linux.fused-acoustic.workbench-real` | `plugins/plugin-local-inference voice:workbench --real` | fused ASR, diarization, VAD, Kokoro TTS, noisy and multi-speaker workbench report |
 | `linux.fused-acoustic.barge-in` | `plugins/plugin-local-inference voice:bargein-bench` | cancellation/latency harness for barge-in |
-| `macos.electrobun.live-roundtrip` | headed Electrobun runner plus `capture:macos-desktop` | screen/video/log artifact when `ELIZA_VOICE_MACOS_ELECTROBUN_READY=1` |
-| `windows.electrobun.live-roundtrip` | headed Electrobun runner plus `capture:windows-desktop` | screen/video/log artifact when `ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1` |
-| `ios.sim-or-device.voice-roundtrip` | installed iOS simulator/device build plus `capture:ios-sim` | simulator screenshot/video/log when `ELIZA_VOICE_IOS_READY=1` |
-| `ios.talkmode.native-bridge` | `swift test --package-path plugins/plugin-native-talkmode/ios` | TalkMode transcript/permission/state/barge-in bridge tests |
-| `ios.swabble.native-bridge` | `swift test --package-path plugins/plugin-native-swabble/ios` | Swabble wake-firing -> JS bridge event tests |
-| `android.device.voice-roundtrip` | `packages/app test:e2e:android:local` | real WebView on-device STT -> agent -> TTS self-test |
-| `android.talkmode.native-bridge` | generated Android Gradle `:elizaos-capacitor-talkmode:testDebugUnitTest` | TalkMode capture lifecycle/transcript/permission/barge-in bridge tests |
-| `android.swabble.native-bridge` | generated Android Gradle `:elizaos-capacitor-swabble:testDebugUnitTest` | Swabble wake-firing -> JS bridge event tests |
-| `wake.openwakeword.real-head` | gated real openWakeWord head run | idle wake, always-on inert wake, and mid-transcription non-corruption evidence |
-| `stt.stage-b.evaluation` | paired iOS/Android device benchmark | iOS `SFSpeechRecognizer`, Android `SpeechRecognizer`, and fused ASR latency/battery/accept matrix |
+| `macos.electrobun.live-roundtrip` | packaged Electrobun voice self-test via `packages/app test:desktop:voice` | real desktop `voice-selftest` ASR -> agent SSE -> local TTS report plus screenshot/log artifact when `ELIZA_VOICE_MACOS_ELECTROBUN_READY=1` and `ELIZA_VOICE_DESKTOP_API_BASE` points at a real app-core API |
+| `windows.electrobun.live-roundtrip` | packaged Electrobun voice self-test via `packages/app test:desktop:voice` | real desktop `voice-selftest` ASR -> agent SSE -> local TTS report plus screenshot/log artifact when `ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1` and `ELIZA_VOICE_DESKTOP_API_BASE` points at a real app-core API |
+| `ios.sim-or-device.voice-roundtrip` | installed iOS simulator build plus `capture:ios-sim` | simulator screenshot/video/log when `ELIZA_VOICE_IOS_READY=1`, a booted iOS simulator exists, and the current app ID is installed |
+| `ios.talkmode.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-talkmode/ios` | TalkMode transcript/permission/state/barge-in bridge tests |
+| `ios.swabble.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-swabble/ios` | Swabble wake-firing -> JS bridge event tests |
+| `android.device.voice-roundtrip` | `packages/app test:e2e:android:local` | real WebView on-device STT -> agent -> TTS self-test when `ELIZA_VOICE_ANDROID_READY=1`, an Android target is attached in `device` state, and the current app ID is installed |
+| `android.talkmode.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest` | TalkMode capture lifecycle/transcript/permission/barge-in bridge tests |
+| `android.swabble.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest` | Swabble wake-firing -> JS bridge event tests |
+| `wake.openwakeword.real-head` | `packages/scripts/voice-openwakeword-eval.mjs` validating a reviewed real-head report | idle wake opens the listen window, always-on wake is inert, and mid-transcription wake does not corrupt the transcript |
+| `stt.stage-b.apple-sfspeech` | `node packages/scripts/stage-b-stt-bench.mjs` (macOS) | **measured** on-device `SFSpeechRecognizer` latency/RTF/WER over on-device-synthesised speech (quiet + 10 dB noise), `.github/issue-evidence/9958-stt-stage-b-eval/` |
+| `stt.stage-b.evaluation` | `packages/scripts/voice-stage-b-eval.mjs` validating a paired device benchmark report | iOS `SFSpeechRecognizer`, Android `SpeechRecognizer`, and fused ASR latency/battery/accept matrix with reviewed artifacts |
 
 ## Hardware Gates
 
@@ -79,13 +100,29 @@ developer laptop:
 | --- | --- |
 | `ELIZA_VOICE_MACOS_ELECTROBUN_READY=1` | current macOS runner has a built Electrobun app, loopback mic/audio capture, and permission grants |
 | `ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1` | current Windows runner has a built Electrobun app, loopback mic/audio capture, and permission grants |
-| `ELIZA_VOICE_IOS_READY=1` | current macOS runner has a freshly installed iOS simulator/device build with voice assets |
-| `ELIZA_VOICE_ANDROID_READY=1` | current runner has an attached Android device/emulator, current APK, voice assets, and granted mic permissions |
-| `ELIZA_OPENWAKEWORD_REAL_READY=1` | current runner has the real openWakeWord head and audio fixture/device path |
+| `ELIZA_VOICE_DESKTOP_API_BASE` | real app-core API base used by packaged desktop voice self-test; required for macOS/Windows Electrobun live cells |
+| `ELIZA_VOICE_IOS_READY=1` | current macOS runner has a booted iOS simulator with the current app build and voice assets installed; the matrix verifies the booted simulator and installed app ID before capture |
+| `ELIZA_VOICE_IOS_APP_ID` / `ELIZA_IOS_APP_ID` | optional app ID override for the iOS install check; defaults to `packages/app/app.config.ts` (`ai.elizaos.app`) |
+| `ELIZA_VOICE_ANDROID_READY=1` | current runner has an attached Android device/emulator in `device` state, current APK, voice assets, and granted mic permissions; the matrix verifies the attached target and installed app ID before capture |
+| `ELIZA_VOICE_ANDROID_APP_ID` / `ELIZA_ANDROID_APP_ID` / `ELIZA_APP_ID` | optional app ID override for the Android install check; defaults to `packages/app/app.config.ts` (`ai.elizaos.app`) |
+| `ELIZA_VOICE_OPENWAKEWORD_REPORT` | reviewed openWakeWord real-head JSON report using schema `eliza_voice_openwakeword_eval_v1`; required cases are `idle-wake`, `already-listening-wake-inert`, and `mid-transcription-wake` |
 | `ELIZA_INFERENCE_LIBRARY` + `ELIZA_ASR_BUNDLE` | Linux fused real-service runner has the provisioned local-inference bundle |
+| `ELIZA_VOICE_STAGE_B_REPORT` | reviewed Stage-B JSON report using schema `eliza_voice_stage_b_stt_eval_v1`; required backends are `ios-sfspeechrecognizer`, `android-speechrecognizer`, and `fused-asr` |
 
 The matrix report records these gates in the `probe.reason` field. This keeps
 Linux green separate from missing macOS/iOS/Android evidence.
+
+The openWakeWord report must mark `realHardware: true` and `realHead: true`.
+Each required case must identify the device/build/openWakeWord model, record the
+real audio source and duration, include manually reviewed artifacts, and prove
+the case-specific observation: idle wake opened the listen window, wake while
+already listening did not open a duplicate window, and wake during transcription
+did not corrupt or drop transcript tokens.
+
+The Stage-B report is intentionally stricter than a plain benchmark dump. Each
+backend run must mark `realHardware: true`, identify the build and device, record
+latency, `msPerFrame`, true/false accepts, WER, battery or power telemetry, and
+list manually reviewed artifact paths.
 
 ## TTS Policy
 

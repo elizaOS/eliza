@@ -1,5 +1,5 @@
 /**
- * Display preferences — theme and companion rendering settings.
+ * Display preferences — theme and background settings.
  *
  * Extracted from AppContext. Each preference persists to localStorage
  * and normalizes on set.
@@ -11,28 +11,16 @@ import {
   getSystemTheme,
   loadBackgroundConfig,
   loadBackgroundHistory,
-  loadCompanionAnimateWhenHidden,
-  loadCompanionHalfFramerateMode,
-  loadCompanionVrmPowerMode,
   loadUiThemeMode,
   MAX_BACKGROUND_HISTORY,
   normalizeBackgroundConfig,
-  normalizeCompanionHalfFramerateMode,
-  normalizeCompanionVrmPowerMode,
   normalizeUiThemeMode,
   resolveUiTheme,
   saveBackgroundConfig,
   saveBackgroundHistory,
-  saveCompanionAnimateWhenHidden,
-  saveCompanionHalfFramerateMode,
-  saveCompanionVrmPowerMode,
   saveUiTheme,
   saveUiThemeMode,
 } from "./persistence";
-import type {
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
-} from "./types";
 import {
   type BackgroundConfig,
   backgroundConfigsEqual,
@@ -46,12 +34,6 @@ export function useDisplayPreferences() {
   const [uiTheme, setUiThemeState] = useState<UiTheme>(() =>
     resolveUiTheme(loadUiThemeMode()),
   );
-  const [companionVrmPowerMode, setCompanionVrmPowerModeState] =
-    useState<CompanionVrmPowerMode>(loadCompanionVrmPowerMode);
-  const [companionAnimateWhenHidden, setCompanionAnimateWhenHiddenState] =
-    useState<boolean>(loadCompanionAnimateWhenHidden);
-  const [companionHalfFramerateMode, setCompanionHalfFramerateModeState] =
-    useState<CompanionHalfFramerateMode>(loadCompanionHalfFramerateMode);
   const [backgroundConfig, setBackgroundConfigState] =
     useState<BackgroundConfig>(loadBackgroundConfig);
   // Bounded undo stack: the previous configs, most-recent last. Refs mirror the
@@ -76,26 +58,6 @@ export function useDisplayPreferences() {
       setUiThemeMode(theme);
     },
     [setUiThemeMode],
-  );
-
-  const setCompanionVrmPowerMode = useCallback(
-    (mode: CompanionVrmPowerMode) => {
-      setCompanionVrmPowerModeState(normalizeCompanionVrmPowerMode(mode));
-    },
-    [],
-  );
-
-  const setCompanionAnimateWhenHidden = useCallback((enabled: boolean) => {
-    setCompanionAnimateWhenHiddenState(enabled);
-  }, []);
-
-  const setCompanionHalfFramerateMode = useCallback(
-    (mode: CompanionHalfFramerateMode) => {
-      setCompanionHalfFramerateModeState(
-        normalizeCompanionHalfFramerateMode(mode),
-      );
-    },
-    [],
   );
 
   // Setting pushes the outgoing config onto the undo stack (unless unchanged).
@@ -144,18 +106,6 @@ export function useDisplayPreferences() {
   }, [uiTheme]);
 
   useEffect(() => {
-    saveCompanionVrmPowerMode(companionVrmPowerMode);
-  }, [companionVrmPowerMode]);
-
-  useEffect(() => {
-    saveCompanionAnimateWhenHidden(companionAnimateWhenHidden);
-  }, [companionAnimateWhenHidden]);
-
-  useEffect(() => {
-    saveCompanionHalfFramerateMode(companionHalfFramerateMode);
-  }, [companionHalfFramerateMode]);
-
-  useEffect(() => {
     saveBackgroundConfig(backgroundConfig);
   }, [backgroundConfig]);
 
@@ -167,17 +117,11 @@ export function useDisplayPreferences() {
     state: {
       uiTheme,
       uiThemeMode,
-      companionVrmPowerMode,
-      companionAnimateWhenHidden,
-      companionHalfFramerateMode,
       backgroundConfig,
       canUndoBackground: backgroundHistory.length > 0,
     },
     setUiTheme,
     setUiThemeMode,
-    setCompanionVrmPowerMode,
-    setCompanionAnimateWhenHidden,
-    setCompanionHalfFramerateMode,
     setBackgroundConfig,
     undoBackgroundConfig,
   };

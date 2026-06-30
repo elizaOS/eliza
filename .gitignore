@@ -15,6 +15,8 @@ packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
 packages/ui/src/components/chat/widgets/__e2e__/output-ftu/
 # View-lifecycle e2e output (screenshots + webm + telemetry — regenerate via test:view-lifecycle-e2e)
 packages/ui/src/components/views/__e2e__/output-view-lifecycle/
+# Desktop bottom-bar e2e output (screenshots + webm — regenerate via test:bottombar-e2e; committed evidence lives in .github/issue-evidence/9953-windows-bottom-bar/)
+packages/ui/src/components/shell/__e2e__/output-bottombar/
 
 .next/
 **/.next/**
@@ -142,6 +144,9 @@ plugins/plugin-local-inference/src/services/voice-prewarm.js
 *.onnx
 *.wav
 *.mp3
+# Human-verifiable audio evidence is force-tracked under issue-evidence.
+!.github/issue-evidence/**/*.wav
+!.github/issue-evidence/**/*.mp3
 
 logs/
 tokencache/
@@ -1510,3 +1515,4 @@ waifu.fun/
 railway.json
 .railwayignore
 .dockerignore
+packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/

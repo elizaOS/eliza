@@ -1250,40 +1250,6 @@
       "subtype": "automation"
     },
     {
-      "id": "companion",
-      "name": "Companion",
-      "description": "The companion overlay shell for ambient agent presence.",
-      "npmName": "@elizaos/plugin-companion",
-      "source": "bundled",
-      "tags": [],
-      "config": {},
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Bot",
-        "group": "Curated",
-        "groupOrder": 0,
-        "actions": ["launch", "configure"]
-      },
-      "resources": {},
-      "dependsOn": [],
-      "channels": [],
-      "curatedApp": {
-        "slug": "companion",
-        "order": 0,
-        "aliases": []
-      },
-      "kind": "app",
-      "subtype": "shell",
-      "launch": {
-        "type": "overlay",
-        "target": "companion",
-        "capabilities": [],
-        "curatedSlug": "companion"
-      }
-    },
-    {
       "id": "computeruse",
       "name": "Computeruse",
       "description": "Computer automation plugin for ElizaOS - enables AI agents to control the local machine (when supported) or a remote ComputerUse MCP server",

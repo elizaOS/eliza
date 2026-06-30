@@ -150,6 +150,10 @@ REDIS_RATE_LIMITING = "false"
 # (no flag); a cache miss falls back to the authoritative slow path.
 INFERENCE_OPTIMISTIC_BILLING = "false"
 SAFE_BALANCE_THRESHOLD = ""
+# Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
+# (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
+# backstop (current). Off until soaked; cutover is an ops flip (#9899).
+INFERENCE_BILLING_LEDGER = ""
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -251,6 +255,7 @@ name = "eliza-cloud-api-staging"
 workers_dev = false
 routes = [
   { pattern = "staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "app-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "api-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
 
@@ -325,6 +330,10 @@ REDIS_RATE_LIMITING = "false"
 # (no flag); a cache miss falls back to the authoritative slow path.
 INFERENCE_OPTIMISTIC_BILLING = "false"
 SAFE_BALANCE_THRESHOLD = ""
+# Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
+# (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
+# backstop (current). Off until soaked; cutover is an ops flip (#9899).
+INFERENCE_BILLING_LEDGER = ""
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -457,6 +466,10 @@ REDIS_RATE_LIMITING = "false"
 # (no flag); a cache miss falls back to the authoritative slow path.
 INFERENCE_OPTIMISTIC_BILLING = "true"
 SAFE_BALANCE_THRESHOLD = "5.00"
+# Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
+# (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
+# backstop (current). Off until soaked; cutover is an ops flip (#9899).
+INFERENCE_BILLING_LEDGER = ""
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"

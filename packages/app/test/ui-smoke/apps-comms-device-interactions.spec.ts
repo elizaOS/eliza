@@ -4,6 +4,7 @@ import {
   hideContinuousChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
+  openSettingsSection,
   seedAppStorage,
 } from "./helpers";
 
@@ -1230,7 +1231,9 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
       });
     });
 
-    await openAppPath(page, "/apps/facewear");
+    // Facewear + smartglasses GUI config now lives in Settings → Wearables as
+    // two tabs (was the standalone /apps/facewear and /apps/smartglasses views).
+    await openSettingsSection(page, "Wearables");
     await expect(page.getByText("Facewear")).toBeVisible({ timeout: 90_000 });
     await expect(page.getByText("1 device connected")).toBeVisible({
       timeout: 90_000,
@@ -1238,11 +1241,14 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     await expect(page.getByText("even-realities")).toBeVisible();
     await page.getByRole("button", { name: "Refresh" }).click();
     await expect.poll(() => facewearStatusRequests).toBeGreaterThan(1);
+    // "Manage" now switches to the sibling Smartglasses tab (no route change).
     await page.getByRole("button", { name: "Manage" }).click();
-    await expect(page).toHaveURL(/\/apps\/smartglasses/);
+    await expect(
+      page.getByRole("heading", { name: "Smartglasses" }),
+    ).toBeVisible({ timeout: 90_000 });
     await expectNoIssues(page, issues.splice(0), "facewear device controls");
 
-    await openAppPath(page, "/apps/smartglasses");
+    await page.getByRole("tab", { name: "Smartglasses" }).click();
     await expect(
       page.getByRole("heading", { name: "Smartglasses" }),
     ).toBeVisible({ timeout: 90_000 });

@@ -91,9 +91,26 @@ function toNumber(value: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** A live, reachable URL for an app: prefer its production deploy, else its app URL. */
+/**
+ * Draft/placeholder sentinel hosts the cloud uses for "not yet deployed" apps —
+ * never surfaced to the user as a real URL.
+ */
+function isPlaceholderUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "placeholder.invalid" || host === "placeholder.local";
+  } catch {
+    return false;
+  }
+}
+
+/** A live, reachable URL for an app: prefer its production deploy, else its app URL — never a draft sentinel. */
 export function appUrl(app: AppDto): string | null {
-  return normalizeSecret(app.production_url) ?? normalizeSecret(app.app_url);
+  const prod = normalizeSecret(app.production_url);
+  if (prod && !isPlaceholderUrl(prod)) return prod;
+  const declared = normalizeSecret(app.app_url);
+  if (declared && !isPlaceholderUrl(declared)) return declared;
+  return null;
 }
 
 /** Short human status combining deployment + active flags. */

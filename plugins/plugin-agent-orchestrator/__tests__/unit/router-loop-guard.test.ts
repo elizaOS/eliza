@@ -160,6 +160,42 @@ describe("routerLoopTransition — deterministic behavior", () => {
     expect(after.decision.kind).toBe("respawn"); // not terminal — counter reset
   });
 
+  it("suppresses a state-loss whose completion lineage already posted (teardown race, no false retry)", () => {
+    let state = createRouterLoopState({ stateLostRespawnCap: 2 });
+    // task_complete posts the deliverable and claims the completion slot.
+    const claim = routerLoopTransition(state, {
+      type: "claim_completion",
+      completionKey: "C",
+      sessionId: "s1",
+    });
+    state = claim.state;
+    expect(claim.decision.kind).toBe("claimed");
+    // The codex process then drops its session state on teardown — but the
+    // artifact already shipped. This must NOT respawn or report a failure.
+    const lost = routerLoopTransition(state, {
+      type: "state_lost",
+      lineageKey: "L",
+      completionKey: "C",
+    });
+    expect(lost.decision.kind).toBe("already_terminal"); // drop silently
+    if (lost.decision.kind === "already_terminal") {
+      expect(lost.decision.count).toBe(0); // no respawn counted
+    }
+    // And the respawn counter is untouched (the suppression short-circuits).
+    expect(lost.state.stateLostRespawnCounts.get("L")).toBeUndefined();
+  });
+
+  it("still respawns a state-loss when its completion lineage has NOT posted", () => {
+    const state = createRouterLoopState({ stateLostRespawnCap: 2 });
+    // No prior claim_completion for "C" — a genuine mid-build crash.
+    const lost = routerLoopTransition(state, {
+      type: "state_lost",
+      lineageKey: "L",
+      completionKey: "C",
+    });
+    expect(lost.decision.kind).toBe("respawn");
+  });
+
   it("never mutates the input state (immutability)", () => {
     const state = createRouterLoopState({ roundTripCap: 1 });
     const next = routerLoopTransition(state, {

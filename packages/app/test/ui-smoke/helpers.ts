@@ -353,7 +353,12 @@ async function expectMainShellReadyForRoute(
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
   if (!options.allowOnboardingToast) {
-    await expect(page.getByTestId("first-run-chat")).toHaveCount(0, {
+    // #9952: onboarding is in-chat. The in-chat conductor only seeds its runtime
+    // CHOICE while first-run is incomplete, so its absence proves the main shell
+    // is past onboarding (the old full-screen `first-run-chat` gate is gone).
+    await expect(
+      page.getByTestId("choice-__first_run__:runtime:cloud"),
+    ).toHaveCount(0, {
       timeout: STARTUP_SETTLED_TIMEOUT_MS,
     });
   }
@@ -1963,6 +1968,48 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         },
       }),
     });
+  });
+
+  await page.route("**/api/backups**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/backups" && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ backups: [] }),
+      });
+      return;
+    }
+    if (url.pathname === "/api/backups" && request.method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          backup: {
+            fileName: "ui-smoke.agent-backup.json",
+            path: "ui-smoke.agent-backup.json",
+            createdAt: SMOKE_GENERATED_AT,
+            agentId: SMOKE_AGENT.id,
+            stateSha256: "ui-smoke-state",
+            sizeBytes: 0,
+          },
+        }),
+      });
+      return;
+    }
+    if (
+      url.pathname === "/api/backups/restore" &&
+      request.method() === "POST"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ restored: true, requiresRestart: true }),
+      });
+      return;
+    }
+    await route.fallback();
   });
 
   await page.route("**/api/asr/local-inference/status", async (route) => {

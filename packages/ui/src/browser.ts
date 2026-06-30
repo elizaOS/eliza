@@ -31,6 +31,7 @@ export * from "./cache-telemetry.ts";
 export * from "./chat/index.ts";
 export * from "./components/apps/AppWindowRenderer.helpers.ts";
 export * from "./components/apps/AppWindowRenderer.tsx";
+export * from "./components/apps/EmbeddedAppViewer.tsx";
 export * from "./components/apps/extensions/registry.ts";
 export * from "./components/apps/extensions/surface.helpers.ts";
 export * from "./components/apps/extensions/surface.tsx";
@@ -133,10 +134,6 @@ export * from "./components/workspace/AppWorkspaceChrome.tsx";
 // === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===
 export * from "./config/boot-config.ts";
 export * from "./config/boot-config-react.hooks.ts";
-export type {
-  CompanionInferenceNotice,
-  CompanionSceneStatus,
-} from "./config/boot-config-store.ts";
 export * from "./config/branding.ts";
 export * from "./config/cloud-only.ts";
 export * from "./config/config-catalog.ts";
@@ -178,7 +175,6 @@ export * from "./navigation/index.ts";
 export * from "./platform/index.ts";
 export * from "./slots/task-coordinator-slots.helpers.ts";
 export * from "./slots/task-coordinator-slots.tsx";
-export * from "./state/CompanionSceneConfigContext.hooks.ts";
 export * from "./state/index.ts";
 export * from "./themes/index.ts";
 export * from "./types/index.ts";

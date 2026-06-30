@@ -9,38 +9,31 @@ import {
 
 describe("desktop bottom-bar config", () => {
   describe("shouldStartBottomBar", () => {
-    it("is off by default", () => {
-      expect(shouldStartBottomBar({}, [])).toBe(false);
+    it("is ON by default (#10350: bottom bar is the resting desktop surface)", () => {
+      expect(shouldStartBottomBar({}, [])).toBe(true);
     });
 
-    it("opts in via ELIZA_DESKTOP_BOTTOM_BAR truthy values", () => {
-      for (const value of ["1", "true", "yes", "on", " TRUE "]) {
+    it("stays ON for unset / empty / truthy values", () => {
+      for (const value of ["1", "true", "yes", "on", " TRUE ", ""]) {
         expect(
           shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: value }, []),
         ).toBe(true);
       }
     });
 
-    it("ignores falsy / unset values", () => {
-      for (const value of ["0", "false", "no", "off", ""]) {
+    it("opts out via explicit falsy ELIZA_DESKTOP_BOTTOM_BAR (the kill switch)", () => {
+      for (const value of ["0", "false", "no", "off", " OFF "]) {
         expect(
           shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: value }, []),
         ).toBe(false);
       }
     });
 
-    it("never starts in kiosk shell mode (env or argv)", () => {
-      expect(
-        shouldStartBottomBar(
-          { ELIZA_DESKTOP_BOTTOM_BAR: "1", ELIZAOS_SHELL_MODE: "kiosk" },
-          [],
-        ),
-      ).toBe(false);
-      expect(
-        shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: "1" }, [
-          "--shell-mode=kiosk",
-        ]),
-      ).toBe(false);
+    it("never starts in kiosk shell mode (env or argv), even unset", () => {
+      expect(shouldStartBottomBar({ ELIZAOS_SHELL_MODE: "kiosk" }, [])).toBe(
+        false,
+      );
+      expect(shouldStartBottomBar({}, ["--shell-mode=kiosk"])).toBe(false);
     });
   });
 
@@ -108,29 +101,40 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("resolveDesktopShellWindowPresentation", () => {
-    it("reports the default platform titlebar metadata", () => {
+    it("reports the bottom-bar presentation by default (#10350)", () => {
       expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
-        mode: "default",
-        titleBarStyle: "default",
+        mode: "bottom-bar",
+        titleBarStyle: "hidden",
         transparent: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
-        mode: "default",
-        titleBarStyle: "hiddenInset",
+        mode: "bottom-bar",
+        titleBarStyle: "hidden",
         transparent: true,
       });
     });
 
-    it("reports hidden titlebar metadata for the bottom-bar shell", () => {
+    it("reports the legacy full-window presentation when opted out (=0)", () => {
       expect(
         resolveDesktopShellWindowPresentation(
-          { ELIZA_DESKTOP_BOTTOM_BAR: "1" },
+          { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
+          [],
+          "win32",
+        ),
+      ).toEqual({
+        mode: "default",
+        titleBarStyle: "default",
+        transparent: false,
+      });
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
           [],
           "darwin",
         ),
       ).toEqual({
-        mode: "bottom-bar",
-        titleBarStyle: "hidden",
+        mode: "default",
+        titleBarStyle: "hiddenInset",
         transparent: true,
       });
     });

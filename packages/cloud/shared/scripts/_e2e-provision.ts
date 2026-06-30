@@ -44,6 +44,39 @@ for (const stmt of migration.split("--> statement-breakpoint")) {
 }
 await adminExec("DELETE FROM tenant_db_clusters");
 
+// 1b. Apply the app_databases schema the real composer writes through.
+//
+// makeTenantDbProvisioning() resolves claimPlacement/clearPlacement to
+// appDatabasesRepository.{claim,clear}TenantDbPlacementForApp, which INSERT /
+// SELECT FOR UPDATE / UPDATE the `app_databases` table (the durable app->cluster
+// placement record). Migration 0140 only creates `tenant_db_clusters`, so without
+// this block provisionForApp crashes with `relation "app_databases" does not exist`.
+//
+// This is the hermetic subset the provisioner needs, mirroring
+// db/schemas/app-databases.ts (and migrations 0019 enum / 0048-0049 create /
+// 0148 legacy-col drops / 0151 tenant-cluster placement). The apps(id) FK is
+// intentionally omitted: this throwaway PG has no `apps` table and the
+// provisioner never reads it. All DDL is idempotent so the script is re-runnable.
+const APP_DATABASES_SCHEMA_DDL = [
+  `DO $$ BEGIN
+     CREATE TYPE "user_database_status" AS ENUM ('none', 'provisioning', 'ready', 'error');
+   EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `CREATE TABLE IF NOT EXISTS "app_databases" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+     "app_id" uuid NOT NULL,
+     "user_database_uri" text,
+     "user_database_region" text DEFAULT 'aws-us-east-1',
+     "user_database_status" "user_database_status" DEFAULT 'none' NOT NULL,
+     "user_database_error" text,
+     "tenant_db_cluster_id" uuid REFERENCES "tenant_db_clusters"("id") ON DELETE SET NULL,
+     "created_at" timestamp DEFAULT now() NOT NULL,
+     "updated_at" timestamp DEFAULT now() NOT NULL,
+     CONSTRAINT "app_databases_app_id_unique" UNIQUE("app_id")
+   )`,
+];
+for (const stmt of APP_DATABASES_SCHEMA_DDL) await adminExec(stmt);
+await adminExec("DELETE FROM app_databases");
+
 // 2. Seed a cluster whose host is the CONTAINER-reachable address; the admin DSN
 //    (host-published) is what DirectPgExecutor connects with to run the DDL.
 await tenantDbClustersRepository.create({

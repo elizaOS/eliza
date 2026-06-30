@@ -21,9 +21,8 @@
 
 Reviewed output markers:
 
-- Vite production build completed: `✓ built in 39m 23s`.
-- Renderer manifest was regenerated with `buildId=4ee2c1ec5623` and 195 assets.
-- Chunk safety passed: `bn.js/crypto graph is confined to lazy vendor chunks (164 chunks scanned)`.
+- Renderer reuse guard accepted the current web bundle: `[mobile-build] Auto-skipping web build: existing dist is up-to-date (buildId=45235f2c5f5d)`.
+- Earlier full build output also regenerated the renderer manifest with `buildId=4ee2c1ec5623` and passed chunk safety with `bn.js/crypto graph is confined to lazy vendor chunks (164 chunks scanned)`.
 - Capacitor copied web assets to `ios/App/App/public`, generated `capacitor.config.json`, and the stale-web guard overlaid the fresh `packages/app/dist` into the iOS public directory.
 - Capacitor sync completed and found 26 iOS plugins.
 - Split pod manifest generated the cloud simulator Podfile behavior:

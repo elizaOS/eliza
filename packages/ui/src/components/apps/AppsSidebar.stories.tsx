@@ -45,11 +45,6 @@ const apps: RegistryAppInfo[] = [
     category: "utility",
   }),
   makeApp({
-    name: "@elizaos/plugin-companion",
-    displayName: "Companion",
-    category: "game",
-  }),
-  makeApp({
     name: "@elizaos/plugin-hyperliquid",
     displayName: "Hyperliquid",
     category: "platform",
@@ -157,6 +152,6 @@ export const Empty: Story = {
 
 export const SelectedItem: Story = {
   args: {
-    selectedAppName: "@elizaos/plugin-companion",
+    selectedAppName: "@elizaos/plugin-feed",
   },
 };

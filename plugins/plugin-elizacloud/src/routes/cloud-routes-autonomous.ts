@@ -55,6 +55,11 @@ interface CloudClientLike {
   provisionWallet: (input: {
     chainType: CloudChainType;
     clientAddress: string;
+    controlProof: {
+      signature: `0x${string}`;
+      timestamp: number;
+      nonce: string;
+    };
   }) => Promise<{
     walletId: string;
     address: string;

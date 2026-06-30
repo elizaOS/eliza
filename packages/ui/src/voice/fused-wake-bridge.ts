@@ -20,22 +20,18 @@
  * is exactly how the Phase 2 integration test exercises it.
  */
 
-/** A single fused-wake stage forwarded from the native runtime to the UI. */
-export interface FusedWakeEvent {
-  /**
-   * Which fused stage fired:
-   * - `head-fired` — a trained openWakeWord head crossed threshold (terminal,
-   *   no ASR confirmation needed).
-   * - `stage-a-candidate` — the generic detector raised a candidate; an ASR
-   *   confirmation window opens.
-   * - `stage-b-transcript` — the short-window ASR transcript for confirmation.
-   */
-  stage: "head-fired" | "stage-a-candidate" | "stage-b-transcript";
-  /** ASR transcript for `stage-b-transcript`. */
-  transcript?: string;
-  /** Detector confidence in [0, 1], when known. */
-  confidence?: number;
-}
+import {
+  FUSED_WAKE_EVENT,
+  type FusedWakeEventDetail,
+} from "@elizaos/shared/events";
+
+/**
+ * A single fused-wake stage forwarded from the native runtime to the UI. This
+ * is the canonical {@link FusedWakeEventDetail} contract from `@elizaos/shared`
+ * — the same type the producer (`@elizaos/plugin-local-inference`) emits, so the
+ * two halves can never drift.
+ */
+export type FusedWakeEvent = FusedWakeEventDetail;
 
 declare global {
   interface Window {
@@ -44,7 +40,7 @@ declare global {
   }
 }
 
-export const FUSED_WAKE_EVENT = "eliza:fused-wake";
+export { FUSED_WAKE_EVENT };
 
 /**
  * Whether the fused on-device wake runtime is available to the renderer. Only

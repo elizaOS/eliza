@@ -16,7 +16,7 @@ The **desktop dev stack** is not a single binary. `bun run dev:desktop` and `bun
 |---------|-------------|-------------|
 | `bun run dev:desktop` | API (unless `--no-api`) + Electrobun; **skips** `vite build` when `packages/app/dist` is fresher than sources | Fast iteration against **built** renderer assets |
 | `bun run dev:desktop:watch` | Same orchestrator with **`ELIZA_DESKTOP_VITE_WATCH=1`** — **Vite dev server** + HMR | Desktop UI workflow |
-| `bun run dev` / `bun run dev:web:ui` | Browser dashboard stack only (API + Vite) | Headless-friendly dashboard iteration |
+| `bun run dev` | Browser dashboard stack only (API + Vite) | Headless-friendly dashboard iteration |
 
 **Startup tables:** the orchestrator, Vite, API, and Electrobun each print a **plain-text settings table** (columns *Setting / Effective / Source / Change*) so you can see defaults vs env and how to change a knob. Run without `--help` to see them in the terminal.
 

@@ -84,11 +84,19 @@ export interface PaymentRequestsService {
   cancel(id: string, organizationId: string, reason?: string): Promise<PaymentRequestRow>;
   expirePast(now?: Date): Promise<string[]>;
   /**
-   * Org-scoped expire used by the authed per-request route: only sweeps the
-   * caller's own past-due rows, so it can never touch another tenant's data.
-   * The unscoped {@link expirePast} is reserved for the system cron janitor.
+   * Org-scoped expire sweep for tenant-local janitor flows. The unscoped
+   * {@link expirePast} is reserved for the system cron janitor.
    */
   expirePastForOrg(organizationId: string, now?: Date): Promise<string[]>;
+  /**
+   * Expire a single payment request the caller's org owns (scoped). Use this
+   * from request handlers; `expirePast` is the unscoped system/cron sweep.
+   */
+  expire(
+    id: string,
+    organizationId: string,
+    now?: Date,
+  ): Promise<{ paymentRequest: PaymentRequestRow; expired: boolean }>;
   /**
    * Settlement is provider-driven and called by provider webhook routes before
    * they fan out notifications on PaymentCallbackBus.
@@ -312,6 +320,39 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
     });
 
     return updated;
+  }
+
+  async expire(
+    id: string,
+    organizationId: string,
+    now: Date = new Date(),
+  ): Promise<{ paymentRequest: PaymentRequestRow; expired: boolean }> {
+    const existing = requireRow(await this.repository.getPaymentRequest(id), id, "expire lookup");
+    if (existing.organizationId !== organizationId) {
+      throw new Error(`Payment request ${id} does not belong to organization ${organizationId}`);
+    }
+
+    const expired = await this.repository.expirePastPaymentRequest(id, now);
+    if (expired) {
+      const row = await this.repository.getPaymentRequest(id);
+      if (row) {
+        await this.repository.recordPaymentRequestEvent({
+          paymentRequestId: id,
+          eventName: "payment.expired",
+          redactedPayload: redactSettlementPayload({
+            paymentRequest: row,
+            status: "expired",
+          }),
+        });
+      }
+      logger.info("[PaymentRequests] Expired payment request", {
+        paymentRequestId: id,
+        organizationId,
+      });
+    }
+
+    const after = requireRow(await this.repository.getPaymentRequest(id), id, "expire after");
+    return { paymentRequest: after, expired };
   }
 
   async expirePast(now: Date = new Date()): Promise<string[]> {

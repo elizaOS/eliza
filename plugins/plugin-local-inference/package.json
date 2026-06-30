@@ -16,6 +16,16 @@
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
+		"./voice-wake": {
+			"types": "./src/voice-wake.ts",
+			"eliza-source": {
+				"types": "./src/voice-wake.ts",
+				"import": "./src/voice-wake.ts",
+				"default": "./src/voice-wake.ts"
+			},
+			"import": "./dist/voice-wake.js",
+			"default": "./dist/voice-wake.js"
+		},
 		"./runtime": {
 			"types": "./src/runtime/index.ts",
 			"eliza-source": {

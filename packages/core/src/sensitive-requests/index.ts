@@ -22,5 +22,6 @@ export {
 	type SensitiveRequestDeliveryAdapter,
 	type SensitiveRequestDispatchRegistry,
 	type SensitiveRequestPaymentContextDescriptor,
+	type SensitiveRequestTunnelRouting,
 	type SensitiveRequestWithPaymentContext,
 } from "./dispatch-registry";

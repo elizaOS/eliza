@@ -42,8 +42,6 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   // packages/app/test/route-coverage.test.ts). Kept in exact lockstep by
   // plugin-view-llm-mock-coverage.test.ts; PLUGIN_VIEW_LLM_MOCK_JOURNEYS derives
   // one journey per case below.
-  { id: "companion", viewType: "gui", path: "/companion" },
-  { id: "companion", viewType: "tui", path: "/companion" },
   { id: "contacts", viewType: "gui", path: "/contacts" },
   { id: "contacts", viewType: "tui", path: "/contacts" },
   { id: "hyperliquid", viewType: "gui", path: "/hyperliquid" },
@@ -96,11 +94,8 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "trajectory-logger", viewType: "tui", path: "/trajectory-logger" },
   { id: "training", viewType: "gui", path: "/apps/fine-tuning" },
   { id: "training", viewType: "tui", path: "/apps/fine-tuning" },
-  { id: "facewear", viewType: "gui", path: "/apps/facewear" },
   { id: "facewear", viewType: "tui", path: "/apps/facewear" },
-  { id: "smartglasses", viewType: "gui", path: "/apps/smartglasses" },
   { id: "smartglasses", viewType: "tui", path: "/apps/smartglasses" },
-  { id: "companion", viewType: "xr", path: "/companion" },
   { id: "contacts", viewType: "xr", path: "/contacts" },
   { id: "hyperliquid", viewType: "xr", path: "/hyperliquid" },
   { id: "messages", viewType: "xr", path: "/messages" },

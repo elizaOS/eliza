@@ -15,6 +15,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         BackgroundRunnerPlugin.registerBackgroundTask()
         BackgroundRunnerPlugin.handleApplicationDidFinishLaunching(launchOptions: launchOptions)
 
+        // Local-agent crash/restart supervisor — the iOS parity equivalent of
+        // Android's ElizaAgentService watchdog (issue #10197). Dormant until a
+        // local agent is running; a no-op in cloud/remote mode. See AgentWatchdog.swift.
+        AgentWatchdog.shared.bootstrap()
+
         // APNs registration is gated on a build-time Info.plist flag
         // (ELIZA_APNS_ENABLED=1). Registration does not request alert
         // authorization; visible notification prompts are handled by the

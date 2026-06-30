@@ -931,7 +931,7 @@ const ThreadLine = React.memo(function ThreadLine({
                 "border",
                 isUser
                   ? "border-white/15 bg-black/30 text-white"
-                  : "border-white/10 bg-black/30 text-white",
+                  : "border-white/15 bg-black text-white",
                 FLOAT_SHADOW,
               )
             : isUser
@@ -1030,12 +1030,19 @@ export function ContinuousChatOverlay({
   controller,
   agentName = "Eliza",
   slash: slashProp,
+  firstRunOpen = false,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
   agentName?: string;
   /** Universal slash-command catalog + app-level nav effects. */
   slash?: SlashCommandController;
+  /**
+   * During in-chat first-run onboarding the overlay opens to FULL on mount so the
+   * seeded greeting + onboarding choices are visible immediately (the chat is the
+   * first painted surface), instead of resting as a composer-only bar.
+   */
+  firstRunOpen?: boolean;
 }): React.JSX.Element {
   const {
     messages,
@@ -1138,7 +1145,9 @@ export function ContinuousChatOverlay({
   // detent are all DERIVED from it — so the impossible "open but not open" or
   // pilled-and-full combos can't exist and no transition has to hand-sync two
   // separate states (which is what bred the old stuck states).
-  const [mode, setMode] = React.useState<ChatMode>("input");
+  const [mode, setMode] = React.useState<ChatMode>(
+    firstRunOpen ? "full" : "input",
+  );
   const pilled = mode === "pill";
   const sheetOpen = mode === "half" || mode === "full";
   const expanded = mode === "full";

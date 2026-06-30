@@ -6,16 +6,84 @@
  *
  * - injects credentials (the steward-token cookie + `Authorization: Bearer`
  *   from localStorage when present)
- * - resolves the API base URL (same-origin in browsers, configured base URL
+ * - resolves the API base URL (same-origin in web browsers, the single
+ *   allowlisted Eliza Cloud API host on native/Electrobun, configured base URL
  *   only in SSR/scripts)
  * - throws structured {@link ApiError} on non-2xx responses
+ *
+ * On a native (Capacitor) or Electrobun runtime the dashboard's WebView origin
+ * is a synthetic bundle host (`https://localhost`, `file:`, …) with the embedded
+ * LOCAL agent behind it — NOT Eliza Cloud. A same-origin `/api/*` call would hit
+ * that local agent. So on those runtimes ONLY, this transport resolves requests
+ * to the single allowlisted Cloud API host and routes them via `CapacitorHttp`
+ * (the same bridge the agent client uses, see `../../api/client-cloud.ts`),
+ * which bypasses the WebView CORS sandbox. The web path stays byte-identical:
+ * same-origin relative URLs over `fetch`, and a hard throw on any cross-origin
+ * absolute URL.
  *
  * Usage:
  *   const me = await api<MeResponse>("/api/users/me");
  *   await api("/api/v1/apps/123", { method: "DELETE" });
  */
 
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { getBootConfig } from "../../config/boot-config";
+
+// The single Eliza Cloud API host the native/Electrobun transport is allowed to
+// reach cross-origin. Kept deliberately narrow: only this exact host relaxes the
+// same-origin throw — every other absolute cross-origin URL still throws.
+const ELIZA_CLOUD_API_HOST = "api.elizacloud.ai";
+const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
+// Eliza Cloud web/auth hosts that front the same control plane. A configured
+// `cloudApiBase` pointing at one of these normalizes to the API host above —
+// mirrors `resolveDirectCloudAuthApiBase` in the agent client so the dashboard
+// and the agent client resolve to the identical Cloud API base.
+const ELIZA_CLOUD_WEB_HOSTS = new Set([
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "dev.elizacloud.ai",
+]);
+
+/**
+ * True only inside a native (Capacitor iOS/Android) or Electrobun desktop
+ * runtime — the surfaces whose WebView origin is NOT Eliza Cloud. Reuses the
+ * existing runtime detectors (no new probes). On the web this is always false,
+ * so every web code path below is unchanged.
+ */
+function isNativeCloudRuntime(): boolean {
+  return Capacitor.isNativePlatform() || isElectrobunRuntime();
+}
+
+/**
+ * Resolve the absolute Eliza Cloud API base for the native/Electrobun transport,
+ * from `getBootConfig().cloudApiBase` (falling back to the production API host).
+ * A configured web/auth host is normalized to the API host so relative
+ * `/api/*` paths resolve onto the allowlisted Cloud API origin.
+ */
+function resolveNativeCloudApiBase(): string {
+  const configured =
+    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+  const normalized = configured.replace(/\/+$/, "");
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    if (host === ELIZA_CLOUD_API_HOST || ELIZA_CLOUD_WEB_HOSTS.has(host)) {
+      return DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+    }
+  } catch {
+    // Not a parseable absolute URL — fall back to the configured value below.
+  }
+  return normalized;
+}
+
+/** The single allowlisted cross-origin Cloud API target (https + exact host). */
+function isAllowlistedCloudApiHost(url: URL): boolean {
+  return (
+    url.protocol === "https:" &&
+    url.hostname.toLowerCase() === ELIZA_CLOUD_API_HOST
+  );
+}
 
 export class ApiError extends Error {
   constructor(
@@ -30,9 +98,15 @@ export class ApiError extends Error {
 }
 
 function getApiBaseUrl(): string {
-  // Deliberately same-origin-only in the browser: every `/api/*` call rides the
-  // page's own origin so the steward-token cookie + Bearer header stay scoped to
-  // Eliza Cloud. There is intentionally NO cross-origin fetch bridge here (the
+  // Native/Electrobun: the dashboard's WebView origin (`https://localhost`,
+  // `file:`, …) fronts the embedded LOCAL agent, not Eliza Cloud, so a
+  // same-origin `/api/*` call would hit the wrong backend. Resolve to the single
+  // allowlisted Cloud API host instead (requests then ride `CapacitorHttp`).
+  if (isNativeCloudRuntime()) return resolveNativeCloudApiBase();
+
+  // Deliberately same-origin-only in the (web) browser: every `/api/*` call rides
+  // the page's own origin so the steward-token cookie + Bearer header stay scoped
+  // to Eliza Cloud. There is intentionally NO cross-origin fetch bridge here (the
   // legacy cloud-frontend SPA had one — `installApiFetchBridge` — alongside its
   // Pages proxy, which created two transports with contradictory cookie scoping;
   // the app never adopted that, so that dual-path concern does not exist here).
@@ -50,6 +124,13 @@ function resolveApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
     const parsed = new URL(path);
     if (typeof window !== "undefined") {
+      // Native/Electrobun ONLY: allow an absolute URL when — and only when — it
+      // targets the single allowlisted Cloud API host. Every other cross-origin
+      // absolute URL still throws, on native exactly as on web, so this never
+      // opens a general cross-origin bridge.
+      if (isNativeCloudRuntime() && isAllowlistedCloudApiHost(parsed)) {
+        return path;
+      }
       if (parsed.origin !== window.location.origin) {
         throw new ApiError(
           0,
@@ -76,6 +157,100 @@ function readStewardToken(): string | null {
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Native/Electrobun transport — routes the resolved Cloud API request through
+// `CapacitorHttp` (bypassing the WebView CORS sandbox) and re-wraps the result
+// as a standard `Response`, so the shared payload/error handling below is
+// identical to the web `fetch` path.
+// ---------------------------------------------------------------------------
+
+const NATIVE_BODYLESS_STATUSES = new Set([204, 205, 304]);
+
+function headersToRecord(headers: Headers): Record<string, string> {
+  const record: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    record[key] = value;
+  });
+  return record;
+}
+
+/** CapacitorHttp wants a structured `data` value; parse a JSON string body back
+ *  to an object, pass other bodies through, treat empty/absent as no body. */
+function nativeRequestData(body: BodyInit | null | undefined): unknown {
+  if (body == null) return undefined;
+  if (typeof body !== "string") return body;
+  const trimmed = body.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return body;
+  }
+}
+
+function nativeResponseBody(data: unknown): {
+  body: string;
+  contentType: string;
+} {
+  if (data === null || data === undefined) {
+    return { body: "", contentType: "application/json" };
+  }
+  if (typeof data === "string") {
+    return { body: data, contentType: "text/plain" };
+  }
+  try {
+    return { body: JSON.stringify(data), contentType: "application/json" };
+  } catch {
+    return { body: String(data), contentType: "text/plain" };
+  }
+}
+
+function nativeResponseHeaders(
+  raw: Record<string, string> | undefined,
+  fallbackContentType: string,
+): Headers {
+  const headers = new Headers();
+  if (raw) {
+    for (const [key, value] of Object.entries(raw)) {
+      try {
+        headers.set(key, value);
+      } catch {
+        // Skip a header CapacitorHttp surfaced that the WHATWG Headers
+        // constructor rejects (rare; never let it break payload reading).
+      }
+    }
+  }
+  if (!headers.has("content-type")) {
+    headers.set("content-type", fallbackContentType);
+  }
+  return headers;
+}
+
+async function nativeApiFetch(
+  url: string,
+  init: { method?: string; headers: Headers; body?: BodyInit | null },
+): Promise<Response> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const data = nativeRequestData(init.body);
+  const result = await CapacitorHttp.request({
+    url,
+    method,
+    headers: headersToRecord(init.headers),
+    ...(data !== undefined ? { data } : {}),
+    responseType: "json",
+    connectTimeout: 30_000,
+    readTimeout: 30_000,
+  });
+  const { body, contentType } = nativeResponseBody(result.data);
+  return new Response(
+    NATIVE_BODYLESS_STATUSES.has(result.status) ? null : body,
+    {
+      status: result.status,
+      headers: nativeResponseHeaders(result.headers, contentType),
+    },
+  );
 }
 
 export interface ApiRequestInit extends Omit<RequestInit, "body"> {
@@ -171,13 +346,24 @@ export async function apiFetch(
   }
 
   const url = resolveApiUrl(path);
+  const requestBody =
+    json !== undefined ? JSON.stringify(json) : (body ?? null);
 
-  const res = await fetch(url, {
-    ...rest,
-    credentials: "include",
-    headers,
-    body: json !== undefined ? JSON.stringify(json) : (body ?? null),
-  });
+  // Native/Electrobun: ride `CapacitorHttp` so the request leaves the WebView
+  // sandbox and reaches the allowlisted Cloud API host. Web: the original
+  // same-origin `fetch` path, byte-for-byte unchanged.
+  const res = isNativeCloudRuntime()
+    ? await nativeApiFetch(url, {
+        method: rest.method,
+        headers,
+        body: requestBody,
+      })
+    : await fetch(url, {
+        ...rest,
+        credentials: "include",
+        headers,
+        body: requestBody,
+      });
 
   if (!res.ok) {
     // A 401 on an authed call means our session was rejected (token revoked or

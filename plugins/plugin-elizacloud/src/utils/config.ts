@@ -1,27 +1,24 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, resolveSetting } from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
 
 export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = "zai-glm-4.7";
 
-function getEnvValue(key: string): string | undefined {
-  if (typeof process === "undefined") {
-    return undefined;
-  }
-  const value = process.env[key];
-  return value === undefined ? undefined : String(value);
-}
-
+/**
+ * Runtime config first, then `process.env`, then the supplied default.
+ *
+ * Thin wrapper over core `resolveSetting` so the precedence lives in one
+ * canonical place. The env fallback uses dotenv semantics (trimmed; empty
+ * strings treated as unset).
+ */
 export function getSetting(
   runtime: IAgentRuntime,
   key: string,
   defaultValue?: string
 ): string | undefined {
-  const value = runtime.getSetting(key);
-  if (value !== undefined && value !== null) {
-    return String(value);
-  }
-  return getEnvValue(key) ?? defaultValue;
+  return defaultValue === undefined
+    ? resolveSetting(runtime, key)
+    : resolveSetting(runtime, key, { defaultValue });
 }
 
 export function isBrowser(): boolean {

@@ -11,28 +11,21 @@ import { VIEW_CASES, type ViewCase } from "./plugin-view-cases";
 
 async function expectLoadedView(page: Page, view: ViewCase, phase: string) {
   const viewRoot = page.locator("main").first();
-  const isCompanionGui = view.id === "companion" && view.viewType === "gui";
   await expect(viewRoot).toBeVisible({ timeout: 60_000 });
-  if (isCompanionGui) {
-    await expect(viewRoot.getByTestId("companion-root").first()).toBeVisible({
-      timeout: 60_000,
-    });
-  } else {
-    await expect
-      .poll(
-        async () => {
-          const text = await viewRoot.evaluate((root) =>
-            root.innerText.trim().replace(/\s+/g, " "),
-          );
-          return text.length > 20 && !/^Loading view\b/.test(text);
-        },
-        {
-          message: `${view.id} ${view.viewType} should load during ${phase}`,
-          timeout: 60_000,
-        },
-      )
-      .toBe(true);
-  }
+  await expect
+    .poll(
+      async () => {
+        const text = await viewRoot.evaluate((root) =>
+          root.innerText.trim().replace(/\s+/g, " "),
+        );
+        return text.length > 20 && !/^Loading view\b/.test(text);
+      },
+      {
+        message: `${view.id} ${view.viewType} should load during ${phase}`,
+        timeout: 60_000,
+      },
+    )
+    .toBe(true);
   await expect(page.getByText(/Loading view/)).toHaveCount(0);
   await expect(page.getByText("Failed to load view")).toHaveCount(0);
   await expectNoRenderTelemetryErrors(
@@ -50,9 +43,6 @@ async function expectViewManagerPage(page: Page) {
   if ((await smokeManager.count()) > 0) {
     await expect(
       main.getByRole("button", { name: "Refresh views" }),
-    ).toBeVisible();
-    await expect(
-      main.getByRole("button", { name: "Open Companion" }),
     ).toBeVisible();
   } else {
     // #8597 moved the views search out of <main> and into the floating chat

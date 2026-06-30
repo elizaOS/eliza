@@ -185,12 +185,6 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     timeoutMs: 60_000,
   },
   {
-    name: "companion deep link",
-    path: "/companion",
-    readyChecks: [{ selector: "#root" }],
-    timeoutMs: 60_000,
-  },
-  {
     name: "rolodex",
     path: "/rolodex",
     readyChecks: [{ text: "Views" }],
@@ -1409,12 +1403,6 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
     /(?:404\s+not\s+found|page not found|route not found)/i,
   );
   if (route.path === "/" || route.path === "/chat") {
-    return;
-  }
-  if (route.path === "/apps/companion") {
-    await expect(page.getByTestId("companion-root").first()).toBeVisible({
-      timeout: route.timeoutMs,
-    });
     return;
   }
   await expect(

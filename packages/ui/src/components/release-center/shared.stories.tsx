@@ -10,7 +10,6 @@ const mockAppContext = new Proxy({} as AppContextValue, {
         opts?.defaultValue ?? "Unavailable";
     }
     if (prop === "uiLanguage") return "en";
-    if (prop === "companionHalfFramerateMode") return "when_saving_power";
     if (prop === "navigation") {
       return {
         scheduleAfterTabCommit: (fn: () => void) => {

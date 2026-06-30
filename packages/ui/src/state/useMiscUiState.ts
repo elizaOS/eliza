@@ -92,7 +92,6 @@ export function useMiscUiState() {
   }, []);
   const [gameOverlayEnabled, setGameOverlayEnabled] = useState(false);
   const [activeOverlayApp, setActiveOverlayApp] = useState<string | null>(null);
-  const companionAppRunning = activeOverlayApp === "@elizaos/plugin-companion";
 
   const activeGameRun = useMemo(
     () => appRuns.find((run) => run.runId === activeGameRunId) ?? null,
@@ -177,7 +176,6 @@ export function useMiscUiState() {
       activeGamePostMessagePayload,
       activeGameSession,
       gameOverlayEnabled,
-      companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
       activeTerminalSessionId,

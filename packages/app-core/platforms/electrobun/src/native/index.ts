@@ -6,6 +6,7 @@ import { getBrowserWorkspaceManager } from "./browser-workspace";
 import { getCameraManager } from "./camera";
 import { getCanvasManager } from "./canvas";
 import { getDesktopManager } from "./desktop";
+import { getFusedWakeManager } from "./fused-wake";
 import { getGatewayDiscovery } from "./gateway";
 import { getGpuWindowManager } from "./gpu-window";
 import { getLocationManager } from "./location";
@@ -40,6 +41,7 @@ export function initializeNativeModules(
   screencapture.setSendToWebview(sendToWebview);
   screencapture.setMainWebview(mainWindow.webview);
   getSwabbleManager().setSendToWebview(sendToWebview);
+  getFusedWakeManager().setSendToWebview(sendToWebview);
   getTalkModeManager().setSendToWebview(sendToWebview);
 }
 
@@ -62,6 +64,7 @@ async function disposeNativeModulesOnce(): Promise<void> {
     ["permissions", getPermissionManager()],
     ["screencapture", getScreenCaptureManager()],
     ["swabble", getSwabbleManager()],
+    ["fused-wake", getFusedWakeManager()],
     ["talkmode", getTalkModeManager()],
     ["music-player", getMusicPlayerManager()],
   ] as const;

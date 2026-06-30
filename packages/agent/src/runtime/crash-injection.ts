@@ -96,7 +96,7 @@ export function parseCrashInjectionSpec(
   raw: string | undefined,
 ): CrashInjectionConfig {
   const config: CrashInjectionConfig = new Map();
-  if (!raw || !raw.trim()) return config;
+  if (!raw?.trim()) return config;
 
   for (const entry of raw.split(",")) {
     const trimmed = entry.trim();
@@ -134,7 +134,7 @@ export function resolveCrashInjectionConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): CrashInjectionConfig {
   const spec = env[ENV_SPEC];
-  if (!spec || !spec.trim()) return new Map();
+  if (!spec?.trim()) return new Map();
   if (isProductionRuntime(env) && env[ENV_ALLOW_PROD] !== "1") {
     warn(
       `${ENV_SPEC} is set in a production runtime but ${ENV_ALLOW_PROD} != 1 — refusing to arm fault injection.`,
@@ -216,7 +216,7 @@ function executeFault(
  */
 export function maybeInjectFault(
   point: CrashInjectionPoint,
-): void | Promise<never> {
+): undefined | Promise<never> {
   if (armed === null) armCrashInjection();
   const fault = armed?.get(point);
   if (!fault || tripped.has(point)) return;

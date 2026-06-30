@@ -2,7 +2,7 @@
  * iMessage connector setup routes.
  *
  * Implements the shared setup contract defined in
- * `@elizaos/app-core/api/setup-contract.ts`:
+ * `@elizaos/core` (`packages/core/src/types/connector-setup.ts`):
  *
  *   GET  /api/setup/imessage/status   service health + connection state
  *   POST /api/setup/imessage/start    mark iMessage as enabled in connector config
@@ -22,25 +22,15 @@
  * canonical paths without the plugin-name prefix.
  */
 
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
-
-// ── Setup contract types (mirror @elizaos/app-core/api/setup-contract) ──
-
-type SetupState = "idle" | "configuring" | "paired" | "error";
-
-interface SetupStatusResponse<TDetail = unknown> {
-  connector: string;
-  state: SetupState;
-  detail?: TDetail;
-}
-
-interface SetupErrorResponse {
-  error: { code: string; message: string };
-}
-
-function setupError(code: string, message: string): SetupErrorResponse {
-  return { error: { code, message } };
-}
+import {
+  buildSetupError,
+  type IAgentRuntime,
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+  type SetupState,
+  type SetupStatusResponse,
+} from "@elizaos/core";
 
 const IMESSAGE_SERVICE_NAME = "imessage";
 
@@ -83,9 +73,18 @@ function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
   return isConnectorSetupService(service) ? service : null;
 }
 
+function isIMessageServiceLike(service: unknown): service is IMessageServiceLike {
+  if (!service || typeof service !== "object") return false;
+  const candidate = service as Partial<IMessageServiceLike>;
+  return (
+    typeof candidate.isConnected === "function" &&
+    (candidate.getStatus === undefined || typeof candidate.getStatus === "function")
+  );
+}
+
 function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
-  const raw = runtime.getService(IMESSAGE_SERVICE_NAME);
-  return (raw as unknown as IMessageServiceLike | null | undefined) ?? null;
+  const service = runtime.getService(IMESSAGE_SERVICE_NAME);
+  return isIMessageServiceLike(service) ? service : null;
 }
 
 interface IMessageSetupDetail {
@@ -157,7 +156,7 @@ async function handleSetupStart(
   if (!setupService) {
     res
       .status(503)
-      .json(setupError("service_unavailable", "connector-setup service not registered"));
+      .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
     return;
   }
 
@@ -184,7 +183,7 @@ async function handleSetupCancel(
   if (!setupService) {
     res
       .status(503)
-      .json(setupError("service_unavailable", "connector-setup service not registered"));
+      .json(buildSetupError("service_unavailable", "connector-setup service not registered"));
     return;
   }
 

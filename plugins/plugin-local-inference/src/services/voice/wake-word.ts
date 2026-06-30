@@ -505,11 +505,18 @@ export async function loadBundledWakeWordModel(opts: {
 	});
 }
 
+/** Carried to `onWake` on each fresh detection. */
+export interface WakeFireInfo {
+	/** The classifier probability that crossed threshold, in [0, 1]. */
+	confidence: number;
+}
+
 /**
  * Streaming wake-word detector. Feed frames; `onWake` fires once per
- * detected utterance (refractory-debounced). The voice loop wires
- * `onWake` to "start a listening window" — exactly what a push-to-talk
- * press does.
+ * detected utterance (refractory-debounced) with the firing
+ * {@link WakeFireInfo}. The voice loop wires `onWake` to "start a listening
+ * window" — exactly what a push-to-talk press does — and to the fused-wake
+ * bridge so the firing reaches the renderer as `eliza:fused-wake` (#10351).
  *
  * Only constructed in `local` mode. `cloud` mode never instantiates this
  * (and `resolveWakeWordModel` is never called there), so the surface is
@@ -520,12 +527,12 @@ export class OpenWakeWordDetector {
 	private readonly cfg: Required<WakeWordConfig>;
 	private cooldown = 0;
 	private activationStreak = 0;
-	private readonly onWake: () => void;
+	private readonly onWake: (info: WakeFireInfo) => void;
 
 	constructor(args: {
 		model: WakeWordModel;
 		config?: WakeWordConfig;
-		onWake: () => void;
+		onWake: (info: WakeFireInfo) => void;
 	}) {
 		this.model = args.model;
 		const cfg = { ...DEFAULTS, ...(args.config ?? {}) };
@@ -560,7 +567,7 @@ export class OpenWakeWordDetector {
 			}
 			this.cooldown = this.cfg.refractoryFrames;
 			this.activationStreak = 0;
-			this.onWake();
+			this.onWake({ confidence: p });
 			return true;
 		}
 		this.activationStreak = 0;

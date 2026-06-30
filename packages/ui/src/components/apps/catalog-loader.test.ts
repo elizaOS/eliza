@@ -126,7 +126,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
       makeServerApp("@elizaos/plugin-phone"),
       makeServerApp("@elizaos/plugin-contacts"),
       makeServerApp("@elizaos/plugin-wifi"),
-      makeServerApp("@elizaos/plugin-companion"),
+      makeServerApp("@elizaos/plugin-feed"),
     ]);
     capacitorState.platform = "android";
     navigatorMock.userAgent = STOCK_ANDROID_UA;
@@ -154,7 +154,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
     const apps = await loadMergedCatalogApps({ includeHiddenApps: true });
     const names = apps.map((a) => a.name);
     expect(pickAndroidOnly(names)).toEqual([]);
-    expect(names).toContain("@elizaos/plugin-companion");
+    expect(names).toContain("@elizaos/plugin-feed");
   });
 
   it("shows androidOnly apps once on AOSP Eliza-derived Android, deduped across overlay+installed", async () => {
@@ -173,6 +173,6 @@ describe("loadMergedCatalogApps AOSP filter", () => {
     const apps = await loadMergedCatalogApps({ includeHiddenApps: true });
     const names = apps.map((a) => a.name);
     expect(pickAndroidOnly(names)).toEqual([]);
-    expect(names).toContain("@elizaos/plugin-companion");
+    expect(names).toContain("@elizaos/plugin-feed");
   });
 });

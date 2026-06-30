@@ -3,19 +3,22 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } 
 import {
   applyBackupDelta,
   type BackupChainNode,
-  type BackupDelta,
+  requireBackupDelta,
+  requireBackupStateData,
   resolveBackupChain,
   selectPrunableBackupIds,
 } from "../../lib/services/agent-backup-diff";
 import { AGENT_MANAGED_DISCORD_KEY } from "../../lib/services/eliza-agent-config";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
+import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../crypto/agent-backups";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AgentBackupSnapshotType,
   type AgentBackupStateData,
+  type AgentBackupStoredStateData,
   type AgentSandbox,
   type AgentSandboxBackup,
   type AgentSandboxStatus,
@@ -23,6 +26,7 @@ import {
   agentSandboxes,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
+  type StoredAgentSandboxBackup,
   WARM_POOL_ORG_ID,
   WARM_POOL_USER_ID,
 } from "../schemas/agent-sandboxes";
@@ -36,6 +40,8 @@ export type {
   NewAgentSandbox,
   NewAgentSandboxBackup,
 };
+
+export type AgentSandboxBackupMetadata = Omit<StoredAgentSandboxBackup, "state_data">;
 
 const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   memories: [],
@@ -54,21 +60,27 @@ async function backupOrganizationId(sandboxRecordId: string): Promise<string> {
 }
 
 export async function hydrateAgentSandboxBackup(
-  backup: AgentSandboxBackup,
+  backup: StoredAgentSandboxBackup,
 ): Promise<AgentSandboxBackup> {
-  if (backup.state_data_storage !== "r2") return backup;
-  if (!backup.state_data_key) {
-    throw new Error(`Agent sandbox backup ${backup.id} is missing state_data_key`);
+  let stateData = backup.state_data;
+  if (backup.state_data_storage === "r2") {
+    if (!backup.state_data_key) {
+      throw new Error(`Agent sandbox backup ${backup.id} is missing state_data_key`);
+    }
+
+    const raw = await getObjectText(backup.state_data_key);
+    if (!raw) {
+      throw new Error(`Agent sandbox backup payload not found: ${backup.state_data_key}`);
+    }
+
+    stateData = JSON.parse(raw) as AgentBackupStoredStateData;
   }
 
-  const raw = await getObjectText(backup.state_data_key);
-  if (!raw) {
-    throw new Error(`Agent sandbox backup payload not found: ${backup.state_data_key}`);
-  }
+  const decrypted = await decryptAgentBackupStateData(backup.id, stateData);
 
   return {
     ...backup,
-    state_data: JSON.parse(raw) as AgentSandboxBackup["state_data"],
+    state_data: decrypted,
   };
 }
 
@@ -80,13 +92,20 @@ export async function prepareAgentBackupInsertData(
 
   const id = data.id ?? randomUUID();
   const createdAt = data.created_at ?? new Date();
-  const stateData = await offloadJsonField<AgentSandboxBackup["state_data"]>({
+  const effectiveOrganizationId =
+    organizationId ?? (await backupOrganizationId(data.sandbox_record_id));
+  const encryptedStateData = await encryptAgentBackupStateData(
+    effectiveOrganizationId,
+    id,
+    data.state_data,
+  );
+  const stateData = await offloadJsonField<AgentBackupStoredStateData>({
     namespace: ObjectNamespaces.AgentSandboxBackups,
-    organizationId: organizationId ?? (await backupOrganizationId(data.sandbox_record_id)),
+    organizationId: effectiveOrganizationId,
     objectId: id,
     field: "state_data",
     createdAt,
-    value: data.state_data,
+    value: encryptedStateData,
     inlineValueWhenOffloaded: EMPTY_BACKUP_STATE,
   });
 
@@ -368,6 +387,51 @@ export class AgentSandboxesRepository {
           // upgrade from" — and because the failed upgrade never changes their
           // digest, the reconciler re-selects them every cycle, producing an
           // endless agent_upgrade retry storm. Exclude them here.
+          sql`${agentSandboxes.node_id} IS NOT NULL`,
+          sql`${agentSandboxes.container_name} IS NOT NULL`,
+        ),
+      )
+      .limit(limit);
+  }
+
+  /**
+   * Find running, non-deleted agents currently on `currentDigest` that also
+   * have a persisted `previous_image_digest`. Used by the operator-gated
+   * rollback endpoint to enqueue downgrade jobs only for agents that can
+   * actually roll back.
+   */
+  async listRollbackEligibleForDigest(
+    currentDigest: string,
+    targetImage: string,
+    limit: number,
+  ): Promise<
+    Array<{
+      id: string;
+      organization_id: string;
+      user_id: string;
+      image_digest: string | null;
+      previous_image_digest: string | null;
+      docker_image: string | null;
+    }>
+  > {
+    return dbRead
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        image_digest: agentSandboxes.image_digest,
+        previous_image_digest: agentSandboxes.previous_image_digest,
+        docker_image: agentSandboxes.docker_image,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.status, "running"),
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+          eq(agentSandboxes.image_digest, currentDigest),
+          isNotNull(agentSandboxes.previous_image_digest),
+          sql`(${agentSandboxes.docker_image} IS NULL OR ${agentSandboxes.docker_image} = ${targetImage})`,
+          sql`${agentSandboxes.pool_status} IS NULL`,
           sql`${agentSandboxes.node_id} IS NOT NULL`,
           sql`${agentSandboxes.container_name} IS NOT NULL`,
         ),
@@ -899,6 +963,29 @@ export class AgentSandboxesRepository {
     return await Promise.all(rows.map(hydrateAgentSandboxBackup));
   }
 
+  async listBackupMetadata(
+    sandboxRecordId: string,
+    limit = 10,
+  ): Promise<AgentSandboxBackupMetadata[]> {
+    return await dbRead
+      .select({
+        id: agentSandboxBackups.id,
+        sandbox_record_id: agentSandboxBackups.sandbox_record_id,
+        snapshot_type: agentSandboxBackups.snapshot_type,
+        state_data_storage: agentSandboxBackups.state_data_storage,
+        state_data_key: agentSandboxBackups.state_data_key,
+        size_bytes: agentSandboxBackups.size_bytes,
+        backup_kind: agentSandboxBackups.backup_kind,
+        parent_backup_id: agentSandboxBackups.parent_backup_id,
+        content_hash: agentSandboxBackups.content_hash,
+        created_at: agentSandboxBackups.created_at,
+      })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
+      .orderBy(desc(agentSandboxBackups.created_at))
+      .limit(limit);
+  }
+
   async getLatestBackup(sandboxRecordId: string): Promise<AgentSandboxBackup | undefined> {
     const [r] = await dbRead
       .select()
@@ -984,7 +1071,7 @@ export class AgentSandboxesRepository {
     const target = await this.getBackupById(backupId);
     if (!target) return undefined;
     if (target.backup_kind !== "incremental") {
-      return target.state_data;
+      return requireBackupStateData(target.state_data, target.id);
     }
     const all = await this.listBackups(target.sandbox_record_id, 1000);
     const nodes: BackupChainNode[] = all.map((b) => ({
@@ -999,11 +1086,10 @@ export class AgentSandboxesRepository {
       const row = byId.get(id);
       if (!row) throw new Error(`Backup chain row ${id} vanished mid-reconstruct`);
       if (row.backup_kind === "full") {
-        state = row.state_data;
+        state = requireBackupStateData(row.state_data, row.id);
       } else {
         if (!state) throw new Error(`Incremental ${id} reached before a full backup`);
-        // Incremental rows store a BackupDelta in the state_data jsonb column.
-        state = applyBackupDelta(state, row.state_data as unknown as BackupDelta);
+        state = applyBackupDelta(state, requireBackupDelta(row.state_data, row.id));
       }
     }
     return state;

@@ -79,12 +79,17 @@ export const facewearPlugin: Plugin = {
         "Manage all connected XR devices and smartglasses — Meta Quest, XReal, Even Realities, Apple Vision Pro.",
       icon: "Glasses",
       heroImagePath: "assets/hero-facewear.png",
-      modalities: ["gui", "xr", "tui"],
+      // GUI config moved to Settings -> Wearables (register.ts); the served
+      // standalone view keeps only the agent-facing XR + TUI surfaces.
+      modalities: ["xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
       tags: ["facewear", "xr", "smartglasses", "wearable"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
+      // Wearables config now lives under Settings → Wearables (see register.ts),
+      // not as standalone launcher views. The view defs are retained only so the
+      // agent keeps serving the XR/TUI surfaces and the in-headset view host.
+      visibleInManager: false,
+      desktopTabEnabled: false,
       capabilities: [
         {
           id: "connect-device",
@@ -115,7 +120,9 @@ export const facewearPlugin: Plugin = {
         "Pair, test, configure, and export diagnostics for a complete Even Realities headset.",
       icon: "Glasses",
       heroImagePath: "assets/hero-smartglasses.png",
-      modalities: ["gui", "xr", "tui"],
+      // GUI config moved to Settings -> Wearables (register.ts); the served
+      // standalone view keeps only the agent-facing XR + TUI surfaces.
+      modalities: ["xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesPanelView",
       tags: [
@@ -127,8 +134,11 @@ export const facewearPlugin: Plugin = {
         "hardware",
         "even-realities",
       ],
-      visibleInManager: true,
-      desktopTabEnabled: true,
+      // Wearables config now lives under Settings → Wearables (see register.ts),
+      // not as standalone launcher views. The view defs are retained only so the
+      // agent keeps serving the XR/TUI surfaces and the in-headset view host.
+      visibleInManager: false,
+      desktopTabEnabled: false,
       capabilities: [
         {
           id: "connect-headset",
@@ -153,27 +163,6 @@ export const facewearPlugin: Plugin = {
       ],
     },
   ],
-
-  app: {
-    navTabs: [
-      {
-        id: "facewear",
-        viewKind: "preview",
-        label: "Facewear",
-        icon: "Glasses",
-        path: "/apps/facewear",
-        componentExport: "@elizaos/plugin-facewear#FacewearView",
-      },
-      {
-        id: "smartglasses",
-        viewKind: "preview",
-        label: "Smartglasses",
-        icon: "Glasses",
-        path: "/apps/smartglasses",
-        componentExport: "@elizaos/plugin-facewear#SmartglassesPanelView",
-      },
-    ],
-  },
 
   async dispose(runtime: IAgentRuntime) {
     await runtime

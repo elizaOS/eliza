@@ -17,7 +17,6 @@ const CONVERTED_PLUGINS = [
   "plugin-wallet-ui",
   "app-model-tester",
   "plugin-app-control",
-  "plugin-companion",
   "plugin-contacts",
   "plugin-facewear",
   "plugin-feed",
@@ -141,7 +140,6 @@ const CONVERTED_SUBCOMPONENTS = [
   "settings/AppsManagementSection",
   "settings/DesktopWorkspaceSection",
   "settings/LoadContentPackForm",
-  "settings/PolicyControlsView",
   "settings/RemotePluginHostSection",
   "settings/SecuritySettingsSection",
   "settings/VaultInventoryPanel",
@@ -152,7 +150,6 @@ const CONVERTED_SUBCOMPONENTS = [
   "settings/VoiceProfileSection",
   "settings/VoiceSection",
   "settings/WalletKeysSection",
-  "settings/XRSettingsSection",
 ] as const;
 
 function isAgentControllable(pageFile: string): boolean {

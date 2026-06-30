@@ -136,13 +136,6 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       signalKinds: ["blocked", "reminder", "notification"],
     },
     {
-      pluginId: "companion",
-      label: "Companion",
-      icon: "Sparkles",
-      defaultWidget: "activity",
-      signalKinds: ["check-in", "nudge", "activity"],
-    },
-    {
       pluginId: "contacts",
       label: "Contacts",
       icon: "Contact",

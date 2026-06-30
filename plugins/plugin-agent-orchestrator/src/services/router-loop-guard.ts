@@ -59,8 +59,13 @@ export type RouterLoopEvent =
    * earlier transient crash.
    */
   | { type: "task_complete_progress"; lineageKey: string }
-  /** An `error` with `failureKind === "session_state_lost"` for `lineageKey`. */
-  | { type: "state_lost"; lineageKey: string }
+  /**
+   * An `error` with `failureKind === "session_state_lost"` for `lineageKey`.
+   * `completionKey` (when resolvable) lets the reducer detect a teardown race:
+   * if that completion lineage already posted, the deliverable shipped and the
+   * state-loss is suppressed instead of triggering a respawn / failure post.
+   */
+  | { type: "state_lost"; lineageKey: string; completionKey?: string | null }
   /** An injectable terminal event for `sessionId` (counts toward the round-trip cap). */
   | { type: "round_trip"; sessionId: string }
   /**
@@ -194,6 +199,23 @@ export function routerLoopTransition(
     }
 
     case "state_lost": {
+      // If this lineage already posted a completion, its deliverable shipped
+      // before the process dropped its session state. A late `state_lost` here
+      // is a teardown race, not a real failure: re-dispatching would rebuild a
+      // finished artifact and surfacing a "couldn't finish, retry?" line
+      // contradicts the success the user already saw. Suppress it (no respawn,
+      // no post) — the `already_terminal` decision is exactly drop-silently.
+      // The completion slot is keyed by `completionKey` (a different shape from
+      // the respawn `lineageKey`), so the router passes it through explicitly.
+      if (
+        event.completionKey != null &&
+        state.completionFirstPostedSession.has(event.completionKey)
+      ) {
+        return {
+          state,
+          decision: { kind: "already_terminal", count: 0 },
+        };
+      }
       const count =
         (state.stateLostRespawnCounts.get(event.lineageKey) ?? 0) + 1;
       const stateLostRespawnCounts = setBounded(

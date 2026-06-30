@@ -28,11 +28,15 @@ for (const envFile of [
 // Playwright runner process — not in a spawned subprocess — so the env block
 // in `src/fixtures/env.ts` does not cover this code path. Pin the test
 // defaults here, before cloud-shared crypto is first imported, so KMS resolves
-// to the in-memory adapter regardless of the developer's ambient shell.
+// to a deterministic local adapter regardless of the developer's ambient shell.
+// The e2e stack spans multiple processes (runner, Worker, control plane), so an
+// in-memory adapter cannot decrypt rows written by a sibling process.
 // Without this, `createKmsClient()` falls through to the `steward` backend and
 // `seedTestUser()` throws "ELIZA_KMS_BACKEND=steward requires steward.{...}".
 process.env.NODE_ENV ??= "test";
-process.env.ELIZA_KMS_BACKEND ??= "memory";
+process.env.ELIZA_KMS_BACKEND ??= "local";
+process.env.ELIZA_LOCAL_ROOT_KEY ??=
+  "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const bunSourceCondition = "--conditions=eliza-source";
 if (!process.env.BUN_OPTIONS?.includes(bunSourceCondition)) {
   process.env.BUN_OPTIONS = process.env.BUN_OPTIONS?.trim()

@@ -15,6 +15,57 @@ import signal
 import tempfile
 
 
+def _unsafe_execute(solution_code: str, test_code: str, timeout: float, result) -> None:
+    """Run ``solution_code`` + ``test_code`` in the current (child) process and
+    append the verdict to the shared ``result`` list.
+
+    This is a **module-level** function (not a closure) so it is picklable and
+    therefore works under both the ``spawn`` start method (macOS/Windows default)
+    and ``fork`` (Linux). ``result`` is a ``multiprocessing.Manager().list()``
+    proxy, which is itself picklable and shared across the process boundary.
+    """
+    with create_tempdir():
+        # These system calls are needed when cleaning up tempdir.
+        import os
+        import shutil
+
+        rmtree = shutil.rmtree
+        rmdir = os.rmdir
+        chdir = os.chdir
+
+        # Disable functionalities that can make destructive changes to the test.
+        reliability_guard()
+
+        # Construct the check program and run it.
+        check_program = solution_code + "\n" + test_code
+
+        try:
+            exec_globals = {}
+            with swallow_io():
+                with time_limit(timeout):
+                    # WARNING
+                    # This program exists to execute untrusted model-generated code. Although
+                    # it is highly unlikely that model-generated code will do something overtly
+                    # malicious in response to this test suite, model-generated code may act
+                    # destructively due to a lack of model capability or alignment.
+                    # Users are strongly encouraged to sandbox this evaluation suite so that it
+                    # does not perform destructive actions on their host or network. For more
+                    # information on how OpenAI sandboxes its code, see the accompanying paper.
+                    # Once you have read this disclaimer and taken appropriate precautions,
+                    # uncomment the following line and proceed at your own risk:
+                    exec(check_program, exec_globals)
+            result.append("passed")
+        except TimeoutException:
+            result.append("timed out")
+        except BaseException as e:
+            result.append(f"failed: {e}")
+
+        # Needed for cleaning up.
+        shutil.rmtree = rmtree
+        os.rmdir = rmdir
+        os.chdir = chdir
+
+
 def check_correctness(
     solution_code: str,
     test_code: str,
@@ -29,52 +80,19 @@ def check_correctness(
         the results later even if execution finishes asynchronously.
     """
 
-    def unsafe_execute():
-        with create_tempdir():
-            # These system calls are needed when cleaning up tempdir.
-            import os
-            import shutil
-
-            rmtree = shutil.rmtree
-            rmdir = os.rmdir
-            chdir = os.chdir
-
-            # Disable functionalities that can make destructive changes to the test.
-            reliability_guard()
-
-            # Construct the check program and run it.
-            check_program = solution_code + "\n" + test_code
-
-            try:
-                exec_globals = {}
-                with swallow_io():
-                    with time_limit(timeout):
-                        # WARNING
-                        # This program exists to execute untrusted model-generated code. Although
-                        # it is highly unlikely that model-generated code will do something overtly
-                        # malicious in response to this test suite, model-generated code may act
-                        # destructively due to a lack of model capability or alignment.
-                        # Users are strongly encouraged to sandbox this evaluation suite so that it
-                        # does not perform destructive actions on their host or network. For more
-                        # information on how OpenAI sandboxes its code, see the accompanying paper.
-                        # Once you have read this disclaimer and taken appropriate precautions,
-                        # uncomment the following line and proceed at your own risk:
-                        exec(check_program, exec_globals)
-                result.append("passed")
-            except TimeoutException:
-                result.append("timed out")
-            except BaseException as e:
-                result.append(f"failed: {e}")
-
-            # Needed for cleaning up.
-            shutil.rmtree = rmtree
-            os.rmdir = rmdir
-            os.chdir = chdir
-
+    # The upstream human-eval harness used a local-closure target, which only
+    # runs under ``fork`` (the closure shares the parent address space). Under
+    # the default ``spawn`` start method (macOS/Windows) the target is pickled
+    # and a local closure raises "Can't pickle local object", so every task
+    # silently scored as failed. A module-level ``_unsafe_execute`` + a picklable
+    # Manager-list proxy runs correctly under both ``spawn`` and ``fork`` without
+    # the fork-from-threaded-parent deadlock caveat.
     manager = multiprocessing.Manager()
     result = manager.list()
 
-    p = multiprocessing.Process(target=unsafe_execute)
+    p = multiprocessing.Process(
+        target=_unsafe_execute, args=(solution_code, test_code, timeout, result)
+    )
     p.start()
     p.join(timeout=timeout + 1)
     if p.is_alive():

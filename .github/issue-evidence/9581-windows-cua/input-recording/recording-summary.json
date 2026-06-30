@@ -1,0 +1,94 @@
+{
+  "issue": 9581,
+  "capturedAt": "2026-06-30T06:55:20.699Z",
+  "host": "Windows 11 Pro (QEMU)",
+  "verified": true,
+  "marker": "eliza-win-cua-1782802491582",
+  "phrase": "elizaOS CUA on Windows -- #9581 mouse+keyboard input proof eliza-win-cua-1782802491582",
+  "frameCount": 13,
+  "frames": [
+    {
+      "index": 0,
+      "name": "frame-000.png",
+      "label": "controlled Notepad launched (empty)",
+      "bytes": 1328575
+    },
+    {
+      "index": 1,
+      "name": "frame-001.png",
+      "label": "controlled Notepad maximized (empty)",
+      "bytes": 37009
+    },
+    {
+      "index": 2,
+      "name": "frame-002.png",
+      "label": "clicked into the text area (caret active)",
+      "bytes": 36926
+    },
+    {
+      "index": 3,
+      "name": "frame-003.png",
+      "label": "typed 12/86 chars",
+      "bytes": 37618
+    },
+    {
+      "index": 4,
+      "name": "frame-004.png",
+      "label": "typed 24/86 chars",
+      "bytes": 38028
+    },
+    {
+      "index": 5,
+      "name": "frame-005.png",
+      "label": "typed 36/86 chars",
+      "bytes": 38456
+    },
+    {
+      "index": 6,
+      "name": "frame-006.png",
+      "label": "typed 48/86 chars",
+      "bytes": 38918
+    },
+    {
+      "index": 7,
+      "name": "frame-007.png",
+      "label": "typed 60/86 chars",
+      "bytes": 39303
+    },
+    {
+      "index": 8,
+      "name": "frame-008.png",
+      "label": "typed 72/86 chars",
+      "bytes": 39546
+    },
+    {
+      "index": 9,
+      "name": "frame-009.png",
+      "label": "typed 84/86 chars",
+      "bytes": 40053
+    },
+    {
+      "index": 10,
+      "name": "frame-010.png",
+      "label": "typed 86/86 chars",
+      "bytes": 40080
+    },
+    {
+      "index": 11,
+      "name": "frame-011.png",
+      "label": "ctrl+a selected the typed text",
+      "bytes": 40550
+    },
+    {
+      "index": 12,
+      "name": "frame-012.png",
+      "label": "verified: marker read back from Notepad via clipboard",
+      "bytes": 40550
+    }
+  ],
+  "artifacts": {
+    "mp4": ".github\\issue-evidence\\9581-windows-cua\\input-recording\\windows-cua-input.mp4",
+    "gif": ".github\\issue-evidence\\9581-windows-cua\\input-recording\\windows-cua-input.gif",
+    "framesDir": ".github\\issue-evidence\\9581-windows-cua\\input-recording\\frames"
+  }
+}

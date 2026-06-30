@@ -16,6 +16,10 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
+import {
+  beginDelivery,
+  deliveryIdentityFromContent,
+} from "../api/delivery-dedupe.ts";
 import type { ConversationMeta, ServerState } from "../api/server-types.ts";
 
 /**
@@ -149,6 +153,28 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
         );
       }
 
+      // Cross-path delivery dedupe (Bug A): a single reply can also arrive via
+      // the autonomy/coordinator relay (routeAutonomyTextToUser), which writes
+      // its own memory + WS broadcast. If this exact (roomId + text) was just
+      // delivered, suppress this duplicate instead of double-persisting +
+      // double-broadcasting. Treat the suppressed delivery as a successful
+      // no-op (do NOT throw) — the message already reached the user. The
+      // reservation is only committed AFTER a successful createMemory +
+      // broadcast, and released on failure, so a failed delivery never
+      // suppresses a legitimate fallback/retry of the same reply.
+      const delivery = beginDelivery(
+        state.deliveryDedupe,
+        conv.roomId,
+        content.text,
+        // Include attachment/action identity so two distinct sends that share
+        // the same caption/status text but carry different payloads are NOT
+        // collapsed (codex review P2).
+        { identity: deliveryIdentityFromContent(content) },
+      );
+      if (delivery.kind === "duplicate") {
+        return;
+      }
+
       const messageId = crypto.randomUUID() as UUID;
 
       const agentMessage = createMessageMemory({
@@ -161,7 +187,12 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
           source: "client_chat",
         },
       });
-      await runtime.createMemory(agentMessage, "messages");
+      try {
+        await runtime.createMemory(agentMessage, "messages");
+      } catch (err) {
+        delivery.reservation.release();
+        throw err;
+      }
 
       conv.updatedAt = new Date().toISOString();
 
@@ -176,6 +207,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
           source: "client_chat",
         },
       });
+      delivery.reservation.commit();
       return undefined;
     };
 }

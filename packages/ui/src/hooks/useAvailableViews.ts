@@ -21,7 +21,12 @@ import {
   listAppShellPages,
   subscribeAppShellPages,
 } from "../app-shell-registry";
-import { type BuiltinTab, TAB_PATHS, titleForTab } from "../navigation";
+import {
+  type BuiltinTab,
+  isAospShellEnabled,
+  TAB_PATHS,
+  titleForTab,
+} from "../navigation";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import { useAppSelector } from "../state/app-store";
 import type { StartupPhaseValue } from "../state/startup-coordinator";
@@ -187,7 +192,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   camera: "AppWindow",
   tasks: "ListTodo",
   browser: "Globe",
-  companion: "Bot",
   stream: "Radio",
   apps: "LayoutGrid",
   views: "LayoutGrid",
@@ -207,7 +211,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   relationships: "Network",
   memories: "BrainCircuit",
   rolodex: "UsersRound",
-  voice: "Mic",
   runtime: "Terminal",
   database: "Database",
   desktop: "Monitor",
@@ -356,6 +359,10 @@ function useDefaultViewsNetworkEnabled(): boolean {
   const phase = useAppSelector((s) => s.startupCoordinator?.phase);
   if (!supportsFullAppShellRoutes(client.getBaseUrl())) return false;
   if (typeof phase !== "string") return true;
+  // first-run-required is now shell-paintable (onboarding runs in the live
+  // chat), but the agent does not exist yet — don't fetch network view
+  // registries until onboarding completes and the runtime is booting.
+  if (phase === "first-run-required") return false;
   return isShellPaintable(phase as StartupPhaseValue);
 }
 
@@ -394,10 +401,15 @@ export function useAvailableViews(
   );
   const networkViews =
     resource.status === "success" ? resource.data : EMPTY_VIEWS;
-  const views = useMemo(
-    () => mergeWithAppShellViews(networkViews, appShellViews),
-    [networkViews, appShellViews],
-  );
+  const views = useMemo(() => {
+    const merged = mergeWithAppShellViews(networkViews, appShellViews);
+    // Camera is an AOSP-ElizaOS-fork-only surface (native device camera).
+    // Hide it from the view manager + router everywhere else — web, desktop,
+    // iOS, and stock Play-Store Android — matching the AOSP-gated home tile
+    // (`nativeOs`) and the `/camera` route gate in App.tsx.
+    if (isAospShellEnabled()) return merged;
+    return merged.filter((view) => view.id !== "camera");
+  }, [networkViews, appShellViews]);
 
   return {
     views,

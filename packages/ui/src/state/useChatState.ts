@@ -211,7 +211,6 @@ export interface ChatStateHook {
   chatSendNonceRef: React.MutableRefObject<number>;
   greetingFiredRef: React.RefObject<boolean>;
   greetingInFlightConversationRef: React.RefObject<string | null>;
-  companionStaleConversationRefreshRef: React.RefObject<string | null>;
 
   // Autonomy refs
   autonomousStoreRef: React.MutableRefObject<AutonomyEventStore>;
@@ -240,7 +239,6 @@ export function useChatState(): ChatStateHook {
   const chatSendNonceRef = useRef(0);
   const greetingFiredRef = useRef(false);
   const greetingInFlightConversationRef = useRef<string | null>(null);
-  const companionStaleConversationRefreshRef = useRef<string | null>(null);
 
   // Autonomy refs
   const autonomousStoreRef = useRef<AutonomyEventStore>({
@@ -421,7 +419,6 @@ export function useChatState(): ChatStateHook {
     chatSendNonceRef,
     greetingFiredRef,
     greetingInFlightConversationRef,
-    companionStaleConversationRefreshRef,
     autonomousStoreRef,
     autonomousEventsRef,
     autonomousLatestEventIdRef,

@@ -696,9 +696,6 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
       "../../plugins/plugin-facewear/src/protocol/smartglasses.ts",
     ) ||
     text.includes(
-      "../../plugins/plugin-companion/src/components/companion/CompanionAppView.tsx",
-    ) ||
-    text.includes(
       "../../plugins/app-model-tester/src/ModelTesterAppView.tsx",
     ) ||
     text.includes(
@@ -1737,49 +1734,6 @@ function watchWorkspacePackagesPlugin(): Plugin {
   };
 }
 
-/**
- * Serve @elizaos/plugin-companion's public/ assets alongside the app's own
- * public/ directory. In dev the companion dir is served as a fallback
- * middleware; in build the files are copied into the output.
- */
-function companionAssetsPlugin(): Plugin {
-  const companionPublic = path.resolve(
-    elizaRoot,
-    "plugins/plugin-companion/public",
-  );
-  return {
-    name: "companion-assets",
-    configureServer(server) {
-      // Serve companion public as fallback (after app public)
-      server.middlewares.use((req, res, next) => {
-        if (!req.url) return next();
-        const clean = req.url.split("?")[0];
-        const filePath = path.join(companionPublic, clean);
-        if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-          res.setHeader(
-            "Content-Type",
-            filePath.endsWith(".wasm")
-              ? "application/wasm"
-              : filePath.endsWith(".js")
-                ? "application/javascript"
-                : "application/octet-stream",
-          );
-          fs.createReadStream(filePath).pipe(res);
-        } else {
-          next();
-        }
-      });
-    },
-    closeBundle() {
-      // Copy companion public to dist at build time
-      if (fs.existsSync(companionPublic)) {
-        const outDir = path.resolve(here, "dist");
-        fs.cpSync(companionPublic, outDir, { recursive: true, force: false });
-      }
-    },
-  };
-}
-
 function workspaceJsxInJsPlugin(): Plugin {
   const normalizedAppCoreSrcRoot = appCoreSrcRoot.split(path.sep).join("/");
 
@@ -2153,7 +2107,6 @@ export default defineConfig({
     appShellMetadataPlugin(),
     rendererBuildManifestPlugin(),
     appDevWsBasePlugin(),
-    companionAssetsPlugin(),
     elizaCoreBrowserEntryFallbackPlugin(),
     nativeModuleStubPlugin({
       isCapacitorMobileBuild: IS_CAPACITOR_MOBILE_BUILD,
@@ -2441,35 +2394,6 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "index.ts"),
       },
-      ...[
-        [
-          "@elizaos/plugin-companion/components/companion/companion-app",
-          "plugins/plugin-companion/src/components/companion/companion-app.ts",
-        ],
-        [
-          "@elizaos/plugin-companion/components/companion/companion-scene-status-context",
-          "plugins/plugin-companion/src/components/companion/companion-scene-status-context.ts",
-        ],
-        [
-          "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice",
-          "plugins/plugin-companion/src/components/companion/resolve-companion-inference-notice.ts",
-        ],
-        [
-          "@elizaos/plugin-companion/components/companion/CompanionShell",
-          "plugins/plugin-companion/src/components/companion/CompanionShell.tsx",
-        ],
-        [
-          "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay",
-          "plugins/plugin-companion/src/components/companion/GlobalEmoteOverlay.tsx",
-        ],
-        [
-          "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
-          "plugins/plugin-companion/src/components/companion/InferenceCloudAlertButton.tsx",
-        ],
-      ].map(([pkgName, relativeEntry]) => ({
-        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
-        replacement: path.resolve(elizaRoot, relativeEntry),
-      })),
       // Side-effect app modules are loaded by the renderer only to register
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[

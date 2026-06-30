@@ -253,7 +253,6 @@ export * from "./ShellModalityProvider.tsx";
 export * from "./ShellRoleProvider.tsx";
 export * from "./settings/ApiKeyConfig";
 export * from "./settings/PermissionsSection";
-export * from "./settings/PolicyControlsView";
 export * from "./settings/ProviderSwitcher";
 export * from "./settings/permission-types";
 export * from "./settings/SubscriptionStatus";

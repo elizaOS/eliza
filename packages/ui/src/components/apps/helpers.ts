@@ -60,12 +60,9 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
 
 const FEATURED_APP_NAMES = new Set<string>([
   "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-companion",
 ]);
 
-const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-companion",
-]);
+const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([]);
 
 const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
   "@elizaos/plugin-hyperliquid",
@@ -336,8 +333,6 @@ export function getAppCatalogSectionKey(
 
   const canonicalName = normalizeElizaCuratedAppName(app.name) ?? app.name;
   switch (canonicalName) {
-    case "@elizaos/plugin-companion":
-      return "games";
     case "@elizaos/plugin-shopify":
     case "@elizaos/plugin-hyperliquid":
     case "@elizaos/plugin-polymarket":

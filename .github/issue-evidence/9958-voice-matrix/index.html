@@ -12,9 +12,9 @@ th{background:#f1f1f1;text-align:left}
 code{font-size:12px}
 </style>
 <h1>Voice Live Matrix</h1>
-<p>Generated 2026-06-29T21:45:41.259Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
-<p>Pass 0 · Fail 0 · Pending 5 · Skip 10</p>
-<table><thead><tr><th>Cell</th><th>Status</th><th>Platform</th><th>Class</th><th>Dimensions</th><th>Probe / Result</th><th>Command</th><th>Evidence</th></tr></thead><tbody><tr class="pending"><td><code>web.fake-mic.roundtrip</code><br>Web fake-device mic capture -&gt; ASR -&gt; agent -&gt; TTS</td><td>pending</td><td>web</td><td>live-client-audio</td><td>transcriptionState=off
+<p>Generated 2026-06-30T07:13:48.071Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
+<p>Pass 0 · Fail 0 · Pending 8 · Skip 8</p>
+<table><thead><tr><th>Cell</th><th>Status</th><th>Platform</th><th>Class</th><th>Dimensions</th><th>Probe / Result</th><th>Command</th><th>Evidence</th></tr></thead><tbody><tr class="pending"><td><code>web.fake-mic.roundtrip</code><br>Web fake-device mic capture -&gt; ASR -&gt; agent -&gt; local TTS + barge-in</td><td>pending</td><td>web</td><td>live-client-audio-barge-in</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
@@ -47,50 +47,59 @@ voices=owner</td><td>requires Linux runner; current=darwin</td><td><code>bun run
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
-voices=owner</td><td>set ELIZA_VOICE_MACOS_ELECTROBUN_READY=1 on a macOS Electrobun voice runner with loopback mic/audio capture</td><td><code>bun run --cwd packages/app capture:macos-desktop -- --issue 9958 --slug voice-macos-electrobun</code></td><td>.github/issue-evidence/9958-voice-macos-electrobun-macos-desktop.*</td></tr>
+voices=owner</td><td>set ELIZA_VOICE_MACOS_ELECTROBUN_READY=1 on a macOS Electrobun voice runner with loopback mic/audio capture</td><td><code>bun run --cwd packages/app test:desktop:voice</code></td><td>$ELIZA_VOICE_MATRIX_OUT/macos.electrobun.live-roundtrip
+packages/app/test-results</td></tr>
 <tr class="skip"><td><code>windows.electrobun.live-roundtrip</code><br>Windows Electrobun live mic -&gt; ASR -&gt; agent -&gt; Kokoro -&gt; speaker loop</td><td>skip</td><td>windows-electrobun</td><td>desktop-live-voice</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
-voices=owner</td><td>requires Windows runner; current=darwin</td><td><code>bun run --cwd packages/app capture:windows-desktop -- --issue 9958 --slug voice-windows-electrobun</code></td><td>.github/issue-evidence/9958-voice-windows-electrobun-windows-desktop.*</td></tr>
+voices=owner</td><td>requires Windows runner; current=darwin</td><td><code>bun run --cwd packages/app test:desktop:voice</code></td><td>$ELIZA_VOICE_MATRIX_OUT/windows.electrobun.live-roundtrip
+packages/app/test-results</td></tr>
 <tr class="skip"><td><code>ios.sim-or-device.voice-roundtrip</code><br>iOS simulator/device voice self-test and capture evidence</td><td>skip</td><td>ios</td><td>mobile-live-voice</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
-voices=owner</td><td>set ELIZA_VOICE_IOS_READY=1 after installing a current iOS simulator/device build with voice assets</td><td><code>bun run --cwd packages/app capture:ios-sim -- --issue 9958 --slug voice-ios</code></td><td>.github/issue-evidence/9958-voice-ios-ios-sim.*</td></tr>
+voices=owner</td><td>set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets</td><td><code>bun run --cwd packages/app capture:ios-sim -- --issue 9958 --slug voice-ios</code></td><td>.github/issue-evidence/9958-voice-ios-ios-sim.*</td></tr>
 <tr class="pending"><td><code>ios.talkmode.native-bridge</code><br>TalkMode iOS transcript, permission, state, and barge-in bridge contracts</td><td>pending</td><td>ios</td><td>native-bridge-unit</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=already-listening-wake-inert
 noiseRejection=echo-self-voice
-voices=owner</td><td>macOS Swift Package test toolchain is available</td><td><code>swift test --package-path plugins/plugin-native-talkmode/ios</code></td><td>plugins/plugin-native-talkmode/ios/Tests</td></tr>
+voices=owner</td><td>macOS Swift Package test toolchain is available</td><td><code>swift test --disable-index-store --package-path plugins/plugin-native-talkmode/ios</code></td><td>plugins/plugin-native-talkmode/ios/Tests</td></tr>
 <tr class="pending"><td><code>ios.swabble.native-bridge</code><br>Swabble iOS wake-firing -&gt; JS bridge event contract</td><td>pending</td><td>ios</td><td>native-bridge-unit</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
-voices=owner</td><td>macOS Swift Package test toolchain is available</td><td><code>swift test --package-path plugins/plugin-native-swabble/ios</code></td><td>plugins/plugin-native-swabble/ios/Tests</td></tr>
+voices=owner</td><td>macOS Swift Package test toolchain is available</td><td><code>swift test --disable-index-store --package-path plugins/plugin-native-swabble/ios</code></td><td>plugins/plugin-native-swabble/ios/Tests</td></tr>
 <tr class="skip"><td><code>android.device.voice-roundtrip</code><br>Android device WebView real on-device STT -&gt; agent -&gt; TTS voice self-test</td><td>skip</td><td>android</td><td>mobile-live-voice</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
 voices=owner</td><td>set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed</td><td><code>bun run --cwd packages/app test:e2e:android:local</code></td><td>packages/app/test-results
 .github/issue-evidence</td></tr>
-<tr class="skip"><td><code>android.talkmode.native-bridge</code><br>TalkMode Android capture lifecycle, transcript, permission, and barge-in bridge contracts</td><td>skip</td><td>android</td><td>native-bridge-unit</td><td>transcriptionState=off
+<tr class="pending"><td><code>android.talkmode.native-bridge</code><br>TalkMode Android capture lifecycle, transcript, permission, and barge-in bridge contracts</td><td>pending</td><td>android</td><td>native-bridge-unit</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=already-listening-wake-inert
 noiseRejection=echo-self-voice
-voices=owner</td><td>packages/app/android is not generated; run packages/app cap:sync:android or build:android first</td><td><code>./gradlew :elizaos-capacitor-talkmode:testDebugUnitTest</code></td><td>plugins/plugin-native-talkmode/android/src/test/java</td></tr>
-<tr class="skip"><td><code>android.swabble.native-bridge</code><br>Swabble Android wake-firing -&gt; JS bridge event contract</td><td>skip</td><td>android</td><td>native-bridge-unit</td><td>transcriptionState=off
+voices=owner</td><td>Android voice bridge Gradle project exists</td><td><code>./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest</code></td><td>plugins/plugin-native-talkmode/android/src/test/java</td></tr>
+<tr class="pending"><td><code>android.swabble.native-bridge</code><br>Swabble Android wake-firing -&gt; JS bridge event contract</td><td>pending</td><td>android</td><td>native-bridge-unit</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
-voices=owner</td><td>packages/app/android is not generated; run packages/app cap:sync:android or build:android first</td><td><code>./gradlew :elizaos-capacitor-swabble:testDebugUnitTest</code></td><td>plugins/plugin-native-swabble/android/src/test/java</td></tr>
+voices=owner</td><td>Android voice bridge Gradle project exists</td><td><code>./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest</code></td><td>plugins/plugin-native-swabble/android/src/test/java</td></tr>
 <tr class="skip"><td><code>wake.openwakeword.real-head</code><br>Real openWakeWord head wake-context cells</td><td>skip</td><td>linux</td><td>wakeword-device-gap</td><td>transcriptionState=on
 chimeIn=should-not-respond
 wakewordContext=mid-transcription-wake
 noiseRejection=overlapping-speech
-voices=multi-speaker</td><td>ELIZA_OPENWAKEWORD_REAL_READY is not set for a real wake-word head run</td><td><code>bun run --cwd plugins/plugin-local-inference voice:workbench --real</code></td><td>$VOICE_REAL_MATRIX_OUT/voice-workbench-real</td></tr>
-<tr class="skip"><td><code>stt.stage-b.evaluation</code><br>Stage-B STT evaluation: iOS SFSpeechRecognizer vs Android SpeechRecognizer vs fused ASR</td><td>skip</td><td>android</td><td>stt-evaluation</td><td>transcriptionState=on
+voices=multi-speaker</td><td>ELIZA_VOICE_OPENWAKEWORD_REPORT is not set to a reviewed real-head openWakeWord JSON report</td><td><code>node packages/scripts/voice-openwakeword-eval.mjs</code></td><td>$ELIZA_VOICE_MATRIX_OUT/wake.openwakeword.real-head/openwakeword-eval.json
+$ELIZA_VOICE_OPENWAKEWORD_REPORT</td></tr>
+<tr class="pending"><td><code>stt.stage-b.apple-sfspeech</code><br>Stage-B STT Apple arm: real on-device SFSpeechRecognizer latency/WER over synthesised speech (quiet + 10dB noise)</td><td>pending</td><td>macos-electrobun</td><td>stt-evaluation</td><td>transcriptionState=on
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=noisy-reverberant
-voices=multi-speaker</td><td>Stage-B STT battery/latency evaluation needs paired iOS+Android device runners and power telemetry</td><td><code>bun packages/scripts/voice-matrix.mjs --stage-b-eval-placeholder</code></td><td>.github/issue-evidence/9147-voice-asr-m4max.md</td></tr></tbody></table>
+voices=owner</td><td>macOS on-device SFSpeechRecognizer + say/afconvert available for a real Stage-B latency/WER measurement</td><td><code>node packages/scripts/stage-b-stt-bench.mjs</code></td><td>.github/issue-evidence/9958-stt-stage-b-eval</td></tr>
+<tr class="skip"><td><code>stt.stage-b.evaluation</code><br>Stage-B STT evaluation: iOS battery/energy + Android SpeechRecognizer (NNAPI) vs fused ASR</td><td>skip</td><td>android</td><td>stt-evaluation</td><td>transcriptionState=on
+chimeIn=should-respond
+wakewordContext=idle-wake
+noiseRejection=noisy-reverberant
+voices=multi-speaker</td><td>ELIZA_VOICE_STAGE_B_REPORT is not set to a reviewed iOS+Android+fused ASR Stage-B JSON report</td><td><code>node packages/scripts/voice-stage-b-eval.mjs</code></td><td>$ELIZA_VOICE_MATRIX_OUT/stt.stage-b.evaluation/stage-b-eval.json
+$ELIZA_VOICE_STAGE_B_REPORT</td></tr></tbody></table>

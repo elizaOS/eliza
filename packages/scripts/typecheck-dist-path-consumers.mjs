@@ -99,6 +99,12 @@ for (const config of configs) {
       stdio: "inherit",
     },
   );
+  if (result.error) {
+    console.error(
+      `[typecheck:dist] failed to start ${tsc}: ${result.error.message}`,
+    );
+    process.exit(1);
+  }
   if (result.status !== 0) {
     console.error(
       `[typecheck:dist] failed in ${rel} with exit code ${result.status}`,

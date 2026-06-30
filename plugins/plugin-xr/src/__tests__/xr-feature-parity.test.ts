@@ -140,7 +140,6 @@ const VOICE_ROUTE_SAMPLE_IDS = [
 
 // The plugin manifest paths (same as plugin-tui-view-coverage.test.ts)
 const VIEW_MANIFESTS = [
-  "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",

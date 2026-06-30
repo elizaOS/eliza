@@ -14,7 +14,10 @@ import { APP_PAUSE_EVENT } from "./events";
 import {
   getRetainedModuleMaxEntries,
   getRetainedModuleTtlMs,
+  HEAP_PRESSURE_EVENT,
+  planModuleCacheEvictions,
 } from "./state/bounded-view-lru";
+import { installHeapPressureMonitor } from "./state/heap-pressure-monitor";
 
 type RetainedCleanup = () => void | Promise<void>;
 
@@ -44,6 +47,7 @@ const retainedModuleCache = new Map<
 
 let retainedModuleLifecycleInstalled = false;
 let pruneOnPressure: (() => void) | null = null;
+let pruneOnHeapPressure: (() => void) | null = null;
 let pruneOnVisibilityHidden: (() => void) | null = null;
 let pruneOnAppPause: (() => void) | null = null;
 
@@ -138,28 +142,18 @@ function armRetentionTimer(entry: RetainedModuleEntry<object>): void {
 export function pruneRetainedLazyModules(
   options: { force?: boolean; reason?: EvictReason } = {},
 ): void {
-  const now = Date.now();
-  const ttlMs = options.force ? 0 : getRetainedModuleTtlMs();
-  const reason = options.reason ?? (options.force ? "memorypressure" : "ttl");
-  const idleEntries = [...retainedModuleCache.values()]
-    .filter((entry) => entry.refCount === 0)
-    .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-
-  for (const entry of idleEntries) {
-    if (options.force || now - entry.lastUsedAt >= ttlMs) {
-      cleanupEntry(entry, reason);
-    }
-  }
-
-  const maxEntries = options.force ? 0 : getRetainedModuleMaxEntries();
-  let retained = [...retainedModuleCache.values()].filter(
-    (entry) => entry.refCount === 0,
-  );
-  retained = retained.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-  while (retainedModuleCache.size > maxEntries && retained.length > 0) {
-    const entry = retained.shift();
-    if (!entry) break;
-    cleanupEntry(entry, options.reason ?? "lru");
+  const ttlReason =
+    options.reason ?? (options.force ? "memorypressure" : "ttl");
+  const lruReason = options.reason ?? "lru";
+  const plan = planModuleCacheEvictions([...retainedModuleCache.values()], {
+    now: Date.now(),
+    ttlMs: options.force ? 0 : getRetainedModuleTtlMs(),
+    maxEntries: options.force ? 0 : getRetainedModuleMaxEntries(),
+    force: options.force ?? false,
+    totalSize: retainedModuleCache.size,
+  });
+  for (const { entry, phase } of plan) {
+    cleanupEntry(entry, phase === "ttl" ? ttlReason : lruReason);
   }
 }
 
@@ -168,9 +162,16 @@ function installRetainedModuleLifecycle(): void {
     return;
   }
   retainedModuleLifecycleInstalled = true;
+  installHeapPressureMonitor();
   pruneOnPressure = () => {
     scheduleIdleWork(() =>
       pruneRetainedLazyModules({ force: true, reason: "memorypressure" }),
+    );
+  };
+  // Real heap-driven eviction (#10196) — see DynamicViewLoader for rationale.
+  pruneOnHeapPressure = () => {
+    scheduleIdleWork(() =>
+      pruneRetainedLazyModules({ force: true, reason: "heap-pressure" }),
     );
   };
   pruneOnVisibilityHidden = () => {
@@ -186,6 +187,7 @@ function installRetainedModuleLifecycle(): void {
     );
   };
   window.addEventListener("memorypressure", pruneOnPressure);
+  document.addEventListener(HEAP_PRESSURE_EVENT, pruneOnHeapPressure);
   document.addEventListener("visibilitychange", pruneOnVisibilityHidden);
   document.addEventListener(APP_PAUSE_EVENT, pruneOnAppPause);
 }
@@ -317,6 +319,9 @@ export function __resetRetainedLazyModulesForTests(): void {
   if (typeof window !== "undefined" && pruneOnPressure) {
     window.removeEventListener("memorypressure", pruneOnPressure);
   }
+  if (typeof document !== "undefined" && pruneOnHeapPressure) {
+    document.removeEventListener(HEAP_PRESSURE_EVENT, pruneOnHeapPressure);
+  }
   if (typeof document !== "undefined" && pruneOnVisibilityHidden) {
     document.removeEventListener("visibilitychange", pruneOnVisibilityHidden);
   }
@@ -324,6 +329,7 @@ export function __resetRetainedLazyModulesForTests(): void {
     document.removeEventListener(APP_PAUSE_EVENT, pruneOnAppPause);
   }
   pruneOnPressure = null;
+  pruneOnHeapPressure = null;
   pruneOnVisibilityHidden = null;
   pruneOnAppPause = null;
   retainedModuleLifecycleInstalled = false;

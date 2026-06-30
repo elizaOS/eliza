@@ -9,7 +9,8 @@
  * on. The emitted `dist/` is byte-identical to the previous hand-rolled build.
  */
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import {
   type ExternalsFromPackageJsonOptions,
@@ -50,7 +51,7 @@ export interface DtsShim {
 export interface BuildPluginConfig {
   /** Package name, for log lines only. */
   name: string;
-  /** Remove `dist/` before building (via the hardened rm helper). Default: false. */
+  /** Remove `dist/` before building (via the hardened rm helper). Default: true. */
   clean?: boolean;
   /** "auto" derives externals from package.json; or pass an explicit list. */
   externals?: "auto" | readonly string[];
@@ -89,6 +90,16 @@ export interface BuildPluginConfig {
    * single-/multi-target adopters that don't set it are unaffected.
    */
   flatten?: ReadonlyArray<{ from: string; to?: string }>;
+  /**
+   * After declaration emit (+ any `dtsShims`), copy an emitted file under
+   * `dist/<from>` to `dist/<to>`. Reproduces the hand-rolled
+   * `copyFileSync("dist/index.d.ts", "dist/index.d.mts")` step some plugins use
+   * to publish a `.d.mts` sibling of a `tsc`-generated `.d.ts`. Unlike a
+   * `dtsShim` (a frozen literal that would silently diverge from generated
+   * output on any source change), this copies the real emitted file. Off by
+   * default; adopters that don't set it are unaffected.
+   */
+  dtsCopies?: ReadonlyArray<{ from: string; to: string }>;
 }
 
 const RM_RECURSIVE = resolve(
@@ -108,15 +119,37 @@ const REWRITE_DIST_IMPORTS = resolve(
 );
 
 /**
+ * Absolute path to the workspace `tsc` JS entry. Resolved via node module
+ * resolution so it works regardless of the node_modules layout — a fresh CI
+ * checkout, a hoisted/symlinked install, or a git worktree that borrows a
+ * parent's node_modules — instead of assuming a fixed `../node_modules/...`
+ * offset (which is absent in a worktree). `buildPlugin` runs it as
+ * `node ${TSC_BIN}`, so it needs no `node_modules/.bin` on PATH: `Bun.$`
+ * resolves commands from the bun process's startup PATH, which a bare
+ * `bun test` step does not extend (only `bun run` does).
+ */
+const TSC_BIN = (() => {
+  try {
+    return createRequire(import.meta.url).resolve("typescript/bin/tsc");
+  } catch {
+    return resolve(
+      import.meta.dir,
+      "..",
+      "node_modules",
+      "typescript",
+      "bin",
+      "tsc",
+    );
+  }
+})();
+
+/**
  * Recursively move every file under `fromDir` into `toDir`, preserving the
  * sub-tree below `fromDir` and creating parent dirs as needed. A plain rename
  * preserves file bytes (and any inner `//# sourceMappingURL` / map `file`
  * references) exactly. The caller removes the now-empty `fromDir`.
  */
-async function moveTreeContents(
-  fromDir: string,
-  toDir: string,
-): Promise<void> {
+async function moveTreeContents(fromDir: string, toDir: string): Promise<void> {
   const entries = await readdir(fromDir, {
     recursive: true,
     withFileTypes: true,
@@ -134,7 +167,7 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
   const totalStart = Date.now();
   const distDir = join(process.cwd(), "dist");
 
-  if (config.clean && existsSync(distDir)) {
+  if ((config.clean ?? true) && existsSync(distDir)) {
     await Bun.$`node ${RM_RECURSIVE} ${distDir}`;
   }
   await mkdir(distDir, { recursive: true });
@@ -194,8 +227,9 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     const project = config.dtsProject;
     const emitDeclOnly = config.dtsEmitDeclarationOnly ?? false;
     const run = emitDeclOnly
-      ? () => Bun.$`tsc --project ${project} --emitDeclarationOnly --noCheck`
-      : () => Bun.$`tsc --project ${project} --noCheck`;
+      ? () =>
+          Bun.$`node ${TSC_BIN} --project ${project} --emitDeclarationOnly --noCheck`
+      : () => Bun.$`node ${TSC_BIN} --project ${project} --noCheck`;
     if (config.dtsTolerant) {
       try {
         await run();
@@ -213,6 +247,12 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     const target = join(distDir, shim.path);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, shim.content, "utf8");
+  }
+
+  for (const { from, to } of config.dtsCopies ?? []) {
+    const dest = join(distDir, to);
+    await mkdir(dirname(dest), { recursive: true });
+    await copyFile(join(distDir, from), dest);
   }
 
   if (config.rewriteDistImports) {

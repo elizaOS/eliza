@@ -84,24 +84,7 @@ import type {
 
 export type { UiShellMode } from "./ui-preferences";
 
-/** 3D companion render power: full quality, OS/battery-aware default, or always efficient. */
-export type CompanionVrmPowerMode = "quality" | "balanced" | "efficiency";
-
-/** When to cap the companion VRM loop at ~half the display refresh rate. */
-export type CompanionHalfFramerateMode = "off" | "when_saving_power" | "always";
-export type ShellView = "companion" | "character" | "desktop";
-
-/**
- * Optional flags for {@link AppActions.completeFirstRun} when finishing the
- * first-run setup.
- */
-export interface CompleteFirstRunOptions {
-  /**
-   * When true, opens the `@elizaos/plugin-companion` overlay and syncs the URL to
-   * `/apps/companion`. Ignored when companion mode or the apps surface is disabled.
-   */
-  launchCompanionOverlay?: boolean;
-}
+export type ShellView = "character" | "desktop";
 
 /** Deferred work scheduling for multi-step navigation. */
 export interface NavigationEventsApi {
@@ -353,15 +336,6 @@ export interface AppState {
   /** True when there is a previous background config to undo to. */
   canUndoBackground: boolean;
   ownerName: string | null;
-  /** VRM quality vs GPU use: always full quality, battery-aware (default), or always efficient. */
-  companionVrmPowerMode: CompanionVrmPowerMode;
-  /**
-   * When true and the document is hidden, keep the VRM render loop alive
-   * but hide the 3D environment (lower GPU than full scene).
-   */
-  companionAnimateWhenHidden: boolean;
-  /** When to cap companion at ~half display Hz (independent of DPR/shadows). */
-  companionHalfFramerateMode: CompanionHalfFramerateMode;
   connected: boolean;
   agentStatus: AgentStatus | null;
   firstRunComplete: boolean;
@@ -734,8 +708,6 @@ export interface AppState {
   /** When true, the game iframe persists as a floating overlay across all tabs. */
   gameOverlayEnabled: boolean;
 
-  /** When true, the companion app is actively running (full-screen VRM scene). */
-  companionAppRunning: boolean;
   /** Name of the active full-screen overlay app, or null if none. */
   activeOverlayApp: string | null;
 
@@ -801,9 +773,6 @@ export interface AppActions {
   setBackgroundConfig: (config: BackgroundConfig) => void;
   /** Restore the most recent previous background config (no-op when empty). */
   undoBackgroundConfig: () => void;
-  setCompanionVrmPowerMode: (mode: CompanionVrmPowerMode) => void;
-  setCompanionAnimateWhenHidden: (enabled: boolean) => void;
-  setCompanionHalfFramerateMode: (mode: CompanionHalfFramerateMode) => void;
 
   // Lifecycle
   handleStart: () => Promise<void>;
@@ -994,7 +963,6 @@ export interface AppActions {
   handleCharacterMessageExamplesInput: (value: string) => void;
 
   // First-run
-  handleFirstRunNext: (options?: FirstRunNextOptions) => Promise<void>;
   handleFirstRunBack: () => void;
   /** Jump to an earlier step in the active track (sidebar); backward-only. */
   handleFirstRunJumpToStep: (step: SetupStep) => void;
@@ -1008,14 +976,8 @@ export interface AppActions {
    * Dispatches FIRST_RUN_COMPLETE to the startup coordinator.
    *
    * The full first-run flow passes an explicit landing tab when needed.
-   *
-   * Passing `{ launchCompanionOverlay: true }` lands first-time setup in
-   * `@elizaos/plugin-companion` at `/apps/companion`.
    */
-  completeFirstRun: (
-    landingTab?: Tab,
-    options?: CompleteFirstRunOptions,
-  ) => void;
+  completeFirstRun: (landingTab?: Tab) => void;
 
   // Cloud
   handleCloudLogin: (prePoppedWindow?: Window | null) => Promise<void>;
@@ -1025,7 +987,6 @@ export interface AppActions {
 
   // Multi-agent
   switchAgentProfile: (profileId: string) => void;
-  handleCloudFirstRunFinish: () => Promise<void>;
 
   // Updates
   loadUpdateStatus: (force?: boolean) => Promise<void>;

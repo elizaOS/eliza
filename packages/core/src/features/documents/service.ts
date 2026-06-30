@@ -946,9 +946,10 @@ export class DocumentService extends Service {
 			// Vector mode ranks purely by cosine: do NOT pass `query` (that triggers
 			// a runtime BM25 rerank that drops zero-keyword-overlap candidates — i.e.
 			// silently keyword-filters the semantic results this mode exists to
-			// return).
+			// return). `count` is the param the adapter honours (`limit` is ignored,
+			// so the pool was silently capped at the default 10).
 			...filterScope,
-			limit: 20,
+			count: 20,
 			match_threshold: 0.1,
 			accessContext,
 		});
@@ -1049,12 +1050,14 @@ export class DocumentService extends Service {
 		// Fetch a larger PURE-VECTOR candidate set so the explicit BM25 blend below
 		// can re-rank meaningfully. Do NOT pass `query`: that triggers a runtime
 		// BM25 rerank that drops zero-overlap candidates *before* the blend, so the
-		// 0.6·vector + 0.4·bm25 combine never sees the semantic-only matches.
+		// 0.6·vector + 0.4·bm25 combine never sees the semantic-only matches. And
+		// use `count` (the adapter honours it; `limit` was ignored → pool capped at
+		// the default 10, defeating "fetch a larger candidate set").
 		const candidates = await this.runtime.searchMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			embedding,
 			...filterScope,
-			limit: 40,
+			count: 40,
 			match_threshold: 0.05,
 			accessContext,
 		});

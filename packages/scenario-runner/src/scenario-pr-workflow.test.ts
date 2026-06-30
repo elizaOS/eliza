@@ -50,7 +50,6 @@ const appPackagedRegressionPath = resolve(
 const appCoreLiveScreenshotPaths = [
   "../../app-core/test/app/memory-relationships.real.e2e.test.ts",
   "../../app-core/test/app/qa-checklist.real.e2e.test.ts",
-  "../../app-core/test/app/first-run-companion.live.e2e.test.ts",
 ].map((relativePath) => resolve(import.meta.dirname, relativePath));
 const computerUseBrowserPath = resolve(
   import.meta.dirname,
@@ -124,9 +123,9 @@ const deterministicAgentSkillsActionsScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-agent-skills-actions.scenario.ts",
 );
-const deterministicMediaEmoteActionsScenarioPath = resolve(
+const deterministicMediaActionsScenarioPath = resolve(
   import.meta.dirname,
-  "../test/scenarios/deterministic-media-emote-actions.scenario.ts",
+  "../test/scenarios/deterministic-media-actions.scenario.ts",
 );
 const deterministicScenarioReadmePath = resolve(
   import.meta.dirname,
@@ -200,8 +199,8 @@ describe("scenario PR workflow contract", () => {
       deterministicAgentSkillsActionsScenarioPath,
       "utf8",
     );
-    const deterministicMediaEmoteActionsScenario = readFileSync(
-      deterministicMediaEmoteActionsScenarioPath,
+    const deterministicMediaActionsScenario = readFileSync(
+      deterministicMediaActionsScenarioPath,
       "utf8",
     );
     const deterministicScenarioReadme = readFileSync(
@@ -527,13 +526,12 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicAgentSkillsActionsScenario).toContain(
       "SKILL_UNINSTALL",
     );
-    expect(deterministicMediaEmoteActionsScenario).toContain(
-      "Deterministic media generation and companion emote actions",
+    expect(deterministicMediaActionsScenario).toContain(
+      "Deterministic media generation actions",
     );
-    expect(deterministicMediaEmoteActionsScenario).toContain(
+    expect(deterministicMediaActionsScenario).toContain(
       "GENERATE_MEDIA_AUDIO",
     );
-    expect(deterministicMediaEmoteActionsScenario).toContain("PLAY_EMOTE");
     expect(deterministicScenarioReadme).toContain(
       "strict Stage 1 and planner fixtures",
     );

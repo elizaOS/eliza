@@ -250,3 +250,98 @@ for (const target of CONNECTORS) {
     );
   });
 }
+
+// ── #10201: shared connector-setup contract (single source of truth) ────────
+//
+// `SetupState` / `SetupStatusResponse` / `SetupErrorResponse` were each
+// re-declared verbatim in every connector's setup-routes file. They are now
+// owned by `@elizaos/core` (`types/connector-setup.ts`) and re-exported from
+// `@elizaos/app-core/api/setup-contract` for path stability. These tests pin
+// that single definition end to end: the contract owner (core), the server
+// host (app-core), and each client (connector plugin) must all reference the
+// SAME `SetupState` — no local mirror may drift.
+
+const CORE_CONTRACT = "packages/core/src/types/connector-setup.ts";
+const APP_CORE_REEXPORT = "packages/app-core/src/api/setup-contract.ts";
+const EXPECTED_SETUP_STATES = ["configuring", "error", "idle", "paired"];
+
+// Every file that previously declared a local `type SetupState` mirror and now
+// must reference the shared contract from `@elizaos/core` instead. (bluebubbles
+// references it via `SetupStatusResponse`; telegram keeps a *specialized*
+// `SetupStatusResponse` but still imports the shared `SetupState` — both are
+// fine. The invariant pinned below is: no file re-declares `type SetupState`.)
+const SETUP_STATE_CONSUMERS = [
+  "plugins/plugin-bluebubbles/src/setup-routes.ts",
+  "plugins/plugin-bluebubbles/src/data-routes.ts",
+  "plugins/plugin-discord/setup-routes.ts",
+  "plugins/plugin-discord/data-routes.ts",
+  "plugins/plugin-discord-local/src/index.ts",
+  "plugins/plugin-imessage/src/setup-routes.ts",
+  "plugins/plugin-imessage/src/data-routes.ts",
+  "plugins/plugin-signal/src/setup-routes.ts",
+  "plugins/plugin-telegram/src/setup-routes.ts",
+  "plugins/plugin-telegram/src/account-setup-routes.ts",
+];
+
+// The anti-drift invariant: no connector may re-declare the lifecycle union.
+const LOCAL_SETUP_STATE_DECL = /^\s*(?:export\s+)?type\s+SetupState\s*=/m;
+// References the shared contract from core — any of the connector-setup symbols
+// counts (a file may need only `SetupStatusResponse` or `buildSetupError`).
+// Matches both `import { ... } from "@elizaos/core"` and app-core's
+// `export type { ... } from "@elizaos/core"` re-export.
+const CORE_CONTRACT_REFERENCE =
+  /(?:import|export)\s*(?:type\s*)?\{[^}]*\b(?:SetupState|SetupStatusResponse|SetupErrorResponse|buildSetupError|SETUP_ERROR_CODES)\b[^}]*\}\s*from\s*["']@elizaos\/core["']/s;
+
+function readRepoFile(relPath: string): string {
+  return readFileSync(path.join(REPO_ROOT, relPath), "utf8");
+}
+
+describe("connector-setup shared contract (#10201)", () => {
+  test("@elizaos/core owns the canonical SetupState union", () => {
+    expect(
+      existsSync(path.join(REPO_ROOT, CORE_CONTRACT)),
+      `missing canonical contract module ${CORE_CONTRACT}`,
+    ).toBe(true);
+    const source = readRepoFile(CORE_CONTRACT);
+    const match = source.match(/type\s+SetupState\s*=\s*([^;]+);/);
+    expect(match, "core does not declare `type SetupState`").not.toBeNull();
+    const members = (match?.[1] ?? "")
+      .split("|")
+      .map((part) => part.trim().replace(/^["']|["']$/g, ""))
+      .filter(Boolean)
+      .sort();
+    expect(members).toEqual(EXPECTED_SETUP_STATES);
+  });
+
+  test("app-core re-exports the contract from @elizaos/core (no local copy)", () => {
+    const source = readRepoFile(APP_CORE_REEXPORT);
+    expect(
+      CORE_CONTRACT_REFERENCE.test(source),
+      "app-core setup-contract must re-export the contract from @elizaos/core",
+    ).toBe(true);
+    expect(
+      LOCAL_SETUP_STATE_DECL.test(source),
+      "app-core setup-contract must not declare a local `type SetupState`",
+    ).toBe(false);
+  });
+
+  for (const relPath of SETUP_STATE_CONSUMERS) {
+    describe(relPath, () => {
+      const source = readRepoFile(relPath);
+
+      test("references the shared connector-setup contract from @elizaos/core", () => {
+        expect(
+          CORE_CONTRACT_REFERENCE.test(source),
+          `${relPath} must import the connector-setup contract from @elizaos/core`,
+        ).toBe(true);
+      });
+
+      test("does not re-declare a local `type SetupState`", () => {
+        expect(
+          LOCAL_SETUP_STATE_DECL.test(source),
+          `${relPath} still declares a local SetupState — the mirror must be removed`,
+        ).toBe(false);
+      });
+    });
+  }
+});

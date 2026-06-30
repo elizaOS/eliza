@@ -100,5 +100,5 @@ USE_SKILL parent-agent {"mode":"cloud-command","command":"domains.dns.list","par
 
 - **Not for buying a new domain.** Use `eliza-cloud-buy-domain`.
 - **Not for transferring a domain into Eliza Cloud.** Out of scope for v1.
-- **Not for renewing.** Cloudflare-registered domains auto-renew unless the user turned it off in the dashboard.
+- **Not for renewing.** Renewal billing for cloudflare-registered domains is handled by a cloud-side renewal cron (#10246), not by this skill. Don't promise a specific auto-renew behavior from here; point the user to the dashboard for renewal settings.
 - **Not a billing surface.** DNS edits are free; this skill does not debit credits.

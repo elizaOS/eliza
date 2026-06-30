@@ -411,8 +411,6 @@ export async function handleMiscRoutes(
     !(
       ctx.pathname === "/api/restart" ||
       ctx.pathname === "/api/ingest/share" ||
-      ctx.pathname === "/api/emotes" ||
-      ctx.pathname === "/api/emote" ||
       ctx.pathname === "/api/agent/event" ||
       /^\/api\/agents\/[^/]+\/event$/.test(ctx.pathname) ||
       ctx.pathname === "/api/terminal/run" ||

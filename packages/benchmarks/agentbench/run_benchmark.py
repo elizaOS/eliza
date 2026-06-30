@@ -271,15 +271,25 @@ async def main() -> int:
     if runtime_name == "eliza":
         runtime_name = "bridge"
     if runtime_name in {"bridge", "elizaos"}:
-        from eliza_adapter import ElizaServerManager
         from eliza_adapter.agentbench import ElizaAgentHarness
 
         _load_dotenv()
         os.environ["BENCHMARK_HARNESS"] = "eliza"
         os.environ["ELIZA_BENCH_HARNESS"] = "eliza"
-        eliza_server = ElizaServerManager()
-        eliza_server.start()
-        eliza_harness = ElizaAgentHarness(eliza_server.client)
+        if os.environ.get("ELIZA_BENCH_URL"):
+            # Reuse an already-running benchmark server instead of cold-booting
+            # one per benchmark (matches the mint/tau_bench reuse pattern).
+            from eliza_adapter.client import ElizaClient
+
+            client = ElizaClient()
+            client.wait_until_ready(timeout=180)
+            eliza_harness = ElizaAgentHarness(client)
+        else:
+            from eliza_adapter import ElizaServerManager
+
+            eliza_server = ElizaServerManager()
+            eliza_server.start()
+            eliza_harness = ElizaAgentHarness(eliza_server.client)
         runtime._app_harness = eliza_harness  # type: ignore[attr-defined]
         print("Eliza benchmark server connected")
     elif runtime_name in {"hermes", "openclaw", "smithers"}:

@@ -26,8 +26,13 @@ import type {
 import { logger } from "@elizaos/core";
 import { getCloudClient, resolveCloudApiKey } from "../client.js";
 
-/** Draft sentinel URL the server treats as "not yet deployed" (no launch alert). */
-export const DRAFT_APP_URL = "https://placeholder.local";
+/**
+ * Draft sentinel URL the server recognizes as "not yet deployed" (suppresses the
+ * launch alert + the custom-domain DNS exact-match guard skips it). Must match
+ * the server/fixtures sentinel exactly — `https://placeholder.invalid` — or a
+ * draft app surfaces a fake URL and a pre-deploy domain buy would CNAME to it.
+ */
+export const DRAFT_APP_URL = "https://placeholder.invalid";
 
 const NO_KEY_MESSAGE =
   "I can't reach Eliza Cloud yet — no Cloud API key is configured. Add your ELIZAOS_CLOUD_API_KEY and I can create apps for you.";
@@ -178,6 +183,13 @@ function buildCreateBody(intent: CreateAppIntent): CreateAppInput {
   const body: CreateAppInput = {
     name: intent.name as string,
     app_url: DRAFT_APP_URL,
+    // Create a TEMPLATE app (no GitHub repo). The agent has no build-from-repo
+    // flow, and build-from-repo is intentionally OFF, so a repo-backed app would
+    // have no image and DEPLOY_APP would throw "build-from-repo is disabled / no
+    // image to deploy". With skipGitHubRepo the server stamps a first-party,
+    // allowlisted template image onto metadata.imageTag at create time, so the
+    // create -> deploy loop resolves a real image instead of failing.
+    skipGitHubRepo: true,
   };
   if (intent.description) body.description = intent.description;
   if (intent.monetization) body.monetization_enabled = true;

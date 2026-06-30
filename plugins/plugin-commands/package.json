@@ -59,7 +59,7 @@
 		"vitest": "^4.0.18"
 	},
 	"scripts": {
-		"build": "bun run build.ts && tsc --emitDeclarationOnly --noCheck",
+		"build": "bun run build.ts",
 		"dev": "bun --hot build.ts",
 		"test": "vitest run",
 		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",

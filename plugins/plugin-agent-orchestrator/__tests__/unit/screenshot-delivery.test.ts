@@ -1,7 +1,9 @@
+import { logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   collectScreenshotPaths,
   deliverScreenshots,
+  MAX_SCREENSHOT_TOTAL_BYTES,
   MAX_SCREENSHOTS,
   screenshotsToAttachments,
 } from "../../src/services/screenshot-delivery.js";
@@ -53,10 +55,49 @@ describe("collectScreenshotPaths (#8904)", () => {
 describe("screenshotsToAttachments (#8904)", () => {
   it("builds image Media and caps the count", () => {
     const many = Array.from({ length: 9 }, (_, i) => `/tmp/${i}.png`);
-    const atts = screenshotsToAttachments(many);
+    const atts = screenshotsToAttachments(many, { getSize: () => 100 });
     expect(atts).toHaveLength(MAX_SCREENSHOTS);
     expect(atts[0]).toMatchObject({ url: "/tmp/0.png", contentType: "image" });
     expect(atts[0].title).toBe("0.png");
+  });
+
+  it("caps total known bytes across the forwarded screenshots", () => {
+    const atts = screenshotsToAttachments(
+      ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"],
+      {
+        maxCount: 5,
+        maxTotalBytes: 10,
+        getSize: (path) => (path.endsWith("b.png") ? 7 : 4),
+      },
+    );
+    expect(atts.map((att) => att.url)).toEqual(["/tmp/a.png", "/tmp/c.png"]);
+  });
+
+  it("skips a single screenshot larger than the total byte budget", () => {
+    const atts = screenshotsToAttachments(["/tmp/huge.png", "/tmp/small.png"], {
+      maxTotalBytes: MAX_SCREENSHOT_TOTAL_BYTES,
+      maxFileBytes: Number.POSITIVE_INFINITY,
+      getSize: (path) =>
+        path.includes("huge")
+          ? MAX_SCREENSHOT_TOTAL_BYTES + 1
+          : MAX_SCREENSHOT_TOTAL_BYTES,
+    });
+    expect(atts.map((att) => att.url)).toEqual(["/tmp/small.png"]);
+  });
+
+  it("skips a single screenshot over the per-file cap (Telegram sendPhoto limit)", () => {
+    const atts = screenshotsToAttachments(["/tmp/big.png", "/tmp/ok.png"], {
+      maxFileBytes: 1000,
+      getSize: (path) => (path.includes("big") ? 2000 : 500),
+    });
+    expect(atts.map((att) => att.url)).toEqual(["/tmp/ok.png"]);
+  });
+
+  it("skips paths whose size cannot be read instead of forwarding them", () => {
+    const atts = screenshotsToAttachments(["/tmp/gone.png", "/tmp/ok.png"], {
+      getSize: (path) => (path.includes("ok") ? 100 : undefined),
+    });
+    expect(atts.map((att) => att.url)).toEqual(["/tmp/ok.png"]);
   });
 });
 
@@ -68,6 +109,7 @@ describe("deliverScreenshots (#8904)", () => {
       { source: "telegram", roomId: ROOM },
       ["/tmp/a.png", "/tmp/b.png"],
       "fix-ui",
+      { getSize: () => 100 },
     );
     expect(n).toBe(2);
     const [target, content] = send.mock.calls[0];
@@ -84,14 +126,37 @@ describe("deliverScreenshots (#8904)", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("warns and trims when more screenshots are supplied than fit the budget", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const send = vi.fn(async () => undefined);
+    const many = Array.from({ length: 9 }, (_, i) => `/tmp/${i}.png`);
+    const n = await deliverScreenshots(
+      send,
+      { source: "telegram", roomId: ROOM },
+      many,
+      undefined,
+      { getSize: () => 100 },
+    );
+    expect(n).toBe(MAX_SCREENSHOTS);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("omitted 4 of 9 screenshot(s)"),
+    );
+    warn.mockRestore();
+  });
+
   it("never throws when the send fails (best-effort)", async () => {
     const send = vi.fn(async () => {
       throw new Error("upload failed");
     });
     expect(
-      await deliverScreenshots(send, { source: "t", roomId: ROOM }, [
-        "/tmp/a.png",
-      ]),
+      await deliverScreenshots(
+        send,
+        { source: "t", roomId: ROOM },
+        ["/tmp/a.png"],
+        undefined,
+        { getSize: () => 100 },
+      ),
     ).toBe(0);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });

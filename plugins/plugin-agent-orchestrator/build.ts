@@ -12,6 +12,9 @@
  */
 import { buildPlugin } from "../plugin-build";
 
+const reexport = (from: string) =>
+  `export * from "${from}";\nexport { default } from "${from}";\n`;
+
 await buildPlugin({
   name: "@elizaos/plugin-agent-orchestrator",
   externals: "auto",
@@ -34,17 +37,8 @@ await buildPlugin({
   ],
   dtsProject: "tsconfig.build.json",
   dtsShims: [
-    {
-      path: "index.d.ts",
-      content: `export * from "./node/index";\nexport { default } from "./node/index";\n`,
-    },
-    {
-      path: "node/index.d.ts",
-      content: `export * from "./index.node";\nexport { default } from "./index.node";\n`,
-    },
-    {
-      path: "cjs/index.d.ts",
-      content: `export * from "./index.node";\nexport { default } from "./index.node";\n`,
-    },
+    { path: "index.d.ts", content: reexport("./node/index") },
+    { path: "node/index.d.ts", content: reexport("./index.node") },
+    { path: "cjs/index.d.ts", content: reexport("./index.node") },
   ],
 });

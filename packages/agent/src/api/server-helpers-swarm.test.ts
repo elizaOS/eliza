@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
@@ -502,5 +503,75 @@ describe("routeAutonomyTextToUser", () => {
         }),
       }),
     );
+  });
+
+  it("Bug A: a duplicate relay of an already-delivered reply is suppressed (one memory + one broadcast)", async () => {
+    const createMemory = vi.fn();
+    const broadcastWs = vi.fn();
+    const state = {
+      runtime: {
+        agentId: "00000000-0000-0000-0000-000000000001",
+        createMemory,
+      },
+      activeConversationId: "conv-1",
+      conversations: new Map([
+        [
+          "conv-1",
+          {
+            id: "conv-1",
+            roomId: "00000000-0000-0000-0000-000000000002",
+            updatedAt: "2026-05-07T00:00:00.000Z",
+          },
+        ],
+      ]),
+      broadcastWs,
+      deliveryDedupe: createDeliveryDedupeState(),
+    } as never;
+
+    // A persisted source (not ephemeral) so it createMemory()s + broadcasts.
+    await routeAutonomyTextToUser(state, "the same reply", "autonomy");
+    // A second sink delivers the identical reply moments later (the fan-out
+    // that caused the double in production).
+    await routeAutonomyTextToUser(state, "the same reply", "autonomy");
+
+    // Exactly one memory written and one proactive-message broadcast.
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    expect(broadcastWs).toHaveBeenCalledTimes(1);
+  });
+
+  it("Bug A: an ephemeral broadcast does NOT suppress a later durable persist of the same text", async () => {
+    const createMemory = vi.fn();
+    const broadcastWs = vi.fn();
+    const state = {
+      runtime: {
+        agentId: "00000000-0000-0000-0000-000000000001",
+        createMemory,
+      },
+      activeConversationId: "conv-1",
+      conversations: new Map([
+        [
+          "conv-1",
+          {
+            id: "conv-1",
+            roomId: "00000000-0000-0000-0000-000000000002",
+            updatedAt: "2026-05-07T00:00:00.000Z",
+          },
+        ],
+      ]),
+      broadcastWs,
+      deliveryDedupe: createDeliveryDedupeState(),
+    } as never;
+
+    // Ephemeral source: broadcasts but does NOT persist (and must not anchor
+    // the dedupe guard).
+    await routeAutonomyTextToUser(state, "shared status", "swarm_synthesis");
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(broadcastWs).toHaveBeenCalledTimes(1);
+
+    // A later DURABLE delivery of the same text must still persist (not be
+    // suppressed as a phantom duplicate of the ephemeral broadcast).
+    await routeAutonomyTextToUser(state, "shared status", "autonomy");
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    expect(broadcastWs).toHaveBeenCalledTimes(2);
   });
 });

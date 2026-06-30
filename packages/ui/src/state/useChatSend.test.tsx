@@ -515,6 +515,61 @@ describe("useChatSend non-404 send failures", () => {
     ).toBe(false);
   });
 
+  it("distinguishes a first-token timeout from a network drop in the notice copy", async () => {
+    // A timeout means the agent WAS reached but did not respond in time, so
+    // "check your connection" is the wrong remedy. Timeout → slow-response copy;
+    // a genuine network drop keeps the connection copy.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(new Error("Request timed out"), { kind: "timeout" }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("are you there", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("took too long"),
+      "error",
+      expect.any(Number),
+    );
+    // Must NOT show the misleading network/connection copy for a timeout.
+    expect(deps.setActionNotice).not.toHaveBeenCalledWith(
+      expect.stringContaining("check your connection"),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("keeps the connection copy for a genuine network drop", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(new Error("Failed to fetch"), { kind: "network" }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("check your connection"),
+      "error",
+      expect.any(Number),
+    );
+  });
+
   it("does not reload (which could re-fail) on an auth-failure send error, and notifies", async () => {
     mocks.client.sendConversationMessageStream.mockRejectedValue(
       httpStatusError(401, "Unauthorized"),

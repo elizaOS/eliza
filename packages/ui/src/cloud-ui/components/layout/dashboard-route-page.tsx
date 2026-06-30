@@ -1,13 +1,18 @@
 "use client";
 
-import type {
-  ComponentPropsWithoutRef,
-  DependencyList,
-  ReactNode,
+import {
+  type ComponentPropsWithoutRef,
+  type DependencyList,
+  type ReactNode,
+  useContext,
 } from "react";
 import { cn } from "../../lib/utils";
 import { DashboardPageContainer, DashboardPageStack } from "./dashboard-page";
-import { useSetPageHeader } from "./page-header-context.hooks";
+import { PageHeaderProvider } from "./page-header-context";
+import {
+  PageHeaderContext,
+  useSetPageHeader,
+} from "./page-header-context.hooks";
 
 type DashboardRoutePageBannerTone = "info" | "success" | "warning" | "error";
 
@@ -51,7 +56,30 @@ function normalizeLayoutProps<T extends object>(
   return value;
 }
 
-export function DashboardRoutePage({
+/**
+ * A dashboard route body. Publishes its title/description/actions to the page
+ * header context and renders the standard container/stack/banner layout.
+ *
+ * Self-sufficient w.r.t. the page header context: dashboard routes are mounted
+ * standalone by `CloudRouterShell` — and natively inside the app — with no
+ * ancestor `PageHeaderProvider`, which would make {@link useSetPageHeader}
+ * throw. When no provider is present this component supplies its own; when a
+ * host already provides one (e.g. a dashboard shell that renders the header
+ * chrome), it defers to that provider so the header stays visible to the chrome.
+ */
+export function DashboardRoutePage(props: DashboardRoutePageProps) {
+  const hasAncestorProvider = useContext(PageHeaderContext) !== undefined;
+  if (hasAncestorProvider) {
+    return <DashboardRoutePageBody {...props} />;
+  }
+  return (
+    <PageHeaderProvider>
+      <DashboardRoutePageBody {...props} />
+    </PageHeaderProvider>
+  );
+}
+
+function DashboardRoutePageBody({
   title,
   description,
   actions,

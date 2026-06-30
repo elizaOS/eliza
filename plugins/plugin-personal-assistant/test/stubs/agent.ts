@@ -45,6 +45,98 @@ export async function hasOwnerAccess(): Promise<boolean> {
   return true;
 }
 
+export interface LocalAgentBackupStubMetadata {
+  fileName: string;
+  path: string;
+  createdAt: string;
+  agentId: string;
+  stateSha256: string;
+  sizeBytes: number;
+}
+
+interface AgentBackupStubState {
+  localBackups: LocalAgentBackupStubMetadata[];
+  createdBackup?: LocalAgentBackupStubMetadata;
+  createCalls: number;
+  lastCreateAgentId?: string;
+}
+
+const AGENT_BACKUP_STUB_STATE = Symbol.for(
+  "eliza.lifeops.test.agentBackupStubState",
+);
+
+function getAgentBackupStubState(): AgentBackupStubState {
+  const globalWithState = globalThis as typeof globalThis & {
+    [AGENT_BACKUP_STUB_STATE]?: AgentBackupStubState;
+  };
+  globalWithState[AGENT_BACKUP_STUB_STATE] ??= {
+    localBackups: [],
+    createCalls: 0,
+  };
+  return globalWithState[AGENT_BACKUP_STUB_STATE];
+}
+
+export function resetAgentBackupStubState(): void {
+  const state = getAgentBackupStubState();
+  state.localBackups = [];
+  state.createdBackup = undefined;
+  state.createCalls = 0;
+  state.lastCreateAgentId = undefined;
+}
+
+export function setAgentBackupStubState(
+  patch: Partial<AgentBackupStubState>,
+): void {
+  const state = getAgentBackupStubState();
+  if (patch.localBackups) {
+    state.localBackups = patch.localBackups;
+  }
+  if (patch.createdBackup) {
+    state.createdBackup = patch.createdBackup;
+  }
+}
+
+export function getAgentBackupStubStateSnapshot(): AgentBackupStubState {
+  const state = getAgentBackupStubState();
+  return {
+    localBackups: [...state.localBackups],
+    ...(state.createdBackup ? { createdBackup: state.createdBackup } : {}),
+    createCalls: state.createCalls,
+    ...(state.lastCreateAgentId
+      ? { lastCreateAgentId: state.lastCreateAgentId }
+      : {}),
+  };
+}
+
+export async function listLocalAgentBackups(
+  agentId?: string,
+): Promise<LocalAgentBackupStubMetadata[]> {
+  const state = getAgentBackupStubState();
+  return state.localBackups.filter(
+    (backup) => !agentId || backup.agentId === agentId,
+  );
+}
+
+export async function createLocalAgentBackup(runtime?: {
+  agentId?: string;
+}): Promise<LocalAgentBackupStubMetadata> {
+  const state = getAgentBackupStubState();
+  state.createCalls += 1;
+  state.lastCreateAgentId = runtime?.agentId;
+  const backup =
+    state.createdBackup ??
+    ({
+      fileName: "2026-06-29T120000Z.agent-backup.json",
+      path: "/tmp/2026-06-29T120000Z.agent-backup.json",
+      createdAt: "2026-06-29T12:00:00.000Z",
+      agentId: runtime?.agentId ?? "agent-1",
+      stateSha256: "abc123",
+      sizeBytes: 4096,
+    } satisfies LocalAgentBackupStubMetadata);
+  state.localBackups = [backup, ...state.localBackups];
+  return backup;
+}
+
 export async function extractActionParamsViaLlm(): Promise<unknown> {
   return null;
 }

@@ -1,45 +1,24 @@
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import type { ComponentType } from "react";
+import { registerSettingsSection } from "@elizaos/ui/components/settings/settings-section-registry";
+import { Glasses } from "lucide-react";
+import { WearablesSettingsSection } from "./components/WearablesSettingsSection.tsx";
 
-type DeferredViewComponent = ComponentType<Record<string, unknown>>;
-type DeferredViewModule = { default: DeferredViewComponent };
-
-function loadFacewearView(): Promise<DeferredViewModule> {
-  return import("./components/FacewearView.tsx").then((module) => ({
-    default: module.FacewearView as DeferredViewComponent,
-  }));
-}
-
-function loadSmartglassesView(): Promise<DeferredViewModule> {
-  return import("./ui/SmartglassesView.tsx").then((module) => ({
-    default: module.SmartglassesView as DeferredViewComponent,
-  }));
-}
-
-// Register the in-process app-shell pages so the views render on native (where
-// the remote view bundle is disabled). Both load the single canonical surface:
-// the FacewearView tri-modal wrapper renders FacewearSpatialView; the
-// Smartglasses dashboard owns the BLE transport.
-registerAppShellPage({
-  id: "facewear",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Facewear",
-  icon: "Glasses",
-  path: "/apps/facewear",
+// Wearable hardware (XR headsets + Even Realities smartglasses) is configuration,
+// so it lives under Settings → Wearables instead of as two standalone launcher
+// views. One settings section hosts both as tabs. The agent's XR/TUI view
+// surfaces and FACEWEAR_*/SMARTGLASSES_*/XR_* actions are unaffected.
+registerSettingsSection({
+  id: "wearables",
+  label: "settings.section.wearables",
+  defaultLabel: "Wearables",
+  icon: Glasses,
+  tone: "neutral",
+  hue: "slate",
+  titleKey: "settings.section.wearables.title",
+  defaultTitle: "Wearables",
+  group: "system",
   order: 80,
-  group: "hardware",
-  loader: loadFacewearView,
-});
-
-registerAppShellPage({
-  id: "smartglasses",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Smartglasses",
-  icon: "Glasses",
-  path: "/apps/smartglasses",
-  order: 81,
-  group: "hardware",
-  loader: loadSmartglassesView,
+  viewKind: "preview",
+  Component: WearablesSettingsSection,
 });
 
 // In a terminal host (the Node agent, no DOM), register the facewear and

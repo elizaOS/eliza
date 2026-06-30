@@ -49,6 +49,9 @@ jobs:
       - name: Run type-safety ratchet
         run: bun run audit:type-safety-ratchet
 
+      - name: Run type-duplication finder self-test
+        run: bun run audit:type-duplication:self-test
+
       - name: Run lint
         run: bun run lint
 

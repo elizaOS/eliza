@@ -97,7 +97,11 @@ export const biasedRandomCount = (min: number, max: number): number =>
  */
 export function weightedPick<T>(items: T[], weight: (item: T) => number): T {
   if (items.length === 0) throw new Error("Empty array");
-  if (items.length === 1) return items[0]!;
+  if (items.length === 1) {
+    const [onlyItem] = items;
+    if (onlyItem === undefined) throw new Error("Empty array");
+    return onlyItem;
+  }
 
   const weights = items.map(weight);
   const total = weights.reduce((a, b) => a + b, 0);

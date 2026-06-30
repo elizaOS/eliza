@@ -73,11 +73,11 @@ import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
-import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
+import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -730,7 +730,7 @@ function builtinRouteBackgroundPolicy(
 ): AppShellBackgroundPolicy | null {
   const normalizedPath = trimmedNavigationPath(navigationPath);
   if (tab === "chat" || tab === "background") return "shared";
-  if (tab === "settings" || tab === "voice") return "shared";
+  if (tab === "settings") return "shared";
   if (tab === "views" && normalizedPath === "/views") return "shared";
   if (tab === "apps" && normalizedPath === "/apps") return "shared";
   return null;
@@ -1077,14 +1077,8 @@ function renderStaticViewRouterTab({
         <HelpView />
       </TabContentView>
     ),
-    camera: (
-      <TabContentView>
-        <CameraPageView />
-      </TabContentView>
-    ),
     chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
-    companion: <ViewUnavailableFallback />,
     stream: <StreamView />,
     tasks: (
       <TabContentView>
@@ -1093,11 +1087,6 @@ function renderStaticViewRouterTab({
     ),
     automations: <AutomationsFeed />,
     triggers: <AutomationsFeed />,
-    voice: (
-      <TabContentView surface="transparent">
-        <SettingsView key="settings-identity" initialSection="identity" />
-      </TabContentView>
-    ),
     settings: (
       <TabContentView surface="transparent">
         <SettingsView
@@ -1162,6 +1151,12 @@ function renderStaticViewRouterTab({
       </TabContentView>
     ),
   };
+  if (tab === "camera") {
+    // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
+    // marker as the home tile, so a deep-link off the fork falls back to
+    // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
+    return renderPhoneSurface(isAospShellEnabled(), CameraPageView);
+  }
   if (tab === "phone") {
     return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
   }
@@ -1393,13 +1388,11 @@ function ShellBackButton({ onBack }: { onBack: () => void }): ReactNode {
 }
 
 type ShellContentProps = {
-  CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
   availableViewsForLayout: ViewRegistryEntry[];
   customActionsPanelOpen: boolean;
   desktopTabBar: ReactNode;
   isChat: boolean;
-  isCompanionTab: boolean;
   isFullBleed: boolean;
   screenBackgroundPolicy: AppShellBackgroundPolicy;
   setCustomActionsEditorOpen: (open: boolean) => void;
@@ -1412,19 +1405,6 @@ type ShellContentProps = {
   onClearViewLayout: () => void;
   onNavigateBack: () => void;
 };
-
-function CompanionShellContent(props: ShellContentProps): ReactNode {
-  if (
-    props.uiShellMode === "companion" &&
-    props.isCompanionTab &&
-    props.CompanionShell
-  ) {
-    const CompanionShell = props.CompanionShell;
-    return <CompanionShell tab="companion" actionNotice={props.actionNotice} />;
-  }
-  if (!props.isCompanionTab) return null;
-  return <div key="companion-shell" className={APP_SHELL_CLASS} />;
-}
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // The /chat route is the ambient conversational home: open space behind the
@@ -1525,8 +1505,6 @@ function FullBleedShellContent(props: ShellContentProps): ReactNode {
 function ShellContent(props: ShellContentProps): ReactNode {
   if (props.isFullBleed) return <FullBleedShellContent {...props} />;
   if (props.isChat) return <ChatRouteShellContent {...props} />;
-  const companionContent = CompanionShellContent(props);
-  if (companionContent) return companionContent;
   return <RoutedShellContent {...props} />;
 }
 
@@ -1566,10 +1544,12 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
-  const { characterData, agentStatus } = useAppSelectorShallow((s) => ({
-    characterData: s.characterData,
-    agentStatus: s.agentStatus,
-  }));
+  const { characterData, agentStatus, firstRunComplete } =
+    useAppSelectorShallow((s) => ({
+      characterData: s.characterData,
+      agentStatus: s.agentStatus,
+      firstRunComplete: s.firstRunComplete,
+    }));
   const slash = useSlashCommandController();
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
@@ -1582,6 +1562,7 @@ function ContinuousChatOverlayMount(): ReactNode {
       controller={controller}
       agentName={agentName}
       slash={slash}
+      firstRunOpen={firstRunComplete === false}
     />
   );
 }
@@ -1675,8 +1656,6 @@ export function App() {
     uiShellMode: s.uiShellMode,
     t: s.t,
   }));
-  const { companionShell: CompanionShell } = useBootConfig();
-
   const isPopout = useIsPopout();
   const shellMode = useShellMode();
   // Auth gate — only active after the coordinator reaches "ready".
@@ -1684,15 +1663,24 @@ export function App() {
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
   // The live shell may MOUNT once the backend is reached and the agent boot is
-  // underway (starting-runtime / hydrating / ready) — first-turn capability then
-  // fades in behind it (see useShellController's agentReady). Only the truly
-  // pre-shell phases (session restore, backend polling, first-run, pairing,
-  // error) keep the full-screen StartupScreen. Runtime-dependent effects and
-  // overlay apps below stay gated on `isCoordinatorReady` and defer safely.
+  // underway (first-run-required / starting-runtime / hydrating / ready) —
+  // first-turn capability then fades in behind it (see useShellController's
+  // agentReady). first-run-required paints the shell so onboarding can run IN
+  // the live chat. Only the truly pre-shell phases (session restore, backend
+  // polling, pairing, error) keep the full-screen StartupScreen.
+  // Runtime-dependent effects and overlay apps below stay gated on
+  // `isCoordinatorReady` and defer safely.
   const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
 
+  // Skip the auth probe during first-run-required: there is no agent/session
+  // yet, so /api/auth/me would spuriously trip server_unavailable/unauthenticated
+  // on top of the in-chat onboarding (see useAuthStatus's own skip-during-first-run
+  // note). The in-chat conductor owns the first-run flow.
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
-    skip: !isShellPaintableNow || isPopout,
+    skip:
+      !isShellPaintableNow ||
+      startupCoordinator.phase === "first-run-required" ||
+      isPopout,
   });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
@@ -1814,9 +1802,8 @@ export function App() {
   >(null);
   const [desktopShuttingDown, setDesktopShuttingDown] = useState(false);
 
-  const isCompanionTab = tab === "companion";
   const isChat = tab === "chat";
-  const isSettingsPage = tab === "settings" || tab === "voice";
+  const isSettingsPage = tab === "settings";
   const isFullBleed = useTabIsFullBleed(tab);
 
   // Keep hook order stable across first-run/auth state transitions.
@@ -2056,17 +2043,15 @@ export function App() {
 
   // shellContent is memoized before early returns to satisfy the Rules of Hooks.
   // Deps are local state/callbacks — not high-frequency AppContext fields like
-  // ptySessions/agentStatus — so CompanionSceneHost stays stable across polls.
+  // ptySessions/agentStatus — so the shell subtree stays stable across polls.
   const shellContent = useMemo(
     () => (
       <ShellContent
-        CompanionShell={CompanionShell}
         actionNotice={actionNotice}
         availableViewsForLayout={availableViewsForDesktopTabs}
         customActionsPanelOpen={customActionsPanelOpen}
         desktopTabBar={desktopTabBar}
         isChat={isChat}
-        isCompanionTab={isCompanionTab}
         isFullBleed={isFullBleed}
         screenBackgroundPolicy={screenBackgroundPolicy}
         setCustomActionsEditorOpen={setCustomActionsEditorOpen}
@@ -2081,10 +2066,8 @@ export function App() {
       />
     ),
     [
-      CompanionShell,
       tab,
       uiShellMode,
-      isCompanionTab,
       actionNotice,
       isChat,
       isFullBleed,
@@ -2163,7 +2146,11 @@ export function App() {
   // check /api/auth/me. "loading": wait (fall through to the main shell render).
   // "unauthenticated": render LoginView. "authenticated": proceed.
   // "server_unavailable": show a retryable startup failure.
-  if (isShellPaintableNow && !isPopout) {
+  if (
+    isShellPaintableNow &&
+    !isPopout &&
+    startupCoordinator.phase !== "first-run-required"
+  ) {
     if (authState.phase === "server_unavailable") {
       return (
         <BugReportProvider value={bugReport}>
@@ -2308,6 +2295,11 @@ export function App() {
           behind stays live.
         */}
         <ContinuousChatOverlayMount />
+        {/* In-chat first-run conductor (headless) — while firstRunComplete is
+            false it seeds the onboarding greeting + choices into the SAME live
+            transcript the overlay renders and routes first-run picks to the
+            headless finish use case. Renders null. */}
+        <FirstRunConductorMount />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial

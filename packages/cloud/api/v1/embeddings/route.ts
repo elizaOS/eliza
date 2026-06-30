@@ -42,6 +42,11 @@ import {
   resolveSafeBalanceThresholdUsd,
   writePendingInferenceCharge,
 } from "@/lib/services/inference-billing-fast-path";
+import {
+  admitInferenceChargeViaLedger,
+  createLedgerDebitSettler,
+  resolveInferenceBillingLedger,
+} from "@/lib/services/inference-billing-ledger";
 import { usageService } from "@/lib/services/usage";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
@@ -210,9 +215,61 @@ app.post("/", async (c) => {
     let reservation: Awaited<ReturnType<typeof reserveCredits>> | undefined;
     let optimisticReady = false;
 
+    // Durable backstop selected by INFERENCE_BILLING_LEDGER (see chat route). The
+    // DB ledger's atomic admission is itself the gate and needs no writable cache.
+    const optimisticBillingEnabled = isOptimisticBillingEnabled();
+    const useDbLedger =
+      !!orgId &&
+      optimisticBillingEnabled &&
+      resolveInferenceBillingLedger() === "db";
+
+    if (useDbLedger) {
+      const { totalCost: backstopEstimateUsd } = await calculateCost(
+        model,
+        provider,
+        estimatedInputTokens,
+        0,
+        billingSource,
+      );
+      const admission = await admitInferenceChargeViaLedger({
+        charge: {
+          requestId,
+          organizationId: orgId,
+          userId: user.id,
+          apiKeyId,
+          model,
+          provider,
+          billingSource: billingSource ?? "",
+        },
+        estimatedCostUsd: backstopEstimateUsd,
+        thresholdUsd: resolveSafeBalanceThresholdUsd(),
+      });
+      if (admission.admitted) {
+        const ledgerSettler = createLedgerDebitSettler({
+          requestId,
+          organizationId: orgId,
+          userId: user.id,
+          apiKeyId,
+          model,
+          provider,
+          billingSource: billingSource ?? "",
+        });
+        reservation = {
+          reservedAmount: 0,
+          reservationTransactionId: null,
+          reconcile: async (actualCost: number) => {
+            await ledgerSettler(actualCost);
+          },
+        };
+        optimisticReady = true;
+      }
+    }
+
     if (
+      !optimisticReady &&
       orgId &&
-      isOptimisticBillingEnabled() &&
+      optimisticBillingEnabled &&
+      !useDbLedger &&
       isOptimisticBackstopAvailable()
     ) {
       // Embeddings cost ~$0, so SAFE_BALANCE_THRESHOLD is the real guard: the

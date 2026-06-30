@@ -2,14 +2,14 @@
  * First-paint critical-path guard (issue #9565).
  *
  * `initializeAppModules()` blocks the first React mount: `main()` awaits it
- * before `mountReactApp()`. Anything added to its blocking `await Promise.all`
- * delays the first visible startup shell on every device boot. This test pins
- * the blocking set to exactly the modules the boot config reads SYNCHRONOUSLY
- * (companion registration + scene-status hook + inference-notice resolver) so a
- * future eager `import("@elizaos/plugin-…")` added to that await fails CI here
- * instead of silently expanding cold start. Everything else must ride the
- * deferred idle path after React has had a paint opportunity
- * (BOOT_CONFIG_DEFERRED_MODULE_LOADERS / SIDE_EFFECT_APP_MODULE_LOADERS).
+ * before `mountReactApp()`. Anything added to its blocking path delays the first
+ * visible startup shell on every device boot. The boot config reads no plugin
+ * module synchronously, so the initializer must load only `@elizaos/app-core`
+ * (the boot-config singleton owner) and never eagerly `import("@elizaos/plugin-…")`.
+ * This test fails CI if a future eager plugin import is added to that path
+ * instead of riding the deferred idle loaders
+ * (BOOT_CONFIG_DEFERRED_MODULE_LOADERS / SIDE_EFFECT_APP_MODULE_LOADERS) after
+ * React has had a paint opportunity.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,13 +17,6 @@ import { describe, expect, it } from "vitest";
 
 const root = join(import.meta.dirname, "..");
 const mainSrc = readFileSync(join(root, "src", "main.tsx"), "utf8");
-
-/** Importers allowed to block the first paint inside initializeAppModules(). */
-const ALLOWED_BLOCKING_IMPORTERS = new Set([
-  "importCompanionAppRegistration",
-  "importCompanionSceneStatusContext",
-  "importCompanionInferenceNotice",
-]);
 
 /** Heavy app plugins that must NOT block first paint — deferred to idle. */
 const MUST_BE_DEFERRED = [
@@ -45,30 +38,7 @@ function initializeAppModulesSource(): string {
   return mainSrc.slice(start, end);
 }
 
-/** The single blocking `await Promise.all([...])` inside initializeAppModules. */
-function blockingAwaitSource(): string {
-  const fn = initializeAppModulesSource();
-  const awaitStart = fn.indexOf("await Promise.all([");
-  expect(awaitStart).toBeGreaterThan(-1);
-  const awaitEnd = fn.indexOf("]);", awaitStart);
-  expect(awaitEnd).toBeGreaterThan(awaitStart);
-  return fn.slice(awaitStart, awaitEnd);
-}
-
 describe("first-paint critical path", () => {
-  it("blocks first paint only on the allow-listed companion importers", () => {
-    const blocking = blockingAwaitSource();
-    const importers = [...blocking.matchAll(/import[A-Z]\w*\(\)/g)].map((m) =>
-      m[0].replace("()", ""),
-    );
-
-    expect(importers).toEqual([...ALLOWED_BLOCKING_IMPORTERS]);
-    const disallowed = importers.filter(
-      (name) => !ALLOWED_BLOCKING_IMPORTERS.has(name),
-    );
-    expect(disallowed).toEqual([]);
-  });
-
   it("rejects direct dynamic plugin imports on the blocking initializer path", () => {
     const blockingPluginImports = [
       ...initializeAppModulesSource().matchAll(
@@ -80,17 +50,16 @@ describe("first-paint critical path", () => {
   });
 
   it("keeps the heavy plugin imports on the deferred idle path", () => {
-    const blocking = blockingAwaitSource();
+    const initializer = initializeAppModulesSource();
     for (const importer of MUST_BE_DEFERRED) {
-      // Not in the blocking await…
-      expect(blocking).not.toContain(`${importer}()`);
+      // Not called on the blocking initializer path…
+      expect(initializer).not.toContain(`${importer}()`);
       // …but still referenced so the deferred loader actually loads it.
       expect(mainSrc).toContain(importer);
     }
     // The deferred loader list exists and is scheduled after React has a paint
     // opportunity, not from initializeAppModules() before mount.
     expect(mainSrc).toContain("BOOT_CONFIG_DEFERRED_MODULE_LOADERS");
-    const initializer = initializeAppModulesSource();
     expect(initializer).not.toMatch(
       /scheduleAppModuleIdleLoads\(\s*BOOT_CONFIG_DEFERRED_MODULE_LOADERS\s*\)/,
     );

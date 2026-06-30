@@ -3,7 +3,6 @@ import baseConfig from "./real.config";
 
 export const heavyOnlyE2EPaths = [
   "eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts",
-  "eliza/packages/app-core/test/app/first-run-companion.live.e2e.test.ts",
   "eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
   "eliza/packages/app-core/src/services/local-inference/engine.e2e.test.ts",
   "eliza/packages/ui/src/services/local-inference/engine.e2e.test.ts",

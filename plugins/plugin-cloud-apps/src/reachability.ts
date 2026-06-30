@@ -38,6 +38,11 @@ export interface ProbeOptions {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+const globalFetchLike: FetchLike | undefined =
+  typeof globalThis.fetch === "function"
+    ? (input, init) => globalThis.fetch(input, init)
+    : undefined;
+
 /** Append `/health` (or another path) to a base URL, collapsing slashes. */
 export function healthUrl(base: string, path = "/health"): string {
   const trimmedBase = base.replace(/\/+$/, "");
@@ -54,8 +59,7 @@ export async function probeReachable(
   url: string,
   options: ProbeOptions = {},
 ): Promise<ReachabilityResult> {
-  const fetchImpl =
-    options.fetchImpl ?? (globalThis.fetch as unknown as FetchLike | undefined);
+  const fetchImpl = options.fetchImpl ?? globalFetchLike;
   if (typeof fetchImpl !== "function") {
     return { ok: false, error: "no_fetch" };
   }

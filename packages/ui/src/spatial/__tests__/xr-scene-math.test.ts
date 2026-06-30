@@ -65,6 +65,16 @@ function expectVecClose(a: { x: number; y: number; z: number }, b: typeof a) {
   expect(a.z).toBeCloseTo(b.z, 5);
 }
 
+function expectRayHit(
+  hit: ReturnType<typeof rayPlaneHit>,
+): NonNullable<ReturnType<typeof rayPlaneHit>> {
+  expect(hit).not.toBeNull();
+  if (!hit) {
+    throw new Error("Expected ray hit");
+  }
+  return hit;
+}
+
 describe("quaternion + vector basics", () => {
   it("identity forward is −Z", () => {
     expectVecClose(forwardOf(quatIdentity()), vec3(0, 0, -1));
@@ -153,8 +163,7 @@ describe("rayPlaneHit", () => {
       vec3(0, 1.5, 0),
       quatLookAt(vec3(0, 1.5, 0), panel.position),
     );
-    const hit = rayPlaneHit(ray, panel);
-    if (!hit) throw new Error("Expected ray to hit panel centre");
+    const hit = expectRayHit(rayPlaneHit(ray, panel));
     expect(hit.inside).toBe(true);
     expect(hit.u).toBeCloseTo(0, 5);
     expect(hit.v).toBeCloseTo(0, 5);
@@ -165,8 +174,7 @@ describe("rayPlaneHit", () => {
     const corner = panelLocalToWorld(panel, 0.49, 0.49);
     const eye = vec3(0, 1.5, 0);
     const ray = deviceRay(eye, quatLookAt(eye, corner));
-    const hit = rayPlaneHit(ray, panel);
-    if (!hit) throw new Error("Expected ray to hit panel corner");
+    const hit = expectRayHit(rayPlaneHit(ray, panel));
     expect(hit.inside).toBe(true);
     expect(hit.u).toBeCloseTo(0.49, 2);
     expect(hit.v).toBeCloseTo(0.49, 2);

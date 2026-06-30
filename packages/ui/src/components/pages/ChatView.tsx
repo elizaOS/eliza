@@ -1,3 +1,4 @@
+import { logger } from "@elizaos/logger";
 import { Check, Copy, RotateCcw } from "lucide-react";
 import {
   type ChangeEvent,
@@ -12,7 +13,10 @@ import {
   useState,
 } from "react";
 import { type CodingAgentSession, client } from "../../api/client";
-import type { ConversationMessage } from "../../api/client-types-chat";
+import {
+  type ConversationMessage,
+  isConversationMessage,
+} from "../../api/client-types-chat";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
@@ -1371,10 +1375,19 @@ function InboxChatPanel({
         });
 
         if (response.message) {
-          setMessages((current) => [
-            ...current,
-            response.message as ConversationMessage,
-          ]);
+          // Validate the server/connector payload at the boundary instead of
+          // `as`-casting it: a malformed message (missing id/role/timestamp)
+          // would break list keying/rendering if appended blindly. If it's
+          // valid we append it; if not, the send still succeeded, so we just
+          // skip the optimistic append and let the next message reload reconcile.
+          if (isConversationMessage(response.message)) {
+            const validMessage = response.message;
+            setMessages((current) => [...current, validMessage]);
+          } else {
+            logger.warn(
+              "[ChatView] sendInboxMessage returned a malformed message; skipping optimistic append",
+            );
+          }
         }
 
         setReplyText("");

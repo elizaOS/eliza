@@ -38,15 +38,6 @@ function viewCardTestId(viewId: string): string {
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
-    name: "companion",
-    path: "/apps/companion",
-    readyChecks: [
-      { text: "Companion" },
-      { selector: '[data-testid="companion-root"]' },
-    ],
-    timeoutMs: 90_000,
-  },
-  {
     name: "plugins app window",
     path: "/apps/plugins",
     readyChecks: [{ text: "Browser Workspace" }, { text: "AI Providers" }],
@@ -174,12 +165,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "facewear app window",
-    path: "/apps/facewear",
-    readyChecks: [{ text: "Facewear" }, { text: "No devices connected" }],
-    timeoutMs: 90_000,
-  },
-  {
+    // Facewear GUI config now lives in Settings -> Wearables, not a launcher
+    // app window; only the agent TUI surface is reached by path here.
     name: "facewear tui app shell page",
     path: "/apps/facewear/tui",
     readyChecks: [
@@ -189,12 +176,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "smartglasses app window",
-    path: "/apps/smartglasses",
-    readyChecks: [{ text: "Smartglasses" }, { text: "Connect" }],
-    timeoutMs: 90_000,
-  },
-  {
+    // Smartglasses GUI config now lives in Settings -> Wearables; only the
+    // agent TUI surface is reached by path here.
     name: "smartglasses tui app shell page",
     path: "/apps/smartglasses/tui",
     readyChecks: [
@@ -242,10 +225,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 
 const managerVisibleViewTileCases = [
   { viewId: "calendar", path: "/calendar" },
-  { viewId: "companion", path: "/companion" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "documents", path: "/documents" },
-  { viewId: "facewear", path: "/apps/facewear" },
   { viewId: "feed", path: "/feed" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
@@ -261,7 +242,6 @@ const managerVisibleViewTileCases = [
   { viewId: "relationships", path: "/relationships" },
   { viewId: "screenshare", path: "/screenshare" },
   { viewId: "shopify", path: "/shopify" },
-  { viewId: "smartglasses", path: "/apps/smartglasses" },
   { viewId: "social-alpha", path: "/social-alpha" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },
@@ -291,7 +271,6 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  * without turning all-pages click safety into a long game/app bootstrap loop.
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
-  { viewId: "companion", path: "/companion" },
   { viewId: "model-tester", path: "/model-tester" },
 ].map(({ viewId, path }) => ({
   viewId,

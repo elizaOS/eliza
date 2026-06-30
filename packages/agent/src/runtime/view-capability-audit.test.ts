@@ -55,7 +55,6 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   todos: "plugin-todos",
   relationships: "plugin-relationships",
   documents: "plugin-documents",
-  companion: "plugin-companion",
   orchestrator: "plugin-task-coordinator",
   facewear: "plugin-facewear",
   polymarket: "plugin-polymarket",

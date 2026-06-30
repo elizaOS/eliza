@@ -580,11 +580,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         }
       }
       if (textContains) {
-        if (
-          !String(m.content.text ?? "")
-            .toLowerCase()
-            .includes(textContains)
-        ) {
+        const text = (m.content as { text?: unknown } | undefined)?.text;
+        if (typeof text !== "string" || !text.toLowerCase().includes(textContains)) {
           return false;
         }
       }
@@ -686,6 +683,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     tableName: string;
     embedding: number[];
     match_threshold?: number;
+    count?: number;
     limit?: number;
     unique?: boolean;
     query?: string;
@@ -695,7 +693,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
     const threshold = params.match_threshold ?? 0.5;
-    const limit = params.limit ?? 10;
+    const limit = params.count ?? params.limit ?? 10;
 
     const results = await this.vectorIndex.search(params.embedding, limit * 2, threshold);
 

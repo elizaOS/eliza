@@ -121,6 +121,9 @@ jobs:
 
             ELIZA_ANDROID_REQUIRE_AGENT=${{ github.event.inputs.backend == 'local' && '1' || '0' }} \
               bun run --cwd packages/app test:e2e:android:routes || true
+            ELIZA_ANDROID_BACKEND=host \
+            ELIZA_ANDROID_REQUIRE_AGENT=1 \
+              bun run --cwd packages/app test:e2e:android:native-plugin-view
             # Local on-device agent smoke (surfaces failure loudly; expected to
             # fail on stock x86 emulator — see coverage note above).
             bun run --cwd packages/app test:sim:local-chat:android:live || true
@@ -222,6 +225,17 @@ jobs:
             ELIZA_ANDROID_REQUIRE_AGENT=1 \
               bun run --cwd packages/app test:e2e:android:onboarding
 
+            # Native plugin x WebView smoke: proves Capacitor JS calls cross
+            # into Android Kotlin rather than the desktop Chromium bridge shim.
+            # Signal-only (|| true) on the PR lane until it's proven green on the
+            # x86_64 API-34 emulator this job uses — the hard assertion runs in
+            # the workflow_dispatch `android-e2e` job (validated on a real arm64
+            # device). Do not make it a hard PR gate on unproven-on-emulator
+            # evidence; flip to a hard gate once an emulator-green run is attached.
+            ELIZA_ANDROID_BACKEND=host \
+            ELIZA_ANDROID_REQUIRE_AGENT=1 \
+              bun run --cwd packages/app test:e2e:android:native-plugin-view || true
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -229,4 +243,115 @@ jobs:
           path: |
             packages/app/test-results/**
             packages/app/playwright-report/**
+          if-no-files-found: ignore
+
+  # On-device instrumented (androidTest) gate for the native Capacitor plugins
+  # (issue #9967 "wire into CI" + issue #9943 "on-device never gates a PR"). Until
+  # this lane, the native-plugin Kotlin ran on no test, on no device in CI — the
+  # only coverage was a mocked Capacitor bridge in desktop Chromium. This builds
+  # every native plugin's androidTest, boots a KVM emulator, and runs the real
+  # on-device reads (RoleManager / AudioManager / WifiManager / TelecomManager /
+  # CameraManager / ContactsProvider / content://sms / UsageStatsManager /
+  # FusedLocationProvider) via `connectedDebugAndroidTest` — gradle fails the job
+  # on any test failure. Label-gated (`ci:device`) or dispatch, like the smokes
+  # above, because booting an emulator is heavy.
+  native-plugin-androidtest:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+        contains(github.event.pull_request.labels.*.name, 'ci:device'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ELIZA_BUN_RISCV64_OPTIONAL: "1"
+      ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v4
+
+      - name: Install workspace
+        run: bun install
+
+      # Sync the Capacitor Android project so capacitor.settings.gradle points at
+      # this install's @capacitor/android and every plugin module is wired.
+      - name: Prepare Android platform
+        run: bun run --cwd packages/app build:android
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+
+      - name: Native-plugin androidTest on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: "34"
+          arch: x86_64
+          ram-size: 4096M
+          emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            set -euo pipefail
+            adb wait-for-device
+            ANDROID_DIR="$GITHUB_WORKSPACE/packages/app-core/platforms/android"
+            GRADLEW="$ANDROID_DIR/gradlew"
+            chmod +x "$GRADLEW"
+
+            # Device-state orchestration (survives the test-APK install):
+            #  - messages: inject a marker SMS so the SMS read-back asserts positively
+            #    (it Assume-skips without the marker, so this is what makes it green).
+            #  - location: high-accuracy mode (the fused fetch still Assume-skips on a
+            #    headless GNSS HAL; the priority-mapping assertion runs regardless).
+            adb emu sms send 15558675309 "probe Eliza-9967-SMS-roundtrip ci" || true
+            adb shell settings put secure location_mode 3 || true
+
+            # The gate: build + install + run every native-plugin androidTest on the
+            # emulator in one invocation. gradle fails the job on any test failure.
+            "$GRADLEW" -p "$ANDROID_DIR" --no-daemon \
+              :elizaos-capacitor-system:connectedDebugAndroidTest \
+              :elizaos-capacitor-wifi:connectedDebugAndroidTest \
+              :elizaos-capacitor-phone:connectedDebugAndroidTest \
+              :elizaos-capacitor-camera:connectedDebugAndroidTest \
+              :elizaos-capacitor-contacts:connectedDebugAndroidTest \
+              :elizaos-capacitor-messages:connectedDebugAndroidTest \
+              :elizaos-capacitor-mobile-signals:connectedDebugAndroidTest \
+              :elizaos-capacitor-location:connectedDebugAndroidTest
+
+            # mobile-signals PACKAGE_USAGE_STATS is special-access (no runtime dialog)
+            # and the grant does NOT survive the gate's reinstall, so its usage reads
+            # Assume-skip above. For a positive on-device read: re-install the test APK
+            # the gate built (the gate uninstalls it after running), grant
+            # GET_USAGE_STATS, and re-run the usage tests via am instrument. Require a
+            # clean `OK (N tests)` completion and fail the job on any error/failure.
+            MS_APK="$GITHUB_WORKSPACE/plugins/plugin-native-mobile-signals/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-mobile-signals-debug-androidTest.apk"
+            adb install -r -t "$MS_APK"
+            adb shell appops set ai.eliza.plugins.mobilesignals.test android:get_usage_stats allow
+            MS_OUT="$(adb shell am instrument -w -r \
+              -e class ai.eliza.plugins.mobilesignals.UsageStatsReaderInstrumentedTest \
+              ai.eliza.plugins.mobilesignals.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
+            printf '%s\n' "$MS_OUT"
+            if printf '%s\n' "$MS_OUT" | grep -qE 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_RESULT: shortMsg'; then
+              echo "mobile-signals UsageStats assertions failed under granted PACKAGE_USAGE_STATS"
+              exit 1
+            fi
+            printf '%s\n' "$MS_OUT" | grep -qE 'OK \([0-9]+ test' || {
+              echo "mobile-signals UsageStats run did not complete cleanly"
+              exit 1
+            }
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-plugin-androidtest-reports
+          path: |
+            plugins/plugin-native-*/android/build/reports/androidTests/**
+            plugins/plugin-native-*/android/build/outputs/androidTest-results/**
           if-no-files-found: ignore

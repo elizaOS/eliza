@@ -41,6 +41,7 @@ import {
   isStoredMediaUrl,
   mediaFileNameFromUrl,
   readStoredMediaBytes,
+  storedMediaContentMatchesName,
   writeStoredMediaFile,
 } from "../api/media-store.ts";
 
@@ -113,6 +114,46 @@ export interface AgentExportPayload {
    * an export without media (or an older reader) still round-trips the DB.
    */
   media?: Array<{ fileName: string; base64: string }>;
+  /**
+   * Per-component integrity manifest (#9963). A sha256 over the canonical JSON
+   * of each exported collection plus its row count, computed at export time and
+   * re-verified at import time *before* any DB write. The AES-256-GCM auth tag
+   * already authenticates the whole ciphertext; this adds per-collection
+   * granularity so a structural inconsistency (a hand-edited or truncated
+   * payload, a partial merge) fails loudly and names the offending collection
+   * rather than silently importing it. Optional + additive: an export without a
+   * manifest (or an older reader) still round-trips — verification is simply
+   * skipped, never a hard failure on absence.
+   */
+  manifest?: AgentExportManifest;
+}
+
+/** sha256 digest + row count for one exported collection. */
+export interface AgentExportComponentDigest {
+  sha256: string;
+  count: number;
+}
+
+/** The set of collections covered by the integrity manifest (mirrors the
+ *  `ImportResult.counts` collections — every array `restoreAgentData` writes). */
+export const MANIFEST_COLLECTIONS = [
+  "entities",
+  "memories",
+  "components",
+  "rooms",
+  "participants",
+  "relationships",
+  "worlds",
+  "tasks",
+  "logs",
+  "media",
+] as const;
+
+export type ManifestCollection = (typeof MANIFEST_COLLECTIONS)[number];
+
+export interface AgentExportManifest {
+  algorithm: "sha256";
+  components: Record<string, AgentExportComponentDigest>;
 }
 
 export interface ImportResult {
@@ -140,6 +181,114 @@ export interface ExportSizeEstimate {
   roomsCount: number;
   worldsCount: number;
   tasksCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Per-component integrity manifest (#9963)
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic JSON serialization: object keys sorted recursively and
+ * `undefined`-valued keys dropped (matching `JSON.stringify`). This makes a
+ * collection's digest reproducible across the export → gzip → encrypt → decrypt
+ * → gunzip → `JSON.parse` round-trip, regardless of in-memory key ordering, so
+ * the digest computed at export equals the one recomputed at import.
+ */
+export function canonicalize(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value ?? null);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => canonicalize(v)).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj)
+    .filter((k) => obj[k] !== undefined)
+    .sort();
+  return `{${keys
+    .map((k) => `${JSON.stringify(k)}:${canonicalize(obj[k])}`)
+    .join(",")}}`;
+}
+
+function sha256Hex(input: string): string {
+  return crypto.createHash("sha256").update(input, "utf-8").digest("hex");
+}
+
+/** sha256 of a collection's canonical JSON, plus its length. */
+export function digestCollection(items: unknown[]): AgentExportComponentDigest {
+  const list = Array.isArray(items) ? items : [];
+  return { sha256: sha256Hex(canonicalize(list)), count: list.length };
+}
+
+const EMPTY_MANIFEST_COLLECTION: unknown[] = [];
+
+/** The collection arrays the manifest covers, read off a payload-like object. */
+function manifestCollectionsOf(
+  payload: Pick<AgentExportPayload, ManifestCollection>,
+): Record<ManifestCollection, unknown[]> {
+  return {
+    entities: payload.entities ?? EMPTY_MANIFEST_COLLECTION,
+    memories: payload.memories ?? EMPTY_MANIFEST_COLLECTION,
+    components: payload.components ?? EMPTY_MANIFEST_COLLECTION,
+    rooms: payload.rooms ?? EMPTY_MANIFEST_COLLECTION,
+    participants: payload.participants ?? EMPTY_MANIFEST_COLLECTION,
+    relationships: payload.relationships ?? EMPTY_MANIFEST_COLLECTION,
+    worlds: payload.worlds ?? EMPTY_MANIFEST_COLLECTION,
+    tasks: payload.tasks ?? EMPTY_MANIFEST_COLLECTION,
+    logs: payload.logs ?? EMPTY_MANIFEST_COLLECTION,
+    media: payload.media ?? EMPTY_MANIFEST_COLLECTION,
+  };
+}
+
+/** Build the integrity manifest for the collections of `payload`. */
+export function buildExportManifest(
+  payload: Pick<AgentExportPayload, ManifestCollection>,
+): AgentExportManifest {
+  const collections = manifestCollectionsOf(payload);
+  const components: Record<string, AgentExportComponentDigest> = {};
+  for (const name of MANIFEST_COLLECTIONS) {
+    components[name] = digestCollection(collections[name]);
+  }
+  return { algorithm: "sha256", components };
+}
+
+export interface ManifestMismatch {
+  collection: string;
+  expected: AgentExportComponentDigest;
+  actual: AgentExportComponentDigest;
+}
+
+export interface ManifestVerification {
+  /** True when the payload carried a manifest to check against. */
+  present: boolean;
+  /** True when no manifest was present, or every collection matched. */
+  ok: boolean;
+  mismatches: ManifestMismatch[];
+}
+
+/**
+ * Recompute each collection's digest from `payload` and compare to the embedded
+ * manifest. Absence of a manifest is `{ present: false, ok: true }` (additive
+ * back-compat — older exports still import). A present-but-mismatching manifest
+ * is `ok: false` with the offending collection(s) named.
+ */
+export function verifyExportManifest(
+  payload: AgentExportPayload,
+): ManifestVerification {
+  const manifest = payload.manifest;
+  if (manifest?.algorithm !== "sha256") {
+    return { present: false, ok: true, mismatches: [] };
+  }
+  const collections = manifestCollectionsOf(payload);
+  const mismatches: ManifestMismatch[] = [];
+  for (const name of MANIFEST_COLLECTIONS) {
+    const expected = manifest.components[name] ?? { sha256: "", count: 0 };
+    const actual = digestCollection(collections[name]);
+    if (expected.sha256 !== actual.sha256 || expected.count !== actual.count) {
+      mismatches.push({ collection: name, expected, actual });
+    }
+  }
+  return { present: true, ok: mismatches.length === 0, mismatches };
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +356,15 @@ const PayloadSchema = z.object({
   media: z
     .array(z.object({ fileName: z.string(), base64: z.string() }))
     .optional(),
+  manifest: z
+    .object({
+      algorithm: z.literal("sha256"),
+      components: z.record(
+        z.string(),
+        z.object({ sha256: z.string(), count: z.number().int().min(0) }),
+      ),
+    })
+    .optional(),
 });
 
 type ValidatedAgentExportPayload = z.infer<typeof PayloadSchema>;
@@ -234,6 +392,7 @@ function toAgentExportPayload(
     tasks: payload.tasks,
     logs: payload.logs,
     media: payload.media,
+    manifest: payload.manifest,
   };
 }
 
@@ -282,15 +441,34 @@ function captureReferencedMedia(
 }
 
 /** Rehydrate the content-addressed store from the export's media entries. */
-function restoreMedia(
+export function restoreMedia(
   media: Array<{ fileName: string; base64: string }> | undefined,
 ): number {
   let restored = 0;
+  let rejected = 0;
   if (!media) return restored;
   for (const { fileName, base64 } of media) {
-    if (writeStoredMediaFile(fileName, Buffer.from(base64, "base64"))) {
+    const bytes = Buffer.from(base64, "base64");
+    // Content-addressed integrity gate (#9963): the bytes MUST hash back to their
+    // `<sha256>` name. A mismatch means a corrupt or tampered backup — skip it,
+    // loudly, rather than poison the content-addressed store with bytes filed
+    // under a hash that doesn't match their content (the dedup + unguessable-
+    // capability invariant the store relies on).
+    if (!storedMediaContentMatchesName(fileName, bytes)) {
+      rejected++;
+      logger.warn(
+        `[agent-export] Skipping restored media ${fileName}: sha256 content-hash mismatch (corrupt or tampered backup)`,
+      );
+      continue;
+    }
+    if (writeStoredMediaFile(fileName, bytes)) {
       restored++;
     }
+  }
+  if (rejected > 0) {
+    logger.warn(
+      `[agent-export] Rejected ${rejected} media file(s) on restore for content-hash mismatch`,
+    );
   }
   return restored;
 }
@@ -649,7 +827,7 @@ async function extractAgentData(
     );
   }
 
-  return {
+  const payload: AgentExportPayload = {
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     sourceAgentId: agentId,
@@ -666,6 +844,13 @@ async function extractAgentData(
     logs,
     media: captureReferencedMedia(allMemories),
   };
+  // Per-component integrity manifest (#9963): digest each collection so import
+  // can re-verify structural consistency before writing anything to the DB.
+  payload.manifest = buildExportManifest(payload);
+  logger.info(
+    `[agent-export] Integrity manifest: ${MANIFEST_COLLECTIONS.length} collections digested (sha256)`,
+  );
+  return payload;
 }
 
 // ---------------------------------------------------------------------------
@@ -1067,7 +1252,34 @@ export async function importAgent(
     `[agent-import] Importing agent "${payload.agent.name}" exported at ${payload.exportedAt}`,
   );
 
-  // 6. Restore data
+  // 6. Per-component integrity check (#9963). The AES-256-GCM auth tag already
+  // authenticated the ciphertext; this re-verifies each collection's sha256 +
+  // row count against the embedded manifest BEFORE any DB write, so a
+  // structurally-inconsistent payload (truncated, hand-edited, partially merged)
+  // fails loudly and names the offending collection instead of half-importing.
+  const integrity = verifyExportManifest(payload);
+  if (!integrity.ok) {
+    const detail = integrity.mismatches
+      .map(
+        (m) =>
+          `${m.collection} (manifest ${m.expected.count} rows/${m.expected.sha256.slice(0, 12)}…, payload ${m.actual.count}/${m.actual.sha256.slice(0, 12)}…)`,
+      )
+      .join("; ");
+    throw new AgentExportError(
+      `Integrity check failed — export payload is inconsistent with its manifest: ${detail}. The file may be corrupt or was modified after export; nothing was imported.`,
+    );
+  }
+  if (integrity.present) {
+    logger.info(
+      "[agent-import] Integrity manifest verified — all collections match",
+    );
+  } else {
+    logger.debug(
+      "[agent-import] No integrity manifest (older export); skipping per-component verification",
+    );
+  }
+
+  // 7. Restore data
   return restoreAgentData(runtime, payload);
 }
 

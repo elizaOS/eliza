@@ -2,11 +2,10 @@ import { type ReactNode, useMemo } from "react";
 import { useSystemProvider } from "../providers/context";
 
 export interface LockScreenProps {
-  companionBar?: ReactNode;
   cloudsModule?: ReactNode;
 }
 
-export function LockScreen({ companionBar, cloudsModule }: LockScreenProps) {
+export function LockScreen({ cloudsModule }: LockScreenProps) {
   const { time } = useSystemProvider();
 
   const formatted = useMemo(() => {
@@ -72,6 +71,7 @@ export function LockScreen({ companionBar, cloudsModule }: LockScreenProps) {
           {formatted.date}
         </div>
       </div>
+      {/* Bottom anchor reserved for the lock-screen voice-unlock pill (see DEFERRED.md). */}
       <div
         className="elizaos-mobile-lockscreen-pill-anchor"
         style={{
@@ -80,9 +80,7 @@ export function LockScreen({ companionBar, cloudsModule }: LockScreenProps) {
           justifyContent: "center",
           width: "100%",
         }}
-      >
-        {companionBar ?? null}
-      </div>
+      />
     </div>
   );
 }

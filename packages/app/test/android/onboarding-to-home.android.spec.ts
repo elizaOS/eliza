@@ -1,82 +1,111 @@
-// Fresh first-run onboarding on the real Android Capacitor WebView.
+// Fresh first-run REMOTE-CONNECT onboarding on the real Android Capacitor
+// WebView, driven by the OS deep link.
 //
-// The broad Android route suite seeds first-run as complete so it can sweep
-// routes. This spec deliberately resets the installed app into first-run,
-// chooses the Remote runtime with touch input, connects to the deterministic
-// host agent exposed through adb reverse, and asserts the post-onboarding home
-// surface. No desktop Chromium or page.route fixtures are involved.
+// The host (a desktop/cloud agent) emits a
+// `<scheme>://first-run/runtime/remote?api=<url>` link/QR. Opening it on a fresh
+// device connects to that remote and lands on home. This spec resets the
+// installed app into first-run, fires the real deep link via `adb am start`
+// (delivered to Capacitor's `appUrlOpen`), and asserts the post-onboarding home
+// surface — no onboarding DOM is touched, so the lane survives the in-chat
+// onboarding redesign (#9952/#10302) instead of binding to deleted testids
+// (the original `choice-remote` / `first-run-remote-address` / `choice-connect`
+// flow). Replaces the lane quarantined in #10322.
+//
+// The deterministic host agent is reachable at 127.0.0.1:31337 through
+// `adb reverse`; 127.0.0.1 is loopback, so the connect needs no confirm prompt.
 import path from "node:path";
-import type { Locator } from "@playwright/test";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import {
+  APP_ID,
+  adbDevice,
+  adbReverse,
+  resolveAdb,
+} from "../../scripts/lib/android-device.mjs";
 import { expect, ORIGIN, test } from "./android-harness";
 
 const HOST_AGENT_BASE = "http://127.0.0.1:31337";
+// app.config.ts `desktop.urlScheme`; the Android manifest registers it as the
+// BROWSABLE `@string/custom_url_scheme` intent-filter.
+const URL_SCHEME = "elizaos";
+const FIRST_RUN_REMOTE_DEEPLINK = `${URL_SCHEME}://first-run/runtime/remote?api=${encodeURIComponent(
+  HOST_AGENT_BASE,
+)}`;
 const ARTIFACT_DIR = path.join(
   process.cwd(),
   "test-results",
   "android-onboarding-to-home",
 );
 
-async function activate(locator: Locator) {
-  try {
-    await locator.tap();
-  } catch (error) {
-    if (!/does not support tap/i.test(String(error))) throw error;
-    await locator.click();
-  }
-}
-
 test.describe
-  .serial("android onboarding to home (real Capacitor WebView)", () => {
-    test("fresh first-run connects to a host agent and lands on home", async ({
+  .serial("android remote-connect onboarding via deep link (real WebView)", () => {
+    test("fresh first-run deep link connects to a host agent and lands on home", async ({
       page,
       device,
     }, testInfo) => {
       test.setTimeout(180_000);
 
+      const adbBin = resolveAdb();
+      const serial = device.serial();
+      // The device's 127.0.0.1:31337 must reach the host's deterministic agent.
+      adbReverse(adbBin, serial, 31337);
+
       const recording = await startAndroidScreenRecord({
-        serial: device.serial(),
+        serial,
         artifactDir: ARTIFACT_DIR,
         filename: "onboarding-to-home.mp4",
         remotePath: "/sdcard/eliza-onboarding-to-home.mp4",
       });
 
       try {
-        // Keep Android's local sideload pre-seed from rewriting the fresh session
-        // back to eliza-local-agent://ipc after ?reset clears active-server.
+        // Force a fresh first-run: drop any seeded active-server / completion so
+        // the app boots into onboarding before the deep link arrives.
         await page.evaluate(() => {
-          localStorage.setItem("eliza:mobile-runtime-mode", "remote");
           localStorage.removeItem("elizaos:active-server");
           localStorage.removeItem("eliza:onboarding-complete");
           localStorage.removeItem("eliza:first-run-complete");
           localStorage.removeItem("eliza:setup:step");
+          localStorage.removeItem("eliza:mobile-runtime-mode");
         });
-
         await page.goto(`${ORIGIN}/?reset`, {
           waitUntil: "domcontentloaded",
           timeout: 60_000,
         });
 
-        const onboarding = page.getByTestId("first-run-chat");
-        await expect(onboarding).toBeVisible({ timeout: 60_000 });
+        // The agent must be the gate before the deep link lands.
+        await expect(page.getByTestId("home-launcher-surface")).toHaveCount(0, {
+          timeout: 30_000,
+        });
 
-        const remoteOption = page.getByTestId("choice-remote");
-        await expect(remoteOption).toBeVisible({ timeout: 30_000 });
-        await activate(remoteOption);
-
-        const remoteAddress = page.getByTestId("first-run-remote-address");
-        await expect(remoteAddress).toBeVisible({ timeout: 30_000 });
-        await remoteAddress.fill(HOST_AGENT_BASE);
-        await activate(page.getByTestId("choice-connect"));
-
-        await expect(onboarding).toBeHidden({ timeout: 90_000 });
+        // Fire the real OS deep link. `am start` delivers it to the running
+        // WebView via Capacitor `appUrlOpen` (singleTask onNewIntent), so the
+        // CDP page survives and observes the connect → home transition.
+        adbDevice(adbBin, serial, [
+          "shell",
+          "am",
+          "start",
+          "-a",
+          "android.intent.action.VIEW",
+          "-c",
+          "android.intent.category.BROWSABLE",
+          "-d",
+          FIRST_RUN_REMOTE_DEEPLINK,
+          APP_ID,
+        ]);
 
         const surface = page.getByTestId("home-launcher-surface");
-        await expect(surface).toBeVisible({ timeout: 60_000 });
+        await expect(surface).toBeVisible({ timeout: 90_000 });
         await expect(surface).toHaveAttribute("data-page", "home");
         await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
           timeout: 60_000,
         });
+
+        // The connect must have persisted the remote as the active server.
+        const activeServer = await page.evaluate(() =>
+          localStorage.getItem("elizaos:active-server"),
+        );
+        expect(activeServer, "active-server persisted").toBeTruthy();
+        expect(activeServer).toContain("127.0.0.1:31337");
+        expect(activeServer).toContain('"kind":"remote"');
 
         const screenshotPath = path.join(ARTIFACT_DIR, "home-landing.png");
         await page.screenshot({ path: screenshotPath, fullPage: true });

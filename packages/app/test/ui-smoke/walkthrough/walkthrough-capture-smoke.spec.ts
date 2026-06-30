@@ -186,14 +186,23 @@ test.describe("walkthrough capture smoke", () => {
     await installWalkthroughConversationStore(page);
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const onboarding = page.getByTestId("first-run-chat");
+    // #9952: onboarding IS the chat — the conductor greets first inside the REAL
+    // floating ContinuousChatOverlay and offers the runtime question as inline
+    // ChoiceWidget buttons. There is no separate full-screen onboarding surface.
+    const onboarding = page.getByTestId("continuous-chat-overlay");
     await expect(onboarding).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId("first-run-greeting")).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(page.getByTestId("choice-cloud")).toBeVisible();
-    await expect(page.getByTestId("choice-remote")).toBeVisible();
-    await expect(page.getByTestId("choice-local")).toBeVisible();
+    await expect(
+      onboarding.getByText("Let's get you set up", { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByTestId("choice-__first_run__:runtime:cloud"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("choice-__first_run__:runtime:other"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("choice-__first_run__:runtime:local"),
+    ).toBeVisible();
     await captureState(page, testInfo, "walkthrough-01-onboarding.png");
 
     firstRun.setComplete(true);

@@ -13,9 +13,6 @@ describe("resolveRuntimePluginImportSpecifier", () => {
       resolveRuntimePluginImportSpecifier("@elizaos/plugin-personal-assistant"),
     ).toBe("@elizaos/plugin-personal-assistant/plugin");
     expect(
-      resolveRuntimePluginImportSpecifier("@elizaos/plugin-companion"),
-    ).toBe("@elizaos/plugin-companion/plugin");
-    expect(
       resolveRuntimePluginImportSpecifier("@elizaos/plugin-calendar"),
     ).toBe("@elizaos/plugin-calendar/plugin");
   });

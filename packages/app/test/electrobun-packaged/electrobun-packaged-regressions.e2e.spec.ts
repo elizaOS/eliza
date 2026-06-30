@@ -16,7 +16,11 @@ type EvalResult<T> = EvalOk<T> | EvalErr;
 
 const SETTINGS_SELECTOR = '[data-testid="settings-shell"]';
 const PLUGINS_SELECTOR = '[data-testid="plugins-shell"]';
-const FIRST_RUN_SELECTOR = '[data-testid="startup-first-run-background"]';
+// #9952: onboarding is now in-chat — a fresh / reset profile paints the home plus
+// the auto-opened REAL floating ContinuousChatOverlay (the conductor seeds the
+// greeting + choices into it), so the chat overlay IS the first-run surface. The
+// removed full-screen `startup-first-run-background` gate no longer exists.
+const FIRST_RUN_SELECTOR = '[data-testid="continuous-chat-overlay"]';
 const SETTINGS_ROUTE = "/settings";
 const SETTINGS_MEDIA_ROUTE = "/settings/voice";
 const PLUGINS_ROUTE = "/apps/plugins";
@@ -280,31 +284,12 @@ async function setPersistedSettingsState(
   await waitForMediaSettingsRoute(harness);
   const result = await harness.eval<
     EvalResult<{
-      vrmPower: string | null;
-      animateWhenHidden: string | null;
       provider: unknown;
     }>
   >(
     `(async () => {
       try {
         ${getRouteNavigationScript(SETTINGS_MEDIA_ROUTE)}
-
-        const powerRoot = document.querySelector('[data-testid="settings-companion-vrm-power"]');
-        const animateSwitch = document.querySelector('[data-testid="settings-companion-animate-when-hidden"] [role="switch"]');
-        const powerButtons = powerRoot ? Array.from(powerRoot.querySelectorAll("button")) : [];
-        const qualityButton = powerButtons.find((button) =>
-          /always quality/i.test((button.textContent || "").trim()),
-        );
-
-        qualityButton?.click();
-        if (
-          animateSwitch &&
-          animateSwitch.getAttribute("aria-checked") !== "true"
-        ) {
-          animateSwitch.click();
-        }
-        localStorage.setItem("eliza:companion-vrm-power", "quality");
-        localStorage.setItem("eliza:companion-animate-when-hidden", "1");
 
         const apiBase = ${getApiBaseExpression()};
         if (!apiBase) {
@@ -334,10 +319,6 @@ async function setPersistedSettingsState(
 
         return {
           ok: true,
-          vrmPower: localStorage.getItem("eliza:companion-vrm-power"),
-          animateWhenHidden: localStorage.getItem(
-            "eliza:companion-animate-when-hidden",
-          ),
           provider: { success: true, provider: "openai" },
         };
       } catch (error) {
@@ -354,24 +335,18 @@ async function setPersistedSettingsState(
     return;
   }
 
-  expect(result.vrmPower).toBe("quality");
-  expect(result.animateWhenHidden).toBe("1");
   expect(result.provider).toMatchObject({ success: true, provider: "openai" });
 }
 
 async function readPersistedSettingsState(
   harness: PackagedDesktopHarness,
 ): Promise<{
-  vrmPower: string | null;
-  animateWhenHidden: string | null;
   providerLabel: string | null;
   backend: string | null;
 }> {
   await waitForProviderTrigger(harness);
   const result = await harness.eval<
     EvalResult<{
-      vrmPower: string | null;
-      animateWhenHidden: string | null;
       providerLabel: string | null;
       backend: string | null;
     }>
@@ -405,10 +380,6 @@ async function readPersistedSettingsState(
 
         return {
           ok: true,
-          vrmPower: localStorage.getItem("eliza:companion-vrm-power"),
-          animateWhenHidden: localStorage.getItem(
-            "eliza:companion-animate-when-hidden",
-          ),
           providerLabel: backend === "openai" ? "OpenAI" : backend,
           backend,
         };
@@ -480,13 +451,11 @@ async function seedResettableState(
     EvalResult<{
       firstRunComplete: string | null;
       activeServer: string | null;
-      vrmPower: string | null;
     }>
   >(
     `(() => {
       try {
         localStorage.setItem("eliza:first-run-complete", "1");
-        localStorage.setItem("eliza:companion-vrm-power", "quality");
         localStorage.setItem(
           "elizaos:active-server",
           JSON.stringify({
@@ -499,7 +468,6 @@ async function seedResettableState(
           ok: true,
           firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
           activeServer: localStorage.getItem("elizaos:active-server"),
-          vrmPower: localStorage.getItem("eliza:companion-vrm-power"),
         };
       } catch (error) {
         return {
@@ -896,6 +864,11 @@ async function withPackagedHarness(
       tempRoot,
       launcherPath: launcherPath as string,
       apiBase: api.baseUrl,
+      // These regressions assert the legacy full-window vibrancy/tray/resize
+      // behaviour. Since #10350 flipped the default resting surface to the
+      // chromeless bottom bar, opt out here so they keep testing the full window
+      // (the bottom-bar default is covered by electrobun-bottom-bar.e2e.spec.ts).
+      extraEnv: { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
     });
     debugPackagedPhase("starting initial packaged launch");
     await harness.start({
@@ -1076,8 +1049,6 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
 
     await openRouteAndWait(harness, SETTINGS_ROUTE, SETTINGS_SELECTOR);
     const settingsState = await readPersistedSettingsState(harness);
-    expect(settingsState.vrmPower).toBe("quality");
-    expect(settingsState.animateWhenHidden).toBe("1");
     expect(settingsState.providerLabel).toContain("OpenAI");
     expect(settingsState.backend).toBe("openai");
     await writeHarnessScreenshot(

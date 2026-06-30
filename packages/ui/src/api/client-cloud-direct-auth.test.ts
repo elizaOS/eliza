@@ -81,6 +81,55 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("creates staging CLI sessions through the staging API host and opens the staging web auth host", async () => {
+    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+
+    const client = new ElizaClient("https://staging.elizacloud.ai");
+    const result = await client.cloudLoginDirect(
+      "https://staging.elizacloud.ai",
+    );
+
+    expect(capacitorMocks.post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api-staging.elizacloud.ai/api/auth/cli-session",
+        data: expect.objectContaining({ sessionId: expect.any(String) }),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        apiBase: "https://api-staging.elizacloud.ai",
+        browserUrl: expect.stringMatching(
+          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+        ),
+      }),
+    );
+  });
+
+  it("maps staging API bases back to the staging web auth host", async () => {
+    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+
+    const client = new ElizaClient("https://api-staging.elizacloud.ai");
+    const result = await client.cloudLoginDirect(
+      "https://api-staging.elizacloud.ai",
+    );
+
+    expect(capacitorMocks.post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api-staging.elizacloud.ai/api/auth/cli-session",
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        apiBase: "https://api-staging.elizacloud.ai",
+        browserUrl: expect.stringMatching(
+          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+        ),
+      }),
+    );
+  });
+
   it("polls native CLI sessions through the Cloud API host", async () => {
     capacitorMocks.get.mockResolvedValue({
       status: 200,

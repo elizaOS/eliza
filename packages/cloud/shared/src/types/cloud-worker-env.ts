@@ -166,6 +166,11 @@ export interface Bindings {
   // safe synchronous-reserve path).
   INFERENCE_OPTIMISTIC_BILLING?: string;
   SAFE_BALANCE_THRESHOLD?: string;
+  // Optimistic-billing durable backstop selector. "db" routes the pending-charge
+  // + settlement through the inference_pending_charges DB ledger (atomic
+  // overdraw bound + exactly-once settle + age-ordered sweep); anything else
+  // (default) keeps the KV backstop. Both still require INFERENCE_OPTIMISTIC_BILLING.
+  INFERENCE_BILLING_LEDGER?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
   PLAYWRIGHT_TEST_AUTH?: string;

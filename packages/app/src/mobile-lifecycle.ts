@@ -23,6 +23,13 @@ export interface MobileLifecycleContext {
   handleDeepLink: (url: string) => void;
 }
 
+// There is one document/window, so there is one visibilitychange→lifecycle and
+// one online/offline→network bridge. Tracked at module scope so re-init (HMR /
+// repeated init) replaces the previous handlers instead of leaking new ones.
+let activeVisibilityHandler: (() => void) | null = null;
+let activeOnlineHandler: (() => void) | null = null;
+let activeOfflineHandler: (() => void) | null = null;
+
 export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   let keyboardListenersRegistered = false;
   let lifecycleListenersRegistered = false;
@@ -84,17 +91,40 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     if (lifecycleListenersRegistered) return;
     lifecycleListenersRegistered = true;
 
+    // Single source of truth for the foreground/background state so the
+    // Capacitor `appStateChange` listener and the `visibilitychange` fallback
+    // below never double-dispatch — each only fires on an actual transition.
+    let lastActive: boolean | null = null;
+    const setAppActive = (active: boolean): void => {
+      if (lastActive === active) return;
+      lastActive = active;
+      dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT);
+    };
+
     void Promise.resolve(
       CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-        if (isActive) {
-          dispatchAppEvent(APP_RESUME_EVENT);
-        } else {
-          dispatchAppEvent(APP_PAUSE_EVENT);
-        }
+        setAppActive(isActive);
       }),
     ).catch((error) => {
       logNativePluginUnavailable("App", error);
     });
+
+    // Robust pause/resume fallback. `document.visibilitychange` fires reliably on
+    // every surface (web, desktop, iOS/Android WebView) when the app is
+    // backgrounded/foregrounded — including when the Capacitor `App` plugin's
+    // `appStateChange` is delayed, missing, or (as observed on an Android
+    // device) reports the App plugin as "not implemented", in which case the
+    // listener above never registers and pause/resume would otherwise never
+    // fire — so APP_PAUSE_EVENT-driven work (e.g. pruning backgrounded views to
+    // reclaim memory) never runs on background. Deduped via `setAppActive` so it
+    // never double-fires alongside a working `appStateChange`.
+    if (activeVisibilityHandler) {
+      document.removeEventListener("visibilitychange", activeVisibilityHandler);
+    }
+    activeVisibilityHandler = () => {
+      setAppActive(document.visibilityState !== "hidden");
+    };
+    document.addEventListener("visibilitychange", activeVisibilityHandler);
 
     void Promise.resolve(
       CapacitorApp.addListener("backButton", ({ canGoBack }) => {
@@ -128,16 +158,40 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   async function initializeNetworkListener(): Promise<void> {
     if (networkStatusListenerRegistered) return;
     networkStatusListenerRegistered = true;
+
+    // Single source of truth for connectivity so the Capacitor `Network`
+    // listener and the window online/offline fallback never double-dispatch.
+    let lastConnected: boolean | null = null;
+    const setConnected = (connected: boolean): void => {
+      if (lastConnected === connected) return;
+      lastConnected = connected;
+      const detail: NetworkStatusChangeDetail = { connected };
+      dispatchAppEvent(NETWORK_STATUS_CHANGE_EVENT, detail);
+    };
+
+    // Robust fallback: `online`/`offline` fire reliably on every surface — and on
+    // Android the Capacitor `Network` plugin can be unavailable (observed absent
+    // from the WebView bridge on-device), in which case the listener below never
+    // registers and NETWORK_STATUS_CHANGE_EVENT (which the WebSocket reconnect
+    // scheduler consumes to stop burning backoff in airplane mode) never fires.
+    // Deduped via `setConnected`; registered idempotently at module scope.
+    if (activeOnlineHandler)
+      window.removeEventListener("online", activeOnlineHandler);
+    if (activeOfflineHandler)
+      window.removeEventListener("offline", activeOfflineHandler);
+    activeOnlineHandler = () => setConnected(true);
+    activeOfflineHandler = () => setConnected(false);
+    window.addEventListener("online", activeOnlineHandler);
+    window.addEventListener("offline", activeOfflineHandler);
+
     try {
       const { Network } = await import("@capacitor/network");
       await Network.addListener("networkStatusChange", (status) => {
-        const detail: NetworkStatusChangeDetail = {
-          connected: status.connected,
-        };
-        dispatchAppEvent(NETWORK_STATUS_CHANGE_EVENT, detail);
+        setConnected(status.connected);
       });
     } catch (error) {
-      networkStatusListenerRegistered = false;
+      // The online/offline fallback above remains active, so leave the listener
+      // marked registered rather than resetting for a native retry.
       logNativePluginUnavailable("Network", error);
     }
   }

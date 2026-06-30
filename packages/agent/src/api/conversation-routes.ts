@@ -1358,8 +1358,7 @@ function clampMessageSearchLimit(value: string | null): number {
 }
 
 function normalizeMessageSearchQuery(value: string | null): string {
-  if (typeof value !== "string") return "";
-  return value.trim().replace(/\s+/g, " ");
+  return (value === null ? "" : value).trim().replace(/\s+/g, " ");
 }
 
 /** A `…keyword…` excerpt around the first match, or a head-truncated fallback. */
@@ -1386,13 +1385,10 @@ export async function handleConversationRoutes(
   ctx: ConversationRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, readJsonBody, json, error, state } = ctx;
-  const requestHref =
-    typeof req.url === "string" && req.url.length > 0 ? req.url : "/";
-  const requestHost =
-    typeof req.headers.host === "string" && req.headers.host.length > 0
-      ? req.headers.host
-      : "localhost";
-  const requestUrl = new URL(requestHref, `http://${requestHost}`);
+  const requestUrl = new URL(
+    req.url === undefined ? "" : req.url,
+    `http://${req.headers.host === undefined ? "localhost" : req.headers.host}`,
+  );
 
   if (
     !pathname.startsWith("/api/conversations") ||

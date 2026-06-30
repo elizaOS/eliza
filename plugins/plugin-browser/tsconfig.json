@@ -37,9 +37,6 @@
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
-      "@elizaos/plugin-companion": [
-        "../../plugins/plugin-companion/src/index.ts"
-      ],
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
@@ -48,7 +45,7 @@
       ]
     }
   },
-  "include": ["src", "../../plugins/plugin-companion/src/ambient-modules.d.ts"],
+  "include": ["src"],
   "references": [],
   "exclude": [
     "**/__tests__/**",

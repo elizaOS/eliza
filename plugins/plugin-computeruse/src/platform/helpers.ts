@@ -7,6 +7,7 @@
 
 import { execFileSync, execSync } from "node:child_process";
 import { platform } from "node:os";
+import { psSpawnTimeoutMs } from "./windows-timeouts.js";
 
 // ── Command Execution ───────────────────────────────────────────────────────
 
@@ -41,6 +42,20 @@ export function clearCommandExistsCache(): void {
 }
 
 /**
+ * Resolve the effective spawn timeout for a command. PowerShell spawns pay the
+ * Defender cold-spawn tax on Windows (~10-16s, #9581); raise their budget to the
+ * `ELIZA_COMPUTERUSE_PS_TIMEOUT_MS` floor so a legacy-driver call site's small
+ * hardcoded timeout (e.g. the 5s WinForms cursor-position query in `desktop.ts`)
+ * can't false-fail with `ETIMEDOUT` on an extreme host. Non-PowerShell commands
+ * (cliclick/xdotool/osascript/…) and the unset env var are no-ops.
+ */
+function effectiveSpawnTimeout(command: string, timeout: number): number {
+  return command === "powershell" || command === "pwsh"
+    ? psSpawnTimeoutMs(timeout)
+    : timeout;
+}
+
+/**
  * Run a command via execFileSync (no shell) with timeout.
  * Throws on non-zero exit or timeout.
  */
@@ -50,7 +65,7 @@ export function runCommand(
   timeout: number,
 ): string {
   const result = execFileSync(command, args, {
-    timeout,
+    timeout: effectiveSpawnTimeout(command, timeout),
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf-8",
   });
@@ -66,7 +81,7 @@ export function runCommandBuffer(
   timeout: number,
 ): void {
   execFileSync(command, args, {
-    timeout,
+    timeout: effectiveSpawnTimeout(command, timeout),
     stdio: ["ignore", "pipe", "pipe"],
   });
 }

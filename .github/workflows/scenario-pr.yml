@@ -495,6 +495,60 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+  app-walkthrough-mock:
+    name: Zero-Key full-walkthrough (mock lane)
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      - name: Install ffmpeg (recording stitch)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # Drives the REAL in-chat onboarding (greeting → runtime CHOICE →
+      # provider → one POST /api/first-run) and all 8 tutorial frames, then
+      # stitches the ordered NN-*.png frames into one step-labeled mp4 per
+      # viewport. Keyless: the lane forces ELIZA_UI_SMOKE_FORCE_STUB=1; the PR
+      # env blanks every provider key, so `--skip-review` (no vision verdicts).
+      - name: Drive + record the in-chat onboarding + tutorial walkthrough
+        run: bun run --cwd packages/app test:e2e:walkthrough -- --skip-review
+
+      - name: Upload walkthrough screenshots + stitched recording + verdicts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-walkthrough-mock
+          path: |
+            reports/walkthrough/
+            e2e-recordings/app/walkthrough/
+            packages/app/test/ui-smoke/walkthrough/WALKTHROUGH_VERDICTS.md
+          if-no-files-found: ignore
+          retention-days: 7
+
   app-diagnostics:
     name: Zero-Key app diagnostics
     needs: changes
@@ -585,6 +639,23 @@ jobs:
       - name: Agent image workflow contract
         run: bun test packages/scripts/__tests__/build-agent-image-workflow.test.ts
 
+      # Drift guard for the build:core package set + delegation (issue #10200).
+      # packages/scripts/__tests__ is outside workspace test discovery, so keep
+      # this explicit or the guard silently stops running in CI.
+      - name: build:core package-set drift guard
+        run: bun test packages/scripts/__tests__/build-core.test.ts
+
+      # Self-test for the shared plugin build driver (issue #10200): 57 plugin
+      # build.ts files delegate to buildPlugin; this drives it against fixture
+      # packages and asserts the real emitted dist/ tree.
+      - name: Shared plugin-build driver self-test
+        run: bun test packages/scripts/__tests__/plugin-build.test.ts
+
+      # Smoke-tests the packages/app extension of the script inventory tool
+      # (issue #10200, item 2) — the second dense script surface.
+      - name: Script inventory (packages/app) smoke test
+        run: bun test packages/scripts/__tests__/audit-scripts-inventory.test.ts
+
       # E2E coverage gate (issue #8802). Now REQUIRED: the baseline is green —
       # commands 38/38, #8791 shortcuts 1/1 (wired into SHORTCUT_COVERAGE),
       # plugin routes covered/exempt, view ship-gates intact, zero blocking gaps.
@@ -630,6 +701,7 @@ jobs:
       - app-browser-cloud-keyless
       - app-browser-ratcheted
       - app-browser-auto-discovered
+      - app-walkthrough-mock
       - app-diagnostics
       - scenario-runner-e2e
     if: ${{ !cancelled() && always() && needs.changes.outputs.run_scenario_pr == 'true' }}
@@ -649,6 +721,7 @@ jobs:
             "app-browser-cloud-keyless:${{ needs.app-browser-cloud-keyless.result }}" \
             "app-browser-ratcheted:${{ needs.app-browser-ratcheted.result }}" \
             "app-browser-auto-discovered:${{ needs.app-browser-auto-discovered.result }}" \
+            "app-walkthrough-mock:${{ needs.app-walkthrough-mock.result }}" \
             "app-diagnostics:${{ needs.app-diagnostics.result }}" \
             "scenario-runner-e2e:${{ needs.scenario-runner-e2e.result }}"; do
             name="${pair%%:*}"

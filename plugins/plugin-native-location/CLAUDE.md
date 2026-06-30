@@ -103,6 +103,7 @@ Native platform permissions are requested at runtime via `requestPermissions()` 
 
 ## Conventions / gotchas
 
+- **Instrumented test (issue #9967).** The fused current-location fetch (accuracy→Priority map, `CurrentLocationRequest` build, `getCurrentLocation`/`requestLocationUpdates`) lives in `LocationFixReader`; `LocationPlugin` delegates to it (JS shape unchanged) so an on-device `androidTest` can drive the real Play Services provider without a `Bridge`/`Activity`. The fix test `Assume`-skips when no GPS/network fix is obtainable (e.g. a headless emulator whose GNSS HAL emits nothing for `geo fix`).
 - **Capacitor bridge, not elizaOS Plugin object.** Do not look for `actions`, `providers`, or `services` — this package does not export any. It integrates with Capacitor, not the elizaOS agent runtime directly.
 - **`@capacitor/core` is a peer dep.** The Capacitor version in the host app must be `^8.3.1`. Do not bundle it.
 - **Web permission flow is implicit.** `requestPermissions()` on web calls `getCurrentPosition` internally to trigger the browser permission prompt — there is no direct Permissions API call for geolocation.

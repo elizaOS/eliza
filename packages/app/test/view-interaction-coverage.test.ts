@@ -106,18 +106,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["todos decomposed view", "/todos"],
     },
   ],
-  companion: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Drives companion chat dock, emote picker, microphone toggles, and VRM canvas drag controls.",
-      signals: [
-        "companion interactions",
-        "emote-picker",
-        "companion-vrm-canvas",
-      ],
-    },
-  ],
   contacts: [
     {
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
@@ -389,7 +377,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(58);
+    expect(visualCases.length).toBe(56);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

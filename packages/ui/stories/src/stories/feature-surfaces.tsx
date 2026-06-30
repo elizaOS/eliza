@@ -14,20 +14,6 @@ import {
   type VoiceUpdatePreferencesView,
 } from "@ui-src/components/local-inference/ModelUpdatesPanel.tsx";
 import { PermissionRecoveryCallout } from "@ui-src/components/permissions/PermissionRecoveryCallout.tsx";
-import { ApprovedAddressesSection } from "@ui-src/components/policy-controls/ApprovedAddressesSection.tsx";
-import { AutoApproveSection } from "@ui-src/components/policy-controls/AutoApproveSection.tsx";
-import { PolicyToggle } from "@ui-src/components/policy-controls/PolicyToggle.tsx";
-import { RateLimitSection } from "@ui-src/components/policy-controls/RateLimitSection.tsx";
-import { SpendingLimitSection } from "@ui-src/components/policy-controls/SpendingLimitSection.tsx";
-import { TimeWindowSection } from "@ui-src/components/policy-controls/TimeWindowSection.tsx";
-import type {
-  ApprovedAddressesConfig,
-  AutoApproveConfig,
-  RateLimitConfig,
-  SpendingLimitConfig,
-  TimeWindowConfig,
-} from "@ui-src/components/policy-controls/types.ts";
-import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import type { StoryDefinition } from "../Story.tsx";
 
@@ -228,92 +214,6 @@ function ModelUpdatesStory() {
   );
 }
 
-function PolicyToggleStory() {
-  const [enabled, setEnabled] = useState(true);
-  return (
-    <div className="w-[min(520px,86vw)]">
-      <PolicyToggle
-        icon={ShieldCheck}
-        title="Spending policy"
-        summary="Under $25 per transaction"
-        enabled={enabled}
-        onToggle={setEnabled}
-      >
-        <p className="text-xs text-muted">
-          Expanded content renders only when the policy is enabled.
-        </p>
-      </PolicyToggle>
-    </div>
-  );
-}
-
-function RateLimitStory() {
-  const [config, setConfig] = useState<RateLimitConfig>({
-    maxTxPerHour: 12,
-    maxTxPerDay: 80,
-  });
-  return (
-    <div className="w-[min(420px,86vw)]">
-      <RateLimitSection config={config} onChange={setConfig} />
-    </div>
-  );
-}
-
-function SpendingLimitStory() {
-  const [config, setConfig] = useState<SpendingLimitConfig>({
-    maxPerTx: "25",
-    maxPerDay: "250",
-    maxPerWeek: "1000",
-  });
-  return (
-    <div className="w-[min(620px,92vw)]">
-      <SpendingLimitSection config={config} onChange={setConfig} />
-    </div>
-  );
-}
-
-function AutoApproveStory() {
-  const [config, setConfig] = useState<AutoApproveConfig>({
-    threshold: "5",
-  });
-  return (
-    <div className="w-[min(420px,86vw)]">
-      <AutoApproveSection config={config} onChange={setConfig} />
-    </div>
-  );
-}
-
-function TimeWindowStory() {
-  const [config, setConfig] = useState<TimeWindowConfig>({
-    allowedHours: [{ start: 9, end: 17 }],
-    allowedDays: [1, 2, 3, 4, 5],
-    timezone: "America/New_York",
-  });
-  return (
-    <div className="w-[min(420px,86vw)]">
-      <TimeWindowSection config={config} onChange={setConfig} />
-    </div>
-  );
-}
-
-function ApprovedAddressesStory() {
-  const [config, setConfig] = useState<ApprovedAddressesConfig>({
-    mode: "whitelist",
-    addresses: [
-      {
-        address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-        label: "Treasury",
-      },
-    ],
-    labels: {},
-  });
-  return (
-    <div className="w-[min(620px,92vw)]">
-      <ApprovedAddressesSection config={config} onChange={setConfig} />
-    </div>
-  );
-}
-
 function PermissionRecoveryStory() {
   return (
     <div className="grid w-[min(960px,92vw)] gap-4 md:grid-cols-2">
@@ -380,48 +280,6 @@ export const featureSurfaceStories: StoryDefinition[] = [
     importPath:
       'import { ModelUpdatesPanel } from "@elizaos/ui/components/local-inference/ModelUpdatesPanel"',
     render: () => <ModelUpdatesStory />,
-  },
-  {
-    id: "feature-policy-toggle",
-    name: "PolicyToggle",
-    importPath:
-      'import { PolicyToggle } from "@elizaos/ui/components/policy-controls/PolicyToggle"',
-    render: () => <PolicyToggleStory />,
-  },
-  {
-    id: "feature-rate-limit-section",
-    name: "RateLimitSection",
-    importPath:
-      'import { RateLimitSection } from "@elizaos/ui/components/policy-controls/RateLimitSection"',
-    render: () => <RateLimitStory />,
-  },
-  {
-    id: "feature-spending-limit-section",
-    name: "SpendingLimitSection",
-    importPath:
-      'import { SpendingLimitSection } from "@elizaos/ui/components/policy-controls/SpendingLimitSection"',
-    render: () => <SpendingLimitStory />,
-  },
-  {
-    id: "feature-auto-approve-section",
-    name: "AutoApproveSection",
-    importPath:
-      'import { AutoApproveSection } from "@elizaos/ui/components/policy-controls/AutoApproveSection"',
-    render: () => <AutoApproveStory />,
-  },
-  {
-    id: "feature-time-window-section",
-    name: "TimeWindowSection",
-    importPath:
-      'import { TimeWindowSection } from "@elizaos/ui/components/policy-controls/TimeWindowSection"',
-    render: () => <TimeWindowStory />,
-  },
-  {
-    id: "feature-approved-addresses-section",
-    name: "ApprovedAddressesSection",
-    importPath:
-      'import { ApprovedAddressesSection } from "@elizaos/ui/components/policy-controls/ApprovedAddressesSection"',
-    render: () => <ApprovedAddressesStory />,
   },
   {
     id: "feature-permission-recovery-callout",

@@ -1,9 +1,10 @@
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import "@elizaos/ui/styles";
-// Native-only: register bundled plugin views as in-process app-shell pages so
-// they load from the view catalog on iOS/Android (where DynamicViewLoader is
-// disabled). No-op off-device.
-import "./mobile-plugin-views";
+// Native-only (ios/android/desktop): register the Eliza Cloud Applications
+// dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
+// self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
+// the same surfaces.
+import "./cloud-apps-view";
 // Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
 // running build's identity is observable in-app and assertable on-device (#9309).
 import "./renderer-build-stamp";
@@ -49,11 +50,7 @@ import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
-  CompanionInferenceNotice,
-  CompanionSceneStatus,
-  CompanionShellComponentProps,
   FineTuningViewProps,
-  ResolveCompanionInferenceNoticeArgs,
 } from "@elizaos/ui/config";
 import {
   type AppBootConfig,
@@ -74,7 +71,10 @@ import {
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
-import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
+import {
+  parseFirstRunRemoteConnectDeepLink,
+  routeFirstRunDeepLink,
+} from "@elizaos/ui/first-run/deep-link-handler";
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
@@ -191,34 +191,6 @@ function importAppCore() {
   );
 }
 
-function importCompanionAppRegistration() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-companion/components/companion/companion-app",
-    () =>
-      import("@elizaos/plugin-companion/components/companion/companion-app"),
-  );
-}
-
-function importCompanionSceneStatusContext() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-companion/components/companion/companion-scene-status-context",
-    () =>
-      import(
-        "@elizaos/plugin-companion/components/companion/companion-scene-status-context"
-      ),
-  );
-}
-
-function importCompanionInferenceNotice() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice",
-    () =>
-      import(
-        "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice"
-      ),
-  );
-}
-
 function importPersonalAssistant() {
   return cachedDynamicImport(
     "@elizaos/plugin-personal-assistant",
@@ -260,46 +232,6 @@ function lazyNamedComponent<TProps>(
   return lazy(async () => ({ default: await load() })) as ComponentType<TProps>;
 }
 
-const CompanionShell = lazyNamedComponent<CompanionShellComponentProps>(
-  async () =>
-    (
-      await cachedDynamicImport(
-        "@elizaos/plugin-companion/components/companion/CompanionShell",
-        () =>
-          import(
-            "@elizaos/plugin-companion/components/companion/CompanionShell"
-          ),
-      )
-    ).CompanionShell,
-);
-const GlobalEmoteOverlay = lazyNamedComponent<Record<string, never>>(
-  async () =>
-    (
-      await cachedDynamicImport(
-        "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay",
-        () =>
-          import(
-            "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay"
-          ),
-      )
-    ).GlobalEmoteOverlay,
-);
-const InferenceCloudAlertButton = lazyNamedComponent<{
-  notice: CompanionInferenceNotice;
-  onClick: () => void;
-  onPointerDown?: (...args: unknown[]) => unknown;
-}>(
-  async () =>
-    (
-      await cachedDynamicImport(
-        "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
-        () =>
-          import(
-            "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton"
-          ),
-      )
-    ).InferenceCloudAlertButton,
-);
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
@@ -322,17 +254,6 @@ const CodingAgentTasksPanel = lazyNamedComponent<CodingAgentTasksPanelProps>(
 const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
   async () => (await importAppTraining()).FineTuningView,
 );
-
-let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
-
-function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
-  return (
-    loadedCompanionSceneStatusHook?.() ?? {
-      avatarReady: false,
-      teleportKey: "",
-    }
-  );
-}
 
 const BRANDED_WINDOW_KEYS = {
   apiBase: `__${APP_ENV_PREFIX}_API_BASE__`,
@@ -407,9 +328,9 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
+const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
-const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "In one short sentence, confirm the iOS full Bun local backend is running.";
 const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
@@ -422,6 +343,7 @@ let mobileRuntimeModeListenerInstalled = false;
 let keyboardListenersRegistered = false;
 let lifecycleListenersRegistered = false;
 let networkStatusListenerRegistered = false;
+let activeVisibilityHandler: (() => void) | null = null;
 let iosFullBunSmokeStarted = false;
 let iosOnboardingSmokeStarted = false;
 
@@ -600,13 +522,7 @@ function scheduleDeferredAppModuleLoadsAfterPaint(): void {
   });
 }
 
-function buildAppBootConfig({
-  resolveCompanionInferenceNotice,
-}: {
-  resolveCompanionInferenceNotice: (
-    args: ResolveCompanionInferenceNoticeArgs,
-  ) => CompanionInferenceNotice | null;
-}): AppBootConfig {
+function buildAppBootConfig(): AppBootConfig {
   const current = getBootConfig();
 
   return {
@@ -620,11 +536,6 @@ function buildAppBootConfig({
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
     characterEditor: CharacterEditor,
-    companionShell: CompanionShell,
-    resolveCompanionInferenceNotice,
-    companionInferenceAlertButton: InferenceCloudAlertButton,
-    companionGlobalOverlay: GlobalEmoteOverlay,
-    useCompanionSceneStatus: useLoadedCompanionSceneStatus,
     codingAgentTasksPanel: CodingAgentTasksPanel,
     codingAgentSettingsSection: CodingAgentSettingsSection,
     codingAgentControlChip: CodingAgentControlChip,
@@ -667,33 +578,12 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
 
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
+    // app-core owns the AppBootConfig singleton, so it must load before the
+    // config is assembled. Everything else exposed through the boot config is a
+    // React.lazy handle that loads on render, so its import is deferred onto the
+    // idle path instead of gating the first visible shell (#9565).
     await importAppCore();
-
-    // Block first paint ONLY on the modules whose exports buildAppBootConfig
-    // reads synchronously: companion app registration, the scene-status hook,
-    // and the inference-notice resolver. Everything else exposed through the
-    // boot config is a React.lazy handle that loads on render, so its import is
-    // deferred below instead of gating the first visible shell (#9565).
-    const [
-      companionRegistrationModule,
-      companionSceneStatusModule,
-      companionInferenceNoticeModule,
-    ] = await Promise.all([
-      importCompanionAppRegistration(),
-      importCompanionSceneStatusContext(),
-      importCompanionInferenceNotice(),
-    ]);
-
-    companionRegistrationModule.registerCompanionApp();
-    loadedCompanionSceneStatusHook =
-      companionSceneStatusModule.useCompanionSceneStatus;
-
-    setBootConfig(
-      buildAppBootConfig({
-        resolveCompanionInferenceNotice:
-          companionInferenceNoticeModule.resolveCompanionInferenceNotice,
-      }),
-    );
+    setBootConfig(buildAppBootConfig());
   })();
 
   return appModulesInitialized;
@@ -847,58 +737,6 @@ async function waitForIosOnboardingElement<T extends Element>(
   );
 }
 
-async function waitForIosOnboardingSelectorHidden(
-  selector: string,
-  options?: { timeoutMs?: number },
-): Promise<void> {
-  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const element = document.querySelector(selector);
-    if (
-      !element ||
-      !(element instanceof HTMLElement) ||
-      element.offsetParent === null
-    ) {
-      return;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-  throw new Error(
-    `Timed out waiting for iOS onboarding selector ${selector} to hide`,
-  );
-}
-
-async function waitForIosOnboardingButtonEnabled(
-  selector: string,
-  options?: { timeoutMs?: number },
-): Promise<HTMLButtonElement> {
-  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  let button: HTMLButtonElement | null = null;
-  while (Date.now() < deadline) {
-    button = await waitForIosOnboardingElement<HTMLButtonElement>(selector, {
-      timeoutMs: Math.min(1_000, Math.max(250, deadline - Date.now())),
-      visible: true,
-    }).catch(() => null);
-    if (button && !button.disabled) return button;
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-  throw new Error(
-    `Timed out waiting for iOS onboarding button ${selector} to enable`,
-  );
-}
-
-function setIosOnboardingInputValue(input: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    "value",
-  )?.set;
-  setter?.call(input, value);
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
 function readIosOnboardingSmokeStorageSnapshot(): Record<
   string,
   string | null
@@ -941,34 +779,12 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     startedAt: new Date().toISOString(),
     apiBase: request.apiBase,
   });
-
   try {
-    let remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
-      '[data-testid="first-run-remote-address"]',
-      { timeoutMs: 2_000, visible: true },
-    ).catch(() => null);
-    if (!remoteAddress) {
-      const remoteOption = await waitForIosOnboardingElement<HTMLButtonElement>(
-        '[data-testid="choice-remote"]',
-        { visible: true },
-      );
-      remoteOption.click();
-      remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
-        '[data-testid="first-run-remote-address"]',
-        { visible: true },
-      );
-    }
-    remoteAddress.focus();
-    setIosOnboardingInputValue(remoteAddress, request.apiBase);
-    remoteAddress.blur();
-
-    const remoteConnect = await waitForIosOnboardingButtonEnabled(
-      '[data-testid="choice-connect"]',
-    );
-    remoteConnect.click();
-
-    await waitForIosOnboardingSelectorHidden('[data-testid="first-run-chat"]');
-
+    // The harness fires the `<scheme>://first-run/runtime/remote?api=…` deep
+    // link after launch; the app connects to the remote and completes first-run
+    // on its own (CONNECT_EVENT → adopt → startup re-poll). This verifier only
+    // proves the post-connect surface, so it is decoupled from the onboarding
+    // DOM — no remote-address field to fill, resilient to the in-chat redesign.
     const home = await waitForIosOnboardingElement<HTMLElement>(
       '[data-testid="home-launcher-surface"][data-page="home"]',
       { visible: true },
@@ -978,6 +794,10 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
       { visible: true },
     );
 
+    const onboardingHidden = !document.querySelector(
+      '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
+    );
+
     await writeIosOnboardingSmokeResult({
       ok: true,
       phase: "complete",
@@ -985,7 +805,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
       apiBase: request.apiBase,
       homeVisible: Boolean(home),
       composerVisible: Boolean(composer),
-      onboardingHidden: true,
+      onboardingHidden,
       storage: readIosOnboardingSmokeStorageSnapshot(),
     });
   } catch (error) {
@@ -1716,17 +1536,28 @@ function initializeAppLifecycle(): void {
   if (lifecycleListenersRegistered) return;
   lifecycleListenersRegistered = true;
 
+  let lastActive: boolean | null = null;
+  const setAppActive = (active: boolean): void => {
+    if (lastActive === active) return;
+    lastActive = active;
+    dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT);
+  };
+
   void Promise.resolve(
     CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-      if (isActive) {
-        dispatchAppEvent(APP_RESUME_EVENT);
-      } else {
-        dispatchAppEvent(APP_PAUSE_EVENT);
-      }
+      setAppActive(isActive);
     }),
   ).catch((error) => {
     logNativePluginUnavailable("App", error);
   });
+
+  if (activeVisibilityHandler) {
+    document.removeEventListener("visibilitychange", activeVisibilityHandler);
+  }
+  activeVisibilityHandler = () => {
+    setAppActive(document.visibilityState !== "hidden");
+  };
+  document.addEventListener("visibilitychange", activeVisibilityHandler);
 
   void Promise.resolve(
     CapacitorApp.addListener("backButton", ({ canGoBack }) => {
@@ -1794,7 +1625,52 @@ async function initializeNetworkListener(): Promise<void> {
 // `assetlinks.json` + `apple-app-site-association` served from eliza.app).
 const APP_LINK_HOSTS = ["eliza.app"];
 
+// Device/desktop "connect to a remote agent at a URL" first-run onboarding:
+// `<scheme>://first-run/runtime/remote?api=<url>`. The host (a desktop/cloud
+// agent) emits this as a link/QR; opening it on a fresh device connects to that
+// remote and lands on home. Routed through the same hardened CONNECT_EVENT path
+// as `<scheme>://connect?url=` (trust-policy gated, token never accepted from a
+// deep link) but with `completeFirstRun` so it also finishes onboarding.
+function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
+  let validatedUrl: URL;
+  try {
+    validatedUrl = new URL(rawApiBase);
+  } catch {
+    console.error(`${APP_LOG_PREFIX} Invalid first-run remote URL format`);
+    return;
+  }
+  if (validatedUrl.protocol !== "https:" && validatedUrl.protocol !== "http:") {
+    console.error(
+      `${APP_LOG_PREFIX} Invalid first-run remote URL protocol:`,
+      validatedUrl.protocol,
+    );
+    return;
+  }
+  if (!isTrustedDeepLinkApiBaseUrl(validatedUrl)) {
+    console.warn(
+      `${APP_LOG_PREFIX} Rejected untrusted first-run remote host:`,
+      validatedUrl.hostname,
+    );
+    return;
+  }
+  // SECURITY: never accept a bearer token from an OS-delivered deep link (see
+  // the `connect` case below). A pairing-disabled remote that needs a token is
+  // connected via the trusted in-app Settings entry instead.
+  dispatchAppEvent(CONNECT_EVENT, {
+    gatewayUrl: validatedUrl.href,
+    completeFirstRun: true,
+  });
+}
+
 function handleDeepLink(url: string): void {
+  const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
+    url,
+    APP_URL_SCHEME,
+  );
+  if (firstRunRemote) {
+    connectFirstRunRemoteDeepLink(firstRunRemote.apiBase);
+    return;
+  }
   if (routeFirstRunDeepLink(url, APP_URL_SCHEME)) {
     return;
   }
@@ -2842,6 +2718,14 @@ async function main(): Promise<void> {
     installDiarizationPumpHarness();
     installJniVoiceHarness();
   }
+  // Desktop fused on-device wake (#10351): forward native libwakeword fires from
+  // the agent process to the renderer's `eliza:fused-wake` bridge so the
+  // battery-efficient on-device path drives the bottom bar — not just the
+  // Swabble fallback. No-op off-desktop (no electrobun RPC). Awaited before
+  // mountReactApp so `window.__ELIZA_FUSED_WAKE__` is set for the wake
+  // controller's first-render capability probe.
+  const { registerDesktopFusedWake } = await import("@elizaos/ui/voice");
+  registerDesktopFusedWake();
   markStartup("bridges:end", { platform });
   measureStartup("bridges", "bridges:start", "bridges:end");
   mountReactApp();
