@@ -35,7 +35,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
@@ -135,29 +135,47 @@ function normalizeSubaction(
     : null;
 }
 
-function inferSubactionFromMessage(text: string): BrowserBridgeSubaction {
-  const normalized = text.toLowerCase();
-  if (
-    /\b(reveal|show|open).{0,12}(folder|build folder|directory)\b/.test(
-      normalized,
-    ) &&
-    !/\bextension manager\b/.test(normalized)
-  ) {
-    return "reveal_folder";
-  }
-  if (
-    /\bopen.{0,8}(extensions?|extension manager|chrome:\/\/extensions)\b/.test(
-      normalized,
-    )
-  ) {
-    return "open_manager";
-  }
-  if (
-    /\b(refresh|reload|reconnect|status|settings?|config(?:uration)?|update|sync|update status|connection state)\b/.test(
-      normalized,
-    )
-  ) {
-    return "refresh";
+/**
+ * Pick the bridge subaction the user wants via the model's structured output
+ * instead of English-only regex (#10470) — only consulted when the caller did
+ * not pass an explicit `action`/`subaction` param. Defaults to "install" on any
+ * failure (the safe first-time-setup operation).
+ */
+async function extractBrowserBridgeSubaction(
+  runtime: IAgentRuntime,
+  text: string,
+): Promise<BrowserBridgeSubaction> {
+  if (!text.trim()) return "install";
+  const prompt = `The user is managing the browser companion extension. Pick the single operation they want — this must work in any language, so do not rely on English keywords.
+
+- install: set up / install / pair the companion extension (the default)
+- reveal_folder: reveal the extension's build folder in the file manager
+- open_manager: open the browser's extension manager page
+- refresh: refresh / reconnect / sync / check the companion status
+
+Request:
+${text}
+
+Return ONLY:
+<response><subaction>install|reveal_folder|open_manager|refresh</subaction></response>`;
+  try {
+    const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const cleaned = raw.replace(/```(?:xml)?/gi, "").trim();
+    const wrapped = cleaned.includes("<response>")
+      ? cleaned
+      : `<response>${cleaned}</response>`;
+    const parsed = parseKeyValueXml(wrapped) ?? {};
+    const sub =
+      typeof parsed.subaction === "string" ? parsed.subaction.trim() : "";
+    if ((BROWSER_BRIDGE_SUBACTIONS as readonly string[]).includes(sub)) {
+      return sub as BrowserBridgeSubaction;
+    }
+  } catch (error) {
+    logger.warn(
+      `[${ACTION_NAME}] subaction extraction failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
   return "install";
 }
@@ -360,9 +378,10 @@ export const manageBrowserBridgeAction: Action = {
     const subaction =
       normalizeSubaction(params?.action) ??
       normalizeSubaction(params?.subaction) ??
-      inferSubactionFromMessage(
+      (await extractBrowserBridgeSubaction(
+        runtime,
         typeof message.content?.text === "string" ? message.content.text : "",
-      );
+      ));
     try {
       switch (subaction) {
         case "install":
