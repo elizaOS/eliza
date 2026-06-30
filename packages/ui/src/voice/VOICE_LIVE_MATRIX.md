@@ -54,7 +54,7 @@ known to be present; it turns `pending` or `skip` into a failing exit.
 
 | Cell | Existing runner | Evidence |
 | --- | --- | --- |
-| `web.fake-mic.roundtrip` | `packages/app` Playwright `voice-realaudio.spec.ts` with Chromium fake audio capture | real browser getUserMedia/WAV encode/client ASR post, screenshots/video when recorded |
+| `web.fake-mic.roundtrip` | `packages/app` Playwright `voice-realaudio.spec.ts` with Chromium fake audio capture | real browser getUserMedia/WAV encode/client ASR post, local-inference Web Audio TTS start, START_TRANSCRIPTION barge-in disconnect, and second real WAV drain |
 | `web.fake-mic.transcript-roundtrip` | `packages/app` Playwright `transcript-realaudio.spec.ts` | capture -> transcript record -> player -> chat attachment, plus voice-control bridge START/STOP parity with the slash/button path |
 | `web.workbench.respond-no-respond` | headful workbench Playwright scenario | chime-in should-respond/should-not-respond UI behavior |
 | `linux.fused-acoustic.workbench-real` | `plugins/plugin-local-inference voice:workbench --real` | fused ASR, diarization, VAD, Kokoro TTS, noisy and multi-speaker workbench report |
@@ -62,8 +62,8 @@ known to be present; it turns `pending` or `skip` into a failing exit.
 | `macos.electrobun.live-roundtrip` | headed Electrobun runner plus `capture:macos-desktop` | screen/video/log artifact when `ELIZA_VOICE_MACOS_ELECTROBUN_READY=1` |
 | `windows.electrobun.live-roundtrip` | headed Electrobun runner plus `capture:windows-desktop` | screen/video/log artifact when `ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1` |
 | `ios.sim-or-device.voice-roundtrip` | installed iOS simulator/device build plus `capture:ios-sim` | simulator screenshot/video/log when `ELIZA_VOICE_IOS_READY=1` |
-| `ios.talkmode.native-bridge` | `swift test --package-path plugins/plugin-native-talkmode/ios` | TalkMode transcript/permission/state/barge-in bridge tests |
-| `ios.swabble.native-bridge` | `swift test --package-path plugins/plugin-native-swabble/ios` | Swabble wake-firing -> JS bridge event tests |
+| `ios.talkmode.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-talkmode/ios` | TalkMode transcript/permission/state/barge-in bridge tests |
+| `ios.swabble.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-swabble/ios` | Swabble wake-firing -> JS bridge event tests |
 | `android.device.voice-roundtrip` | `packages/app test:e2e:android:local` | real WebView on-device STT -> agent -> TTS self-test |
 | `android.talkmode.native-bridge` | generated Android Gradle `:elizaos-capacitor-talkmode:testDebugUnitTest` | TalkMode capture lifecycle/transcript/permission/barge-in bridge tests |
 | `android.swabble.native-bridge` | generated Android Gradle `:elizaos-capacitor-swabble:testDebugUnitTest` | Swabble wake-firing -> JS bridge event tests |

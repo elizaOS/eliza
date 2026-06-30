@@ -37,10 +37,17 @@ const DIMENSIONS = {
   voices: ["owner", "enrolled-contact", "unknown", "multi-speaker"],
 };
 
+const UI_SMOKE_MATRIX_ENV = {
+  ELIZA_UI_SMOKE_SKIP_BUILD: "1",
+  ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1",
+  ELIZA_UI_SMOKE_SKIP_CORE_BUILD: "1",
+};
+
 const CELLS = [
   {
     id: "web.fake-mic.roundtrip",
-    title: "Web fake-device mic capture -> ASR -> agent -> TTS",
+    title:
+      "Web fake-device mic capture -> ASR -> agent -> local TTS + barge-in",
     platform: "web",
     dimensions: {
       transcriptionState: "off",
@@ -49,7 +56,7 @@ const CELLS = [
       noiseRejection: "quiet",
       voices: "owner",
     },
-    class: "live-client-audio",
+    class: "live-client-audio-barge-in",
     command: [
       "bun",
       "run",
@@ -58,7 +65,7 @@ const CELLS = [
       "test:e2e",
       "test/ui-smoke/voice-realaudio.spec.ts",
     ],
-    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    env: UI_SMOKE_MATRIX_ENV,
     evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
     probe: "web",
   },
@@ -83,7 +90,7 @@ const CELLS = [
       "test:e2e",
       "test/ui-smoke/transcript-realaudio.spec.ts",
     ],
-    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    env: UI_SMOKE_MATRIX_ENV,
     evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
     probe: "web",
   },
@@ -107,7 +114,7 @@ const CELLS = [
       "test:e2e",
       "test/ui-smoke/voice-workbench-respond-no-respond.spec.ts",
     ],
-    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    env: UI_SMOKE_MATRIX_ENV,
     evidence: [
       ".github/issue-evidence/8785-voice-headful",
       "packages/app/test-results",
@@ -266,6 +273,7 @@ const CELLS = [
     command: [
       "swift",
       "test",
+      "--disable-index-store",
       "--package-path",
       "plugins/plugin-native-talkmode/ios",
     ],
@@ -287,6 +295,7 @@ const CELLS = [
     command: [
       "swift",
       "test",
+      "--disable-index-store",
       "--package-path",
       "plugins/plugin-native-swabble/ios",
     ],

@@ -1,7 +1,7 @@
 {
   "schema": "eliza_voice_live_matrix_v1",
   "issue": 9958,
-  "generatedAt": "2026-06-29T21:45:41.259Z",
+  "generatedAt": "2026-06-30T00:04:12.979Z",
   "mode": "probe",
   "dimensions": {
     "platform": [
@@ -54,7 +54,7 @@
   "cells": [
     {
       "id": "web.fake-mic.roundtrip",
-      "title": "Web fake-device mic capture -> ASR -> agent -> TTS",
+      "title": "Web fake-device mic capture -> ASR -> agent -> local TTS + barge-in",
       "platform": "web",
       "dimensions": {
         "transcriptionState": "off",
@@ -63,7 +63,7 @@
         "noiseRejection": "quiet",
         "voices": "owner"
       },
-      "class": "live-client-audio",
+      "class": "live-client-audio-barge-in",
       "command": [
         "bun",
         "run",
@@ -73,7 +73,9 @@
         "test/ui-smoke/voice-realaudio.spec.ts"
       ],
       "env": {
-        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1"
+        "ELIZA_UI_SMOKE_SKIP_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_CORE_BUILD": "1"
       },
       "evidence": [
         "packages/app/test-results",
@@ -108,7 +110,9 @@
         "test/ui-smoke/transcript-realaudio.spec.ts"
       ],
       "env": {
-        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1"
+        "ELIZA_UI_SMOKE_SKIP_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_CORE_BUILD": "1"
       },
       "evidence": [
         "packages/app/test-results",
@@ -143,7 +147,9 @@
         "test/ui-smoke/voice-workbench-respond-no-respond.spec.ts"
       ],
       "env": {
-        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1"
+        "ELIZA_UI_SMOKE_SKIP_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_CORE_BUILD": "1"
       },
       "evidence": [
         ".github/issue-evidence/8785-voice-headful",
@@ -344,6 +350,7 @@
       "command": [
         "swift",
         "test",
+        "--disable-index-store",
         "--package-path",
         "plugins/plugin-native-talkmode/ios"
       ],
@@ -374,6 +381,7 @@
       "command": [
         "swift",
         "test",
+        "--disable-index-store",
         "--package-path",
         "plugins/plugin-native-swabble/ios"
       ],
