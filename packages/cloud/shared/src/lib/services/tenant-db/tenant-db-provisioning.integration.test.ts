@@ -95,7 +95,25 @@ function parseDsn(dsn: string): { role: string; pw: string; db: string } {
 }
 
 async function resetClusters(): Promise<void> {
-  await adminExec("DELETE FROM tenant_db_clusters");
+  // FK-safe order (app_databases.app_id → apps; app_databases.tenant_db_cluster_id
+  // → tenant_db_clusters). app_databases/apps are created by beforeAll for the
+  // placement-reuse test; harmless no-op rows for the cluster-only tests.
+  await adminExec("DELETE FROM app_databases; DELETE FROM apps; DELETE FROM tenant_db_clusters;");
+}
+
+/** Read an app's persisted tenant-DB cluster placement (null if unplaced). */
+async function appPlacementClusterId(appId: string): Promise<string | null> {
+  const client = new Client({ connectionString: ADMIN_DSN });
+  await client.connect();
+  try {
+    const res = await client.query<{ tenant_db_cluster_id: string | null }>(
+      "SELECT tenant_db_cluster_id FROM app_databases WHERE app_id = $1",
+      [appId],
+    );
+    return res.rows[0]?.tenant_db_cluster_id ?? null;
+  } finally {
+    await client.end();
+  }
 }
 
 /** Read a cluster's recorded slot count by host (NaN-safe). */
@@ -144,6 +162,29 @@ d("tenant-db provisioning over real Postgres", () => {
       const trimmed = stmt.trim();
       if (trimmed) await adminExec(trimmed);
     }
+    // Minimal apps + app_databases schema so the REAL durable-placement claimer
+    // (claimTenantDbPlacementForApp) can be exercised end-to-end. The production
+    // apps table has a deep FK chain irrelevant to placement; app_databases only
+    // needs its own columns (matching schemas/app-databases.ts, incl. migration
+    // 0151's tenant_db_cluster_id) and a satisfiable app_id FK, so apps is a bare
+    // id stub.
+    await adminExec(
+      "DO $$ BEGIN CREATE TYPE user_database_status AS ENUM ('none','provisioning','ready','error'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;",
+    );
+    await adminExec("CREATE TABLE IF NOT EXISTS apps (id uuid PRIMARY KEY)");
+    await adminExec(
+      `CREATE TABLE IF NOT EXISTS app_databases (
+        id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+        app_id uuid NOT NULL UNIQUE REFERENCES apps(id) ON DELETE CASCADE,
+        user_database_uri text,
+        user_database_region text DEFAULT 'aws-us-east-1',
+        user_database_status user_database_status NOT NULL DEFAULT 'none',
+        user_database_error text,
+        tenant_db_cluster_id uuid REFERENCES tenant_db_clusters(id) ON DELETE SET NULL,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )`,
+    );
   });
 
   beforeEach(async () => {
@@ -275,5 +316,55 @@ d("tenant-db provisioning over real Postgres", () => {
     // The provisioner layer claims NO slot — re-running it is slot-neutral. (Slot
     // accounting lives in ClusterPool/provisionForApp, intentionally bypassed here.)
     expect(await clusterDatabaseCount(HOST)).toBe(SEED_COUNT);
+  });
+
+  test("#9686: a deploy RETRY for the SAME app reuses its durable cluster placement — provisionForApp twice claims ONE slot, not two", async () => {
+    // The load-bearing property the mocked unit tests cannot prove against a real
+    // database: the FOR UPDATE lock + existing-placement branch in
+    // claimTenantDbPlacementForApp makes a second provisionForApp for the SAME
+    // appId re-enter the same physical cluster WITHOUT a second tryClaimSlot. This
+    // drives the REAL production claimer (claimPlacement defaults to
+    // appDatabasesRepository.claimTenantDbPlacementForApp) — not the legacy pool
+    // seam the sibling tests inject — so the durable app->cluster placement that
+    // closes #9686 is exercised end to end.
+    const { id: clusterId } = await tenantDbClustersRepository.create({
+      provider: "direct_pg",
+      host: HOST,
+      admin_dsn_encrypted: ADMIN_DSN!, // passthrough decrypt below
+      max_databases: 100,
+      database_count: 0,
+      is_active: true,
+    });
+
+    const app = randomUUID();
+    // app_databases.app_id FKs apps(id); production has the app row before deploy.
+    await adminExec(`INSERT INTO apps (id) VALUES ('${app}')`);
+
+    const provisioning = makeTenantDbProvisioning({ decrypt: async (x) => x });
+
+    const r1 = await provisioning.provisionForApp(app);
+    const r2 = await provisioning.provisionForApp(app); // the deploy RETRY — same appId
+
+    // deriveTenantIdent is deterministic, so both calls target the SAME db/role;
+    // one entry suffices for afterAll teardown.
+    const t1 = parseDsn(r1.dsn);
+    created.push({ role: t1.role, db: t1.db });
+
+    // 1) Both calls land on the SAME physical cluster (placement reuse).
+    expect(r1.clusterId).toBe(clusterId);
+    expect(r2.clusterId).toBe(clusterId);
+
+    // 2) THE BUG GUARD: the slot count incremented by EXACTLY 1, not 2. Before the
+    //    #9686 fix, the retry called tryClaimSlot again and this would be 2 — a
+    //    silent capacity leak.
+    expect(await clusterDatabaseCount(HOST)).toBe(1);
+
+    // 3) The placement is persisted on the app row and stable across the retry,
+    //    so any number of further retries also re-enter this same cluster.
+    expect(await appPlacementClusterId(app)).toBe(clusterId);
+
+    const r3 = await provisioning.provisionForApp(app); // a third retry
+    expect(r3.clusterId).toBe(clusterId);
+    expect(await clusterDatabaseCount(HOST)).toBe(1); // still ONE slot, never climbs
   });
 });
