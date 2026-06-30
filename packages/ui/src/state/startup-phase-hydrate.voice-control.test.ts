@@ -61,13 +61,15 @@ function makeDeps(): ReadyPhaseDeps {
 }
 
 describe("bindReadyPhase voice-control agent-event bridge", () => {
-  let voiceHandler: ReturnType<typeof vi.fn>;
+  let voiceHandler: EventListener;
+  let voiceHandlerMock: ReturnType<typeof vi.fn<(event: Event) => void>>;
 
   beforeEach(() => {
     clientMock.handlers.clear();
     clientMock.onWsEvent.mockClear();
     clientMock.disconnectWs.mockClear();
-    voiceHandler = vi.fn();
+    voiceHandlerMock = vi.fn();
+    voiceHandler = (event) => voiceHandlerMock(event);
     window.addEventListener(VOICE_CONTROL_EVENT, voiceHandler);
   });
 
@@ -84,8 +86,8 @@ describe("bindReadyPhase voice-control agent-event bridge", () => {
       payload: { command: "start" },
     });
 
-    expect(voiceHandler).toHaveBeenCalledTimes(1);
-    const event = voiceHandler.mock.calls[0][0] as CustomEvent;
+    expect(voiceHandlerMock).toHaveBeenCalledTimes(1);
+    const event = voiceHandlerMock.mock.calls[0][0] as CustomEvent;
     expect(event.detail).toEqual({ command: "start" });
 
     teardown(cleanup);
@@ -99,8 +101,8 @@ describe("bindReadyPhase voice-control agent-event bridge", () => {
       payload: { command: "stop" },
     });
 
-    expect(voiceHandler).toHaveBeenCalledTimes(1);
-    const event = voiceHandler.mock.calls[0][0] as CustomEvent;
+    expect(voiceHandlerMock).toHaveBeenCalledTimes(1);
+    const event = voiceHandlerMock.mock.calls[0][0] as CustomEvent;
     expect(event.detail).toEqual({ command: "stop" });
 
     teardown(cleanup);
@@ -118,7 +120,7 @@ describe("bindReadyPhase voice-control agent-event bridge", () => {
       payload: {},
     });
 
-    expect(voiceHandler).not.toHaveBeenCalled();
+    expect(voiceHandlerMock).not.toHaveBeenCalled();
 
     teardown(cleanup);
   });
@@ -132,7 +134,7 @@ describe("bindReadyPhase voice-control agent-event bridge", () => {
       payload: { command: "start" },
     });
 
-    expect(voiceHandler).not.toHaveBeenCalled();
+    expect(voiceHandlerMock).not.toHaveBeenCalled();
 
     teardown(cleanup);
   });
