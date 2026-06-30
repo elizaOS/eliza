@@ -50,6 +50,14 @@ bun run voice:matrix -- --run --platform linux
 Use `--require-green` only on a lane where every selected hardware dependency is
 known to be present; it turns `pending` or `skip` into a failing exit.
 
+To validate the Stage-B STT benchmark cell, point the matrix at the reviewed
+report:
+
+```bash
+ELIZA_VOICE_STAGE_B_REPORT=.github/issue-evidence/9958-stage-b/report.json \
+  bun run voice:matrix -- --run --platform stt.stage-b.evaluation
+```
+
 ## Cells
 
 | Cell | Existing runner | Evidence |
@@ -69,7 +77,7 @@ known to be present; it turns `pending` or `skip` into a failing exit.
 | `android.swabble.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest` | Swabble wake-firing -> JS bridge event tests |
 | `wake.openwakeword.real-head` | gated real openWakeWord head run | idle wake, always-on inert wake, and mid-transcription non-corruption evidence |
 | `stt.stage-b.apple-sfspeech` | `node packages/scripts/stage-b-stt-bench.mjs` (macOS) | **measured** on-device `SFSpeechRecognizer` latency/RTF/WER over on-device-synthesised speech (quiet + 10 dB noise), `.github/issue-evidence/9958-stt-stage-b-eval/` |
-| `stt.stage-b.evaluation` | paired iOS/Android device benchmark | iOS battery/energy telemetry, Android `SpeechRecognizer` (NNAPI), and fused ASR latency/battery/accept matrix (the Apple latency/WER arm is covered by `stt.stage-b.apple-sfspeech`) |
+| `stt.stage-b.evaluation` | `packages/scripts/voice-stage-b-eval.mjs` validating a paired device benchmark report | iOS `SFSpeechRecognizer`, Android `SpeechRecognizer`, and fused ASR latency/battery/accept matrix with reviewed artifacts |
 
 ## Hardware Gates
 
@@ -85,9 +93,15 @@ developer laptop:
 | `ELIZA_VOICE_ANDROID_READY=1` | current runner has an attached Android device/emulator, current APK, voice assets, and granted mic permissions |
 | `ELIZA_OPENWAKEWORD_REAL_READY=1` | current runner has the real openWakeWord head and audio fixture/device path |
 | `ELIZA_INFERENCE_LIBRARY` + `ELIZA_ASR_BUNDLE` | Linux fused real-service runner has the provisioned local-inference bundle |
+| `ELIZA_VOICE_STAGE_B_REPORT` | reviewed Stage-B JSON report using schema `eliza_voice_stage_b_stt_eval_v1`; required backends are `ios-sfspeechrecognizer`, `android-speechrecognizer`, and `fused-asr` |
 
 The matrix report records these gates in the `probe.reason` field. This keeps
 Linux green separate from missing macOS/iOS/Android evidence.
+
+The Stage-B report is intentionally stricter than a plain benchmark dump. Each
+backend run must mark `realHardware: true`, identify the build and device, record
+latency, `msPerFrame`, true/false accepts, WER, battery or power telemetry, and
+list manually reviewed artifact paths.
 
 ## TTS Policy
 

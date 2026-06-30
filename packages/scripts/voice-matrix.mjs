@@ -399,12 +399,11 @@ const CELLS = [
       voices: "multi-speaker",
     },
     class: "stt-evaluation",
-    command: [
-      "bun",
-      "packages/scripts/voice-matrix.mjs",
-      "--stage-b-eval-placeholder",
+    command: ["node", "packages/scripts/voice-stage-b-eval.mjs"],
+    evidence: [
+      "$ELIZA_VOICE_MATRIX_OUT/stt.stage-b.evaluation/stage-b-eval.json",
+      "$ELIZA_VOICE_STAGE_B_REPORT",
     ],
-    evidence: [".github/issue-evidence/9147-voice-asr-m4max.md"],
     probe: "stageBStt",
   },
 ];
@@ -416,15 +415,12 @@ function parseArgs(argv) {
     platforms: new Set(),
     includeHeavy: false,
     requireGreen: false,
-    stageBPlaceholder: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
     if (token === "--run") args.run = true;
     else if (token === "--include-heavy") args.includeHeavy = true;
     else if (token === "--require-green") args.requireGreen = true;
-    else if (token === "--stage-b-eval-placeholder")
-      args.stageBPlaceholder = true;
     else if (token === "--out") args.out = argv[++i] ?? args.out;
     else if (token === "--platform") {
       for (const p of String(argv[++i] ?? "").split(",")) {
@@ -703,12 +699,27 @@ function probeCell(cell) {
         reason:
           "macOS on-device SFSpeechRecognizer + say/afconvert available for a real Stage-B latency/WER measurement",
       };
-    case "stageBStt":
+    case "stageBStt": {
+      const report = process.env.ELIZA_VOICE_STAGE_B_REPORT?.trim();
+      if (!report) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_STAGE_B_REPORT is not set to a reviewed iOS+Android+fused ASR Stage-B JSON report",
+        };
+      }
+      const reportPath = path.resolve(REPO_ROOT, report);
+      if (!fs.existsSync(reportPath)) {
+        return {
+          available: true,
+          reason: `Stage-B report configured but missing: ${path.relative(REPO_ROOT, reportPath)}`,
+        };
+      }
       return {
-        available: false,
-        reason:
-          "iOS battery/energy telemetry and the Android SpeechRecognizer (NNAPI) arm need paired device runners with power telemetry (the Apple latency/WER arm is covered by stt.stage-b.apple-sfspeech)",
+        available: true,
+        reason: `Stage-B report configured: ${path.relative(REPO_ROOT, reportPath)}`,
       };
+    }
     default:
       return { available: false, reason: `unknown probe ${cell.probe}` };
   }
@@ -788,12 +799,6 @@ code{font-size:12px}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (args.stageBPlaceholder) {
-    console.error(
-      "Stage-B STT evaluation must run on paired iOS/Android device lanes with power telemetry.",
-    );
-    process.exit(2);
-  }
 
   const outDir = path.resolve(REPO_ROOT, args.out);
   const selected = CELLS.filter(
