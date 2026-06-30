@@ -22,6 +22,7 @@ import type {
 
 export interface BenchmarkRunOptions {
   tasks?: readonly BenchmarkTask[];
+  benchmarkName?: string;
   seeds?: readonly number[];
   policy?: BenchmarkPolicy;
   /** Fresh executor (and its disposer) per episode. */
@@ -139,7 +140,7 @@ export async function runBenchmarkSuite(
   const solved = episodes.filter((e) => e.success).length;
 
   return {
-    benchmark: "miniwob++",
+    benchmark: options.benchmarkName ?? "miniwob++",
     engine,
     policy: policy.name,
     seedsPerTask: seeds.length,
