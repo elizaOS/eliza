@@ -26,6 +26,8 @@
  * `dispatchAppEvent` in `@elizaos/ui/events`).
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
@@ -151,6 +153,18 @@ afterEach(() => {
 });
 
 describe("createMobileLifecycle — app lifecycle", () => {
+  it("keeps the production app entrypoint wired to the visibilitychange fallback", () => {
+    const mainSrc = readFileSync(join(import.meta.dirname, "../src/main.tsx"), {
+      encoding: "utf8",
+    });
+
+    expect(mainSrc).toContain('addEventListener("visibilitychange"');
+    expect(mainSrc).toContain('document.visibilityState !== "hidden"');
+    expect(mainSrc).toContain(
+      "dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT)",
+    );
+  });
+
   it("dispatches APP_RESUME_EVENT when the app becomes active", async () => {
     const lifecycle = createMobileLifecycle(makeContext());
     const resume = vi.fn();
