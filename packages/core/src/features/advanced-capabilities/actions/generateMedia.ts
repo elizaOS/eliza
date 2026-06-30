@@ -125,44 +125,18 @@ function normalizeAudioKind(
 
 function inferMediaType(
 	params: Record<string, unknown>,
-	text: string,
 ): MediaGenerationMediaType {
-	const explicit = normalizeMediaType(params.mediaType);
-	if (explicit) return explicit;
-
-	const lower = text.toLowerCase();
-	if (/\b(video|clip|film|movie|animate|animation)\b/.test(lower))
-		return "video";
-	if (
-		/\b(audio|music|song|sound effect|sfx|tts|text to speech|speech|voiceover|beat|track|compose)\b/.test(
-			lower,
-		)
-	) {
-		return "audio";
-	}
-	return "image";
+	// `mediaType` is a required enum param the planner emits for any language;
+	// no English NL keyword inference (#10471). Default to image when absent.
+	return normalizeMediaType(params.mediaType) ?? "image";
 }
 
 function inferAudioKind(
 	params: Record<string, unknown>,
-	text: string,
 ): MediaGenerationAudioKind | undefined {
-	const explicit = normalizeAudioKind(params.audioKind ?? params.kind);
-	if (explicit) return explicit;
-
-	const lower = text.toLowerCase();
-	if (/\b(sound effect|sfx|foley)\b/.test(lower)) return "sfx";
-	if (
-		/\b(tts|text to speech|speech|voiceover|narrat(e|ion)|say this)\b/.test(
-			lower,
-		)
-	) {
-		return "tts";
-	}
-	if (/\b(music|song|instrumental|beat|track|compose)\b/.test(lower)) {
-		return "music";
-	}
-	return undefined;
+	// `audioKind` is an enum param emitted by the planner; no English NL
+	// keyword inference (#10471).
+	return normalizeAudioKind(params.audioKind ?? params.kind);
 }
 
 function buildRequest(
@@ -173,13 +147,13 @@ function buildRequest(
 	const prompt = readPrompt(message, options);
 	if (!prompt) return null;
 
-	const mediaType = inferMediaType(params, prompt);
+	const mediaType = inferMediaType(params);
 	return {
 		mediaType,
 		prompt,
 		audioKind:
 			mediaType === "audio"
-				? (inferAudioKind(params, prompt) ?? "music")
+				? (inferAudioKind(params) ?? "music")
 				: undefined,
 		size: readStringParam(params, "size"),
 		quality:

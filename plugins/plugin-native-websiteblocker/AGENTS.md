@@ -48,6 +48,9 @@ android/src/main/java/ai/eliza/plugins/websiteblocker/
   WebsiteBlockerStateStore.kt  SharedPreferences persistence; hostname normalization
   WebsiteBlockerBootReceiver.kt Restarts VPN service after device reboot
   DnsPacketCodec.kt            DNS packet parsing/synthesis for VPN intercept
+android/src/androidTest/java/ai/eliza/plugins/websiteblocker/
+  WebsiteBlockerStateStoreInstrumentedTest.kt  On-device SharedPreferences + DNS policy tests
+  WebsiteBlockerShowcaseActivity.kt            Test-only rendered state for screenshots/recordings
 
 ios/Sources/WebsiteBlockerPlugin/
   WebsiteBlockerPlugin.swift   @objc(ElizaWebsiteBlockerPlugin); all CAPPluginMethods
@@ -65,6 +68,7 @@ tsconfig.json                           TS build config
 bun run --cwd plugins/plugin-native-websiteblocker build        # tsc + rollup (outputs dist/)
 bun run --cwd plugins/plugin-native-websiteblocker clean        # remove dist/
 bun run --cwd plugins/plugin-native-websiteblocker test:android:manual  # Gradle unit tests
+packages/app-core/platforms/android/gradlew -p packages/app-core/platforms/android :elizaos-capacitor-websiteblocker:connectedDebugAndroidTest  # Android instrumented tests
 ```
 
 `prepublishOnly` runs `build` automatically on `npm publish`.

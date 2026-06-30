@@ -103,10 +103,10 @@ export function generateAgentCard(character: UserCharacter, baseUrl: string) {
       paymentMethods: ["api_key_credits"],
       minimumPayment: 0.001,
     },
-    contact: {
-      creatorId: character.user_id,
-      organizationId: character.organization_id,
-    },
+    // SECURITY: this card is served UNAUTHENTICATED (public /api/agents prefix)
+    // with CORS *. Do NOT expose the creator's internal user_id/organization_id
+    // here (deanonymization/correlation of which org owns which agents). The MCP
+    // card omits these too — keep parity.
   };
 }
 

@@ -16,6 +16,7 @@ import {
   agentSandboxesRepository,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
+import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
@@ -1253,6 +1254,18 @@ export class ElizaSandboxService {
         }
 
         const updated = await agentSandboxesRepository.update(rec.id, updateData);
+
+        // Re-enter the billable set on every successful provision. A
+        // credit-suspended agent (billing_status='suspended') that a user tops
+        // up and resumes/wakes via the user-facing routes would otherwise run
+        // (status='running') permanently EXCLUDED from listBillableSandboxes =
+        // free dedicated compute forever. The service-key resume/restart routes
+        // already reactivate; do it here so ALL provision paths re-enter billing.
+        // Idempotent + exempt-guarded (ne billing_status 'exempt').
+        await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+          rec.id,
+          new Date(),
+        );
 
         logger.info("[agent-sandbox] Provisioned", {
           agentId: rec.id,

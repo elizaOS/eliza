@@ -1,9 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  calculatePostCredits,
-  type MediaAttachment,
-  type SocialPlatform,
-} from "./social-media";
+import { calculatePostCredits, type MediaAttachment, type SocialPlatform } from "./social-media";
 
 /**
  * Tests for the post-credit pricing math (#8801 / #9943). calculatePostCredits

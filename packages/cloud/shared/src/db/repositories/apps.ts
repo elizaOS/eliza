@@ -19,6 +19,7 @@ import {
 } from "../schemas";
 import { appConfig } from "../schemas/app-config";
 import { appDomains } from "../schemas/app-domains";
+import { organizations } from "../schemas/organizations";
 
 /**
  * Evict all cache keys derived from the apps table for this row.
@@ -248,6 +249,14 @@ export class AppsRepository {
     });
   }
 
+  async countByOrganization(organizationId: string): Promise<number> {
+    const [row] = await dbRead
+      .select({ count: count() })
+      .from(apps)
+      .where(eq(apps.organization_id, organizationId));
+    return row?.count ?? 0;
+  }
+
   /**
    * Finds an app user by app ID and user ID.
    */
@@ -270,7 +279,12 @@ export class AppsRepository {
     if (existingConnection) {
       await dbWrite
         .update(appUsers)
-        .set({ last_seen_at: new Date() })
+        .set({
+          last_seen_at: new Date(),
+          signup_source: input.signupSource,
+          ip_address: input.ipAddress ?? existingConnection.ip_address,
+          user_agent: input.userAgent ?? existingConnection.user_agent,
+        })
         .where(eq(appUsers.id, existingConnection.id));
       return "updated";
     }
@@ -401,6 +415,32 @@ export class AppsRepository {
   async create(data: NewApp): Promise<App> {
     const [app] = await dbWrite.insert(apps).values(data).returning();
     return app;
+  }
+
+  /**
+   * Creates a new app only if the owning organization is still under its app cap.
+   *
+   * The organization row lock serializes concurrent app creates for one org in
+   * Postgres, so parallel requests cannot all observe the same pre-insert count.
+   */
+  async createIfOrganizationBelowLimit(data: NewApp, maxApps: number): Promise<App | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${data.organization_id} FOR UPDATE`,
+      );
+
+      const [row] = await tx
+        .select({ count: count() })
+        .from(apps)
+        .where(eq(apps.organization_id, data.organization_id));
+
+      if ((row?.count ?? 0) >= maxApps) {
+        return undefined;
+      }
+
+      const [app] = await tx.insert(apps).values(data).returning();
+      return app;
+    });
   }
 
   /**

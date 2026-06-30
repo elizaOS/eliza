@@ -22,7 +22,6 @@ export const ignoreAction: Action = {
 	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
 		hasActionContext(message, state, {
 			contexts: ["general"],
-			keywords: ["ignore", "stop", "never mind", "nevermind", "cancel"],
 		}),
 	description: spec.description,
 	handler: async (

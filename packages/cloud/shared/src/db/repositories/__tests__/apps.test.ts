@@ -35,6 +35,7 @@ process.env.MOCK_REDIS = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import { apiKeys } from "../../schemas/api-keys";
 import { appConfig } from "../../schemas/app-config";
 import { appDomains } from "../../schemas/app-domains";
 import {
@@ -47,6 +48,7 @@ import {
 } from "../../schemas/apps";
 import { organizations } from "../../schemas/organizations";
 import { users } from "../../schemas/users";
+import { apiKeysRepository } from "../api-keys";
 import { type App, appsRepository } from "../apps";
 
 const PGLITE_TIMEOUT = 60_000;
@@ -106,6 +108,7 @@ beforeAll(async () => {
     const schema = {
       organizations,
       users,
+      apiKeys,
       apps,
       appUsers,
       appAnalytics,
@@ -339,6 +342,88 @@ describe("AppsRepository.listByOrganization", () => {
   });
 });
 
+describe("App-auth attribution grants", () => {
+  test("connectUser upgrades an existing analytics-created app user to an OAuth grant", async () => {
+    if (!pgliteReady) return;
+    const appOrg = await seedOrg();
+    const callerOrg = await seedOrg();
+    const appOwner = await seedUser(appOrg);
+    const caller = await seedUser(callerOrg);
+    const app = await createApp({
+      name: "OAuth Upgrade",
+      organization_id: appOrg,
+      created_by_user_id: appOwner,
+    });
+
+    await appsRepository.trackAppUserActivity(app.id, caller, "0.01", {
+      route: "messages",
+    });
+    const before = await appsRepository.findAppUser(app.id, caller);
+    expect(before?.signup_source).toBeNull();
+
+    const action = await appsRepository.connectUser({
+      appId: app.id,
+      userId: caller,
+      signupSource: "oauth",
+      ipAddress: "203.0.113.10",
+      userAgent: "test-agent",
+    });
+
+    expect(action).toBe("updated");
+    const after = await appsRepository.findAppUser(app.id, caller);
+    expect(after?.signup_source).toBe("oauth");
+    expect(after?.ip_address).toBe("203.0.113.10");
+    expect(after?.user_agent).toBe("test-agent");
+  });
+
+  test("X-App-Id attribution requires same org or an OAuth app-auth grant", async () => {
+    if (!pgliteReady) return;
+    const appOrg = await seedOrg();
+    const callerOrg = await seedOrg();
+    const appOwner = await seedUser(appOrg);
+    const sameOrgUser = await seedUser(appOrg);
+    const caller = await seedUser(callerOrg);
+    const app = await createApp({
+      name: "Monetized App",
+      organization_id: appOrg,
+      created_by_user_id: appOwner,
+      monetization_enabled: true,
+    });
+
+    const sameOrg = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
+      id: sameOrgUser,
+      organization_id: appOrg,
+    });
+    expect(sameOrg?.id).toBe(app.id);
+
+    const crossOrgBefore = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
+      id: caller,
+      organization_id: callerOrg,
+    });
+    expect(crossOrgBefore).toBeUndefined();
+
+    await appsRepository.trackAppUserActivity(app.id, caller, "0.01", {
+      route: "messages",
+    });
+    const analyticsOnly = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
+      id: caller,
+      organization_id: callerOrg,
+    });
+    expect(analyticsOnly).toBeUndefined();
+
+    await appsRepository.connectUser({
+      appId: app.id,
+      userId: caller,
+      signupSource: "oauth",
+    });
+    const oauthGranted = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
+      id: caller,
+      organization_id: callerOrg,
+    });
+    expect(oauthGranted?.id).toBe(app.id);
+  });
+});
+
 describe("AppsRepository.listAll", () => {
   test("filters by is_active / is_approved", async () => {
     if (!pgliteReady) return;
@@ -502,5 +587,142 @@ describe("AppsService.isNameAvailable", () => {
     const result = await appsService.isNameAvailable(uniq("Service Fresh Name"));
     expect(result.available).toBe(true);
     expect(result.suggestedName).toBeUndefined();
+  });
+});
+
+describe("AppsService.create organization cap", () => {
+  test("treats malformed cap values as invalid and falls back to the default", async () => {
+    if (!pgliteReady) return;
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "1abc";
+    try {
+      const { organizationId, userId } = await seedOrgAndUser();
+      await createApp({
+        name: "Existing App",
+        organization_id: organizationId,
+        created_by_user_id: userId,
+      });
+
+      const result = await appsService.create({
+        name: "Allowed By Default Cap",
+        organization_id: organizationId,
+        created_by_user_id: userId,
+        app_url: "https://default-cap.example",
+      });
+
+      expect(result.app.organization_id).toBe(organizationId);
+      expect(await appsRepository.countByOrganization(organizationId)).toBe(2);
+    } finally {
+      if (previousLimit === undefined) {
+        delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+      } else {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
+  });
+
+  test("rejects before API key creation when the org is already at the configured app cap", async () => {
+    if (!pgliteReady) return;
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "1";
+    try {
+      const { organizationId, userId } = await seedOrgAndUser();
+      await createApp({
+        name: "Existing App",
+        organization_id: organizationId,
+        created_by_user_id: userId,
+      });
+
+      await expect(
+        appsService.create({
+          name: "Blocked App",
+          organization_id: organizationId,
+          created_by_user_id: userId,
+          app_url: "https://blocked.example",
+        }),
+      ).rejects.toMatchObject({
+        name: "AppCreationLimitError",
+        organizationId,
+        limit: 1,
+      });
+
+      expect(await appsRepository.countByOrganization(organizationId)).toBe(1);
+      expect(
+        await apiKeysRepository.findByUserAndName(userId, "Blocked App - App API Key"),
+      ).toEqual([]);
+    } finally {
+      if (previousLimit === undefined) {
+        delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+      } else {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
+  });
+
+  test("allows creation below the configured cap and persists the generated API key", async () => {
+    if (!pgliteReady) return;
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "2";
+    try {
+      const { organizationId, userId } = await seedOrgAndUser();
+
+      const result = await appsService.create({
+        name: "Allowed App",
+        organization_id: organizationId,
+        created_by_user_id: userId,
+        app_url: "https://allowed.example",
+      });
+
+      expect(result.app.organization_id).toBe(organizationId);
+      expect(result.app.api_key_id).toBeTruthy();
+      expect(result.apiKey).toMatch(/^eliza_/);
+      expect(await appsRepository.countByOrganization(organizationId)).toBe(1);
+
+      const apiKey = await apiKeysRepository.findById(result.app.api_key_id ?? "");
+      expect(apiKey?.organization_id).toBe(organizationId);
+      expect(apiKey?.user_id).toBe(userId);
+    } finally {
+      if (previousLimit === undefined) {
+        delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+      } else {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
+  });
+
+  test("cleans up the generated API key when the transactional cap check rejects", async () => {
+    if (!pgliteReady) return;
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    const originalCreateIfBelowLimit = appsRepository.createIfOrganizationBelowLimit;
+    process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "25";
+    try {
+      const { organizationId, userId } = await seedOrgAndUser();
+      appsRepository.createIfOrganizationBelowLimit = async () => undefined;
+
+      await expect(
+        appsService.create({
+          name: "Race Rejected App",
+          organization_id: organizationId,
+          created_by_user_id: userId,
+          app_url: "https://race-rejected.example",
+        }),
+      ).rejects.toMatchObject({
+        name: "AppCreationLimitError",
+        organizationId,
+        limit: 25,
+      });
+
+      expect(
+        await apiKeysRepository.findByUserAndName(userId, "Race Rejected App - App API Key"),
+      ).toEqual([]);
+      expect(await appsRepository.countByOrganization(organizationId)).toBe(0);
+    } finally {
+      appsRepository.createIfOrganizationBelowLimit = originalCreateIfBelowLimit;
+      if (previousLimit === undefined) {
+        delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+      } else {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
   });
 });

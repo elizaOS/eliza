@@ -496,13 +496,19 @@ app.post("/", async (c) => {
     return anthropicError("authentication_error", message, 401);
   }
 
-  const appId = c.req.header("X-App-Id");
+  const requestedAppId = c.req.header("X-App-Id");
+  let appId: string | null = null;
   let useAppCredits = false;
   let monetizedApp: NonNullable<
     Awaited<ReturnType<typeof appsService.getById>>
   > | null = null;
-  if (appId) {
-    monetizedApp = (await appsService.getById(appId)) ?? null;
+  if (requestedAppId) {
+    monetizedApp =
+      (await appsService.getAuthorizedMonetizedAppForUser(
+        requestedAppId,
+        user,
+      )) ?? null;
+    appId = monetizedApp?.id ?? null;
     useAppCredits = Boolean(monetizedApp?.monetization_enabled);
   }
 
@@ -1222,6 +1228,14 @@ async function handleStream(
 
         controller.enqueue(sse("message_stop", { type: "message_stop" }));
       } catch (error) {
+        // Backstop: this catch can run even when the AI SDK never invokes (or
+        // doesn't await) onError — e.g. a fullStream `error` part re-thrown here,
+        // or a controller.enqueue throw on client disconnect racing ahead of
+        // onAbort. Settle the reservation here too so the upfront hold is never
+        // leaked (a permanent overcharge). The settler is first-call-wins
+        // idempotent, so this cannot double-refund if onError already won the
+        // race. Mirrors the /v1/chat/completions backstop.
+        await settleReservation(0);
         const message = error instanceof Error ? error.message : String(error);
         logger.error("[Messages API] Stream error", { error: message });
         controller.enqueue(
