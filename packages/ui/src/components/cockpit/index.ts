@@ -23,5 +23,7 @@ export {
   tierForConfig,
   visibleCockpitModeOptions,
 } from "./cockpit-modes";
+export type { MyRuntimesContainerProps } from "./MyRuntimesContainer";
+export { MyRuntimesContainer } from "./MyRuntimesContainer";
 export type { MyRuntimesSectionProps } from "./MyRuntimesSection";
 export { MyRuntimesSection } from "./MyRuntimesSection";
