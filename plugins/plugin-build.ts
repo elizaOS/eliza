@@ -50,7 +50,7 @@ export interface DtsShim {
 export interface BuildPluginConfig {
   /** Package name, for log lines only. */
   name: string;
-  /** Remove `dist/` before building (via the hardened rm helper). Default: false. */
+  /** Remove `dist/` before building (via the hardened rm helper). Default: true. */
   clean?: boolean;
   /** "auto" derives externals from package.json; or pass an explicit list. */
   externals?: "auto" | readonly string[];
@@ -144,7 +144,7 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
   const totalStart = Date.now();
   const distDir = join(process.cwd(), "dist");
 
-  if (config.clean && existsSync(distDir)) {
+  if ((config.clean ?? true) && existsSync(distDir)) {
     await Bun.$`node ${RM_RECURSIVE} ${distDir}`;
   }
   await mkdir(distDir, { recursive: true });

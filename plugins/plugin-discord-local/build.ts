@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-
 /**
  * Standalone build script for @elizaos/plugin-discord-local.
  * Uses Bun's native bundler — no monorepo build-utils dependency.
@@ -9,8 +8,7 @@
  * tolerant `tsc` declaration pass to `dist/src/`, byte-identical to the prior
  * hand-rolled build.
  */
-
-import { buildPlugin } from "../plugin-build.ts";
+import { buildPlugin } from "../plugin-build";
 
 await buildPlugin({
   name: "@elizaos/plugin-discord-local",

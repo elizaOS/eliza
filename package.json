@@ -219,7 +219,7 @@
     "db:cloud:pglite": "bun run packages/scripts/cloud/admin/dev/pglite-server.ts",
     "publish:dry-run": "bun packages/scripts/publish-from-dist.mjs",
     "publish:packages": "bun packages/scripts/publish-from-dist.mjs --apply",
-    "typecheck:dist": "node packages/scripts/typecheck-dist-path-consumers.mjs",
+    "typecheck:dist": "node packages/scripts/generate-dist-paths-config.mjs --check && node packages/scripts/prepare-dist-path-declarations.mjs && node packages/scripts/typecheck-dist-path-consumers.mjs",
     "sync:artifacts": "bun packages/scripts/sync-artifacts.mjs",
     "check:view-bundles": "bun packages/scripts/view-bundle-import-guard.mjs"
   },

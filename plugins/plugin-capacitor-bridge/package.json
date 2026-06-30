@@ -42,7 +42,7 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "bun run check:android-manifest && NODE_OPTIONS='--max-old-space-size=8192' tsup",
+		"build": "node ../../packages/scripts/rm-path-recursive.mjs dist && bun run check:android-manifest && NODE_OPTIONS='--max-old-space-size=8192' tsup && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs plugins/plugin-capacitor-bridge",
 		"check:android-manifest": "node scripts/check-android-manifest.mjs",
 		"dev": "tsup --watch",
 		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo node_modules",

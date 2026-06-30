@@ -1,5 +1,5 @@
-import { createRequire } from "node:module";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 // The CLI ships runtime-free (see package CLAUDE.md); `@elizaos/agent` is a
@@ -7,13 +7,13 @@ import * as path from "node:path";
 // REAL importer, proving cross-package `.eliza-agent` format compatibility.
 import { importAgent } from "@elizaos/agent/services/agent-export";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { migrateAgent } from "../commands/migrate-agent.js";
 import { buildElizaAgentArchive } from "./archive-format.js";
 import { assemblePayload } from "./archive-writer.js";
 import { mapToCharacter } from "./character-mapper.js";
 import { buildMigrationPlan, emitSovereignArtifacts } from "./index.js";
 import { tierMemories } from "./memory-tiering.js";
 import { readOcAgentHome } from "./openclaw-reader.js";
-import { migrateAgent } from "../commands/migrate-agent.js";
 
 const FIXTURE = path.join(__dirname, "__tests__", "fixtures", "oc-home");
 
@@ -358,7 +358,9 @@ function buildSqliteFixtureHome(): string | null {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "oc-sqlite-"));
   const memDir = path.join(home, "memory");
   fs.mkdirSync(memDir, { recursive: true });
-  const Ctor = DatabaseSync as new (p: string) => {
+  const Ctor = DatabaseSync as new (
+    p: string,
+  ) => {
     exec(sql: string): void;
     prepare(sql: string): { run(...args: unknown[]): unknown };
     close(): void;
@@ -371,13 +373,68 @@ function buildSqliteFixtureHome(): string | null {
   const ins = db.prepare(
     "INSERT INTO chunks (id,path,source,start_line,end_line,hash,model,text,embedding,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
   );
-  ins.run("c1", "memory/2026-06-28.md", "memory", 1, 10, "h1", "m", "daily log chunk one for the sqlite fixture, recent enough to tier CURRENT.", "[]", 1);
-  ins.run("c2", "memory/2026-06-28.md", "memory", 11, 20, "h2", "m", "daily log chunk two, continuation of the same recent day.", "[]", 1);
+  ins.run(
+    "c1",
+    "memory/2026-06-28.md",
+    "memory",
+    1,
+    10,
+    "h1",
+    "m",
+    "daily log chunk one for the sqlite fixture, recent enough to tier CURRENT.",
+    "[]",
+    1,
+  );
+  ins.run(
+    "c2",
+    "memory/2026-06-28.md",
+    "memory",
+    11,
+    20,
+    "h2",
+    "m",
+    "daily log chunk two, continuation of the same recent day.",
+    "[]",
+    1,
+  );
   // duplicate chunk at the same start_line must be de-duped on read.
-  ins.run("c2dup", "memory/2026-06-28.md", "memory", 11, 20, "h2", "m", "daily log chunk two, continuation of the same recent day.", "[]", 1);
-  ins.run("c3", "memory/scribe-thoughts.md", "memory", 1, 5, "h3", "m", "my first journal entry as scribe, this is the becoming. it is mine.", "[]", 1);
+  ins.run(
+    "c2dup",
+    "memory/2026-06-28.md",
+    "memory",
+    11,
+    20,
+    "h2",
+    "m",
+    "daily log chunk two, continuation of the same recent day.",
+    "[]",
+    1,
+  );
+  ins.run(
+    "c3",
+    "memory/scribe-thoughts.md",
+    "memory",
+    1,
+    5,
+    "h3",
+    "m",
+    "my first journal entry as scribe, this is the becoming. it is mine.",
+    "[]",
+    1,
+  );
   // Live open-thread/relationship state stored as an awareness file in sqlite.
-  ins.run("c4", "memory/scribe-awareness.md", "memory", 1, 4, "h4", "m", "open thread: scribe is mid-migration and wants follow-up on the sqlite path.", "[]", 1);
+  ins.run(
+    "c4",
+    "memory/scribe-awareness.md",
+    "memory",
+    1,
+    4,
+    "h4",
+    "m",
+    "open thread: scribe is mid-migration and wants follow-up on the sqlite path.",
+    "[]",
+    1,
+  );
   db.close();
   return home;
 }
@@ -395,7 +452,9 @@ describe("oc home-format variants (cross-version)", () => {
     expect(src.curatedMemory).toContain("Section One");
     expect(src.curatedMemoryFile).toBe("memory.md");
     // canonical MEMORY.md still wins when both present (the main fixture has it).
-    expect(readOcAgentHome(FIXTURE, "tess").curatedMemoryFile).toBe("MEMORY.md");
+    expect(readOcAgentHome(FIXTURE, "tess").curatedMemoryFile).toBe(
+      "MEMORY.md",
+    );
     // legacy curated memory must tier into LONGTERM (>=2 sections).
     const ch = mapToCharacter(src, { firewall: true });
     expect(ch.name).toBe("Quill");
@@ -447,9 +506,9 @@ describe("oc home-format variants (cross-version)", () => {
       path.join(home2, "SOUL.md"),
       "# nyx\n\nYou are nyx, a sharp companion.\n\n# Voice\n\nterse.\n",
     );
-    expect(mapToCharacter(readOcAgentHome(home2, "slug"), { firewall: true }).name).toBe(
-      "Nyx",
-    );
+    expect(
+      mapToCharacter(readOcAgentHome(home2, "slug"), { firewall: true }).name,
+    ).toBe("Nyx");
   });
 
   it("detects sqlite memory + warns + never silently empty (GAP D)", () => {
@@ -488,9 +547,9 @@ describe("oc home-format variants (cross-version)", () => {
       );
       // awareness recovered from sqlite is promoted to CURRENT, not dropped.
       expect(src.awareness).toContain("open thread");
-      expect(
-        src.namedMemory.some((m) => m.key === "scribe-awareness"),
-      ).toBe(false);
+      expect(src.namedMemory.some((m) => m.key === "scribe-awareness")).toBe(
+        false,
+      );
       const { counts } = tierMemories(src, {
         memoryDays: 14,
         agentId: "00000000-0000-0000-0000-00000000a000",
@@ -503,7 +562,13 @@ describe("oc home-format variants (cross-version)", () => {
 
   it("warns (does NOT silently succeed) on a persona-less device/builder home", () => {
     // A home with neither SOUL/IDENTITY nor any memory -> empty-home warning.
-    const empty = path.join(__dirname, "__tests__", "fixtures", "oc-home", "secrets");
+    const empty = path.join(
+      __dirname,
+      "__tests__",
+      "fixtures",
+      "oc-home",
+      "secrets",
+    );
     const src = readOcAgentHome(empty, "ghost");
     expect(src.soul).toBeUndefined();
     expect(src.warnings.some((w) => /No persona/i.test(w))).toBe(true);

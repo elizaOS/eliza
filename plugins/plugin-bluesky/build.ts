@@ -16,6 +16,9 @@
  */
 import { buildPlugin } from "../plugin-build";
 
+const reexport = (from: string) =>
+	`export * from "${from}";\nexport { default } from "${from}";\n`;
+
 await buildPlugin({
 	name: "@elizaos/plugin-bluesky",
 	targets: [
@@ -54,26 +57,8 @@ await buildPlugin({
 	],
 	dtsProject: "tsconfig.build.json",
 	dtsShims: [
-		// Root types alias to node by default.
-		{
-			path: "index.d.ts",
-			content: `export * from "./node/index";
-export { default } from "./node/index";
-`,
-		},
-		// Browser alias.
-		{
-			path: "browser/index.d.ts",
-			content: `export * from "./index.browser";
-export { default } from "./index.browser";
-`,
-		},
-		// CJS alias.
-		{
-			path: "cjs/index.d.ts",
-			content: `export * from "./index.node";
-export { default } from "./index.node";
-`,
-		},
+		{ path: "index.d.ts", content: reexport("./node/index") },
+		{ path: "browser/index.d.ts", content: reexport("./index.browser") },
+		{ path: "cjs/index.d.ts", content: reexport("./index.node") },
 	],
 });

@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-
 /**
  * Build script for @elizaos/plugin-mcp (TypeScript package).
  *
@@ -14,8 +13,9 @@
  * `//# sourceMappingURL=index.js.map` reference stays valid), byte-identical to
  * the prior hand-rolled build.
  */
+import { buildPlugin } from "../plugin-build";
 
-import { buildPlugin } from "../plugin-build.ts";
+const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
 
 await buildPlugin({
   name: "@elizaos/plugin-mcp",
@@ -25,12 +25,7 @@ await buildPlugin({
   externals: "auto",
   externalsOptions: {
     // Transitive workspace + native deps the hand-list relied on.
-    extra: [
-      "@elizaos/shared",
-      "@elizaos/agent",
-      "@node-llama-cpp",
-      "node-llama-cpp",
-    ],
+    extra: ["@elizaos/shared", "@elizaos/agent", "@node-llama-cpp", "node-llama-cpp"],
   },
   targets: [
     {
@@ -58,17 +53,7 @@ await buildPlugin({
   // pre-existing migration debt outside our scope.
   dtsProject: "tsconfig.build.json",
   dtsShims: [
-    {
-      path: "index.d.ts",
-      content: `export * from "./node/index";
-export { default } from "./node/index";
-`,
-    },
-    {
-      path: "cjs/index.d.ts",
-      content: `export * from "../node/index";
-export { default } from "../node/index";
-`,
-    },
+    { path: "index.d.ts", content: reexport("./node/index") },
+    { path: "cjs/index.d.ts", content: reexport("../node/index") },
   ],
 });

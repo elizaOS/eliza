@@ -74,12 +74,11 @@ export interface StartupShellController {
 
 export function useStartupShellController(): StartupShellController {
   // Granular shallow selector instead of useApp() so the startup controller
-  // re-renders only when one of the eight fields it reads changes, not on every
+  // re-renders only when one of the seven fields it reads changes, not on every
   // app-store field update (#9141 gap 2 — useApp() → useAppSelector migration).
   const {
     startupCoordinator,
     startupError,
-    firstRunComplete,
     firstRunCloudProvisionedContainer,
     retryStartup,
     setActionNotice,
@@ -88,7 +87,6 @@ export function useStartupShellController(): StartupShellController {
   } = useAppSelectorShallow((s) => ({
     startupCoordinator: s.startupCoordinator,
     startupError: s.startupError,
-    firstRunComplete: s.firstRunComplete,
     firstRunCloudProvisionedContainer: s.firstRunCloudProvisionedContainer,
     retryStartup: s.retryStartup,
     setActionNotice: s.setActionNotice,

@@ -2257,7 +2257,7 @@ function requireRemoteEvaluatorProcessResult(
       "returned an action result without boolean success",
     );
   }
-  return result as unknown as ActionResult;
+  return { ...result, success: result.success };
 }
 
 function requireRemoteResponseHandlerPatch(

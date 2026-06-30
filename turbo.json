@@ -314,8 +314,7 @@
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-agent-skills#build",
-        "@elizaos/plugin-app-manager#build",
-        "^build"
+        "@elizaos/plugin-app-manager#build"
       ],
       "outputs": []
     },
@@ -324,8 +323,7 @@
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-agent-skills#build",
-        "@elizaos/plugin-app-manager#build",
-        "^build"
+        "@elizaos/plugin-app-manager#build"
       ],
       "outputs": []
     },
@@ -333,9 +331,10 @@
       "dependsOn": [
         "@elizaos/core#build",
         "@elizaos/shared#build",
+        "@elizaos/ui#build",
         "@elizaos/plugin-agent-skills#build",
         "@elizaos/plugin-app-manager#build",
-        "^build"
+        "@elizaos/plugin-task-coordinator#build"
       ],
       "outputs": []
     },
@@ -359,8 +358,40 @@
       ],
       "outputs": []
     },
+    "@elizaos/cloud-api#typecheck": {
+      "dependsOn": ["@elizaos/plugin-cloud-apps#build"],
+      "outputs": []
+    },
+    "@elizaos/cloud-shared#typecheck": {
+      "dependsOn": ["@elizaos/plugin-cloud-apps#build"],
+      "outputs": []
+    },
     "@elizaos/plugin-discord#typecheck": {
       "dependsOn": ["@elizaos/plugin-sql#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-tailscale#typecheck": {
+      "dependsOn": ["@elizaos/plugin-tunnel#build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-calendar#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-app-manager#build",
+        "@elizaos/plugin-browser#build",
+        "@elizaos/plugin-capacitor-bridge#build",
+        "@elizaos/plugin-coding-tools#build",
+        "@elizaos/plugin-registry#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-personal-assistant#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-blocker#build",
+        "@elizaos/plugin-finances#build",
+        "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-reminders#build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-contacts#typecheck": {
@@ -424,6 +455,10 @@
     },
     "@elizaos/example-edad#typecheck": {
       "dependsOn": ["@elizaos/cloud-sdk#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-trader-ts#typecheck": {
+      "dependsOn": ["@elizaos/plugin-wallet#build"],
       "outputs": []
     },
     "@elizaos/plugin-sub-agent-claude-code#typecheck": {

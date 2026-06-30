@@ -9,7 +9,7 @@ export default defineConfig({
 		"shared/fs-shim": "src/shared/fs-shim.ts",
 	},
 	format: ["esm"],
-	dts: true,
+	dts: false,
 	clean: true,
 	// All `@elizaos/*` workspace packages stay external — the iOS bridge
 	// statically imports `dispatchRoute` from `@elizaos/agent`, and the agent's
