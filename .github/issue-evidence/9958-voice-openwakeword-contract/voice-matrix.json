@@ -1,7 +1,7 @@
 {
   "schema": "eliza_voice_live_matrix_v1",
   "issue": 9958,
-  "generatedAt": "2026-06-30T05:28:35.152Z",
+  "generatedAt": "2026-06-30T06:23:37.951Z",
   "mode": "run",
   "dimensions": {
     "platform": [
@@ -41,7 +41,7 @@
   "host": {
     "platform": "darwin",
     "arch": "arm64",
-    "hostname": "Mac.localdomain",
+    "hostname": "Shaws-MacBook-Pro.local",
     "runnerOs": null,
     "runnerArch": null
   },
