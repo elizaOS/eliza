@@ -23,14 +23,9 @@
  * is what lets the identical oracle sequences solve every task on both engines.
  */
 
-import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
-import type {
-  Browser,
-  ElementHandle,
-  HTTPRequest,
-  Page,
-} from "puppeteer-core";
+import { createRequire } from "node:module";
+import type { Browser, ElementHandle, HTTPRequest, Page } from "puppeteer-core";
 import puppeteer from "puppeteer-core";
 import type {
   BrowserWorkspaceCommand,
@@ -58,7 +53,7 @@ const require = createRequire(import.meta.url);
  * Resolve a real Chromium executable for the gated lane, or `null` when none is
  * installed (the lane self-skips). Resolution order:
  *   1. `PUPPETEER_EXECUTABLE_PATH` / `CHROME_PATH` (explicit override),
- *   2. the `playwright-core`-installed Chromium (the CI lane runs
+ *   2. a Playwright-installed Chromium (the CI lane runs
  *      `bunx playwright install --with-deps chromium`, mirroring
  *      `scenario-pr.yml` `app-browser-core`),
  *   3. a system Chrome/Chromium/Edge install.
@@ -71,16 +66,18 @@ export function resolveChromiumExecutablePath(): string | null {
     return override;
   }
 
-  try {
-    const playwright = require("playwright-core") as {
-      chromium?: { executablePath?: () => string };
-    };
-    const playwrightPath = playwright.chromium?.executablePath?.();
-    if (playwrightPath && existsSync(playwrightPath)) {
-      return playwrightPath;
+  for (const packageName of ["playwright-core", "playwright"] as const) {
+    try {
+      const playwright = require(packageName) as {
+        chromium?: { executablePath?: () => string };
+      };
+      const playwrightPath = playwright.chromium?.executablePath?.();
+      if (playwrightPath && existsSync(playwrightPath)) {
+        return playwrightPath;
+      }
+    } catch {
+      // Package not resolvable / no browser installed — try the next source.
     }
-  } catch {
-    // playwright-core not resolvable / no browser installed — fall through.
   }
 
   for (const candidate of SYSTEM_CHROME_PATHS) {
@@ -100,9 +97,7 @@ function targetMissingError(selector: string | undefined): Error {
   );
 }
 
-function requireSelector(
-  command: BrowserWorkspaceCommand,
-): string {
+function requireSelector(command: BrowserWorkspaceCommand): string {
   const selector = command.selector?.trim();
   if (!selector) {
     throw targetMissingError(undefined);
@@ -201,7 +196,9 @@ export async function createChromiumBenchmarkExecutor(
     if (!executablePath) {
       throw noChromiumError();
     }
-    ownedBrowser = await puppeteer.launch(chromiumLaunchOptions(executablePath));
+    ownedBrowser = await puppeteer.launch(
+      chromiumLaunchOptions(executablePath),
+    );
     browser = ownedBrowser;
   }
 
@@ -304,7 +301,8 @@ export async function createChromiumBenchmarkExecutor(
         const handle = await resolveHandle(requireSelector(command));
         const navigates = await handle.evaluate(
           (el) =>
-            el.tagName === "A" && !!(el as HTMLAnchorElement).getAttribute("href"),
+            el.tagName === "A" &&
+            !!(el as HTMLAnchorElement).getAttribute("href"),
         );
         if (navigates) {
           await Promise.all([
@@ -370,7 +368,9 @@ export async function createChromiumBenchmarkExecutor(
           await handle.dispose();
         }
         const key = command.key?.trim() || "Enter";
-        await page.keyboard.press(key as Parameters<Page["keyboard"]["press"]>[0]);
+        await page.keyboard.press(
+          key as Parameters<Page["keyboard"]["press"]>[0],
+        );
         return result(command.subaction, { key });
       }
 
@@ -416,9 +416,7 @@ export async function createChromiumBenchmarkExecutor(
           case "text":
           case undefined: {
             const handle = await resolveHandle(requireSelector(command));
-            const text = await handle.evaluate(
-              (el) => el.textContent ?? "",
-            );
+            const text = await handle.evaluate((el) => el.textContent ?? "");
             await handle.dispose();
             return result(command.subaction, normalizeText(text));
           }
