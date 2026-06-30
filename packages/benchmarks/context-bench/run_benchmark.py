@@ -232,15 +232,25 @@ async def run_benchmark(
 
     harness_key = (harness or "eliza").strip().lower()
     bridge_manager = None
+    bridge_client = None
     if provider.strip().lower() != "mock" and harness_key == "eliza":
-        from eliza_adapter.server_manager import ElizaServerManager
+        if os.environ.get("ELIZA_BENCH_URL"):
+            # Reuse an already-running benchmark server instead of cold-booting
+            # one per benchmark (matches the mint/tau_bench reuse pattern).
+            from eliza_adapter.client import ElizaClient
 
-        bridge_manager = ElizaServerManager()
-        bridge_manager.start()
+            bridge_client = ElizaClient()
+            bridge_client.wait_until_ready(timeout=180)
+        else:
+            from eliza_adapter.server_manager import ElizaServerManager
+
+            bridge_manager = ElizaServerManager()
+            bridge_manager.start()
+            bridge_client = bridge_manager.client
 
     llm_fn = get_llm_query_fn(
         provider,
-        client=bridge_manager.client if bridge_manager is not None else None,
+        client=bridge_client,
         harness=harness_key,
     )
 
