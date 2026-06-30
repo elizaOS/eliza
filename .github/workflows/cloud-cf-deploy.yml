@@ -65,14 +65,10 @@ on:
 concurrency:
   # Manual deploys (workflow_dispatch) and branch deploys must run to
   # completion: cancelling an in-progress push deploy lets a busy develop/main
-  # stream starve Cloudflare publishes indefinitely. A SHARED ref-scoped push
-  # group did exactly that under a hot push stream — GitHub cancels the older
-  # pending (and, in practice, the just-started) run on every new commit, so a
-  # rapidly-pushed develop produced zero completed deploys. Give each push/
-  # dispatch its OWN per-commit group so no deploy is ever superseded; the
-  # self-hosted runner serializes them and the latest commit always lands. PRs
-  # keep the dedupe-to-latest group + cancel-in-progress to avoid CI churn.
-  group: cloud-cf-deploy-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  # stream starve Cloudflare publishes indefinitely. Push runs still share a
+  # ref-scoped group, so GitHub keeps at most the running deploy plus the newest
+  # pending commit. PR validation keeps the old dedupe-to-latest behavior.
+  group: cloud-cf-deploy-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
