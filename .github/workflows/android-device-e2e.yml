@@ -121,6 +121,9 @@ jobs:
 
             ELIZA_ANDROID_REQUIRE_AGENT=${{ github.event.inputs.backend == 'local' && '1' || '0' }} \
               bun run --cwd packages/app test:e2e:android:routes || true
+            ELIZA_ANDROID_BACKEND=host \
+            ELIZA_ANDROID_REQUIRE_AGENT=1 \
+              bun run --cwd packages/app test:e2e:android:native-plugin-view
             # Local on-device agent smoke (surfaces failure loudly; expected to
             # fail on stock x86 emulator — see coverage note above).
             bun run --cwd packages/app test:sim:local-chat:android:live || true
@@ -221,6 +224,12 @@ jobs:
             ELIZA_ANDROID_BACKEND=host \
             ELIZA_ANDROID_REQUIRE_AGENT=1 \
               bun run --cwd packages/app test:e2e:android:onboarding
+
+            # Native plugin x WebView smoke: proves Capacitor JS calls cross
+            # into Android Kotlin rather than the desktop Chromium bridge shim.
+            ELIZA_ANDROID_BACKEND=host \
+            ELIZA_ANDROID_REQUIRE_AGENT=1 \
+              bun run --cwd packages/app test:e2e:android:native-plugin-view
 
       - uses: actions/upload-artifact@v7
         if: always()

@@ -8,6 +8,7 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 |---|---|---|
 | `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
 | `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
+| `native-plugin-view-smoke.android.spec.ts` | The installed app's WebView calls `ElizaSystem` through Capacitor and receives Android/Kotlin-only status + settings values, with JSON, screenshot, screenrecord, console, and logcat artifacts | Playwright Android driver + real Capacitor bridge |
 | `ios-onboarding-smoke.mjs` | Fresh iOS Capacitor first-run onboarding selects the same real remote host agent, completes first-run, and lands on the home/chat surface with screenshot + video artifacts | `xcrun simctl` + in-WebView smoke request/result via Capacitor Preferences |
 | `playwright.android.config.ts` (`test/android/*.android.spec.ts`) | Every route/feature renders on the real WebView against the live backend | Playwright Android driver (`_android`) over the WebView CDP socket |
 
@@ -26,6 +27,19 @@ bun run --cwd packages/app test:e2e:android
 exit) on any of: emulator won't boot, app won't install, on-device agent won't
 start, model won't download/run, a route won't render, cloud won't provision
 (`--cloud`).
+
+Focused slices:
+
+```bash
+# Fresh remote-connect onboarding through the Android deep-link path.
+bun run --cwd packages/app test:e2e:android:onboarding
+
+# Native Capacitor plugin x WebView smoke against host or local backend.
+bun run --cwd packages/app test:e2e:android:native-plugin-view
+
+# Route-only/WebView-only pass when the local chat smoke is already done.
+bun run --cwd packages/app test:e2e:android:routes
+```
 
 ## Prerequisites (env)
 
@@ -123,6 +137,20 @@ resulting session. Until then, route coverage needs a backend that's already
 "connected" — a cloud-onboarded agent (`ELIZA_ANDROID_BACKEND` + a cloud token)
 or pairing disabled in the test build. This is the one remaining wiring step to
 fully-green on-device route coverage.
+
+## Native plugin x WebView smoke
+
+`native-plugin-view-smoke.android.spec.ts` uses the same real WebView fixture as
+route coverage, but asserts a native bridge side effect instead of only render
+safety. It calls `window.Capacitor.Plugins.ElizaSystem.getStatus()` and
+`getDeviceSettings()` and requires values that the desktop Chromium web shim
+cannot produce: `packageName === ai.elizaos.app`, Android role rows from
+`RoleManager`, and the native-only `voiceCall` volume stream.
+
+Artifacts are written under
+`packages/app/test-results/android-native-plugin-view-smoke/`:
+`native-plugin-result.json`, `native-plugin-device.png`,
+`native-plugin-view-smoke.mp4`, `webview-console.log`, and `logcat.txt`.
 
 ## iOS
 
