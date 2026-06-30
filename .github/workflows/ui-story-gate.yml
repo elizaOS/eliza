@@ -58,6 +58,12 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      # Source-static ratchet (#9943): fails fast — before the heavy catalog build
+      # + browser install — if any story that had a `play` interaction test lost
+      # it, or play-coverage fell below the committed floor.
+      - name: Story `play`-coverage ratchet
+        run: node packages/ui/test/story-gate/play-coverage-gate.mjs
+
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
 
