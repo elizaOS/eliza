@@ -79,6 +79,18 @@ describe("resolveSpawnWorkdir — configured workspace root fallback", () => {
     ).toEqual({ workdir: root, isolate: true });
   });
 
+  it("ignores planner-guessed runtime cwd when a workspace root is configured", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ws-root-"));
+    expect(
+      resolveSpawnWorkdir(
+        stubRuntime({ ELIZA_ACP_WORKSPACE_ROOT: root }),
+        NO_ROUTE_TASK,
+        NO_ROUTE_TASK,
+        process.cwd(),
+      ),
+    ).toEqual({ workdir: root, isolate: true });
+  });
+
   it("honors ACPX_DEFAULT_CWD when ELIZA_ACP_WORKSPACE_ROOT is unset", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "acp-cwd-"));
     expect(
