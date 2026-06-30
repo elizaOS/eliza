@@ -12,7 +12,7 @@ th{background:#f1f1f1;text-align:left}
 code{font-size:12px}
 </style>
 <h1>Voice Live Matrix</h1>
-<p>Generated 2026-06-30T03:13:49.083Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
+<p>Generated 2026-06-30T07:13:49.529Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
 <p>Pass 2 · Fail 0 · Pending 0 · Skip 2</p>
 <table><thead><tr><th>Cell</th><th>Status</th><th>Platform</th><th>Class</th><th>Dimensions</th><th>Probe / Result</th><th>Command</th><th>Evidence</th></tr></thead><tbody><tr class="skip"><td><code>android.device.voice-roundtrip</code><br>Android device WebView real on-device STT -&gt; agent -&gt; TTS voice self-test</td><td>skip</td><td>android</td><td>mobile-live-voice</td><td>transcriptionState=off
 chimeIn=should-respond
@@ -24,14 +24,15 @@ voices=owner</td><td>set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner
 chimeIn=should-respond
 wakewordContext=already-listening-wake-inert
 noiseRejection=echo-self-voice
-voices=owner</td><td>command passed (2026-06-30T03:13:48.408Z)</td><td><code>./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest</code></td><td>plugins/plugin-native-talkmode/android/src/test/java</td></tr>
+voices=owner</td><td>command passed (2026-06-30T07:13:48.985Z)</td><td><code>./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest</code></td><td>plugins/plugin-native-talkmode/android/src/test/java</td></tr>
 <tr class="pass"><td><code>android.swabble.native-bridge</code><br>Swabble Android wake-firing -&gt; JS bridge event contract</td><td>pass</td><td>android</td><td>native-bridge-unit</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
-voices=owner</td><td>command passed (2026-06-30T03:13:49.078Z)</td><td><code>./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest</code></td><td>plugins/plugin-native-swabble/android/src/test/java</td></tr>
-<tr class="skip"><td><code>stt.stage-b.evaluation</code><br>Stage-B STT evaluation: iOS SFSpeechRecognizer vs Android SpeechRecognizer vs fused ASR</td><td>skip</td><td>android</td><td>stt-evaluation</td><td>transcriptionState=on
+voices=owner</td><td>command passed (2026-06-30T07:13:49.525Z)</td><td><code>./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest</code></td><td>plugins/plugin-native-swabble/android/src/test/java</td></tr>
+<tr class="skip"><td><code>stt.stage-b.evaluation</code><br>Stage-B STT evaluation: iOS battery/energy + Android SpeechRecognizer (NNAPI) vs fused ASR</td><td>skip</td><td>android</td><td>stt-evaluation</td><td>transcriptionState=on
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=noisy-reverberant
-voices=multi-speaker</td><td>Stage-B STT battery/latency evaluation needs paired iOS+Android device runners and power telemetry</td><td><code>bun packages/scripts/voice-matrix.mjs --stage-b-eval-placeholder</code></td><td>.github/issue-evidence/9147-voice-asr-m4max.md</td></tr></tbody></table>
+voices=multi-speaker</td><td>ELIZA_VOICE_STAGE_B_REPORT is not set to a reviewed iOS+Android+fused ASR Stage-B JSON report</td><td><code>node packages/scripts/voice-stage-b-eval.mjs</code></td><td>$ELIZA_VOICE_MATRIX_OUT/stt.stage-b.evaluation/stage-b-eval.json
+$ELIZA_VOICE_STAGE_B_REPORT</td></tr></tbody></table>
