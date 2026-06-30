@@ -215,7 +215,6 @@ export const replyAction = {
 	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) =>
 		hasActionContext(message, state, {
 			contexts: ["general", "messaging"],
-			keywords: ["reply", "respond", "answer", "say", "tell me", "explain"],
 		}),
 	handler: async (
 		runtime: IAgentRuntime,
