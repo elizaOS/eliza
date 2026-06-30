@@ -1,80 +1,22 @@
 /**
- * Shared contract for connector setup HTTP routes.
+ * Connector setup HTTP-route contract.
  *
- * Every connector plugin's setup-routes export MUST satisfy:
+ * The canonical definitions now live in `@elizaos/core`
+ * (`packages/core/src/types/connector-setup.ts`) — the innermost package both
+ * this API host and every connector plugin already depend on, so there is a
+ * single source of truth instead of locally-mirrored copies (#10201).
  *
- *   GET  /api/setup/<connector>/status   → SetupStatusResponse
- *   POST /api/setup/<connector>/start    → SetupStatusResponse (state: 'configuring')
- *   POST /api/setup/<connector>/cancel   → SetupStatusResponse (state: 'idle')
+ * This module re-exports them so the long-standing `@elizaos/app-core` import
+ * path (and `@elizaos/app-core/api/setup-contract`) keeps working unchanged.
  *
- * Error responses follow `{ error: { code, message } }` — never bare strings.
- *
- * This contract is pinned by `eliza/plugins/__tests__/setup-routes-contract.test.ts`.
+ * The contract is pinned by `plugins/__tests__/setup-routes-contract.test.ts`.
  * `docs/first-run-contracts.md` covers the connector setup surface.
  */
 
-/** Setup lifecycle states a connector can be in. */
-export type SetupState = "idle" | "configuring" | "paired" | "error";
-
-/**
- * Canonical status response shape returned by every setup endpoint.
- *
- * `detail` is connector-specific (QR code data, pairing phone number,
- * subscription channel IDs, etc.). Callers narrow on `state` first and
- * then read the typed detail.
- */
-export interface SetupStatusResponse<TDetail = unknown> {
-  connector: string;
-  state: SetupState;
-  detail?: TDetail;
-}
-
-/**
- * Structured error envelope returned when a setup endpoint fails.
- *
- * `code` is a stable machine-readable identifier (e.g. `bad_request`,
- * `service_unavailable`, `internal_error`); `message` is human-readable.
- */
-export interface SetupErrorResponse {
-  error: {
-    code: string;
-    message: string;
-  };
-}
-
-/** Common error codes used across connector setup routes. */
-export const SETUP_ERROR_CODES = {
-  BAD_REQUEST: "bad_request",
-  SERVICE_UNAVAILABLE: "service_unavailable",
-  INTERNAL_ERROR: "internal_error",
-  TOO_MANY_SESSIONS: "too_many_sessions",
-} as const;
-
-export type SetupErrorCode =
-  (typeof SETUP_ERROR_CODES)[keyof typeof SETUP_ERROR_CODES];
-
-/**
- * Build a structured error envelope.
- *
- * Use this on every error path in connector setup handlers so the UI
- * layer can branch on `error.code` rather than substring-matching
- * `error.message`.
- */
-export function buildSetupError(
-  code: SetupErrorCode | string,
-  message: string,
-): SetupErrorResponse {
-  return { error: { code, message } };
-}
-
-/**
- * Compose the canonical path for a connector setup endpoint.
- *
- * `setupPath("signal", "start")` → `/api/setup/signal/start`.
- */
-export function setupPath(
-  connector: string,
-  action: "status" | "start" | "cancel",
-): string {
-  return `/api/setup/${connector}/${action}`;
-}
+export type {
+  SetupErrorCode,
+  SetupErrorResponse,
+  SetupState,
+  SetupStatusResponse,
+} from "@elizaos/core";
+export { buildSetupError, SETUP_ERROR_CODES, setupPath } from "@elizaos/core";

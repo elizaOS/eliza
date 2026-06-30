@@ -1,0 +1,19 @@
+{
+  "schema": "eliza_type_duplication_baseline_v1",
+  "updatedAt": "2026-06-29T23:54:06.158Z",
+  "thresholds": {
+    "minProps": 3,
+    "nearDuplicateJaccard": 0.6,
+    "minLiteralMembers": 3
+  },
+  "filesScanned": 9917,
+  "counts": {
+    "sameName": 2307,
+    "subsets": 8238,
+    "nearDuplicates": 2701,
+    "literalSetClusters": 211,
+    "weakAsUnknownAs": 82,
+    "weakAsAny": 0,
+    "weakExplicitAny": 126
+  }
+}

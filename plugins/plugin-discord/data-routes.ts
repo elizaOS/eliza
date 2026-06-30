@@ -13,24 +13,15 @@
  * canonical paths without the plugin-name prefix.
  */
 
-import type {
-	IAgentRuntime,
-	Route,
-	RouteRequest,
-	RouteResponse,
+import {
+	buildSetupError,
+	type IAgentRuntime,
+	type Route,
+	type RouteRequest,
+	type RouteResponse,
 } from "@elizaos/core";
 import { DISCORD_LOCAL_SERVICE_NAME } from "./discord-local-service";
 import { isValidSnowflake } from "./types";
-
-// ── Error envelope (mirror @elizaos/app-core/api/setup-contract) ────────
-
-interface SetupErrorResponse {
-	error: { code: string; message: string };
-}
-
-function setupError(code: string, message: string): SetupErrorResponse {
-	return { error: { code, message } };
-}
 
 // ── Discord types ───────────────────────────────────────────────────────
 
@@ -137,7 +128,7 @@ async function handleGuilds(
 		res
 			.status(503)
 			.json(
-				setupError(
+				buildSetupError(
 					"service_unavailable",
 					"discord-local service not registered",
 				),
@@ -151,7 +142,7 @@ async function handleGuilds(
 		res
 			.status(500)
 			.json(
-				setupError(
+				buildSetupError(
 					"internal_error",
 					`failed to list discord-local guilds: ${err instanceof Error ? err.message : String(err)}`,
 				),
@@ -171,7 +162,7 @@ async function handleChannels(
 		res
 			.status(503)
 			.json(
-				setupError(
+				buildSetupError(
 					"service_unavailable",
 					"discord-local service not registered",
 				),
@@ -185,13 +176,15 @@ async function handleChannels(
 	);
 	const guildId = url.searchParams.get("guildId")?.trim() ?? "";
 	if (!guildId) {
-		res.status(400).json(setupError("bad_request", "guildId is required"));
+		res.status(400).json(buildSetupError("bad_request", "guildId is required"));
 		return;
 	}
 	if (!isValidSnowflake(guildId)) {
 		res
 			.status(400)
-			.json(setupError("bad_request", "guildId must be a Discord snowflake"));
+			.json(
+				buildSetupError("bad_request", "guildId must be a Discord snowflake"),
+			);
 		return;
 	}
 
@@ -202,7 +195,7 @@ async function handleChannels(
 		res
 			.status(500)
 			.json(
-				setupError(
+				buildSetupError(
 					"internal_error",
 					`failed to list discord-local channels: ${err instanceof Error ? err.message : String(err)}`,
 				),
@@ -222,7 +215,7 @@ async function handleSubscriptions(
 		res
 			.status(503)
 			.json(
-				setupError(
+				buildSetupError(
 					"service_unavailable",
 					"discord-local service not registered",
 				),
@@ -232,7 +225,9 @@ async function handleSubscriptions(
 
 	const body = (req.body as { channelIds?: string[] } | null) ?? null;
 	if (!body) {
-		res.status(400).json(setupError("bad_request", "request body is required"));
+		res
+			.status(400)
+			.json(buildSetupError("bad_request", "request body is required"));
 		return;
 	}
 
@@ -250,7 +245,7 @@ async function handleSubscriptions(
 		res
 			.status(400)
 			.json(
-				setupError(
+				buildSetupError(
 					"bad_request",
 					"channelIds must contain only Discord snowflakes",
 				),
@@ -293,7 +288,7 @@ async function handleSubscriptions(
 		res
 			.status(500)
 			.json(
-				setupError(
+				buildSetupError(
 					"internal_error",
 					`failed to update discord-local subscriptions: ${err instanceof Error ? err.message : String(err)}`,
 				),
