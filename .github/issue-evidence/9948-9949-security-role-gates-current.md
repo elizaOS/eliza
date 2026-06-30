@@ -11,9 +11,17 @@ Passed after `bun install` and rebasing on the then-current `origin/develop`:
 bun run verify
 ```
 
-Result: `495 successful, 495 total` in Turbo in `44m44.419s`, followed by passing build-model, Turbo dependency, TEE secret leak, script, and dist-path consumer audits. The dist-path check covered `28` consumer configs.
+Result: `495 successful, 495 total` in Turbo in `4m47.395s`, followed by passing build-model, Turbo dependency, TEE secret leak, script, and dist-path consumer audits. The dist-path check covered `28` consumer configs.
 
 The verify run also regenerated the action-doc specs for the latest `plugin-cloud-apps` actions and applied Biome formatting/import ordering in current-base files. Those generated/formatting deltas were reviewed and kept with this branch so a fresh verify does not leave the tree dirty.
+
+The type-safety ratchet passed below baseline:
+
+- `as unknown as`: `82 / 82`
+- non-null assertions: `556 / 565`
+- `?? ""` in core/agent/app-core: `624 / 636`
+- `?? {}` in core/agent/app-core: `377 / 379`
+- `?? 0` in core/agent/app-core: `382 / 406`
 
 ## Focused Checks
 
@@ -26,6 +34,9 @@ node node_modules/vitest/vitest.mjs run --config packages/app-core/vitest.config
 bun run --cwd packages/ui lint
 bun run --cwd packages/cloud/api lint
 bun run --cwd packages/cloud/shared lint
+bun run --cwd packages/elizaos lint
+bun run --cwd packages/elizaos typecheck
+bun run audit:type-safety-ratchet
 ```
 
 Additional runner observations:
@@ -36,7 +47,7 @@ Additional runner observations:
 
 ## Evidence Status
 
-- #9949 live-model trajectory/logs: `.github/issue-evidence/9949-should-respond-injection-gate.md`.
+- #9949 live-model trajectory/logs: `.github/issue-evidence/9949-should-respond-injection-gate.md` (latest run `50792b71-9327-4ba9-bbde-198f24e3a09f`, provider `openai`, `1 passed / 0 failed / 0 skipped`).
 - #9948 backend and role-boundary tests: covered by the focused checks above plus root `verify`.
 - #9948 UI screenshots: existing same-day artifacts remain in `.github/issue-evidence/9948-rolegate/` and `.github/issue-evidence/9948-shell-rolewiring/`; this branch did not change `packages/app/`.
 - Real-LLM trajectory for #9948: N/A; the #9948 work is HTTP role/wallet/UI authorization, not model behavior.

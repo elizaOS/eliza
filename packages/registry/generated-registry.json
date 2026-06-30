@@ -465,6 +465,59 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "eliza-plugin-klymax402": {
+      "git": {
+        "repo": "Br0ski777/eliza-plugin-klymax402",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "eliza-plugin-klymax402",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "15 x402 pay-per-call APIs on Base for ElizaOS agents — stock prices, B2B enrichment, web search, crypto funding rates, SEO analysis, NLP, SSL/DNS checks and more. Agents pay USDC per call with no API keys.",
+      "homepage": "https://klymax402.com",
+      "topics": [
+        "x402",
+        "payments",
+        "base",
+        "usdc",
+        "micropayments",
+        "stock-price",
+        "b2b-enrichment",
+        "web-search",
+        "crypto",
+        "defi",
+        "seo",
+        "nlp",
+        "agentic-payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-coinrailz": {
       "git": {
         "repo": "tdnupe3/elizaos-plugin-coinrailz",

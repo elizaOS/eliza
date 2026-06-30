@@ -72,6 +72,8 @@ export interface ResolvedModelPreferences {
   sources: Partial<Record<ModelPreferenceKey, VertexModelAssignmentWithModel>>;
 }
 
+type VisibilityCondition = ReturnType<typeof eq>;
+
 function isTerminalJobState(state: TuningJob["state"]): boolean {
   return (
     state === "JOB_STATE_SUCCEEDED" ||
@@ -104,72 +106,75 @@ function normalizeScopeOwner(input: AssignmentScopeOwner): NormalizedScopeOwner 
 }
 
 function buildVisibilityCondition(viewer: ViewerScope) {
-  const clauses = [eq(vertexTuningJobs.scope, "global")];
+  const clauses: [VisibilityCondition, ...VisibilityCondition[]] = [
+    eq(vertexTuningJobs.scope, "global"),
+  ];
 
   if (viewer.organizationId && isValidUUID(viewer.organizationId)) {
-    clauses.push(
-      and(
-        eq(vertexTuningJobs.scope, "organization"),
-        eq(vertexTuningJobs.organization_id, viewer.organizationId),
-      )!,
+    const organizationClause = and(
+      eq(vertexTuningJobs.scope, "organization"),
+      eq(vertexTuningJobs.organization_id, viewer.organizationId),
     );
+    if (organizationClause) clauses.push(organizationClause);
   }
 
   if (viewer.userId && isValidUUID(viewer.userId)) {
-    clauses.push(
-      and(eq(vertexTuningJobs.scope, "user"), eq(vertexTuningJobs.user_id, viewer.userId))!,
+    const userClause = and(
+      eq(vertexTuningJobs.scope, "user"),
+      eq(vertexTuningJobs.user_id, viewer.userId),
     );
+    if (userClause) clauses.push(userClause);
   }
 
-  return clauses.length === 1 ? clauses[0] : or(...clauses)!;
+  return clauses.length === 1 ? clauses[0] : (or(...clauses) ?? clauses[0]);
 }
 
 function buildModelVisibilityCondition(viewer: ViewerScope) {
-  const clauses = [eq(vertexTunedModels.source_scope, "global")];
+  const clauses: [VisibilityCondition, ...VisibilityCondition[]] = [
+    eq(vertexTunedModels.source_scope, "global"),
+  ];
 
   if (viewer.organizationId && isValidUUID(viewer.organizationId)) {
-    clauses.push(
-      and(
-        eq(vertexTunedModels.source_scope, "organization"),
-        eq(vertexTunedModels.organization_id, viewer.organizationId),
-      )!,
+    const organizationClause = and(
+      eq(vertexTunedModels.source_scope, "organization"),
+      eq(vertexTunedModels.organization_id, viewer.organizationId),
     );
+    if (organizationClause) clauses.push(organizationClause);
   }
 
   if (viewer.userId && isValidUUID(viewer.userId)) {
-    clauses.push(
-      and(
-        eq(vertexTunedModels.source_scope, "user"),
-        eq(vertexTunedModels.user_id, viewer.userId),
-      )!,
+    const userClause = and(
+      eq(vertexTunedModels.source_scope, "user"),
+      eq(vertexTunedModels.user_id, viewer.userId),
     );
+    if (userClause) clauses.push(userClause);
   }
 
-  return clauses.length === 1 ? clauses[0] : or(...clauses)!;
+  return clauses.length === 1 ? clauses[0] : (or(...clauses) ?? clauses[0]);
 }
 
 function buildAssignmentVisibilityCondition(viewer: ViewerScope) {
-  const clauses = [eq(vertexModelAssignments.scope, "global")];
+  const clauses: [VisibilityCondition, ...VisibilityCondition[]] = [
+    eq(vertexModelAssignments.scope, "global"),
+  ];
 
   if (viewer.organizationId && isValidUUID(viewer.organizationId)) {
-    clauses.push(
-      and(
-        eq(vertexModelAssignments.scope, "organization"),
-        eq(vertexModelAssignments.organization_id, viewer.organizationId),
-      )!,
+    const organizationClause = and(
+      eq(vertexModelAssignments.scope, "organization"),
+      eq(vertexModelAssignments.organization_id, viewer.organizationId),
     );
+    if (organizationClause) clauses.push(organizationClause);
   }
 
   if (viewer.userId && isValidUUID(viewer.userId)) {
-    clauses.push(
-      and(
-        eq(vertexModelAssignments.scope, "user"),
-        eq(vertexModelAssignments.user_id, viewer.userId),
-      )!,
+    const userClause = and(
+      eq(vertexModelAssignments.scope, "user"),
+      eq(vertexModelAssignments.user_id, viewer.userId),
     );
+    if (userClause) clauses.push(userClause);
   }
 
-  return clauses.length === 1 ? clauses[0] : or(...clauses)!;
+  return clauses.length === 1 ? clauses[0] : (or(...clauses) ?? clauses[0]);
 }
 
 function getScopePriority(scope: VertexTuningScope): number {

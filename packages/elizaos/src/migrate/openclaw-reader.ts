@@ -21,8 +21,8 @@
  * node:sqlite builtin is available (no heavy dependency added).
  */
 
-import { createRequire } from "node:module";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as path from "node:path";
 
 // ESM-safe require for the optional node:sqlite builtin (the bundle is ESM, so
@@ -126,7 +126,13 @@ function readIfPresent(p: string): string | undefined {
  * is preserved - an empty source, not a throw).
  */
 function resolveAgentRoot(home: string): string {
-  const PERSONA_FILES = ["SOUL.md", "IDENTITY.md", "AGENTS.md", "MEMORY.md", "memory.md"];
+  const PERSONA_FILES = [
+    "SOUL.md",
+    "IDENTITY.md",
+    "AGENTS.md",
+    "MEMORY.md",
+    "memory.md",
+  ];
   for (const sub of HOME_SUBROOTS) {
     const root = sub ? path.join(home, sub) : home;
     const hasPersona = PERSONA_FILES.some((f) => {
@@ -189,7 +195,11 @@ function detectSqliteStores(memoryDir: string): OcSqliteStore[] {
     try {
       const st = fs.statSync(full);
       if (!st.isFile()) continue;
-      out.push({ file: full, name: f.replace(/\.sqlite$/, ""), bytes: st.size });
+      out.push({
+        file: full,
+        name: f.replace(/\.sqlite$/, ""),
+        bytes: st.size,
+      });
     } catch {
       // skip unreadable
     }
@@ -207,9 +217,7 @@ function detectSqliteStores(memoryDir: string): OcSqliteStore[] {
  * If node:sqlite is unavailable OR the db isn't the expected shape, returns
  * null so the caller falls back to DETECT+WARN (no silent empty, no heavy dep).
  */
-function readSqliteMemory(
-  store: OcSqliteStore,
-): {
+function readSqliteMemory(store: OcSqliteStore): {
   dailyLogs: OcDailyLog[];
   namedMemory: OcNamedMemory[];
   awareness?: string;
@@ -252,7 +260,8 @@ function readSqliteMemory(
   // Group chunk text by source path, de-dup exact repeats, reassemble prose.
   const byPath = new Map<string, { lines: Set<number>; parts: string[] }>();
   for (const r of rows) {
-    if (!r || typeof r.path !== "string" || typeof r.text !== "string") continue;
+    if (!r || typeof r.path !== "string" || typeof r.text !== "string")
+      continue;
     let g = byPath.get(r.path);
     if (!g) {
       g = { lines: new Set<number>(), parts: [] };
@@ -287,7 +296,11 @@ function readSqliteMemory(
       // First awareness file wins (the markdown reader prefers <agentId> too).
       if (awareness === undefined) awareness = text;
     } else if (base.endsWith(".md")) {
-      namedMemory.push({ key: base.replace(/\.md$/, ""), filename: base, text });
+      namedMemory.push({
+        key: base.replace(/\.md$/, ""),
+        filename: base,
+        text,
+      });
     }
   }
   dailyLogs.sort((a, b) => b.epochMs - a.epochMs);
@@ -395,7 +408,9 @@ export function readOcAgentHome(home: string, agentId: string): OcAgentSource {
       warnings.push(
         `DETECTED ${sqliteStores.length} sqlite memory store(s) [${sqliteStores
           .map((s) => s.name)
-          .join(", ")}] but could NOT read them (node:sqlite unavailable in this ` +
+          .join(
+            ", ",
+          )}] but could NOT read them (node:sqlite unavailable in this ` +
           `runtime). Memory was NOT ported. Persona migrated; re-run on Node >=22.5 ` +
           `to ingest sqlite memory, or export memory to markdown first.`,
       );
@@ -422,7 +437,13 @@ export function readOcAgentHome(home: string, agentId: string): OcAgentSource {
 
   // Warn if a home yields neither persona nor memory (e.g. a device/builder
   // home whose identity/ dir is auth, not a character) so we never imply success.
-  if (!soul && !identity && dailyLogs.length === 0 && namedMemory.length === 0 && !curated.text) {
+  if (
+    !soul &&
+    !identity &&
+    dailyLogs.length === 0 &&
+    namedMemory.length === 0 &&
+    !curated.text
+  ) {
     warnings.push(
       `No persona (SOUL/IDENTITY) and no markdown/sqlite memory found under ${resolvedHome}. ` +
         `This may be a device/builder home (identity/ holds auth, not a character). ` +
