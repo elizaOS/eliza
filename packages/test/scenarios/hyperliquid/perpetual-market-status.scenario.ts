@@ -19,6 +19,8 @@ type R = AgentRuntime & {
   };
 };
 
+let restoreFetch: (() => void) | undefined;
+
 const STATUS_RESPONSE = {
   publicReadReady: true,
   signerReady: false,
@@ -57,11 +59,22 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
         const realFetch = globalThis.fetch;
-        globalThis.fetch = (async (
+        restoreFetch = () => {
+          if (globalThis.fetch === hyperliquidMockFetch) {
+            globalThis.fetch = realFetch;
+          }
+          restoreFetch = undefined;
+        };
+        const hyperliquidMockFetch = (async (
           input: RequestInfo | URL,
           init?: RequestInit,
         ) => {
-          const url = typeof input === "string" ? input : input.toString();
+          const url =
+            typeof input === "string"
+              ? input
+              : input instanceof Request
+                ? input.url
+                : input.toString();
           if (url.includes("/api/hyperliquid/status")) {
             return new Response(JSON.stringify(STATUS_RESPONSE), {
               headers: { "Content-Type": "application/json" },
@@ -69,6 +82,7 @@ export default scenario({
           }
           return realFetch(input, init);
         }) as typeof fetch;
+        globalThis.fetch = hyperliquidMockFetch;
 
         runtime.scenarioLlmFixtures?.register(
           {
@@ -79,7 +93,7 @@ export default scenario({
               toolName: "HANDLE_RESPONSE",
             },
             response: {
-              contexts: ["connectors"],
+              contexts: ["finance", "connectors"],
               intents: ["read hyperliquid status"],
               replyText: "",
               threadOps: [],
@@ -89,11 +103,9 @@ export default scenario({
           },
           {
             name: "hyperliquid-planner",
-            match: {
-              modelType: ModelType.ACTION_PLANNER,
-              input: (v: string) => v.includes("Hyperliquid"),
-              toolName: PERPETUAL_MARKET,
-            },
+            match: (call: { modelType: string; toolNames: string[] }) =>
+              call.modelType === ModelType.ACTION_PLANNER &&
+              call.toolNames.includes(PERPETUAL_MARKET),
             response: {
               text: "",
               thought: "Read Hyperliquid market status.",
@@ -129,6 +141,16 @@ export default scenario({
             times: 1,
           },
         );
+        return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore-hyperliquid-fetch",
+      apply: () => {
+        restoreFetch?.();
         return undefined;
       },
     },

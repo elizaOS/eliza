@@ -449,6 +449,14 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
       actions: [mod.appAction, mod.backgroundAction, mod.viewsAction],
     };
   }
+  if (pkg === "@elizaos/plugin-hyperliquid") {
+    const mod = (await import(
+      "../../../plugins/plugin-hyperliquid/src/plugin.ts"
+    )) as {
+      hyperliquidPlugin?: Plugin;
+    };
+    return mod.hyperliquidPlugin ?? null;
+  }
 
   const mod = (await import(pkg)) as Record<string, unknown>;
   const isPlugin = (value: unknown): value is Plugin => {
@@ -1162,6 +1170,8 @@ async function clearSelfControlBlocks(): Promise<string | undefined> {
 
 async function runScenarioCleanups(
   scenario: ScenarioDefinition,
+  runtime: AgentRuntime,
+  ctx: RunnerContext,
 ): Promise<string[]> {
   const cleanups = (scenario as { cleanup?: unknown }).cleanup;
   if (!Array.isArray(cleanups)) {
@@ -1172,13 +1182,29 @@ async function runScenarioCleanups(
     if (!cleanup || typeof cleanup !== "object") {
       continue;
     }
-    const step = cleanup as { type?: unknown; name?: unknown };
+    const step = cleanup as {
+      type?: unknown;
+      name?: unknown;
+      apply?: unknown;
+    };
     let result: string | undefined;
     try {
       if (step.type === "gmailDeleteDrafts") {
         result = await deleteMockGmailDrafts();
       } else if (step.type === "selfControlClearBlocks") {
         result = await clearSelfControlBlocks();
+      } else if (step.type === "custom" && typeof step.apply === "function") {
+        const scenarioCtx: ScenarioContext = {
+          ...ctx,
+          runtime,
+        };
+        const customResult = await (
+          step.apply as (c: ScenarioContext) => unknown
+        )(scenarioCtx);
+        result =
+          typeof customResult === "string" && customResult.length > 0
+            ? customResult
+            : undefined;
       } else {
         continue;
       }
@@ -2144,19 +2170,18 @@ export async function runScenario(
         detail: fixtureFailure,
       });
     }
-
-    const cleanupFailures = await runScenarioCleanups(scenario);
+  } catch (err) {
+    report.status = "failed";
+    report.error = err instanceof Error ? err.message : String(err);
+    logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
+  } finally {
+    const cleanupFailures = await runScenarioCleanups(scenario, runtime, ctx);
     if (cleanupFailures.length > 0) {
       report.status = "failed";
       for (const detail of cleanupFailures) {
         report.failedAssertions.push({ label: "cleanup", detail });
       }
     }
-  } catch (err) {
-    report.status = "failed";
-    report.error = err instanceof Error ? err.message : String(err);
-    logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
-  } finally {
     (
       runtime as {
         getService: AgentRuntime["getService"];
