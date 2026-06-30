@@ -156,6 +156,7 @@ export {
 } from "./components";
 export * from "./components/apps/AppWindowRenderer";
 export * from "./components/apps/AppWindowRenderer.helpers";
+export * from "./components/apps/EmbeddedAppViewer";
 export * from "./components/apps/extensions/registry";
 export * from "./components/apps/extensions/surface";
 export * from "./components/apps/extensions/surface.helpers";

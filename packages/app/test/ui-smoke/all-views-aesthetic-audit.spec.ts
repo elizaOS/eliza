@@ -86,7 +86,6 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   relationships: "/apps/relationships",
   memories: "/apps/memories",
   rolodex: "/rolodex",
-  voice: "/settings/voice",
   runtime: "/apps/runtime",
   database: "/apps/database",
   desktop: "/desktop",

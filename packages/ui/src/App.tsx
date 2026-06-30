@@ -731,7 +731,7 @@ function builtinRouteBackgroundPolicy(
 ): AppShellBackgroundPolicy | null {
   const normalizedPath = trimmedNavigationPath(navigationPath);
   if (tab === "chat" || tab === "background") return "shared";
-  if (tab === "settings" || tab === "voice") return "shared";
+  if (tab === "settings") return "shared";
   if (tab === "views" && normalizedPath === "/views") return "shared";
   if (tab === "apps" && normalizedPath === "/apps") return "shared";
   return null;
@@ -1078,11 +1078,6 @@ function renderStaticViewRouterTab({
         <HelpView />
       </TabContentView>
     ),
-    camera: (
-      <TabContentView>
-        <CameraPageView />
-      </TabContentView>
-    ),
     chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
     companion: <ViewUnavailableFallback />,
@@ -1094,11 +1089,6 @@ function renderStaticViewRouterTab({
     ),
     automations: <AutomationsFeed />,
     triggers: <AutomationsFeed />,
-    voice: (
-      <TabContentView surface="transparent">
-        <SettingsView key="settings-identity" initialSection="identity" />
-      </TabContentView>
-    ),
     settings: (
       <TabContentView surface="transparent">
         <SettingsView
@@ -1163,6 +1153,12 @@ function renderStaticViewRouterTab({
       </TabContentView>
     ),
   };
+  if (tab === "camera") {
+    // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
+    // marker as the home tile, so a deep-link off the fork falls back to
+    // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
+    return renderPhoneSurface(isAospShellEnabled(), CameraPageView);
+  }
   if (tab === "phone") {
     return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
   }
@@ -1829,7 +1825,7 @@ export function App() {
 
   const isCompanionTab = tab === "companion";
   const isChat = tab === "chat";
-  const isSettingsPage = tab === "settings" || tab === "voice";
+  const isSettingsPage = tab === "settings";
   const isFullBleed = useTabIsFullBleed(tab);
 
   // Keep hook order stable across first-run/auth state transitions.
