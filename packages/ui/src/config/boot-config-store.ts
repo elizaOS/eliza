@@ -15,8 +15,6 @@ import type {
 } from "@elizaos/shared";
 import type { ComponentType, ReactNode } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
-import type { Tab } from "../navigation";
-import type { ActionNotice } from "../state/action-notice";
 import type { BrandingConfig } from "./branding";
 
 export { syncBrandEnvToEliza, syncElizaEnvToBrand } from "@elizaos/core";
@@ -75,11 +73,6 @@ export interface ClientMiddleware {
   desktopPermissions?: boolean;
 }
 
-export interface CompanionShellComponentProps {
-  tab: Tab;
-  actionNotice: ActionNotice | null;
-}
-
 /** Where a home tile sends you. Mirrors HomeTileTarget in shell/HomeScreen. */
 export type HomeScreenNavTarget =
   | { kind: "tab"; tab: string }
@@ -91,30 +84,6 @@ export interface HomeScreenComponentProps {
   onOpenTile: (target: HomeScreenNavTarget) => void;
   /** Render the AOSP-only native-OS tiles (phone/contacts/messages). */
   showNativeOsTiles?: boolean;
-}
-
-export type CompanionInferenceNotice =
-  | { kind: "cloud"; variant: "danger" | "warn"; tooltip: string }
-  | { kind: "settings"; variant: "warn"; tooltip: string };
-
-export interface ResolveCompanionInferenceNoticeArgs {
-  elizaCloudConnected: boolean;
-  elizaCloudAuthRejected: boolean;
-  elizaCloudCreditsError: string | null | undefined;
-  elizaCloudEnabled: boolean;
-  chatLastUsageModel?: string;
-  hasInterruptedAssistant: boolean;
-  t: (key: string) => string;
-}
-
-export interface CompanionSceneStatus {
-  avatarReady: boolean;
-  teleportKey: string;
-}
-
-export interface CompanionVectorBrowserRuntime {
-  THREE: unknown;
-  createVectorBrowserRenderer: () => Promise<unknown>;
 }
 
 export interface CodingAgentTasksPanelProps {
@@ -166,24 +135,6 @@ export interface AppBootConfig {
    * shows its own logo, not the elizaOS mark). Receives an optional className.
    */
   brandMark?: ComponentType<{ className?: string }>;
-  /** Companion shell implementation provided by the host app. */
-  companionShell?: ComponentType<CompanionShellComponentProps>;
-  /** Companion cloud/settings warning resolver provided by the host app. */
-  resolveCompanionInferenceNotice?: (
-    args: ResolveCompanionInferenceNoticeArgs,
-  ) => CompanionInferenceNotice | null;
-  /** Companion warning button implementation provided by the host app. */
-  companionInferenceAlertButton?: ComponentType<{
-    notice: CompanionInferenceNotice;
-    onClick: () => void;
-    onPointerDown?: (...args: unknown[]) => unknown;
-  }>;
-  /** Companion global overlay implementation provided by the host app. */
-  companionGlobalOverlay?: ComponentType<Record<string, never>>;
-  /** Companion scene state hook provided by the host app. */
-  useCompanionSceneStatus?: () => CompanionSceneStatus;
-  /** Optional vector browser runtime owned by the host app. */
-  companionVectorBrowser?: CompanionVectorBrowserRuntime;
   /** Coding-agent tasks panel provided by the host app. */
   codingAgentTasksPanel?: ComponentType<CodingAgentTasksPanelProps>;
   /** Coding-agent settings panel provided by the host app. */

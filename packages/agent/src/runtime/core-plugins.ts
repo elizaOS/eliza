@@ -125,7 +125,6 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-inference", // local Eliza-1 inference (text + embeddings + voice) — required for memory + on-device generation
   // @elizaos/plugin-form — standalone form plugin; load via plugin registry/config
-  "@elizaos/plugin-companion", // VRM companion emotes; actions gated until app session is active
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
@@ -161,7 +160,6 @@ export const CORE_PLUGINS: readonly string[] = [
 export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
-  "@elizaos/plugin-companion", // VRM companion emotes for the app chat surface
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target
   "@elizaos/plugin-agent-skills", // skill execution + enabled-skills provider
@@ -227,7 +225,6 @@ export const BLOCKING_CORE_PLUGINS: readonly string[] = [
  * first invocation would silently strip the capability from the planner's
  * awareness — the model cannot ask for an action or read a provider that has
  * not registered yet. Concretely, in this set:
- *   - companion       — PLAY_EMOTE action + VRM views
  *   - app-control     — app launch/close/list actions
  *   - shell           — shell service + shell-history provider
  *   - coding-tools    — FILE/SHELL/WORKTREE actions + available-tools provider

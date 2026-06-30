@@ -19,8 +19,6 @@ export const VIEW_CASES: ViewCase[] = (
     // Collapsed plugins: every modality (gui/tui/xr) is drawn from one single
     // view declaration that shares ONE route, so the tui case uses the same
     // path as its gui case, not a separate `/<id>/tui` route.
-    ["companion", "gui", "/companion"],
-    ["companion", "tui", "/companion"],
     ["contacts", "gui", "/contacts"],
     ["contacts", "tui", "/contacts"],
     ["hyperliquid", "gui", "/hyperliquid"],

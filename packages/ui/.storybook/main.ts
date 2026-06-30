@@ -54,12 +54,9 @@ try {
 }
 
 const config: StorybookConfig = {
-  // Cover @elizaos/ui's own stories plus the plugin-companion CSF files, so the
-  // whole component library lives in one catalog.
-  stories: [
-    "../src/**/*.stories.@(ts|tsx)",
-    "../../../plugins/plugin-companion/src/**/*.stories.@(ts|tsx)",
-  ],
+  // Cover @elizaos/ui's own stories so the whole component library lives in
+  // one catalog.
+  stories: ["../src/**/*.stories.@(ts|tsx)"],
   addons: [
     "@storybook/addon-docs",
     "@storybook/addon-a11y",

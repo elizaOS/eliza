@@ -727,15 +727,6 @@ export function shouldKeepPackageRelativePath(
     }
   }
 
-  if (packageName === "@elizaos/plugin-companion") {
-    if (
-      normalizedPath === "public_src" ||
-      normalizedPath.startsWith("public_src/")
-    ) {
-      return false;
-    }
-  }
-
   if (packageName === "@elizaos/agent") {
     if (
       normalizedPath === "dist-mobile" ||

@@ -26,7 +26,6 @@ const pluginAppManagerSrc = path.join(
   monorepoRoot,
   "plugins/plugin-app-manager/src",
 );
-const appCompanionSrc = path.join(monorepoRoot, "plugins/plugin-companion/src");
 const appWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet-ui/src");
 const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/src");
 const pluginAgentSkillsSrc = path.join(
@@ -177,7 +176,6 @@ export default defineConfig({
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
-      "test/app/first-run-companion.live.e2e.test.ts",
       "test/helpers/__tests__/live-agent-test.smoke.test.ts",
       ...(includeLiveE2e
         ? []
@@ -262,18 +260,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/app-lifeops\/(.+)$/,
         replacement: path.join(appLifeopsSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/app-companion$/,
-        replacement: path.join(appCompanionSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app-companion\/ui$/,
-        replacement: path.join(appCompanionSrc, "ui.ts"),
-      },
-      {
-        find: /^@elizaos\/app-companion\/(.+)$/,
-        replacement: path.join(appCompanionSrc, "$1"),
       },
       {
         find: /^@elizaos\/app-wallet$/,

@@ -1,9 +1,5 @@
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import "@elizaos/ui/styles";
-// Native-only: register bundled plugin views as in-process app-shell pages so
-// they load from the view catalog on iOS/Android (where DynamicViewLoader is
-// disabled). No-op off-device.
-import "./mobile-plugin-views";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
@@ -54,11 +50,7 @@ import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
-  CompanionInferenceNotice,
-  CompanionSceneStatus,
-  CompanionShellComponentProps,
   FineTuningViewProps,
-  ResolveCompanionInferenceNoticeArgs,
 } from "@elizaos/ui/config";
 import {
   type AppBootConfig,
@@ -199,34 +191,6 @@ function importAppCore() {
   );
 }
 
-function importCompanionAppRegistration() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-companion/components/companion/companion-app",
-    () =>
-      import("@elizaos/plugin-companion/components/companion/companion-app"),
-  );
-}
-
-function importCompanionSceneStatusContext() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-companion/components/companion/companion-scene-status-context",
-    () =>
-      import(
-        "@elizaos/plugin-companion/components/companion/companion-scene-status-context"
-      ),
-  );
-}
-
-function importCompanionInferenceNotice() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice",
-    () =>
-      import(
-        "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice"
-      ),
-  );
-}
-
 function importPersonalAssistant() {
   return cachedDynamicImport(
     "@elizaos/plugin-personal-assistant",
@@ -268,46 +232,6 @@ function lazyNamedComponent<TProps>(
   return lazy(async () => ({ default: await load() })) as ComponentType<TProps>;
 }
 
-const CompanionShell = lazyNamedComponent<CompanionShellComponentProps>(
-  async () =>
-    (
-      await cachedDynamicImport(
-        "@elizaos/plugin-companion/components/companion/CompanionShell",
-        () =>
-          import(
-            "@elizaos/plugin-companion/components/companion/CompanionShell"
-          ),
-      )
-    ).CompanionShell,
-);
-const GlobalEmoteOverlay = lazyNamedComponent<Record<string, never>>(
-  async () =>
-    (
-      await cachedDynamicImport(
-        "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay",
-        () =>
-          import(
-            "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay"
-          ),
-      )
-    ).GlobalEmoteOverlay,
-);
-const InferenceCloudAlertButton = lazyNamedComponent<{
-  notice: CompanionInferenceNotice;
-  onClick: () => void;
-  onPointerDown?: (...args: unknown[]) => unknown;
-}>(
-  async () =>
-    (
-      await cachedDynamicImport(
-        "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
-        () =>
-          import(
-            "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton"
-          ),
-      )
-    ).InferenceCloudAlertButton,
-);
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
@@ -330,17 +254,6 @@ const CodingAgentTasksPanel = lazyNamedComponent<CodingAgentTasksPanelProps>(
 const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
   async () => (await importAppTraining()).FineTuningView,
 );
-
-let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
-
-function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
-  return (
-    loadedCompanionSceneStatusHook?.() ?? {
-      avatarReady: false,
-      teleportKey: "",
-    }
-  );
-}
 
 const BRANDED_WINDOW_KEYS = {
   apiBase: `__${APP_ENV_PREFIX}_API_BASE__`,
@@ -608,13 +521,7 @@ function scheduleDeferredAppModuleLoadsAfterPaint(): void {
   });
 }
 
-function buildAppBootConfig({
-  resolveCompanionInferenceNotice,
-}: {
-  resolveCompanionInferenceNotice: (
-    args: ResolveCompanionInferenceNoticeArgs,
-  ) => CompanionInferenceNotice | null;
-}): AppBootConfig {
+function buildAppBootConfig(): AppBootConfig {
   const current = getBootConfig();
 
   return {
@@ -628,11 +535,6 @@ function buildAppBootConfig({
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
     characterEditor: CharacterEditor,
-    companionShell: CompanionShell,
-    resolveCompanionInferenceNotice,
-    companionInferenceAlertButton: InferenceCloudAlertButton,
-    companionGlobalOverlay: GlobalEmoteOverlay,
-    useCompanionSceneStatus: useLoadedCompanionSceneStatus,
     codingAgentTasksPanel: CodingAgentTasksPanel,
     codingAgentSettingsSection: CodingAgentSettingsSection,
     codingAgentControlChip: CodingAgentControlChip,
@@ -675,33 +577,12 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
 
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
+    // app-core owns the AppBootConfig singleton, so it must load before the
+    // config is assembled. Everything else exposed through the boot config is a
+    // React.lazy handle that loads on render, so its import is deferred onto the
+    // idle path instead of gating the first visible shell (#9565).
     await importAppCore();
-
-    // Block first paint ONLY on the modules whose exports buildAppBootConfig
-    // reads synchronously: companion app registration, the scene-status hook,
-    // and the inference-notice resolver. Everything else exposed through the
-    // boot config is a React.lazy handle that loads on render, so its import is
-    // deferred below instead of gating the first visible shell (#9565).
-    const [
-      companionRegistrationModule,
-      companionSceneStatusModule,
-      companionInferenceNoticeModule,
-    ] = await Promise.all([
-      importCompanionAppRegistration(),
-      importCompanionSceneStatusContext(),
-      importCompanionInferenceNotice(),
-    ]);
-
-    companionRegistrationModule.registerCompanionApp();
-    loadedCompanionSceneStatusHook =
-      companionSceneStatusModule.useCompanionSceneStatus;
-
-    setBootConfig(
-      buildAppBootConfig({
-        resolveCompanionInferenceNotice:
-          companionInferenceNoticeModule.resolveCompanionInferenceNotice,
-      }),
-    );
+    setBootConfig(buildAppBootConfig());
   })();
 
   return appModulesInitialized;

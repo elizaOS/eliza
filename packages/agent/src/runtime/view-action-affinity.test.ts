@@ -33,18 +33,18 @@ describe("view-action-affinity", () => {
   it("stores and clears the active view", () => {
     expect(getActiveViewContext()).toBeNull();
     setActiveViewContext({
-      viewId: "companion",
-      viewLabel: "Companion",
+      viewId: "wallet",
+      viewLabel: "Wallet",
       viewType: "gui",
-      viewPath: "/companion",
+      viewPath: "/wallet",
     });
-    expect(getActiveViewContext()?.viewId).toBe("companion");
+    expect(getActiveViewContext()?.viewId).toBe("wallet");
     clearActiveViewContext();
     expect(getActiveViewContext()).toBeNull();
   });
 
   it("resolves scoped action names from the map", () => {
-    expect(viewScopedActionNames("companion")).toEqual(new Set(["PLAY_EMOTE"]));
+    expect(viewScopedActionNames("training")).toEqual(new Set(["RUNTIME"]));
     expect(viewScopedActionNames("orchestrator")).toEqual(new Set(["TASKS"]));
     expect(viewScopedActionNames("a-view-with-no-actions").size).toBe(0);
     expect(viewScopedActionNames(null).size).toBe(0);
@@ -79,22 +79,22 @@ describe("view-action-affinity", () => {
   });
 
   it("merges view-scoped actions into the full-param set", () => {
-    const set = buildFullParamActionSet([], viewScopedActionNames("companion"));
+    const set = buildFullParamActionSet([], viewScopedActionNames("wallet"));
     // Universal actions are always present…
     expect(set.has("REPLY")).toBe(true);
     // …and the active view's scoped action is kept full.
-    expect(set.has("PLAY_EMOTE")).toBe(true);
+    expect(set.has("EVM_SWAP")).toBe(true);
   });
 
   it("flags drift when a mapped action is not registered", () => {
     const warnings: string[] = [];
-    validateViewActionMap(["REPLY", "PLAY_EMOTE"], {
+    validateViewActionMap(["REPLY", "TASKS"], {
       warn: (m) => warnings.push(m),
     });
-    // TASKS / RUNTIME are not in the registered list → should warn.
-    expect(warnings.some((w) => w.includes("TASKS"))).toBe(true);
+    // RUNTIME is mapped but not in the registered list → should warn.
     expect(warnings.some((w) => w.includes("RUNTIME"))).toBe(true);
-    expect(warnings.some((w) => w.includes("PLAY_EMOTE"))).toBe(false);
+    // TASKS IS in the registered list → should not warn for it.
+    expect(warnings.some((w) => w.includes("TASKS"))).toBe(false);
   });
 
   it("does not warn when every mapped action is registered", () => {
@@ -310,8 +310,8 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     "# Available Actions",
     "- REPLY: respond to the user",
     "  parameters: { text: string }",
-    "- PLAY_EMOTE: play an avatar emote",
-    "  parameters: { emote: string, intensity: number }",
+    "- EVM_SWAP: swap tokens on an EVM chain",
+    "  parameters: { fromToken: string, amount: number }",
     "- WHATEVER: some unrelated action",
     "  parameters: { foo: string }",
     "",
@@ -321,9 +321,9 @@ describe("compactActionsForIntent with view-scoped actions", () => {
 
   it("summarizes an action's params when neither intent nor view keeps it", () => {
     const out = compactActionsForIntent(PROMPT);
-    // PLAY_EMOTE param schema is dropped for plain chat with no active view…
-    expect(out).toContain("- PLAY_EMOTE: play an avatar emote");
-    expect(out).not.toContain("emote: string, intensity: number");
+    // EVM_SWAP param schema is dropped for plain chat with no active view…
+    expect(out).toContain("- EVM_SWAP: swap tokens on an EVM chain");
+    expect(out).not.toContain("fromToken: string, amount: number");
     // …REPLY (universal) keeps its params.
     expect(out).toContain("text: string");
   });
@@ -331,10 +331,10 @@ describe("compactActionsForIntent with view-scoped actions", () => {
   it("keeps the active view's scoped action at full param detail", () => {
     const out = compactActionsForIntent(
       PROMPT,
-      viewScopedActionNames("companion"),
+      viewScopedActionNames("wallet"),
     );
-    // The companion view scopes PLAY_EMOTE → its params survive compaction.
-    expect(out).toContain("emote: string, intensity: number");
+    // The wallet view scopes EVM_SWAP → its params survive compaction.
+    expect(out).toContain("fromToken: string, amount: number");
     // The unrelated action still loses param detail.
     expect(out).not.toContain("foo: string");
   });
@@ -345,10 +345,10 @@ describe("compactActionsForIntent with view-scoped actions", () => {
   // integration contract the prompt-optimization wiring implements.
   it("end-to-end: active view weights its action AND injects awareness", () => {
     setActiveViewContext({
-      viewId: "companion",
-      viewLabel: "Companion",
+      viewId: "wallet",
+      viewLabel: "Wallet",
       viewType: "gui",
-      viewPath: "/companion",
+      viewPath: "/wallet",
     });
     const active = getActiveViewContext();
     let prompt = compactActionsForIntent(
@@ -358,8 +358,8 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     if (active && prompt.includes("# Available Actions")) {
       prompt = applyActiveViewAwareness(prompt, active);
     }
-    // Weighting: the companion view's PLAY_EMOTE keeps full params…
-    expect(prompt).toContain("emote: string, intensity: number");
+    // Weighting: the wallet view's EVM_SWAP keeps full params…
+    expect(prompt).toContain("fromToken: string, amount: number");
     // …unrelated action stays summarized…
     expect(prompt).not.toContain("foo: string");
     // …and awareness is injected once, before the action catalogue.

@@ -11,11 +11,7 @@ import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
-import type {
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
-  SetupStep,
-} from "./types";
+import type { SetupStep } from "./types";
 import {
   type BackgroundConfig,
   DEFAULT_BACKGROUND_COLOR,
@@ -219,150 +215,6 @@ export function saveBackgroundHistory(history: BackgroundConfig[]): void {
   }, undefined);
 }
 
-const COMPANION_VRM_POWER_STORAGE_KEY = "eliza:companion-vrm-power";
-/** Legacy; migrated into `eliza:companion-vrm-power` on first read. */
-const LEGACY_COMPANION_EFFICIENCY_KEY = "eliza:companion-efficiency";
-/** Legacy; migrated into `eliza:companion-vrm-power` on first read. */
-const LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY =
-  "eliza:companion-quality-on-battery";
-
-export function normalizeCompanionVrmPowerMode(
-  value: unknown,
-): CompanionVrmPowerMode {
-  return value === "quality" || value === "efficiency" ? value : "balanced";
-}
-
-/**
- * Persisted 3D companion power preference. Migrates legacy boolean keys once.
- */
-export function loadCompanionVrmPowerMode(): CompanionVrmPowerMode {
-  try {
-    const raw = localStorage.getItem(COMPANION_VRM_POWER_STORAGE_KEY);
-    if (raw === "quality" || raw === "balanced" || raw === "efficiency") {
-      return raw;
-    }
-    const legacyEffPresent =
-      localStorage.getItem(LEGACY_COMPANION_EFFICIENCY_KEY) != null;
-    const legacyQobPresent =
-      localStorage.getItem(LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY) != null;
-    if (legacyEffPresent || legacyQobPresent) {
-      const effOn =
-        localStorage.getItem(LEGACY_COMPANION_EFFICIENCY_KEY) === "1";
-      const qobOn =
-        localStorage.getItem(LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY) === "1";
-      const migrated: CompanionVrmPowerMode = effOn
-        ? "efficiency"
-        : qobOn
-          ? "quality"
-          : "balanced";
-      saveCompanionVrmPowerMode(migrated);
-      localStorage.removeItem(LEGACY_COMPANION_EFFICIENCY_KEY);
-      localStorage.removeItem(LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY);
-      return migrated;
-    }
-    if (raw != null && raw !== "") {
-      saveCompanionVrmPowerMode("balanced");
-    }
-    return "balanced";
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to load companion VRM power mode: ${describePersistenceError(err)}`,
-    );
-    return "balanced";
-  }
-}
-
-export function saveCompanionVrmPowerMode(mode: CompanionVrmPowerMode): void {
-  try {
-    const next = normalizeCompanionVrmPowerMode(mode);
-    localStorage.setItem(COMPANION_VRM_POWER_STORAGE_KEY, next);
-    localStorage.removeItem(LEGACY_COMPANION_EFFICIENCY_KEY);
-    localStorage.removeItem(LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY);
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to save companion VRM power mode: ${describePersistenceError(err)}`,
-    );
-  }
-}
-
-const COMPANION_ANIMATE_WHEN_HIDDEN_KEY = "eliza:companion-animate-when-hidden";
-
-/** When true, keep the VRM loop running when the document is hidden; 3D environment is hidden. */
-export function loadCompanionAnimateWhenHidden(): boolean {
-  try {
-    return localStorage.getItem(COMPANION_ANIMATE_WHEN_HIDDEN_KEY) === "1";
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to load companion animate-when-hidden flag: ${describePersistenceError(err)}`,
-    );
-    return false;
-  }
-}
-
-export function saveCompanionAnimateWhenHidden(enabled: boolean): void {
-  try {
-    localStorage.setItem(
-      COMPANION_ANIMATE_WHEN_HIDDEN_KEY,
-      enabled ? "1" : "0",
-    );
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to save companion animate-when-hidden flag: ${describePersistenceError(err)}`,
-    );
-  }
-}
-
-const COMPANION_HALF_FRAMERATE_STORAGE_KEY = "eliza:companion-half-framerate";
-
-const COMPANION_HALF_FRAMERATE_VALUES = new Set<string>([
-  "off",
-  "when_saving_power",
-  "always",
-]);
-
-function isCompanionHalfFramerateMode(
-  value: unknown,
-): value is CompanionHalfFramerateMode {
-  return (
-    typeof value === "string" && COMPANION_HALF_FRAMERATE_VALUES.has(value)
-  );
-}
-
-export function normalizeCompanionHalfFramerateMode(
-  raw: string | null | undefined,
-): CompanionHalfFramerateMode {
-  if (isCompanionHalfFramerateMode(raw)) return raw;
-  return "when_saving_power";
-}
-
-export function loadCompanionHalfFramerateMode(): CompanionHalfFramerateMode {
-  try {
-    return normalizeCompanionHalfFramerateMode(
-      localStorage.getItem(COMPANION_HALF_FRAMERATE_STORAGE_KEY),
-    );
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to load companion half-framerate mode: ${describePersistenceError(err)}`,
-    );
-    return "when_saving_power";
-  }
-}
-
-export function saveCompanionHalfFramerateMode(
-  mode: CompanionHalfFramerateMode,
-): void {
-  try {
-    localStorage.setItem(
-      COMPANION_HALF_FRAMERATE_STORAGE_KEY,
-      normalizeCompanionHalfFramerateMode(mode),
-    );
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to save companion half-framerate mode: ${describePersistenceError(err)}`,
-    );
-  }
-}
-
 /**
  * Apply the theme to the document root.
  * Sets both `data-theme` attribute and `.dark` class so both CSS selectors
@@ -550,8 +402,8 @@ export function hasStoredUiLanguage(): boolean {
   );
 }
 
-function normalizeUiShellMode(mode: unknown): UiShellMode {
-  return mode === "native" ? "native" : "companion";
+function normalizeUiShellMode(_mode: unknown): UiShellMode {
+  return "native";
 }
 
 export { normalizeUiShellMode };
@@ -559,7 +411,7 @@ export { normalizeUiShellMode };
 export function loadUiShellMode(): UiShellMode {
   return tryLocalStorage(
     () => normalizeUiShellMode(localStorage.getItem(UI_SHELL_MODE_STORAGE_KEY)),
-    "companion",
+    "native",
   );
 }
 

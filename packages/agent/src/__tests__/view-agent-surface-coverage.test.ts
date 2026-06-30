@@ -17,7 +17,6 @@ const CONVERTED_PLUGINS = [
   "plugin-wallet-ui",
   "app-model-tester",
   "plugin-app-control",
-  "plugin-companion",
   "plugin-contacts",
   "plugin-facewear",
   "plugin-feed",

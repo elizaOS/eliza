@@ -152,15 +152,16 @@ const ACTIONLESS_CORE_PLUGINS: Record<string, Plugin> = {
 };
 
 /**
- * Core plugin actions behind heavy UI deps that cannot be imported under node
- * (companion's VRM/Three.js stack). Verified by source instead.
+ * Core plugin actions that the keyless lane resolves from source instead of a
+ * live import: the app-control VIEWS aliases are wired in source but are not
+ * registered as top-level runtime actions in this lane, so the live action
+ * surface never exposes them. Verified by source instead.
  */
 const SOURCE_ONLY_ACTIONS: Record<string, readonly string[]> = {
   "plugins/plugin-app-control/src/actions/views.ts": [
     "CLOSE_ALL_VIEWS",
     "CLOSE_VIEW",
   ],
-  "plugins/plugin-companion/src/actions/emote.ts": ["PLAY_EMOTE"],
 };
 
 /**
@@ -175,7 +176,7 @@ const SOURCE_VERIFIED_IMPORTED_ACTIONS: Record<string, readonly string[]> = {
 
 /**
  * The stable-core keyless surface that the ratchet drives to completion: the
- * importable core plugins plus the source-only companion action. Big, volatile
+ * importable core plugins plus the source-only VIEWS aliases. Big, volatile
  * surfaces (browser, lifeops) are NOT here — their coverage is tracked by the
  * coverage registry instead, so adding a lifeops scenario never has to edit a
  * 150-entry surface list.
@@ -262,7 +263,6 @@ const COVERED_ACTIONS: readonly string[] = [
   "MCP_LIST_CONNECTIONS",
   "MCP_READ_RESOURCE",
   "MCP_SEARCH_ACTIONS",
-  "PLAY_EMOTE",
   "SKILL",
   "SKILL_DETAILS",
   "SKILL_INSTALL",
@@ -622,7 +622,6 @@ const STRICT_LLM_ROUTED_ACTIONS: readonly string[] = [
   "MCP_LIST_CONNECTIONS",
   "MCP_READ_RESOURCE",
   "MCP_SEARCH_ACTIONS",
-  "PLAY_EMOTE",
   "SCHEDULED_TASKS",
   "SHELL",
   "SKILL",
@@ -706,9 +705,9 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     actionNames: ["GIT_PATHOLOGY"],
     minMessageTurns: 1,
   },
-  "deterministic-media-emote-actions": {
-    actionNames: ["GENERATE_MEDIA", "PLAY_EMOTE"],
-    minMessageTurns: 3,
+  "deterministic-media-actions": {
+    actionNames: ["GENERATE_MEDIA"],
+    minMessageTurns: 2,
   },
   "deterministic-lifeops-scheduled-tasks": {
     actionNames: ["SCHEDULED_TASKS"],

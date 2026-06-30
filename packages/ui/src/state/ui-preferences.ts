@@ -7,7 +7,7 @@ export type UiTheme = "light" | "dark";
  */
 export type UiThemeMode = "light" | "dark" | "system";
 
-export type UiShellMode = "companion" | "native";
+export type UiShellMode = "native";
 
 /**
  * How the unified app background is rendered. `shader` paints the animated

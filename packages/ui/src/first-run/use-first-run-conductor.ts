@@ -373,7 +373,7 @@ export function useFirstRunConductor(): void {
       if (group === "tutorial") {
         // The single real completion: flip the gate (deactivates the conductor),
         // then optionally launch the interactive tutorial.
-        completeFirstRun("chat", { launchCompanionOverlay: true });
+        completeFirstRun("chat");
         if (id === "start") startTutorial();
         return true;
       }

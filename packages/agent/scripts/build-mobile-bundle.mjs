@@ -327,7 +327,7 @@ const nativeStubs = {
   // a per-boot passphrase if needed. Stub keeps the bundle building.
   "@napi-rs/keyring": path.join(stubsDir, "null-plugin.cjs"),
   // React + react-dom stubs: workspace plugins (`@elizaos/plugin-personal-assistant`,
-  // `@elizaos/plugin-companion`, etc.) re-export their UI subtree from
+  // etc.) re-export their UI subtree from
   // `src/index.ts` for the host app to consume. The agent only loads each
   // package's runtime plugin object, but Bun.build still has to resolve
   // every import in the dependency closure. Without these stubs Bun follows
@@ -392,7 +392,7 @@ if (TARGET === "ios-jsc") {
 // closure pulls in `@elizaos/core@2.0.0-alpha.3` or `2.0.0-alpha.223`.
 //
 // Other packages — including `@elizaos/plugin-task-coordinator`,
-// `@elizaos/plugin-companion`, `@elizaos/plugin-personal-assistant`, `@elizaos/plugin-training`
+// `@elizaos/plugin-personal-assistant`, `@elizaos/plugin-training`
 // — are imported by `api/server.ts` as named functions (e.g.
 // `wireCoordinatorBridgesWhenReady`). Stubbing them with a Proxy doesn't
 // satisfy Bun's `__toESM` namespace builder (it iterates `ownKeys`), so we

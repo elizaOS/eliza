@@ -206,7 +206,7 @@ vi.mock("./state", () => {
   };
 });
 vi.mock("./config/boot-config-react.hooks", () => ({
-  useBootConfig: () => ({ companionShell: null }),
+  useBootConfig: () => ({}),
 }));
 vi.mock("./components/shell/ShellControllerContext", () => ({
   ShellControllerProvider: ({ children }: { children: React.ReactNode }) => (
@@ -319,7 +319,6 @@ const BUILTIN_TABS: { tab: BuiltinTab; path: string }[] = [
   { tab: "tasks", path: "/tasks" },
   { tab: "automations", path: "/automations" },
   { tab: "browser", path: "/browser" },
-  { tab: "companion", path: "/companion" },
   { tab: "stream", path: "/stream" },
   { tab: "apps", path: "/apps" },
   { tab: "views", path: "/views" },

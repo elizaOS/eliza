@@ -9,8 +9,6 @@ Review rubric:
 
 | View | Type | Path | Likes | Concerns | Next proof |
 | --- | --- | --- | --- | --- | --- |
-| `companion` | `gui` | `/companion` | Avatar-first surface with dedicated emote controls and visual scene affordances. | Needs screenshot pass for avatar framing, emote overlay polish, and non-text control density. | Verify avatar asset loads, emote controls render as icons, and scene is nonblank in visual smoke artifacts. |
-| `companion` | `tui` | `/companion` | Terminal contract exposes companion state and emote commands. | Needs command-output review for terse, scan-friendly status. | Confirm every terminal command returns command-specific output and no pending states. |
 | `contacts` | `gui` | `/contacts` | Familiar contact-list workflow and clear account/contact actions. | Needs visual pass for list density and empty/error states. | Verify create/import/search controls, contact rows, and avatar/initial indicators. |
 | `contacts` | `tui` | `/contacts` | Terminal view has list/create/import command surface. | Needs proof that command output remains compact and structured. | Click every terminal command and verify semantic output. |
 | `hyperliquid` | `gui` | `/hyperliquid` | Market/trading domain has strong metric-card potential. | Needs screenshot review for chart/table density and risk/status indicators. | Verify market, execution, and account panels render without broken assets. |

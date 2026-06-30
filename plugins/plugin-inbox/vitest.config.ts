@@ -15,7 +15,7 @@ const baseAliases = Array.isArray(baseConfig.resolve?.alias)
 // view-registration descriptor guard (test/plugin-views.test.ts, node env).
 // The base config supplies the @elizaos/* source aliases that plugin.ts needs;
 // the React aliases below pin a single React copy so jsdom does not mix the
-// workspace and hoisted peers (mirrors plugin-documents / plugin-companion).
+// workspace and hoisted peers (mirrors plugin-documents).
 const liveOnlyExcludes = [
   "dist/**",
   "**/node_modules/**",

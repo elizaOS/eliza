@@ -104,16 +104,7 @@ async function expectNoIssues(
 }
 
 async function openAppWindow(page: Page, routeCase: RouteCase): Promise<void> {
-  if (routeCase.name === "companion") {
-    await page.goto(
-      `/?appWindow=1&qaApp=${encodeURIComponent(routeCase.name)}#${routeCase.path}`,
-      {
-        waitUntil: "domcontentloaded",
-      },
-    );
-  } else {
-    await openAppPath(page, routeCase.path);
-  }
+  await openAppPath(page, routeCase.path);
   await expect(page.locator("#root")).toBeVisible({
     timeout: routeTimeout(routeCase),
   });
@@ -208,126 +199,6 @@ test.beforeEach(async ({ page }) => {
   });
   await installDefaultAppRoutes(page);
   await hideContinuousChatOverlay(page);
-});
-
-test("companion app controls are interactive and error-free", async ({
-  page,
-}) => {
-  test.skip(
-    !DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === "companion"),
-    "Companion app route is not registered in this smoke stack.",
-  );
-  const issues = installIssueGuards(page);
-  let newConversationRequests = 0;
-  let lastEmoteId: string | null = null;
-
-  await page.route("**/api/conversations", async (route) => {
-    if (route.request().method() === "POST") {
-      newConversationRequests += 1;
-    }
-    await route.fallback();
-  });
-
-  await page.route("**/api/emote", async (route) => {
-    const raw = route.request().postData();
-    const body = raw ? (JSON.parse(raw) as { emoteId?: string }) : {};
-    lastEmoteId = typeof body.emoteId === "string" ? body.emoteId : null;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, emoteId: lastEmoteId }),
-    });
-  });
-
-  const companion = DIRECT_ROUTE_CASES.find(
-    (routeCase) => routeCase.name === "companion",
-  );
-  expect(companion).toBeTruthy();
-  await openAppWindow(page, companion as RouteCase);
-
-  await expect(page.getByTestId("companion-vrm-canvas")).toBeVisible();
-  await expect(page.getByTestId("companion-vrm-stage")).toHaveAttribute(
-    "data-vrm-loaded",
-    "true",
-    { timeout: 90_000 },
-  );
-  await expect(page.getByTestId("companion-root")).toHaveAttribute(
-    "data-avatar-ready",
-    "true",
-    { timeout: 90_000 },
-  );
-
-  const headerShell = page.getByTestId("companion-header-shell");
-  if ((await headerShell.count()) > 0) {
-    await expect(headerShell).toBeVisible();
-
-    const voiceToggle = page.getByTestId("companion-voice-toggle");
-    const initialVoicePressed = await voiceToggle.getAttribute("aria-pressed");
-    await voiceToggle.click();
-    await expect(voiceToggle).not.toHaveAttribute(
-      "aria-pressed",
-      initialVoicePressed ?? "",
-    );
-
-    await page.getByTestId("companion-new-chat").click();
-    await expect
-      .poll(() => newConversationRequests, {
-        message: "new chat posts a conversation request",
-      })
-      .toBeGreaterThan(0);
-
-    await page.getByTestId("companion-shell-toggle-settings").click();
-    await expect(page.getByTestId("companion-settings-panel")).toBeVisible();
-    await page.getByTestId("settings-companion-vrm-power-efficiency").click();
-    await expect(
-      page.getByTestId("settings-companion-vrm-power-efficiency"),
-    ).toHaveAttribute("aria-pressed", "true");
-    await page.getByTestId("settings-companion-half-framerate-always").click();
-    await expect(
-      page.getByTestId("settings-companion-half-framerate-always"),
-    ).toHaveAttribute("aria-pressed", "true");
-    const backgroundToggle = page.getByTestId(
-      "settings-companion-animate-when-hidden-toggle",
-    );
-    const initialBackgroundChecked =
-      await backgroundToggle.getAttribute("aria-checked");
-    await backgroundToggle.focus();
-    await backgroundToggle.press("Space");
-    await expect(backgroundToggle).not.toHaveAttribute(
-      "aria-checked",
-      initialBackgroundChecked ?? "",
-    );
-
-    await page.getByTestId("companion-shell-toggle-character").click();
-    await expect(page.getByTestId("companion-character-editor")).toBeVisible();
-    await page.getByTestId("companion-shell-toggle-companion").click();
-    await expect(page.getByTestId("companion-vrm-stage")).toBeVisible();
-
-    await page.getByTestId("companion-emote-toggle").click();
-    await expect(page.getByTestId("emote-picker")).toBeVisible();
-    await page.getByTestId("emote-picker-search").fill("wave");
-    await page.getByTestId("emote-picker-item-wave").click();
-    await expect.poll(() => lastEmoteId).toBe("wave");
-    await page.getByTestId("emote-picker-stop").click();
-    await page.getByTestId("emote-picker-close").click();
-    await expect(page.getByTestId("emote-picker")).toBeHidden();
-  }
-
-  const canvas = page.getByTestId("companion-vrm-canvas");
-  const canvasBox = await canvas.boundingBox();
-  if (!canvasBox) {
-    throw new Error("Companion VRM canvas did not produce a bounding box");
-  }
-  const dragStart = {
-    x: canvasBox.x + canvasBox.width * 0.5,
-    y: canvasBox.y + canvasBox.height * 0.35,
-  };
-  await page.mouse.move(dragStart.x, dragStart.y);
-  await page.mouse.down();
-  await page.mouse.move(dragStart.x + 60, dragStart.y - 20, { steps: 5 });
-  await page.mouse.up();
-
-  await expectNoIssues(page, issues, "companion interactions");
 });
 
 test("utility app-window routes render without red errors or overflow", async ({

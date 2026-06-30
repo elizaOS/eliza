@@ -254,7 +254,7 @@ vi.mock("./state", () => {
 });
 
 vi.mock("./config/boot-config-react.hooks", () => ({
-  useBootConfig: () => ({ companionShell: null }),
+  useBootConfig: () => ({}),
 }));
 
 vi.mock("./components/shell/ShellControllerContext", () => ({

@@ -38,15 +38,6 @@ function viewCardTestId(viewId: string): string {
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
-    name: "companion",
-    path: "/apps/companion",
-    readyChecks: [
-      { text: "Companion" },
-      { selector: '[data-testid="companion-root"]' },
-    ],
-    timeoutMs: 90_000,
-  },
-  {
     name: "plugins app window",
     path: "/apps/plugins",
     readyChecks: [{ text: "Browser Workspace" }, { text: "AI Providers" }],
@@ -234,7 +225,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 
 const managerVisibleViewTileCases = [
   { viewId: "calendar", path: "/calendar" },
-  { viewId: "companion", path: "/companion" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "documents", path: "/documents" },
   { viewId: "feed", path: "/feed" },
@@ -281,7 +271,6 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  * without turning all-pages click safety into a long game/app bootstrap loop.
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
-  { viewId: "companion", path: "/companion" },
   { viewId: "model-tester", path: "/model-tester" },
 ].map(({ viewId, path }) => ({
   viewId,

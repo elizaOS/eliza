@@ -6,8 +6,6 @@ const optionalPlugin = Object.freeze({
   routes: [],
 });
 
-export const CompanionShell = EmptyComponent;
-export const GlobalEmoteOverlay = EmptyComponent;
 export const InferenceCloudAlertButton = EmptyComponent;
 export const AppBlockerSettingsCard = EmptyComponent;
 export const WebsiteBlockerSettingsCard = EmptyComponent;
@@ -17,8 +15,6 @@ export const CodingAgentTasksPanel = EmptyComponent;
 export const PtyConsoleDrawer = EmptyComponent;
 export const FineTuningView = EmptyComponent;
 
-export const EMOTE_BY_ID = Object.freeze({});
-export const EMOTE_CATALOG = Object.freeze([]);
 export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = Object.freeze([]);
 export const appPlugin = optionalPlugin;
 export const defaultPlugin = optionalPlugin;
@@ -36,18 +32,6 @@ export const trainingRoutes = Object.freeze([]);
 
 export function createVectorBrowserRenderer(): Promise<null> {
   return Promise.resolve(null);
-}
-
-export function prefetchVrmToCache(): Promise<void> {
-  return Promise.resolve();
-}
-
-export function resolveCompanionInferenceNotice(): null {
-  return null;
-}
-
-export function useCompanionSceneStatus() {
-  return { avatarReady: false, teleportKey: "" };
 }
 
 export function clearBackendCache() {}

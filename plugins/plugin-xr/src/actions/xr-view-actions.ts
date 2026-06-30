@@ -169,11 +169,11 @@ export const xrSwitchViewAction: Action = {
     "Switches the active (foreground) view on the XR headset without closing others.",
   examples: [
     [
-      { name: "user", content: { text: "switch to companion in XR" } },
+      { name: "user", content: { text: "switch to calendar in XR" } },
       {
         name: "agent",
         content: {
-          text: "Switching to companion view.",
+          text: "Switching to calendar view.",
           action: "XR_SWITCH_VIEW",
         },
       },

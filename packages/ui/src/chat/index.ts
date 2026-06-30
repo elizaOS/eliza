@@ -148,7 +148,6 @@ export const NAV_COMMANDS: readonly { id: string; label: string; tab: Tab }[] =
       tab: "relationships",
     },
     { id: "nav-browser", label: "Open Browser", tab: "browser" },
-    { id: "nav-companion", label: "Open Companion", tab: "companion" },
     { id: "nav-skills", label: "Open Skills", tab: "skills" },
     { id: "nav-transcripts", label: "Open Transcripts", tab: "transcripts" },
     { id: "nav-memories", label: "Open Memories", tab: "memories" },

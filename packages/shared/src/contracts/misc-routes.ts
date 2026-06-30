@@ -1,12 +1,11 @@
 /**
- * Zod schemas for miscellaneous HTTP routes — share intake, emote
- * trigger, agent event ingest, terminal run, and custom-actions CRUD.
+ * Zod schemas for miscellaneous HTTP routes — share intake, agent event
+ * ingest, terminal run, and custom-actions CRUD.
  *
  * Routes covered (body-bearing only — /api/restart and the GET
  * variants don't read a body):
  *
  *   POST /api/ingest/share        { source?, title?, url?, text? }
- *   POST /api/emote               { emoteId? }
  *   POST /api/agent/event         { stream, data?, roomId? }
  *   POST /api/terminal/run        { command, clientId?, terminalToken?,
  *                                   captureOutput? }
@@ -21,7 +20,7 @@
 import z from "zod";
 
 // ---------------------------------------------------------------------------
-// share intake / emote / agent event
+// share intake / agent event
 // ---------------------------------------------------------------------------
 
 /**
@@ -35,12 +34,6 @@ export const PostIngestShareRequestSchema = z
     title: z.string().optional(),
     url: z.string().optional(),
     text: z.string().optional(),
-  })
-  .strict();
-
-export const PostEmoteRequestSchema = z
-  .object({
-    emoteId: z.string().optional(),
   })
   .strict();
 
@@ -173,7 +166,6 @@ export const PutCustomActionRequestSchema = z
 export type PostIngestShareRequest = z.infer<
   typeof PostIngestShareRequestSchema
 >;
-export type PostEmoteRequest = z.infer<typeof PostEmoteRequestSchema>;
 export type PostAgentEventRequest = z.infer<typeof PostAgentEventRequestSchema>;
 export type PostTerminalRunRequest = z.infer<
   typeof PostTerminalRunRequestSchema

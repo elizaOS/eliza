@@ -5,7 +5,6 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { emoteAction } from "../../../../plugins/plugin-companion/src/actions/emote.ts";
 import { generateMediaAction } from "../../../../plugins/plugin-local-inference/src/actions/generate-media.ts";
 import {
   type RuntimeWithScenarioLlmFixtures,
@@ -21,9 +20,7 @@ const wavBytes = new Uint8Array([
   0x61, 0x00, 0x00, 0x00, 0x00,
 ]);
 
-let restoreFetch: (() => void) | null = null;
 const modelCalls: Array<{ modelType: string; payload: unknown }> = [];
-const emoteRequests: Array<{ url: string; body: unknown }> = [];
 
 const imageGenerateMediaParameters = {
   mediaType: "image",
@@ -33,9 +30,8 @@ const audioGenerateMediaParameters = {
   mediaType: "audio",
   prompt: "scenario audio",
 };
-const playEmoteParameters = { emote: "wave" };
 
-const strictMediaEmoteRoutes = [
+const strictMediaRoutes = [
   {
     actionName: "GENERATE_MEDIA",
     args: imageGenerateMediaParameters,
@@ -49,13 +45,6 @@ const strictMediaEmoteRoutes = [
     contextIds: ["media"],
     input: "Say scenario audio",
     messageToUser: "Here's the audio you asked for.",
-  },
-  {
-    actionName: "PLAY_EMOTE",
-    args: playEmoteParameters,
-    contextIds: ["general"],
-    input: "Run the companion avatar wave emote action",
-    messageToUser: "Playing wave emote.",
   },
 ];
 
@@ -167,41 +156,12 @@ function expectAction(
   );
 }
 
-function installEmoteFetchMock(): void {
-  const originalFetch = globalThis.fetch.bind(globalThis);
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const href =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-    const url = new URL(href);
-    if (url.hostname === "localhost" && url.pathname === "/api/emote") {
-      let body: unknown;
-      if (typeof init?.body === "string") {
-        body = JSON.parse(init.body) as unknown;
-      }
-      emoteRequests.push({ url: url.href, body });
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    return originalFetch(input, init);
-  }) as typeof fetch;
-  restoreFetch = () => {
-    globalThis.fetch = originalFetch;
-    restoreFetch = null;
-  };
-}
-
 const deterministicMediaPlugin: Plugin = {
   name: "scenario-deterministic-media-actions",
   description:
-    "Scenario-only media/emote action registration with deterministic model backends.",
+    "Scenario-only media action registration with deterministic model backends.",
   priority: 1_000,
-  actions: [generateMediaAction, emoteAction],
+  actions: [generateMediaAction],
   models: {
     [ModelType.IMAGE]: async (_runtime, payload) => {
       modelCalls.push({ modelType: ModelType.IMAGE, payload });
@@ -217,13 +177,11 @@ const deterministicMediaPlugin: Plugin = {
 async function finalLedgerCheck(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
-  restoreFetch?.();
-
   const names = (ctx.actionsCalled ?? []).map((call) => call.actionName);
   const orderFailure = expectEqual(
     names,
-    ["GENERATE_MEDIA", "GENERATE_MEDIA", "PLAY_EMOTE"],
-    "media/emote action order",
+    ["GENERATE_MEDIA", "GENERATE_MEDIA"],
+    "media action order",
   );
   if (orderFailure) return orderFailure;
 
@@ -231,7 +189,7 @@ async function finalLedgerCheck(
     (call) => call.result?.success !== true,
   );
   if (failed.length > 0) {
-    return `expected every media/emote action to succeed, saw ${stableStringify(failed)}`;
+    return `expected every media action to succeed, saw ${stableStringify(failed)}`;
   }
 
   const modelFailure = expectEqual(
@@ -249,21 +207,15 @@ async function finalLedgerCheck(
   if (readPath(audioPayload, "text") !== "scenario audio") {
     return `expected TTS text to be stripped to scenario audio, saw ${stableStringify(audioPayload)}`;
   }
-  const emoteFailure = expectEqual(
-    emoteRequests,
-    [{ url: "http://localhost:2138/api/emote", body: { emoteId: "wave" } }],
-    "emote requests",
-  );
-  if (emoteFailure) return emoteFailure;
   return undefined;
 }
 
 export default scenario({
-  id: "deterministic-media-emote-actions",
+  id: "deterministic-media-actions",
   lane: "pr-deterministic",
-  title: "Deterministic media generation and companion emote actions",
+  title: "Deterministic media generation actions",
   domain: "scenario-runner",
-  tags: ["pr", "deterministic", "zero-cost", "media", "companion"],
+  tags: ["pr", "deterministic", "zero-cost", "media"],
   isolation: "shared-runtime",
   requires: {
     plugins: ["scenario-deterministic-media-actions"],
@@ -271,11 +223,9 @@ export default scenario({
   seed: [
     {
       type: "custom",
-      name: "register deterministic media model handlers and emote endpoint",
+      name: "register deterministic media model handlers",
       apply: async (ctx) => {
         modelCalls.length = 0;
-        emoteRequests.length = 0;
-        installEmoteFetchMock();
 
         const runtime = ctx.runtime as
           | (RuntimeWithScenarioLlmFixtures & {
@@ -293,10 +243,9 @@ export default scenario({
           )
         ) {
           runtime.unregisterAction?.("GENERATE_MEDIA");
-          runtime.unregisterAction?.("PLAY_EMOTE");
           await runtime.registerPlugin(deterministicMediaPlugin);
         }
-        registerStrictActionRouteFixtures(runtime, strictMediaEmoteRoutes);
+        registerStrictActionRouteFixtures(runtime, strictMediaRoutes);
         return undefined;
       },
     },
@@ -305,7 +254,7 @@ export default scenario({
     {
       id: "main",
       source: "client_chat",
-      title: "Deterministic Media And Emotes",
+      title: "Deterministic Media",
     },
   ],
   turns: [
@@ -355,19 +304,6 @@ export default scenario({
           },
         }),
     },
-    {
-      kind: "message",
-      name: "post deterministic companion emote request",
-      text: "Run the companion avatar wave emote action",
-      assertTurn: (execution) =>
-        expectAction(execution, {
-          actionName: "PLAY_EMOTE",
-          parameters: playEmoteParameters,
-          resultFields: {
-            "data.emoteId": "wave",
-          },
-        }),
-    },
   ],
   finalChecks: [
     {
@@ -377,19 +313,13 @@ export default scenario({
       minCount: 2,
     },
     {
-      type: "actionCalled",
-      actionName: "PLAY_EMOTE",
-      status: "success",
-      minCount: 1,
-    },
-    {
       type: "selectedActionArguments",
-      actionName: ["GENERATE_MEDIA", "PLAY_EMOTE"],
-      includesAll: [/wave/],
+      actionName: ["GENERATE_MEDIA"],
+      includesAll: [/scenario sunset/],
     },
     {
       type: "custom",
-      name: "media model handlers and companion emote endpoint were called exactly",
+      name: "media model handlers were called exactly",
       predicate: finalLedgerCheck,
     },
   ],

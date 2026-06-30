@@ -486,7 +486,6 @@ declare module "./client-base" {
     setTradeMode(
       mode: string,
     ): Promise<{ ok: boolean; tradePermissionMode: string }>;
-    playEmote(emoteId: string): Promise<{ ok: boolean }>;
     runTerminalCommand(command: string): Promise<{ ok: boolean }>;
     getFirstRunStatus(): Promise<{
       complete: boolean;
@@ -1352,13 +1351,6 @@ ElizaClient.prototype.setTradeMode = async function (this: ElizaClient, mode) {
   return this.fetch("/api/permissions/trade-mode", {
     method: "PUT",
     body: JSON.stringify({ mode }),
-  });
-};
-
-ElizaClient.prototype.playEmote = async function (this: ElizaClient, emoteId) {
-  return this.fetch("/api/emote", {
-    method: "POST",
-    body: JSON.stringify({ emoteId }),
   });
 };
 

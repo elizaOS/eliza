@@ -126,7 +126,6 @@
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-background-runner": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",
-    "@elizaos/plugin-companion": "workspace:*",
     "@elizaos/plugin-contacts": "workspace:*",
     "@elizaos/plugin-native-settings": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",

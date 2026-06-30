@@ -36,7 +36,6 @@ const baseMockApp: Partial<AppContextValue> = {
   commandActiveIndex: 0,
   commandPaletteOpen: false,
   commandQuery: "",
-  companionHalfFramerateMode: "when_saving_power",
   dismissBackendDisconnectedBanner: noop,
   dismissSystemWarning: noop,
   actionBanner: null,

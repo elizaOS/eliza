@@ -7,7 +7,7 @@ import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
 // carries a `Media` attachment must flow end-to-end through a real AgentRuntime
 // under the mock (deterministic) LLM and produce a reply — i.e. an inbound
 // attachment never breaks the message pipeline. (Media GENERATION is covered by
-// deterministic-media-emote-actions.scenario.ts; the agent-facing read tool is
+// deterministic-media-actions.scenario.ts; the agent-facing read tool is
 // the core `ATTACHMENT` action, unit-tested in core.) The attachment is
 // surfaced into the agent's context with its stored-content hint, and the agent
 // replies. Runs keyless + strict under the deterministic LLM proxy.

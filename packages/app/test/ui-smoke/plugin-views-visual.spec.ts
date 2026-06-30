@@ -98,36 +98,28 @@ test.describe("registered plugin views visual coverage", () => {
         `${view.id} ${view.viewType} initial load`,
       );
 
-      const isCompanionGui = view.id === "companion" && view.viewType === "gui";
       const minVisibleTextLength =
         MIN_VISIBLE_TEXT_LENGTH_BY_VIEW_ID.get(view.id) ??
         DEFAULT_MIN_VISIBLE_TEXT_LENGTH;
       const viewRoot = page.locator("main").first();
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
-      if (isCompanionGui) {
-        await expect(
-          viewRoot.getByTestId("companion-root").first(),
-          `${view.id} ${view.viewType} should mount its canvas-first companion root before audit`,
-        ).toBeVisible({ timeout: 60_000 });
-      } else {
-        await expect
-          .poll(
-            async () => {
-              const text = await viewRoot.evaluate((root) =>
-                (root.textContent ?? "").trim().replace(/\s+/g, " "),
-              );
-              return (
-                text.length >= minVisibleTextLength &&
-                !/^Loading view\b/.test(text)
-              );
-            },
-            {
-              message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
-              timeout: 60_000,
-            },
-          )
-          .toBe(true);
-      }
+      await expect
+        .poll(
+          async () => {
+            const text = await viewRoot.evaluate((root) =>
+              (root.textContent ?? "").trim().replace(/\s+/g, " "),
+            );
+            return (
+              text.length >= minVisibleTextLength &&
+              !/^Loading view\b/.test(text)
+            );
+          },
+          {
+            message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
+            timeout: 60_000,
+          },
+        )
+        .toBe(true);
       await expect(page.getByText(/Loading view/)).toHaveCount(0);
       await expectNoFailedView(
         page,
@@ -175,17 +167,10 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      if (isCompanionGui) {
-        await expect(
-          viewRoot.getByTestId("companion-root").first(),
-          `${view.id} ${view.viewType} should expose its companion scene root before opening the assistant overlay`,
-        ).toBeVisible();
-      } else {
-        expect(
-          preOverlayAudit.visibleText.length,
-          `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
-        ).toBeGreaterThanOrEqual(minVisibleTextLength);
-      }
+      expect(
+        preOverlayAudit.visibleText.length,
+        `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
+      ).toBeGreaterThanOrEqual(minVisibleTextLength);
       if (view.id !== "views-manager") {
         expect(
           preOverlayAudit.visibleText,
@@ -335,17 +320,10 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      if (isCompanionGui) {
-        await expect(
-          viewRoot.getByTestId("companion-root").first(),
-          `${view.id} ${view.viewType} should expose its companion scene root after assistant overlay interaction`,
-        ).toBeVisible();
-      } else {
-        expect(
-          audit.visibleText.length,
-          `${view.id} ${view.viewType} should expose readable text`,
-        ).toBeGreaterThanOrEqual(minVisibleTextLength);
-      }
+      expect(
+        audit.visibleText.length,
+        `${view.id} ${view.viewType} should expose readable text`,
+      ).toBeGreaterThanOrEqual(minVisibleTextLength);
       if (view.viewType === "tui" && hasVisibleLegacyTuiRoot) {
         expect(
           audit.controls.length,

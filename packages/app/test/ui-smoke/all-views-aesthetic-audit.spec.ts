@@ -68,7 +68,6 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   camera: "/camera",
   tasks: "/apps/tasks",
   browser: "/browser",
-  companion: "/companion",
   stream: "/stream",
   apps: "/apps",
   views: "/views",

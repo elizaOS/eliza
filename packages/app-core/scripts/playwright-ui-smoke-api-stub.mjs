@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { gunzipSync } from "node:zlib";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
@@ -54,28 +53,6 @@ const SMOKE_VOICE_TRANSCRIPT = "this is the voice smoke transcript";
 // The spoken reply the stub returns for that transcript — a clean sentence so
 // the overlay's TTS output is non-empty and the assistant bubble is assertable.
 const SMOKE_VOICE_REPLY = "Got it, this is the spoken reply.";
-function readSmokeVrm() {
-  const candidates = [
-    new URL(
-      "../../../plugins/plugin-companion/public/vrms/eliza-1.vrm.gz",
-      import.meta.url,
-    ),
-    new URL(
-      "../../../plugins/plugin-companion/public_src/vrms/eliza-1.vrm",
-      import.meta.url,
-    ),
-  ];
-
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) continue;
-    const body = readFileSync(candidate);
-    return candidate.pathname.endsWith(".gz") ? gunzipSync(body) : body;
-  }
-
-  return Buffer.alloc(4);
-}
-
-const SMOKE_VRM = readSmokeVrm();
 
 // A collapsed plugin declares ONE view that draws gui + tui (+ xr) from the
 // same `<Name>View` componentExport and the same bundle on the same `/<id>`
@@ -85,14 +62,6 @@ const SMOKE_VRM = readSmokeVrm();
 // Plugins that still declare a standalone tui route (training) keep a separate
 // `tui` row with its own `/<id>/tui` path below.
 const smokeViewDeclarations = [
-  [
-    "companion",
-    "Companion",
-    "plugin-companion",
-    "/companion",
-    "CompanionView",
-    ["gui", "tui"],
-  ],
   [
     "contacts",
     "Contacts",
@@ -471,12 +440,6 @@ const stubCatalogApps = [
     description: "Search runtime and service logs.",
     capabilities: ["logs", "debug", "viewer"],
     heroImage: "/app-heroes/log-viewer.png",
-  }),
-  stubCatalogApp({
-    name: "@elizaos/plugin-companion",
-    displayName: "Companion",
-    description: "The companion overlay shell for ambient agent presence.",
-    category: "social",
   }),
   stubCatalogApp({
     name: "@elizaos/plugin-shopify",
@@ -3178,14 +3141,6 @@ const server = http.createServer(async (req, res) => {
 
   if (
     (req.method === "GET" || req.method === "HEAD") &&
-    url.pathname === "/api/avatar/vrm"
-  ) {
-    sendBinary(req, res, 200, "application/octet-stream", SMOKE_VRM);
-    return;
-  }
-
-  if (
-    (req.method === "GET" || req.method === "HEAD") &&
     url.pathname === "/api/avatar/background"
   ) {
     sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
@@ -3344,15 +3299,6 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/agent/status") {
     sendJson(req, res, 200, { firstRunComplete: true, status: "running" });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/emote") {
-    const body = (await readJsonBody(req)) || {};
-    sendJson(req, res, 200, {
-      ok: true,
-      emoteId: typeof body.emoteId === "string" ? body.emoteId : null,
-    });
     return;
   }
 
