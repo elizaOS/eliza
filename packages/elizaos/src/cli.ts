@@ -111,11 +111,26 @@ program
   .requiredOption("--agent-id <slug>", "Agent slug, e.g. sol")
   .option("--out <file>", "Write an encrypted .eliza-agent archive")
   .option("--password <pw>", "Archive encryption password (min 8 chars)")
-  .option("--memory-days <n>", "Days of daily logs to seed verbatim (default 14)")
-  .option("--no-firewall", "Include USER/personal knowledge (owner-local only!)")
-  .option("--current-context <text>", "Live-context block for the system prompt")
-  .option("--emit-character <file>", "Emit character JSON (sovereign-local path)")
-  .option("--emit-memories <file>", "Emit memories JSONL (sovereign-local path)")
+  .option(
+    "--memory-days <n>",
+    "Days of daily logs to seed verbatim (default 14)",
+  )
+  .option(
+    "--no-firewall",
+    "Include USER/personal knowledge (owner-local only!)",
+  )
+  .option(
+    "--current-context <text>",
+    "Live-context block for the system prompt",
+  )
+  .option(
+    "--emit-character <file>",
+    "Emit character JSON (sovereign-local path)",
+  )
+  .option(
+    "--emit-memories <file>",
+    "Emit memories JSONL (sovereign-local path)",
+  )
   .option("--dry-run", "Print the plan, write nothing")
   .option("-j, --json", "Output the plan as JSON")
   .action(migrateAgent);

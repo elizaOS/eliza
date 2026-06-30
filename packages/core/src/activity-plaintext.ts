@@ -78,6 +78,11 @@ function readFiniteNumber(value: unknown): number | undefined {
 		: undefined;
 }
 
+function formatFiniteCount(value: unknown): string {
+	const count = readFiniteNumber(value);
+	return count === undefined ? "0" : String(count);
+}
+
 function readBoolean(value: unknown): boolean | undefined {
 	return typeof value === "boolean" ? value : undefined;
 }
@@ -211,11 +216,13 @@ function summarizeAssistantStream(params: {
 	options: ActivityPlaintextOptions;
 }): ActivityPlaintextSummary | null {
 	const { payload, maxLength, stream, sessionId, options } = params;
-	const source = readString(payload?.source) ?? "";
+	const source = readString(payload?.source);
 	const text = firstString(payload, ["text", "summary", "message", "content"]);
 	const eventType =
-		assistantSourceToEventType(source) ??
-		(source && options.includeUnknownAssistantText ? source : null);
+		source === undefined
+			? null
+			: (assistantSourceToEventType(source) ??
+				(options.includeUnknownAssistantText ? source : null));
 	if (source) {
 		if (!eventType || !text) return null;
 		return activityResult({
@@ -586,9 +593,10 @@ function summarizeAgentEvent(
 	maxLength: number,
 	options: ActivityPlaintextOptions,
 ): ActivityPlaintextSummary | null {
-	const stream = readString(event.stream) ?? "";
+	const stream = readString(event.stream);
 	const payload = nestedRecord(event, "payload") ?? nestedRecord(event, "data");
 	const sessionId = agentEventSessionId(event, payload);
+	if (!stream) return null;
 
 	if (stream === "assistant") {
 		return summarizeAssistantStream({
@@ -613,9 +621,8 @@ function summarizeAgentEvent(
 		]);
 		const body = firstString(notification, ["body", "description"]);
 		const text =
-			title && body && title !== body
-				? `${title} - ${body}`
-				: (title ?? body ?? "");
+			title && body && title !== body ? `${title} - ${body}` : (title ?? body);
+		if (!text) return null;
 		const priority = readString(notification?.priority);
 		return activityResult({
 			eventType:
@@ -665,7 +672,7 @@ function summarizePtyEvent(
 	event: Record<string, unknown>,
 	maxLength: number,
 ): ActivityPlaintextSummary | null {
-	const eventType = readString(event.eventType) ?? readString(event.type) ?? "";
+	const eventType = readString(event.eventType) ?? readString(event.type);
 	if (!eventType || eventType === "agent_event") return null;
 	const sessionId = readString(event.sessionId);
 	const data = nestedRecord(event, "data");
@@ -882,9 +889,9 @@ export function trajectoryEventToPlaintext(
 	}
 
 	if (type === "context_diff") {
-		const added = readFiniteNumber(event.added) ?? 0;
-		const removed = readFiniteNumber(event.removed) ?? 0;
-		const changed = readFiniteNumber(event.changed) ?? 0;
+		const added = formatFiniteCount(event.added);
+		const removed = formatFiniteCount(event.removed);
+		const changed = formatFiniteCount(event.changed);
 		return `${label}: ${added} added, ${removed} removed, ${changed} changed`;
 	}
 
