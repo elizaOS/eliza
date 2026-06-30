@@ -22,6 +22,23 @@ Across both, `usedJSHeapSize` stays in a ~26–36 MB band with no monotonic grow
 — the background/foreground lifecycle path does **not** leak JS heap. Native
 `dumpsys meminfo` at the start of run B: `TOTAL PSS 176 MB / TOTAL RSS 280 MB`.
 
+## Second cell — memory-pressure (`onTrimMemory`) handling
+
+A distinct stability question #10197 raises ("does it survive … without
+crashing"): does the app survive and release memory under critical memory
+pressure? Sent `am send-trim-memory ai.elizaos.app RUNNING_LOW` then
+`RUNNING_CRITICAL` and measured native `dumpsys meminfo` before/after
+(`memory-pressure-trim.txt`):
+
+```
+BEFORE:  TOTAL PSS 131 MB / RSS 119 MB
+AFTER :  TOTAL PSS  99 MB / RSS  51 MB     (same pid — process survived)
+```
+
+The process **survives** (same pid, no crash/restart) and **releases ~57% of
+RSS (119 → 51 MB)** under critical pressure — correct `onTrimMemory` behavior. A
+positive stability result, captured on-device.
+
 ## Harness
 
 `cdp-bg-memory-soak.mjs` — reusable: forwards the app's `webview_devtools_remote`
