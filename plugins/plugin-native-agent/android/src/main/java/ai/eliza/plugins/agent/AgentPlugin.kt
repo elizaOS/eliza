@@ -282,11 +282,10 @@ class AgentPlugin : Plugin() {
             @Suppress("DEPRECATION")
             ctx.packageManager.getPackageInfo(ctx.packageName, PackageManager.GET_SERVICES)
         }
-        return packageInfo.services
-            ?.firstOrNull {
-                it.packageName == ctx.packageName && it.name.endsWith(".ElizaAgentService")
-            }
-            ?.name
+        val refs = packageInfo.services
+            ?.map { AgentServiceLocator.ServiceRef(it.packageName, it.name) }
+            ?: emptyList()
+        return AgentServiceLocator.selectAgentServiceClass(refs, ctx.packageName)
             ?: throw IllegalStateException("ElizaAgentService is not registered")
     }
 
