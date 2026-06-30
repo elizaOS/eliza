@@ -53,6 +53,20 @@ describe("CockpitView", () => {
     expect(screen.getByTestId("cockpit-error").textContent).toContain("boom");
   });
 
+  it("drills into a room when onSelectRoom is provided", async () => {
+    const user = userEvent.setup();
+    const onSelectRoom = vi.fn();
+    render(
+      <CockpitView
+        rooms={ROSTER}
+        onCreateSession={vi.fn()}
+        onSelectRoom={onSelectRoom}
+      />,
+    );
+    await user.click(screen.getByTestId("orchestrator-room-open"));
+    expect(onSelectRoom).toHaveBeenCalledWith("t1");
+  });
+
   it("starting a session calls onCreateSession with a create-task input", async () => {
     const user = userEvent.setup();
     const onCreateSession = vi.fn();

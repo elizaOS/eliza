@@ -19,6 +19,12 @@ export interface CockpitViewProps {
   experimentalEnabled?: boolean;
   /** A surfaced error (e.g. spawn or roster fetch failed). */
   error?: string | null;
+  /**
+   * Drill into a task room (tap a deck card). When set, the deck cards become
+   * buttons; the container swaps in the focused session pane. Omit to keep the
+   * deck presentational.
+   */
+  onSelectRoom?: (taskId: string) => void;
   className?: string;
 }
 
@@ -42,6 +48,7 @@ export function CockpitView({
   busy = false,
   experimentalEnabled = false,
   error = null,
+  onSelectRoom,
   className,
 }: CockpitViewProps) {
   return (
@@ -68,7 +75,7 @@ export function CockpitView({
       ) : null}
 
       <section data-testid="cockpit-deck">
-        <OrchestratorRoomView rooms={rooms} />
+        <OrchestratorRoomView rooms={rooms} onSelectRoom={onSelectRoom} />
       </section>
 
       <section className="flex flex-col gap-2">
