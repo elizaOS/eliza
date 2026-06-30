@@ -85,7 +85,14 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-api:
     name: Deploy API Worker
-    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hetzner-robot"]') }}
+    # GitHub-hosted (ephemeral, plentiful) instead of the shared hetzner-robot
+    # pool: under a hot develop push stream the self-hosted autoscaler recycles
+    # runner VMs mid-job, cancelling deploy-api right after "Set up job" (verified
+    # on an unsuperseded workflow_dispatch run; not concurrency, not checkout).
+    # A fresh ubuntu-latest VM per run sidesteps both the preemption and the
+    # stuck shared-workspace checkout. The Worker build/deploy are scoped to
+    # @elizaos/core + packages/cloud/api and fit a standard 16 GB hosted runner.
+    runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
