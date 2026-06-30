@@ -69,6 +69,8 @@ export const VIEW_CASES: ViewCase[] = (
     ["task-coordinator", "tui", "/task-coordinator"],
     ["orchestrator", "gui", "/orchestrator"],
     ["orchestrator", "tui", "/orchestrator"],
+    // The coding cockpit is a developer-only, GUI-only plugin view.
+    ["cockpit", "gui", "/cockpit"],
     ["trajectory-logger", "gui", "/trajectory-logger"],
     ["trajectory-logger", "tui", "/trajectory-logger"],
     ["training", "gui", "/apps/fine-tuning"],
