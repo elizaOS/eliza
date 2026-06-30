@@ -40,6 +40,9 @@ const calls = {
   streamOrchestratorTask: vi.fn(),
   pauseOrchestratorTask: vi.fn(),
   postOrchestratorTaskMessage: vi.fn(),
+  getCodingAgentStatus: vi.fn(),
+  updateOrchestratorTask: vi.fn(),
+  addOrchestratorAgent: vi.fn(),
 };
 
 // TaskInspector wires a couple of agent elements (close button + priority
@@ -68,6 +71,11 @@ vi.mock("@elizaos/ui", async (importOriginal) => {
       pauseOrchestratorTask: (id: string) => calls.pauseOrchestratorTask(id),
       postOrchestratorTaskMessage: (id: string, content: string) =>
         calls.postOrchestratorTaskMessage(id, content),
+      getCodingAgentStatus: () => calls.getCodingAgentStatus(),
+      updateOrchestratorTask: (id: string, patch: unknown) =>
+        calls.updateOrchestratorTask(id, patch),
+      addOrchestratorAgent: (id: string, input: unknown) =>
+        calls.addOrchestratorAgent(id, input),
     },
   };
 });
@@ -278,6 +286,9 @@ beforeEach(() => {
   calls.streamOrchestratorTask.mockReturnValue(() => undefined);
   calls.pauseOrchestratorTask.mockResolvedValue(true);
   calls.postOrchestratorTaskMessage.mockResolvedValue(undefined);
+  calls.getCodingAgentStatus.mockResolvedValue({ tasks: [] });
+  calls.updateOrchestratorTask.mockResolvedValue(detailFixture);
+  calls.addOrchestratorAgent.mockResolvedValue(detailFixture);
 });
 
 afterEach(() => {
@@ -344,6 +355,46 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
     expect(calls.postOrchestratorTaskMessage).toHaveBeenCalledWith(
       "task-1",
       "hi",
+    );
+  });
+
+  it("toggles to the terminal (real-CLI) view", async () => {
+    renderPane();
+    await screen.findByTestId("cockpit-session-transcript");
+    fireEvent.click(screen.getByTestId("cockpit-view-terminal"));
+    // With no matching PTY sessions for this task the panel shows its empty
+    // state (no xterm construction); the transcript is swapped out.
+    await waitFor(() =>
+      expect(screen.getByTestId("cockpit-session-terminal")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("cockpit-session-transcript")).toBeNull();
+  });
+
+  it("Eliza Cloud: flipping the tier persists policy + respawns on the new model", async () => {
+    calls.getCodingAgentTaskThread.mockResolvedValue({
+      ...detailFixture,
+      providerPolicy: {
+        preferredFramework: "elizaos",
+        providerSource: "eliza-cloud",
+        model: "gpt-oss-120b",
+      },
+    });
+    renderPane();
+    const smart = await screen.findByTestId("cockpit-tier-large");
+    fireEvent.click(smart);
+    await waitFor(() =>
+      expect(calls.updateOrchestratorTask).toHaveBeenCalledWith(
+        "task-1",
+        expect.objectContaining({
+          providerPolicy: expect.objectContaining({ model: "zai-glm-4.7" }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(calls.addOrchestratorAgent).toHaveBeenCalledWith(
+        "task-1",
+        expect.objectContaining({ model: "zai-glm-4.7" }),
+      ),
     );
   });
 });

@@ -25,10 +25,17 @@
  * taskId and passes `onBack` to return to the deck.
  */
 
-import { client } from "@elizaos/ui";
+import {
+  CockpitTierToggle,
+  type CodingAgentSession,
+  client,
+  ELIZA_CLOUD_TIER_MODEL,
+  type ElizaCloudTier,
+} from "@elizaos/ui";
 import { useRegisterViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
-import { ArrowLeft } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { ArrowLeft, ScrollText, SquareTerminal } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CockpitTerminalPanel } from "./CockpitTerminalPanel";
 import { TaskInspector } from "./OrchestratorWorkbench";
 import { ConversationBlockView } from "./orchestrator-stream";
 import { buildConversation } from "./orchestrator-stream.helpers";
@@ -70,6 +77,83 @@ export function CockpitSessionPane({
   // The add-agent form is controlled state owned here (mirrors the workbench),
   // so the inspector's "Add agent" affordance works end to end.
   const [addAgentOpen, setAddAgentOpen] = useState(false);
+
+  // CLI face: "transcript" (pretty) ⇄ "terminal" (real-CLI / PTY watch view).
+  const [view, setView] = useState<"transcript" | "terminal">("transcript");
+
+  // The PTY session feed (CodingAgentSession[]) is a separate source from the
+  // task detail; poll it and narrow to THIS task's sessions by matching
+  // sessionId against the task's session records.
+  const [ptySessions, setPtySessions] = useState<CodingAgentSession[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const pull = async () => {
+      try {
+        const status = await client.getCodingAgentStatus();
+        if (alive) setPtySessions(status?.tasks ?? []);
+      } catch {
+        // best-effort; the terminal shows its empty state if unavailable.
+      }
+    };
+    void pull();
+    const id = setInterval(() => void pull(), 3_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  const taskSessionIds = useMemo(
+    () =>
+      new Set(
+        (detail?.sessions ?? [])
+          .map((s) => s.sessionId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [detail?.sessions],
+  );
+  const terminalSessions = useMemo(
+    () => ptySessions.filter((s) => taskSessionIds.has(s.sessionId)),
+    [ptySessions, taskSessionIds],
+  );
+  const activeSessionId = useMemo(() => {
+    const live = terminalSessions.find(
+      (s) => s.status === "active" || s.status === "tool_running",
+    );
+    return live?.sessionId ?? terminalSessions[0]?.sessionId ?? null;
+  }, [terminalSessions]);
+
+  // Eliza Cloud sessions can hot-swap Fast/Smart tier (persist policy + respawn;
+  // see CockpitTierToggle — there is no in-place ACP model swap).
+  const isElizaCloud =
+    detail?.providerPolicy?.preferredFramework === "elizaos" &&
+    detail?.providerPolicy?.providerSource === "eliza-cloud";
+  const currentTier: ElizaCloudTier =
+    detail?.providerPolicy?.model === ELIZA_CLOUD_TIER_MODEL.large
+      ? "large"
+      : "small";
+  const onTierChange = useCallback(
+    (tier: ElizaCloudTier) => {
+      const model = ELIZA_CLOUD_TIER_MODEL[tier];
+      void runMutation(async () => {
+        await client.updateOrchestratorTask(taskId, {
+          providerPolicy: {
+            preferredFramework: "elizaos",
+            providerSource: "eliza-cloud",
+            model,
+          },
+        });
+        // Re-spawn so the next turn actually runs on the new tier's model.
+        await client.addOrchestratorAgent(taskId, {
+          framework: "elizaos",
+          providerSource: "eliza-cloud",
+          model,
+          task: "Continue on the selected tier.",
+        });
+      });
+    },
+    [taskId, runMutation],
+  );
 
   // Sub-agents render their per-session label; derive the lookup exactly as the
   // workbench does (OrchestratorWorkbench.tsx).
@@ -148,29 +232,87 @@ export function CockpitSessionPane({
           {detail?.title ??
             t("cockpit.session.loading", { defaultValue: "Loading room…" })}
         </h2>
+        {isElizaCloud ? (
+          <CockpitTierToggle
+            value={currentTier}
+            onChange={onTierChange}
+            disabled={mutating}
+            className="shrink-0"
+          />
+        ) : null}
+        <div
+          className="flex shrink-0 items-center gap-1"
+          role="group"
+          aria-label={t("cockpit.session.viewMode", {
+            defaultValue: "View mode",
+          })}
+        >
+          <button
+            type="button"
+            onClick={() => setView("transcript")}
+            aria-pressed={view === "transcript"}
+            data-testid="cockpit-view-transcript"
+            title={t("cockpit.session.transcript", {
+              defaultValue: "Transcript",
+            })}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+              view === "transcript"
+                ? "bg-accent/15 text-accent"
+                : "text-muted hover:bg-bg-hover/40 hover:text-txt"
+            }`}
+          >
+            <ScrollText className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("terminal")}
+            aria-pressed={view === "terminal"}
+            data-testid="cockpit-view-terminal"
+            title={t("cockpit.session.terminal", { defaultValue: "Terminal" })}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+              view === "terminal"
+                ? "bg-accent/15 text-accent"
+                : "text-muted hover:bg-bg-hover/40 hover:text-txt"
+            }`}
+          >
+            <SquareTerminal className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div
-          className="min-w-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
-          data-testid="cockpit-session-transcript"
-        >
-          {conversation.length === 0 ? (
-            <p className="px-1 text-xs text-muted">
-              {t("cockpit.session.empty", {
-                defaultValue: "No messages yet.",
-              })}
-            </p>
-          ) : (
-            conversation.map((block) => (
-              <ConversationBlockView
-                key={block.key}
-                block={block}
-                locale={locale}
-              />
-            ))
-          )}
-        </div>
+        {view === "terminal" ? (
+          <div
+            className="min-w-0 flex-1 overflow-hidden p-2"
+            data-testid="cockpit-session-terminal"
+          >
+            <CockpitTerminalPanel
+              activeSessionId={activeSessionId}
+              sessions={terminalSessions}
+            />
+          </div>
+        ) : (
+          <div
+            className="min-w-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
+            data-testid="cockpit-session-transcript"
+          >
+            {conversation.length === 0 ? (
+              <p className="px-1 text-xs text-muted">
+                {t("cockpit.session.empty", {
+                  defaultValue: "No messages yet.",
+                })}
+              </p>
+            ) : (
+              conversation.map((block) => (
+                <ConversationBlockView
+                  key={block.key}
+                  block={block}
+                  locale={locale}
+                />
+              ))
+            )}
+          </div>
+        )}
 
         {detail ? (
           <TaskInspector
