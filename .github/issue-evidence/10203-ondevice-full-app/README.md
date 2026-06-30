@@ -41,3 +41,12 @@ verifies the end-to-end pipeline + agent liveness, not LLM answer quality.)
 This also unblocks the broader on-device app-testing surface (view lifecycle for
 #10196, chat, connectors) now that a real device can render the full shell
 against a working agent.
+
+
+## Multi-turn agent-liveness soak
+
+`chat-soak-ondevice.txt` — 4 consecutive chat turns on-device. Every turn: the
+message round-trips and a response renders; `/api/health` reports
+`agentState="running"`; and the app pid stays **4110 before and after** — the
+agent and app never crash across the soak. That's the device-connected "every
+feature works without the agent crashing" property over repeated use.
