@@ -257,10 +257,15 @@ export function serveStaticUi(
   // When served behind a reverse proxy that rewrites the app under a path prefix,
   // inject the API base so the UI client sends requests to the correct path prefix.
   // For cloud-provisioned containers, also inject the API token so the browser
-  // client can authenticate without requiring a pairing flow.
-  const cloudToken = isCloudProvisionedContainer()
-    ? resolveApiToken(process.env)
-    : null;
+  // client can authenticate without requiring a pairing flow. Self-hosted
+  // operators who front the UI with their own auth gate (e.g. a reverse-proxy
+  // cookie wall) can opt into the same token injection with
+  // ELIZA_FORCE_INJECT_TOKEN=1 so the browser authenticates without pairing.
+  const cloudToken =
+    isCloudProvisionedContainer() ||
+    process.env.ELIZA_FORCE_INJECT_TOKEN === "1"
+      ? resolveApiToken(process.env)
+      : null;
   const html = injectApiBaseIntoHtml(
     uiIndexHtml,
     process.env.ELIZA_EXTERNAL_BASE_URL,
