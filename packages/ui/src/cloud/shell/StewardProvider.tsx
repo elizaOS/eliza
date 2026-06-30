@@ -73,6 +73,48 @@ function shouldLoadStewardRuntime(pathname: string): boolean {
   );
 }
 
+function StewardConfigError() {
+  return (
+    <main
+      aria-labelledby="steward-config-error-title"
+      role="alert"
+      style={{
+        alignItems: "center",
+        background: "#f8f4ef",
+        color: "#2f261f",
+        display: "flex",
+        minHeight: "100vh",
+        padding: "24px",
+      }}
+    >
+      <section
+        style={{
+          border: "1px solid #d8c7b8",
+          borderRadius: 8,
+          margin: "0 auto",
+          maxWidth: 560,
+          padding: "24px",
+        }}
+      >
+        <h1
+          id="steward-config-error-title"
+          style={{
+            fontSize: 24,
+            lineHeight: 1.2,
+            margin: "0 0 12px",
+          }}
+        >
+          Sign-in temporarily unavailable
+        </h1>
+        <p style={{ fontSize: 16, lineHeight: 1.5, margin: 0 }}>
+          Eliza Cloud authentication is not configured for this environment. Set
+          a valid Steward API URL and reload this page.
+        </p>
+      </section>
+    </main>
+  );
+}
+
 /**
  * Outer Steward provider. Cheap on routes that don't need auth (no token, not
  * an auth surface) — it renders children directly without loading the heavy
@@ -109,8 +151,14 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  if (!hasValidUrl || !shouldLoadStewardRuntime(location.pathname)) {
+  const needsStewardRuntime = shouldLoadStewardRuntime(location.pathname);
+
+  if (!needsStewardRuntime) {
     return <>{children}</>;
+  }
+
+  if (!hasValidUrl) {
+    return <StewardConfigError />;
   }
 
   return (
