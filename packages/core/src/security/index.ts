@@ -53,6 +53,14 @@ export {
 	type SecretsRedactOptions,
 } from "./redact.js";
 export {
+	parseSecretSwapExemptValues,
+	SECRET_SWAP_ENABLED_SETTING,
+	SECRET_SWAP_EXEMPT_VALUES_SETTING,
+	type SecretSwapEntry,
+	SecretSwapSession,
+	SecretSwapUnresolvedPlaceholderError,
+} from "./secret-swap.js";
+export {
 	BLOCKED_SPAWN_ENV_KEYS,
 	BLOCKED_SPAWN_ENV_PREFIXES,
 	isBlockedSpawnEnvKey,

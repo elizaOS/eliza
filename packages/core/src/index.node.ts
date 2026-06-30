@@ -265,6 +265,7 @@ export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
 // Export security utilities
 export * from "./security";
+export * from "./security/secret-swap";
 export * from "./sensitive-request-policy";
 export * from "./sensitive-requests";
 export * from "./services";
