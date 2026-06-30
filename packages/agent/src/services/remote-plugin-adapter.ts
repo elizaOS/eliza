@@ -2357,23 +2357,22 @@ function requireRemoteLaunchDiagnostics(
   if (!Array.isArray(result)) {
     throw remoteDecodeError(moduleId, hook, "returned non-array diagnostics");
   }
+  const diagnostics: PluginAppLaunchDiagnostic[] = [];
   for (const diagnostic of result) {
     if (!isJsonObject(diagnostic)) {
       throw remoteDecodeError(moduleId, hook, "returned invalid diagnostic");
     }
+    const { code, message, severity } = diagnostic;
     if (
-      typeof diagnostic.code !== "string" ||
-      typeof diagnostic.message !== "string" ||
-      !(
-        diagnostic.severity === "info" ||
-        diagnostic.severity === "warning" ||
-        diagnostic.severity === "error"
-      )
+      typeof code !== "string" ||
+      typeof message !== "string" ||
+      !(severity === "info" || severity === "warning" || severity === "error")
     ) {
       throw remoteDecodeError(moduleId, hook, "returned invalid diagnostic");
     }
+    diagnostics.push({ code, message, severity });
   }
-  return result as unknown as PluginAppLaunchDiagnostic[];
+  return diagnostics;
 }
 
 function requireRemoteLaunchSession(

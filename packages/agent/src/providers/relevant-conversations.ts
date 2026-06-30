@@ -32,6 +32,14 @@ const MIN_HASH_MEMORY_SCORE = 0.5;
 const HASH_MEMORY_SNIPPET_LENGTH = 700;
 const RELEVANT_SNIPPET_LENGTH = 200;
 
+function memoryText(memory: Memory): string {
+  return typeof memory.content.text === "string" ? memory.content.text : "";
+}
+
+function memoryCreatedAt(memory: Memory): number {
+  return typeof memory.createdAt === "number" ? memory.createdAt : 0;
+}
+
 // /api/memory/remember writes lexical "hash memories" into the messages table at
 // a fixed room with content.source === "hash_memory" and NO embedding. When no
 // TEXT_EMBEDDING model is registered (cloud agents booting without embed), the
@@ -58,11 +66,11 @@ async function loadHashMemories(
       HASH_MEMORY_SOURCE,
   );
 
-  return rankByKeyword(query, hashMemories, (m) => m.content.text ?? "")
+  return rankByKeyword(query, hashMemories, memoryText)
     .filter(({ score }) => score >= MIN_HASH_MEMORY_SCORE)
     .sort((left, right) => {
       if (right.score !== left.score) return right.score - left.score;
-      return (right.item.createdAt ?? 0) - (left.item.createdAt ?? 0);
+      return memoryCreatedAt(right.item) - memoryCreatedAt(left.item);
     })
     .slice(0, MAX_HASH_MEMORY_RESULTS)
     .map(({ item }) => item);
@@ -169,7 +177,7 @@ export const relevantConversationsProvider: Provider = {
           source === HASH_MEMORY_SOURCE
             ? HASH_MEMORY_SNIPPET_LENGTH
             : RELEVANT_SNIPPET_LENGTH;
-        const msgText = (mem.content.text ?? "").slice(0, snippetLength);
+        const msgText = memoryText(mem).slice(0, snippetLength);
         lines.push(`${tag} (${ts}) ${speaker}: ${msgText}`);
       }
 
