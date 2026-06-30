@@ -1,4 +1,4 @@
-import { existsSync, promises as fsp, readdirSync } from "node:fs";
+import { existsSync, promises as fsp, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 type EsbuildOnLoadArgs = {
@@ -121,11 +121,18 @@ const rewriteRelativeTsExtensions = {
 };
 
 /** Transpile workspace plugins/apps under `plugins/*` without bundling deps. */
+const packageRoot = resolvePackageRoot();
+const outDir = "dist";
+
+// tsup's internal clean unlinks individual outputs and can race itself on
+// multi-entry packages. Force-removing the directory once is idempotent.
+rmSync(path.join(packageRoot, outDir), { recursive: true, force: true });
+
 export default {
-  entry: collectSrcEntries(path.join(resolvePackageRoot(), "src")),
-  outDir: "dist",
+  entry: collectSrcEntries(path.join(packageRoot, "src")),
+  outDir,
   format: ["esm"],
-  clean: true,
+  clean: false,
   sourcemap: true,
   dts: false,
   bundle: false,
