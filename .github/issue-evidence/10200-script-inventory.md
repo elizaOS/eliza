@@ -331,23 +331,29 @@
 | `sync:artifacts` | `bun packages/scripts/sync-artifacts.mjs` | DEV-ENTRY | NONE |
 ---
 
-## Proven-stale candidates for removal (with evidence)
+## Duplicate-body candidates (with corrected, independently-verified evidence)
 
-Strictly: **zero real callers AND an exact-duplicate body** (verified — see the
-duplicate-body scan). These are the only scripts safe to delete on evidence
-alone in a follow-up.
+All three are exact byte-duplicates of a canonical script. **A second, independent
+caller sweep (beyond name-grep) corrected the initial "zero callers" read — two of
+the three are NOT safe to delete as-is.** This is the inventory's whole point:
+proven removal requires a real caller search, not a name-grep, and a removal PR
+must carry the migration note + update every dependent reference.
 
-| script | duplicate of | evidence (zero callers) |
-|---|---|---|
-| `dev:web:ui` | `dev` (byte-identical body) | No `CI=`/`code=`/`rootSelf=` caller. The single `doc=1` hit is `packages/docs/apps/desktop-local-development.md`, which lists ``bun run dev` / `bun run dev:web:ui`` **as the same command** — i.e. it documents the alias, it does not depend on it. Removal = delete the script + drop the alias from that one doc cell. |
-| `test:cloud:playwright` | `test:ui:playwright` (both `bun run --cwd packages/app test:e2e`) | **Zero references anywhere** — no workflow, no doc, no script, no other root script. Its byte-identical twin `test:ui:playwright` is the documented form (`packages/docs/apps/desktop-local-development.md`). The `test:cloud:*` namespace otherwise runs cloud-API tests; this entry mislabels an app-UI e2e run. |
-| `harness` | `start` (both `bun run --cwd packages/agent start`) | No `bun run harness` caller exists. The `doc=2` count is a **false positive**: `grep -rnE "run harness"` returns only prose sentences containing "dry-run harness", never `bun run harness`. `start` is the canonical name (30 doc references). |
+| script | duplicate of | corrected caller evidence | safe to remove? |
+|---|---|---|---|
+| `harness` | `start` (`bun run --cwd packages/agent start`) | No `bun run harness` caller. The earlier `doc=2` was a false positive (prose "dry-run harness"); the other `"harness"` hits across the repo are unrelated JSON config keys (voice-bench, chip docs), not script invocations. `start` is canonical (30 doc refs). | **YES** — a clean removal (migration note: use `start`). |
+| `test:cloud:playwright` | `test:ui:playwright` (both `bun run --cwd packages/app test:e2e`) | **NOT zero-reference** — `packages/scenario-runner/src/scenario-pr-workflow.test.ts:616,619` asserts on `rootPackage.scripts["test:cloud:playwright"]` (`.toBe(...)` / `.not.toBe(...)`). Removing the script **fails that test**. | Only with the test updated — the `scenario-pr-workflow` assertion is a real dependent. Duplicate is real, but it's pinned. |
+| `dev:web:ui` | `dev` (byte-identical body) | Beyond the one `desktop-local-development.md` alias cell, it is referenced as a documented run-command in `plugins/plugin-task-coordinator/vitest.e2e.config.ts:5` and `…/orchestrator-workbench.live.e2e.test.ts:9` ("run the stack with `bun run dev:web:ui`"). | Only after redirecting those e2e run-instructions + the doc cell to `dev`. It's a documented developer alias, not pure cruft. |
+
+**Net:** exactly **one** script (`harness`) is removable on evidence alone; the other
+two are genuine duplicates but have real dependents (a test assertion; e2e
+run-instructions) that a removal PR must update first. The inventory's value here is
+precisely that it surfaced those dependents that a name-grep missed.
 
 > Note on `test:ui:playwright` (the surviving twin of `test:cloud:playwright`):
-> kept as **DEV-ENTRY**, not stale — it is a documented developer command
-> (`desktop-local-development.md` describes it running `ui-smoke.spec.ts` and
-> references sibling `:settings-chat` / `:packaged` variants). The redundancy is
-> resolved by deleting the *cloud* twin, not this one.
+> kept as **DEV-ENTRY** — a documented developer command. The redundancy, if
+> resolved, is by retiring the *cloud* twin (and updating the
+> `scenario-pr-workflow` assertion), not this one.
 
 ### Needs-owner-confirmation (suspicious, but NOT proven stale)
 
