@@ -1,0 +1,6 @@
+# #9967 wifi — real device Wi-Fi state (Pixel 6a, Android 16), captured alongside the on-device test
+wifi_on(global): 1
+dumpsys: Wi-Fi is enabled
+
+# WifiStateInstrumentedTest.read_returnsStateWithRequiredKeysFromRealWifiManager cross-checks
+# WifiState.read(ctx).enabled against Settings.Global.WIFI_ON (the value above).
