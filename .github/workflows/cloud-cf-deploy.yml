@@ -81,14 +81,26 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-api:
     name: Deploy API Worker
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hetzner-robot"]') }}
     if: github.event_name != 'pull_request'
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Checkout repository
+        timeout-minutes: 5
+        env:
+          CHECKOUT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s dotglob nullglob
+          rm -rf "${GITHUB_WORKSPACE:?}/"*
+          git init "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$GITHUB_WORKSPACE" -c protocol.version=2 fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git -C "$GITHUB_WORKSPACE" checkout --force FETCH_HEAD
+          git -C "$GITHUB_WORKSPACE" clean -ffdx
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -225,13 +237,25 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-console:
     name: Deploy Console (Pages · elizacloud.ai)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hetzner-robot"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Checkout repository
+        timeout-minutes: 5
+        env:
+          CHECKOUT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s dotglob nullglob
+          rm -rf "${GITHUB_WORKSPACE:?}/"*
+          git init "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$GITHUB_WORKSPACE" -c protocol.version=2 fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git -C "$GITHUB_WORKSPACE" checkout --force FETCH_HEAD
+          git -C "$GITHUB_WORKSPACE" clean -ffdx
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -391,13 +415,25 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hetzner-robot"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Checkout repository
+        timeout-minutes: 5
+        env:
+          CHECKOUT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s dotglob nullglob
+          rm -rf "${GITHUB_WORKSPACE:?}/"*
+          git init "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$GITHUB_WORKSPACE" -c protocol.version=2 fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git -C "$GITHUB_WORKSPACE" checkout --force FETCH_HEAD
+          git -C "$GITHUB_WORKSPACE" clean -ffdx
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
