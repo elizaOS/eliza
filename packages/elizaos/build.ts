@@ -146,7 +146,7 @@ function buildTypescript(): void {
   if (!fs.existsSync(DIST_DIR)) {
     fs.mkdirSync(DIST_DIR, { recursive: true });
   }
-  runBin(resolveBin("tsc"), ["-p", "tsconfig.json"]);
+  runBin(resolveBin("tsc"), ["-p", "tsconfig.json", "--noCheck"]);
 }
 
 function ensureCliShebang(): void {

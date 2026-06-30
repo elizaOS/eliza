@@ -1,0 +1,23 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "./src",
+		"paths": {
+			"@elizaos/plugin-capacitor-bridge": ["./src/index.ts"],
+			"@elizaos/plugin-capacitor-bridge/*": ["./src/*"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": [
+		"node_modules",
+		"dist",
+		"src/**/__tests__/**",
+		"src/**/*.test.ts",
+		"src/**/*.test.tsx",
+		"**/__tests__/**",
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.e2e.test.ts"
+	]
+}

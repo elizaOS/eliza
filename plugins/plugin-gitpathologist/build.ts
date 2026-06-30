@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { buildPlugin } from "../plugin-build";
 
 /**
  * Build script for @elizaos/plugin-gitpathologist.
@@ -14,16 +15,13 @@
  * `//# sourceMappingURL=index.js.map` reference stays valid), byte-identical to
  * the prior hand-rolled build.
  */
-
-import { buildPlugin } from "../plugin-build.ts";
+const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
 
 await buildPlugin({
   name: "@elizaos/plugin-gitpathologist",
   clean: true,
   externals: "auto",
-  externalsOptions: {
-    extra: ["@elizaos/shared", "@elizaos/agent"],
-  },
+  externalsOptions: { extra: ["@elizaos/shared", "@elizaos/agent"] },
   targets: [
     {
       label: "Node (ESM)",
@@ -47,17 +45,7 @@ await buildPlugin({
   ],
   dtsProject: "tsconfig.build.json",
   dtsShims: [
-    {
-      path: "index.d.ts",
-      content: `export * from "./node/index";
-export { default } from "./node/index";
-`,
-    },
-    {
-      path: "cjs/index.d.ts",
-      content: `export * from "../node/index";
-export { default } from "../node/index";
-`,
-    },
+    { path: "index.d.ts", content: reexport("./node/index") },
+    { path: "cjs/index.d.ts", content: reexport("../node/index") },
   ],
 });

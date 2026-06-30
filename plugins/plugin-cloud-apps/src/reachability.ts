@@ -54,8 +54,7 @@ export async function probeReachable(
   url: string,
   options: ProbeOptions = {},
 ): Promise<ReachabilityResult> {
-  const fetchImpl =
-    options.fetchImpl ?? (globalThis.fetch as FetchLike | undefined);
+  const fetchImpl = resolveFetchLike(options.fetchImpl);
   if (typeof fetchImpl !== "function") {
     return { ok: false, error: "no_fetch" };
   }
@@ -85,4 +84,12 @@ export async function probeReachable(
   } finally {
     clearTimeout(timer);
   }
+}
+
+function resolveFetchLike(
+  fetchImpl: FetchLike | undefined,
+): FetchLike | undefined {
+  if (fetchImpl) return fetchImpl;
+  if (typeof globalThis.fetch !== "function") return undefined;
+  return (input, init) => globalThis.fetch(input, init);
 }
