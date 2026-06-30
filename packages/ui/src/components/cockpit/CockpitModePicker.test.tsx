@@ -11,15 +11,18 @@ afterEach(cleanup);
 
 function Harness({
   initial,
+  experimentalEnabled,
   onChange,
 }: {
   initial: CockpitModeConfig;
+  experimentalEnabled?: boolean;
   onChange?: (c: CockpitModeConfig) => void;
 }) {
   const [value, setValue] = useState<CockpitModeConfig>(initial);
   return (
     <CockpitModePicker
       value={value}
+      experimentalEnabled={experimentalEnabled}
       onChange={(c) => {
         setValue(c);
         onChange?.(c);
@@ -29,7 +32,7 @@ function Harness({
 }
 
 describe("CockpitModePicker", () => {
-  it("renders the three sanctioned modes and no experimental options", () => {
+  it("renders the four TOS-clean modes and hides experimental by default", () => {
     render(
       <Harness
         initial={{ mode: "eliza-cloud", agentType: "elizaos", tier: "small" }}
@@ -41,6 +44,17 @@ describe("CockpitModePicker", () => {
     expect(screen.getByTestId("cockpit-mode-codex")).toBeTruthy();
     expect(screen.queryByTestId("cockpit-mode-claude-experimental")).toBeNull();
     expect(screen.queryByTestId("cockpit-mode-codex-experimental")).toBeNull();
+  });
+
+  it("shows the experimental options only when the gate is armed", () => {
+    render(
+      <Harness
+        initial={{ mode: "subscription", agentType: "claude" }}
+        experimentalEnabled
+      />,
+    );
+    expect(screen.getByTestId("cockpit-mode-claude-experimental")).toBeTruthy();
+    expect(screen.getByTestId("cockpit-mode-codex-experimental")).toBeTruthy();
   });
 
   it("marks the selected mode and renders the Eliza-Cloud tier toggle", () => {

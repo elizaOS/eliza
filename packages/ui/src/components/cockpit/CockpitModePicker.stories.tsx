@@ -6,9 +6,11 @@ import type { CockpitModeConfig } from "./cockpit-modes";
 
 function Harness({
   initial,
+  experimentalEnabled,
   disabled,
 }: {
   initial: CockpitModeConfig;
+  experimentalEnabled?: boolean;
   disabled?: boolean;
 }) {
   const [value, setValue] = useState<CockpitModeConfig>(initial);
@@ -17,6 +19,7 @@ function Harness({
       <CockpitModePicker
         value={value}
         onChange={setValue}
+        experimentalEnabled={experimentalEnabled}
         disabled={disabled}
       />
     </div>
@@ -46,10 +49,11 @@ export const ClaudeSubscription: Story = {
   ),
 };
 
-export const ElizaCloudSmartTier: Story = {
+export const ExperimentalArmed: Story = {
   render: () => (
     <Harness
       initial={{ mode: "eliza-cloud", agentType: "elizaos", tier: "large" }}
+      experimentalEnabled
     />
   ),
 };

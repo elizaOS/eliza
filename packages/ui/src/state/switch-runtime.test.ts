@@ -14,6 +14,13 @@ const mocks = vi.hoisted(() => ({
   })),
   savePersistedActiveServer: vi.fn(),
   isTrustedRestoreApiBaseUrl: vi.fn(() => true),
+  clearAllChatDrafts: vi.fn(),
+  getFrontendPlatform: vi.fn(() => "web"),
+  isMobileLocalAgentIpcBase: vi.fn(() => false),
+  persistMobileRuntimeModeForServerTarget: vi.fn(),
+  activeServerKindToFirstRunRuntimeTarget: vi.fn((k: string) =>
+    k === "cloud" ? "elizacloud" : "remote",
+  ),
 }));
 
 vi.mock("../api", () => ({
@@ -33,6 +40,21 @@ vi.mock("./persistence", () => ({
 }));
 vi.mock("./startup-phase-restore", () => ({
   isTrustedRestoreApiBaseUrl: mocks.isTrustedRestoreApiBaseUrl,
+}));
+vi.mock("./ChatComposerContext.hooks", () => ({
+  clearAllChatDrafts: mocks.clearAllChatDrafts,
+}));
+vi.mock("../platform/platform-guards", () => ({
+  getFrontendPlatform: mocks.getFrontendPlatform,
+}));
+vi.mock("../first-run/mobile-runtime-mode", () => ({
+  isMobileLocalAgentIpcBase: mocks.isMobileLocalAgentIpcBase,
+  persistMobileRuntimeModeForServerTarget:
+    mocks.persistMobileRuntimeModeForServerTarget,
+}));
+vi.mock("../first-run/runtime-target", () => ({
+  activeServerKindToFirstRunRuntimeTarget:
+    mocks.activeServerKindToFirstRunRuntimeTarget,
 }));
 
 import { switchRuntimeNonDestructive } from "./switch-runtime";
@@ -73,6 +95,11 @@ describe("switchRuntimeNonDestructive", () => {
     for (const fn of Object.values(mocks)) fn.mockClear();
     mocks.isTrustedRestoreApiBaseUrl.mockReturnValue(true);
     mocks.createPersistedActiveServer.mockImplementation((a) => ({ ...a }));
+    mocks.getFrontendPlatform.mockReturnValue("web");
+    mocks.isMobileLocalAgentIpcBase.mockReturnValue(false);
+    mocks.activeServerKindToFirstRunRuntimeTarget.mockImplementation((k) =>
+      k === "cloud" ? "elizacloud" : "remote",
+    );
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -99,13 +126,16 @@ describe("switchRuntimeNonDestructive", () => {
     expect(mocks.setBaseUrl).not.toHaveBeenCalled();
   });
 
-  it("switches to a local runtime: persists + activates, NO re-point (same-origin)", () => {
+  it("switches to a local runtime: persists + activates + re-points same-origin + clears the stale token", () => {
     withRegistry([LOCAL, CLOUD]);
     const res = switchRuntimeNonDestructive("local-1");
     expect(res.ok).toBe(true);
     expect(mocks.setActiveProfileId).toHaveBeenCalledWith("local-1");
-    expect(mocks.repointBaseUrl).not.toHaveBeenCalled();
-    expect(mocks.setToken).not.toHaveBeenCalled();
+    // local is same-origin: re-point to the app host + drop any prior
+    // remote/cloud bearer (regression guard for the stale-base/token bug).
+    expect(mocks.repointBaseUrl).toHaveBeenCalledWith(window.location.origin);
+    expect(mocks.setToken).toHaveBeenCalledWith(null);
+    expect(mocks.setBaseUrl).not.toHaveBeenCalled();
   });
 
   it("rejects an untrusted remote (public URL) without switching", () => {
@@ -126,5 +156,29 @@ describe("switchRuntimeNonDestructive", () => {
     expect(res.ok).toBe(true);
     expect(mocks.repointBaseUrl).toHaveBeenCalledWith("http://100.72.1.4:3000");
     expect(mocks.setToken).toHaveBeenCalledWith("tok-vps");
+  });
+
+  it("clears chat drafts on a switch (no cross-runtime draft bleed)", () => {
+    withRegistry([LOCAL, CLOUD]);
+    switchRuntimeNonDestructive("cloud-1");
+    expect(mocks.clearAllChatDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it("on mobile, persists the runtime-mode so the switch survives a reboot", () => {
+    mocks.getFrontendPlatform.mockReturnValue("android");
+    withRegistry([LOCAL, CLOUD]);
+    switchRuntimeNonDestructive("cloud-1");
+    expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
+      "elizacloud",
+    );
+  });
+
+  it("does NOT persist mobile runtime-mode on web", () => {
+    mocks.getFrontendPlatform.mockReturnValue("web");
+    withRegistry([LOCAL, CLOUD]);
+    switchRuntimeNonDestructive("cloud-1");
+    expect(
+      mocks.persistMobileRuntimeModeForServerTarget,
+    ).not.toHaveBeenCalled();
   });
 });

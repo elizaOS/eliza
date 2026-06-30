@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OrchestratorRoomRosterOverview } from "../../../api/client-types-cloud";
 import { OrchestratorRoomView } from "./agent-orchestrator-room-view";
 
@@ -93,5 +99,20 @@ describe("OrchestratorRoomView", () => {
     const maraIdx = labels.findIndex((l) => l.includes("Mara"));
     // Ada is live (tool_running), Mara is stopped, so Ada must sort first.
     expect(adaIdx).toBeLessThan(maraIdx);
+  });
+
+  it("stays presentational (no drill-in button) when onSelectRoom is absent", () => {
+    render(<OrchestratorRoomView rooms={rooms} />);
+    // back-compat: the chat-sidebar widget passes no callback → plain card.
+    expect(screen.queryByTestId("orchestrator-room-open")).toBeNull();
+  });
+
+  it("drills into a room when onSelectRoom is set", () => {
+    const onSelectRoom = vi.fn();
+    render(<OrchestratorRoomView rooms={rooms} onSelectRoom={onSelectRoom} />);
+    const open = screen.getByTestId("orchestrator-room-open");
+    expect(open.tagName).toBe("BUTTON");
+    fireEvent.click(open);
+    expect(onSelectRoom).toHaveBeenCalledWith("task-parser");
   });
 });

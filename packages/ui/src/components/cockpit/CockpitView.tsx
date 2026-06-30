@@ -15,8 +15,16 @@ export interface CockpitViewProps {
   onCreateSession: (input: CodingAgentCreateTaskInput) => void | Promise<void>;
   /** In-flight spawn (disables the form + shows "Starting…"). */
   busy?: boolean;
+  /** Arm the TOS-unsafe experimental modes in the picker. */
+  experimentalEnabled?: boolean;
   /** A surfaced error (e.g. spawn or roster fetch failed). */
   error?: string | null;
+  /**
+   * Drill into a task room (tap a deck card). When set, the deck cards become
+   * buttons; the container swaps in the focused session pane. Omit to keep the
+   * deck presentational.
+   */
+  onSelectRoom?: (taskId: string) => void;
   className?: string;
 }
 
@@ -31,14 +39,18 @@ export interface CockpitViewProps {
  *   - the **new-session** form (mode picker → create-task `providerPolicy`).
  *
  * The driver bubble (host chat) manages these rooms; tapping a room drills into
- * the workbench task-room (wired by the container). The "My Runtimes" runtime
- * switcher lives in Settings.
+ * its focused session pane (transcript + `TaskInspector` controls + a real-CLI
+ * terminal toggle + Fast/Smart tier toggle), and the bubble then drives THAT
+ * task — all wired by the container (`CockpitRoute`). The "My Runtimes" switcher
+ * lives in Settings.
  */
 export function CockpitView({
   rooms,
   onCreateSession,
   busy = false,
+  experimentalEnabled = false,
   error = null,
+  onSelectRoom,
   className,
 }: CockpitViewProps) {
   return (
@@ -65,12 +77,16 @@ export function CockpitView({
       ) : null}
 
       <section data-testid="cockpit-deck">
-        <OrchestratorRoomView rooms={rooms} />
+        <OrchestratorRoomView rooms={rooms} onSelectRoom={onSelectRoom} />
       </section>
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-txt">New session</h2>
-        <CockpitNewSessionForm onCreate={onCreateSession} busy={busy} />
+        <CockpitNewSessionForm
+          onCreate={onCreateSession}
+          busy={busy}
+          experimentalEnabled={experimentalEnabled}
+        />
       </section>
     </div>
   );
