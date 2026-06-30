@@ -1,0 +1,10 @@
+$ vitest run src/task-board.test.ts src/messageManager.edit-react.test.ts src/command-registration.test.ts
+
+ RUN  v4.1.5 /home/shaw/milady/eliza-issue-8902/plugins/plugin-telegram
+
+
+ Test Files  3 passed (3)
+      Tests  30 passed (30)
+   Start at  23:47:16
+   Duration  7.10s (transform 11.22s, setup 239ms, import 17.67s, tests 63ms, environment 0ms)
+

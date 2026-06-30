@@ -11,8 +11,15 @@
  * post-or-edit manager takes injected `post`/`edit` so it tests with mocks.
  */
 
-import type { IAgentRuntime, Service } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import {
+  createUniqueUuid,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Service,
+  type UUID,
+} from "@elizaos/core";
+import { scopedTelegramKey } from "./command-registration";
 
 /** A task reduced to what a board line needs. */
 export interface TaskBoardEntry {
@@ -73,6 +80,10 @@ export interface TaskBoardPostResult {
   messageId: number;
 }
 
+export interface TaskBoardRecord {
+  messageId: number;
+}
+
 export interface TaskBoardDeps {
   /** Post a new board message; returns its message id. */
   post: (
@@ -85,6 +96,23 @@ export interface TaskBoardDeps {
     chatId: number | string,
     messageId: number,
     text: string,
+    threadId?: number,
+  ) => Promise<void>;
+  /** Pin a freshly-posted board message so Telegram users can find it. */
+  pin?: (
+    chatId: number | string,
+    messageId: number,
+    threadId?: number,
+  ) => Promise<void>;
+  /** Load a persisted board message id for this chat/thread. */
+  load?: (
+    chatId: number | string,
+    threadId?: number,
+  ) => Promise<TaskBoardRecord | null>;
+  /** Persist the board message id for this chat/thread. */
+  save?: (
+    chatId: number | string,
+    record: TaskBoardRecord,
     threadId?: number,
   ) => Promise<void>;
 }
@@ -111,8 +139,11 @@ export class TelegramTaskBoard {
   ): Promise<number> {
     const text = composeTaskBoard(entries);
     const key = this.key(chatId, threadId);
-    const existing = this.boardMsgByKey.get(key);
+    const existing =
+      this.boardMsgByKey.get(key) ??
+      (await this.deps.load?.(chatId, threadId))?.messageId;
     if (existing !== undefined) {
+      this.boardMsgByKey.set(key, existing);
       try {
         await this.deps.edit(chatId, existing, text, threadId);
         return existing;
@@ -128,7 +159,25 @@ export class TelegramTaskBoard {
     }
     const { messageId } = await this.deps.post(chatId, text, threadId);
     this.boardMsgByKey.set(key, messageId);
+    await this.deps.save?.(chatId, { messageId }, threadId);
+    await this.pinBestEffort(chatId, messageId, threadId);
     return messageId;
+  }
+
+  private async pinBestEffort(
+    chatId: number | string,
+    messageId: number,
+    threadId?: number,
+  ): Promise<void> {
+    try {
+      await this.deps.pin?.(chatId, messageId, threadId);
+    } catch (error) {
+      logger.warn(
+        `[TelegramTaskBoard] pin failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   /** Forget a stored board (e.g. when a chat is reset). */
@@ -158,6 +207,11 @@ interface TaskBoardBot {
       text: string,
       extra?: { message_thread_id?: number },
     ) => Promise<{ message_id: number }>;
+    pinChatMessage?: (
+      chatId: number | string,
+      messageId: number,
+      extra?: { disable_notification?: boolean; message_thread_id?: number },
+    ) => Promise<unknown>;
   };
 }
 
@@ -170,6 +224,112 @@ interface TaskBoardMessageManager {
   ) => Promise<void>;
 }
 
+const TASK_BOARD_MEMORY_TYPE = "telegram_task_board";
+
+function boardRoomKey(chatId: number | string, accountId: string): string {
+  return scopedTelegramKey(String(chatId), accountId);
+}
+
+function boardThreadRoomKey(
+  chatId: number | string,
+  threadId: number | undefined,
+  accountId: string,
+): string {
+  const roomKey = threadId !== undefined ? `${chatId}-${threadId}` : chatId;
+  return scopedTelegramKey(String(roomKey), accountId);
+}
+
+function boardMemoryId(
+  runtime: IAgentRuntime,
+  accountId: string,
+  chatId: number | string,
+  threadId?: number,
+): UUID {
+  return createUniqueUuid(
+    runtime,
+    `telegram-task-board:${boardThreadRoomKey(chatId, threadId, accountId)}`,
+  ) as UUID;
+}
+
+function boardRoomId(
+  runtime: IAgentRuntime,
+  accountId: string,
+  chatId: number | string,
+  threadId?: number,
+): UUID {
+  return createUniqueUuid(
+    runtime,
+    boardThreadRoomKey(chatId, threadId, accountId),
+  ) as UUID;
+}
+
+function boardWorldId(
+  runtime: IAgentRuntime,
+  accountId: string,
+  chatId: number | string,
+): UUID {
+  return createUniqueUuid(runtime, boardRoomKey(chatId, accountId)) as UUID;
+}
+
+function parseBoardRecord(memory: Memory | undefined): TaskBoardRecord | null {
+  const messageId = memory?.content.messageId;
+  return typeof messageId === "number" && Number.isInteger(messageId)
+    ? { messageId }
+    : null;
+}
+
+async function loadPersistedBoard(
+  runtime: IAgentRuntime,
+  accountId: string,
+  chatId: number | string,
+  threadId?: number,
+): Promise<TaskBoardRecord | null> {
+  const memory = await runtime.getMemoryById(
+    boardMemoryId(runtime, accountId, chatId, threadId),
+  );
+  return parseBoardRecord(memory ?? undefined);
+}
+
+async function savePersistedBoard(
+  runtime: IAgentRuntime,
+  accountId: string,
+  chatId: number | string,
+  record: TaskBoardRecord,
+  threadId?: number,
+): Promise<void> {
+  const now = Date.now();
+  const id = boardMemoryId(runtime, accountId, chatId, threadId);
+  const memory: Memory = {
+    id,
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    roomId: boardRoomId(runtime, accountId, chatId, threadId),
+    worldId: boardWorldId(runtime, accountId, chatId),
+    createdAt: now,
+    unique: true,
+    content: {
+      text: `Telegram task board message ${record.messageId}`,
+      source: "telegram",
+      messageId: record.messageId,
+    },
+    metadata: {
+      type: "custom",
+      kind: TASK_BOARD_MEMORY_TYPE,
+      source: "telegram",
+      accountId,
+      chatId: String(chatId),
+      ...(threadId !== undefined ? { threadId } : {}),
+      updatedAt: now,
+    },
+  };
+
+  if (typeof runtime.upsertMemory === "function") {
+    await runtime.upsertMemory(memory, "messages");
+    return;
+  }
+  await runtime.createMemory(memory, "messages", true);
+}
+
 /**
  * Register the `/tasks` command. Holds one {@link TelegramTaskBoard} for the
  * bot's lifetime so repeated `/tasks` edit the same message in place. Returns
@@ -179,6 +339,7 @@ export function registerTelegramTaskBoardCommand(
   bot: TaskBoardBot,
   runtime: IAgentRuntime,
   messageManager: TaskBoardMessageManager,
+  accountId = "default",
 ): TelegramTaskBoard {
   const board = new TelegramTaskBoard({
     post: async (chatId, text, threadId) => {
@@ -192,6 +353,16 @@ export function registerTelegramTaskBoardCommand(
     edit: async (chatId, messageId, text, threadId) => {
       await messageManager.editMessage(chatId, messageId, text, threadId);
     },
+    pin: async (chatId, messageId, threadId) => {
+      await bot.telegram.pinChatMessage?.(chatId, messageId, {
+        disable_notification: true,
+        ...(threadId !== undefined ? { message_thread_id: threadId } : {}),
+      });
+    },
+    load: (chatId, threadId) =>
+      loadPersistedBoard(runtime, accountId, chatId, threadId),
+    save: (chatId, record, threadId) =>
+      savePersistedBoard(runtime, accountId, chatId, record, threadId),
   });
   bot.command("tasks", async (ctx) => {
     const chatId = ctx.chat?.id;

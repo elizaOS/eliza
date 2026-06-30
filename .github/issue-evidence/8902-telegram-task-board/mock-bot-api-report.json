@@ -1,0 +1,45 @@
+{
+  "issue": 8902,
+  "scenario": "/tasks post, pin, persist, restart, edit",
+  "calls": [
+    {
+      "method": "sendMessage",
+      "chatId": 100,
+      "textContains": "Task board",
+      "result": {
+        "message_id": 42
+      }
+    },
+    {
+      "method": "pinChatMessage",
+      "chatId": 100,
+      "messageId": 42,
+      "extra": {
+        "disable_notification": true,
+        "message_thread_id": 7
+      }
+    },
+    {
+      "method": "upsertMemory",
+      "tableName": "messages",
+      "metadata": {
+        "type": "custom",
+        "kind": "telegram_task_board",
+        "accountId": "ops",
+        "chatId": "100",
+        "threadId": 7
+      },
+      "content": {
+        "messageId": 42
+      }
+    },
+    {
+      "method": "editMessage",
+      "chatId": 100,
+      "messageId": 42,
+      "textContains": "Task board",
+      "messageThreadId": 7
+    }
+  ],
+  "proof": "plugins/plugin-telegram/src/task-board.test.ts drives registerTelegramTaskBoardCommand twice against the same memory map; the second fresh instance edits message 42 instead of posting."
+}

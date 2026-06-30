@@ -88,7 +88,7 @@ export interface TelegramCommandDescriptor {
  * id this bridge derives for role resolution is the same id the inbound message
  * pipeline assigns to the sender.
  */
-function scopedTelegramKey(key: string, accountId: string): string {
+export function scopedTelegramKey(key: string, accountId: string): string {
   return accountId === DEFAULT_ACCOUNT_ID ? key : `${accountId}:${key}`;
 }
 
