@@ -506,6 +506,22 @@ export async function loadBundledWakeWordModel(opts: {
 }
 
 /**
+ * A real on-device wake fire, shaped for the renderer `eliza:fused-wake`
+ * bridge (#10351). The standalone openWakeWord head is a single trained-head
+ * detector, so it produces only the terminal `head-fired` stage (no Stage-A
+ * generic candidate / Stage-B ASR confirmation — those producers do not exist
+ * here). The structural shape mirrors the renderer's `FusedWakeEvent`
+ * (`packages/ui/src/voice/fused-wake-bridge.ts`) without importing it, so the
+ * agent process stays free of any `@elizaos/ui` dependency; the transport layer
+ * forwards this verbatim to `emitFusedWake`.
+ */
+export interface WakeFireEvent {
+	stage: "head-fired";
+	/** Classifier probability at the firing frame, in [0, 1]. */
+	confidence: number;
+}
+
+/**
  * Streaming wake-word detector. Feed frames; `onWake` fires once per
  * detected utterance (refractory-debounced). The voice loop wires
  * `onWake` to "start a listening window" — exactly what a push-to-talk
@@ -520,12 +536,18 @@ export class OpenWakeWordDetector {
 	private readonly cfg: Required<WakeWordConfig>;
 	private cooldown = 0;
 	private activationStreak = 0;
-	private readonly onWake: () => void;
+	private readonly onWake: (confidence: number) => void;
 
 	constructor(args: {
 		model: WakeWordModel;
 		config?: WakeWordConfig;
-		onWake: () => void;
+		/**
+		 * Fired once per detected utterance with the classifier probability that
+		 * crossed `threshold` (the streaming `scoreFrame` value at the firing
+		 * frame). Callers bridge this to the renderer `eliza:fused-wake` event
+		 * (#10351) as `{ stage: "head-fired", confidence }`.
+		 */
+		onWake: (confidence: number) => void;
 	}) {
 		this.model = args.model;
 		const cfg = { ...DEFAULTS, ...(args.config ?? {}) };
@@ -560,7 +582,7 @@ export class OpenWakeWordDetector {
 			}
 			this.cooldown = this.cfg.refractoryFrames;
 			this.activationStreak = 0;
-			this.onWake();
+			this.onWake(p);
 			return true;
 		}
 		this.activationStreak = 0;

@@ -1302,8 +1302,12 @@ export class LocalInferenceEngine {
 			head?: string;
 			/** P(wake) firing threshold (openWakeWord default ~0.5). */
 			threshold?: number;
-			/** Called once per detected utterance (refractory-debounced). */
-			onWake?: () => void;
+			/**
+			 * Called once per detected utterance (refractory-debounced) with the
+			 * structured fire event. The desktop voice bootstrap forwards this over
+			 * the runtime→renderer channel to drive `eliza:fused-wake` (#10351).
+			 */
+			onWake?: (event: import("./voice/wake-word").WakeFireEvent) => void;
 		};
 		/**
 		 * Runtime reference for cancellation coordination (W3-9 F1).
@@ -1560,9 +1564,9 @@ export class LocalInferenceEngine {
 					...(opts.wakeWord.threshold !== undefined
 						? { config: { threshold: opts.wakeWord.threshold } }
 						: {}),
-					onWake: () => {
+					onWake: (confidence) => {
 						void this.prewarmConversation(opts.roomId, "");
-						opts.wakeWord?.onWake?.();
+						opts.wakeWord?.onWake?.({ stage: "head-fired", confidence });
 					},
 				});
 				wakeWord = detector;

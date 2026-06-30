@@ -17,6 +17,7 @@ packages/ui/src/components/chat/widgets/__e2e__/output-ftu/
 packages/ui/src/components/views/__e2e__/output-view-lifecycle/
 # Desktop bottom-bar e2e output (screenshots + webm — regenerate via test:bottombar-e2e; committed evidence lives in .github/issue-evidence/9953-windows-bottom-bar/)
 packages/ui/src/components/shell/__e2e__/output-bottombar/
+packages/ui/src/components/shell/__e2e__/output-fused-wake/
 
 .next/
 **/.next/**

@@ -1,0 +1,5 @@
+=== #10351 fused-wake — real libwakeword score (native reference) ===
+runtime: packages/native/plugins/wakeword-cpp/build/libwakeword.dylib (native-cpu)
+GGUFs:   wakeword v0.3.0 (HF elizaos/eliza-1@c544bb4c), sha256-verified
+clip:    'hey eliza' via macOS say + ffmpeg (2.5s lead-in + phrase + 1s tail), 16kHz mono f32
+peak P(wake) for 'hey eliza' clip: 1.0000
