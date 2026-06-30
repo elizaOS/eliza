@@ -5061,7 +5061,17 @@ export class AgentRuntime implements IAgentRuntime {
 			this.isSecretSwapEnabled() &&
 			!binaryModels.includes(resolvedModelKey)
 		) {
-			secretSwapSession = this.createSecretSwapSession();
+			// Reuse one session per turn so every model call in the turn shares a
+			// nonce and the action-execution boundary can restore what this call
+			// swapped. The session hangs off the turn-scoped trajectory context;
+			// calls outside a trajectory scope fall back to a per-call session
+			// (no egress restore — there is no execution boundary to restore at).
+			const trajectoryCtx = getTrajectoryContext();
+			secretSwapSession =
+				trajectoryCtx?.secretSwapSession ?? this.createSecretSwapSession();
+			if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
+				trajectoryCtx.secretSwapSession = secretSwapSession;
+			}
 			modelParams = secretSwapSession.substituteInValue(modelParams);
 			effectiveSystemPrompt =
 				effectiveSystemPrompt === undefined

@@ -39,6 +39,18 @@ export {
 	scrubIncomingMessageTextForStorage,
 } from "./incoming-message-security.js";
 export {
+	cardBrand,
+	detectPii,
+	ibanValid,
+	ipv4Valid,
+	luhnValid,
+	PII_DETECTOR_BY_KIND,
+	PII_DETECTORS,
+	type PiiDetector,
+	type PiiMatch,
+	ssnValid,
+} from "./pii-detectors.js";
+export {
 	createSecretsRedactor,
 	// Pattern-based redaction
 	getDefaultRedactPatterns,
