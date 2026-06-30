@@ -62,10 +62,32 @@ function navigateEvent(detail: Record<string, unknown>): CustomEvent {
   return new CustomEvent("eliza:navigate:view", { detail });
 }
 
+function installMemoryStorage(): void {
+  const values = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => {
+      values.delete(key);
+    },
+    setItem: (key, value) => {
+      values.set(key, String(value));
+    },
+  };
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+}
+
 describe("App navigate-view shell handler", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/");
-    window.localStorage.clear();
+    installMemoryStorage();
   });
 
   it("resolves paths and direct tabs for view manager navigation", () => {
@@ -105,6 +127,17 @@ describe("App navigate-view shell handler", () => {
     expect(fixture.setTab).toHaveBeenNthCalledWith(2, "views");
     expect(fixture.navigatePath).not.toHaveBeenCalled();
     expect(fixture.openDesktopTab).not.toHaveBeenCalled();
+  });
+
+  it("switches to the matching built-in tab for view paths", () => {
+    const fixture = createHandlerFixture();
+
+    fixture.handler(
+      navigateEvent({ viewId: "database", viewPath: "/apps/database" }),
+    );
+
+    expect(fixture.setTab).toHaveBeenCalledWith("database");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/database");
   });
 
   it("pins a view as a desktop tab and navigates to the view path", () => {

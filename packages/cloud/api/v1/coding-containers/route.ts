@@ -55,8 +55,8 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import {
   buildCodingContainerCreatePayload,
   buildCodingContainerSessionResponse,
@@ -212,11 +212,14 @@ async function createCodingContainer(
   // so this is the only real gate. ──
   const creditCheck = await checkAgentCreditGate(user.organization_id);
   if (!creditCheck.allowed) {
-    logger.warn("[CodingContainers API] provision blocked: insufficient credits", {
-      orgId: user.organization_id,
-      balance: creditCheck.balance,
-      required: AGENT_PRICING.MINIMUM_DEPOSIT,
-    });
+    logger.warn(
+      "[CodingContainers API] provision blocked: insufficient credits",
+      {
+        orgId: user.organization_id,
+        balance: creditCheck.balance,
+        required: AGENT_PRICING.MINIMUM_DEPOSIT,
+      },
+    );
     return c.json(
       {
         success: false,

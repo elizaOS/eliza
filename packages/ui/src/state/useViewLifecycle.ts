@@ -75,28 +75,30 @@ export function useViewLifecycle(
   useEffect(() => {
     if (!slot) return;
     handlersRef.current.onMount?.();
-    // Seed from the controller's current truth (it may have changed between
-    // render and effect).
-    const current = viewLifecycleController.getPhase(slot.viewId) ?? "active";
-    setPhase(current);
-    return slot.subscribe((transition) => {
-      setPhase(transition.phase);
+    let lastHandledPhase: ViewLifecyclePhase | null = null;
+    const handlePhase = (
+      nextPhase: ViewLifecyclePhase,
+      reason?: string,
+    ): void => {
+      if (lastHandledPhase === nextPhase) return;
+      lastHandledPhase = nextPhase;
+      setPhase(nextPhase);
       const h = handlersRef.current;
-      switch (transition.phase) {
+      switch (nextPhase) {
         case "active":
-          if (transition.reason === "resume") h.onResume?.();
+          if (reason === "resume") h.onResume?.();
           else h.onShow?.();
           break;
         case "inactive":
-          if (transition.reason === "resume") h.onResume?.();
+          if (reason === "resume") h.onResume?.();
           else h.onHide?.();
           break;
         case "paused":
           h.onHide?.();
-          h.onPause?.((transition.reason as EvictReason) ?? "app-pause");
+          h.onPause?.((reason as EvictReason) ?? "app-pause");
           break;
         case "evicted":
-          h.onEvict?.((transition.reason as EvictReason) ?? "lru");
+          h.onEvict?.((reason as EvictReason) ?? "lru");
           break;
         case "recovering":
           h.onRestore?.();
@@ -104,7 +106,15 @@ export function useViewLifecycle(
         default:
           break;
       }
+    };
+    const unsubscribe = slot.subscribe((transition) => {
+      handlePhase(transition.phase, transition.reason);
     });
+    // Seed from the controller's current truth AFTER subscribing. Otherwise a
+    // host `setActive()` effect can run between the seed read and subscription,
+    // causing telemetry hooks to miss the initial show transition on Android.
+    handlePhase(viewLifecycleController.getPhase(slot.viewId) ?? "active");
+    return unsubscribe;
   }, [slot]);
 
   return slot ? deriveState(phase) : ACTIVE_FALLBACK;

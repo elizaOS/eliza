@@ -32,7 +32,7 @@ import {
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
 } from "@elizaos/ui";
-import { useRegisterViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
+import { useRegisterViewChatBinding } from "@elizaos/ui/state";
 import { ArrowLeft, ScrollText, SquareTerminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CockpitTerminalPanel } from "./CockpitTerminalPanel";
@@ -240,13 +240,12 @@ export function CockpitSessionPane({
             className="shrink-0"
           />
         ) : null}
-        <div
-          className="flex shrink-0 items-center gap-1"
-          role="group"
-          aria-label={t("cockpit.session.viewMode", {
-            defaultValue: "View mode",
-          })}
-        >
+        <fieldset className="m-0 flex shrink-0 items-center gap-1 border-0 p-0">
+          <legend className="sr-only">
+            {t("cockpit.session.viewMode", {
+              defaultValue: "View mode",
+            })}
+          </legend>
           <button
             type="button"
             onClick={() => setView("transcript")}
@@ -277,7 +276,7 @@ export function CockpitSessionPane({
           >
             <SquareTerminal className="h-4 w-4" aria-hidden />
           </button>
-        </div>
+        </fieldset>
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">

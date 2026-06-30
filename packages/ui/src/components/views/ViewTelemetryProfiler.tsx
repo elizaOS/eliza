@@ -22,6 +22,7 @@ import {
   Profiler,
   type ProfilerOnRenderCallback,
   useCallback,
+  useEffect,
   useRef,
 } from "react";
 import { percentile } from "../../hooks/frame-budget";
@@ -74,13 +75,13 @@ export function ViewTelemetryProfiler({
   // attributable to the offending view.
   const commitWindow = useRef<number[]>([]);
   const lastStormSeverity = useRef<RenderTelemetrySeverity | null>(null);
+  renderCount.current += 1;
 
   // The Profiler callback runs at COMMIT time, not during render — useCallback
   // so the (commit-time) clock read is classified as deferred, not render-time
   // nondeterminism, matching the audit's treatment of callback args.
   const onRender = useCallback<ProfilerOnRenderCallback>(
     (_, phase, actualDuration, baseDuration, startTime, commitTime) => {
-      renderCount.current += 1;
       lastCommitMs.current = actualDuration;
       const durations = commitDurations.current;
       durations.push(actualDuration);
@@ -141,6 +142,10 @@ export function ViewTelemetryProfiler({
     },
     [viewId],
   );
+
+  useEffect(() => {
+    emit("active", "show");
+  }, [emit]);
 
   useViewLifecycle({
     onShow: () => emit("active", "show"),

@@ -1,4 +1,5 @@
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import { type Tab, tabFromPath } from "./navigation";
 import { recordRecentViewId } from "./view-recents";
 
 export type NavigateViewDetail = {
@@ -169,7 +170,7 @@ export function createNavigateViewHandler({
   navigatePath?: (path: string) => void;
   openDesktopTab: DesktopTabOpen;
   setActiveDesktopTabId: (viewId: string | null) => void;
-  setTab: (tab: "views" | "apps" | "chat") => void;
+  setTab: (tab: Tab) => void;
   setViewLayout?: (layout: ActiveViewLayout | null) => void;
 }): (event: Event) => void {
   return (event: Event) => {
@@ -224,6 +225,10 @@ export function createNavigateViewHandler({
     if (directTab) {
       setTab(directTab);
       return;
+    }
+    const tabForPath = tabFromPath(path);
+    if (tabForPath) {
+      setTab(tabForPath);
     }
     if (detail.action === "open-window" && detail.viewId) {
       const entry = desktopEntryForDetail(

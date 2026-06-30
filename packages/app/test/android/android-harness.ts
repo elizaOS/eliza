@@ -6,6 +6,7 @@
 // assertions exercise real render + real backend.
 import {
   type AndroidDevice,
+  type AndroidWebView,
   _android as android,
   type Browser,
   test as base,
@@ -23,6 +24,7 @@ import {
   foregroundApp,
   forwardWebViewCdp,
   resolveAdb,
+  resolveSerial,
 } from "../../scripts/lib/android-device.mjs";
 
 export const ORIGIN = "https://localhost";
@@ -61,12 +63,50 @@ function activeServerSeed(): string {
 
 export const SEED_STORAGE: Record<string, string> = {
   "eliza:onboarding-complete": "1",
+  "eliza:first-run-complete": "1",
   "eliza:ui-shell-mode": "native",
   "eliza:mobile-runtime-mode": BACKEND === "host" ? "remote" : "local",
   "elizaos:active-server": activeServerSeed(),
 };
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function findAppWebView(device: AndroidDevice): AndroidWebView | undefined {
+  return device.webViews().find((webview) => webview.pkg() === APP_ID);
+}
+
+async function waitForAppWebView(
+  device: AndroidDevice,
+  timeoutMs: number,
+): Promise<AndroidWebView> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    const existing = findAppWebView(device);
+    if (existing) {
+      return existing;
+    }
+    try {
+      return await device.webView({ pkg: APP_ID }, { timeout: 1_000 });
+    } catch (error) {
+      lastError = error;
+      await delay(250);
+    }
+  }
+  const existing = findAppWebView(device);
+  if (existing) {
+    return existing;
+  }
+  throw new Error(
+    `Timed out waiting for ${APP_ID} WebView after ${timeoutMs}ms: ${errorMessage(
+      lastError,
+    )}`,
+  );
+}
 
 type TestFixtures = { page: Page };
 type WorkerFixtures = {
@@ -84,10 +124,14 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     // "First argument must use the object destructuring pattern".
     // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture signature requires the empty `{}` pattern
     async ({}, use) => {
-      const device = await connectPlaywrightDevice(
-        android,
-        process.env.ANDROID_SERIAL,
-      );
+      const adb = resolveAdb();
+      const serial = resolveSerial(adb, process.env.ANDROID_SERIAL);
+      foregroundApp(adb, serial);
+      for (let i = 0; i < 30 && !appPid(adb, serial); i += 1) {
+        await delay(500);
+      }
+      await delay(1_500);
+      const device = await connectPlaywrightDevice(android, serial);
       await use(device);
       await device.close();
     },
@@ -109,64 +153,105 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         await delay(500);
       }
 
-      let page: Page;
+      let page: Page | undefined;
       try {
-        const webview = await device.webView(
-          { pkg: APP_ID },
-          { timeout: 60_000 },
-        );
+        const webview = await waitForAppWebView(device, 60_000);
         page = await webview.page();
       } catch (error) {
-        cdpPort = Number(process.env.ELIZA_ANDROID_WEBVIEW_CDP_PORT ?? 9222);
-        try {
-          forwardWebViewCdp(adb, device.serial(), cdpPort);
-          const target = await discoverWebViewTarget(cdpPort, {
-            timeoutMs: 60_000,
-          });
-          cdpBrowser = await chromium.connectOverCDP(
-            `http://127.0.0.1:${cdpPort}`,
-          );
-          const pages = cdpBrowser
-            .contexts()
-            .flatMap((context) => context.pages());
-          page =
-            pages.find((candidate) => candidate.url() === target.url) ??
-            pages.find((candidate) => candidate.url().startsWith(ORIGIN)) ??
-            pages[0];
-          if (!page) {
+        const nativeAttachError = error;
+        // Some Android WebView builds expose the devtools socket a little before
+        // Playwright can bind the target. Retry the supported `_android.webView`
+        // path before falling back to browser-level CDP, which older WebViews do
+        // not fully implement.
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          await delay(1_000);
+          try {
+            const webview = await waitForAppWebView(device, 5_000);
+            page = await webview.page();
+            break;
+          } catch {
+            // keep retrying the native attach path
+          }
+        }
+        if (page === undefined) {
+          cdpPort = Number(process.env.ELIZA_ANDROID_WEBVIEW_CDP_PORT ?? 9222);
+          try {
+            forwardWebViewCdp(adb, device.serial(), cdpPort);
+            const target = await discoverWebViewTarget(cdpPort, {
+              timeoutMs: 60_000,
+            });
+            cdpBrowser = await chromium.connectOverCDP(
+              `http://127.0.0.1:${cdpPort}`,
+            );
+            const pages = cdpBrowser
+              .contexts()
+              .flatMap((context) => context.pages());
+            page =
+              pages.find((candidate) => candidate.url() === target.url) ??
+              pages.find((candidate) => candidate.url().startsWith(ORIGIN)) ??
+              pages[0];
+            if (!page) {
+              throw new Error(
+                `Connected to Android WebView CDP on ${cdpPort}, but no page target was available after _android.webView() failed: ${errorMessage(
+                  nativeAttachError,
+                )}`,
+              );
+            }
+          } catch (fallbackError) {
+            await cdpBrowser?.close().catch(() => {});
+            adbRemoveForward(adb, device.serial(), cdpPort);
+            cdpPort = null;
+            cdpBrowser = null;
             throw new Error(
-              `Connected to Android WebView CDP on ${cdpPort}, but no page target was available after _android.webView() failed: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              `Unable to attach to Android WebView. ` +
+                `_android.webView failed first: ${errorMessage(nativeAttachError)}. ` +
+                `CDP fallback failed: ${errorMessage(fallbackError)}`,
             );
           }
-        } catch (fallbackError) {
-          await cdpBrowser?.close().catch(() => {});
-          adbRemoveForward(adb, device.serial(), cdpPort);
-          cdpPort = null;
-          cdpBrowser = null;
-          throw fallbackError;
         }
+      }
+
+      if (!page) {
+        throw new Error("Unable to attach to Android WebView: no page handle");
       }
 
       try {
         await page.waitForLoadState("domcontentloaded").catch(() => {});
-        await page.evaluate((seed: Record<string, string>) => {
+        await page.addInitScript((seed: Record<string, string>) => {
+          const globalObject = globalThis as typeof globalThis & {
+            process?: { env?: Record<string, string> };
+            __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
+          };
+          globalObject.process ??= {};
+          globalObject.process.env ??= {};
+          globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
+          globalObject.process.env.NODE_ENV = "test";
+          globalObject.__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
           for (const [key, value] of Object.entries(seed)) {
             localStorage.setItem(key, value);
           }
         }, SEED_STORAGE);
-        // Only reload into a clean shell if the app isn't already rendered — a
-        // reload re-bootstraps the connection and can dead-end on a stock device.
-        if (!(await isShellReady(page))) {
-          await page
-            .goto(`${ORIGIN}/`, {
-              waitUntil: "domcontentloaded",
-              timeout: 20_000,
-            })
-            .catch(() => {});
-          await waitForShellReady(page);
-        }
+        await page.evaluate((seed: Record<string, string>) => {
+          const globalObject = globalThis as typeof globalThis & {
+            process?: { env?: Record<string, string> };
+            __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
+          };
+          globalObject.process ??= {};
+          globalObject.process.env ??= {};
+          globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
+          globalObject.process.env.NODE_ENV = "test";
+          globalObject.__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
+          for (const [key, value] of Object.entries(seed)) {
+            localStorage.setItem(key, value);
+          }
+        }, SEED_STORAGE);
+        await page
+          .goto(`${ORIGIN}/`, {
+            waitUntil: "domcontentloaded",
+            timeout: 20_000,
+          })
+          .catch(() => {});
+        await waitForShellReady(page);
         await use(page);
       } finally {
         await cdpBrowser?.close().catch(() => {});
@@ -193,8 +278,19 @@ export async function isShellReady(page: Page): Promise<boolean> {
   const text = await page
     .evaluate(() => document.body?.innerText ?? "")
     .catch(() => "");
+  const firstRunChooser = await page
+    .locator('[data-testid="first-run-runtime-chooser"]')
+    .count()
+    .catch(() => 0);
+  const homeShell = await page
+    .locator('[data-testid="home-launcher-surface"]')
+    .count()
+    .catch(() => 0);
   const stillBooting = /Connecting to backend|INITIALIZING AGENT/i.test(text);
-  return !stillBooting && text.trim().length > 40;
+  return (
+    homeShell > 0 ||
+    (firstRunChooser === 0 && !stillBooting && text.trim().length > 40)
+  );
 }
 
 /** True once the React shell has rendered past the connecting/loading splash. */
@@ -208,6 +304,14 @@ export async function waitForShellReady(
         const text = await page
           .evaluate(() => document.body?.innerText ?? "")
           .catch(() => "");
+        const firstRunChooser = await page
+          .locator('[data-testid="first-run-runtime-chooser"]')
+          .count()
+          .catch(() => 0);
+        const homeShell = await page
+          .locator('[data-testid="home-launcher-surface"]')
+          .count()
+          .catch(() => 0);
         if (/BACKEND UNREACHABLE/i.test(text)) {
           throw new Error(
             `App reported backend unreachable: ${text.slice(0, 200)}`,
@@ -217,7 +321,10 @@ export async function waitForShellReady(
           /Connecting to backend|INITIALIZING AGENT|^\s*Loading\s*$/i.test(
             text,
           );
-        return !stillBooting && text.trim().length > 40;
+        return (
+          homeShell > 0 ||
+          (firstRunChooser === 0 && !stillBooting && text.trim().length > 40)
+        );
       },
       {
         timeout: timeoutMs,

@@ -41,11 +41,11 @@ import {
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
+import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
   hasStewardLoginLauncher,
   launchStewardLogin,
 } from "./cloud-steward-login";
-import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import { scrubPersistedActiveServerToken } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
 
