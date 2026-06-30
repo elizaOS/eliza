@@ -31,6 +31,7 @@ import {
   startMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
+import { startMemoryWatchdog } from "./memory-watchdog.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
@@ -5259,6 +5260,10 @@ export async function startEliza(
   bootTimer.summary();
   void recordBootTelemetry(bootTimer.getSummary());
   startMemorySampler({ intervalMs: 30_000 });
+  // Proactively bounce the runtime before an OOM kill when RSS climbs past the
+  // configured threshold (opt-in via ELIZA_MEMORY_WATCHDOG). Restarts cleanly
+  // through requestRestart()/the supervisor — never a silent process.exit.
+  startMemoryWatchdog();
   // #10203: a `ready`-point fault fires once the agent has reached steady boot.
   await maybeInjectFault("ready");
 
