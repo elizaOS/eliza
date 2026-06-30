@@ -23,7 +23,7 @@
  * Self-skips if PGlite is unavailable (mirrors the sibling suite).
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -51,6 +51,7 @@ const USER_ID = "00000000-0000-0000-0000-00000000ce02";
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let ledger: typeof import("../inference-billing-ledger");
+let creditsService: typeof import("../credits").creditsService;
 let pgliteReady = true;
 
 let chargeSeq = 0;
@@ -130,6 +131,7 @@ beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ledger = await import("../inference-billing-ledger");
+    ({ creditsService } = await import("../credits"));
 
     const ddl = [
       `CREATE TABLE IF NOT EXISTS organizations (
@@ -335,6 +337,14 @@ describe("admitInferenceChargeViaLedger — atomic admission gate", () => {
       if (!pgliteReady) return;
       // Balance $10, threshold $1, three concurrent $6 charges. At most one can be
       // admitted ($6 ≤ $10; the next sees available $4 < $6).
+      //
+      // NOTE: single-connection PGlite serializes these `Promise.all` admissions,
+      // so this asserts the ACCOUNTING (in-flight ≤ balance), not true parallel
+      // locking. The HARD bound under real multi-connection Postgres comes from the
+      // per-org `pg_advisory_xact_lock` in admitInferenceChargeViaLedger, which
+      // makes each admission read the in-flight SUM only after the prior one
+      // commits — see the module header. A bare cross-table SUM under FOR UPDATE
+      // would read a stale snapshot and over-admit.
       const results = await Promise.all(
         [0, 1, 2].map(() =>
           ledger.admitInferenceChargeViaLedger({
@@ -350,6 +360,36 @@ describe("admitInferenceChargeViaLedger — atomic admission gate", () => {
         .filter((r) => r.status === "pending")
         .reduce((s, r) => s + r.estimated, 0);
       expect(inflight).toBeLessThanOrEqual(10);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "admission accounts for in-flight via the pending rows themselves (self-correcting, no separate counter)",
+    async () => {
+      if (!pgliteReady) return;
+      // Admit $4 (in-flight $4 of $10). A second $7 is refused (10-4=6 < 7)...
+      await ledger.admitInferenceChargeViaLedger({
+        charge: charge(nextRequestId()),
+        estimatedCostUsd: 4,
+        thresholdUsd: 1,
+      });
+      const refused = await ledger.admitInferenceChargeViaLedger({
+        charge: charge(nextRequestId()),
+        estimatedCostUsd: 7,
+        thresholdUsd: 1,
+      });
+      expect(refused.admitted).toBe(false);
+      // ...but once the first SETTLES (leaves the pending set), headroom returns and
+      // the $7 is admitted — proving in-flight is the live SUM of pending rows.
+      const firstId = (await pendingRows())[0].request_id;
+      await ledger.createLedgerDebitSettler({ ...charge(firstId) })(4);
+      const nowOk = await ledger.admitInferenceChargeViaLedger({
+        charge: charge(nextRequestId()),
+        estimatedCostUsd: 5, // balance is now $6 after the $4 debit; 5 ≤ 6
+        thresholdUsd: 1,
+      });
+      expect(nowOk.admitted).toBe(true);
     },
     PGLITE_TIMEOUT,
   );
@@ -417,6 +457,53 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
       expect(await readBalance()).toBeCloseTo(10, 6);
       expect(await debitCount()).toBe(0);
       expect((await pendingRows())[0]).toMatchObject({ status: "settled", actual: 0 });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "fires the low-credit/auto-top-up/waifu notifications on a successful debit (parity with deductCredits)",
+    async () => {
+      if (!pgliteReady) return;
+      const notify = spyOn(creditsService, "notifyBalanceDecrease");
+      try {
+        const reqId = nextRequestId();
+        await ledger.admitInferenceChargeViaLedger({
+          charge: charge(reqId),
+          estimatedCostUsd: 3,
+          thresholdUsd: 1,
+        });
+        await ledger.createLedgerDebitSettler(charge(reqId))(2);
+        // The org drained $2 → it must get the same low-balance notifications every
+        // other billing path fires (so a hosted agent is told to pause, etc.).
+        expect(notify).toHaveBeenCalledTimes(1);
+        const [org, newBalance] = notify.mock.calls[0];
+        expect(org).toBe(ORG_ID);
+        expect(newBalance).toBeCloseTo(8, 6);
+      } finally {
+        notify.mockRestore();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "does NOT fire balance-decrease notifications when nothing was debited (settle(0) / uncollected)",
+    async () => {
+      if (!pgliteReady) return;
+      const notify = spyOn(creditsService, "notifyBalanceDecrease");
+      try {
+        const reqId = nextRequestId();
+        await ledger.admitInferenceChargeViaLedger({
+          charge: charge(reqId),
+          estimatedCostUsd: 3,
+          thresholdUsd: 1,
+        });
+        await ledger.createLedgerDebitSettler(charge(reqId))(0); // claims, charges nothing
+        expect(notify).not.toHaveBeenCalled();
+      } finally {
+        notify.mockRestore();
+      }
     },
     PGLITE_TIMEOUT,
   );
@@ -508,6 +595,57 @@ describe("sweepStalePendingInferenceChargesDb — cron backstop", () => {
       expect(stats.batches).toBeGreaterThanOrEqual(3);
       expect(await readBalance()).toBeCloseTo(95, 6);
       expect((await pendingRows()).every((r) => r.status === "settled")).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a dropped inline settle (row left pending) is recovered by the sweep — no lost charge",
+    async () => {
+      if (!pgliteReady) return;
+      // Admit but NEVER call the inline settler (simulates an evicted isolate /
+      // dropped waitUntil). With the OLD non-transactional code a crash could strand
+      // the row 'settled' with no debit; here the row stays 'pending' and is
+      // recoverable — the sweep charges the estimate once it ages past the grace.
+      const reqId = nextRequestId();
+      await ledger.admitInferenceChargeViaLedger({
+        charge: charge(reqId),
+        estimatedCostUsd: 5,
+        thresholdUsd: 1,
+      });
+      await dbWrite.execute(
+        `UPDATE inference_pending_charges SET enqueued_at = NOW() - INTERVAL '30 minutes' WHERE request_id = '${reqId}';`,
+      );
+      const stats = await ledger.sweepStalePendingInferenceChargesDb({ graceMs: 20 * 60 * 1000 });
+      expect(stats.settled).toBe(1);
+      expect(await readBalance()).toBeCloseTo(95, 6); // the $5 estimate recovered
+      expect(await debitCount()).toBe(1);
+      expect((await pendingRows())[0].status).toBe("settled");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "GCs terminal rows older than the retention window; keeps recent terminal + all pending",
+    async () => {
+      if (!pgliteReady) return;
+      // Two settled rows: one ancient, one fresh; plus a still-pending (young) row.
+      await insertPending(nextRequestId(), "1.000000", 60 * 1000); // young pending — keep
+      const oldSettled = nextRequestId();
+      const newSettled = nextRequestId();
+      await dbWrite.execute(
+        `INSERT INTO inference_pending_charges (request_id, organization_id, model, provider, billing_source, estimated_cost_usd, status, enqueued_at, settled_at)
+         VALUES ('${oldSettled}', '${ORG_ID}', 'm', 'p', 'platform', '1', 'settled', NOW() - INTERVAL '50 hours', NOW() - INTERVAL '49 hours'),
+                ('${newSettled}', '${ORG_ID}', 'm', 'p', 'platform', '1', 'uncollected', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour');`,
+      );
+      const stats = await ledger.sweepStalePendingInferenceChargesDb({
+        graceMs: 20 * 60 * 1000,
+        retentionMs: 24 * 60 * 60 * 1000,
+      });
+      expect(stats.gcDeleted).toBe(1); // only the 49h-old terminal row
+      const ids = (await pendingRows()).map((r) => r.request_id);
+      expect(ids).not.toContain(oldSettled); // GC'd
+      expect(ids).toContain(newSettled); // within retention → kept
     },
     PGLITE_TIMEOUT,
   );
