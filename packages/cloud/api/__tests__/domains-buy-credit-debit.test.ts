@@ -160,9 +160,9 @@ const app = new Hono();
 app.route("/api/v1/apps/:id/domains/buy", buyRoute);
 
 type DomainBuyResponseBody = {
-  success?: boolean;
-  code?: string;
-  domain?: string;
+  success?: unknown;
+  code?: unknown;
+  domain?: unknown;
 };
 
 function buy(domain = "example.com", appId = "app-1") {
@@ -171,6 +171,21 @@ function buy(domain = "example.com", appId = "app-1") {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ domain }),
   });
+}
+
+function isDomainBuyResponseBody(body: unknown): body is DomainBuyResponseBody {
+  return typeof body === "object" && body !== null;
+}
+
+async function readDomainBuyResponseBody(
+  res: Response,
+): Promise<DomainBuyResponseBody> {
+  const body = await res.json();
+  expect(isDomainBuyResponseBody(body)).toBe(true);
+  if (!isDomainBuyResponseBody(body)) {
+    throw new Error("Expected domain purchase response body to be an object");
+  }
+  return body;
 }
 
 describe("POST /apps/:id/domains/buy — credit debit gates registration", () => {
@@ -239,7 +254,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     });
 
     const res = await buy();
-    const body = (await res.json()) as DomainBuyResponseBody;
+    const body = await readDomainBuyResponseBody(res);
 
     expect(res.status).toBe(402);
     expect(body).toMatchObject({
@@ -261,7 +276,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     });
 
     const res = await buy();
-    const body = (await res.json()) as DomainBuyResponseBody;
+    const body = await readDomainBuyResponseBody(res);
 
     expect(res.status).toBe(402);
     expect(body).toMatchObject({
@@ -281,7 +296,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     });
 
     const res = await buy();
-    const body = (await res.json()) as DomainBuyResponseBody;
+    const body = await readDomainBuyResponseBody(res);
 
     expect(res.status).toBe(402);
     expect(body).toMatchObject({ code: "org_not_found" });
@@ -298,7 +313,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     registerDomain.mockResolvedValue({ registrationId: "reg-1" });
 
     const res = await buy();
-    const body = (await res.json()) as DomainBuyResponseBody;
+    const body = await readDomainBuyResponseBody(res);
 
     expect(res.status).toBe(200);
     expect(body).toMatchObject({

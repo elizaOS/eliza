@@ -51,9 +51,9 @@ const { clientMock } = vi.hoisted(() => ({
 }));
 vi.mock("../../api/client", () => ({ client: clientMock }));
 
-import { __renderThreadLineForParity } from "../shell/ContinuousChatOverlay";
 // MessageContent (ChatView path) and ThreadLine (overlay path) both render real
 // inline widgets; import them after the mocks are in place.
+import { __renderThreadLineForParity } from "../shell/ContinuousChatOverlay";
 import { MessageContent } from "./MessageContent";
 // Side effect: register the built-in inline widgets so both surfaces resolve them.
 import "./widgets/inline-builtins";

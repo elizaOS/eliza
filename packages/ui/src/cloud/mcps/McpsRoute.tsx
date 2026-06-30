@@ -4,9 +4,13 @@
  * Gates on the Steward session (the registry CRUD routes require auth), then
  * renders {@link McpsView}. The same {@link McpsSurface} backs both the
  * standalone route and the Settings-section wrapper, so they stay identical.
+ * `McpsView` sets the page header, so each entry point supplies a
+ * `PageHeaderProvider`: the standalone route wraps one here; the settings
+ * section gets it from `CloudSettingsSectionShell`.
  */
 
 import { useContext } from "react";
+import { PageHeaderProvider } from "../../cloud-ui";
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { LocalStewardAuthContext } from "../shell/StewardProvider";
@@ -32,5 +36,9 @@ export function McpsSurface() {
 
 /** Default export consumed by the cloud-route registry. */
 export default function McpsRoute() {
-  return <McpsSurface />;
+  return (
+    <PageHeaderProvider>
+      <McpsSurface />
+    </PageHeaderProvider>
+  );
 }

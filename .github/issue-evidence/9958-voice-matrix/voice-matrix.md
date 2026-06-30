@@ -1,6 +1,6 @@
 # Voice Live Matrix
 
-Generated: 2026-06-30T00:04:12.979Z
+Generated: 2026-06-30T00:39:27.069Z
 Host: darwin arm64 (Shaws-MacBook-Pro.local)
 
 | Cell | Status | Platform | Class | Probe / Result | Command |
@@ -16,8 +16,8 @@ Host: darwin arm64 (Shaws-MacBook-Pro.local)
 | `ios.talkmode.native-bridge` | pending | ios | native-bridge-unit | macOS Swift Package test toolchain is available | `swift test --disable-index-store --package-path plugins/plugin-native-talkmode/ios` |
 | `ios.swabble.native-bridge` | pending | ios | native-bridge-unit | macOS Swift Package test toolchain is available | `swift test --disable-index-store --package-path plugins/plugin-native-swabble/ios` |
 | `android.device.voice-roundtrip` | skip | android | mobile-live-voice | set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed | `bun run --cwd packages/app test:e2e:android:local` |
-| `android.talkmode.native-bridge` | skip | android | native-bridge-unit | packages/app/android is not generated; run packages/app cap:sync:android or build:android first | `./gradlew :elizaos-capacitor-talkmode:testDebugUnitTest` |
-| `android.swabble.native-bridge` | skip | android | native-bridge-unit | packages/app/android is not generated; run packages/app cap:sync:android or build:android first | `./gradlew :elizaos-capacitor-swabble:testDebugUnitTest` |
+| `android.talkmode.native-bridge` | pending | android | native-bridge-unit | Android voice bridge Gradle project exists | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest` |
+| `android.swabble.native-bridge` | pending | android | native-bridge-unit | Android voice bridge Gradle project exists | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest` |
 | `wake.openwakeword.real-head` | skip | linux | wakeword-device-gap | ELIZA_OPENWAKEWORD_REAL_READY is not set for a real wake-word head run | `bun run --cwd plugins/plugin-local-inference voice:workbench --real` |
 | `stt.stage-b.evaluation` | skip | android | stt-evaluation | Stage-B STT battery/latency evaluation needs paired iOS+Android device runners and power telemetry | `bun packages/scripts/voice-matrix.mjs --stage-b-eval-placeholder` |
 
@@ -25,7 +25,7 @@ Host: darwin arm64 (Shaws-MacBook-Pro.local)
 
 - Pass: 0
 - Fail: 0
-- Pending: 5
-- Skip: 10
+- Pending: 7
+- Skip: 8
 
 Hardware-unavailable cells are explicit `skip` rows. They are not evidence of platform coverage.

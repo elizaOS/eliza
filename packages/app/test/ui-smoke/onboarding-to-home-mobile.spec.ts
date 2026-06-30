@@ -53,7 +53,7 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
     await injectFullCapabilityHost(page);
-    await installHomeRoutes(page);
+    const state = await installHomeRoutes(page);
     // Fresh device: no persisted first-run completion.
     await seedAppStorage(page, { "eliza:first-run-complete": "" });
 
@@ -71,10 +71,12 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
       "Pixel 7 device descriptor must yield a touch-capable context",
     ).toBe(true);
 
-    // Tap (not click) the onboarding cards — the touch path through the WebView.
+    // Tap (not click) the inline choice buttons — the touch path through the
+    // WebView, inside the same floating ContinuousChatOverlay.
     const { surface } = await completeOnboardingToHome(
       page,
       (locator: Locator) => locator.tap(),
+      { state, tutorial: "skip" },
     );
 
     // Capture the populated mobile home landing.

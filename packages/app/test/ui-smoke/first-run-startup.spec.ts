@@ -7,11 +7,12 @@ import {
 } from "./helpers";
 
 // Every other ui-smoke spec seeds `eliza:first-run-complete = "1"`, so the
-// first-run surface (StartupScreen → FirstRunChat, the seeded "hey there! I'm
-// Eliza" greeting + in-chat runtime/provider ChoiceWidgets) never gets
-// render-telemetry coverage. That surface is exactly where the agent-start
-// render loop froze onboarding, so this spec lands on it with the guard armed
-// and drives the runtime selection that preceded the freeze.
+// in-chat first-run surface (#9952: the auto-opened ContinuousChatOverlay seeded
+// by the headless conductor — greeting + runtime/provider ChoiceWidgets) never
+// gets render-telemetry coverage. That surface is exactly where the agent-start
+// render loop once froze onboarding, so this spec lands on it with the guard
+// armed and drives the runtime selection that preceded the freeze. There is NO
+// separate full-screen onboarding surface anymore — onboarding IS the chat.
 
 async function fulfillJson(
   route: Route,
@@ -25,12 +26,14 @@ async function fulfillJson(
   });
 }
 
-// A full-capability host (real API base) so the first-run flow offers all three
-// runtimes — without it the surface falls back to cloud-only and the Remote
-// option is correctly hidden.
+// A full-capability host (real API base + Electrobun window marker) so the local
+// finish path would be reachable; the in-chat conductor seeds the same three
+// runtime choices (Cloud / On this device / Bring your own keys) regardless.
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
+      window.location.origin;
+    (window as unknown as Record<string, unknown>).__ELIZA_API_BASE__ =
       window.location.origin;
     (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
@@ -61,7 +64,7 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
   });
 }
 
-test("first-run flow renders without a render loop and lets the runtime be chosen", async ({
+test("in-chat first-run renders without a render loop and lets the runtime be chosen", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -73,50 +76,48 @@ test("first-run flow renders without a render loop and lets the runtime be chose
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  // The in-chat first-run flow renders inside the orange first-run background:
+  // The in-chat first-run flow renders inside the REAL floating chat overlay:
   // the agent greets first, then asks the runtime question as ChoiceWidgets.
-  const firstRun = page.getByTestId("first-run-chat");
-  await expect(firstRun).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId("first-run-greeting")).toBeVisible({
-    timeout: 15_000,
-  });
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
   await expect(
-    page.getByText("run your agent locally", { exact: false }),
+    chatOverlay.getByText("Let's get you set up", { exact: false }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    chatOverlay.getByText("where should your agent run", { exact: false }),
   ).toBeVisible({ timeout: 15_000 });
 
-  // The runtime question offers three in-chat ChoiceWidget options. Cloud is
-  // the recommended resting choice; Remote opens an inline connect form; Local
-  // advances to the provider sub-choice. (Remote is hidden on cloud-only hosts.)
-  const cloud = page.getByTestId("choice-cloud");
-  const remote = page.getByTestId("choice-remote");
-  const local = page.getByTestId("choice-local");
-  await expect(cloud).toBeVisible({ timeout: 15_000 });
-  await expect(remote).toBeVisible();
-  await expect(local).toBeVisible();
-
-  // Drive the Remote → Back round-trip a few times. Each pass re-renders the
-  // first-run selector — the same churn path that previously froze
-  // onboarding — without committing a runtime and leaving the surface.
-  for (let i = 0; i < 4; i++) {
-    await remote.click();
-    // The remote step exposes the agent URL + access-token fields.
-    const apiBase = page.getByTestId("first-run-remote-address");
-    await expect(apiBase).toBeVisible({ timeout: 10_000 });
-    await apiBase.fill("https://agent.example.com");
-    await page.getByTestId("first-run-remote-token").fill("");
-    await expect(page.getByTestId("choice-connect")).toBeVisible();
-    await page.getByTestId("choice-back").click();
-    await expect(cloud).toBeVisible({ timeout: 10_000 });
+  // The removed full-screen onboarding gate must NOT render — proof the surface
+  // is genuinely chat-first.
+  for (const removed of [
+    "first-run-chat",
+    "first-run-greeting",
+    "startup-first-run-background",
+  ]) {
+    await expect(page.getByTestId(removed)).toHaveCount(0);
   }
 
-  // Local advances to the provider sub-choice (Eliza Cloud vs on-device), the
-  // same re-render churn on the newer step.
-  await local.click();
-  await expect(page.getByTestId("choice-elizacloud")).toBeVisible({
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId("choice-on-device")).toBeVisible();
+  // The runtime question offers three in-chat ChoiceWidget options.
+  const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
+  const local = page.getByTestId("choice-__first_run__:runtime:local");
+  const other = page.getByTestId("choice-__first_run__:runtime:other");
+  await expect(cloud).toBeVisible({ timeout: 15_000 });
+  await expect(local).toBeVisible();
+  await expect(other).toBeVisible();
 
-  await expectNoRenderTelemetryErrors(page, "first-run flow");
-  await expect(firstRun).toBeVisible();
+  // Local advances to the provider sub-choice (on-device vs Eliza Cloud vs
+  // other) — the re-render churn on the newer step that previously froze.
+  await local.click();
+  await expect(
+    page.getByTestId("choice-__first_run__:provider:on-device"),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByTestId("choice-__first_run__:provider:elizacloud"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("choice-__first_run__:provider:other"),
+  ).toBeVisible();
+
+  await expectNoRenderTelemetryErrors(page, "in-chat first-run flow");
+  await expect(chatOverlay).toBeVisible();
 });

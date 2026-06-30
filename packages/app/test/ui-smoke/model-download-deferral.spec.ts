@@ -61,9 +61,9 @@ const DOWNLOAD_HUB_SNAPSHOT: Record<string, unknown> = {
 // on-device runtime, selecting it must NOT trap them on a download/progress
 // screen — onboarding finishes immediately and drops them into the main chat
 // view while the model download proceeds in the background.
-// Source of the behavior: use-first-run-controller.finishLocal() — it
+// Source of the behavior: first-run-finish.ts finishLocal() — it
 // `void autoDownloadRecommendedLocalModelInBackground(...)` (fire-and-forget)
-// then `completeFirstRun("chat")` without awaiting the download.
+// then persists the first-run profile without awaiting the download.
 
 async function fulfillJson(
   route: Route,
@@ -152,23 +152,37 @@ test("selecting on-device inference drops the user into chat while the model dow
   await seedAppStorage(page, { "eliza:first-run-complete": "" });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const onboarding = page.getByTestId("first-run-chat");
-  await expect(onboarding).toBeVisible({ timeout: 20_000 });
+  // #9952: onboarding is in-chat. The conductor greets first inside the REAL
+  // floating ContinuousChatOverlay and offers the runtime choice as inline
+  // ChoiceWidget buttons.
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
+  const runtimeChoice = page.getByTestId("choice-__first_run__:runtime:local");
+  await expect(runtimeChoice).toBeVisible({ timeout: 15_000 });
 
   // This device → on-device inference.
-  await page.getByTestId("choice-local").click();
-  const onDevice = page.getByTestId("choice-on-device");
+  await runtimeChoice.click();
+  const onDevice = page.getByTestId("choice-__first_run__:provider:on-device");
   await expect(onDevice).toBeVisible({ timeout: 10_000 });
   await onDevice.click();
 
-  // THE requirement: the user is taken into the main view — the onboarding
-  // surface is dismissed — rather than being parked on a blocking download
-  // screen. finishLocal() calls completeFirstRun("chat") synchronously after
-  // kicking the download off in the background.
-  await expect(onboarding).toBeHidden({ timeout: 25_000 });
+  // THE requirement: picking on-device does NOT park the user on a blocking
+  // download/progress screen. finishLocal() kicks the model download off in the
+  // background (fire-and-forget) and immediately advances the conductor to the
+  // tutorial-or-skip CHOICE — proof the user is never trapped on a download UI.
+  const skipTutorial = page.getByTestId("choice-__first_run__:tutorial:skip");
+  await expect(skipTutorial).toBeVisible({ timeout: 25_000 });
 
-  // And the download was deferred to the background (kicked off, not awaited).
+  // And the download was deferred to the background (kicked off, not awaited)
+  // before the user even reaches the tutorial step.
   await expect
     .poll(() => backgroundDownloadStarted, { timeout: 15_000 })
     .toBe(true);
+
+  // Completing the tutorial step flips first-run complete and drops the user
+  // into the main chat view with a usable composer (no blocking download).
+  await skipTutorial.click();
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 25_000,
+  });
 });

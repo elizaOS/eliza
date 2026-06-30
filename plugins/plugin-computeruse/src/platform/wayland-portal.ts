@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { copyFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { commandExists } from "./helpers.js";
 import { createPermissionDeniedError } from "./permissions.js";
 
@@ -225,7 +224,19 @@ export function portalFileUriToPath(uri: string): string {
       `Wayland screenshot portal returned a non-file URI: ${uri}`,
     );
   }
-  return fileURLToPath(uri);
+  // A Wayland portal always hands back a POSIX file path (the portal is
+  // Linux-only at runtime). Parse it host-independently rather than via
+  // node:url's fileURLToPath, which rejects a POSIX `file://` URI on Windows
+  // with "File URL path must be absolute" — that threw inside the otherwise
+  // cross-platform unit lane (and would crash any Windows-hosted caller). The
+  // WHATWG URL parse + percent-decode yields the same path Linux produced.
+  const { hostname, pathname } = new URL(uri);
+  if (hostname && hostname !== "localhost") {
+    throw new Error(
+      `Wayland screenshot portal returned a non-local file URI: ${uri}`,
+    );
+  }
+  return decodeURIComponent(pathname);
 }
 
 export const WAYLAND_PORTAL_DBUS_TARGET = {

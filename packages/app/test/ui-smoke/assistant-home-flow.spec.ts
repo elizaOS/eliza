@@ -481,7 +481,12 @@ async function openReadyWorkspaceChat(page: Page): Promise<void> {
 async function openReadyChat(page: Page, targetPath = "/"): Promise<void> {
   await openAppPath(page, targetPath);
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0);
-  await expect(page.getByTestId("first-run-chat")).toHaveCount(0);
+  // #9952: onboarding is in-chat. When the agent is ready (first-run complete)
+  // the conductor's runtime CHOICE must be absent from the live transcript —
+  // proof we are not gated on the in-chat onboarding.
+  await expect(
+    page.getByTestId("choice-__first_run__:runtime:cloud"),
+  ).toHaveCount(0);
   const composer = assistantComposer(page);
   await expect(composer).toBeVisible({ timeout: 15_000 });
   await expect(composer).toBeEnabled({ timeout: 30_000 });
@@ -740,7 +745,13 @@ test.describe("assistant home app flow", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
     await expect(page).not.toHaveURL(/first-run/, { timeout: 12_000 });
-    await expect(page.getByTestId("first-run-chat")).toBeVisible();
+    // #9952: onboarding IS the chat — the conductor greets first inside the REAL
+    // floating ContinuousChatOverlay; there is no separate full-screen surface.
+    const firstRunOverlay = page.getByTestId("continuous-chat-overlay");
+    await expect(firstRunOverlay).toBeVisible({ timeout: 20_000 });
+    await expect(
+      firstRunOverlay.getByText("Let's get you set up", { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");

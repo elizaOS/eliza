@@ -1,7 +1,7 @@
 {
   "schema": "eliza_voice_live_matrix_v1",
   "issue": 9958,
-  "generatedAt": "2026-06-30T00:04:12.979Z",
+  "generatedAt": "2026-06-30T00:39:27.069Z",
   "mode": "probe",
   "dimensions": {
     "platform": [
@@ -48,8 +48,8 @@
   "summary": {
     "pass": 0,
     "fail": 0,
-    "pending": 5,
-    "skip": 10
+    "pending": 7,
+    "skip": 8
   },
   "cells": [
     {
@@ -443,19 +443,21 @@
       "class": "native-bridge-unit",
       "command": [
         "./gradlew",
+        "-p",
+        "../../../scripts/android-voice-bridge-gradle",
         ":elizaos-capacitor-talkmode:testDebugUnitTest"
       ],
-      "cwd": "packages/app/android",
+      "cwd": "packages/app-core/platforms/android",
       "evidence": [
         "plugins/plugin-native-talkmode/android/src/test/java"
       ],
       "probe": {
-        "available": false,
-        "reason": "packages/app/android is not generated; run packages/app cap:sync:android or build:android first"
+        "available": true,
+        "reason": "Android voice bridge Gradle project exists"
       },
       "env": {},
       "execution": null,
-      "status": "skip"
+      "status": "pending"
     },
     {
       "id": "android.swabble.native-bridge",
@@ -471,19 +473,21 @@
       "class": "native-bridge-unit",
       "command": [
         "./gradlew",
+        "-p",
+        "../../../scripts/android-voice-bridge-gradle",
         ":elizaos-capacitor-swabble:testDebugUnitTest"
       ],
-      "cwd": "packages/app/android",
+      "cwd": "packages/app-core/platforms/android",
       "evidence": [
         "plugins/plugin-native-swabble/android/src/test/java"
       ],
       "probe": {
-        "available": false,
-        "reason": "packages/app/android is not generated; run packages/app cap:sync:android or build:android first"
+        "available": true,
+        "reason": "Android voice bridge Gradle project exists"
       },
       "env": {},
       "execution": null,
-      "status": "skip"
+      "status": "pending"
     },
     {
       "id": "wake.openwakeword.real-head",

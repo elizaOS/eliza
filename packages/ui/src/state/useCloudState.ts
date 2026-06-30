@@ -12,9 +12,6 @@
  * - `setActionNotice`        — from useLifecycleState, used for disconnect / auth notices
  * - `loadWalletConfig`       — from useWalletState, called after successful login
  * - `t`                      — translation function, used for auth-rejected notice key
- *
- * Note: `handleCloudFirstRunFinish` is kept in AppContext (one-liner that calls
- * `submitFirstRunAndComplete`, which is defined later in AppContext's render order).
  */
 
 import {
@@ -305,11 +302,6 @@ export function useCloudState({
   const elizaCloudLoginBusyRef = useRef(false);
   /** Tracks whether the auth-rejected notice has already been sent for the current rejection. */
   const elizaCloudAuthNoticeSentRef = useRef(false);
-  /**
-   * Forward ref so handleFirstRunNext (defined earlier in AppContext) can call
-   * handleCloudLogin (defined later).
-   */
-  const handleCloudLoginRef = useRef<() => Promise<void>>(async () => {});
 
   // ── Callbacks ──────────────────────────────────────────────────────
 
@@ -753,9 +745,6 @@ export function useCloudState({
     ],
   );
 
-  // Keep forward ref in sync so handleFirstRunNext can call it.
-  handleCloudLoginRef.current = handleCloudLogin;
-
   const handleCloudDisconnect = useCallback(
     async (opts?: { skipConfirmation?: boolean }): Promise<void> => {
       const MAIN_CONFIRM_DISCONNECT_MS = 300_000;
@@ -1030,7 +1019,6 @@ export function useCloudState({
     lastElizaCloudPollConnectedRef,
     elizaCloudLoginPollTimer,
     elizaCloudLoginBusyRef,
-    handleCloudLoginRef,
     // Callbacks
     pollCloudCredits,
     handleCloudLogin,

@@ -456,13 +456,19 @@ export function isStartupTerminal(state: StartupState): boolean {
  * of replacing the whole app with a full-screen loader until full `ready`.
  *
  * Deliberately FALSE for phases that legitimately own the whole screen — session
- * restore, backend polling, first-run, pairing — and for terminal `error`; those
- * still render StartupScreen. Effects that need a live runtime must stay gated on
- * agent readiness (`canRespond`), NOT on this — this un-gates RENDERING only.
+ * restore, backend polling, pairing — and for terminal `error`; those still
+ * render StartupScreen. `first-run-required` IS paintable: onboarding now happens
+ * IN the live chat (homescreen + auto-opened ContinuousChatOverlay seeded by the
+ * headless first-run conductor), not as a full-screen gate. Effects that need a
+ * live runtime must stay gated on agent readiness (`canRespond`), NOT on this —
+ * this un-gates RENDERING only.
  */
 export function isShellPaintable(phase: StartupPhaseValue): boolean {
   return (
-    phase === "starting-runtime" || phase === "hydrating" || phase === "ready"
+    phase === "first-run-required" ||
+    phase === "starting-runtime" ||
+    phase === "hydrating" ||
+    phase === "ready"
   );
 }
 

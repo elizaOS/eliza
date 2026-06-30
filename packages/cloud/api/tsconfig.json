@@ -33,6 +33,8 @@
       "@elizaos/cloud-shared/lib/*": ["../shared/src/lib/*"],
       "@elizaos/cloud-shared/types": ["../shared/src/types/index.ts"],
       "@elizaos/cloud-shared/types/*": ["../shared/src/types/*"],
+      "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
       "@elizaos/cloud-routing": ["../routing/src/index.ts"],
       "@elizaos/contracts": ["../../contracts/src/index.ts"],
       "@elizaos/contracts/*": ["../../contracts/src/*"],
@@ -44,6 +46,12 @@
       "@elizaos/shared/*": ["../../../packages/shared/src/*"],
       "@elizaos/security": ["../../security/src/index.ts"],
       "@elizaos/security/*": ["../../security/src/*"],
+      "@elizaos/plugin-cloud-apps": [
+        "../../../plugins/plugin-cloud-apps/src/index.ts"
+      ],
+      "@elizaos/plugin-cloud-apps/*": [
+        "../../../plugins/plugin-cloud-apps/src/*"
+      ],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": [

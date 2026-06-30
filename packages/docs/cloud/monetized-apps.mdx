@@ -9,7 +9,7 @@ Build an Eliza Cloud app, route user chat through the app-scoped endpoint, earn 
 
 ## Concepts
 
-- **Project**: Your deployable product workspace. For container hosting, use `project_name` as the stable project identifier.
+- **Project**: Your deployable product workspace. For container hosting, use `projectName` as the stable project identifier.
 - **App plugin**: An `@elizaos/app-*` package inside Eliza. This is code loaded by an Eliza runtime.
 - **Eliza Cloud app**: The Cloud app record created with `POST /api/v1/apps`. It owns app hosting metadata, marketplace/domain settings, chat routing, analytics, and monetization settings.
 
@@ -98,14 +98,15 @@ const cloud = new ElizaCloudClient({ apiKey: process.env.ELIZA_CLOUD_API_KEY });
 
 const { data: container } = await cloud.createContainer({
   name: "my-app",
-  project_name: "my-app",
-  image: "ghcr.io/acme/my-app:latest",
+  projectName: "my-app",
+  // apps-deploy is gated to first-party allowlisted images (ghcr.io/elizaos/*).
+  // Template apps default to this image automatically; build-from-repo is disabled.
+  image: "ghcr.io/elizaos/example-edad:showcase",
   port: 3000,
   cpu: 256,
-  memory: 512,
-  desired_count: 1,
-  health_check_path: "/health",
-  environment_vars: {
+  memoryMb: 512,
+  healthCheckPath: "/health",
+  environmentVars: {
     PORT: "3000",
     ELIZA_APP_ID: APP_ID,
     ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
