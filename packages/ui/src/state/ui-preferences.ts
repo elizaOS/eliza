@@ -49,8 +49,21 @@ export interface BackgroundConfig {
   shader?: ShaderConfig;
 }
 
-/** The default shader color — preserves the prior warm-orange home look. */
-export const DEFAULT_BACKGROUND_COLOR = "#ef5a1f";
+/**
+ * The default shader base: a warm near-black field (NOT a saturated orange
+ * wall). The home reads as a banked ember in a dark room, a deep brown-black
+ * substrate the orange glow breathes against, so content stays legible and the
+ * accent stays an accent. The old default (#ef5a1f) flooded the whole viewport
+ * with bright orange and washed every surface out.
+ */
+export const DEFAULT_BACKGROUND_COLOR = "#160d07";
+
+/**
+ * The ember glow hue layered over {@link DEFAULT_BACKGROUND_COLOR} by the
+ * shader: the warm orange that gives the dark field its banked-fire warmth
+ * without becoming the field itself. Matches the brand accent.
+ */
+export const DEFAULT_BACKGROUND_GLOW = "#ff6a1f";
 
 export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "shader",
@@ -74,15 +87,15 @@ export interface BackgroundPreset {
  * live, breathing shader field — not a flat fill.
  */
 export const BACKGROUND_PRESETS: readonly BackgroundPreset[] = [
-  { id: "orange", label: "Orange", color: DEFAULT_BACKGROUND_COLOR },
-  { id: "amber", label: "Amber", color: "#f59e0b" },
-  { id: "rose", label: "Rose", color: "#e11d48" },
-  { id: "red", label: "Red", color: "#dc2626" },
-  { id: "green", label: "Green", color: "#059669" },
-  { id: "olive", label: "Olive", color: "#65a30d" },
-  { id: "stone", label: "Stone", color: "#57534e" },
-  { id: "graphite", label: "Graphite", color: "#3f3f46" },
-  { id: "black", label: "Black", color: "#0a0a0a" },
+  { id: "ember", label: "Ember", color: DEFAULT_BACKGROUND_COLOR },
+  { id: "amber", label: "Amber", color: "#1a120a" },
+  { id: "rose", label: "Rose", color: "#190b0f" },
+  { id: "plum", label: "Plum", color: "#140b14" },
+  { id: "forest", label: "Forest", color: "#0b1410" },
+  { id: "olive", label: "Olive", color: "#11130a" },
+  { id: "stone", label: "Stone", color: "#16140f" },
+  { id: "graphite", label: "Graphite", color: "#101013" },
+  { id: "ink", label: "Ink", color: "#0a0a0c" },
   { id: "light", label: "Light", color: "#f4f4f5" },
 ];
 
