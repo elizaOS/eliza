@@ -53,17 +53,18 @@ Deploy a new container. Returns a container record and polling instructions.
 
 ### Request
 
+The request body is **camelCase** — the server validates with a strict schema that **silently drops unknown keys**, so a snake_case key (e.g. `environment_vars`) is discarded and your `ELIZA_APP_ID` never reaches the container.
+
 ```json
 {
   "name": "My App",
-  "project_name": "my-app",
-  "image": "ghcr.io/acme/my-app:latest",
+  "projectName": "my-app",
+  "image": "ghcr.io/elizaos/example-edad:showcase",
   "port": 3000,
   "cpu": 256,
-  "memory": 512,
-  "desired_count": 1,
-  "health_check_path": "/health",
-  "environment_vars": {
+  "memoryMb": 512,
+  "healthCheckPath": "/health",
+  "environmentVars": {
     "PORT": "3000",
     "ELIZA_APP_ID": "uuid-abc123"
   }
@@ -75,16 +76,15 @@ Deploy a new container. Returns a container record and polling instructions.
 | Parameter | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
 | `name` | string | yes | Display name. |
-| `project_name` | string | yes | Stable project identifier. |
+| `projectName` | string | no | Stable project identifier. |
 | `image` | string | yes | Full image reference, for example `ghcr.io/owner/repo:tag`. |
 | `port` | integer | no | Container port. Default: 3000. |
 | `cpu` | integer | no | CPU units. Default: 256. |
-| `memory` | integer | no | Memory in MB. Default: 512. |
-| `desired_count` | integer | no | Must be 1 on the current shared Docker pool. |
-| `health_check_path` | string | no | Health check endpoint. Default: `/health`. |
-| `environment_vars` | object | no | String environment variables. |
-| `persist_volume` | boolean | no | Mount project-scoped persistent storage at `/data`. |
-| `use_hetzner_volume` | boolean | no | Use a Hetzner Cloud volume when persistent volumes are enabled and configured. |
+| `memoryMb` | integer | no | Memory in MB. Default: 512. |
+| `healthCheckPath` | string | no | Health check endpoint. Default: `/health`. |
+| `environmentVars` | object | no | String environment variables (this is where `ELIZA_APP_ID` belongs). |
+| `persistVolume` | boolean | no | Mount project-scoped persistent storage at `/data`. |
+| `useHetznerVolume` | boolean | no | Use a Hetzner Cloud volume when persistent volumes are enabled and configured. |
 | `volume_size_gb` | integer | no | Declared volume size in GiB. Default: 10. |
 
 ### Response

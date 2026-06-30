@@ -17,7 +17,7 @@ An Eliza Cloud app provides:
 - **Monetization**: Creator markup for app-scoped chat usage.
 - **Domains and hosting metadata**: App URL, managed app domains, and custom domains.
 
-Use a **project** for deployable product workspace state and container `project_name`. Use the **Cloud app** `id` when calling `/api/v1/apps/{id}/chat`.
+Use a **project** for deployable product workspace state and container `projectName`. Use the **Cloud app** `id` when calling `/api/v1/apps/{id}/chat`.
 
 ## Launch Readiness
 
@@ -95,7 +95,7 @@ curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
 
 <Step title="Deploy your project">
 
-Deploy your project as a container with `POST /api/v1/containers` or the SDK `createContainer()` helper. Use `project_name` for the deployment identifier and pass the Cloud app ID through environment variables.
+Deploy your project as a container with `POST /api/v1/containers` or the SDK `createContainer()` helper. Use `projectName` for the deployment identifier and pass the Cloud app ID through environment variables.
 
 </Step>
 
@@ -159,7 +159,7 @@ Redeem available earnings for elizaOS tokens from [Dashboard -> Earnings](https:
 
 - Keep admin API keys on the server.
 - Forward user bearer tokens for user-facing app-scoped chat.
-- Store the Cloud app `id` separately from container `project_name`.
+- Store the Cloud app `id` separately from container `projectName`.
 - Patch `app_url` and `allowed_origins` after container deployment.
 - Treat `databaseMode: "isolated"` as the production default for apps that need
   persistence; verify the deployed image reads the injected `DATABASE_URL`.
