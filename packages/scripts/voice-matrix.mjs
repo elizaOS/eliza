@@ -37,10 +37,17 @@ const DIMENSIONS = {
   voices: ["owner", "enrolled-contact", "unknown", "multi-speaker"],
 };
 
+const UI_SMOKE_MATRIX_ENV = {
+  ELIZA_UI_SMOKE_SKIP_BUILD: "1",
+  ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1",
+  ELIZA_UI_SMOKE_SKIP_CORE_BUILD: "1",
+};
+
 const CELLS = [
   {
     id: "web.fake-mic.roundtrip",
-    title: "Web fake-device mic capture -> ASR -> agent -> TTS",
+    title:
+      "Web fake-device mic capture -> ASR -> agent -> local TTS + barge-in",
     platform: "web",
     dimensions: {
       transcriptionState: "off",
@@ -49,7 +56,7 @@ const CELLS = [
       noiseRejection: "quiet",
       voices: "owner",
     },
-    class: "live-client-audio",
+    class: "live-client-audio-barge-in",
     command: [
       "bun",
       "run",
@@ -58,7 +65,7 @@ const CELLS = [
       "test:e2e",
       "test/ui-smoke/voice-realaudio.spec.ts",
     ],
-    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    env: UI_SMOKE_MATRIX_ENV,
     evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
     probe: "web",
   },
@@ -83,7 +90,7 @@ const CELLS = [
       "test:e2e",
       "test/ui-smoke/transcript-realaudio.spec.ts",
     ],
-    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    env: UI_SMOKE_MATRIX_ENV,
     evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
     probe: "web",
   },
@@ -107,7 +114,7 @@ const CELLS = [
       "test:e2e",
       "test/ui-smoke/voice-workbench-respond-no-respond.spec.ts",
     ],
-    env: { ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1" },
+    env: UI_SMOKE_MATRIX_ENV,
     evidence: [
       ".github/issue-evidence/8785-voice-headful",
       "packages/app/test-results",
@@ -266,6 +273,7 @@ const CELLS = [
     command: [
       "swift",
       "test",
+      "--disable-index-store",
       "--package-path",
       "plugins/plugin-native-talkmode/ios",
     ],
@@ -287,6 +295,7 @@ const CELLS = [
     command: [
       "swift",
       "test",
+      "--disable-index-store",
       "--package-path",
       "plugins/plugin-native-swabble/ios",
     ],
@@ -323,8 +332,13 @@ const CELLS = [
       voices: "owner",
     },
     class: "native-bridge-unit",
-    command: ["./gradlew", ":elizaos-capacitor-talkmode:testDebugUnitTest"],
-    cwd: "packages/app/android",
+    command: [
+      "./gradlew",
+      "-p",
+      "../../../scripts/android-voice-bridge-gradle",
+      ":elizaos-capacitor-talkmode:testDebugUnitTest",
+    ],
+    cwd: "packages/app-core/platforms/android",
     evidence: ["plugins/plugin-native-talkmode/android/src/test/java"],
     probe: "androidGradle",
   },
@@ -340,8 +354,13 @@ const CELLS = [
       voices: "owner",
     },
     class: "native-bridge-unit",
-    command: ["./gradlew", ":elizaos-capacitor-swabble:testDebugUnitTest"],
-    cwd: "packages/app/android",
+    command: [
+      "./gradlew",
+      "-p",
+      "../../../scripts/android-voice-bridge-gradle",
+      ":elizaos-capacitor-swabble:testDebugUnitTest",
+    ],
+    cwd: "packages/app-core/platforms/android",
     evidence: ["plugins/plugin-native-swabble/android/src/test/java"],
     probe: "androidGradle",
   },
@@ -550,12 +569,14 @@ function probeCell(cell) {
       }
       return { available: true, reason: "Android voice runner enabled" };
     case "androidGradle": {
-      const androidDir = path.join(REPO_ROOT, "packages", "app", "android");
+      const androidDir = path.join(
+        REPO_ROOT,
+        cell.cwd ?? "packages/app-core/platforms/android",
+      );
       if (!fs.existsSync(androidDir)) {
         return {
           available: false,
-          reason:
-            "packages/app/android is not generated; run packages/app cap:sync:android or build:android first",
+          reason: `${path.relative(REPO_ROOT, androidDir)} is not generated; run packages/app cap:sync:android or build:android first`,
         };
       }
       const gradlew = path.join(
@@ -567,9 +588,20 @@ function probeCell(cell) {
           available: false,
           reason: "generated Android project has no Gradle wrapper",
         };
+      const bridgeProjectDir = path.join(
+        REPO_ROOT,
+        "packages",
+        "scripts",
+        "android-voice-bridge-gradle",
+      );
+      if (!fs.existsSync(path.join(bridgeProjectDir, "settings.gradle")))
+        return {
+          available: false,
+          reason: "Android voice bridge Gradle project is missing",
+        };
       return {
         available: true,
-        reason: "generated Android Gradle project exists",
+        reason: "Android voice bridge Gradle project exists",
       };
     }
     case "stageBStt":

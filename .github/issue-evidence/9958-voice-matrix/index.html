@@ -12,9 +12,9 @@ th{background:#f1f1f1;text-align:left}
 code{font-size:12px}
 </style>
 <h1>Voice Live Matrix</h1>
-<p>Generated 2026-06-29T21:45:41.259Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
-<p>Pass 0 · Fail 0 · Pending 5 · Skip 10</p>
-<table><thead><tr><th>Cell</th><th>Status</th><th>Platform</th><th>Class</th><th>Dimensions</th><th>Probe / Result</th><th>Command</th><th>Evidence</th></tr></thead><tbody><tr class="pending"><td><code>web.fake-mic.roundtrip</code><br>Web fake-device mic capture -&gt; ASR -&gt; agent -&gt; TTS</td><td>pending</td><td>web</td><td>live-client-audio</td><td>transcriptionState=off
+<p>Generated 2026-06-30T00:39:27.069Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
+<p>Pass 0 · Fail 0 · Pending 7 · Skip 8</p>
+<table><thead><tr><th>Cell</th><th>Status</th><th>Platform</th><th>Class</th><th>Dimensions</th><th>Probe / Result</th><th>Command</th><th>Evidence</th></tr></thead><tbody><tr class="pending"><td><code>web.fake-mic.roundtrip</code><br>Web fake-device mic capture -&gt; ASR -&gt; agent -&gt; local TTS + barge-in</td><td>pending</td><td>web</td><td>live-client-audio-barge-in</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
@@ -62,28 +62,28 @@ voices=owner</td><td>set ELIZA_VOICE_IOS_READY=1 after installing a current iOS 
 chimeIn=should-respond
 wakewordContext=already-listening-wake-inert
 noiseRejection=echo-self-voice
-voices=owner</td><td>macOS Swift Package test toolchain is available</td><td><code>swift test --package-path plugins/plugin-native-talkmode/ios</code></td><td>plugins/plugin-native-talkmode/ios/Tests</td></tr>
+voices=owner</td><td>macOS Swift Package test toolchain is available</td><td><code>swift test --disable-index-store --package-path plugins/plugin-native-talkmode/ios</code></td><td>plugins/plugin-native-talkmode/ios/Tests</td></tr>
 <tr class="pending"><td><code>ios.swabble.native-bridge</code><br>Swabble iOS wake-firing -&gt; JS bridge event contract</td><td>pending</td><td>ios</td><td>native-bridge-unit</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
-voices=owner</td><td>macOS Swift Package test toolchain is available</td><td><code>swift test --package-path plugins/plugin-native-swabble/ios</code></td><td>plugins/plugin-native-swabble/ios/Tests</td></tr>
+voices=owner</td><td>macOS Swift Package test toolchain is available</td><td><code>swift test --disable-index-store --package-path plugins/plugin-native-swabble/ios</code></td><td>plugins/plugin-native-swabble/ios/Tests</td></tr>
 <tr class="skip"><td><code>android.device.voice-roundtrip</code><br>Android device WebView real on-device STT -&gt; agent -&gt; TTS voice self-test</td><td>skip</td><td>android</td><td>mobile-live-voice</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
 voices=owner</td><td>set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed</td><td><code>bun run --cwd packages/app test:e2e:android:local</code></td><td>packages/app/test-results
 .github/issue-evidence</td></tr>
-<tr class="skip"><td><code>android.talkmode.native-bridge</code><br>TalkMode Android capture lifecycle, transcript, permission, and barge-in bridge contracts</td><td>skip</td><td>android</td><td>native-bridge-unit</td><td>transcriptionState=off
+<tr class="pending"><td><code>android.talkmode.native-bridge</code><br>TalkMode Android capture lifecycle, transcript, permission, and barge-in bridge contracts</td><td>pending</td><td>android</td><td>native-bridge-unit</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=already-listening-wake-inert
 noiseRejection=echo-self-voice
-voices=owner</td><td>packages/app/android is not generated; run packages/app cap:sync:android or build:android first</td><td><code>./gradlew :elizaos-capacitor-talkmode:testDebugUnitTest</code></td><td>plugins/plugin-native-talkmode/android/src/test/java</td></tr>
-<tr class="skip"><td><code>android.swabble.native-bridge</code><br>Swabble Android wake-firing -&gt; JS bridge event contract</td><td>skip</td><td>android</td><td>native-bridge-unit</td><td>transcriptionState=off
+voices=owner</td><td>Android voice bridge Gradle project exists</td><td><code>./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest</code></td><td>plugins/plugin-native-talkmode/android/src/test/java</td></tr>
+<tr class="pending"><td><code>android.swabble.native-bridge</code><br>Swabble Android wake-firing -&gt; JS bridge event contract</td><td>pending</td><td>android</td><td>native-bridge-unit</td><td>transcriptionState=off
 chimeIn=should-respond
 wakewordContext=idle-wake
 noiseRejection=quiet
-voices=owner</td><td>packages/app/android is not generated; run packages/app cap:sync:android or build:android first</td><td><code>./gradlew :elizaos-capacitor-swabble:testDebugUnitTest</code></td><td>plugins/plugin-native-swabble/android/src/test/java</td></tr>
+voices=owner</td><td>Android voice bridge Gradle project exists</td><td><code>./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest</code></td><td>plugins/plugin-native-swabble/android/src/test/java</td></tr>
 <tr class="skip"><td><code>wake.openwakeword.real-head</code><br>Real openWakeWord head wake-context cells</td><td>skip</td><td>linux</td><td>wakeword-device-gap</td><td>transcriptionState=on
 chimeIn=should-not-respond
 wakewordContext=mid-transcription-wake

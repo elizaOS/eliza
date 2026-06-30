@@ -1,7 +1,7 @@
 {
   "schema": "eliza_voice_live_matrix_v1",
   "issue": 9958,
-  "generatedAt": "2026-06-29T21:45:41.259Z",
+  "generatedAt": "2026-06-30T00:39:27.069Z",
   "mode": "probe",
   "dimensions": {
     "platform": [
@@ -48,13 +48,13 @@
   "summary": {
     "pass": 0,
     "fail": 0,
-    "pending": 5,
-    "skip": 10
+    "pending": 7,
+    "skip": 8
   },
   "cells": [
     {
       "id": "web.fake-mic.roundtrip",
-      "title": "Web fake-device mic capture -> ASR -> agent -> TTS",
+      "title": "Web fake-device mic capture -> ASR -> agent -> local TTS + barge-in",
       "platform": "web",
       "dimensions": {
         "transcriptionState": "off",
@@ -63,7 +63,7 @@
         "noiseRejection": "quiet",
         "voices": "owner"
       },
-      "class": "live-client-audio",
+      "class": "live-client-audio-barge-in",
       "command": [
         "bun",
         "run",
@@ -73,7 +73,9 @@
         "test/ui-smoke/voice-realaudio.spec.ts"
       ],
       "env": {
-        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1"
+        "ELIZA_UI_SMOKE_SKIP_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_CORE_BUILD": "1"
       },
       "evidence": [
         "packages/app/test-results",
@@ -108,7 +110,9 @@
         "test/ui-smoke/transcript-realaudio.spec.ts"
       ],
       "env": {
-        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1"
+        "ELIZA_UI_SMOKE_SKIP_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_CORE_BUILD": "1"
       },
       "evidence": [
         "packages/app/test-results",
@@ -143,7 +147,9 @@
         "test/ui-smoke/voice-workbench-respond-no-respond.spec.ts"
       ],
       "env": {
-        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1"
+        "ELIZA_UI_SMOKE_SKIP_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_VIEW_BUILD": "1",
+        "ELIZA_UI_SMOKE_SKIP_CORE_BUILD": "1"
       },
       "evidence": [
         ".github/issue-evidence/8785-voice-headful",
@@ -344,6 +350,7 @@
       "command": [
         "swift",
         "test",
+        "--disable-index-store",
         "--package-path",
         "plugins/plugin-native-talkmode/ios"
       ],
@@ -374,6 +381,7 @@
       "command": [
         "swift",
         "test",
+        "--disable-index-store",
         "--package-path",
         "plugins/plugin-native-swabble/ios"
       ],
@@ -435,19 +443,21 @@
       "class": "native-bridge-unit",
       "command": [
         "./gradlew",
+        "-p",
+        "../../../scripts/android-voice-bridge-gradle",
         ":elizaos-capacitor-talkmode:testDebugUnitTest"
       ],
-      "cwd": "packages/app/android",
+      "cwd": "packages/app-core/platforms/android",
       "evidence": [
         "plugins/plugin-native-talkmode/android/src/test/java"
       ],
       "probe": {
-        "available": false,
-        "reason": "packages/app/android is not generated; run packages/app cap:sync:android or build:android first"
+        "available": true,
+        "reason": "Android voice bridge Gradle project exists"
       },
       "env": {},
       "execution": null,
-      "status": "skip"
+      "status": "pending"
     },
     {
       "id": "android.swabble.native-bridge",
@@ -463,19 +473,21 @@
       "class": "native-bridge-unit",
       "command": [
         "./gradlew",
+        "-p",
+        "../../../scripts/android-voice-bridge-gradle",
         ":elizaos-capacitor-swabble:testDebugUnitTest"
       ],
-      "cwd": "packages/app/android",
+      "cwd": "packages/app-core/platforms/android",
       "evidence": [
         "plugins/plugin-native-swabble/android/src/test/java"
       ],
       "probe": {
-        "available": false,
-        "reason": "packages/app/android is not generated; run packages/app cap:sync:android or build:android first"
+        "available": true,
+        "reason": "Android voice bridge Gradle project exists"
       },
       "env": {},
       "execution": null,
-      "status": "skip"
+      "status": "pending"
     },
     {
       "id": "wake.openwakeword.real-head",
