@@ -78,6 +78,7 @@ export {
 	scoreMessages,
 } from "./features/messaging/triage";
 export { paymentsPlugin } from "./features/payments/index";
+export * from "./features/sub-agent-credentials/index";
 export * from "./inference-timing";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
