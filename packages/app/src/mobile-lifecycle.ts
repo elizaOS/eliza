@@ -23,6 +23,11 @@ export interface MobileLifecycleContext {
   handleDeepLink: (url: string) => void;
 }
 
+// There is one document, so there is one visibilitychange→lifecycle bridge.
+// Tracked at module scope so re-initialization (HMR / repeated init) replaces
+// the previous handler instead of leaking a second listener.
+let activeVisibilityHandler: (() => void) | null = null;
+
 export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   let keyboardListenersRegistered = false;
   let lifecycleListenersRegistered = false;
@@ -84,17 +89,40 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     if (lifecycleListenersRegistered) return;
     lifecycleListenersRegistered = true;
 
+    // Single source of truth for the foreground/background state so the
+    // Capacitor `appStateChange` listener and the `visibilitychange` fallback
+    // below never double-dispatch — each only fires on an actual transition.
+    let lastActive: boolean | null = null;
+    const setAppActive = (active: boolean): void => {
+      if (lastActive === active) return;
+      lastActive = active;
+      dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT);
+    };
+
     void Promise.resolve(
       CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-        if (isActive) {
-          dispatchAppEvent(APP_RESUME_EVENT);
-        } else {
-          dispatchAppEvent(APP_PAUSE_EVENT);
-        }
+        setAppActive(isActive);
       }),
     ).catch((error) => {
       logNativePluginUnavailable("App", error);
     });
+
+    // Robust pause/resume fallback. `document.visibilitychange` fires reliably on
+    // every surface (web, desktop, iOS/Android WebView) when the app is
+    // backgrounded/foregrounded — including when the Capacitor `App` plugin's
+    // `appStateChange` is delayed, missing, or (as observed on an Android
+    // device) reports the App plugin as "not implemented", in which case the
+    // listener above never registers and pause/resume would otherwise never
+    // fire — so APP_PAUSE_EVENT-driven work (e.g. pruning backgrounded views to
+    // reclaim memory) never runs on background. Deduped via `setAppActive` so it
+    // never double-fires alongside a working `appStateChange`.
+    if (activeVisibilityHandler) {
+      document.removeEventListener("visibilitychange", activeVisibilityHandler);
+    }
+    activeVisibilityHandler = () => {
+      setAppActive(document.visibilityState !== "hidden");
+    };
+    document.addEventListener("visibilitychange", activeVisibilityHandler);
 
     void Promise.resolve(
       CapacitorApp.addListener("backButton", ({ canGoBack }) => {
