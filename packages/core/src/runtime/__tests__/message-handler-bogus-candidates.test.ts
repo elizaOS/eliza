@@ -183,6 +183,29 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.reply).toBe("");
 	});
 
+	it("keeps the simple path for explanatory gerunds that are substantive answers", () => {
+		const replyText =
+			"Checking accounts are bank accounts designed for frequent deposits and withdrawals.";
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: [],
+				replyText,
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: REAL_ACTIONS },
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.contexts).toEqual(["simple"]);
+		expect(handler.plan.reply).toBe(replyText);
+	});
+
 	it("still promotes to planning when candidateActions contains AT LEAST ONE real action even with simple context", () => {
 		const handler = messageHandlerFromFieldResult(
 			{
