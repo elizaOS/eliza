@@ -3,6 +3,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 import * as realHelpersNs from "../../db/helpers";
+import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import type { DockerNode } from "../../db/repositories/docker-nodes";
@@ -44,6 +45,17 @@ mock.module("../../db/helpers", () => ({
 afterAll(() => {
   mock.module("../../db/helpers", () => realHelpers);
 });
+
+// provision()'s success path now re-enters the billable set via
+// agentBillingRepository.reactivateSandboxBillingAfterFunding (#10554) — a
+// dbWrite.update. This file swaps dbWrite for a transaction-only stub with no
+// `.update`, so stub the reactivation writer here (the singleton is shared with
+// eliza-sandbox.ts's import). The dedicated "re-enters billing" suite below
+// clears + asserts that provision() DOES invoke it on a successful provision.
+const reactivateBillingSpy = spyOn(
+  agentBillingRepository,
+  "reactivateSandboxBillingAfterFunding",
+).mockResolvedValue(undefined);
 
 const originalFetch = globalThis.fetch;
 const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
@@ -1515,6 +1527,97 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       markErrorSpy.mockRestore();
       ensureStartedSpy.mockRestore();
       getProviderSpy.mockRestore();
+    }
+  });
+
+  // #10554 finding 2 — free-compute leak. A successful provision MUST re-enter
+  // the billable set so a credit-suspended agent that a user tops up + resumes
+  // (via the user-facing routes that don't reactivate themselves) cannot run
+  // (status='running') permanently excluded from listBillableSandboxes = free
+  // dedicated compute. This drives the REAL provision() success path; the writer
+  // itself is proven against a real DB in agent-billing-reactivation.test.ts.
+  test("(6) a successful provision re-enters the billable set", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row = provisioningReadyRow();
+    const finalRow: AgentSandbox = { ...row, status: "running" };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => (data.status === "running" ? finalRow : { ...row, ...data }),
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const svc = new ElizaSandboxService();
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const create = mock(async () => providerHandle());
+    const stop = mock(async () => {});
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({ create, stop, checkHealth: async () => true } as SandboxProvider);
+    reactivateBillingSpy.mockClear();
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res.success).toBe(true);
+      expect(res.sandboxRecord).toBe(finalRow);
+      // The fix: provision() re-enters billing for the just-provisioned agent.
+      expect(reactivateBillingSpy).toHaveBeenCalledTimes(1);
+      expect(reactivateBillingSpy).toHaveBeenCalledWith(AGENT, expect.any(Date));
+      expect(create).toHaveBeenCalledTimes(1);
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
+  test("(7) a provision that never reaches running does NOT re-enter billing", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    // Lock lost AND row not running → bails ("already being provisioned") before
+    // the success block, so billing is NOT (re)activated for a non-provisioned agent.
+    const provisioningRow: AgentSandbox = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      status: "provisioning",
+      bridge_url: null,
+      health_url: null,
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      provisioningRow,
+    );
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(
+      undefined,
+    );
+    const provider: SandboxProvider = {
+      create: mock(async () => providerHandle()),
+      stop: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    reactivateBillingSpy.mockClear();
+    try {
+      const res = await new ElizaSandboxService(provider).provision(AGENT, ORG);
+      expect(res.success).toBe(false);
+      expect(reactivateBillingSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
     }
   });
 });
