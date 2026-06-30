@@ -19,6 +19,8 @@ type R = AgentRuntime & {
   };
 };
 
+let restoreFetch: (() => void) | undefined;
+
 export default scenario({
   lane: "pr-deterministic",
   id: "linear.search-issues",
@@ -39,11 +41,22 @@ export default scenario({
         const runtime = ctx.runtime as R;
         // Scoped fetch interceptor: redirect @linear/sdk's calls to a mock.
         const realFetch = globalThis.fetch;
-        globalThis.fetch = (async (
+        restoreFetch = () => {
+          if (globalThis.fetch === linearMockFetch) {
+            globalThis.fetch = realFetch;
+          }
+          restoreFetch = undefined;
+        };
+        const linearMockFetch = (async (
           input: RequestInfo | URL,
           init?: RequestInit,
         ) => {
-          const url = typeof input === "string" ? input : input.toString();
+          const url =
+            typeof input === "string"
+              ? input
+              : input instanceof Request
+                ? input.url
+                : input.toString();
           if (url.includes("api.linear.app")) {
             let query = "";
             try {
@@ -68,6 +81,7 @@ export default scenario({
           }
           return realFetch(input, init);
         }) as typeof fetch;
+        globalThis.fetch = linearMockFetch;
 
         process.env.LINEAR_API_KEY = "lin_api_test_dummy";
         runtime.setSetting?.("LINEAR_API_KEY", "lin_api_test_dummy");
@@ -142,6 +156,16 @@ export default scenario({
             times: 1,
           },
         );
+        return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore-linear-fetch",
+      apply: () => {
+        restoreFetch?.();
         return undefined;
       },
     },

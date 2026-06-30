@@ -5,9 +5,7 @@ import type {
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
-  Memory,
   ProviderDataRecord,
-  State,
 } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
@@ -174,35 +172,6 @@ function readOp(
     return "place_order";
   }
   return null;
-}
-
-function hasSelectedContext(
-  state: State | undefined,
-  contexts: readonly string[] = HYPERLIQUID_ACTION_CONTEXTS,
-): boolean {
-  const selected = new Set<string>();
-  const collect = (value: unknown) => {
-    if (!Array.isArray(value)) return;
-    for (const item of value) {
-      if (typeof item === "string") selected.add(item);
-    }
-  };
-  collect(
-    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  collect(
-    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  const contextObject = (state?.data as Record<string, unknown> | undefined)
-    ?.contextObject as
-    | {
-        trajectoryPrefix?: { selectedContexts?: unknown };
-        metadata?: { selectedContexts?: unknown };
-      }
-    | undefined;
-  collect(contextObject?.trajectoryPrefix?.selectedContexts);
-  collect(contextObject?.metadata?.selectedContexts);
-  return contexts.some((context) => selected.has(context));
 }
 
 async function fetchHyperliquidJson<T>(path: string): Promise<T> {
@@ -758,12 +727,9 @@ export const perpetualMarketAction: Action = {
       schema: { type: "number" },
     },
   ],
-  // Applicability = the finance/crypto/trading/payments context is active. Whether
-  // the user wants a perpetual-market read is the model's call (offered via the
-  // action description + semantic retrieval, in any language), not a hardcoded
-  // multilingual keyword list on the message text (#10470).
-  validate: async (_runtime, _message: Memory, state?: State) =>
-    hasSelectedContext(state),
+  // Applicability is enforced by contextGate. Keep validate non-semantic so
+  // planner state-shape drift cannot hide the action after routing selected it.
+  validate: async () => true,
   handler: async (runtime, _message, _state, options, callback) => {
     const op = readOp(options);
     if (!op) {
