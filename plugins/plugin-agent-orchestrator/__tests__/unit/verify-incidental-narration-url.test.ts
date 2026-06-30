@@ -142,30 +142,27 @@ describe("verify: incidental narration URLs (Bug B)", () => {
     "summarize this URL: https://example.com/some-doc-page",
     "read the link https://example.com/some-doc-page and tell me what it says",
     "fetch this endpoint and report back: https://example.com/api/data",
-  ])(
-    "does NOT verify INPUT-URL phrasing containing url/link/endpoint words: %s",
-    async (referenceText) => {
-      // The words "URL", "link", and "endpoint" are ambiguous and must NOT, on
-      // their own, mark a plain (non-artifact-shaped) input URL as a verifiable
-      // deliverable. Only hosting/serving/reachability/verify intent or an
-      // artifact-SHAPED URL counts. These input-fetch tasks must never probe
-      // their source URL or trigger a retry.
-      const narration = "Done. Here is the summary you asked for.";
-      const result = await annotateUnverifiedUrls(
-        narration,
-        undefined,
-        referenceText,
-        undefined,
-        undefined,
-        undefined,
-      );
+  ])("does NOT verify INPUT-URL phrasing containing url/link/endpoint words: %s", async (referenceText) => {
+    // The words "URL", "link", and "endpoint" are ambiguous and must NOT, on
+    // their own, mark a plain (non-artifact-shaped) input URL as a verifiable
+    // deliverable. Only hosting/serving/reachability/verify intent or an
+    // artifact-SHAPED URL counts. These input-fetch tasks must never probe
+    // their source URL or trigger a retry.
+    const narration = "Done. Here is the summary you asked for.";
+    const result = await annotateUnverifiedUrls(
+      narration,
+      undefined,
+      referenceText,
+      undefined,
+      undefined,
+      undefined,
+    );
 
-      expect(result.dead).toEqual([]);
-      expect(result.verifiedUrls).toEqual([]);
-      expect(result.text).toBe(narration);
-      expect(result.text).not.toContain("verification:");
-    },
-  );
+    expect(result.dead).toEqual([]);
+    expect(result.verifiedUrls).toEqual([]);
+    expect(result.text).toBe(narration);
+    expect(result.text).not.toContain("verification:");
+  });
 
   it("does NOT verify a CONSUME request that names an /apps/-shaped SOURCE url", async () => {
     // "summarize https://example.com/apps/foo/" — the URL is an input SOURCE the

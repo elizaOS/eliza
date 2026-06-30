@@ -23,8 +23,7 @@ import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // replaced (cf. users-me-wallet-attach.test.ts).
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 
-const requireUserOrApiKey =
-  mock<(c: unknown) => Promise<{ id: string }>>();
+const requireUserOrApiKey = mock<(c: unknown) => Promise<{ id: string }>>();
 const getById =
   mock<(id: string) => Promise<{ email: string | null } | undefined>>();
 const getByEmail =
@@ -73,9 +72,7 @@ mock.module("@/lib/utils/logger", () => ({
 let emailRoute: { default: { fetch: (req: Request) => Promise<Response> } };
 
 beforeAll(async () => {
-  emailRoute = (await import(
-    "../v1/user/email/route"
-  )) as typeof emailRoute;
+  emailRoute = (await import("../v1/user/email/route")) as typeof emailRoute;
 });
 
 function patchEmail(email: string) {

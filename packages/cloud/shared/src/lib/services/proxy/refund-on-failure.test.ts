@@ -18,20 +18,12 @@
  * modules are restored in `afterAll` to avoid leaking into later files.
  */
 
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Context } from "hono";
 import type { AppEnv } from "../../../types/cloud-worker-env";
+import * as authActual from "../../auth/workers-hono-auth";
 import * as creditsActual from "../credits";
 import * as pricingActual from "./pricing";
-import * as authActual from "../../auth/workers-hono-auth";
 
 const realCredits = { ...creditsActual };
 const realPricing = { ...pricingActual };
@@ -77,17 +69,17 @@ function makeContext(path: string, env: Record<string, unknown> = {}): Context<A
       url,
       header: (_name: string) => undefined,
     },
-    json: (body: unknown, status?: number) =>
-      Response.json(body, { status: status ?? 200 }),
+    json: (body: unknown, status?: number) => Response.json(body, { status: status ?? 200 }),
   } as unknown as Context<AppEnv>;
 }
 
 function mockUpstream(status: number, body = "{}") {
-  globalThis.fetch = mock(async () =>
-    new Response(body, {
-      status,
-      headers: { "Content-Type": "application/json" },
-    }),
+  globalThis.fetch = mock(
+    async () =>
+      new Response(body, {
+        status,
+        headers: { "Content-Type": "application/json" },
+      }),
   ) as unknown as typeof fetch;
 }
 

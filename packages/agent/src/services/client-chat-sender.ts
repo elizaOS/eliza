@@ -16,11 +16,11 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import type { ConversationMeta, ServerState } from "../api/server-types.ts";
 import {
   beginDelivery,
   deliveryIdentityFromContent,
 } from "../api/delivery-dedupe.ts";
+import type { ConversationMeta, ServerState } from "../api/server-types.ts";
 
 /**
  * Dashboard/REST chat sources that flow through `generateChatResponse` and can

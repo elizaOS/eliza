@@ -2,11 +2,11 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
 } from "./server-helpers-swarm.ts";
-import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 
 const runtime = {
   getService() {

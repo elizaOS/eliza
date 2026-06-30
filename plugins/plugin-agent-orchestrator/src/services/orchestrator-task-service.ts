@@ -39,6 +39,11 @@ import {
   resolveCodingAccountStrategy,
 } from "./coding-account-selection.js";
 import {
+  envelopeCorrection,
+  parseCompletionEnvelope,
+  summarizeEnvelope,
+} from "./completion-envelope.js";
+import {
   buildCompletionEvidenceString,
   type CompletionEvidenceBundle,
   classifyToolOutput,
@@ -46,11 +51,6 @@ import {
   type EvidenceSignal,
   renderChangeSetBody,
 } from "./completion-evidence.js";
-import {
-  envelopeCorrection,
-  parseCompletionEnvelope,
-  summarizeEnvelope,
-} from "./completion-envelope.js";
 import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
@@ -1739,7 +1739,11 @@ export class OrchestratorTaskService extends Service {
       }
 
       // 2. Independent read-only execution verifier (#8898).
-      const independent = await this.runIndependentVerify(taskId, doc, sessionId);
+      const independent = await this.runIndependentVerify(
+        taskId,
+        doc,
+        sessionId,
+      );
       if (independent) {
         if (independent.inconclusive) {
           // A verifier crash/empty verdict is never a pass — keep validating.
@@ -2070,7 +2074,9 @@ export class OrchestratorTaskService extends Service {
           } else if (event === "error") {
             clearTimeout(timer);
             const message = isRecord(data) ? str(data.message) : undefined;
-            reject(new Error(message ?? "independent verifier session errored"));
+            reject(
+              new Error(message ?? "independent verifier session errored"),
+            );
           }
         });
       });
