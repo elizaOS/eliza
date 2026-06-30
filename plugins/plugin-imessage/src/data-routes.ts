@@ -108,9 +108,24 @@ interface IMessageServiceLike {
   deleteContact(personId: string): Promise<boolean>;
 }
 
+function isIMessageServiceLike(service: unknown): service is IMessageServiceLike {
+  if (!service || typeof service !== "object") return false;
+  const candidate = service as Partial<IMessageServiceLike>;
+  return (
+    typeof candidate.getRecentMessages === "function" &&
+    (candidate.getMessages === undefined || typeof candidate.getMessages === "function") &&
+    typeof candidate.sendMessage === "function" &&
+    typeof candidate.getChats === "function" &&
+    typeof candidate.listAllContacts === "function" &&
+    typeof candidate.addContact === "function" &&
+    typeof candidate.updateContact === "function" &&
+    typeof candidate.deleteContact === "function"
+  );
+}
+
 function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
-  const raw = runtime.getService(IMESSAGE_SERVICE_NAME);
-  return (raw as unknown as IMessageServiceLike | null | undefined) ?? null;
+  const service = runtime.getService(IMESSAGE_SERVICE_NAME);
+  return isIMessageServiceLike(service) ? service : null;
 }
 
 /**

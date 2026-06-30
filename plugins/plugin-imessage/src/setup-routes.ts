@@ -73,9 +73,18 @@ function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
   return isConnectorSetupService(service) ? service : null;
 }
 
+function isIMessageServiceLike(service: unknown): service is IMessageServiceLike {
+  if (!service || typeof service !== "object") return false;
+  const candidate = service as Partial<IMessageServiceLike>;
+  return (
+    typeof candidate.isConnected === "function" &&
+    (candidate.getStatus === undefined || typeof candidate.getStatus === "function")
+  );
+}
+
 function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
-  const raw = runtime.getService(IMESSAGE_SERVICE_NAME);
-  return (raw as unknown as IMessageServiceLike | null | undefined) ?? null;
+  const service = runtime.getService(IMESSAGE_SERVICE_NAME);
+  return isIMessageServiceLike(service) ? service : null;
 }
 
 interface IMessageSetupDetail {
