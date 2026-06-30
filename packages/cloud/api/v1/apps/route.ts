@@ -11,7 +11,11 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appFactoryService } from "@/lib/services/app-factory";
-import { AppNameConflictError, appsService } from "@/lib/services/apps";
+import {
+  AppCreationLimitError,
+  AppNameConflictError,
+  appsService,
+} from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -77,7 +81,7 @@ app.post("/", async (c) => {
           allowed_origins: data.allowed_origins,
           logo_url: data.logo_url,
         },
-        { createGitHubRepo: !data.skipGitHubRepo },
+        { createGitHubRepo: data.skipGitHubRepo === false },
       );
 
       logger.info(`[Apps API] Created app: ${result.app.name}`, {
@@ -144,6 +148,21 @@ app.post("/", async (c) => {
             suggestedName: err.suggestedName,
           },
           409,
+        );
+      }
+      if (err instanceof AppCreationLimitError) {
+        logger.warn("[Apps API] App creation limit reached:", {
+          organizationId: err.organizationId,
+          limit: err.limit,
+        });
+        return c.json(
+          {
+            success: false,
+            error: err.message,
+            code: "app_creation_limit_reached",
+            limit: err.limit,
+          },
+          429,
         );
       }
       throw err;

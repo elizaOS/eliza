@@ -1,0 +1,6 @@
+
+ai.elizaos.app.ElizaAgentWatchdogPolicyInstrumentedTest:.....
+
+Time: 0.018
+
+OK (5 tests)

@@ -496,13 +496,19 @@ app.post("/", async (c) => {
     return anthropicError("authentication_error", message, 401);
   }
 
-  const appId = c.req.header("X-App-Id");
+  const requestedAppId = c.req.header("X-App-Id");
+  let appId: string | null = null;
   let useAppCredits = false;
   let monetizedApp: NonNullable<
     Awaited<ReturnType<typeof appsService.getById>>
   > | null = null;
-  if (appId) {
-    monetizedApp = (await appsService.getById(appId)) ?? null;
+  if (requestedAppId) {
+    monetizedApp =
+      (await appsService.getAuthorizedMonetizedAppForUser(
+        requestedAppId,
+        user,
+      )) ?? null;
+    appId = monetizedApp?.id ?? null;
     useAppCredits = Boolean(monetizedApp?.monetization_enabled);
   }
 
