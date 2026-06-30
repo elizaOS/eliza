@@ -41,7 +41,9 @@ function DrawerOverlay({
     <DrawerPrimitive.Overlay
       data-slot="drawer-overlay"
       className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
+        // A genuine scrim: deep, warm-tinted, and blurred so nothing behind the
+        // sheet reads through it (the prior bg-black/50 let content bleed).
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-[rgba(10,6,3,0.72)] backdrop-blur-[2px]",
         className,
       )}
       {...props}
@@ -60,7 +62,9 @@ function DrawerContent({
       <DrawerPrimitive.Content
         data-slot="drawer-content"
         className={cn(
-          "group/drawer-content fixed z-50 flex h-auto flex-col bg-neutral-950/95 text-white",
+          // SOLID warm-dark surface so the sheet is fully opaque over the ember
+          // field (no see-through). Matches --surface-1.
+          "group/drawer-content fixed z-50 flex h-auto flex-col bg-[#1d130c] text-white shadow-[0_-12px_48px_-12px_rgba(0,0,0,0.75)]",
           "data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-24 data-[vaul-drawer-direction=top]:max-h-[80vh] data-[vaul-drawer-direction=top]:border-b data-[vaul-drawer-direction=top]:border-white/10",
           "data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-24 data-[vaul-drawer-direction=bottom]:max-h-[80vh] data-[vaul-drawer-direction=bottom]:border-t data-[vaul-drawer-direction=bottom]:border-white/10",
           "data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:w-3/4 data-[vaul-drawer-direction=right]:border-l data-[vaul-drawer-direction=right]:border-white/10 data-[vaul-drawer-direction=right]:sm:max-w-sm",

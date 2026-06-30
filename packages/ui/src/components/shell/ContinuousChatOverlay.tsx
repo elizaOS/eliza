@@ -1295,14 +1295,21 @@ const ThreadLine = React.memo(function ThreadLine({
     "select-text [-webkit-touch-callout:default]",
     // Tapping a bubble with actions reveals its row (pointer affordance).
     bubbleInteractive && "cursor-pointer",
-    // #10698: no per-message fill — text floats transparently on the one
-    // shared panel glass. FLOAT_SHADOW + light text keep it legible; a
-    // hairline edge remains to define the item boundary.
+    // Overhaul: SOLID per-message fills so bubbles sit on the panel instead of
+    // letting the ember field bleed through (reverses #10698's transparent
+    // floats). User turn = warm-accented bubble; assistant turn = raised
+    // warm-dark surface. No pure black. FLOAT_SHADOW keeps text legible.
     floating
-      ? cn("border border-white/15 text-white", FLOAT_SHADOW)
+      ? cn(
+          "border",
+          isUser
+            ? "border-[rgba(255,106,31,0.28)] bg-[rgba(255,106,31,0.16)] text-white"
+            : "border-white/10 bg-[#2a1b11] text-white",
+          FLOAT_SHADOW,
+        )
       : isUser
-        ? "text-white"
-        : "text-white/90",
+        ? "bg-white/20 text-white"
+        : "bg-white/10 text-white/90",
   );
   const bubbleContent =
     isUser && editing ? (
@@ -4059,7 +4066,12 @@ export function ContinuousChatOverlay({
         aria-hidden="true"
         data-testid="chat-sheet-backdrop"
         data-active={sheetOpen ? "true" : "false"}
-        className="fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.68)_46%,rgba(0,0,0,0.78)_100%)]"
+        // Overhaul: a real warm ember scrim (radial, bottom-anchored) with a
+        // faint blur so the open chat reads on a solid dim field instead of
+        // letting the background bleed through. Outside-tap dismissal is NOT
+        // wired here on purpose: this element keeps pointerEvents:none (below)
+        // and the document-level pointerdown detector owns outside taps.
+        className="fixed inset-0 bg-[radial-gradient(120%_90%_at_50%_100%,rgba(20,12,7,0.72)_0%,rgba(12,7,4,0.84)_55%,rgba(8,5,3,0.9)_100%)] backdrop-blur-[2px]"
         // Opacity follows the live history height (motion value) — no re-render
         // during a drag. Pointer events stay disabled so background gestures
         // keep their original targets while chat is open.
@@ -4220,28 +4232,34 @@ export function ContinuousChatOverlay({
             aria-hidden="true"
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
-              // Frosted-glass chat panel: a blurred, dark-tinted scrim behind the
-              // whole conversation so the white transcript + composer text stays
-              // legible over ANY surface — the warm ambient home, a photo
-              // wallpaper, or a live view. Fades in with the panel (glassOpacity)
-              // so the collapsed pill stays chrome-free. Hairline edge catches the
-              // light; full-bleed drops the border for a true edge-to-edge sheet.
-              fullBleed ? "border-0" : "border border-white/22",
+              // SOLID warm-dark panel. The chat floats over the live ember field,
+              // so a transparent/border-only surface let the home widgets bleed
+              // straight through the open thread (the #1 "too transparent"
+              // complaint). The panel is now an opaque warm near-black with a
+              // warm hairline edge + a soft drop shadow that seats it above the
+              // field, so nothing behind it ever shows through. NOTE: the opaque
+              // fill is enforced by the inline backgroundColor below (inline wins
+              // over this class); this class supplies the edge + shadow.
+              fullBleed
+                ? "border-0 bg-[#1d130c]"
+                : "border border-white/12 bg-[#1d130c] shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.7)]",
             )}
             style={{
               opacity: glassOpacity,
               borderRadius: fullBleed ? 0 : panelRadius,
-              // Soft glass WITHOUT a GPU backdrop blur (#10698, #9141 battery
-              // gate): a dark translucent tint carries the contrast the removed
-              // blur used to add (bumped a touch to compensate), and a faint
-              // top-sheen gradient reads as glass. The battery gate bans the GPU
-              // backdrop blur, so it is intentionally absent. Inline (not a
-              // Tailwind class) so it renders identically in the raw-esbuild e2e.
+              // Overhaul: SOLID warm-dark fill (no translucency) so the ember
+              // field / home widgets can't bleed through the open thread (the #1
+              // "too transparent" complaint this commit fixes). Kept inline (not
+              // just the Tailwind bg-[#1d130c]) because inline wins and this is
+              // the value that actually renders. No GPU backdrop blur (#10698,
+              // #9141 battery gate) is needed anymore since the fill is opaque; a
+              // faint top-sheen gradient (backgroundImage below) still reads as
+              // glass. The collapsed pill stays chrome-free via glassOpacity fade.
               backgroundColor: fullBleed
-                ? "rgba(10,10,12,0.7)"
+                ? "#17100a"
                 : threadPresented
-                  ? "rgba(10,10,12,0.68)"
-                  : "rgba(10,10,12,0.52)",
+                  ? "#1d130c"
+                  : "#1d130c",
               backgroundImage:
                 "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 24%)",
               // Full-bleed: extend the glass UP through the safe-area-top so the
