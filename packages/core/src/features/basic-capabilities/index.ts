@@ -37,7 +37,6 @@ import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
-import { isExplicitSelfModificationRequest } from "../../should-respond.ts";
 import type { Role } from "../../types/environment.ts";
 import { EventType } from "../../types/events.ts";
 import type {
@@ -514,18 +513,7 @@ export function shouldRespond(
 		};
 	}
 
-	// 5. Clear self-modification requests should bypass the ignore-biased
-	// classifier even in group chat, but only for narrow personality/style
-	// update phrasing to avoid broad false positives.
-	if (isExplicitSelfModificationRequest(message.content.text || "")) {
-		return {
-			shouldRespond: true,
-			skipEvaluation: true,
-			reason: "explicit self-modification request",
-		};
-	}
-
-	// 6. All other cases: let the LLM decide
+	// 5. All other cases: let the LLM decide
 	// The LLM will handle: indirect questions, conversation context, etc.
 	return {
 		shouldRespond: false,

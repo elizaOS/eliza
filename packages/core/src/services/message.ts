@@ -134,7 +134,6 @@ import {
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
-import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
@@ -9470,20 +9469,7 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
-		// 5. Clear self-modification requests should bypass the ignore-biased
-		// classifier even in group chat, but only for narrow personality/style
-		// update phrasing to avoid broad false positives.
-		if (isExplicitSelfModificationRequest(message.content.text || "")) {
-			return {
-				shouldRespond: true,
-				skipEvaluation: true,
-				reason: "explicit self-modification request",
-				primaryContext: "social",
-				secondaryContexts: ["admin"],
-			};
-		}
-
-		// 6. All other cases are ambiguous enough to need the classifier.
+		// 5. All other cases are ambiguous enough to need the classifier.
 		// Lack of a platform mention is not proof the message isn't directed
 		// at the agent in a fast-moving group conversation.
 		return {
