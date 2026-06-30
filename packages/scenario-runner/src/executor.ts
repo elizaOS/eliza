@@ -451,13 +451,30 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
   }
 
   const mod = (await import(pkg)) as Record<string, unknown>;
+  const isPlugin = (value: unknown): value is Plugin => {
+    if (value === null || typeof value !== "object") return false;
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.name !== "string") return false;
+    // A Plugin carries at least one registrable surface; this distinguishes it
+    // from unrelated named exports that merely happen to have a `name` field.
+    return (
+      Array.isArray(obj.actions) ||
+      Array.isArray(obj.providers) ||
+      Array.isArray(obj.services) ||
+      Array.isArray(obj.evaluators) ||
+      Array.isArray(obj.routes) ||
+      typeof obj.init === "function" ||
+      typeof obj.models === "object"
+    );
+  };
+  // Known export names first, then any Plugin-shaped named export: roughly half
+  // of first-party plugins export only `const <name>Plugin` with no default,
+  // which the fixed-name lookup alone would fail to resolve.
   const candidate =
-    mod.default ?? mod.elizaPlugin ?? mod.plugin ?? mod.schedulingPlugin;
-  return candidate !== null &&
-    typeof candidate === "object" &&
-    typeof (candidate as { name?: unknown }).name === "string"
-    ? (candidate as Plugin)
-    : null;
+    [mod.default, mod.elizaPlugin, mod.plugin, mod.schedulingPlugin].find(
+      isPlugin,
+    ) ?? Object.values(mod).find(isPlugin);
+  return candidate ? (candidate as Plugin) : null;
 }
 
 function normalizeChannelType(value: unknown): ChannelType {
@@ -1901,6 +1918,11 @@ export async function runScenario(
     // Seeds may register fixture plugins, so check declared plugin requirements
     // after seeding and try to load package-named requirements that are present.
     const requiredPlugins = resolveRequiredPlugins(scenario);
+    // Track packages we successfully auto-loaded: a plugin's internal
+    // `plugin.name` often differs from its package name (e.g. "plugin-health",
+    // "@elizaos/plugin-linear-ts"), so a post-load name check can falsely report
+    // it as missing and skip a scenario whose required plugin is in fact loaded.
+    const autoLoaded = new Set<string>();
     for (const pkg of requiredPlugins) {
       if (!pkg.startsWith("@")) continue;
       if (pluginIsRegistered(runtime, pkg)) continue;
@@ -1908,6 +1930,7 @@ export async function runScenario(
         const candidate = await loadRequiredPlugin(pkg);
         if (candidate) {
           await runtime.registerPlugin(candidate);
+          autoLoaded.add(pkg);
         }
       } catch (err) {
         logger.debug(
@@ -1916,7 +1939,7 @@ export async function runScenario(
       }
     }
     const missing = requiredPlugins.filter(
-      (p) => !pluginIsRegistered(runtime, p),
+      (p) => !pluginIsRegistered(runtime, p) && !autoLoaded.has(p),
     );
     if (missing.length > 0) {
       report.status = "skipped";
