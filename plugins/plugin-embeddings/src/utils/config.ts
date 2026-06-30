@@ -26,9 +26,7 @@ export function getSetting(
   key: string,
   defaultValue?: string
 ): string | undefined {
-  return defaultValue === undefined
-    ? resolveSetting(runtime, key)
-    : resolveSetting(runtime, key, { defaultValue });
+  return resolveSetting(runtime, key, defaultValue === undefined ? {} : { defaultValue });
 }
 
 export function getNumericSetting(
