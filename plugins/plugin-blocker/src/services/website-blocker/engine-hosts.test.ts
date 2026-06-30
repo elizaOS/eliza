@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { SelfControlBlockMetadata } from "./engine.ts";
 import {
   buildSelfControlManagedHostsBlock,
   formatWebsiteList,
 } from "./engine.ts";
-import type { SelfControlBlockMetadata } from "./engine.ts";
 
 /**
  * Tests for the website-blocker ENFORCEMENT-content builder (#8801 / #9943).
@@ -16,7 +16,9 @@ const START = "# >>> eliza-selfcontrol >>>";
 const END = "# <<< eliza-selfcontrol <<<";
 const META_PREFIX = "# eliza-selfcontrol ";
 
-function meta(overrides: Partial<SelfControlBlockMetadata> = {}): SelfControlBlockMetadata {
+function meta(
+  overrides: Partial<SelfControlBlockMetadata> = {},
+): SelfControlBlockMetadata {
   return {
     version: 1,
     startedAt: "2026-01-01T00:00:00.000Z",
@@ -44,7 +46,10 @@ describe("buildSelfControlManagedHostsBlock", () => {
 
   it("prefers blockedWebsites over websites when present", () => {
     const block = buildSelfControlManagedHostsBlock(
-      meta({ websites: ["fallback.example"], blockedWebsites: ["actual.example"] }),
+      meta({
+        websites: ["fallback.example"],
+        blockedWebsites: ["actual.example"],
+      }),
     );
     // the sinkhole ENTRY uses blockedWebsites; `fallback.example` may still
     // appear inside the embedded metadata JSON, so assert on the host line.
@@ -72,7 +77,10 @@ describe("buildSelfControlManagedHostsBlock", () => {
       .split("\n")
       .find((l) => l.startsWith(META_PREFIX));
     expect(metaLine).toBeDefined();
-    expect(JSON.parse(metaLine!.slice(META_PREFIX.length))).toEqual(m);
+    if (!metaLine) {
+      throw new Error("missing metadata line");
+    }
+    expect(JSON.parse(metaLine.slice(META_PREFIX.length))).toEqual(m);
   });
 });
 
@@ -83,6 +91,8 @@ describe("formatWebsiteList", () => {
   });
 
   it("summarizes more than three with an 'and N more' tail", () => {
-    expect(formatWebsiteList(["a", "b", "c", "d", "e"])).toBe("a, b, c, and 2 more");
+    expect(formatWebsiteList(["a", "b", "c", "d", "e"])).toBe(
+      "a, b, c, and 2 more",
+    );
   });
 });
