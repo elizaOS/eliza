@@ -3,13 +3,50 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Z_FIRST_RUN_CHOOSER } from "../lib/floating-layers";
-import { FirstRunRuntimeChooserSurface } from "./FirstRunRuntimeChooser";
+import {
+  FirstRunRuntimeChooserSurface,
+  isSyntheticFirstRunChoiceTurn,
+} from "./FirstRunRuntimeChooser";
 
 afterEach(() => {
   cleanup();
 });
 
 describe("FirstRunRuntimeChooserSurface", () => {
+  it("identifies synthetic in-chat first-run choice turns", () => {
+    expect(
+      isSyntheticFirstRunChoiceTurn({
+        id: "first-run:greeting",
+        content: "[CHOICE:first-run id=runtime]",
+      }),
+    ).toBe(true);
+    expect(
+      isSyntheticFirstRunChoiceTurn({
+        id: "first-run:error:123",
+        content:
+          "Couldn't connect.\n\n[CHOICE:first-run id=runtime]\n__first_run__:runtime:cloud=Eliza Cloud\n[/CHOICE]",
+      }),
+    ).toBe(true);
+    expect(
+      isSyntheticFirstRunChoiceTurn({
+        id: "first-run:provider",
+        content: "[CHOICE:first-run id=provider]",
+      }),
+    ).toBe(true);
+    expect(
+      isSyntheticFirstRunChoiceTurn({
+        id: "first-run:status:Saving first-run profile",
+        content: "Saving first-run profile",
+      }),
+    ).toBe(false);
+    expect(
+      isSyntheticFirstRunChoiceTurn({
+        id: "regular-message",
+        content: "[CHOICE:first-run id=runtime]",
+      }),
+    ).toBe(false);
+  });
+
   it("shows the clean runtime picker with advanced setup collapsed", () => {
     render(
       <FirstRunRuntimeChooserSurface

@@ -1,5 +1,6 @@
 import { ChevronDown, Cloud, Cpu, KeyRound, Loader2 } from "lucide-react";
 import * as React from "react";
+import type { ConversationMessage } from "../api";
 import { ElizaMark } from "../components/brand/eliza-mark";
 import { getBootConfig } from "../config/boot-config-store";
 import { Z_FIRST_RUN_CHOOSER } from "../lib/floating-layers";
@@ -14,6 +15,17 @@ import {
 type RuntimeChoice = "cloud" | "local" | "other";
 type ProviderChoice = "on-device" | "elizacloud" | "other";
 type ChooserStep = "runtime" | "provider";
+
+const FIRST_RUN_CHOICE_PATTERN = /\[CHOICE:first-run\b/;
+
+export function isSyntheticFirstRunChoiceTurn(
+  message: Pick<ConversationMessage, "id" | "content">,
+): boolean {
+  return (
+    message.id.startsWith("first-run:") &&
+    FIRST_RUN_CHOICE_PATTERN.test(message.content)
+  );
+}
 
 type ChoiceDefinition = {
   id: RuntimeChoice;
@@ -301,31 +313,25 @@ export function FirstRunRuntimeChooser(): React.ReactElement | null {
   const active =
     firstRunComplete === false && startupPhase === "first-run-required";
 
-  const removeSyntheticChoiceTurns = React.useCallback(
-    (...ids: string[]) => {
-      const stale = new Set(ids);
-      setConversationMessages((previous) => {
-        let changed = false;
-        const next = previous.filter((message) => {
-          const remove = stale.has(message.id);
-          changed ||= remove;
-          return !remove;
-        });
-        return changed ? next : previous;
+  const removeSyntheticChoiceTurns = React.useCallback(() => {
+    setConversationMessages((previous) => {
+      let changed = false;
+      const next = previous.filter((message) => {
+        const remove = isSyntheticFirstRunChoiceTurn(message);
+        changed ||= remove;
+        return !remove;
       });
-    },
-    [setConversationMessages],
-  );
+      return changed ? next : previous;
+    });
+  }, [setConversationMessages]);
 
   React.useEffect(() => {
     if (!active || dismissed) return;
     const hasSyntheticChoiceTurns = conversationMessages.some(
-      (message) =>
-        message.id === "first-run:greeting" ||
-        message.id === "first-run:provider",
+      isSyntheticFirstRunChoiceTurn,
     );
     if (!hasSyntheticChoiceTurns) return;
-    removeSyntheticChoiceTurns("first-run:greeting", "first-run:provider");
+    removeSyntheticChoiceTurns();
   }, [active, conversationMessages, dismissed, removeSyntheticChoiceTurns]);
 
   React.useEffect(() => {
@@ -365,7 +371,7 @@ export function FirstRunRuntimeChooser(): React.ReactElement | null {
           setError("Setup is still initializing. Try again in a moment.");
           return;
         }
-        removeSyntheticChoiceTurns("first-run:greeting");
+        removeSyntheticChoiceTurns();
         if (choice === "cloud") {
           void handleCloudLogin(cloudAuthWindow).catch(() => {
             // The cloud state hook owns the user-facing login error; the
@@ -388,7 +394,7 @@ export function FirstRunRuntimeChooser(): React.ReactElement | null {
           setError("Setup is still initializing. Try again in a moment.");
           return;
         }
-        removeSyntheticChoiceTurns("first-run:provider");
+        removeSyntheticChoiceTurns();
         setDismissed(true);
       }}
       onBack={() => {

@@ -1,16 +1,11 @@
 // ============================================================================
-// In-chat first-run conductor (headless).
+// First-run conductor (headless).
 //
-// Onboarding is PART OF THE CHAT. When `firstRunComplete === false` this hook
-// seeds synthetic assistant turns into the SAME live transcript the floating
-// `ContinuousChatOverlay` renders (greeting → runtime CHOICE → Cloud OAuth via
-// the message `secretRequest` field → provider CHOICE → tutorial CHOICE), and
-// routes the user's first-run-scoped picks to the headless finish use case
-// (`first-run-finish.ts`). It owns NO presentation — the existing
-// `InlineWidgetText` + `SensitiveRequestBlock` renderers draw the widgets for
-// free from message fields. It registers an action handler on the first-run
-// channel so the chat's single send funnel short-circuits first-run picks
-// before they hit the server.
+// The floating FirstRunRuntimeChooser owns the runtime/provider UI. This hook
+// seeds status/tutorial turns into the live transcript and routes
+// first-run-scoped picks to the headless finish use case (`first-run-finish.ts`).
+// It registers an action handler on the first-run channel so first-run picks
+// short-circuit before they hit the server.
 //
 // Provisioning runs exactly once and POSTs /api/first-run exactly once (the
 // finish module funnels + idempotency-guards it). The real
@@ -45,8 +40,7 @@ import {
   runFirstRunFinish,
 } from "./first-run-finish";
 
-const GREETING =
-  "Hi — I'm Eliza. Let's get you set up. First, where should your agent run?";
+const GREETING = "Hi — I'm Eliza. Choose a setup option to continue.";
 
 /** User-facing recovery message when a cloud provisioning call rejects. */
 function cloudFailureMessage(err: unknown): string {
@@ -88,31 +82,12 @@ function newestLocalBackup(
   );
 }
 
-const RUNTIME_CHOICE = [
-  "[CHOICE:first-run id=runtime]",
-  `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)`,
-  `${FIRST_RUN_ACTION_PREFIX}runtime:local=On this device`,
-  `${FIRST_RUN_ACTION_PREFIX}runtime:other=Bring your own keys`,
-  "[/CHOICE]",
-].join("\n");
-
 const BACKUP_RESTORE_CHOICE = [
   "[CHOICE:first-run id=backup-restore]",
   `${FIRST_RUN_ACTION_PREFIX}backup-restore:latest=Restore latest backup`,
   `${FIRST_RUN_ACTION_PREFIX}backup-restore:start-fresh=Start fresh`,
   "[/CHOICE]",
 ].join("\n");
-
-function providerChoice(opts: { defaultId: "on-device" | "other" }): string {
-  const onDevice = `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (recommended)`;
-  const cloud = `${FIRST_RUN_ACTION_PREFIX}provider:elizacloud=Eliza Cloud inference`;
-  const other = `${FIRST_RUN_ACTION_PREFIX}provider:other=Other / configure in Settings`;
-  const ordered =
-    opts.defaultId === "on-device"
-      ? [onDevice, cloud, other]
-      : [other, onDevice, cloud];
-  return ["[CHOICE:first-run id=provider]", ...ordered, "[/CHOICE]"].join("\n");
-}
 
 const TUTORIAL_CHOICE = [
   "[CHOICE:first-run id=tutorial]",
@@ -217,9 +192,7 @@ export function useFirstRunConductor(): void {
   }, [seedTurn]);
 
   const seedRuntimeChoice = React.useCallback(() => {
-    seedTurn(
-      makeTurn("first-run:greeting", `${GREETING}\n\n${RUNTIME_CHOICE}`),
-    );
+    seedTurn(makeTurn("first-run:greeting", GREETING));
   }, [seedTurn]);
 
   const seedBackupRestoreChoice = React.useCallback(
@@ -280,12 +253,7 @@ export function useFirstRunConductor(): void {
 
   const seedError = React.useCallback(
     (message: string) => {
-      seedTurn(
-        makeTurn(
-          `first-run:error:${Date.now()}`,
-          `${message}\n\n[CHOICE:first-run id=runtime]\n${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)\n${FIRST_RUN_ACTION_PREFIX}runtime:local=On this device\n${FIRST_RUN_ACTION_PREFIX}runtime:other=Bring your own keys\n[/CHOICE]`,
-        ),
-      );
+      seedTurn(makeTurn(`first-run:error:${Date.now()}`, message));
     },
     [seedTurn],
   );
@@ -392,7 +360,7 @@ export function useFirstRunConductor(): void {
         seedTurn(
           makeTurn(
             "first-run:provider",
-            `Which model provider should ${draftRef.current.agentName} use?\n\n${providerChoice({ defaultId: id === "other" ? "other" : "on-device" })}`,
+            `Choose how ${draftRef.current.agentName} should think to finish setup.`,
           ),
         );
         return true;
