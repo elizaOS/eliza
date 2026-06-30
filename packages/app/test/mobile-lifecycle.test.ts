@@ -336,6 +336,50 @@ describe("createMobileLifecycle — network listener", () => {
     document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
   });
 
+  it("dispatches NETWORK_STATUS_CHANGE_EVENT on window offline/online (fallback when the Network plugin is unavailable)", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+    const received: boolean[] = [];
+    const onNetwork = (event: Event) => {
+      received.push(
+        (event as CustomEvent<{ connected: boolean }>).detail.connected,
+      );
+    };
+    document.addEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+
+    await lifecycle.initializeNetworkListener();
+
+    // The window online/offline fallback drives connectivity even when the
+    // Capacitor Network plugin never registered (as observed on Android).
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+
+    expect(received).toEqual([false, true]);
+    document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+  });
+
+  it("does not double-dispatch when Capacitor networkStatusChange and window offline agree", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+    const received: boolean[] = [];
+    const onNetwork = (event: Event) => {
+      received.push(
+        (event as CustomEvent<{ connected: boolean }>).detail.connected,
+      );
+    };
+    document.addEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+
+    await lifecycle.initializeNetworkListener();
+    await vi.waitFor(() =>
+      expect(networkListeners.has("networkStatusChange")).toBe(true),
+    );
+
+    // Both signals report the same disconnect; dedup => one dispatch.
+    fireNetworkEvent("networkStatusChange", { connected: false });
+    window.dispatchEvent(new Event("offline"));
+
+    expect(received).toEqual([false]);
+    document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+  });
+
   it("registers the network listener exactly once across double-init", async () => {
     const lifecycle = createMobileLifecycle(makeContext());
 

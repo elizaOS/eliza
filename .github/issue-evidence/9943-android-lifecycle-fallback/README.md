@@ -30,21 +30,43 @@ the memory-reclaiming view-prune it drives) does **not run** on Android
 backgrounding. `visibilitychange` is the W3C-standard signal that fires on every
 surface (web, desktop, iOS/Android WebView).
 
+## Second finding — `@capacitor/network` is absent on Android; `online`/`offline` is reliable
+
+The **same fragility** lives in `initializeNetworkListener`, which drives
+`NETWORK_STATUS_CHANGE_EVENT` (the WebSocket reconnect scheduler consumes it to
+stop burning backoff in airplane mode) **solely** from `@capacitor/network`,
+with no web fallback. Toggling connectivity (`svc wifi/data off`/`on`) on-device
+(`cdp-network-probe.txt`):
+
+```
+init: { hasNetworkPlugin: false, capacitorGetStatus: "no-plugin" }   <- Network plugin ABSENT from the bridge
+window online/offline events: ["offline","online"]                  <- window online/offline RELIABLE
+Capacitor networkStatusChange (connected) events: []                <- Capacitor never fires
+```
+
+So on Android, `NETWORK_STATUS_CHANGE_EVENT` never fires on a connectivity change.
+
 ## Fix
 
-`packages/app/src/mobile-lifecycle.ts` — derive pause/resume from
-`document.visibilitychange` as an App-plugin-independent fallback, **deduped**
-with `appStateChange` (a single `setAppActive` transition gate) so it never
-double-fires when both signals are present. The visibilitychange handler is
-registered idempotently at module scope so re-init / HMR can't leak a second
-listener.
+`packages/app/src/mobile-lifecycle.ts` — two symmetric fallbacks:
+
+1. Derive pause/resume from `document.visibilitychange` (App-plugin-independent),
+   **deduped** with `appStateChange` via a single `setAppActive` transition gate.
+2. Derive connectivity from `window` `online`/`offline` (Network-plugin-
+   independent), **deduped** with `networkStatusChange` via a single
+   `setConnected` transition gate.
+
+Both fallback handlers are registered idempotently at module scope so re-init /
+HMR can't leak a second listener. `visibilitychange` and `online`/`offline` are
+W3C-standard signals that fire on every surface (web/desktop/iOS/Android WebView).
 
 ## Verification
 
-- **Unit** (`packages/app/test/mobile-lifecycle.test.ts`, **12/12 pass**): new
-  cases assert `visibilitychange → hidden` dispatches `APP_PAUSE_EVENT`,
-  `→ visible` dispatches `APP_RESUME_EVENT`, and that `appStateChange` +
-  `visibilitychange` reporting the same transition dispatches **once** (dedup).
+- **Unit** (`packages/app/test/mobile-lifecycle.test.ts`, **14/14 pass**): new
+  cases assert `visibilitychange → hidden` ⇒ `APP_PAUSE_EVENT`, `→ visible` ⇒
+  `APP_RESUME_EVENT`, `window offline/online` ⇒ `NETWORK_STATUS_CHANGE_EVENT`,
+  and that each native+web signal pair reporting the same transition dispatches
+  **once** (dedup).
 - **On-device** (`cdp-lifecycle-probe.txt`, `cdp-lifecycle-probe.mjs`): proves
   `visibilitychange` fires on real Android backgrounding while `appStateChange`
   does not. `app-running-emulator.png` is the running app.

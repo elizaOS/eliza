@@ -23,10 +23,12 @@ export interface MobileLifecycleContext {
   handleDeepLink: (url: string) => void;
 }
 
-// There is one document, so there is one visibilitychange→lifecycle bridge.
-// Tracked at module scope so re-initialization (HMR / repeated init) replaces
-// the previous handler instead of leaking a second listener.
+// There is one document/window, so there is one visibilitychange→lifecycle and
+// one online/offline→network bridge. Tracked at module scope so re-init (HMR /
+// repeated init) replaces the previous handlers instead of leaking new ones.
 let activeVisibilityHandler: (() => void) | null = null;
+let activeOnlineHandler: (() => void) | null = null;
+let activeOfflineHandler: (() => void) | null = null;
 
 export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   let keyboardListenersRegistered = false;
@@ -156,16 +158,40 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   async function initializeNetworkListener(): Promise<void> {
     if (networkStatusListenerRegistered) return;
     networkStatusListenerRegistered = true;
+
+    // Single source of truth for connectivity so the Capacitor `Network`
+    // listener and the window online/offline fallback never double-dispatch.
+    let lastConnected: boolean | null = null;
+    const setConnected = (connected: boolean): void => {
+      if (lastConnected === connected) return;
+      lastConnected = connected;
+      const detail: NetworkStatusChangeDetail = { connected };
+      dispatchAppEvent(NETWORK_STATUS_CHANGE_EVENT, detail);
+    };
+
+    // Robust fallback: `online`/`offline` fire reliably on every surface — and on
+    // Android the Capacitor `Network` plugin can be unavailable (observed absent
+    // from the WebView bridge on-device), in which case the listener below never
+    // registers and NETWORK_STATUS_CHANGE_EVENT (which the WebSocket reconnect
+    // scheduler consumes to stop burning backoff in airplane mode) never fires.
+    // Deduped via `setConnected`; registered idempotently at module scope.
+    if (activeOnlineHandler)
+      window.removeEventListener("online", activeOnlineHandler);
+    if (activeOfflineHandler)
+      window.removeEventListener("offline", activeOfflineHandler);
+    activeOnlineHandler = () => setConnected(true);
+    activeOfflineHandler = () => setConnected(false);
+    window.addEventListener("online", activeOnlineHandler);
+    window.addEventListener("offline", activeOfflineHandler);
+
     try {
       const { Network } = await import("@capacitor/network");
       await Network.addListener("networkStatusChange", (status) => {
-        const detail: NetworkStatusChangeDetail = {
-          connected: status.connected,
-        };
-        dispatchAppEvent(NETWORK_STATUS_CHANGE_EVENT, detail);
+        setConnected(status.connected);
       });
     } catch (error) {
-      networkStatusListenerRegistered = false;
+      // The online/offline fallback above remains active, so leave the listener
+      // marked registered rather than resetting for a native retry.
       logNativePluginUnavailable("Network", error);
     }
   }
