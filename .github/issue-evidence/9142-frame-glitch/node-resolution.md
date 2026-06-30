@@ -1,17 +1,24 @@
 # #9142 frame-glitch harness Node resolution evidence
 
-## Defect reproduced
+## Defect (topology-dependent)
 
-Plain Node cannot resolve the harness analysis dependencies from this checkout's
-workspace links even though Bun has them installed in `.bun`:
+The Node-run `test:chat-sheet-frame-glitch-e2e` harness statically `import`ed
+`esbuild` / `pixelmatch` / `pngjs`. That resolves fine **when** Node's upward
+module walk from `packages/ui` reaches the repo-root hoisted `node_modules/.bun`
+store — the common case (and why this exact command resolves on a hoisted tree):
 
 ```text
 node -e "require.resolve('esbuild', { paths: [process.cwd() + '/packages/ui'] })"
-Error: Cannot find module 'esbuild'
+# resolves to <root>/node_modules/.bun/esbuild@.../node_modules/esbuild on a hoisted tree
 ```
 
-This is the portability failure reported for the Node-run
-`test:chat-sheet-frame-glitch-e2e` harness.
+It **fails** on a checkout where Bun installed the packages into its store but
+left no Node-visible symlink chain reachable from `packages/ui` (no hoisted
+`node_modules` at or above the package). In that topology the static ESM import
+throws at parse time — before the harness can run or print an actionable error.
+The fix makes those imports dynamic, resolving through `packages/ui` first and
+falling back to the `.bun` store, so the harness either runs or fails with a
+clear "run `bun install` from the repo root" message instead of an opaque parse error.
 
 ## Fixed path verified
 
