@@ -12,14 +12,14 @@ Adds workflow automation capabilities to an Eliza agent. Given a natural-languag
 
 | Name | Description |
 |---|---|
-| `WORKFLOW` | Umbrella action for all workflow lifecycle ops. Dispatches on `action` parameter: `create`, `modify`, `activate`, `deactivate`, `toggle_active`, `delete`, `executions`. Requires `minRole: OWNER`. Active in contexts `automation`, `tasks`, `agent_internal`. |
+| `WORKFLOW` | Umbrella action for all workflow lifecycle ops. Dispatches on `action` parameter: `create`, `modify`, `activate`, `deactivate`, `toggle_active`, `delete`, `executions`. Requires `minRole: OWNER`. Active in contexts `general`, `automation`, `tasks`, `agent_internal`. |
 
 ### Providers
 
 | Name | Description |
 |---|---|
 | `workflow_status` | Lists each user's workflows with last execution status. Contexts: `automation`, `connectors`. `minRole: ADMIN`. Cache scope: `turn`. |
-| `ACTIVE_WORKFLOWS` | Lists active/inactive workflows for LLM context (IDs, names, node counts). Contexts: `automation`, `connectors`. `minRole: ADMIN`. Cache scope: `agent`. |
+| `ACTIVE_WORKFLOWS` | Lists active/inactive workflows for LLM context (IDs, names, node counts), or searches the user's workflows when the current message is workflow-related. Contexts: `general`, `automation`, `tasks`, `connectors`. `minRole: ADMIN`. Cache scope: `turn`. |
 | `PENDING_WORKFLOW_DRAFT` | Surfaces an in-flight draft so the agent routes confirmation/cancellation messages to `WORKFLOW` instead of `REPLY`. Contexts: `automation`, `connectors`. `minRole: ADMIN`. Cache scope: `conversation`. |
 
 ### Services

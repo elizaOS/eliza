@@ -2,9 +2,10 @@ import { describe, expect, mock, test } from 'bun:test';
 import { activeWorkflowsProvider } from '../../../src/providers/activeWorkflows';
 import { pendingDraftProvider } from '../../../src/providers/pendingDraft';
 import { workflowStatusProvider } from '../../../src/providers/workflowStatus';
-import { WORKFLOW_SERVICE_TYPE } from '../../../src/services/workflow-service';
+import { WORKFLOW_SERVICE_TYPE, WorkflowService } from '../../../src/services/workflow-service';
 import {
   createExecution,
+  createSlackNode,
   createTriggerNode,
   createWorkflowResponse,
 } from '../../fixtures/workflows';
@@ -16,6 +17,19 @@ import { createMockService } from '../../helpers/mockService';
 // ============================================================================
 
 describe('activeWorkflowsProvider', () => {
+  test('matches WORKFLOW action chat contexts and uses turn cache', () => {
+    expect(activeWorkflowsProvider.contexts).toEqual([
+      'general',
+      'automation',
+      'tasks',
+      'connectors',
+    ]);
+    expect(activeWorkflowsProvider.contextGate).toEqual({
+      anyOf: ['general', 'automation', 'tasks', 'connectors'],
+    });
+    expect(activeWorkflowsProvider.cacheScope).toBe('turn');
+  });
+
   test('returns empty when service not available', async () => {
     const runtime = createMockRuntime();
     const result = await activeWorkflowsProvider.get(
@@ -90,6 +104,151 @@ describe('activeWorkflowsProvider', () => {
       name: 'Stripe Payments',
       active: true,
       nodeCount: 3,
+    });
+  });
+
+  test('searches workflows from workflow-related message text', async () => {
+    const searchQuery = 'Find the workflow that posts to Slack';
+    const mockService = createMockService({
+      listWorkflows: mock(() => Promise.resolve([])),
+      searchWorkflows: mock(() =>
+        Promise.resolve([
+          createWorkflowResponse({
+            id: 'wf-slack',
+            name: 'Slack Alerts',
+            active: true,
+            nodes: [createTriggerNode({ name: 'Slack', position: [0, 0] })],
+          }),
+        ])
+      ),
+    });
+    const runtime = createMockRuntime({
+      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
+    });
+    const message = createMockMessage({
+      entityId: 'user-123',
+      content: { text: searchQuery },
+    });
+
+    const result = await activeWorkflowsProvider.get(runtime, message, createMockState());
+
+    expect(mockService.searchWorkflows).toHaveBeenCalledWith(searchQuery, 'user-123');
+    expect(mockService.listWorkflows).not.toHaveBeenCalled();
+    expect(result.text).toContain('# Matching Workflows');
+    expect(result.text).toContain('Slack Alerts');
+    expect(result.data).toEqual({
+      workflows: [
+        {
+          id: 'wf-slack',
+          name: 'Slack Alerts',
+          active: true,
+          nodeCount: 1,
+        },
+      ],
+      searchQuery,
+    });
+    expect(result.values).toEqual({
+      hasWorkflows: true,
+      workflowCount: 1,
+      workflowSearchQuery: searchQuery,
+    });
+  });
+
+  test('searches sentence text through the real workflow ranking path', async () => {
+    const service = Object.assign(Object.create(WorkflowService.prototype), {
+      serviceType: WORKFLOW_SERVICE_TYPE,
+      listWorkflows: mock(() =>
+        Promise.resolve([
+          createWorkflowResponse({
+            id: 'wf-gmail',
+            name: 'Gmail digest',
+          }),
+          createWorkflowResponse({
+            id: 'wf-slack',
+            name: 'Team notifications',
+            nodes: [createTriggerNode(), createSlackNode()],
+          }),
+        ])
+      ),
+    }) as WorkflowService;
+    const runtime = createMockRuntime({
+      services: { [WORKFLOW_SERVICE_TYPE]: service },
+    });
+    const message = createMockMessage({
+      entityId: 'user-123',
+      content: { text: 'find the workflow that posts to Slack' },
+    });
+
+    const result = await activeWorkflowsProvider.get(runtime, message, createMockState());
+
+    expect(service.listWorkflows).toHaveBeenCalledWith('user-123');
+    expect(result.text).toContain('# Matching Workflows');
+    expect(result.text).toContain('Team notifications');
+    expect(result.text).not.toContain('Gmail digest');
+    expect(result.data).toEqual({
+      workflows: [
+        {
+          id: 'wf-slack',
+          name: 'Team notifications',
+          active: false,
+          nodeCount: 2,
+        },
+      ],
+      searchQuery: 'find the workflow that posts to Slack',
+    });
+  });
+
+  test('uses full workflow list for non-workflow chat text', async () => {
+    const mockService = createMockService({
+      listWorkflows: mock(() =>
+        Promise.resolve([createWorkflowResponse({ id: 'wf-1', name: 'Daily Summary' })])
+      ),
+      searchWorkflows: mock(() => Promise.resolve([])),
+    });
+    const runtime = createMockRuntime({
+      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
+    });
+    const message = createMockMessage({
+      content: { text: 'What happened this morning?' },
+    });
+
+    const result = await activeWorkflowsProvider.get(runtime, message, createMockState());
+
+    expect(mockService.listWorkflows).toHaveBeenCalledWith('user-001');
+    expect(mockService.searchWorkflows).not.toHaveBeenCalled();
+    expect(result.text).toContain('# Available Workflows');
+    expect(result.data).toEqual({
+      workflows: [
+        {
+          id: 'wf-1',
+          name: 'Daily Summary',
+          active: false,
+          nodeCount: 2,
+        },
+      ],
+    });
+  });
+
+  test('returns explicit empty result when workflow search has no matches', async () => {
+    const searchQuery = 'search workflows for calendar cleanup';
+    const mockService = createMockService({
+      searchWorkflows: mock(() => Promise.resolve([])),
+    });
+    const runtime = createMockRuntime({
+      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
+    });
+    const message = createMockMessage({
+      content: { text: searchQuery },
+    });
+
+    const result = await activeWorkflowsProvider.get(runtime, message, createMockState());
+
+    expect(result.text).toContain(`No workflows match "${searchQuery}".`);
+    expect(result.data).toEqual({ workflows: [], searchQuery });
+    expect(result.values).toEqual({
+      hasWorkflows: false,
+      workflowCount: 0,
+      workflowSearchQuery: searchQuery,
     });
   });
 

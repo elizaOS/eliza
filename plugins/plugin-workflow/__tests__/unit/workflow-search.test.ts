@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { rankWorkflowsByQuery, scoreWorkflowMatch } from '../../src/services/workflow-service';
+import {
+  rankWorkflowsByQuery,
+  scoreWorkflowMatch,
+  tokenizeWorkflowSearchQuery,
+} from '../../src/services/workflow-service';
 
 /**
  * Unit coverage for the WORKFLOW `search` op ranking (#8913).
@@ -41,6 +45,18 @@ describe('scoreWorkflowMatch', () => {
   test('no match scores zero', () => {
     expect(scoreWorkflowMatch(wf({ name: 'gmail digest' }), 'slack')).toBe(0);
   });
+
+  test('matches a sentence query by meaningful tokens', () => {
+    const score = scoreWorkflowMatch(
+      wf({
+        name: 'Team notifications',
+        nodes: [{ type: 'workflows-nodes-base.slack', name: 'Slack' }],
+      }),
+      'find the workflow that posts to Slack'
+    );
+
+    expect(score).toBeGreaterThan(0);
+  });
 });
 
 describe('rankWorkflowsByQuery', () => {
@@ -55,8 +71,27 @@ describe('rankWorkflowsByQuery', () => {
     expect(ranked.map((w) => w.id)).toEqual(['b', 'c']);
   });
 
+  test('sentence query uses per-token OR scoring', () => {
+    const ranked = rankWorkflowsByQuery(workflows, 'find the workflow that posts to Slack');
+    expect(ranked.map((w) => w.id)).toEqual(['b', 'c']);
+  });
+
+  test('generic workflow query returns the input unchanged', () => {
+    const ranked = rankWorkflowsByQuery(workflows, 'what workflows do I have?');
+    expect(ranked.map((w) => w.id)).toEqual(['a', 'b', 'c']);
+  });
+
   test('empty query returns the input unchanged', () => {
     const ranked = rankWorkflowsByQuery(workflows, '   ');
     expect(ranked.map((w) => w.id)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('tokenizeWorkflowSearchQuery', () => {
+  test('keeps useful terms and drops workflow/search boilerplate', () => {
+    expect(tokenizeWorkflowSearchQuery('find the workflow that posts to Slack')).toEqual([
+      'post',
+      'slack',
+    ]);
   });
 });
