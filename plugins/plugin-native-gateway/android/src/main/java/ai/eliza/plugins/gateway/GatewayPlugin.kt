@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Log
-import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -174,7 +173,7 @@ class GatewayPlugin : Plugin() {
     @PluginMethod
     fun startDiscovery(call: PluginCall) {
         if (isDiscovering) {
-            call.resolve(buildDiscoveryResult())
+            call.resolve(GatewayDiscovery.buildDiscoveryResult(discoveredGateways.values, isDiscovering))
             return
         }
 
@@ -185,7 +184,7 @@ class GatewayPlugin : Plugin() {
             // Return initial result after a brief delay for discovery
             scope.launch {
                 delay(500)
-                call.resolve(buildDiscoveryResult())
+                call.resolve(GatewayDiscovery.buildDiscoveryResult(discoveredGateways.values, isDiscovering))
             }
         } catch (e: Exception) {
             call.reject("Failed to start discovery: ${e.message}")
@@ -207,19 +206,7 @@ class GatewayPlugin : Plugin() {
 
     @PluginMethod
     fun getDiscoveredGateways(call: PluginCall) {
-        call.resolve(buildDiscoveryResult())
-    }
-
-    private fun buildDiscoveryResult(): JSObject {
-        val gateways = JSArray()
-        for (gateway in discoveredGateways.values.sortedBy { it.getString("name")?.lowercase() }) {
-            gateways.put(gateway)
-        }
-
-        return JSObject().apply {
-            put("gateways", gateways)
-            put("status", if (isDiscovering) "Discovering..." else "Discovery stopped")
-        }
+        call.resolve(GatewayDiscovery.buildDiscoveryResult(discoveredGateways.values, isDiscovering))
     }
 
     @PluginMethod
