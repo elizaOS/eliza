@@ -31,11 +31,11 @@ import {
   startMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
-import { startMemoryWatchdog } from "./memory-watchdog.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
+import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
 import {
   type PluginResolutionPhase,
