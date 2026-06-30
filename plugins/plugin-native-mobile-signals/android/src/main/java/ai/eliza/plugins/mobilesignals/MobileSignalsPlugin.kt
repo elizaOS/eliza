@@ -1,9 +1,7 @@
 package ai.eliza.plugins.mobilesignals
 
 import android.Manifest
-import android.app.AppOpsManager
 import android.app.NotificationManager
-import android.app.usage.UsageStatsManager
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -14,7 +12,6 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
-import android.os.Process
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.result.ActivityResult
@@ -64,6 +61,11 @@ class MobileSignalsPlugin : Plugin() {
     private val permissionRequest = PermissionController.createRequestPermissionResultContract()
     private var monitoring = false
     private var receiver: BroadcastReceiver? = null
+
+    // The PACKAGE_USAGE_STATS reads (AppOps access check + UsageStatsManager query)
+    // live in UsageStatsReader so they are exercisable by an instrumented
+    // androidTest without a Capacitor Bridge (issue #9967).
+    private val usageReader by lazy { UsageStatsReader(context) }
 
     @PluginMethod
     fun startMonitoring(call: PluginCall) {
@@ -386,37 +388,10 @@ class MobileSignalsPlugin : Plugin() {
         }
     }
 
-    private fun computeIdleTimeSeconds(locked: Boolean, interactive: Boolean): Long? {
-        if (!hasUsageStatsAccess()) {
-            return null
-        }
-        val lastInteractionMs = try {
-            val usageStatsManager =
-                context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val nowMs = System.currentTimeMillis()
-            val stats = usageStatsManager.queryUsageStats(
-                UsageStatsManager.INTERVAL_DAILY,
-                nowMs - Duration.ofDays(1).toMillis(),
-                nowMs,
-            )
-            stats.maxOfOrNull { it.lastTimeUsed } ?: 0L
-        } catch (_: Throwable) {
-            return null
-        }
-        if (lastInteractionMs <= 0) {
-            return null
-        }
-        val nowMs = System.currentTimeMillis()
-        val elapsedSeconds = ((nowMs - lastInteractionMs) / 1_000L).coerceAtLeast(0L)
-        // When the device is locked or non-interactive, treat the idle time as
-        // the elapsed time since last foreground use; otherwise rely on it as
-        // the best available proxy for input idle.
-        return if (locked || !interactive) {
-            elapsedSeconds
-        } else {
-            elapsedSeconds
-        }
-    }
+    // Idle time = seconds since the last foreground app interaction (the best
+    // available proxy for input idle from UsageStats). The earlier locked/
+    // interactive branch was dead — both arms returned the same value.
+    private fun computeIdleTimeSeconds(): Long? = usageReader.idleSeconds()
 
     private fun buildSnapshot(reason: String): JSObject {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -466,7 +441,7 @@ class MobileSignalsPlugin : Plugin() {
             BatteryManager.BATTERY_STATUS_CHARGING,
             BatteryManager.BATTERY_STATUS_FULL,
         )
-        val idleTimeSeconds = computeIdleTimeSeconds(locked, interactive)
+        val idleTimeSeconds = computeIdleTimeSeconds()
 
         return JSObject().apply {
             put("source", "mobile_device")
@@ -891,24 +866,7 @@ class MobileSignalsPlugin : Plugin() {
         return Pair(actualTarget, intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    private fun hasUsageStatsAccess(): Boolean {
-        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            appOps.unsafeCheckOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                context.packageName,
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            appOps.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                context.packageName,
-            )
-        }
-        return mode == AppOpsManager.MODE_ALLOWED
-    }
+    private fun hasUsageStatsAccess(): Boolean = usageReader.hasUsageStatsAccess()
 
     private fun isUsageStatsPermissionDeclared(): Boolean {
         return try {
@@ -936,32 +894,15 @@ class MobileSignalsPlugin : Plugin() {
     )
 
     private fun collectUsageStatsSummary(): UsageStatsSummary {
-        if (!hasUsageStatsAccess()) {
-            return UsageStatsSummary(0, emptyList())
-        }
-        val usageStatsManager =
-            context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val nowMs = System.currentTimeMillis()
-        val stats = usageStatsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            nowMs - Duration.ofDays(1).toMillis(),
-            nowMs,
-        )
-        val topApps = stats
-            .asSequence()
-            .filter { it.totalTimeInForeground > 0 }
-            .sortedByDescending { it.totalTimeInForeground }
-            .take(10)
-            .map { usage ->
-                JSObject().apply {
-                    put("packageName", usage.packageName)
-                    put("totalTimeForegroundMs", usage.totalTimeInForeground)
-                    put("lastTimeUsed", usage.lastTimeUsed)
-                }
+        val summary = usageReader.collectLastDay()
+        val topApps = summary.topApps.map { usage ->
+            JSObject().apply {
+                put("packageName", usage.packageName)
+                put("totalTimeForegroundMs", usage.totalTimeForegroundMs)
+                put("lastTimeUsed", usage.lastTimeUsed)
             }
-            .toList()
-        val totalTimeForegroundMs = stats.sumOf { it.totalTimeInForeground }
-        return UsageStatsSummary(totalTimeForegroundMs, topApps)
+        }
+        return UsageStatsSummary(summary.totalTimeForegroundMs, topApps)
     }
 
     private fun buildUsageStatsSummary(): JSObject {
