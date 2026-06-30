@@ -277,6 +277,94 @@ python -m benchmarks.mint.run_benchmark --provider eliza --model gpt-oss-120b --
 
 ---
 
+## 9. Calibration — "perfect" / "wrong" oracle + no-leak proof
+
+The point of a perfect/wrong oracle: prove the grader **can** award full marks in
+the exactly-correct configuration (no impossible/broken scorer), prove it
+**discriminates** (a wrong agent scores 0, not a trivial pass), and prove the
+oracle's ground-truth **does not leak** into what the real `gpt-oss-120b` model
+sees.
+
+### 9a. Scorer-level calibration (synthetic `perfect_v1` / `wrong_v1` / `half_v1`)
+`python -m benchmarks.orchestrator run --harnesses perfect_v1 wrong_v1 half_v1` over
+10 benchmarks (`mmlu gsm8k humaneval bfcl mint action-calling mt_bench
+context_bench agentbench tau_bench`) → **30 runs, 0 failures**, every scorer hit
+its endpoints exactly:
+
+| harness | every benchmark |
+|---|---|
+| `perfect_v1` | **1.0** |
+| `wrong_v1` | **0.0** |
+| `half_v1` | **0.5** |
+
+`orchestrator calibration-report` now marks those 10 `calibration=valid`. This
+proves each scorer can *represent* full-right / full-wrong / midpoint — it does
+**not** drive the agent loop (synthetic harnesses write the result payload the
+scorer reads).
+
+### 9b. End-to-end perfect oracle (real grader, real agent loop)
+The standard benchmarks ship a `--mock` ground-truth path that feeds **correct
+answers through the real grader** (not a synthetic payload):
+
+| benchmark | `--mock` oracle | meaning |
+|---|---|---|
+| `mmlu` | **1.0** (3/3) | letter-match grader awards full marks on correct answers |
+| `gsm8k` | **1.0** (3/3) | `#### <int>` numeric grader awards full marks |
+| `humaneval` | **1.0** (2/2) | **sandbox-execution** grader passes correct code (not a shim) |
+
+So for the three benchmarks where `gpt-oss-120b` scored 0.925 / 0.975 / 1.000,
+the **exact-correct system provably reaches 1.0** — the model's non-perfect
+scores are real misses, not a capped grader.
+
+### 9c. No-leak proof (the model never sees the answer)
+Checked the **real** `gpt-oss-120b` trajectories:
+
+- **humaneval:** `0 / 30` prompts contain the hidden test harness (`def check(` /
+  `candidate(`). The model sees only the function signature + docstring (whose
+  doctest examples are part of the public problem); the grading tests are
+  withheld.
+- **gsm8k:** the only `####` in any prompt is the **format instruction**
+  (`"conclude with a line of the form '#### <integer>'"`); **`0 / 40`** prompts
+  contain a concrete `#### <number>` (the gold value). The model's `#### 18` is
+  its own computation.
+- **mmlu:** the system message says "respond with … the correct answer" (an
+  instruction); the user message is the bare question + lettered choices, no
+  answer key.
+
+Ground-truth lives only on the grader side; the model path is the question only.
+
+### 9d. Finding — MINT's end-to-end "perfect oracle" is broken (≠ 1.0)
+`mint --use-sample-tasks --provider mock` (which sets
+`allow_ground_truth_mock=True`, "agent returns ground-truth answers") scores only
+**1/3** on its own smoke set: `gsm8k-smoke-0` PASS, `humaneval-smoke-0` and
+`mmlu-smoke-0` FAIL (both ran the full 5 turns without a recognized submission).
+
+Precise root cause — **the grader is fine; the answer never reaches it intact:**
+- The MINT evaluator is correct: feeding it the raw ground-truth directly,
+  `evaluate(predicted=GT, expected=GT)` returns `success=True / 1.0` for **all
+  three** smoke tasks (the MC matcher even accepts `b`, `B`, `(B)`, and
+  "The answer is B").
+- But the mock returns the raw `ground_truth` string, and the multi-turn loop
+  passes it through `MINTAgent._extract_answer` first, which for a fenced code
+  block does `...splitlines()[0]` — it **keeps only the first line**, truncating
+  the humaneval solution to `def check(candidate):`. And the raw `"b"` /
+  multi-line code is not wrapped in the MINT "Propose Solution" action the loop
+  recognizes as a final submission, so the run burns all 5 turns and fails.
+- (`gsm8k` survives because its numeric answer is a single token the loop's
+  numeric path still picks up.)
+
+So the gap is the **mock oracle + answer-extraction protocol**, not the scorer.
+Note the **real** `gpt-oss-120b` path is unaffected: a real model emits fenced
+```python``` blocks that `_extract_code` captures and *executes* in full (never
+first-line-truncated), so the live MINT 0.417 in §1 stands — only the unfenced
+mock-oracle answer hits the truncation. A real fix makes the oracle emit a fenced
+solution wrapped in the recognized submission action. Left as a focused follow-up
+(deeper vendored-`mint` change, multiple interacting pieces) rather than bundled
+with the §5 grader-execution fix; the standard-benchmark perfect oracle in §9b
+already proves the "exact-correct-system reaches 1.0" property for the suite.
+
+---
+
 ## What this run does *not* cover (still open in #10193)
 
 - HITL multi-account **codex / `gpt-5.5`** runner (no codex adapter / account
