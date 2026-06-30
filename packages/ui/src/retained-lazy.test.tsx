@@ -225,7 +225,6 @@ describe("RetainedLazyComponent", () => {
         }),
       ]),
     );
-    // biome-ignore lint/performance/noDelete: test cleanup of the mock field
     delete (performance as { memory?: unknown }).memory;
   });
 });

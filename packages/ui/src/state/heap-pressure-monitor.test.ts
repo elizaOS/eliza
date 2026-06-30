@@ -17,7 +17,6 @@ function setHeap(usedJSHeapSize: number, jsHeapSizeLimit = 1000): void {
 }
 
 function clearHeap(): void {
-  // biome-ignore lint/performance/noDelete: test cleanup of the mock field
   delete (performance as { memory?: unknown }).memory;
 }
 

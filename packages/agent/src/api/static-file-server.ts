@@ -183,7 +183,9 @@ export function injectApiBaseIntoHtml(
  */
 export function resolveInjectedDashboardToken(): string | null {
   const cloudProvisioned = isCloudProvisionedContainer();
-  const forceInjectToken = isTruthyEnvValue(process.env.ELIZA_FORCE_INJECT_TOKEN);
+  const forceInjectToken = isTruthyEnvValue(
+    process.env.ELIZA_FORCE_INJECT_TOKEN,
+  );
   if (forceInjectToken && !cloudProvisioned && !warnedForceInjectToken) {
     warnedForceInjectToken = true;
     logger.warn(
