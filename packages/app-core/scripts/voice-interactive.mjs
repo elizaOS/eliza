@@ -101,6 +101,46 @@ const USAGE = `Usage: bun run voice:interactive [-- <options>]
   -h, --help           this help
 `;
 
+function bundleDirName(modelId) {
+  return `${modelId.replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`;
+}
+
+function bundlePrimaryTextPath(catalogEntry, bundleRoot) {
+  const rel = catalogEntry?.ggufFile;
+  if (typeof rel !== "string" || rel.trim().length === 0) return null;
+  return path.join(bundleRoot, rel);
+}
+
+function resolveInstalledBundleRoot(catalogEntry, modelsDir) {
+  const modelId = catalogEntry?.id ?? "eliza-1-2b";
+  const candidate = path.join(modelsDir, bundleDirName(modelId));
+  if (!existsSync(candidate)) {
+    return {
+      bundleRoot: null,
+      reason: "missing-root",
+      expectedPath: candidate,
+    };
+  }
+
+  const textPath = bundlePrimaryTextPath(catalogEntry, candidate);
+  if (!textPath) {
+    return {
+      bundleRoot: null,
+      reason: "missing-catalog-text",
+      expectedPath: candidate,
+    };
+  }
+  if (!existsSync(textPath)) {
+    return {
+      bundleRoot: null,
+      reason: "missing-text-gguf",
+      expectedPath: textPath,
+    };
+  }
+
+  return { bundleRoot: candidate, textPath };
+}
+
 // ---------------------------------------------------------------------------
 // Pretty printing
 // ---------------------------------------------------------------------------
@@ -175,15 +215,14 @@ async function inspectActiveOptimizations(args) {
 
   // ── Bundle installed? ──────────────────────────────────────────────────
   let bundleRoot = null;
+  let bundleInstallIssue = null;
   try {
     const { elizaModelsDir } = await import(
       "../../shared/src/local-inference/paths.ts"
     );
-    const candidate = path.join(
-      elizaModelsDir(),
-      `${(catalogEntry?.id ?? "eliza-1-2b").replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
-    );
-    if (existsSync(candidate)) bundleRoot = candidate;
+    const resolved = resolveInstalledBundleRoot(catalogEntry, elizaModelsDir());
+    bundleRoot = resolved.bundleRoot;
+    if (!resolved.bundleRoot) bundleInstallIssue = resolved;
   } catch {
     /* reported via the catalog branch already */
   }
@@ -194,8 +233,12 @@ async function inspectActiveOptimizations(args) {
       detail: `installed at ${bundleRoot}`,
     });
   } else {
+    const detail =
+      bundleInstallIssue?.reason === "missing-text-gguf"
+        ? ` (missing primary text GGUF at ${bundleInstallIssue.expectedPath})`
+        : "";
     missing.push({
-      what: `the ${catalogEntry?.id ?? "eliza-1-2b"} bundle is not installed`,
+      what: `the ${catalogEntry?.id ?? "eliza-1-2b"} bundle is not fully installed${detail}`,
       fix: "download it (run the harness without --list-active for the auto-download prompt) or follow docs/eliza-1-pipeline/06-test-matrix.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
     });
   }
@@ -1706,6 +1749,7 @@ export {
   inspectActiveOptimizations,
   PLATFORM_MATRIX,
   printPlatformReport,
+  resolveInstalledBundleRoot,
 };
 
 if (import.meta.main) {
