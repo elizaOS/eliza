@@ -304,46 +304,79 @@ replacement for the KV pending-charge backstop. It is selected by
 `INFERENCE_BILLING_LEDGER="db"` (default `kv` = the KV backstop). Code lives in
 `@/lib/services/inference-billing-ledger` (`admitInferenceChargeViaLedger`,
 `createLedgerDebitSettler`, `sweepStalePendingInferenceChargesDb`,
-`resolveInferenceBillingLedger`); the chat + embeddings routes and the
-`sweep-inference-charges` cron dispatch to it when the flag is `db`.
+`resolveInferenceBillingLedger`); the chat + embeddings routes admit through it
+when the flag is `db`, and the `sweep-inference-charges` cron sweeps BOTH backends
+every run.
+
+> This design — like Tier 1/2 — was hardened by an adversarial review (5-lens,
+> 3-vote verify). It surfaced that a first cut (single `FOR UPDATE` admission +
+> non-transactional claim-then-debit) did **not** actually bound overdraw on real
+> Postgres and could lose a charge on a crash between claim and debit. The
+> mechanisms below are the corrected design; the review's confirmed findings and
+> their fixes are catalogued in `.github/issue-evidence/9899-db-ledger.md`.
 
 It closes the three KV-inherent residuals point-for-point:
 
-1. **Hard concurrent-overdraw bound (was BILL-2 redux).** Admission is ONE atomic
-   statement that locks the org row (`SELECT … FOR UPDATE`), subtracts the SUM of
-   the org's still-`pending` charges from its balance, and inserts a `pending`
-   row ONLY when `balance > threshold` AND `balance − in-flight ≥ estimate`.
-   Concurrent admissions for one org serialize on the row lock, so a burst can
-   never *collectively* overdraw — the gate is the admission, not a stale hint.
-   (Residual window: between an inline settle's atomic claim and its `deductCredits`
-   commit a charge is briefly out of `pending_sum` but not yet in the balance, a
-   sub-RTT transient over-admit that the `CHECK(>=0)` still backstops — strictly
-   tighter than the KV soft bound.)
-2. **True exactly-once settlement.** `request_id` is the table PK and the settle
-   is an atomic `UPDATE … SET status='settled' WHERE status='pending' RETURNING`.
-   Only one of {inline settler, cron sweep} can ever transition a row, so they can
-   never both charge a request — removing the KV double-bill possibility. The
-   actual debit then funnels through the single audited `creditsService.deductCredits`
-   (atomic balance guard + all notifications), so there is one credit-mutation
-   codepath. This also means the cron needs **no** KV-style single-flight lock —
-   overlapping sweeps are safe.
-3. **Age-ordered sweep drain.** The sweep selects `status='pending' AND
-   enqueued_at < cutoff ORDER BY enqueued_at ASC LIMIT batch` over a partial index
-   and loops batches until the backlog is empty (bounded by `maxBatches`, which is
-   `log`-surfaced when hit) — no silent `maxKeys` cap.
+1. **Hard concurrent-overdraw bound (was BILL-2 redux).** Admission runs inside a
+   transaction that FIRST takes a per-org `pg_advisory_xact_lock`, THEN reads the
+   org balance + the `SUM` of its still-`pending` charges and inserts a `pending`
+   row only when `balance > threshold` AND `balance − in-flight ≥ estimate`. The
+   advisory lock serializes admissions for one org, so each reads the in-flight
+   `SUM` only after any concurrent admission has **committed** (READ COMMITTED
+   takes a fresh snapshot per statement). A bare `SELECT … FOR UPDATE` on the org
+   row is **not** sufficient — the in-flight `SUM` scans a *different* table and
+   would read a stale MVCC snapshot, so two concurrent admissions both see the same
+   pre-insert `SUM` and both admit. (Single-connection PGlite serializes and hides
+   this; real multi-connection Postgres does not — which is why the lock is
+   load-bearing.) In-flight is the live `SUM` of `pending` rows themselves, so it
+   is self-correcting: a crashed/dropped settle leaves its row `pending` and still
+   counted until the sweep settles it — no separate counter to drift.
+2. **Exactly-once settlement, crash-safe.** The claim (`UPDATE … SET
+   status='settled' WHERE request_id=$ AND status='pending' RETURNING`) and the
+   actual debit run in **one transaction**. The `request_id` PK + the `pending`
+   guard make the claim exactly-once (only one of {inline settler, cron sweep} can
+   win), and because claim+debit commit together: (a) a crash between them ROLLS
+   BACK the claim, leaving the row `pending` for the sweep to recover — **no lost
+   charge**; and (b) no concurrent admission ever observes a claimed-but-undebited
+   state — **no over-admit window**. The debit replicates the same atomic `FOR
+   UPDATE` balance guard + `credit_transactions` row as `reserveAndDeductCredits`
+   (so it can run inside the claim transaction — `deductCredits` cannot take an
+   external transaction); cache invalidation fires post-commit. Because the claim
+   is a true DB transition the cron needs **no** KV-style single-flight lock —
+   overlapping sweeps and a racing inline settler are all safe.
+3. **Age-ordered sweep drain + bounded growth.** The sweep selects `status='pending'
+   AND enqueued_at < NOW() − interval(grace) ORDER BY enqueued_at ASC LIMIT batch`
+   over a partial index and loops batches until empty (bounded by `maxBatches`,
+   `log`-surfaced when hit) — no silent cap. The cutoff is computed **in SQL**
+   against `NOW()` so it is timezone-consistent with the `NOW()`-written
+   `enqueued_at` (a client-side ISO-`Z` string would skew under a non-UTC session
+   timezone). The sweep also GCs terminal (`settled`/`uncollected`) rows older than
+   a retention window, so a caller-supplied `request_id` cannot pin an immortal row
+   and the table stays bounded.
 
-`uncollected` becomes a first-class row state (auditable) instead of log-only: a
-debit the DB refuses (would overdraw) marks the row `uncollected`, drops the
-org-balance hint, and the org's NEXT admission reads the now-depleted balance and
-self-heals onto the synchronous-reserve path (402). Bounded over-spend, never
-free-forever.
+`uncollected` is a first-class row state (auditable) instead of log-only: a debit
+the DB refuses (would overdraw) marks the row `uncollected`, drops the org-balance
+hint, and the org's NEXT admission reads the now-depleted balance and self-heals
+onto the synchronous-reserve path (402) — which re-engages the low-credit /
+auto-top-up / waifu notifications that the optimistic debit deliberately does not
+fire. Bounded over-spend, never free-forever.
+
+The cron sweeps **both** backends (`db` + `kv`) on every run regardless of the
+flag — each is idempotent and a cheap no-op when empty — so a flag flip (or
+rollback) between a charge's admit-time and the next sweep cannot orphan its
+pending row on the no-longer-selected backend.
 
 What the ledger does NOT change: pricing lookups remain per-request, and the
-admission still reads a balance (now under a lock, fresh) — the Tier-2 caveat that
-"zero DB reads pre-forward" holds for AUTH+MODERATION (Tier 1) and not for the
-billing gate still stands. The win is correctness-at-scale, not a further latency
-cut; the admission's single locked round-trip is comparable to the synchronous
-reserve it replaces while additionally bounding overdraw.
+admission still reads a balance — the Tier-2 caveat that "zero DB reads pre-forward"
+holds for AUTH+MODERATION (Tier 1) and not for the billing gate still stands. The
+win is correctness-at-scale, not a further latency cut.
+
+> Known parity residual (shared with the KV backstop, NOT fixed here because it is
+> a product-semantics question): when `billUsage` throws *after* the model produced
+> billable output, the route's error path calls `settle(0)`, which claims the row
+> and charges nothing — a bounded single-request under-bill. Fixing it (charge the
+> estimate vs. leave for the sweep vs. treat as a free abort) needs a decision on
+> abort billing; tracked as a follow-up, not a regression.
 
 ### Rollout (Tier 3)
 
@@ -364,9 +397,16 @@ in prod, the KV pending-charge path can be retired.
 drives the REAL SQL against in-process PGlite (the same honest pattern as
 `credits-deduct-guard.test.ts`): admission (affordable / threshold gate / **hard
 overdraw bound** via seeded in-flight rows / unknown org / `+Inf` threshold /
-idempotent re-delivery / a concurrent burst that cannot collectively overdraw);
-settle (actual debit / **exactly-once** double-settle no-op / `settle(0)` /
-**uncollected** under `CHECK(>=0)`); sweep (stale-vs-young / inline-then-sweep no
-double-charge / age-ordered multi-batch drain). The migration file itself is
-applied to PGlite and asserted (`inference-pending-charges-migration.test.ts`):
-table + PK + both partial indexes exist, and re-applying is idempotent.
+idempotent re-delivery / a concurrent burst that cannot collectively overdraw /
+in-flight self-correction once a charge settles); settle (actual debit /
+**exactly-once** double-settle no-op / `settle(0)` / **uncollected** under
+`CHECK(>=0)`); sweep (stale-vs-young / inline-then-sweep no double-charge /
+age-ordered multi-batch drain / **dropped-inline recovery** — a never-settled row
+stays `pending` and the sweep recovers the estimate / **GC** of terminal rows past
+retention). Because single-connection PGlite serializes, the burst test asserts the
+*accounting* (in-flight ≤ balance); the HARD bound under multi-connection Postgres
+is provided by the per-org advisory lock (a property of Postgres locking the unit
+test documents but cannot exercise in PGlite). The migration file itself is applied
+to PGlite and asserted (`inference-pending-charges-migration.test.ts`): table + PK
++ both partial indexes exist, and re-applying is idempotent. The cron route test
+(`cron/sweep-inference-charges/route.test.ts`) asserts it sweeps **both** backends.

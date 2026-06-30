@@ -6,10 +6,7 @@ import {
   isOptimisticBillingEnabled,
   sweepStalePendingInferenceCharges,
 } from "@/lib/services/inference-billing-fast-path";
-import {
-  resolveInferenceBillingLedger,
-  sweepStalePendingInferenceChargesDb,
-} from "@/lib/services/inference-billing-ledger";
+import { sweepStalePendingInferenceChargesDb } from "@/lib/services/inference-billing-ledger";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -28,21 +25,20 @@ async function handleSweepInferenceCharges(c: Context<AppEnv>) {
       return c.json({ success: true, skipped: "optimistic_billing_disabled" });
     }
 
-    // Sweep the backstop the route writes to: the DB ledger drains oldest-first in
-    // age-ordered batches (exactly-once via the row claim), the KV backstop scans
-    // its pending prefix. Selected by INFERENCE_BILLING_LEDGER (#9899).
-    if (resolveInferenceBillingLedger() === "db") {
-      const stats = await sweepStalePendingInferenceChargesDb();
-      logger.info(
-        "[Inference Billing] DB-ledger pending-charge sweep complete",
-        stats,
-      );
-      return c.json({ success: true, backend: "db", ...stats });
-    }
-
-    const stats = await sweepStalePendingInferenceCharges();
-    logger.info("[Inference Billing] pending-charge sweep complete", stats);
-    return c.json({ success: true, backend: "kv", ...stats });
+    // Sweep BOTH backstops every run, regardless of INFERENCE_BILLING_LEDGER. Each
+    // is exactly-once/idempotent and a cheap no-op when its store is empty, so
+    // sweeping the currently-inactive backend closes the orphan window where a flag
+    // flip (or rollback) between a charge's admit-time and the next sweep would
+    // otherwise strand its pending row on the no-longer-selected backend (#9899).
+    const [db, kv] = await Promise.all([
+      sweepStalePendingInferenceChargesDb(),
+      sweepStalePendingInferenceCharges(),
+    ]);
+    logger.info("[Inference Billing] pending-charge sweep complete", {
+      db,
+      kv,
+    });
+    return c.json({ success: true, db, kv });
   } catch (error) {
     logger.error("[Inference Billing] pending-charge sweep failed", { error });
     return failureResponse(c, error);
