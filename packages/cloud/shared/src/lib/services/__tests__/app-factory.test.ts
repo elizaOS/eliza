@@ -177,16 +177,15 @@ describe("create -> deploy linkage: resolveImageRef on the created app", () => {
  * FRONT-DOOR end-to-end: prove that a real create request body — exactly what
  * the agent CREATE_APP action and the dashboard Create App dialog now POST to
  * `POST /api/v1/apps` — flows through the server route's `createGitHubRepo:
- * !skipGitHubRepo` mapping, the real factory, and the real `resolveImageRef`
- * to a deployable image (does NOT throw). The contrasting "pre-fix" body (no
- * `skipGitHubRepo`) is what shipped broken: it makes a repo-backed app whose
- * deploy throws build-from-repo-disabled — so the `skipGitHubRepo: true` the
- * front doors now send is load-bearing, not cosmetic.
+ * skipGitHubRepo === false` mapping, the real factory, and the real `resolveImageRef`
+ * to a deployable image (does NOT throw). `skipGitHubRepo: false` remains the
+ * explicit repo-backed opt-in path and still throws under the build-from-repo
+ * disabled gate.
  */
 describe("front-door create -> deploy resolves (POST /api/v1/apps body)", () => {
   // Mirrors the server route (`packages/cloud/api/v1/apps/route.ts`): the create
-  // route maps the request body's `skipGitHubRepo` to the factory option
-  // `createGitHubRepo: !skipGitHubRepo`. Keep this in lockstep with the route.
+  // route only provisions a GitHub repo when the request explicitly opts in with
+  // `skipGitHubRepo: false`. Keep this in lockstep with the route.
   const createFromFrontDoorBody = (body: {
     name: string;
     app_url: string;
@@ -199,7 +198,7 @@ describe("front-door create -> deploy resolves (POST /api/v1/apps body)", () => 
         created_by_user_id: DATA.created_by_user_id,
         app_url: body.app_url,
       },
-      { createGitHubRepo: !body.skipGitHubRepo },
+      { createGitHubRepo: body.skipGitHubRepo === false },
     );
 
   test("the fixed front-door body (skipGitHubRepo:true) stamps a template image and RESOLVES", async () => {
@@ -225,11 +224,30 @@ describe("front-door create -> deploy resolves (POST /api/v1/apps body)", () => 
     expect(img).toBe(DEFAULT_TEMPLATE_IMAGE);
   });
 
-  test("REGRESSION: the pre-fix front-door body (no skipGitHubRepo) makes a repo app whose deploy THROWS", async () => {
+  test("default raw create body (no skipGitHubRepo) stamps a template image and RESOLVES", async () => {
     const result = await createFromFrontDoorBody({
       name: "Acme Bot",
       app_url: "https://placeholder.invalid",
-      // skipGitHubRepo omitted — the bug: createGitHubRepo defaults true.
+      // skipGitHubRepo omitted — raw API default must not provision a repo.
+    });
+
+    expect(result.githubRepoCreated).toBe(false);
+    expect(metaImageTag(result.app.metadata)).toBe(DEFAULT_TEMPLATE_IMAGE);
+
+    const img = await resolveImageRef(buildOff, {
+      id: result.app.id,
+      name: result.app.name,
+      metadata: (result.app.metadata as Record<string, unknown>) ?? {},
+      repoUrl: result.app.github_repo ?? undefined,
+    });
+    expect(img).toBe(DEFAULT_TEMPLATE_IMAGE);
+  });
+
+  test("explicit repo opt-in (skipGitHubRepo:false) makes a repo app whose deploy THROWS while build-from-repo is disabled", async () => {
+    const result = await createFromFrontDoorBody({
+      name: "Repo Bot",
+      app_url: "https://placeholder.invalid",
+      skipGitHubRepo: false,
     });
 
     expect(result.githubRepoCreated).toBe(true);
