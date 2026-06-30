@@ -472,6 +472,158 @@ function hasPackagedDesktopLauncher(platform) {
   return false;
 }
 
+function oneLine(text) {
+  return String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function readDefaultIosAppId() {
+  const fromEnv =
+    process.env.ELIZA_VOICE_IOS_APP_ID?.trim() ||
+    process.env.ELIZA_IOS_APP_ID?.trim();
+  if (fromEnv) return fromEnv;
+
+  const appConfigPath = path.join(REPO_ROOT, "packages/app/app.config.ts");
+  try {
+    const source = fs.readFileSync(appConfigPath, "utf8");
+    return source.match(/\bappId:\s*["']([^"']+)["']/)?.[1] ?? "ai.elizaos.app";
+  } catch {
+    return "ai.elizaos.app";
+  }
+}
+
+function readDefaultAndroidAppId() {
+  const fromEnv =
+    process.env.ELIZA_VOICE_ANDROID_APP_ID?.trim() ||
+    process.env.ELIZA_ANDROID_APP_ID?.trim() ||
+    process.env.ELIZA_APP_ID?.trim();
+  if (fromEnv) return fromEnv;
+
+  const appConfigPath = path.join(REPO_ROOT, "packages/app/app.config.ts");
+  try {
+    const source = fs.readFileSync(appConfigPath, "utf8");
+    return source.match(/\bappId:\s*["']([^"']+)["']/)?.[1] ?? "ai.elizaos.app";
+  } catch {
+    return "ai.elizaos.app";
+  }
+}
+
+function simctl(args) {
+  return spawnSync("xcrun", ["simctl", ...args], {
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+}
+
+function adb(args) {
+  return spawnSync("adb", args, {
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+}
+
+function attachedAndroidDevice() {
+  const result = adb(["devices"]);
+  if (result.status !== 0) {
+    const detail = oneLine(result.stderr || result.stdout);
+    return {
+      serial: null,
+      reason: `adb devices failed${detail ? `: ${detail}` : ""}`,
+    };
+  }
+
+  const rows = String(result.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/))
+    .filter(([serial]) => serial && serial !== "List");
+  const requested = process.env.ANDROID_SERIAL?.trim();
+  if (requested) {
+    const row = rows.find(([serial]) => serial === requested);
+    if (row?.[1] === "device") return { serial: requested, reason: null };
+    return {
+      serial: null,
+      reason: `ELIZA_VOICE_ANDROID_READY=1 but ANDROID_SERIAL=${requested} is not attached in device state`,
+    };
+  }
+
+  const device = rows.find(([, state]) => state === "device");
+  if (device?.[0]) return { serial: device[0], reason: null };
+  return {
+    serial: null,
+    reason:
+      "ELIZA_VOICE_ANDROID_READY=1 but no Android device/emulator is attached in device state; attach a device/emulator and install the current app before capture",
+  };
+}
+
+function installedAndroidApp(serial, appId) {
+  const result = adb(["-s", serial, "shell", "pm", "path", appId]);
+  if (result.status === 0 && /^package:/m.test(result.stdout ?? "")) {
+    return { installed: true, reason: null };
+  }
+  const detail = oneLine(result.stderr || result.stdout);
+  return {
+    installed: false,
+    reason: `ELIZA_VOICE_ANDROID_READY=1 but ${appId} is not installed on Android device ${serial}; build/redeploy the current APK before capture${detail ? ` (${detail})` : ""}`,
+  };
+}
+
+function bootedIosSimulator() {
+  const result = simctl(["list", "devices", "booted", "--json"]);
+  if (result.status !== 0) {
+    const detail = oneLine(result.stderr || result.stdout);
+    return {
+      device: null,
+      reason: `xcrun simctl list devices booted failed${detail ? `: ${detail}` : ""}`,
+    };
+  }
+
+  let json;
+  try {
+    json = JSON.parse(result.stdout || "{}");
+  } catch (error) {
+    return {
+      device: null,
+      reason: `xcrun simctl list devices booted returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  for (const [runtime, devices] of Object.entries(json.devices ?? {})) {
+    if (!String(runtime).toLowerCase().includes("ios")) continue;
+    for (const device of Array.isArray(devices) ? devices : []) {
+      if (device?.state === "Booted" && device?.udid) {
+        return {
+          device: {
+            udid: device.udid,
+            name: device.name ?? device.udid,
+            runtime,
+          },
+          reason: null,
+        };
+      }
+    }
+  }
+
+  return {
+    device: null,
+    reason:
+      "ELIZA_VOICE_IOS_READY=1 but no booted iOS simulator is available; boot a simulator and install the current app before capture",
+  };
+}
+
+function installedIosAppContainer(udid, appId) {
+  const result = simctl(["get_app_container", udid, appId, "data"]);
+  const containerPath = oneLine(result.stdout);
+  if (result.status === 0 && containerPath) {
+    return { path: containerPath, reason: null };
+  }
+  const detail = oneLine(result.stderr || result.stdout);
+  return {
+    path: null,
+    reason: `ELIZA_VOICE_IOS_READY=1 but ${appId} is not installed on booted simulator ${udid}; build/redeploy the current iOS app before capture${detail ? ` (${detail})` : ""}`,
+  };
+}
+
 function runCapture(command, cwd, extraEnv = {}, context = {}) {
   const startedAt = new Date().toISOString();
   const result = spawnSync(command[0], command.slice(1), {
@@ -622,10 +774,24 @@ function probeCell(cell) {
         return {
           available: false,
           reason:
-            "set ELIZA_VOICE_IOS_READY=1 after installing a current iOS simulator/device build with voice assets",
+            "set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets",
         };
       }
-      return { available: true, reason: "iOS voice capture runner enabled" };
+      {
+        const booted = bootedIosSimulator();
+        if (!booted.device) {
+          return { available: false, reason: booted.reason };
+        }
+        const appId = readDefaultIosAppId();
+        const container = installedIosAppContainer(booted.device.udid, appId);
+        if (!container.path) {
+          return { available: false, reason: container.reason };
+        }
+        return {
+          available: true,
+          reason: `iOS voice capture runner enabled for ${appId} on ${booted.device.name} (${booted.device.udid})`,
+        };
+      }
     case "swiftPackage":
       if (process.platform !== "darwin")
         return {
@@ -648,7 +814,17 @@ function probeCell(cell) {
             "set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed",
         };
       }
-      return { available: true, reason: "Android voice runner enabled" };
+      {
+        const device = attachedAndroidDevice();
+        if (!device.serial) return { available: false, reason: device.reason };
+        const appId = readDefaultAndroidAppId();
+        const app = installedAndroidApp(device.serial, appId);
+        if (!app.installed) return { available: false, reason: app.reason };
+        return {
+          available: true,
+          reason: `Android voice runner enabled for ${appId} on ${device.serial}`,
+        };
+      }
     case "androidGradle": {
       const androidDir = path.join(
         REPO_ROOT,
@@ -816,6 +992,11 @@ async function main() {
       args.platforms.has(cell.platform) ||
       args.platforms.has(cell.id),
   );
+  const platformFilters = Array.from(args.platforms).sort();
+  const selectionError =
+    args.platforms.size > 0 && selected.length === 0
+      ? `no voice matrix cells matched --platform=${platformFilters.join(",")}`
+      : null;
   const cells = [];
   for (const cell of selected) {
     const probe = probeCell(cell);
@@ -858,6 +1039,11 @@ async function main() {
     generatedAt: new Date().toISOString(),
     mode: args.run ? "run" : "probe",
     dimensions: DIMENSIONS,
+    selection: {
+      platformFilters,
+      matched: selected.length,
+      error: selectionError,
+    },
     host: {
       platform: process.platform,
       arch: process.arch,
@@ -885,8 +1071,10 @@ async function main() {
   console.log(
     `[voice:matrix] pass=${summary.pass} fail=${summary.fail} pending=${summary.pending} skip=${summary.skip}`,
   );
+  if (selectionError) console.error(`[voice:matrix] ${selectionError}`);
 
   if (
+    selectionError ||
     summary.fail > 0 ||
     (args.requireGreen && (summary.pending > 0 || summary.skip > 0))
   ) {

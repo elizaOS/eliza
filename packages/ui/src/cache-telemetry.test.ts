@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  emitModuleCacheTelemetry,
   MODULE_CACHE_TELEMETRY_EVENT,
   type ModuleCacheTelemetryEvent,
-  emitModuleCacheTelemetry,
 } from "./cache-telemetry";
 
 /**
@@ -63,11 +63,18 @@ describe("cache-telemetry", () => {
   it("dispatches the CustomEvent carrying the detail", () => {
     install();
     const handler = vi.fn();
-    window.addEventListener(MODULE_CACHE_TELEMETRY_EVENT, handler as EventListener);
+    window.addEventListener(
+      MODULE_CACHE_TELEMETRY_EVENT,
+      handler as EventListener,
+    );
     emitModuleCacheTelemetry({ ...base(), reason: "heap-pressure" });
-    window.removeEventListener(MODULE_CACHE_TELEMETRY_EVENT, handler as EventListener);
+    window.removeEventListener(
+      MODULE_CACHE_TELEMETRY_EVENT,
+      handler as EventListener,
+    );
     expect(handler).toHaveBeenCalledTimes(1);
-    const evt = handler.mock.calls[0][0] as CustomEvent<ModuleCacheTelemetryEvent>;
+    const evt = handler.mock
+      .calls[0][0] as CustomEvent<ModuleCacheTelemetryEvent>;
     expect(evt.detail.reason).toBe("heap-pressure");
   });
 

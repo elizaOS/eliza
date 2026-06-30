@@ -1,7 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { realpathSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveSafeCwd } from "../src/sandbox.ts";
 
@@ -73,7 +72,7 @@ describe("resolveSafeCwd", () => {
 
   it("rejects a non-existent cwd", () => {
     expect(() => resolveSafeCwd(join(parent, "does-not-exist"), [root])).toThrow(
-      /does not exist or is not a directory/,
+      /does not exist or is not a directory/
     );
   });
 });

@@ -488,7 +488,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     agentStatus,
     activeConversationId,
     companionMessageCutoffTs,
-    conversationMessages,
     ptySessions,
     setChatInput,
     setChatSending,
@@ -1024,7 +1023,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       setUnreadConversations,
     ],
   );
-
 
   const handleSelectConversation = useCallback(
     async (id: string) => {

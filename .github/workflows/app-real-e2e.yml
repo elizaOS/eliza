@@ -2,9 +2,8 @@ name: App Real E2E (browser-driven)
 
 # Gated, NON-blocking lane for the browser-driven REAL app e2e suite that lived
 # in no workflow until now (it was dark): test/app/*.{real,live}.e2e.test.ts —
-#   - qa-checklist.real.e2e.test.ts        (onboarding + VRM + doc upload + chat +
+#   - qa-checklist.real.e2e.test.ts        (onboarding + doc upload + chat +
 #                                            settings pages + voice + char switch)
-#   - first-run-companion.live.e2e.test.ts (real onboarding wizard)
 #   - memory-relationships.real.e2e.test.ts(real /memories + /relationships views)
 #   - streaming-visible-text.live.e2e.test.ts (real SSE token streaming)
 #

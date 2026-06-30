@@ -50,7 +50,6 @@ const appPackagedRegressionPath = resolve(
 const appCoreLiveScreenshotPaths = [
   "../../app-core/test/app/memory-relationships.real.e2e.test.ts",
   "../../app-core/test/app/qa-checklist.real.e2e.test.ts",
-  "../../app-core/test/app/first-run-companion.live.e2e.test.ts",
 ].map((relativePath) => resolve(import.meta.dirname, relativePath));
 const computerUseBrowserPath = resolve(
   import.meta.dirname,

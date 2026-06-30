@@ -50,15 +50,22 @@ Speech source: on-device Apple TTS (`say -v Samantha`) at 16000 Hz mono; noisy c
 - **iOS / Apple Silicon:** the measured on-device `SFSpeechRecognizer` arm confirms the §7 claim —
   real-time-factor < 1 (faster than real time) and exact accept on clean speech — so the
   ANE-capable `SFSpeechRecognizer` is the cheapest-correct Stage-B confirm recognizer on Apple.
-  Kokoro TTS is unchanged. Remaining device handoff: per-frame battery/energy telemetry on a real
-  iOS device (Instruments Energy Log), which a Mac cannot measure.
-- **Android:** `SpeechRecognizer` (NNAPI) latency/battery/accept must be measured on a real Android
-  device — not reachable from this host. Handoff.
+  Kokoro TTS is unchanged. iOS device energy telemetry is not counted as covered by this
+  Apple-Silicon-only artifact; it must be supplied through the strict Stage-B report gate.
+- **Android:** `SpeechRecognizer` (NNAPI) latency/battery/accept is not counted as covered by
+  this host artifact; it must be supplied through the strict Stage-B report gate.
 - **Linux/desktop fused:** the fused libelizainference ASR latency/RTF on the identical corpus is a
-  runtime handoff (needs the provisioned `libelizainference` bundle; see
-  `.github/issue-evidence/9147-voice-asr-m4max.md` for the qualitative on-device transcription proof).
+  required report input when the provisioned `libelizainference` bundle is available.
+  Historical qualitative ASR artifacts are not accepted as Stage-B coverage; use
+  `ELIZA_VOICE_STAGE_B_REPORT` with `packages/scripts/voice-stage-b-eval.mjs`.
 
-## Device handoff (not measurable on this host)
+## Strict report gate (not measured by this Apple-only host artifact)
+
+The complete #9958 Stage-B decision is green only when `voice-stage-b-eval.mjs`
+validates a reviewed JSON report covering iOS `SFSpeechRecognizer`, Android
+`SpeechRecognizer`, and fused ASR with real hardware, latency, WER, and power telemetry.
+
+## Required external measurements
 
 | Arm | Needs | Run |
 |---|---|---|
