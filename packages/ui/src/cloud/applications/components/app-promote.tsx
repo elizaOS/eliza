@@ -23,6 +23,7 @@ import { Button } from "../../../components/ui/button";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
+import { openCloudConsoleRouteExternally } from "../lib/native-cloud-nav";
 
 interface AppPromoteProps {
   app: App;
@@ -217,7 +218,21 @@ export function AppPromote({ app }: AppPromoteProps) {
             asChild
             className="border-white/10 hover:bg-white/10 rounded-sm"
           >
-            <Link to="/dashboard/settings?tab=connections">
+            <Link
+              to="/dashboard/settings?tab=connections"
+              onClick={(e) => {
+                // Native studio: the connections surface lives outside the
+                // apps-only MemoryRouter — open it in the system browser. No-op
+                // on web (the in-router navigation runs unchanged).
+                if (
+                  openCloudConsoleRouteExternally(
+                    "/dashboard/settings?tab=connections",
+                  )
+                ) {
+                  e.preventDefault();
+                }
+              }}
+            >
               <Plus className="h-4 w-4 mr-1.5" />
               {t("cloud.appPromote.connect", { defaultValue: "Connect" })}
             </Link>

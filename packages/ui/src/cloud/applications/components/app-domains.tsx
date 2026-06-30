@@ -47,6 +47,7 @@ import {
 } from "../../../components/ui/tooltip";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+import { openExternalUrlOnNative } from "../lib/native-cloud-nav";
 import { BuyDomainCard } from "./BuyDomainCard";
 
 interface DomainInfo {
@@ -750,6 +751,14 @@ function DomainCard({
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => {
+                    // Native studio: open the verified domain in the system
+                    // browser (WebView target="_blank" is unreliable). No-op on
+                    // web — the anchor opens a new tab as before.
+                    if (openExternalUrlOnNative(url)) {
+                      e.preventDefault();
+                    }
+                  }}
                   className="inline-flex items-center justify-center h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/10 rounded-sm transition-colors"
                 >
                   <ExternalLink className="h-4 w-4" />

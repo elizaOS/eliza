@@ -43,6 +43,7 @@ import {
 import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+import { openCloudConsoleRouteExternally } from "../lib/native-cloud-nav";
 
 interface MonetizationSettings {
   monetizationEnabled: boolean;
@@ -524,6 +525,13 @@ function SelfHostCTA() {
           <div className="flex flex-wrap gap-2">
             <Link
               to="/dashboard/agents"
+              onClick={(e) => {
+                // Native studio: the agents surface is outside the apps-only
+                // MemoryRouter — open it in the system browser. No-op on web.
+                if (openCloudConsoleRouteExternally("/dashboard/agents")) {
+                  e.preventDefault();
+                }
+              }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white text-sm font-mono transition-colors"
             >
               <Server className="h-4 w-4" />
@@ -533,6 +541,13 @@ function SelfHostCTA() {
             </Link>
             <Link
               to="/dashboard/earnings"
+              onClick={(e) => {
+                // Native studio: the org earnings surface is outside the
+                // apps-only MemoryRouter — open it in the system browser.
+                if (openCloudConsoleRouteExternally("/dashboard/earnings")) {
+                  e.preventDefault();
+                }
+              }}
               className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:bg-foreground hover:text-background text-sm font-mono transition-colors"
             >
               <Coins className="h-4 w-4" />
