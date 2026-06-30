@@ -237,13 +237,13 @@ function proxyFrontendAliasRequest(
   );
   if (!targetUrl) return null;
 
-  return fetch(targetUrl.toString(), createFrontendAliasProxyInit(request, url));
+  return fetch(
+    targetUrl.toString(),
+    createFrontendAliasProxyInit(request, url),
+  );
 }
 
-function createFrontendAliasProxyInit(
-  request: Request,
-  url: URL,
-): RequestInit {
+function createFrontendAliasProxyInit(request: Request, url: URL): RequestInit {
   const headers = new Headers();
   for (const [name, value] of request.headers) {
     const headerName = name.toLowerCase();

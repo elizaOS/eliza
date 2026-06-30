@@ -220,21 +220,23 @@ export function digestCollection(items: unknown[]): AgentExportComponentDigest {
   return { sha256: sha256Hex(canonicalize(list)), count: list.length };
 }
 
+const EMPTY_MANIFEST_COLLECTION: unknown[] = [];
+
 /** The collection arrays the manifest covers, read off a payload-like object. */
 function manifestCollectionsOf(
   payload: Pick<AgentExportPayload, ManifestCollection>,
 ): Record<ManifestCollection, unknown[]> {
   return {
-    entities: payload.entities ?? [],
-    memories: payload.memories ?? [],
-    components: payload.components ?? [],
-    rooms: payload.rooms ?? [],
-    participants: payload.participants ?? [],
-    relationships: payload.relationships ?? [],
-    worlds: payload.worlds ?? [],
-    tasks: payload.tasks ?? [],
-    logs: payload.logs ?? [],
-    media: payload.media ?? [],
+    entities: payload.entities ?? EMPTY_MANIFEST_COLLECTION,
+    memories: payload.memories ?? EMPTY_MANIFEST_COLLECTION,
+    components: payload.components ?? EMPTY_MANIFEST_COLLECTION,
+    rooms: payload.rooms ?? EMPTY_MANIFEST_COLLECTION,
+    participants: payload.participants ?? EMPTY_MANIFEST_COLLECTION,
+    relationships: payload.relationships ?? EMPTY_MANIFEST_COLLECTION,
+    worlds: payload.worlds ?? EMPTY_MANIFEST_COLLECTION,
+    tasks: payload.tasks ?? EMPTY_MANIFEST_COLLECTION,
+    logs: payload.logs ?? EMPTY_MANIFEST_COLLECTION,
+    media: payload.media ?? EMPTY_MANIFEST_COLLECTION,
   };
 }
 

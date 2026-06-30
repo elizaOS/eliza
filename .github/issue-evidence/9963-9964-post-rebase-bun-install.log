@@ -1,6 +1,6 @@
 bun install v1.3.14 (0d9b296a)
 Resolving dependencies
-Resolved, downloaded and extracted [431]
+Resolved, downloaded and extracted [432]
 Saved lockfile
 
 $ bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs && bun packages/scripts/sync-artifacts.mjs
@@ -12,4 +12,4 @@ $ bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-
 [build-private-workspace-packages] skip packages/plugin-worker-runtime (already built: dist/error.js)
 [sync-artifacts] artifacts already at 2026-06-18.1; nothing to do
 
-Checked 4827 installs across 5052 packages (no changes) [12.56s]
+Checked 4841 installs across 5074 packages (no changes) [4.57s]

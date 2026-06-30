@@ -24,8 +24,8 @@ import {
   selectLatestRunForApp,
 } from "@elizaos/app-core/ui-compat";
 
-import { EmbeddedAppViewer } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { EmbeddedAppViewer } from "@elizaos/ui/components/apps/EmbeddedAppViewer";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { getActiveViewModality } from "@elizaos/ui/platform";
 import { useAppSelector } from "@elizaos/ui/state";

@@ -78,6 +78,20 @@ async function writeFixtureState(
     '{"skills":[]}\n',
   );
   await fs.writeFile(path.join(pgliteDir, "pgdata.bin"), "database-bytes");
+  await fs.writeFile(
+    path.join(pgliteDir, "postmaster.pid"),
+    `${process.pid}\n`,
+  );
+  await fs.writeFile(path.join(pgliteDir, "postmaster.opts"), "runtime opts");
+  await fs.writeFile(
+    path.join(pgliteDir, "eliza-pglite.lock"),
+    JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }),
+  );
+  await fs.mkdir(path.join(pgliteDir, "pg_stat_tmp"), { recursive: true });
+  await fs.writeFile(
+    path.join(pgliteDir, "pg_stat_tmp", "stats.tmp"),
+    "runtime stats",
+  );
 }
 
 async function readText(filePath: string): Promise<string> {
@@ -124,6 +138,16 @@ describe("agent backup manifest", () => {
     const stateFilePaths = snapshot.manifest.components.stateFiles.files.map(
       (file) => file.path,
     );
+    const pgliteComponent = snapshot.manifest.components.database.pglite;
+    if (!pgliteComponent) {
+      throw new Error("Expected PGlite file-set backup component");
+    }
+    const pgliteFilePaths = pgliteComponent.files.map((file) => file.path);
+    expect(pgliteFilePaths).toContain("pgdata.bin");
+    expect(pgliteFilePaths).not.toContain("postmaster.pid");
+    expect(pgliteFilePaths).not.toContain("postmaster.opts");
+    expect(pgliteFilePaths).not.toContain("eliza-pglite.lock");
+    expect(pgliteFilePaths).not.toContain("pg_stat_tmp/stats.tmp");
     expect(stateFilePaths).toContain("skills/active.json");
     expect(stateFilePaths).not.toContain("pglite/pgdata.bin");
 
@@ -149,6 +173,12 @@ describe("agent backup manifest", () => {
 
     expect(await readText(path.join(pgliteDir, "pgdata.bin"))).toBe(
       "database-bytes",
+    );
+    expect(await exists(path.join(pgliteDir, "postmaster.pid"))).toBe(false);
+    expect(await exists(path.join(pgliteDir, "postmaster.opts"))).toBe(false);
+    expect(await exists(path.join(pgliteDir, "eliza-pglite.lock"))).toBe(false);
+    expect(await exists(path.join(pgliteDir, "pg_stat_tmp", "stats.tmp"))).toBe(
+      false,
     );
     expect(
       await readText(path.join(root, "media", `${"a".repeat(64)}.txt`)),
@@ -195,6 +225,48 @@ describe("agent backup manifest", () => {
     await expect(restoreAgentSnapshot(runtime, snapshot)).rejects.toThrow(
       /hash mismatch/,
     );
+  });
+
+  test("captures live PGlite through dumpDataDir when the adapter exposes it", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-"),
+    );
+    const pgliteDir = path.join(root, "pglite");
+    process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+
+    await writeFixtureState(root, pgliteDir);
+
+    const dumpBytes = Buffer.from("official-pglite-dump-bytes");
+    const rawConnection = {
+      ready: true,
+      async dumpDataDir(this: { ready: boolean }, compression?: "gzip") {
+        expect(this.ready).toBe(true);
+        expect(compression).toBe("gzip");
+        return new Blob([dumpBytes], { type: "application/gzip" });
+      },
+      runExclusive: async <T>(operation: () => Promise<T>) => operation(),
+    };
+    const runtime = {
+      ...runtimeStub("44444444-4444-4444-8444-444444444444"),
+      adapter: {
+        close: async () => undefined,
+        getRawConnection: () => rawConnection,
+      },
+    } as unknown as AgentRuntime;
+
+    const snapshot = await createAgentSnapshot(runtime, {} as never);
+
+    expect(snapshot.manifest.components.database.kind).toBe("pglite-dump");
+    const pgliteDump = snapshot.manifest.components.database.pgliteDump;
+    expect(pgliteDump?.compression).toBe("gzip");
+    expect(pgliteDump?.file.path).toBe("pglite-data-dir.tar.gz");
+    expect(Buffer.from(pgliteDump?.file.bytesBase64 ?? "", "base64")).toEqual(
+      dumpBytes,
+    );
+    expect(snapshot.manifest.components.database.pglite).toBeUndefined();
   });
 
   test("writes encrypted local backup files and restores them", async () => {

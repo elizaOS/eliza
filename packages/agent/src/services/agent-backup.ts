@@ -40,8 +40,16 @@ export interface AgentBackupPostgresDump {
   sha256: string;
 }
 
+export interface AgentBackupPgliteDump {
+  kind: "pglite-dump";
+  compression: "gzip";
+  file: AgentBackupFileEntry;
+  sha256: string;
+}
+
 export interface AgentBackupDatabaseComponent {
-  kind: "pglite-files" | "postgres-rows" | "none";
+  kind: "pglite-dump" | "pglite-files" | "postgres-rows" | "none";
+  pgliteDump?: AgentBackupPgliteDump;
   pglite?: AgentBackupFileSet;
   postgres?: AgentBackupPostgresDump;
   reason?: string;
@@ -111,6 +119,12 @@ const VAULT_PGLITE_DIR_NAME = ".vault-pglite";
 const VAULT_AUDIT_DIR_NAME = "audit";
 const VAULT_AUDIT_PATH = path.join("audit", "vault.jsonl");
 const VAULT_JSON_PATH = "vault.json";
+const PGLITE_VOLATILE_ROOT_FILES = new Set([
+  "eliza-pglite.lock",
+  "postmaster.opts",
+  "postmaster.pid",
+]);
+const PGLITE_DUMP_PATH = "pglite-data-dir.tar.gz";
 
 const POSTGRES_AGENT_ID_COLUMNS = ["agent_id", "agentId"];
 const POSTGRES_AGENT_TABLE = "agents";
@@ -267,6 +281,19 @@ async function readFileEntry(
   };
 }
 
+function fileEntryFromBytes(
+  relativePath: string,
+  bytes: Buffer,
+): AgentBackupFileEntry {
+  const normalized = normalizeRelativePath(relativePath);
+  return {
+    path: normalized,
+    sha256: sha256Bytes(bytes),
+    size: bytes.length,
+    bytesBase64: bytes.toString("base64"),
+  };
+}
+
 async function collectFileSet(params: {
   root: string;
   rootLabel: AgentBackupFileSet["rootLabel"];
@@ -342,6 +369,38 @@ function vaultFileInclude(relativePath: string): boolean {
     relativePath === VAULT_AUDIT_PATH ||
     relativePath === VAULT_PGLITE_DIR_NAME ||
     relativePath.startsWith(`${VAULT_PGLITE_DIR_NAME}/`)
+  );
+}
+
+function pgliteFileInclude(relativePath: string): boolean {
+  const first = relativePath.split("/")[0];
+  if (PGLITE_VOLATILE_ROOT_FILES.has(relativePath)) return false;
+  if (first.startsWith(".s.PGSQL.")) return false;
+  if (relativePath === "pg_stat_tmp" || relativePath.startsWith("pg_stat_tmp/"))
+    return false;
+  return true;
+}
+
+async function removePgliteVolatileFiles(root: string): Promise<void> {
+  await Promise.all(
+    [...PGLITE_VOLATILE_ROOT_FILES].map((fileName) =>
+      fs.rm(path.join(root, fileName), { force: true }),
+    ),
+  );
+  await fs.rm(path.join(root, "pg_stat_tmp"), {
+    recursive: true,
+    force: true,
+  });
+  const entries = await fs
+    .readdir(root, { withFileTypes: true })
+    .catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+  await Promise.all(
+    entries
+      .filter((entry) => entry.name.startsWith(".s.PGSQL."))
+      .map((entry) => fs.rm(path.join(root, entry.name), { force: true })),
   );
 }
 
@@ -525,6 +584,66 @@ function withPostgresHash(
   };
 }
 
+function withPgliteDumpHash(
+  dump: AgentBackupPgliteDump,
+): AgentBackupPgliteDump {
+  return {
+    ...dump,
+    sha256: sha256Json({
+      kind: dump.kind,
+      compression: dump.compression,
+      file: {
+        path: dump.file.path,
+        sha256: dump.file.sha256,
+        size: dump.file.size,
+      },
+    }),
+  };
+}
+
+function isBlobLike(value: unknown): value is {
+  arrayBuffer: () => Promise<ArrayBuffer>;
+} {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function"
+  );
+}
+
+async function capturePgliteDump(
+  runtime: IAgentRuntime | AgentRuntime,
+): Promise<AgentBackupPgliteDump | null> {
+  const raw = (
+    runtime.adapter as
+      | {
+          getRawConnection?: () => unknown;
+        }
+      | undefined
+  )?.getRawConnection?.();
+  if (!raw || typeof raw !== "object") return null;
+  const connection = raw as {
+    dumpDataDir?: (compression?: "gzip") => Promise<unknown>;
+    runExclusive?: <T>(operation: () => Promise<T>) => Promise<T>;
+  };
+  const dumpDataDir = connection.dumpDataDir;
+  if (typeof dumpDataDir !== "function") return null;
+
+  const dump = connection.runExclusive
+    ? await connection.runExclusive(() => dumpDataDir.call(connection, "gzip"))
+    : await dumpDataDir.call(connection, "gzip");
+  if (!isBlobLike(dump)) {
+    throw new Error("PGlite dumpDataDir() did not return a Blob/File");
+  }
+  const bytes = Buffer.from(await dump.arrayBuffer());
+  return withPgliteDumpHash({
+    kind: "pglite-dump",
+    compression: "gzip",
+    file: fileEntryFromBytes(PGLITE_DUMP_PATH, bytes),
+    sha256: "",
+  });
+}
+
 async function captureDatabaseComponent(
   runtime: IAgentRuntime | AgentRuntime,
 ): Promise<AgentBackupDatabaseComponent> {
@@ -544,9 +663,19 @@ async function captureDatabaseComponent(
     return { kind: "none", reason, sha256: sha256Json({ reason }) };
   }
 
+  const pgliteDump = await capturePgliteDump(runtime);
+  if (pgliteDump) {
+    return {
+      kind: "pglite-dump",
+      pgliteDump,
+      sha256: pgliteDump.sha256,
+    };
+  }
+
   const pglite = await collectFileSet({
     root: pgliteDir,
     rootLabel: "pglite-dir",
+    include: pgliteFileInclude,
   });
   return {
     kind: "pglite-files",
@@ -869,6 +998,16 @@ function verifyFileSet(fileSet: AgentBackupFileSet): void {
   for (const file of fileSet.files) verifyFileEntry(file);
 }
 
+function verifyPgliteDump(dump: AgentBackupPgliteDump): Buffer {
+  const expected = withPgliteDumpHash({ ...dump, sha256: "" }).sha256;
+  if (expected !== dump.sha256) {
+    throw new Error(
+      `PGlite dump hash mismatch: expected ${dump.sha256}, got ${expected}`,
+    );
+  }
+  return verifyFileEntry(dump.file);
+}
+
 async function pruneExtraFiles(
   root: string,
   include: (relativePath: string) => boolean,
@@ -907,6 +1046,7 @@ async function restoreFileSet(
   fileSet: AgentBackupFileSet,
   options: {
     replaceRoot?: boolean;
+    include?: (relativePath: string) => boolean;
     pruneExtra?: (relativePath: string) => boolean;
   } = {},
 ): Promise<void> {
@@ -916,13 +1056,18 @@ async function restoreFileSet(
     await fs.rm(resolvedRoot, { recursive: true, force: true });
   }
   await fs.mkdir(resolvedRoot, { recursive: true });
+  const filesToRestore = options.include
+    ? fileSet.files.filter((entry) =>
+        options.include?.(normalizeRelativePath(entry.path)),
+      )
+    : fileSet.files;
   const keepPaths = new Set(
-    fileSet.files.map((entry) => normalizeRelativePath(entry.path)),
+    filesToRestore.map((entry) => normalizeRelativePath(entry.path)),
   );
   if (options.pruneExtra) {
     await pruneExtraFiles(resolvedRoot, options.pruneExtra, keepPaths);
   }
-  for (const entry of fileSet.files) {
+  for (const entry of filesToRestore) {
     const relative = normalizeRelativePath(entry.path);
     const destination = path.resolve(resolvedRoot, relative);
     if (!isWithin(resolvedRoot, destination)) {
@@ -938,6 +1083,28 @@ async function restoreFileSet(
       await fs.utimes(destination, mtime, mtime).catch(() => undefined);
     }
   }
+}
+
+async function restorePgliteDump(
+  pgliteDir: string,
+  dump: AgentBackupPgliteDump,
+): Promise<void> {
+  const bytes = verifyPgliteDump(dump);
+  await fs.rm(pgliteDir, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(pgliteDir), { recursive: true });
+
+  const { PGlite } = await import("@electric-sql/pglite");
+  const blobBytes = new Uint8Array(bytes);
+  const database = new PGlite({
+    dataDir: pgliteDir,
+    loadDataDir: new Blob([blobBytes], { type: "application/gzip" }),
+  });
+  try {
+    await database.waitReady;
+  } finally {
+    await database.close();
+  }
+  await removePgliteVolatileFiles(pgliteDir);
 }
 
 function tableRestoreRank(tableName: string): number {
@@ -1080,6 +1247,24 @@ export async function restoreAgentSnapshot(
       throw new Error("Backup database component is missing Postgres rows");
     }
     await restorePostgresRows(postgresUrl, runtime.agentId, database.postgres);
+  } else if (database.kind === "pglite-dump") {
+    if (!database.pgliteDump) {
+      throw new Error("Backup database component is missing PGlite dump");
+    }
+    const pgliteDir = await resolvePgliteDir();
+    pgliteDirForStateFiles = pgliteDir;
+    if (pgliteDir === ":memory:" || pgliteDir.includes("://")) {
+      throw new Error(
+        `Cannot restore PGlite backup into non-filesystem data dir ${pgliteDir}`,
+      );
+    }
+    if (
+      typeof (runtime.adapter as { close?: () => Promise<void> }).close ===
+      "function"
+    ) {
+      await (runtime.adapter as { close: () => Promise<void> }).close();
+    }
+    await restorePgliteDump(pgliteDir, database.pgliteDump);
   } else if (database.kind === "pglite-files") {
     if (!database.pglite) {
       throw new Error("Backup database component is missing PGlite files");
@@ -1097,7 +1282,10 @@ export async function restoreAgentSnapshot(
     ) {
       await (runtime.adapter as { close: () => Promise<void> }).close();
     }
-    await restoreFileSet(pgliteDir, database.pglite, { replaceRoot: true });
+    await restoreFileSet(pgliteDir, database.pglite, {
+      replaceRoot: true,
+      include: pgliteFileInclude,
+    });
   } else {
     throw new Error(
       database.reason ?? "Backup did not capture a database component",
