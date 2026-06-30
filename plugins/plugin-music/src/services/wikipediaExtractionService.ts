@@ -10,6 +10,7 @@ export interface WikipediaExtractionContext {
   currentArtist?: string;
   currentTrack?: string;
   currentAlbum?: string;
+  requestContext?: string;
 }
 
 export interface ExtractedMusicInfo {
@@ -91,6 +92,10 @@ function formatWikipediaDataForPrompt(
   return formatPromptValue(wikiData);
 }
 
+function normalizeRequestContext(value: string | undefined): string {
+  return value?.replace(/\s+/g, " ").trim().slice(0, 500) ?? "";
+}
+
 function toStringList(value: unknown): string[] | undefined {
   if (Array.isArray(value)) {
     const items = value
@@ -152,8 +157,15 @@ export class WikipediaExtractionHelper {
       return null;
     }
 
+    const requestContext = normalizeRequestContext(context.requestContext);
+
     // Create cache key
-    const cacheKey = `${entityType}:${entityName}:${context.purpose}`;
+    const cacheKey = [
+      entityType,
+      entityName,
+      context.purpose,
+      requestContext,
+    ].join(":");
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
       return cached.data;
@@ -215,7 +227,10 @@ export class WikipediaExtractionHelper {
       }
 
       // Use LLM to extract relevant information based on context
-      const extractionPrompt = this.buildExtractionPrompt(wikiData, context);
+      const extractionPrompt = this.buildExtractionPrompt(wikiData, {
+        ...context,
+        requestContext: requestContext || undefined,
+      });
       const extractionResponse = await this.runtime.useModel(
         ModelType.TEXT_LARGE,
         {
@@ -259,6 +274,7 @@ Context: ${context.purpose}
 ${context.currentArtist ? `Current Artist: ${context.currentArtist}` : ""}
 ${context.currentTrack ? `Current Track: ${context.currentTrack}` : ""}
 ${context.currentAlbum ? `Current Album: ${context.currentAlbum}` : ""}
+${context.requestContext ? `User request: ${context.requestContext}` : ""}
 
 `;
 
