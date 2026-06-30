@@ -34,6 +34,7 @@
     "bench:miniwob": "bun scripts/run-miniwob-benchmark.mjs",
     "bench:miniwob:chromium": "bun scripts/capture-miniwob-chromium-evidence.mjs",
     "bench:grounding:chromium": "bun scripts/capture-web-grounding-evidence.mjs",
+    "bench:miniwob:chromium:record": "bun scripts/capture-miniwob-chromium-recording.mjs",
     "test:real:chromium": "bunx vitest run src/benchmark/__tests__/miniwob-chromium.real.test.ts --config ../../packages/test/vitest/real.config.ts",
     "test:real:grounding": "bunx vitest run src/benchmark/__tests__/web-grounding-chromium.real.test.ts --config ../../packages/test/vitest/real.config.ts",
     "build": "bun run build:js && bun run build:types",
