@@ -6,13 +6,20 @@
 //
 // Usage: node scripts/bake-view-icons.mjs [srcDir]   (default /tmp/view-icons)
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const srcDir = process.argv[2] || "/tmp/view-icons";
-const out = join(here, "..", "src", "components", "views", "view-icons.generated.ts");
+const out = join(
+  here,
+  "..",
+  "src",
+  "components",
+  "views",
+  "view-icons.generated.ts",
+);
 
 const files = existsSync(srcDir)
   ? readdirSync(srcDir)
