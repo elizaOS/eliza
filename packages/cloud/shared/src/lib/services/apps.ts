@@ -27,6 +27,17 @@ export class AppNameConflictError extends Error {
   }
 }
 
+/** Generous per-org guardrail against unbounded app creation (DB rows / repos).
+ * Not a tier/product limit — just an abuse ceiling far above any real user. */
+export const MAX_APPS_PER_ORG = 100;
+
+export class AppQuotaExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AppQuotaExceededError";
+  }
+}
+
 /**
  * Service for app CRUD operations and app management.
  */
@@ -542,6 +553,15 @@ export class AppsService {
 
   async getAppUsers(appId: string, limit?: number): Promise<AppUser[]> {
     return await appsRepository.listAppUsers(appId, limit);
+  }
+
+  /**
+   * Returns the app↔user connection (created by the OAuth /app-auth/connect
+   * grant), or undefined. Used to authorize X-App-Id attribution: a caller may
+   * only attribute inference to an app they own or have connected to.
+   */
+  async findAppUser(appId: string, userId: string): Promise<AppUser | undefined> {
+    return await appsRepository.findAppUser(appId, userId);
   }
 
   async getAnalytics(

@@ -817,7 +817,21 @@ export async function handleChatCompletionsPOST(
     if (appId) {
       monetizedApp = await appsService.getById(appId);
       if (monetizedApp?.monetization_enabled) {
-        useAppCredits = true;
+        // SECURITY: only honor X-App-Id when the caller OWNS the app or has an
+        // established app connection (the OAuth /app-auth/connect grant, created
+        // before any paid use). Otherwise a caller could point X-App-Id at
+        // another org's monetized app and forge its analytics/creator-earnings
+        // with self-funded inference. Ignore a spoofed X-App-Id rather than 4xx.
+        const ownsApp =
+          !!user.organization_id &&
+          monetizedApp.organization_id === user.organization_id;
+        const connected =
+          ownsApp || Boolean(await appsService.findAppUser(appId, user.id));
+        if (connected) {
+          useAppCredits = true;
+        } else {
+          monetizedApp = null;
+        }
       }
     }
 

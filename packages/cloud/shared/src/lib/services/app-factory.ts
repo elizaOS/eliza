@@ -1,7 +1,12 @@
 import type { App, NewApp } from "../../db/repositories/apps";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
-import { AppNameConflictError, appsService } from "./apps";
+import {
+  AppNameConflictError,
+  AppQuotaExceededError,
+  MAX_APPS_PER_ORG,
+  appsService,
+} from "./apps";
 import { githubReposService } from "./github-repos";
 
 /**
@@ -94,6 +99,18 @@ export class AppFactoryService {
         errorMessage,
         nameCheck.conflictType!,
         nameCheck.suggestedName,
+      );
+    }
+
+    // Step 0.5: Per-org abuse guardrail — cap unbounded app creation (each app
+    // mints an API key + row, and a repo-backed create provisions a GitHub repo
+    // on the shared org). Generous ceiling, far above any legitimate user.
+    const existingApps = await appsService.listByOrganization(
+      data.organization_id,
+    );
+    if (existingApps.length >= MAX_APPS_PER_ORG) {
+      throw new AppQuotaExceededError(
+        `App limit reached (${MAX_APPS_PER_ORG} apps per organization). Delete an unused app or contact support to raise the limit.`,
       );
     }
 

@@ -11,7 +11,11 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appFactoryService } from "@/lib/services/app-factory";
-import { AppNameConflictError, appsService } from "@/lib/services/apps";
+import {
+  AppNameConflictError,
+  AppQuotaExceededError,
+  appsService,
+} from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -131,6 +135,10 @@ app.post("/", async (c) => {
 
       return c.json(response);
     } catch (err) {
+      if (err instanceof AppQuotaExceededError) {
+        logger.warn("[Apps API] App quota exceeded:", { error: err.message });
+        return c.json({ success: false, error: err.message }, 409);
+      }
       if (err instanceof AppNameConflictError) {
         logger.warn("[Apps API] App name conflict:", {
           conflictType: err.conflictType,
