@@ -47,7 +47,14 @@ const byKind = {};
 for (const v of views) byKind[v.viewKind] = (byKind[v.viewKind] || 0) + 1;
 console.log(`[soak] view kinds: ${JSON.stringify(byKind)}`);
 
-const browser = await chromium.launch({ timeout: 300000 });
+// `--enable-precise-memory-info` makes `performance.memory.usedJSHeapSize`
+// report real byte counts instead of the privacy-bucketed (quantized) value, and
+// `--expose-gc` makes the `window.gc()` we call after each sweep actually run a
+// collection — without both, the heap-growth assertion below is decorative.
+const browser = await chromium.launch({
+  timeout: 300000,
+  args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"],
+});
 const ctx = await browser.newContext({
   viewport: { width: 1440, height: 900 },
 });
@@ -164,7 +171,10 @@ assert(
   afterChurn.viewEvicts > 0 || afterChurn.moduleEvicts > 0,
   `bounded caches evicted under churn (view-instance evicts=${afterChurn.viewEvicts}, module-cache evicts=${afterChurn.moduleEvicts}) — the LRU prunes`,
 );
-// heap must not grow unboundedly: end within 2.2x of the post-warm baseline
+// heap must not grow unboundedly: end within 2.2x of the post-warm baseline.
+// With precise-memory-info + real GC (see launch args) this ratio is measured on
+// actual collected heap, so a leaking view that retains instances across the
+// sweep trips it; 2.2x is a deliberately loose doubling-guard to stay non-flaky.
 const heapWarm = heapSamples[1] || heapStart;
 const heapRatio = heapEnd / Math.max(1, heapWarm);
 assert(
