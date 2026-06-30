@@ -24,6 +24,14 @@ const FRONTEND_ALIAS_TARGETS: Record<
   string,
   { appHost: string; apiHost: string }
 > = {
+  "app.elizacloud.ai": {
+    appHost: "eliza-app.pages.dev",
+    apiHost: "api.elizacloud.ai",
+  },
+  "app-staging.elizacloud.ai": {
+    appHost: "develop.eliza-app.pages.dev",
+    apiHost: "api-staging.elizacloud.ai",
+  },
   "staging.elizacloud.ai": {
     appHost: "develop.eliza-cloud-enq.pages.dev",
     apiHost: "api-staging.elizacloud.ai",
