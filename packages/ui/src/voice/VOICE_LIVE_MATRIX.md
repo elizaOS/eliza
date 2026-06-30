@@ -81,7 +81,7 @@ ELIZA_VOICE_OPENWAKEWORD_REPORT=.github/issue-evidence/9958-openwakeword/report.
 | `ios.sim-or-device.voice-roundtrip` | installed iOS simulator build plus `capture:ios-sim` | simulator screenshot/video/log when `ELIZA_VOICE_IOS_READY=1`, a booted iOS simulator exists, and the current app ID is installed |
 | `ios.talkmode.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-talkmode/ios` | TalkMode transcript/permission/state/barge-in bridge tests |
 | `ios.swabble.native-bridge` | `swift test --disable-index-store --package-path plugins/plugin-native-swabble/ios` | Swabble wake-firing -> JS bridge event tests |
-| `android.device.voice-roundtrip` | `packages/app test:e2e:android:local` | real WebView on-device STT -> agent -> TTS self-test |
+| `android.device.voice-roundtrip` | `packages/app test:e2e:android:local` | real WebView on-device STT -> agent -> TTS self-test when `ELIZA_VOICE_ANDROID_READY=1`, an Android target is attached in `device` state, and the current app ID is installed |
 | `android.talkmode.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest` | TalkMode capture lifecycle/transcript/permission/barge-in bridge tests |
 | `android.swabble.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest` | Swabble wake-firing -> JS bridge event tests |
 | `wake.openwakeword.real-head` | `packages/scripts/voice-openwakeword-eval.mjs` validating a reviewed real-head report | idle wake opens the listen window, always-on wake is inert, and mid-transcription wake does not corrupt the transcript |
@@ -100,7 +100,8 @@ developer laptop:
 | `ELIZA_VOICE_DESKTOP_API_BASE` | real app-core API base used by packaged desktop voice self-test; required for macOS/Windows Electrobun live cells |
 | `ELIZA_VOICE_IOS_READY=1` | current macOS runner has a booted iOS simulator with the current app build and voice assets installed; the matrix verifies the booted simulator and installed app ID before capture |
 | `ELIZA_VOICE_IOS_APP_ID` / `ELIZA_IOS_APP_ID` | optional app ID override for the iOS install check; defaults to `packages/app/app.config.ts` (`ai.elizaos.app`) |
-| `ELIZA_VOICE_ANDROID_READY=1` | current runner has an attached Android device/emulator, current APK, voice assets, and granted mic permissions |
+| `ELIZA_VOICE_ANDROID_READY=1` | current runner has an attached Android device/emulator in `device` state, current APK, voice assets, and granted mic permissions; the matrix verifies the attached target and installed app ID before capture |
+| `ELIZA_VOICE_ANDROID_APP_ID` / `ELIZA_ANDROID_APP_ID` / `ELIZA_APP_ID` | optional app ID override for the Android install check; defaults to `packages/app/app.config.ts` (`ai.elizaos.app`) |
 | `ELIZA_VOICE_OPENWAKEWORD_REPORT` | reviewed openWakeWord real-head JSON report using schema `eliza_voice_openwakeword_eval_v1`; required cases are `idle-wake`, `already-listening-wake-inert`, and `mid-transcription-wake` |
 | `ELIZA_INFERENCE_LIBRARY` + `ELIZA_ASR_BUNDLE` | Linux fused real-service runner has the provisioned local-inference bundle |
 | `ELIZA_VOICE_STAGE_B_REPORT` | reviewed Stage-B JSON report using schema `eliza_voice_stage_b_stt_eval_v1`; required backends are `ios-sfspeechrecognizer`, `android-speechrecognizer`, and `fused-asr` |

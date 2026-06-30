@@ -493,11 +493,79 @@ function readDefaultIosAppId() {
   }
 }
 
+function readDefaultAndroidAppId() {
+  const fromEnv =
+    process.env.ELIZA_VOICE_ANDROID_APP_ID?.trim() ||
+    process.env.ELIZA_ANDROID_APP_ID?.trim() ||
+    process.env.ELIZA_APP_ID?.trim();
+  if (fromEnv) return fromEnv;
+
+  const appConfigPath = path.join(REPO_ROOT, "packages/app/app.config.ts");
+  try {
+    const source = fs.readFileSync(appConfigPath, "utf8");
+    return source.match(/\bappId:\s*["']([^"']+)["']/)?.[1] ?? "ai.elizaos.app";
+  } catch {
+    return "ai.elizaos.app";
+  }
+}
+
 function simctl(args) {
   return spawnSync("xcrun", ["simctl", ...args], {
     encoding: "utf8",
     maxBuffer: 8 * 1024 * 1024,
   });
+}
+
+function adb(args) {
+  return spawnSync("adb", args, {
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+}
+
+function attachedAndroidDevice() {
+  const result = adb(["devices"]);
+  if (result.status !== 0) {
+    const detail = oneLine(result.stderr || result.stdout);
+    return {
+      serial: null,
+      reason: `adb devices failed${detail ? `: ${detail}` : ""}`,
+    };
+  }
+
+  const rows = String(result.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/))
+    .filter(([serial]) => serial && serial !== "List");
+  const requested = process.env.ANDROID_SERIAL?.trim();
+  if (requested) {
+    const row = rows.find(([serial]) => serial === requested);
+    if (row?.[1] === "device") return { serial: requested, reason: null };
+    return {
+      serial: null,
+      reason: `ELIZA_VOICE_ANDROID_READY=1 but ANDROID_SERIAL=${requested} is not attached in device state`,
+    };
+  }
+
+  const device = rows.find(([, state]) => state === "device");
+  if (device?.[0]) return { serial: device[0], reason: null };
+  return {
+    serial: null,
+    reason:
+      "ELIZA_VOICE_ANDROID_READY=1 but no Android device/emulator is attached in device state; attach a device/emulator and install the current app before capture",
+  };
+}
+
+function installedAndroidApp(serial, appId) {
+  const result = adb(["-s", serial, "shell", "pm", "path", appId]);
+  if (result.status === 0 && /^package:/m.test(result.stdout ?? "")) {
+    return { installed: true, reason: null };
+  }
+  const detail = oneLine(result.stderr || result.stdout);
+  return {
+    installed: false,
+    reason: `ELIZA_VOICE_ANDROID_READY=1 but ${appId} is not installed on Android device ${serial}; build/redeploy the current APK before capture${detail ? ` (${detail})` : ""}`,
+  };
 }
 
 function bootedIosSimulator() {
@@ -746,7 +814,17 @@ function probeCell(cell) {
             "set ELIZA_VOICE_ANDROID_READY=1 on an Android device runner with the current APK and voice assets installed",
         };
       }
-      return { available: true, reason: "Android voice runner enabled" };
+      {
+        const device = attachedAndroidDevice();
+        if (!device.serial) return { available: false, reason: device.reason };
+        const appId = readDefaultAndroidAppId();
+        const app = installedAndroidApp(device.serial, appId);
+        if (!app.installed) return { available: false, reason: app.reason };
+        return {
+          available: true,
+          reason: `Android voice runner enabled for ${appId} on ${device.serial}`,
+        };
+      }
     case "androidGradle": {
       const androidDir = path.join(
         REPO_ROOT,

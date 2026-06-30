@@ -550,6 +550,8 @@ jobs:
     timeout-minutes: 120
     env:
       ELIZA_VOICE_ANDROID_READY: ${{ vars.ELIZA_VOICE_ANDROID_READY }}
+      ELIZA_ANDROID_APP_ID: ${{ vars.ELIZA_ANDROID_APP_ID }}
+      ELIZA_VOICE_ANDROID_APP_ID: ${{ vars.ELIZA_VOICE_ANDROID_APP_ID }}
       ELIZA_VOICE_STAGE_B_REPORT: ${{ vars.ELIZA_VOICE_STAGE_B_REPORT }}
     steps:
       - name: Checkout
