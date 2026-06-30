@@ -1,0 +1,10 @@
+# #9967 — real device role holders (Pixel 6a, Android 16), captured live alongside the on-device test
+# via: adb shell cmd role get-role-holders android.app.role.<ROLE>
+
+HOME: com.google.android.apps.nexuslauncher
+DIALER: com.google.android.dialer
+SMS: com.google.android.apps.messaging
+ASSISTANT: com.google.android.googlequicksearchbox
+
+# RoleStatusInstrumentedTest.read_homeHolderMatchesTheDeviceDefaultHome asserts RoleStatus.read()'s
+# home holder == PackageManager's resolved HOME activity == the value above (nexuslauncher).

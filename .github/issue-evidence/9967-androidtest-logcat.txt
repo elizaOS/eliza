@@ -1,0 +1,120 @@
+03-11 02:55:12.133 I/AppsFilter( 1676): interaction: PackageSetting{67583c9 app.eliza/10324} -> PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} BLOCKED
+03-11 02:55:12.133 I/AppsFilter( 1676): interaction: PackageSetting{4a68ace com.google.android.microdroid.empty_payload/10404} -> PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} BLOCKED
+03-11 02:55:12.150 I/ActivityManager( 1676): Start proc 5021:ai.eliza.plugins.system.test/u0a312 for added application ai.eliza.plugins.system.test
+03-11 02:55:12.188 I/Zygote  ( 5021): Process 5021 created for ai.eliza.plugins.system.test
+03-11 02:55:12.201 I/bvb     (22041): BLL finished for package: ai.eliza.plugins.system.test, score: 11000016, verdict: HARMFUL
+03-11 02:55:12.201 I/clo     (22041): Finished new classification for package: ai.eliza.plugins.system.test, model: bll_1, verdict: HARMFUL, score: 1.1000016E7
+03-11 02:55:12.378 D/nativeloader( 5021): Configuring clns-9 for other apk /system/framework/android.test.mock.jar. target_sdk_version=35, uses_libraries=ALL, library_path=/data/app/~~G00rCEBjTppdqkyuRk-iwQ==/ai.eliza.plugins.system.test-g1Kcfv4NrEBUNNJM26z-1Q==/lib/arm64, permitted_path=/data:/mnt/expand:/data/user/0/ai.eliza.plugins.system.test
+03-11 02:55:12.381 D/nativeloader( 5021): Configuring clns-10 for other apk /system/framework/android.test.runner.jar. target_sdk_version=35, uses_libraries=ALL, library_path=/data/app/~~G00rCEBjTppdqkyuRk-iwQ==/ai.eliza.plugins.system.test-g1Kcfv4NrEBUNNJM26z-1Q==/lib/arm64, permitted_path=/data:/mnt/expand:/data/user/0/ai.eliza.plugins.system.test
+03-11 02:55:12.508 D/nativeloader( 5021): Configuring clns-11 for other apk /data/app/~~G00rCEBjTppdqkyuRk-iwQ==/ai.eliza.plugins.system.test-g1Kcfv4NrEBUNNJM26z-1Q==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~G00rCEBjTppdqkyuRk-iwQ==/ai.eliza.plugins.system.test-g1Kcfv4NrEBUNNJM26z-1Q==/lib/arm64, permitted_path=/data:/mnt/expand:/data/user/0/ai.eliza.plugins.system.test
+03-11 02:55:12.519 V/GraphicsEnvironment( 5021): ai.eliza.plugins.system.test is not listed in per-application setting
+03-11 02:55:12.595 I/TestRequestBuilder( 5021): Scanning classpath to find tests in paths [/data/app/~~G00rCEBjTppdqkyuRk-iwQ==/ai.eliza.plugins.system.test-g1Kcfv4NrEBUNNJM26z-1Q==/base.apk]
+03-11 02:55:13.832 I/TestRunner( 5021): run started: 3 tests
+03-11 02:55:13.832 I/TestRunner( 5021): started: read_homeHolderMatchesTheDeviceDefaultHome(ai.eliza.plugins.system.RoleStatusInstrumentedTest)
+03-11 02:55:13.841 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.841 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{d0f52a8 com.google.android.apps.nexuslauncher/10204} BLOCKED
+03-11 02:55:13.848 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.848 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{d0f52a8 com.google.android.apps.nexuslauncher/10204} BLOCKED
+03-11 02:55:13.851 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.851 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.852 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.852 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.852 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.852 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.853 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{52e0d66 com.whatsapp/10233} BLOCKED
+03-11 02:55:13.853 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.853 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.853 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.853 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.853 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.866 I/TestRunner( 5021): finished: read_homeHolderMatchesTheDeviceDefaultHome(ai.eliza.plugins.system.RoleStatusInstrumentedTest)
+03-11 02:55:13.868 I/TestRunner( 5021): started: read_enumeratesAllFourRolesFromRealRoleManager(ai.eliza.plugins.system.RoleStatusInstrumentedTest)
+03-11 02:55:13.872 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.872 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{d0f52a8 com.google.android.apps.nexuslauncher/10204} BLOCKED
+03-11 02:55:13.874 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.874 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.874 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.874 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.874 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.874 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.875 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{52e0d66 com.whatsapp/10233} BLOCKED
+03-11 02:55:13.875 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.875 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.875 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.875 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.876 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.879 I/TestRunner( 5021): finished: read_enumeratesAllFourRolesFromRealRoleManager(ai.eliza.plugins.system.RoleStatusInstrumentedTest)
+03-11 02:55:13.881 I/TestRunner( 5021): started: read_reportsRealPackageNameFromContext(ai.eliza.plugins.system.RoleStatusInstrumentedTest)
+03-11 02:55:13.884 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.884 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{d0f52a8 com.google.android.apps.nexuslauncher/10204} BLOCKED
+03-11 02:55:13.887 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.887 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.887 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.887 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.887 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.887 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.888 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{52e0d66 com.whatsapp/10233} BLOCKED
+03-11 02:55:13.888 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{4e4b93 ai.milady.milady/10323} BLOCKED
+03-11 02:55:13.888 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.888 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.888 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.889 I/AppsFilter( 1676): interaction: PackageSetting{b1d3bc9 ai.eliza.plugins.system.test/10312} -> PackageSetting{a591c1 com.google.android.apps.messaging/10138} BLOCKED
+03-11 02:55:13.889 I/TestRunner( 5021): finished: read_reportsRealPackageNameFromContext(ai.eliza.plugins.system.RoleStatusInstrumentedTest)
+03-11 02:55:13.892 I/TestRunner( 5021): run finished: 3 tests, 0 failed, 0 ignored
+03-11 02:55:13.902 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.system.test appid=10312 user=0: finished inst
+03-11 02:55:13.903 I/ActivityManager( 1676): Killing 5021:ai.eliza.plugins.system.test/u0a312 (adj 0): stop ai.eliza.plugins.system.test due to finished inst
+03-11 02:55:13.929 V/ActivityManager( 1676): Got obituary of 5021:ai.eliza.plugins.system.test
+03-11 02:55:14.323 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{e9f86c6 ai.eliza.plugins.system.test/10312} BLOCKED
+03-11 02:55:14.323 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{e9f86c6 ai.eliza.plugins.system.test/10312} BLOCKED
+03-11 02:55:14.323 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{e9f86c6 ai.eliza.plugins.system.test/10312} BLOCKED
+03-11 02:55:14.323 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.system.test appid=10312 user=-1: deletePackageX
+03-11 02:55:14.397 D/BackgroundInstallControlService( 1676): handlePackageRemove: removing ai.eliza.plugins.system.test from 0
+03-11 02:55:14.405 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.system.test appid=10312 user=0: pkg removed
+03-11 02:55:14.418 V/StorageManagerService( 1676): Package ai.eliza.plugins.system.test does not have legacy storage
+03-11 02:55:14.423 D/CarrierSvcBindHelper( 2466): onPackageRemoved: ai.eliza.plugins.system.test
+03-11 02:55:14.425 D/ShortcutService( 1676): removing package: ai.eliza.plugins.system.test userId=0
+03-11 02:55:14.429 I/SatelliteAppTracker( 2466): onPackageRemoved : ai.eliza.plugins.system.test
+03-11 02:55:14.429 W/WifiService( 1676): Couldn't get PackageInfo for package:ai.eliza.plugins.system.test
+03-11 02:55:14.429 D/WifiService( 1676): Remove settings for package:ai.eliza.plugins.system.test
+03-11 02:55:14.429 D/WifiConfigManager( 1676): Remove all networks for app ApplicationInfo{69432f1 ai.eliza.plugins.system.test}
+03-11 02:55:14.429 V/WifiScanRequestProxy( 1676): Clearing scan request timestamps for uid=10312, packageName=ai.eliza.plugins.system.test
+03-11 02:55:14.432 I/PasspointManager( 1676): No app ops listener found for ai.eliza.plugins.system.test
+03-11 02:55:14.439 I/RollbackManager( 1676): broadcast=ACTION_PACKAGE_FULLY_REMOVED pkg=ai.eliza.plugins.system.test
+03-11 02:55:14.439 I/PackageRemovedReceiver( 1676): Package ai.eliza.plugins.system.test (UID: 10312) fully removed for user UserHandle{0}
+03-11 02:55:14.442 W/WifiService( 1676): Couldn't get PackageInfo for package:ai.eliza.plugins.system.test
+03-11 02:55:14.442 D/WifiService( 1676): Remove settings for package:ai.eliza.plugins.system.test
+03-11 02:55:14.442 D/WifiConfigManager( 1676): Remove all networks for app ApplicationInfo{31a0a2f ai.eliza.plugins.system.test}
+03-11 02:55:14.443 V/WifiScanRequestProxy( 1676): Clearing scan request timestamps for uid=10312, packageName=ai.eliza.plugins.system.test
+03-11 02:55:14.443 I/PasspointManager( 1676): No app ops listener found for ai.eliza.plugins.system.test
+03-11 02:55:14.449 I/Finsky  ( 7317): [2] AIM: AppInfoCacheUpdater -> invalidating apps: [ai.eliza.plugins.system.test]
+03-11 02:55:14.450 I/Finsky  ( 7317): [311] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [ai.eliza.plugins.system.test]
+03-11 02:55:14.481 I/Finsky:background(22071): [2] Package no longer installed: ai.eliza.plugins.system.test
+03-11 02:55:14.494 I/Finsky  ( 7317): [2662] Asset module storage cleared for package ai.eliza.plugins.system.test.
+03-11 02:55:14.501 I/Telecom ( 1676): CarModeTracker: Package ai.eliza.plugins.system.test is not tracked.: SSH.oR@LBg
+03-11 02:55:14.503 I/Finsky:background(22071): [2] Package no longer installed: ai.eliza.plugins.system.test
+03-11 02:55:14.505 W/Finsky  ( 7317): [2] STU: Failed to get storage stats for package 'ai.eliza.plugins.system.test' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+03-11 02:55:14.512 I/Finsky:background(22071): [2] Package no longer installed: ai.eliza.plugins.system.test
+03-11 02:55:14.513 I/Finsky:background(22071): [306] IQ:PSL: skipping onPackageRemoved(replacing=false) for untracked package=ai.eliza.plugins.system.test
+03-11 02:55:14.520 D/NfcRegisteredServicesCache( 2388): onReceive: action=android.intent.action.PACKAGE_REMOVED, pkg=ai.eliza.plugins.system.test
+03-11 02:55:14.535 D/LauncherAppsService( 1676): onPackageRemoved: triggering onPackageRemoved for user=UserHandle{0}, packageName=ai.eliza.plugins.system.test
+03-11 02:55:14.536 D/Bubbles ( 2086): BubbleData.removeBubblesWithPackageName() package=ai.eliza.plugins.system.test
+03-11 02:55:14.536 D/LauncherAppsService( 1676): onPackageRemoved: triggering onPackageRemoved for user=UserHandle{0}, packageName=ai.eliza.plugins.system.test
+03-11 02:55:14.536 D/LauncherAppsService( 1676): onPackageRemoved: triggering onPackageRemoved for user=UserHandle{0}, packageName=ai.eliza.plugins.system.test
+03-11 02:55:14.537 D/LauncherAppsCallbackImpl( 8018): onPackageRemoved triggered for packageName=ai.eliza.plugins.system.test, user=UserHandle{0}
+03-11 02:55:14.538 D/ModelWriter( 8018): removing items from db []. Reason: [removed because the corresponding package is removed. removedPackages=[ai.eliza.plugins.system.test]]
+03-11 02:55:14.572 I/AppSearchManagerService( 1676): Handling android.intent.action.PACKAGE_FULLY_REMOVED broadcast on package: ai.eliza.plugins.system.test
+03-11 02:55:14.573 E/PackageChangedReceiver(  765): com.google.android.libraries.mediahome.providers.video.broadcastreceivers.PackageChangedReceiver.onReceive:58 Error: package ai.eliza.plugins.system.test not found
+03-11 02:55:14.573 E/PackageChangedReceiver(  765): android.content.pm.PackageManager$NameNotFoundException: ai.eliza.plugins.system.test
+03-11 02:55:14.575 E/PackageAddedReceiver(  765): com.google.android.libraries.mediahome.providers.video.broadcastreceivers.PackageAddedReceiver$1.doInBackground:64 Package not found ai.eliza.plugins.system.test
+03-11 02:55:14.575 E/PackageAddedReceiver(  765): android.content.pm.PackageManager$NameNotFoundException: ai.eliza.plugins.system.test
+03-11 02:55:14.631 I/ConditionProviders( 1676): Disallowing condition provider ai.eliza.plugins.system.test (userSet: true)
+03-11 02:55:14.633 I/ProximityAuth(31410): [RecentAppsMediator] Package removed: (user=UserHandle{0}) ai.eliza.plugins.system.test
+03-11 02:55:14.666 D/MediaProvider( 3648): Deleted 0 Android/media items belonging to ai.eliza.plugins.system.test on /data/user/0/com.google.android.providers.media.module/databases/external.db
+03-11 02:55:14.699 W/RWIPackageIntentOps(21736): Registries cleared for package: ai.eliza.plugins.system.test
+03-11 02:55:14.701 I/FuseDaemon( 3648): Successfully deleted rows in leveldb for owner_id:  and ownerPackageIdentifier: ai.eliza.plugins.system.test::0
+03-11 02:55:14.712 D/MediaGrants( 3648): Removed 0 media_grants for 0 user for [ai.eliza.plugins.system.test]. Reason: Package orphaned
+03-11 02:55:14.725 W/SQLiteLog(21736): (28) double-quoted string literal: "ai.eliza.plugins.system.test"
+03-11 02:55:14.731 I/Icing   (21736): doRemovePackageData ai.eliza.plugins.system.test
+03-11 02:55:14.764 I/Finsky  ( 7317): [2] Received an install/uninstall event for package ai.eliza.plugins.system.test
+03-11 02:55:14.907 I/btw     (22041): Ignoring deleted package: ai.eliza.plugins.system.test
+03-11 02:55:15.285 D/PersistedStoragePackageUninstalledReceiver(21998): Received android.intent.action.PACKAGE_FULLY_REMOVED for ai.eliza.plugins.system.test for u0

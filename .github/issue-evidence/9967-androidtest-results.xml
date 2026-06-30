@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="ai.eliza.plugins.system.RoleStatusInstrumentedTest" tests="3" failures="0" errors="0" skipped="0" time="0.583" timestamp="2026-06-30T07:28:47" hostname="localhost">
+  <properties>
+    <property name="device" value="Pixel 6a - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":system" />
+  </properties>
+  <testcase name="read_homeHolderMatchesTheDeviceDefaultHome" classname="ai.eliza.plugins.system.RoleStatusInstrumentedTest" time="0.016" />
+  <testcase name="read_enumeratesAllFourRolesFromRealRoleManager" classname="ai.eliza.plugins.system.RoleStatusInstrumentedTest" time="0.0" />
+  <testcase name="read_reportsRealPackageNameFromContext" classname="ai.eliza.plugins.system.RoleStatusInstrumentedTest" time="0.001" />
+</testsuite>

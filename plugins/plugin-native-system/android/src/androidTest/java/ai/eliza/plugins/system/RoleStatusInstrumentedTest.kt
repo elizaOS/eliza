@@ -1,6 +1,5 @@
-package ai.elizaos.app.nativeplugins
+package ai.eliza.plugins.system
 
-import ai.eliza.plugins.system.RoleStatus
 import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -21,9 +20,12 @@ import org.junit.runner.RunWith
  * on no device; the launcher's Phone/SMS/Home/Assistant gating is exactly this
  * read, so a regression here is precisely the "dialer renders, role logic
  * broken, nothing caught it" risk the issue describes.
+ *
+ * Runs in isolation — only this plugin library + capacitor-android + androidx.test —
+ * so it does NOT require the full app build (voice/inference JNI, fused .so).
  */
 @RunWith(AndroidJUnit4::class)
-class SystemRoleStatusInstrumentedTest {
+class RoleStatusInstrumentedTest {
 
     private val targetContext =
         InstrumentationRegistry.getInstrumentation().targetContext
