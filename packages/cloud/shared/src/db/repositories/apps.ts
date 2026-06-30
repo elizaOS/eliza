@@ -270,7 +270,12 @@ export class AppsRepository {
     if (existingConnection) {
       await dbWrite
         .update(appUsers)
-        .set({ last_seen_at: new Date() })
+        .set({
+          last_seen_at: new Date(),
+          signup_source: input.signupSource,
+          ip_address: input.ipAddress ?? existingConnection.ip_address,
+          user_agent: input.userAgent ?? existingConnection.user_agent,
+        })
         .where(eq(appUsers.id, existingConnection.id));
       return "updated";
     }
