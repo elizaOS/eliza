@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { apps } from "../schemas/apps";
@@ -109,12 +109,40 @@ export class TokenRedemptionsRepository {
 
   /**
    * Gets approved redemptions ready for processing.
-   * Excludes items that are currently being processed or have exceeded retry limit.
+   *
+   * An approved row always has a NULL processing_started_at — acquireLock flips
+   * it to 'processing', and markFailed/stale-lock recovery reset it to NULL when
+   * returning a row to 'approved' — so a plain isNull is the correct "unlocked"
+   * filter. (The former `OR processing_started_at < lockThreshold` clause was
+   * dead: no 'approved' row ever carries a stale lock. Stale 'processing' locks
+   * are recovered separately by the payout processor's recoverStaleLocks.)
    */
   async getApprovedForProcessing(
     batchSize: number,
-    lockTimeoutMs: number,
+    _lockTimeoutMs: number,
     maxRetries: number,
+  ): Promise<TokenRedemption[]> {
+    return await dbRead
+      .select()
+      .from(tokenRedemptions)
+      .where(
+        and(
+          eq(tokenRedemptions.status, "approved"),
+          isNull(tokenRedemptions.processing_started_at),
+          lt(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, maxRetries),
+        ),
+      )
+      .limit(batchSize);
+  }
+
+  /**
+   * Gets redemptions stuck in `processing` past the lock timeout (their worker
+   * died mid-payout). The payout processor classifies each by broadcast_tx_hash
+   * to decide whether it is safe to retry or must be reconciled on-chain.
+   */
+  async getStaleProcessingLocks(
+    batchSize: number,
+    lockTimeoutMs: number,
   ): Promise<TokenRedemption[]> {
     const lockThreshold = new Date(Date.now() - lockTimeoutMs);
 
@@ -123,12 +151,8 @@ export class TokenRedemptionsRepository {
       .from(tokenRedemptions)
       .where(
         and(
-          eq(tokenRedemptions.status, "approved"),
-          or(
-            isNull(tokenRedemptions.processing_started_at),
-            lt(tokenRedemptions.processing_started_at, lockThreshold),
-          ),
-          lt(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, maxRetries),
+          eq(tokenRedemptions.status, "processing"),
+          lt(tokenRedemptions.processing_started_at, lockThreshold),
         ),
       )
       .limit(batchSize);

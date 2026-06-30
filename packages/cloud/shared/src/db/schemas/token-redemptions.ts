@@ -104,6 +104,14 @@ export const tokenRedemptions = pgTable(
     processing_started_at: timestamp("processing_started_at"),
     processing_worker_id: text("processing_worker_id"), // For distributed locking
 
+    // Broadcast tx hash, recorded the moment the transfer is submitted to the
+    // chain (BEFORE confirmation). Load-bearing for crash recovery: a stuck
+    // `processing` row with this set means a transaction may be in-flight on-chain
+    // and MUST NOT be re-broadcast (would double-pay); a null value on an EVM row
+    // means the worker died before broadcasting → safe to retry. Distinct from
+    // `tx_hash`, which is only written once the transfer is confirmed.
+    broadcast_tx_hash: text("broadcast_tx_hash"),
+
     // Completion details
     tx_hash: text("tx_hash"),
     completed_at: timestamp("completed_at"),

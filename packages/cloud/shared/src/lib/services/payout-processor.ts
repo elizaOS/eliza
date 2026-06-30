@@ -33,7 +33,7 @@
  */
 
 import bs58 from "bs58";
-import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { type Address, createPublicClient, createWalletClient, http, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { dbRead, dbWrite } from "../../db/client";
@@ -92,6 +92,53 @@ interface PayoutResult {
   txHash?: string;
   error?: string;
   retryable?: boolean;
+  // True when a transfer may already be in-flight on-chain (broadcast happened,
+  // confirmation/persistence did not). Such a redemption must NOT be auto-retried
+  // — a re-broadcast would double-pay — so it is parked for operator on-chain
+  // reconciliation instead of being reset to `approved`.
+  needsReconciliation?: boolean;
+}
+
+/**
+ * Decide how to recover a redemption found stuck in `processing` past the lock
+ * timeout (its worker died mid-payout). This is the load-bearing safety
+ * decision: a wrong "re-approve" here re-broadcasts a transfer that already
+ * landed → double-pay. Kept pure and exported so it can be exhaustively tested.
+ *
+ *  - A recorded `broadcast_tx_hash` ⇒ a transaction may be in-flight on-chain.
+ *    NEVER auto-retry; reconcile against the chain.
+ *  - Solana with no recorded hash ⇒ its send+confirm is atomic and a thrown/killed
+ *    call may still have landed the transfer, and no pre-confirmation signature is
+ *    recorded — we cannot prove it did NOT broadcast, so reconcile conservatively.
+ *  - EVM with no recorded hash ⇒ the worker died before `writeContract`, so no
+ *    transaction was ever submitted → provably safe to re-approve for a fresh try.
+ */
+export type StaleLockRecovery =
+  | { action: "reapprove"; reason: string }
+  | { action: "reconcile"; reason: string };
+
+export function classifyStaleProcessingLock(row: {
+  network: string;
+  broadcast_tx_hash: string | null;
+}): StaleLockRecovery {
+  if (row.broadcast_tx_hash) {
+    return {
+      action: "reconcile",
+      reason: `broadcast tx ${row.broadcast_tx_hash} may be in-flight on-chain — reconcile before any retry, DO NOT re-broadcast`,
+    };
+  }
+  if (row.network === "solana") {
+    return {
+      action: "reconcile",
+      reason:
+        "solana payout interrupted with no recorded broadcast signature — atomic send+confirm cannot be proven un-sent, reconcile before any retry",
+    };
+  }
+  return {
+    action: "reapprove",
+    reason:
+      "stale lock with no broadcast — worker died before submitting any transaction, safe to retry",
+  };
 }
 
 interface ProcessingStats {
@@ -192,20 +239,26 @@ export class PayoutProcessorService {
       return stats;
     }
 
-    // Find approved redemptions that aren't being processed
+    // First, recover any redemptions stuck in `processing` past the lock timeout
+    // (their worker died mid-payout). This is what re-enables the documented
+    // "automatic retry" — previously these rows were unreachable forever because
+    // the only selector below filters on status='approved'.
+    await this.recoverStaleLocks(payoutConfig);
+
+    // Find approved redemptions that aren't being processed. An approved row
+    // always has a NULL processing_started_at (acquireLock flips it to
+    // 'processing'; markFailed/recovery reset it to NULL when returning to
+    // 'approved'), so a plain isNull is the correct unlocked filter. Stale
+    // 'processing' locks are handled by recoverStaleLocks above — NOT here (the
+    // old `OR processing_started_at < timeout` clause was dead: no approved row
+    // ever carries a stale lock).
     const redemptions = await dbRead
       .select()
       .from(tokenRedemptions)
       .where(
         and(
           eq(tokenRedemptions.status, "approved"),
-          or(
-            isNull(tokenRedemptions.processing_started_at),
-            lt(
-              tokenRedemptions.processing_started_at,
-              new Date(Date.now() - payoutConfig.LOCK_TIMEOUT_MS),
-            ),
-          ),
+          isNull(tokenRedemptions.processing_started_at),
           lt(
             sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`,
             payoutConfig.MAX_RETRY_ATTEMPTS,
@@ -217,27 +270,155 @@ export class PayoutProcessorService {
     for (const redemption of redemptions) {
       stats.processed++;
 
-      // Try to acquire lock
-      const locked = await this.acquireLock(redemption.id);
-      if (!locked) {
-        stats.skipped++;
-        continue;
-      }
+      // One redemption must never abort the whole batch. A throw here leaves the
+      // row in 'processing' (the lock is already held) — the NEXT cycle's
+      // recoverStaleLocks classifies it by broadcast_tx_hash (safe-by-default: a
+      // broadcast row reconciles, a pre-broadcast EVM row retries).
+      try {
+        // Try to acquire lock
+        const locked = await this.acquireLock(redemption.id);
+        if (!locked) {
+          stats.skipped++;
+          continue;
+        }
 
-      // Process the payout
-      const result = await this.processRedemption(redemption);
+        // Process the payout
+        const result = await this.processRedemption(redemption);
 
-      if (result.success) {
-        await this.markCompleted(redemption, result.txHash!);
-        stats.succeeded++;
-      } else {
-        await this.markFailed(redemption.id, result.error!, result.retryable ?? true);
+        if (result.success) {
+          await this.markCompleted(redemption, result.txHash!);
+          stats.succeeded++;
+        } else if (result.needsReconciliation) {
+          // A transfer may already be on-chain — park for operator reconciliation,
+          // never auto-retry.
+          await this.markNeedsReconciliation(
+            redemption.id,
+            result.error ?? "payout interrupted after broadcast",
+            result.txHash,
+          );
+          stats.failed++;
+        } else {
+          await this.markFailed(redemption.id, result.error!, result.retryable ?? true);
+          stats.failed++;
+        }
+      } catch (error) {
         stats.failed++;
+        logger.error(
+          "[PayoutProcessor] Unexpected error processing redemption — left locked for stale-lock recovery",
+          {
+            redemptionId: redemption.id,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
 
     logger.info("[PayoutProcessor] Batch completed", stats);
     return stats;
+  }
+
+  /**
+   * Recover redemptions stuck in `processing` past the lock timeout (their worker
+   * died mid-payout). Each is classified by {@link classifyStaleProcessingLock}:
+   * a pre-broadcast EVM lock is re-approved for a fresh attempt; anything that may
+   * have broadcast (a recorded hash, or any interrupted Solana payout) is parked
+   * in `failed` + `requires_review` for operator on-chain reconciliation — never
+   * auto-retried, so recovery can never cause a double-pay.
+   */
+  private async recoverStaleLocks(config: ReturnType<typeof getPayoutConfig>): Promise<void> {
+    const lockThreshold = new Date(Date.now() - config.LOCK_TIMEOUT_MS);
+
+    const stale = await dbRead
+      .select()
+      .from(tokenRedemptions)
+      .where(
+        and(
+          eq(tokenRedemptions.status, "processing"),
+          lt(tokenRedemptions.processing_started_at, lockThreshold),
+        ),
+      )
+      .limit(config.BATCH_SIZE);
+
+    for (const row of stale) {
+      const recovery = classifyStaleProcessingLock(row);
+
+      if (recovery.action === "reapprove") {
+        // Conditional reset, re-guarded against a concurrent worker that revived
+        // the row or broadcast in the meantime (status back to 'processing' only
+        // if still stale AND still un-broadcast). retry_count is bumped so a row
+        // that keeps dying pre-broadcast eventually exits the retry budget.
+        const [reapproved] = await dbWrite
+          .update(tokenRedemptions)
+          .set({
+            status: "approved",
+            processing_started_at: null,
+            processing_worker_id: null,
+            failure_reason: recovery.reason,
+            retry_count: sql`${tokenRedemptions.retry_count} + 1`,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(tokenRedemptions.id, row.id),
+              eq(tokenRedemptions.status, "processing"),
+              isNull(tokenRedemptions.broadcast_tx_hash),
+              lt(tokenRedemptions.processing_started_at, lockThreshold),
+            ),
+          )
+          .returning();
+
+        if (reapproved) {
+          logger.warn("[PayoutProcessor] Recovered stale pre-broadcast lock → approved", {
+            redemptionId: row.id,
+            network: row.network,
+            reason: recovery.reason,
+          });
+        }
+        continue;
+      }
+
+      // reconcile: park for operator review, preserving any broadcast hash.
+      const [parked] = await dbWrite
+        .update(tokenRedemptions)
+        .set({
+          status: "failed",
+          requires_review: true,
+          failure_reason: recovery.reason,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(tokenRedemptions.id, row.id),
+            eq(tokenRedemptions.status, "processing"),
+            lt(tokenRedemptions.processing_started_at, lockThreshold),
+          ),
+        )
+        .returning();
+
+      if (parked) {
+        logger.error(
+          "[PayoutProcessor] Stale lock may have broadcast — parked for reconciliation",
+          {
+            redemptionId: row.id,
+            network: row.network,
+            broadcastTxHash: row.broadcast_tx_hash,
+            reason: recovery.reason,
+          },
+        );
+        void payoutAlertsService.sendAlert({
+          severity: "high",
+          title: "Redemption needs on-chain reconciliation",
+          message: recovery.reason,
+          details: {
+            redemptionId: row.id,
+            network: row.network,
+            broadcastTxHash: row.broadcast_tx_hash ?? null,
+            payoutAddress: row.payout_address,
+            elizaAmount: row.eliza_amount,
+          },
+        });
+      }
+    }
   }
 
   /**
@@ -393,21 +574,68 @@ export class PayoutProcessorService {
       };
     }
 
-    // Execute transfer
-    const txHash = await walletClient.writeContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: "transfer",
-      args: [toAddress, amount],
-    });
+    // Broadcast the transfer. A throw HERE means the transaction was never
+    // submitted (RPC rejected / nonce / signing) → safe to retry.
+    let txHash: `0x${string}`;
+    try {
+      txHash = await walletClient.writeContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "transfer",
+        args: [toAddress, amount],
+      });
+    } catch (error) {
+      return {
+        success: false,
+        error: `Broadcast failed: ${error instanceof Error ? error.message : String(error)}`,
+        retryable: true,
+      };
+    }
 
-    // Wait for confirmation
-    const receipt = await publicClient.waitForTransactionReceipt({
-      hash: txHash,
-      confirmations: 2,
-    });
+    // The transfer is now in the mempool. Persist the hash BEFORE awaiting
+    // confirmation so a crash during the wait can never be mistaken for
+    // "never broadcast" and re-tried (which would double-pay). If persistence
+    // itself fails, we still KNOW in-process the tx is live → reconcile, never
+    // retry.
+    try {
+      await this.recordBroadcastTxHash(redemption.id, txHash);
+    } catch (error) {
+      logger.error("[PayoutProcessor] Failed to persist broadcast tx hash", {
+        redemptionId: redemption.id,
+        network,
+        txHash,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: `Broadcast ${txHash} but failed to persist hash: ${error instanceof Error ? error.message : String(error)}`,
+        needsReconciliation: true,
+        txHash,
+      };
+    }
+
+    // Wait for confirmation. A throw here (RPC timeout, dropped connection) does
+    // NOT mean the transfer failed — it may still confirm → reconcile, never
+    // auto-retry.
+    let receipt: Awaited<ReturnType<typeof publicClient.waitForTransactionReceipt>>;
+    try {
+      receipt = await publicClient.waitForTransactionReceipt({
+        hash: txHash,
+        confirmations: 2,
+      });
+    } catch (error) {
+      return {
+        success: false,
+        error: `Broadcast ${txHash}, confirmation failed: ${error instanceof Error ? error.message : String(error)}`,
+        needsReconciliation: true,
+        txHash,
+      };
+    }
 
     if (receipt.status === "reverted") {
+      // A reverted transfer moved no tokens, so a fresh attempt is safe. Mark
+      // retryable; markFailed clears the recorded broadcast hash so recovery
+      // won't later mistake this terminal revert for an in-flight transfer.
       return {
         success: false,
         error: "Transaction reverted",
@@ -491,13 +719,27 @@ export class PayoutProcessorService {
       createTransferInstruction(sourceAta, destinationAta, this.solanaKeypair.publicKey, amount),
     );
 
-    // Send and confirm transaction
-    const signature = await sendAndConfirmTransaction(
-      this.solanaConnection,
-      transaction,
-      [this.solanaKeypair],
-      { commitment: "confirmed" },
-    );
+    // Send and confirm transaction. sendAndConfirmTransaction couples broadcast
+    // and confirmation, so a throw is AMBIGUOUS — the transfer may already have
+    // landed. We cannot prove it did not broadcast, so on any failure we route to
+    // reconciliation rather than risk a double-pay on retry. (A future hardening
+    // could split sign → sendRawTransaction → confirmTransaction and persist the
+    // signature at broadcast time, mirroring the EVM path.)
+    let signature: string;
+    try {
+      signature = await sendAndConfirmTransaction(
+        this.solanaConnection,
+        transaction,
+        [this.solanaKeypair],
+        { commitment: "confirmed" },
+      );
+    } catch (error) {
+      return {
+        success: false,
+        error: `Solana payout failed (may have broadcast): ${error instanceof Error ? error.message : String(error)}`,
+        needsReconciliation: true,
+      };
+    }
 
     logger.info("[PayoutProcessor] Solana payout completed", {
       redemptionId: redemption.id,
@@ -564,6 +806,56 @@ export class PayoutProcessorService {
   }
 
   /**
+   * Persist the broadcast transaction hash the moment a transfer is submitted to
+   * the chain, BEFORE confirmation. This is the recovery signal that lets
+   * {@link classifyStaleProcessingLock} distinguish "never broadcast" (safe to
+   * retry) from "broadcast, unconfirmed" (must reconcile, never re-broadcast).
+   */
+  private async recordBroadcastTxHash(redemptionId: string, txHash: string): Promise<void> {
+    await dbWrite
+      .update(tokenRedemptions)
+      .set({ broadcast_tx_hash: txHash, updated_at: new Date() })
+      .where(eq(tokenRedemptions.id, redemptionId));
+  }
+
+  /**
+   * Park a redemption whose transfer may already be on-chain (broadcast happened,
+   * confirmation/persistence did not) for operator on-chain reconciliation. It is
+   * NEVER auto-retried — re-broadcasting would double-pay. The broadcast hash is
+   * preserved so an operator can verify the chain state.
+   */
+  private async markNeedsReconciliation(
+    redemptionId: string,
+    reason: string,
+    txHash?: string,
+  ): Promise<void> {
+    await dbWrite
+      .update(tokenRedemptions)
+      .set({
+        status: "failed",
+        requires_review: true,
+        failure_reason: `RECONCILE: ${reason}`,
+        // Record the hash if the caller has it and it wasn't already persisted.
+        ...(txHash ? { broadcast_tx_hash: txHash } : {}),
+        updated_at: new Date(),
+      })
+      .where(eq(tokenRedemptions.id, redemptionId));
+
+    logger.error("[PayoutProcessor] Redemption parked for reconciliation", {
+      redemptionId,
+      txHash,
+      reason,
+    });
+
+    void payoutAlertsService.sendAlert({
+      severity: "high",
+      title: "Redemption needs on-chain reconciliation",
+      message: reason,
+      details: { redemptionId, broadcastTxHash: txHash ?? null },
+    });
+  }
+
+  /**
    * Mark redemption as failed.
    */
   private async markFailed(
@@ -572,7 +864,11 @@ export class PayoutProcessorService {
     retryable: boolean,
   ): Promise<void> {
     if (retryable) {
-      // Increment retry count and reset to approved for retry
+      // Increment retry count and reset to approved for retry. Clear any recorded
+      // broadcast hash: a retryable failure means no transfer is in-flight (e.g.
+      // a reverted tx moved nothing, or the broadcast never happened), so a fresh
+      // attempt is safe and recovery must not later read a stale hash as
+      // "in-flight".
       await dbWrite
         .update(tokenRedemptions)
         .set({
@@ -581,6 +877,7 @@ export class PayoutProcessorService {
           retry_count: sql`${tokenRedemptions.retry_count} + 1`,
           processing_started_at: null,
           processing_worker_id: null,
+          broadcast_tx_hash: null,
           updated_at: new Date(),
         })
         .where(eq(tokenRedemptions.id, redemptionId));
