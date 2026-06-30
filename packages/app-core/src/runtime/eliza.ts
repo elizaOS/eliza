@@ -52,6 +52,7 @@ import { getApps, loadRegistry } from "../registry";
 import { registerCoreSensitiveRequestAdapters } from "../services/sensitive-requests/index.js";
 import {
   type AppRoutePluginRegistryEntry,
+  drainAppRoutePluginLoaders,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
@@ -343,12 +344,6 @@ class OptionalAppRoutePluginUnavailableError extends Error {
   }
 }
 
-function isOptionalAppRoutePluginUnavailableError(
-  err: unknown,
-): err is OptionalAppRoutePluginUnavailableError {
-  return err instanceof OptionalAppRoutePluginUnavailableError;
-}
-
 function splitPackageSpecifier(specifier: string): {
   packageName: string;
   exportSubpath: string;
@@ -559,52 +554,18 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
 }
 
 async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
-  // Load all app-route plugin modules concurrently. This runs on the gated
-  // ready-path (repairRuntimeAfterBoot is awaited before the runtime is handed
-  // back and /api/health flips ready), so the previous sequential await-loop
-  // serialized ~11 independent dynamic imports (lifeops alone registers 188
-  // routes) and dominated time-to-ready. Imports are independent; loading them
-  // together overlaps their I/O and module resolution. Route registration is
-  // still applied in loader order after all settle, so dispatch order is
-  // unchanged, and per-plugin failures stay isolated (a rejected load logs and
-  // contributes no routes rather than aborting the rest).
-  const loaded = await Promise.all(
-    getAppRoutePluginLoaders().map(async ({ id, load }) => {
-      try {
-        return await load();
-      } catch (err) {
-        if (isOptionalAppRoutePluginUnavailableError(err)) {
-          logger.debug(
-            `[eliza] App route plugin ${id} unavailable, skipping route registration`,
-          );
-          return null;
-        }
-        logger.warn(
-          `[eliza] Failed to register app route plugin ${id}: ${formatError(err)}`,
-        );
-        return null;
-      }
-    }),
-  );
-
-  for (const plugin of loaded) {
-    if (!plugin) continue;
-    // Push rawPath routes directly onto runtime.routes to avoid the core's
-    // registerPlugin() path mangling (which prepends /<pluginName>/ to every
-    // route path). The rawPath flag means these routes already have their
-    // final absolute paths (e.g. /api/lifeops/app-state).
-    if (plugin.routes?.length) {
-      for (const route of plugin.routes) {
-        const routePath = route.path.startsWith("/")
-          ? route.path
-          : `/${route.path}`;
-        runtime.routes.push({ ...route, path: routePath });
-      }
-    }
-    logger.info(
-      `[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`,
-    );
-  }
+  // App-route plugins register a loader on a global registry (so they survive
+  // bundler tree-shaking) rather than exposing routes through Plugin.routes.
+  // getAppRoutePluginLoaders() resolves the curated registry-app loaders plus
+  // the globally-registered ones, minus any skipped via
+  // ELIZA_SKIP_APP_ROUTE_PLUGINS. The shared core drain loads them concurrently
+  // — overlapping ~11 independent dynamic imports (lifeops alone registers 188
+  // routes) on the gated ready-path instead of serializing them — applies them
+  // in loader order with per-loader failure isolation, and pushes their rawPath
+  // routes onto runtime.routes with a type:path dedup. That dedup is what lets
+  // the headless @elizaos/agent boot (which also drains this registry) and this
+  // app-core boot run against the same runtime.routes without double-mounting.
+  await drainAppRoutePluginLoaders(runtime, getAppRoutePluginLoaders());
 }
 
 interface RuntimeHookModule {

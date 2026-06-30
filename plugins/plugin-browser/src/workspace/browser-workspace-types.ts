@@ -1,6 +1,11 @@
 import type { JSDOM } from "jsdom";
 
-export type BrowserWorkspaceMode = "cloud" | "desktop" | "web";
+// "chromium" is emitted only by the real-Chromium benchmark executor
+// (src/benchmark/chromium-executor.ts, #10333) — never by
+// executeBrowserWorkspaceCommand, which stays "cloud" | "desktop" | "web". It
+// lets the benchmark's BrowserWorkspaceCommandResult carry an accurate engine
+// tag without a parallel result type.
+export type BrowserWorkspaceMode = "chromium" | "cloud" | "desktop" | "web";
 
 export type BrowserWorkspaceTabKind = "internal" | "standard";
 

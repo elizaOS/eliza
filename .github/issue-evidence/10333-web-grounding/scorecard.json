@@ -1,0 +1,76 @@
+{
+  "benchmark": "web-element-grounding (ScreenSpot-Web style)",
+  "engine": "chromium",
+  "executablePath": "C:\\Users\\Administrator\\AppData\\Local\\ms-playwright\\chromium-1228\\chrome-win64\\chrome.exe",
+  "grounder": "center",
+  "total": 3,
+  "correct": 3,
+  "accuracy": 1,
+  "byGroup": {
+    "button": {
+      "total": 1,
+      "correct": 1,
+      "accuracy": 1
+    },
+    "link": {
+      "total": 1,
+      "correct": 1,
+      "accuracy": 1
+    },
+    "icon": {
+      "total": 1,
+      "correct": 1,
+      "accuracy": 1
+    }
+  },
+  "samples": [
+    {
+      "tag": "01-ground-button",
+      "task": "ground-button",
+      "group": "button",
+      "correct": true,
+      "box": {
+        "x": 202.71875,
+        "y": 62,
+        "width": 85.453125,
+        "height": 38
+      },
+      "predicted": {
+        "x": 245.4453125,
+        "y": 81
+      }
+    },
+    {
+      "tag": "02-ground-link",
+      "task": "ground-link",
+      "group": "link",
+      "correct": true,
+      "box": {
+        "x": 195.96875,
+        "y": 62,
+        "width": 81.875,
+        "height": 41
+      },
+      "predicted": {
+        "x": 236.90625,
+        "y": 82.5
+      }
+    },
+    {
+      "tag": "03-ground-icon",
+      "task": "ground-icon",
+      "group": "icon",
+      "correct": true,
+      "box": {
+        "x": 166.46875,
+        "y": 62,
+        "width": 57.234375,
+        "height": 41
+      },
+      "predicted": {
+        "x": 195.0859375,
+        "y": 82.5
+      }
+    }
+  ]
+}
