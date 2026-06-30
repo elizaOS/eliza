@@ -1,25 +1,15 @@
-import { execSync, spawnSync } from "node:child_process";
-import { join } from "node:path";
+#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-google.
+ * tsc-only (non-bundled) plugin: no Bun.build step — the shared driver cleans
+ * dist then runs `tsc --project tsconfig.json --noCheck` via the empty-targets
+ * path.
+ */
+import { buildPlugin } from "../plugin-build";
 
-const rmRecursiveScript = join(
-  import.meta.dirname,
-  "..",
-  "..",
-  "packages",
-  "scripts",
-  "rm-path-recursive.mjs"
-);
-
-function rmRecursive(targetPath: string) {
-  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
-    stdio: "inherit",
-  });
-  if (result.status !== 0) {
-    throw new Error(`failed to remove generated Google plugin build output ${targetPath}`);
-  }
-}
-
-console.log("Building Google plugin (TypeScript)...");
-rmRecursive("dist");
-execSync("bunx tsc -p tsconfig.json --noCheck", { stdio: "inherit" });
-console.log("Build complete.");
+await buildPlugin({
+  name: "@elizaos/plugin-google",
+  clean: true,
+  targets: [],
+  dtsProject: "tsconfig.json",
+});
