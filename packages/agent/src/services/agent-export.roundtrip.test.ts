@@ -22,7 +22,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { writeStoredMediaFile } from "../api/media-store.ts";
+import {
+  deleteMediaFile,
+  readStoredMediaBytes,
+  writeStoredMediaFile,
+} from "../api/media-store.ts";
 import {
   buildExportManifest,
   canonicalize,
@@ -357,6 +361,13 @@ describe("#9963 agent export → import round-trip", () => {
     expect(Buffer.isBuffer(fileBuffer)).toBe(true);
     expect(fileBuffer.subarray(0, 14).toString("utf-8")).toBe("ELIZA_AGENT_V1");
 
+    // The export captured the referenced media bytes into the encrypted buffer;
+    // delete them from the content-addressed store so the only way the bytes can
+    // reappear is via restore (otherwise the beforeAll-written file would mask a
+    // broken media round-trip).
+    expect(deleteMediaFile(MEDIA_FILE)).toBe(true);
+    expect(readStoredMediaBytes(MEDIA_FILE)).toBeNull();
+
     // 2. WIPE → a brand-new, empty target store (separate "machine").
     const target = new InMemoryExportAdapter();
     const targetRuntime = makeRuntime(target, uuid(999), {});
@@ -380,6 +391,12 @@ describe("#9963 agent export → import round-trip", () => {
       tasks: 1,
       media: 1,
     });
+
+    // 4b. The content-addressed media bytes were restored by content — the exact
+    // bytes the export referenced, re-materialized from the encrypted buffer.
+    expect(readStoredMediaBytes(MEDIA_FILE)).toEqual(
+      Buffer.from("PNGBYTES-round-trip"),
+    );
 
     // 5. The target store actually holds the restored rows.
     expect(target.worlds).toHaveLength(1);
@@ -467,7 +484,14 @@ describe("#9963 agent export → import round-trip", () => {
       worlds: source.worlds as never,
       tasks: source.tasks as never,
       logs: [] as never,
-      media: [{ fileName: MEDIA_FILE, base64: "" }] as never,
+      // Use the REAL referenced bytes (not an empty stub) so the committed
+      // evidence manifest's media digest matches what production digests.
+      media: [
+        {
+          fileName: MEDIA_FILE,
+          base64: Buffer.from("PNGBYTES-round-trip").toString("base64"),
+        },
+      ] as never,
     });
 
     writeFileSync(join(evidenceDir, "sample-backup.eliza-agent"), fileBuffer);

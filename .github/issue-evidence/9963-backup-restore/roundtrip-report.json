@@ -2,7 +2,7 @@
   "issue": 9963,
   "slice": "backup→wipe→restore→identical round-trip + per-component integrity manifest",
   "exportFormat": "ELIZA_AGENT_V1 (PBKDF2-600k + AES-256-GCM + gzip)",
-  "exportedBytes": 1357,
+  "exportedBytes": 1359,
   "magicHeader": "ELIZA_AGENT_V1",
   "integrityManifestAlgorithm": "sha256",
   "integrityManifestCollections": {
@@ -43,7 +43,7 @@
       "count": 0
     },
     "media": {
-      "sha256": "6c3721d5c91de1a4cc138c89d61346e387cacd4692603815fdfb66453d997d4f",
+      "sha256": "ea2a1b7485979150f5d1bc515fd1bed6556dec77ca518f41d7059db97c864cc3",
       "count": 1
     }
   },

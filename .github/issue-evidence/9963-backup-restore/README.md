@@ -1,10 +1,19 @@
 # #9963 — backup→wipe→restore→identical e2e + per-component integrity manifest
 
 This bundle delivers the **non-infra-gated local slice** the re-open comment
-asked for: the issue's **stated proof-of-done** (a real backup → wipe → restore
-→ identical round-trip, previously absent) and a **per-component integrity
-manifest** (the maintainer's "per-component sha256 with loud fail-on-mismatch",
-previously absent — restore relied only on the whole-blob GCM auth tag).
+asked for: a real **DB-graph backup → wipe → restore → identical** round-trip
+(previously absent) and a **per-component integrity manifest** (the maintainer's
+"per-component sha256 with loud fail-on-mismatch", previously absent).
+
+Scope note: against *tampering*, the whole-blob AES-256-GCM auth tag is already
+the cryptographic boundary (any bit-flip fails `decrypt`). The per-component
+manifest is **structural defense-in-depth** — it catches internally inconsistent
+payloads (a partially-merged/truncated/programmatically-built archive that is
+otherwise validly encrypted) and produces a **named** error ("memories: manifest
+2 rows, payload 3") instead of a generic decrypt failure. The full issue
+proof-of-done also calls for vault keys + a real-LLM post-restore recall
+trajectory; this slice proves DB-graph + media-byte identity and defers the
+vault/LLM/UI legs (see "Out of this slice" below).
 
 ## What landed
 
@@ -47,7 +56,7 @@ test** is the export/restore + manifest logic, not the SQL engine.
 |------|------------|
 | `roundtrip-report.json` | A real run: export format, encrypted byte size, the full per-collection sha256 integrity manifest, the restore counts (`entities:3, memories:3, rooms:2, participants:4, …`), and that the restored agent id differs from the source. |
 | `sample-backup.eliza-agent` | A real encrypted backup file produced by `exportAgent` (`ELIZA_AGENT_V1` magic, PBKDF2-600k + AES-256-GCM + gzip). |
-| `roundtrip-test-output.txt` | The vitest run — 10/10 passing on a Windows host. |
+| `roundtrip-test-output.txt` | The vitest run — 10/10 passing (includes the media-byte restore-by-content assertion). |
 
 Regenerate: `ELIZA_WRITE_9963_EVIDENCE=1 bun run --cwd packages/agent test -- src/services/agent-export.roundtrip.test.ts`
 
