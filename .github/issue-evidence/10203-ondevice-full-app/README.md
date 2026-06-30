@@ -54,3 +54,7 @@ feature works without the agent crashing" property over repeated use.
 ## Screen recording
 
 `onboard-chat-walkthrough.mp4` — a screen recording of the full on-device flow: onboarding (remote → host agent) → home dashboard renders → a chat message is typed and sent. Captured via `adb screenrecord` while driving the app over CDP.
+
+## Backend-loss crash recovery
+
+`agent-crash-recovery.txt` — a crash-injection recovery test (the kind #10197 asks for): with the app at home and chatting, the host agent is **killed mid-session** (backend crash), and the app's `/api/health` goes unreachable — yet the **app pid stays constant (8546), so the app never crashes**. When the agent is restarted (recovered at t+15s), the app reconnects (`agentState=running`). Distinct from #10397's on-device agent restart — this is backend-loss recovery.
