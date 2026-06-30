@@ -92,7 +92,7 @@ jobs:
     # A fresh ubuntu-latest VM per run sidesteps both the preemption and the
     # stuck shared-workspace checkout. The Worker build/deploy are scoped to
     # @elizaos/core + packages/cloud/api and fit a standard 16 GB hosted runner.
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -287,7 +287,7 @@ jobs:
     # this deploy right after the checkout starts (the #10353 reclaim). A fresh
     # ubuntu-latest VM per run sidesteps both the preemption and the stuck
     # shared-workspace checkout. The scoped vite build fits a 16 GB hosted runner.
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -498,7 +498,7 @@ jobs:
     # this deploy right after the checkout starts (the #10353 reclaim). A fresh
     # ubuntu-latest VM per run sidesteps both the preemption and the stuck
     # shared-workspace checkout. The scoped vite build fits a 16 GB hosted runner.
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
