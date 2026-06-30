@@ -71,4 +71,19 @@ describe("TaskSupervisorService digest sinks (#8902 AC2)", () => {
       expect.objectContaining({ source: "telegram" }),
     );
   });
+
+  it("tries later source sinks before falling back to runtime delivery", async () => {
+    const sendMessageToTarget = vi.fn(async () => undefined);
+    const service = new TaskSupervisorService(makeRuntime(sendMessageToTarget));
+    const firstSink = vi.fn(async () => false);
+    const secondSink = vi.fn(async () => true);
+
+    service.registerDigestSink("telegram", firstSink);
+    service.registerDigestSink("telegram", secondSink);
+    await service.runOnce();
+
+    expect(firstSink).toHaveBeenCalledTimes(1);
+    expect(secondSink).toHaveBeenCalledTimes(1);
+    expect(sendMessageToTarget).not.toHaveBeenCalled();
+  });
 });

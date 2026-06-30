@@ -13,6 +13,7 @@
 
 import type { IAgentRuntime, Memory, Service, UUID } from "@elizaos/core";
 import { logger, stringToUuid } from "@elizaos/core";
+import { normalizeTelegramAccountId } from "./accounts";
 
 /**
  * Durable store for the board's message id per (chat, thread) key, so the board
@@ -269,7 +270,7 @@ interface TaskSupervisorLike {
   registerDigestSink?: (
     source: string,
     sink: (
-      target: { source: string; roomId: UUID },
+      target: { source: string; roomId: UUID; accountId?: string },
       content: unknown,
     ) => Promise<boolean | undefined> | boolean | undefined,
   ) => () => void;
@@ -279,8 +280,10 @@ interface RuntimeWithRooms {
   getRoom?: (roomId: UUID) => Promise<{
     channelId?: string | null;
     metadata?: {
+      accountId?: string | null;
       threadId?: string | number | null;
       telegramThreadId?: string | number | null;
+      telegram?: { accountId?: string | null } | null;
     } | null;
   } | null>;
 }
@@ -290,12 +293,13 @@ interface RuntimeServiceLoader {
 }
 
 const TASK_SUPERVISOR_SERVICE_TYPE = "ORCHESTRATOR_TASK_SUPERVISOR";
+const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
 const TELEGRAM_THREADED_CHANNEL_PATTERN = /^(-?\d+)-(\d+)$/;
 
 function parseTelegramBoardTargetParts(
   channelId: string,
   explicitThreadId?: string | number | null,
-): { chatId: string; threadId?: number } {
+): { chatId: string; threadId?: number } | null {
   const explicitThreadNumber =
     typeof explicitThreadId === "number"
       ? explicitThreadId
@@ -309,19 +313,29 @@ function parseTelegramBoardTargetParts(
       threadId: explicitThreadNumber ?? Number.parseInt(threadedMatch[2], 10),
     };
   }
+  if (!TELEGRAM_CHAT_ID_PATTERN.test(channelId)) return null;
   return { chatId: channelId, threadId: explicitThreadNumber };
 }
 
 async function resolveTelegramBoardTarget(
   runtime: IAgentRuntime,
   roomId: UUID,
-): Promise<{ chatId: string; threadId?: number } | null> {
+): Promise<{ chatId: string; threadId?: number; accountId?: string } | null> {
   const room = await (runtime as RuntimeWithRooms).getRoom?.(roomId);
   if (!room?.channelId) return null;
-  return parseTelegramBoardTargetParts(
+  const parts = parseTelegramBoardTargetParts(
     room.channelId,
     room.metadata?.telegramThreadId ?? room.metadata?.threadId,
   );
+  if (!parts) return null;
+  const rawAccountId =
+    room.metadata?.accountId ?? room.metadata?.telegram?.accountId;
+  return {
+    ...parts,
+    ...(rawAccountId
+      ? { accountId: normalizeTelegramAccountId(rawAccountId) }
+      : {}),
+  };
 }
 
 /** Minimal Telegraf surface the board command needs (kept narrow for testing). */
@@ -365,6 +379,7 @@ export function registerTelegramTaskBoardCommand(
   bot: TaskBoardBot,
   runtime: IAgentRuntime,
   messageManager: TaskBoardMessageManager,
+  accountId?: string,
 ): TelegramTaskBoard {
   const board = new TelegramTaskBoard({
     post: async (chatId, text, threadId) => {
@@ -389,7 +404,7 @@ export function registerTelegramTaskBoardCommand(
     // board instead of posting a duplicate (#8902 AC3).
     store: createRuntimeMemoryBoardStore(runtime),
   });
-  registerTelegramTaskBoardSupervisorSink(runtime, board);
+  registerTelegramTaskBoardSupervisorSink(runtime, board, accountId);
   bot.command("tasks", async (ctx) => {
     const chatId = ctx.chat?.id;
     if (chatId === undefined) return;
@@ -417,8 +432,12 @@ export function registerTelegramTaskBoardCommand(
 export function registerTelegramTaskBoardSupervisorSink(
   runtime: IAgentRuntime,
   board: TelegramTaskBoard,
+  accountId?: string,
 ): (() => void) | undefined {
   let unregister: (() => void) | undefined;
+  const ownAccountId = accountId
+    ? normalizeTelegramAccountId(accountId)
+    : undefined;
   const tryRegister = () => {
     if (unregister) return unregister;
     const supervisor = runtime.getService<Service & TaskSupervisorLike>(
@@ -433,6 +452,16 @@ export function registerTelegramTaskBoardSupervisorSink(
           target.roomId,
         );
         if (!destination) return false;
+        const targetAccountId = target.accountId
+          ? normalizeTelegramAccountId(target.accountId)
+          : destination.accountId;
+        if (
+          ownAccountId &&
+          targetAccountId &&
+          normalizeTelegramAccountId(targetAccountId) !== ownAccountId
+        ) {
+          return false;
+        }
         const entries = await loadTaskBoardEntries(runtime);
         await board.render(destination.chatId, entries, destination.threadId);
         return true;

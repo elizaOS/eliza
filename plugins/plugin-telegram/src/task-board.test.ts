@@ -329,4 +329,68 @@ describe("Telegram task board supervisor sink (#8902 AC2)", () => {
       ),
     ).resolves.toBe(false);
   });
+
+  it("declines a supervisor update for a different Telegram account", async () => {
+    const capturedSinks: Array<
+      (
+        target: { source: string; roomId: UUID; accountId?: string },
+        content: unknown,
+      ) => Promise<boolean | undefined> | boolean | undefined
+    > = [];
+    const runtime = fakeRuntime({
+      tasks: [{ id: "1", title: "ship feature", status: "active" }],
+      room: {
+        channelId: "-1001234567890-42",
+        metadata: { accountId: "secondary", telegramThreadId: "42" },
+      },
+      onRegister: (_source, sink) => {
+        capturedSinks.push(sink);
+      },
+    });
+    const defaultEdit = vi.fn(async () => undefined);
+    const secondaryEdit = vi.fn(async () => undefined);
+    const defaultBoard = new TelegramTaskBoard({
+      post: vi.fn(async () => ({ messageId: 10 })),
+      edit: defaultEdit,
+    });
+    const secondaryBoard = new TelegramTaskBoard({
+      post: vi.fn(async () => ({ messageId: 20 })),
+      edit: secondaryEdit,
+    });
+
+    await secondaryBoard.render("-1001234567890", entries, 42);
+    registerTelegramTaskBoardSupervisorSink(runtime, defaultBoard, "default");
+    registerTelegramTaskBoardSupervisorSink(
+      runtime,
+      secondaryBoard,
+      "secondary",
+    );
+
+    await expect(
+      capturedSinks[0]?.(
+        {
+          source: "telegram",
+          roomId: "00000000-0000-4000-8000-000000000890" as UUID,
+        },
+        { text: "digest" },
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      capturedSinks[1]?.(
+        {
+          source: "telegram",
+          roomId: "00000000-0000-4000-8000-000000000890" as UUID,
+        },
+        { text: "digest" },
+      ),
+    ).resolves.toBe(true);
+
+    expect(defaultEdit).not.toHaveBeenCalled();
+    expect(secondaryEdit).toHaveBeenCalledWith(
+      "-1001234567890",
+      20,
+      expect.any(String),
+      42,
+    );
+  });
 });

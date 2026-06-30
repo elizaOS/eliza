@@ -148,7 +148,11 @@ type RuntimeWithSendTarget = IAgentRuntime & {
   ) => Promise<unknown>;
 };
 
-export type TaskSupervisorDigestTarget = { source: string; roomId: UUID };
+export type TaskSupervisorDigestTarget = {
+  source: string;
+  roomId: UUID;
+  accountId?: string;
+};
 
 export type TaskSupervisorDigestSink = (
   target: TaskSupervisorDigestTarget,
@@ -178,7 +182,10 @@ export class TaskSupervisorService extends Service {
   private timer: ReturnType<typeof setInterval> | undefined;
   /** roomId → last-posted digest, for change-driven dedup. */
   private readonly seen = new Map<string, string>();
-  private readonly digestSinks = new Map<string, TaskSupervisorDigestSink>();
+  private readonly digestSinks = new Map<
+    string,
+    Set<TaskSupervisorDigestSink>
+  >();
 
   static async start(runtime: IAgentRuntime): Promise<TaskSupervisorService> {
     const svc = new TaskSupervisorService(runtime);
@@ -210,9 +217,14 @@ export class TaskSupervisorService extends Service {
     source: string,
     sink: TaskSupervisorDigestSink,
   ): () => void {
-    this.digestSinks.set(source, sink);
+    const sinks = this.digestSinks.get(source) ?? new Set();
+    sinks.add(sink);
+    this.digestSinks.set(source, sinks);
     return () => {
-      if (this.digestSinks.get(source) === sink) {
+      const current = this.digestSinks.get(source);
+      if (!current) return;
+      current.delete(sink);
+      if (current.size === 0) {
         this.digestSinks.delete(source);
       }
     };
@@ -223,8 +235,8 @@ export class TaskSupervisorService extends Service {
     content: Content,
     fallback?: RuntimeWithSendTarget["sendMessageToTarget"],
   ): Promise<unknown> {
-    const sink = this.digestSinks.get(target.source);
-    if (sink) {
+    const sinks = this.digestSinks.get(target.source);
+    for (const sink of sinks ?? []) {
       try {
         const handled = await sink(target, content);
         if (handled !== false) return handled;
