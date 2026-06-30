@@ -35,6 +35,7 @@ import {
   Field,
   HStack,
   List,
+  Spacer,
   type SpatialTone,
   Text,
   VStack,
@@ -188,6 +189,7 @@ function TaskList({
   const doneCount = threads.filter((t) => t.status === "done").length;
   return (
     <Card gap={1} padding={1}>
+      <Spacer size={8} />
       <HStack gap={1} align="center" wrap>
         <Text style="caption" tone="muted" grow={1}>
           {loading ? "loading" : `${threads.length} total`}

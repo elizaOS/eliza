@@ -39,6 +39,7 @@ import {
   getShellSurface,
   resetShellSurfaceForTests,
 } from "../../state/shell-surface-store";
+import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import {
@@ -55,6 +56,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   resetShellSurfaceForTests();
+  setViewChatBinding(null);
 });
 
 function makeController(
@@ -746,6 +748,38 @@ describe("ContinuousChatOverlay", () => {
       expect.objectContaining({
         images: expect.arrayContaining([
           expect.objectContaining({ name: "pic.png", mimeType: "image/png" }),
+        ]),
+      }),
+    );
+  });
+
+  it("a view-binding does NOT claim an image-bearing turn (images must not be lost)", async () => {
+    // A focused cockpit session registers a text-only onSubmit binding. A turn
+    // that also carries an image must fall through to the host agent (which can
+    // send images), not be claimed by the binding — else the image vanishes.
+    const onSubmit = vi.fn(() => true);
+    setViewChatBinding({ onSubmit });
+    const controller = makeController({ messages: [] });
+    render(<ContinuousChatOverlay controller={controller} />);
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["x"], "pic.png", { type: "image/png" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await screen.findByLabelText("send");
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "analyze this" },
+    });
+
+    fireEvent.click(screen.getByLabelText("send"));
+    // binding must NOT have claimed it; host agent gets the text + image.
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(controller.send).toHaveBeenCalledWith(
+      "analyze this",
+      expect.objectContaining({
+        images: expect.arrayContaining([
+          expect.objectContaining({ name: "pic.png" }),
         ]),
       }),
     );

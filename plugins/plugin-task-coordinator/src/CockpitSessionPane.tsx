@@ -263,9 +263,8 @@ export function CockpitSessionPane({
             className="shrink-0"
           />
         ) : null}
-        <div
-          className="flex shrink-0 items-center gap-1"
-          role="group"
+        <fieldset
+          className="flex shrink-0 items-center gap-1 border-0 p-0"
           aria-label={t("cockpit.session.viewMode", {
             defaultValue: "View mode",
           })}
@@ -302,7 +301,7 @@ export function CockpitSessionPane({
           >
             <SquareTerminal className="h-4 w-4" aria-hidden />
           </button>
-        </div>
+        </fieldset>
       </header>
 
       {composerError ? (

@@ -158,6 +158,23 @@ describe("switchRuntimeNonDestructive", () => {
     expect(mocks.setToken).toHaveBeenCalledWith("tok-vps");
   });
 
+  it("switching to a TOKENLESS remote CLEARS the token (no inherited bearer)", () => {
+    mocks.isTrustedRestoreApiBaseUrl.mockReturnValue(true);
+    const tokenless: AgentProfile = {
+      id: "vps-2",
+      label: "Tokenless VPS",
+      kind: "remote",
+      apiBase: "http://100.72.1.9:3000",
+      createdAt: "2026-06-04T00:00:00.000Z",
+    };
+    withRegistry([CLOUD, tokenless]);
+    const res = switchRuntimeNonDestructive("vps-2");
+    expect(res.ok).toBe(true);
+    expect(mocks.repointBaseUrl).toHaveBeenCalledWith("http://100.72.1.9:3000");
+    // must CLEAR — not keep the prior cloud bearer (cross-backend leak guard).
+    expect(mocks.setToken).toHaveBeenCalledWith(null);
+  });
+
   it("clears chat drafts on a switch (no cross-runtime draft bleed)", () => {
     withRegistry([LOCAL, CLOUD]);
     switchRuntimeNonDestructive("cloud-1");
