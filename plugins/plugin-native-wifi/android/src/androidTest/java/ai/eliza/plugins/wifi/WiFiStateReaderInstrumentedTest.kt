@@ -5,6 +5,7 @@ import android.net.wifi.WifiManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,5 +46,29 @@ class WiFiStateReaderInstrumentedTest {
         } else {
             assertEquals(null, state.rssi)
         }
+    }
+
+    // The scan-result parsers WiFiPlugin's list/connected-network paths rely on.
+    // They are pure + permission-free, so they run on-device here (the path that
+    // populates them needs ACCESS_FINE_LOCATION and stays in the plugin) — this
+    // is the "secured / display SSID" logic the Wi-Fi view renders, previously
+    // private + untested (issue #9967).
+
+    @Test
+    fun isSecured_classifiesRealScanCapabilityStrings() {
+        assertTrue("WPA2-PSK", WiFiStateReader.isSecured("[WPA2-PSK-CCMP][ESS]"))
+        assertTrue("WPA3-SAE", WiFiStateReader.isSecured("[RSN-SAE-CCMP][ESS]"))
+        assertTrue("WEP", WiFiStateReader.isSecured("[WEP][ESS]"))
+        assertTrue("WPA-EAP", WiFiStateReader.isSecured("[WPA-EAP-CCMP][ESS]"))
+        assertFalse("open network reports only [ESS]", WiFiStateReader.isSecured("[ESS]"))
+        assertFalse("empty capabilities", WiFiStateReader.isSecured(""))
+    }
+
+    @Test
+    fun trimQuotes_stripsWifiInfoSsidQuoting() {
+        assertEquals("home-wifi", WiFiStateReader.trimQuotes("\"home-wifi\""))
+        assertEquals("unquoted stays unchanged", "unquoted", WiFiStateReader.trimQuotes("unquoted"))
+        assertEquals("null → empty", "", WiFiStateReader.trimQuotes(null))
+        assertEquals("bare quote pair → empty", "", WiFiStateReader.trimQuotes("\"\""))
     }
 }
