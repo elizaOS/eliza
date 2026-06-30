@@ -39,8 +39,10 @@ export interface CockpitViewProps {
  *   - the **new-session** form (mode picker → create-task `providerPolicy`).
  *
  * The driver bubble (host chat) manages these rooms; tapping a room drills into
- * the workbench task-room (wired by the container). Real-CLI terminal +
- * "My Runtimes" switcher are phase-2 additions.
+ * its focused session pane (transcript + `TaskInspector` controls + a real-CLI
+ * terminal toggle + Fast/Smart tier toggle), and the bubble then drives THAT
+ * task — all wired by the container (`CockpitRoute`). The "My Runtimes" switcher
+ * lives in Settings.
  */
 export function CockpitView({
   rooms,
