@@ -382,9 +382,10 @@ class ElizaBunRuntimePlugin : Plugin() {
             @Suppress("DEPRECATION")
             ctx.packageManager.getPackageInfo(packageName, PackageManager.GET_SERVICES)
         }
-        return packageInfo.services
-            ?.firstOrNull { it.packageName == packageName && it.name.endsWith(".ElizaAgentService") }
-            ?.name
+        val refs = packageInfo.services
+            ?.map { AgentServiceLocator.ServiceRef(it.packageName, it.name) }
+            ?: emptyList()
+        return AgentServiceLocator.selectAgentServiceClass(refs, packageName)
     }
 
     // ── Local-agent request helpers ──────────────────────────────────────────
