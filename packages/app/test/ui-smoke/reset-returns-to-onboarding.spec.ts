@@ -88,15 +88,19 @@ test("Reset Everything wipes the agent and returns to first-run onboarding", asy
   // The reset actually fires against the server...
   await resetRequest;
 
-  // ...and the renderer returns to the pre-agent in-chat first-run surface
-  // (App.tsx gates this on `!firstRunComplete`, which the local wipe sets).
+  // ...and the renderer returns to the pre-agent in-chat first-run onboarding.
+  // #9952 deleted the separate full-screen onboarding surface: the local wipe
+  // flips `firstRunComplete` back to false, which re-activates the headless
+  // conductor — it re-seeds the greeting + runtime CHOICE into the REAL floating
+  // ContinuousChatOverlay (onboarding IS the chat).
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
   await expect(
-    page
-      .getByTestId("first-run-chat")
-      .or(page.getByRole("form", { name: "Bootstrap token entry" })),
-  ).toBeVisible({
-    timeout: 20_000,
-  });
+    chatOverlay.getByText("Let's get you set up", { exact: false }),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(
+    page.getByTestId("choice-__first_run__:runtime:cloud"),
+  ).toBeVisible({ timeout: 15_000 });
 });
 
 test("cancelling the Reset Everything warning leaves the agent untouched", async ({

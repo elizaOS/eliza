@@ -994,7 +994,6 @@ export interface AppActions {
   handleCharacterMessageExamplesInput: (value: string) => void;
 
   // First-run
-  handleFirstRunNext: (options?: FirstRunNextOptions) => Promise<void>;
   handleFirstRunBack: () => void;
   /** Jump to an earlier step in the active track (sidebar); backward-only. */
   handleFirstRunJumpToStep: (step: SetupStep) => void;
@@ -1025,7 +1024,6 @@ export interface AppActions {
 
   // Multi-agent
   switchAgentProfile: (profileId: string) => void;
-  handleCloudFirstRunFinish: () => Promise<void>;
 
   // Updates
   loadUpdateStatus: (force?: boolean) => Promise<void>;

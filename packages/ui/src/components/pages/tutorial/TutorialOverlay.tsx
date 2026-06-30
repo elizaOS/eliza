@@ -223,6 +223,7 @@ export function TutorialOverlay(): React.ReactElement | null {
         />
       )}
       <TutorialSpotlight
+        stepId={step.id}
         targetSelector={step.targetSelector}
         dimOutside={!succeeded}
         title={step.title}

@@ -16,7 +16,11 @@ type EvalResult<T> = EvalOk<T> | EvalErr;
 
 const SETTINGS_SELECTOR = '[data-testid="settings-shell"]';
 const PLUGINS_SELECTOR = '[data-testid="plugins-shell"]';
-const FIRST_RUN_SELECTOR = '[data-testid="startup-first-run-background"]';
+// #9952: onboarding is now in-chat — a fresh / reset profile paints the home plus
+// the auto-opened REAL floating ContinuousChatOverlay (the conductor seeds the
+// greeting + choices into it), so the chat overlay IS the first-run surface. The
+// removed full-screen `startup-first-run-background` gate no longer exists.
+const FIRST_RUN_SELECTOR = '[data-testid="continuous-chat-overlay"]';
 const SETTINGS_ROUTE = "/settings";
 const SETTINGS_MEDIA_ROUTE = "/settings/voice";
 const PLUGINS_ROUTE = "/apps/plugins";

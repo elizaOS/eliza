@@ -56,12 +56,19 @@ async function clickIfVisible(
   }
 }
 
-// Drive the cloud entry point of the in-chat first-run flow: the runtime
-// ChoiceWidget's "Log in with Eliza Cloud" option, then the in-chat
-// CredentialRequestWidget "Connect Eliza Cloud" authorize affordance if shown.
+// Drive the cloud entry point of the in-chat first-run flow (#9952): the runtime
+// ChoiceWidget's "Eliza Cloud (managed)" option, then the in-chat
+// SensitiveRequestBlock "Connect Eliza Cloud" OAuth authorize affordance if
+// shown.
 async function chooseCloudRuntime(page: Page): Promise<void> {
-  await clickIfVisible(page.getByTestId("choice-cloud"), 30_000);
-  await clickIfVisible(page.getByTestId("credential-oauth-authorize"), 5_000);
+  await clickIfVisible(
+    page.getByTestId("choice-__first_run__:runtime:cloud"),
+    30_000,
+  );
+  await clickIfVisible(
+    page.getByTestId("sensitive-request-oauth-start"),
+    5_000,
+  );
 }
 
 async function readActiveServer(page: Page): Promise<{
@@ -92,8 +99,9 @@ test.describe("real cloud login + provisioning + chat", () => {
     await seedAppStorage(page, { "eliza:first-run-complete": "" });
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    // Wait for the in-chat first-run surface (the seeded greeting + widgets).
-    await expect(page.getByTestId("first-run-chat")).toBeVisible({
+    // Wait for the in-chat first-run surface: #9952 onboarding IS the chat, so
+    // the seeded greeting + runtime choice render inside the floating overlay.
+    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
       timeout: 60_000,
     });
 

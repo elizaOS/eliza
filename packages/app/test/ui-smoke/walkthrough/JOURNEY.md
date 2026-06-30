@@ -41,10 +41,13 @@ journey.
   - Composer: `[data-testid="chat-composer-textarea"]`
   - Send: `[data-testid="chat-composer-action"]`
   - Chat thread lines: `[data-testid="thread-line"]`
-  - First-run chat (current in-chat onboarding, replaced the old
-    `onboarding-toast`): `[data-testid="first-run-chat"]` +
-    `[data-testid="first-run-greeting"]`; runtime choices
-    `[data-choice-scope="first-run-runtime"] [data-testid="choice-cloud|local|remote"]`
+  - First-run chat (#9952 in-chat onboarding — onboarding IS the chat, seeded by
+    the headless conductor into the SAME floating `[data-testid="continuous-chat-overlay"]`;
+    no separate full-screen surface): assert the overlay + the agent greeting text
+    `Let's get you set up`; runtime choices are inline ChoiceWidget buttons
+    `[data-testid="choice-__first_run__:runtime:cloud|local|other"]`, the provider
+    sub-choice `[data-testid="choice-__first_run__:provider:on-device|elizacloud|other"]`,
+    and the completion gate `[data-testid="choice-__first_run__:tutorial:start|skip"]`
   - Tutorial: `/tutorial` route → `[data-testid="tutorial-launcher"]` →
     `[data-testid="tutorial-start"]` → `[data-testid="tutorial-card"]`
   - Launcher: `[data-testid="launcher"]`
@@ -94,8 +97,8 @@ and named in the final evidence.
 
 | Step | Action | Expected state | Required assertions | Capture |
 | --- | --- | --- | --- | --- |
-| 1 | Cold app launch | The app shell loads from `/` without first-run completion. A warming or startup surface renders, then the first-run onboarding shell appears. | No page errors; no unexpected `console.error`; no unexpected `5xx`; `[data-testid="onboarding-toast"]` visible within 20s when first-run is incomplete. | `01-cold-launch.png` |
-| 2 | Onboarding | `CompactOnboarding` shows the runtime choice question and all runtime cards available for the current host capability. | Text `How should Eliza run?`; `onboarding-option-cloud`, `onboarding-option-remote`, and `onboarding-option-local` visible; disabled state is asserted when host capability requires it. | `02-onboarding-runtime.png` |
+| 1 | Cold app launch | The app shell loads from `/` without first-run completion. A warming/startup surface renders, then the home + the auto-opened floating chat overlay appear with the conductor's greeting (#9952 in-chat onboarding). | No page errors; no unexpected `console.error`; no unexpected `5xx`; `[data-testid="continuous-chat-overlay"]` + greeting `Let's get you set up` visible within 20s when first-run is incomplete. | `01-cold-launch.png` |
+| 2 | Onboarding | The in-chat conductor seeds the runtime question as inline ChoiceWidgets in the overlay. | Greeting + `where should your agent run` text; `choice-__first_run__:runtime:cloud`, `…:local`, and `…:other` visible. | `02-onboarding-runtime.png` |
 | 3 | Agent provisioning | Choosing the selected runtime leads to a provisioning or ready state; the app does not stay stuck on waking/provisioning copy. | Status changes are observed through the real startup/provisioning selectors used by existing smoke tests; ready route eventually exposes the chat composer. | `03-provisioning-ready.png` |
 | 4 | Send + receive voice | Voice input can populate the composer, a message can be sent, the assistant reply renders, and TTS endpoint wiring is exercised when enabled. | STT transcript appears in `[data-testid="chat-composer-textarea"]`; stream POST body includes the transcript; assistant `[data-testid="thread-line"]` appears; TTS mock records assistant text + voice/model payload. | `04-voice-round-trip.png` |
 | 5 | Type to navigate to Character view | A chat command switches the active route to the character editor. | Composer sends the command; navigation reaches `/character`; `[data-testid="character-editor-view"]` visible. | `05-chat-navigate-character.png` |
@@ -147,9 +150,9 @@ the real backend agent + model and writes the trajectory to
 
 | Step | Action | Expected state | Required assertions | Capture |
 | --- | --- | --- | --- | --- |
-| 01 | Cold app launch | `/` loads with first-run incomplete; the in-chat first-run greeting renders over the startup background. | No page error / no `console.error` / no 5xx; `first-run-chat` + `first-run-greeting` visible ≤20s. | `01-cold-launch.png` |
-| 02 | Onboarding runtime choice | The in-chat first-run asks how to run Eliza with the runtime choices. | Runtime question text visible; `[data-choice-scope="first-run-runtime"]` `choice-cloud` / `choice-local` / `choice-remote` all visible. | `02-onboarding-runtime.png` |
-| 03 | Choose runtime → ready | Clicking the local choice advances first-run (provider step), then resolves to a ready agent. | `choice-local` clicked; first-run flips complete; `continuous-chat-overlay` + `chat-composer-textarea` reachable. | `03-provisioning-ready.png` |
+| 01 | Cold app launch | `/` loads with first-run incomplete; the in-chat first-run greeting renders inside the auto-opened floating chat overlay (#9952 — onboarding IS the chat; no full-screen gate). | No page error / no `console.error` / no 5xx; `continuous-chat-overlay` + greeting text `Let's get you set up` visible ≤20s; removed `first-run-chat`/`startup-first-run-background` absent. | `01-cold-launch.png` |
+| 02 | Onboarding runtime choice | The in-chat first-run asks where the agent should run, as inline ChoiceWidget buttons. | Runtime question text visible; `choice-__first_run__:runtime:cloud` / `…:local` / `…:other` all visible. | `02-onboarding-runtime.png` |
+| 03 | Choose runtime → tutorial → ready | Picking Local advances to the provider sub-choice, then provisioning, then the tutorial-or-skip CHOICE flips first-run complete. | `choice-__first_run__:runtime:local` → `choice-__first_run__:provider:on-device` → `choice-__first_run__:tutorial:skip`; first-run flips complete; `continuous-chat-overlay` + `chat-composer-textarea` reachable. | `03-provisioning-ready.png` |
 | 04 | Interactive tutorial | The `/tutorial` launcher starts the tour spotlight. | `tutorial-launcher` → `tutorial-start` → `tutorial-card`; "Meet Eliza" text visible; tour dismissed via `tutorial-skip`. | `04-tutorial.png` |
 | 05 | Help search | The Help view searches the KB. | `help-view` visible; search "change the model" → `help-entry-change-model` references "AI Model". | `05-help.png` |
 | 06 | Open settings | The Settings shell opens. | `settings-shell` visible; "Models & Providers" section opened. | `06-settings-open.png` |

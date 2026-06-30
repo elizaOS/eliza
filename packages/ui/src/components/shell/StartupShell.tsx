@@ -30,7 +30,7 @@ function BrandMark(props: { className?: string }) {
   return <Mark {...props} />;
 }
 
-export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
+export function StartupShell({ view, onRetry }: StartupShellProps) {
   // Renderer cold-start checkpoint (#9565): the startup front door has painted.
   // markStartup dedupes by name, so this records only the first paint.
   useEffect(() => {
@@ -53,27 +53,11 @@ export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
     );
   }
 
-  if (view.kind === "first-run") {
-    return <StartupFirstRunBackground>{firstRun}</StartupFirstRunBackground>;
-  }
-
   if (view.kind === "none") {
     return null;
   }
 
   return <StartupLoading phase={view.phase} status={view.status} />;
-}
-
-function StartupFirstRunBackground({ children }: { children: ReactNode }) {
-  return (
-    <div
-      data-testid="startup-first-run-background"
-      className={`fixed inset-0 overflow-hidden ${LAUNCH_SURFACE}`}
-      style={{ fontFamily: FONT }}
-    >
-      {children}
-    </div>
-  );
 }
 
 function StartupLoading(props: { phase: string; status: string }) {

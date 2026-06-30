@@ -19,6 +19,10 @@ import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
+  FIRST_RUN_ACTION_PREFIX,
+  tryHandleFirstRunAction,
+} from "../first-run/first-run-action-channel";
+import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
 } from "../first-run/mobile-runtime-mode";
@@ -960,7 +964,7 @@ function AppProviderInner({
   const forceLocalBootstrapRef = forceLocalBootstrapRefFromHook;
   // exportBusyRef and importBusyRef are now managed inside useExportImportState (exportImportHook)
   // walletApiKeySavingRef is now managed inside useWalletState (walletHook)
-  // elizaCloudLoginBusyRef, elizaCloudAuthNoticeSentRef, handleCloudLoginRef
+  // elizaCloudLoginBusyRef, elizaCloudAuthNoticeSentRef
   // are now managed inside useCloudState (cloudHook)
 
   // --- Confirm Modal ---
@@ -1308,7 +1312,7 @@ function AppProviderInner({
     handleNewConversation,
     sendChatText,
     handleChatSend,
-    sendActionMessage,
+    sendActionMessage: rawSendActionMessage,
     handleChatStop,
     handleChatRetry,
     handleChatEdit,
@@ -1318,6 +1322,25 @@ function AppProviderInner({
     handleRenameConversation,
     suggestConversationTitle,
   } = chatCallbacks;
+
+  // In-chat first-run interception: a first-run-scoped choice pick (reserved
+  // `__first_run__:` prefix) is consumed by the active onboarding conductor and
+  // MUST NOT reach the server. Every other value falls through to the real
+  // send funnel unchanged, so normal chat (including during/after onboarding)
+  // is unaffected. Widgets stay 100% display-only — both InlineWidgetText and
+  // MessageContent route picks through this single `sendActionMessage`.
+  const sendActionMessage = useCallback(
+    (text: string): Promise<void> => {
+      if (
+        text.startsWith(FIRST_RUN_ACTION_PREFIX) &&
+        tryHandleFirstRunAction(text)
+      ) {
+        return Promise.resolve();
+      }
+      return rawSendActionMessage(text);
+    },
+    [rawSendActionMessage],
+  );
 
   useEffect(() => {
     triggerRestartRef.current = triggerRestart;
@@ -1422,13 +1445,11 @@ function AppProviderInner({
     client,
   });
   const {
-    handleFirstRunNext,
     handleFirstRunBack,
     handleFirstRunJumpToStep,
     goToFirstRunStep,
     handleFirstRunRemoteConnect,
     handleFirstRunUseLocalBackend,
-    handleCloudFirstRunFinish,
     applyDetectedProviders,
     completeFirstRun,
   } = firstRunCallbacks;
@@ -1894,8 +1915,12 @@ function AppProviderInner({
     [setConversationMessages],
   );
   const conversationMessagesValue = useMemo(
-    () => ({ conversationMessages, removeConversationMessage }),
-    [conversationMessages, removeConversationMessage],
+    () => ({
+      conversationMessages,
+      removeConversationMessage,
+      setConversationMessages,
+    }),
+    [conversationMessages, removeConversationMessage, setConversationMessages],
   );
 
   // Live assistant-turn status (rich status indicator) lives in its own context
@@ -2334,7 +2359,6 @@ function AppProviderInner({
       handleCharacterArrayInput,
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
-      handleFirstRunNext,
       handleFirstRunBack,
       handleFirstRunJumpToStep,
       goToFirstRunStep,
@@ -2344,7 +2368,6 @@ function AppProviderInner({
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
-      handleCloudFirstRunFinish,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,
@@ -2758,7 +2781,6 @@ function AppProviderInner({
       handleCharacterArrayInput,
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
-      handleFirstRunNext,
       handleFirstRunBack,
       handleFirstRunJumpToStep,
       goToFirstRunStep,
@@ -2768,7 +2790,6 @@ function AppProviderInner({
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
-      handleCloudFirstRunFinish,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,

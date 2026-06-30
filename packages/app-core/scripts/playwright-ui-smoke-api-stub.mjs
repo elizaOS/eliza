@@ -23,9 +23,10 @@ const ONE_PIXEL_PNG = Buffer.from(
   "base64",
 );
 
-// A minimal valid 16-bit PCM mono WAV of silence. The onboarding voice path
-// POSTs /api/tts/first-run/speak and plays the returned bytes as audio/wav, so
-// the stub must return decodable audio (not a 501) to avoid a console.error.
+// A minimal valid 16-bit PCM mono WAV of silence. The local-inference voice
+// path POSTs /api/tts/local-inference and plays the returned bytes as
+// audio/wav, so the stub must return decodable audio (not a 501) to avoid a
+// console.error.
 function buildSilentWav() {
   const sampleRate = 8000;
   const dataBytes = 1600; // ~0.1s of silence
@@ -5131,14 +5132,6 @@ const server = http.createServer(async (req, res) => {
     // renders its wallet-required / empty state. Returning the same shape
     // keeps the visual smoke deterministic and avoids the catch-all 501.
     sendJson(req, res, 200, { data: [] });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/tts/first-run/speak") {
-    // Onboarding synthesizes its scripted voice lines here and plays the bytes
-    // as audio/wav. Return decodable silence so the live stack never logs a
-    // 501; the real route (first-run-tts-route.ts) returns neural TTS audio.
-    sendBinary(req, res, 200, "audio/wav", SILENT_WAV);
     return;
   }
 
