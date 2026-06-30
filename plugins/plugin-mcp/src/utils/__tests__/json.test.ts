@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  parseJSON,
-  parseStructuredModelOutput,
-  validateJsonSchema,
-} from "../json";
+import { parseJSON, parseStructuredModelOutput, validateJsonSchema } from "../json";
 
 /**
  * Tests for the MCP JSON utilities (#8801 / #9943). `parseJSON` /
@@ -14,11 +10,11 @@ import {
  */
 describe("parseJSON", () => {
   it("parses a plain JSON object", () => {
-    expect(parseJSON("{\"a\":1}")).toEqual({ a: 1 });
+    expect(parseJSON('{"a":1}')).toEqual({ a: 1 });
   });
 
   it("strips a ```json markdown fence", () => {
-    expect(parseJSON("```json\n{\"a\":1,\"b\":2}\n```")).toEqual({ a: 1, b: 2 });
+    expect(parseJSON('```json\n{"a":1,"b":2}\n```')).toEqual({ a: 1, b: 2 });
   });
 
   it("extracts the object from surrounding prose (first { to last })", () => {
@@ -40,7 +36,7 @@ describe("parseJSON", () => {
 
 describe("parseStructuredModelOutput", () => {
   it("returns the parsed object for valid (fenced) output", () => {
-    expect(parseStructuredModelOutput("```\n{\"x\":42}\n```")).toEqual({ x: 42 });
+    expect(parseStructuredModelOutput('```\n{"x":42}\n```')).toEqual({ x: 42 });
   });
   it("throws a descriptive error when nothing parses", () => {
     expect(() => parseStructuredModelOutput("nope")).toThrow(/No valid JSON object found/);
