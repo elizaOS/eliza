@@ -76,6 +76,12 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           config-file: ./.github/codeql/codeql-config.yml
+          # WHY: empty defaults made the action auto-pick all 12 threads + ~244GB,
+          # leaving zero headroom for un-budgeted per-thread dataflow working sets +
+          # file-backed mmaps that --ram does NOT bound — the exit-137 cause. Capping
+          # threads is the biggest peak-RAM lever; 90GB leaves ~150GB OS headroom.
+          ram: 90000
+          threads: 4
 
       - if: matrix.build-mode == 'manual'
         shell: bash
