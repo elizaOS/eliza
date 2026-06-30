@@ -107,6 +107,10 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
         name: name.trim(),
         app_url: appUrl.trim(),
         allowed_origins: [appUrl.trim()],
+        // Template app (no repo): the server stamps a first-party template image
+        // so the created app is deployable. Without this, DEPLOY throws
+        // "build-from-repo is disabled / no image to deploy".
+        skipGitHubRepo: true,
       });
       setCreatedApp({ appId: data.app.id, apiKey: data.apiKey });
       await queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY });

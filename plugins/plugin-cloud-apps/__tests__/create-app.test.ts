@@ -92,6 +92,10 @@ describe("CREATE_APP", () => {
     expect(received).not.toBeNull();
     expect((received as unknown as CreateAppInput).name).toBe("Acme Bot");
     expect((received as unknown as CreateAppInput).app_url).toBe(DRAFT_APP_URL);
+    // The front door MUST request a template app (skipGitHubRepo) so the server
+    // stamps a deployable image — without this the create -> deploy loop throws
+    // "build-from-repo is disabled / no image to deploy".
+    expect((received as unknown as CreateAppInput).skipGitHubRepo).toBe(true);
     const reply = cb.calls[0]?.text ?? "";
     expect(reply).toContain("Acme Bot");
     expect(reply.toLowerCase()).toContain("deploy");

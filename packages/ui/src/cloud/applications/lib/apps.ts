@@ -91,10 +91,19 @@ export async function createApp(input: {
   name: string;
   app_url: string;
   allowed_origins: string[];
+  /**
+   * Create a TEMPLATE app (no GitHub repo). The dashboard has no
+   * build-from-repo flow, and build-from-repo is intentionally OFF, so a
+   * repo-backed app would have no image and DEPLOY would throw "build-from-repo
+   * is disabled / no image to deploy". With skipGitHubRepo the server stamps a
+   * first-party template image so the create -> deploy loop resolves. Defaults
+   * to true so a dashboard-created app is always deployable.
+   */
+  skipGitHubRepo?: boolean;
 }): Promise<{ app: App; apiKey: string }> {
   return api<{ app: App; apiKey: string }>("/api/v1/apps", {
     method: "POST",
-    json: input,
+    json: { skipGitHubRepo: true, ...input },
   });
 }
 
