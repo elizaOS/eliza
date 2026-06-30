@@ -141,14 +141,6 @@ export {
 	type SecretsManagerPluginConfig,
 	secretsManagerPlugin,
 } from "./features/secrets/index.ts";
-export {
-	SUB_AGENT_CHILD_DECISION_BUS_SERVICE,
-	SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE,
-	SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
-	type SubAgentCredentialBridge,
-	type SubAgentCredentialScope,
-	subAgentCredentialsPlugin,
-} from "./features/sub-agent-credentials/index.ts";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";

@@ -33,12 +33,14 @@ describe("AgentRuntime.useModel secret swap", () => {
 				"Call webhook with WEBHOOK_SECRET=whsec_1234567890abcdef for ops@example.com.",
 		});
 
+		// Placeholders are per-session nonce'd (`__ELIZA_SECRET_<nonce>_<n>__`) so
+		// they cannot be forged from user/model text; assert by shape, not literal.
+		const placeholderRe = /__ELIZA_SECRET_[0-9a-f]{8,}_\d+__/g;
 		expect(handler).toHaveBeenCalledTimes(1);
-		expect(seenPrompt).toContain("__ELIZA_SECRET_1__");
-		expect(seenPrompt).toContain("__ELIZA_SECRET_2__");
+		expect(seenPrompt?.match(placeholderRe)).toHaveLength(2);
 		expect(seenPrompt).not.toContain("whsec_1234567890abcdef");
 		expect(seenPrompt).not.toContain("ops@example.com");
-		expect(result).toContain("__ELIZA_SECRET_1__");
+		expect(result).toMatch(placeholderRe);
 		expect(result).not.toContain("whsec_1234567890abcdef");
 	});
 
@@ -114,9 +116,10 @@ describe("AgentRuntime.useModel secret swap", () => {
 			},
 		});
 
-		expect(streamedChunks.join("")).toContain("__ELIZA_SECRET_1__");
+		const placeholderRe = /__ELIZA_SECRET_[0-9a-f]{8,}_\d+__/;
+		expect(streamedChunks.join("")).toMatch(placeholderRe);
 		expect(streamedChunks.join("")).not.toContain("whsec_1234567890abcdef");
-		expect(result).toContain("__ELIZA_SECRET_1__");
+		expect(result).toMatch(placeholderRe);
 		expect(result).not.toContain("whsec_1234567890abcdef");
 	});
 });

@@ -1,3 +1,4 @@
+import { detectPii } from "./pii-detectors";
 import { getDefaultRedactPatterns } from "./redact";
 
 export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
@@ -23,16 +24,45 @@ export type SecretSwapEntry = {
 export type SecretSwapSessionOptions = {
 	knownSecrets?: Record<string, string | undefined>;
 	exemptValues?: Iterable<string>;
+	/**
+	 * PII/token detector classes to disable (false-positive opt-out by class,
+	 * e.g. `["phone", "ipv4"]`). Complements `exemptValues` (opt-out by value).
+	 */
+	disabledKinds?: Iterable<string>;
 };
 
 const MIN_SWAP_VALUE_LENGTH = 8;
+/** Validated PII spans (email, card, SSN, …) swap even when short — the detector
+ * already proved they are sensitive, so the generic length floor does not apply. */
+const MIN_PII_VALUE_LENGTH = 4;
 const PLACEHOLDER_PREFIX = "__ELIZA_SECRET_";
-const PLACEHOLDER_PATTERN = /__ELIZA_SECRET_\d+__/g;
-const PII_PATTERNS: readonly RegExp[] = [
-	/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
-	/\b\d{3}-\d{2}-\d{4}\b/g,
-	/\b(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}\b/g,
-];
+/**
+ * Broad "looks like one of our placeholders" pattern (any session nonce, or the
+ * legacy no-nonce form). Used only to AVOID swapping a value that is already a
+ * placeholder; actual restore is scoped to the session-specific nonce so a
+ * forged placeholder from input/model output never resolves to a real secret.
+ */
+const PLACEHOLDER_PATTERN = /__ELIZA_SECRET_(?:[0-9a-f]{8,}_)?\d+__/g;
+
+/**
+ * A per-session random nonce woven into every placeholder
+ * (`__ELIZA_SECRET_<nonce>_<n>__`). Without it, a user message or model output
+ * could contain a literal `__ELIZA_SECRET_1__` that collides with a real
+ * mapping, hijacking restore to leak the secret into an unintended position —
+ * the nonce makes placeholders unforgeable and unguessable per turn.
+ */
+function generateSessionNonce(): string {
+	const bytes = new Uint8Array(8);
+	const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
+	if (typeof cryptoObj?.getRandomValues === "function") {
+		cryptoObj.getRandomValues(bytes);
+	} else {
+		for (let i = 0; i < bytes.length; i += 1) {
+			bytes[i] = Math.floor(Math.random() * 256);
+		}
+	}
+	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 function parsePattern(raw: string): RegExp | null {
 	if (!raw.trim()) return null;
@@ -101,10 +131,30 @@ export class SecretSwapSession {
 	private readonly valueToEntry = new Map<string, SecretSwapEntry>();
 	private readonly placeholderToEntry = new Map<string, SecretSwapEntry>();
 	private readonly exemptValues: ReadonlySet<string>;
+	private readonly disabledKinds: ReadonlySet<string>;
+	/** Per-session nonce woven into every placeholder so it is unforgeable. */
+	private readonly nonce = generateSessionNonce();
+	/**
+	 * Restore/assert match only THIS session's nonce'd placeholders. A
+	 * placeholder-shaped string with a different/legacy nonce is benign text the
+	 * layer never minted — it cannot reference a real secret, so it is left as-is
+	 * (no leak) rather than triggering a false "unresolved" failure. Fail-loud is
+	 * reserved for a this-session placeholder that should resolve but does not
+	 * (e.g. a model that fabricated `…_999__`).
+	 */
+	private readonly placeholderPattern = new RegExp(
+		`__ELIZA_SECRET_${this.nonce}_\\d+__`,
+		"g",
+	);
 
 	constructor(options: SecretSwapSessionOptions = {}) {
 		this.exemptValues = new Set(
 			[...(options.exemptValues ?? [])]
+				.map((value) => value.trim())
+				.filter(Boolean),
+		);
+		this.disabledKinds = new Set(
+			[...(options.disabledKinds ?? [])]
 				.map((value) => value.trim())
 				.filter(Boolean),
 		);
@@ -124,14 +174,32 @@ export class SecretSwapSession {
 
 	substituteText(text: string): string {
 		let result = text;
-		const detected = [
-			...collectMatches(result, SECRET_PATTERNS, this.exemptValues),
-			...collectMatches(result, PII_PATTERNS, this.exemptValues),
-		].sort((a, b) => b.length - a.length);
-
-		for (const value of detected) {
-			this.entryForValue(value, "detected");
+		// 1) Assignment-style secrets (KEY=…, "token":"…", Bearer …, PEM blocks)
+		//    from the shared redact pattern set — value-extracted, length-gated.
+		for (const value of collectMatches(
+			result,
+			SECRET_PATTERNS,
+			this.exemptValues,
+		)) {
+			this.entryForValue(value, "secret");
 		}
+		// 2) Validated PII / token classes (credit-card+Luhn, email, ssn, iban,
+		//    jwt, cloud keys, …). Already proven sensitive by their detector, so
+		//    a lower length floor applies; class can be opted out via disabledKinds.
+		for (const match of detectPii(result, {
+			disabledKinds: this.disabledKinds,
+		})) {
+			const trimmed = match.value.trim();
+			if (
+				trimmed.length >= MIN_PII_VALUE_LENGTH &&
+				!this.exemptValues.has(trimmed) &&
+				!trimmed.match(PLACEHOLDER_PATTERN)
+			) {
+				this.entryForValue(trimmed, match.kind);
+			}
+		}
+		// Replace longest-first so a value that is a substring of another does not
+		// corrupt the longer placeholder.
 		for (const entry of this.entries.sort(
 			(a, b) => b.value.length - a.value.length,
 		)) {
@@ -162,7 +230,8 @@ export class SecretSwapSession {
 		options: { failOnUnresolved?: boolean } = {},
 	): string {
 		const unresolved = new Set<string>();
-		const restored = text.replace(PLACEHOLDER_PATTERN, (placeholder) => {
+		this.placeholderPattern.lastIndex = 0;
+		const restored = text.replace(this.placeholderPattern, (placeholder) => {
 			const entry = this.placeholderToEntry.get(placeholder);
 			if (!entry) {
 				unresolved.add(placeholder);
@@ -204,8 +273,9 @@ export class SecretSwapSession {
 							return String(value);
 						}
 					})();
+		this.placeholderPattern.lastIndex = 0;
 		const placeholders = [
-			...new Set(serialized.match(PLACEHOLDER_PATTERN) ?? []),
+			...new Set(serialized.match(this.placeholderPattern) ?? []),
 		]
 			.filter((placeholder) => !this.placeholderToEntry.has(placeholder))
 			.sort();
@@ -218,7 +288,7 @@ export class SecretSwapSession {
 		const existing = this.valueToEntry.get(value);
 		if (existing) return existing;
 		const entry = {
-			placeholder: `${PLACEHOLDER_PREFIX}${this.valueToEntry.size + 1}__`,
+			placeholder: `${PLACEHOLDER_PREFIX}${this.nonce}_${this.valueToEntry.size + 1}__`,
 			value,
 			kind,
 		};

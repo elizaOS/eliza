@@ -6,6 +6,7 @@
  * Browser: stack-based fallback.
  */
 
+import type { SecretSwapSession } from "./security/secret-swap";
 import type { RoleGateRole } from "./types/contexts";
 import { StackContextManager } from "./utils/stack-context-manager";
 
@@ -23,6 +24,14 @@ export interface TrajectoryContext {
 	userRole?: RoleGateRole;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
+	/**
+	 * Turn-scoped secret-swap session (#10469). Minted on the first `useModel`
+	 * call of a turn when secret-swap is enabled, then reused by every subsequent
+	 * model call so all share one nonce, and read at the action-execution boundary
+	 * (`executePlannedToolCall`) to restore real secrets into handler args. Absent
+	 * when secret-swap is disabled — the egress restore is then a no-op.
+	 */
+	secretSwapSession?: SecretSwapSession;
 	/**
 	 * Step ID of the parent trajectory step, when the current step was
 	 * dispatched from inside another. Persistence layers use this to attach
