@@ -137,16 +137,15 @@ describe("generateAgentCard", () => {
     }
   });
 
-  test("exposes contact ids and a single bearer auth scheme", () => {
+  test("does NOT expose internal creator/org ids on the public card; has a single bearer auth scheme", () => {
     const character = buildCharacter({
       user_id: "11111111-1111-1111-1111-111111111111",
       organization_id: "22222222-2222-2222-2222-222222222222",
     });
     const card = generateAgentCard(character, BASE_URL);
-    expect(card.contact).toEqual({
-      creatorId: "11111111-1111-1111-1111-111111111111",
-      organizationId: "22222222-2222-2222-2222-222222222222",
-    });
+    // SECURITY: this card is served unauthenticated (CORS *, cached). It must
+    // NOT leak the creator's internal user_id/organization_id (deanonymization).
+    expect((card as Record<string, unknown>).contact).toBeUndefined();
     expect(card.authentication.schemes).toHaveLength(1);
     expect(card.authentication.schemes[0]?.scheme).toBe("bearer");
   });
