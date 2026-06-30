@@ -50,3 +50,7 @@ message round-trips and a response renders; `/api/health` reports
 `agentState="running"`; and the app pid stays **4110 before and after** — the
 agent and app never crash across the soak. That's the device-connected "every
 feature works without the agent crashing" property over repeated use.
+
+## Screen recording
+
+`onboard-chat-walkthrough.mp4` — a screen recording of the full on-device flow: onboarding (remote → host agent) → home dashboard renders → a chat message is typed and sent. Captured via `adb screenrecord` while driving the app over CDP.
