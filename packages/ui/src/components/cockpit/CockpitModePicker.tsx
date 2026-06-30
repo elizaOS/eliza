@@ -1,9 +1,9 @@
 import { cn } from "../../lib/utils";
 import { SegmentedControl } from "../ui/segmented-control";
 import {
+  COCKPIT_MODE_OPTIONS,
   type CockpitModeBadge,
   type CockpitModeConfig,
-  COCKPIT_MODE_OPTIONS,
   type ElizaCloudTier,
   optionIdForConfig,
   tierForConfig,

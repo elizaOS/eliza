@@ -14,7 +14,11 @@ function Harness({
   const [value, setValue] = useState<CockpitModeConfig>(initial);
   return (
     <div className="w-[340px]">
-      <CockpitModePicker value={value} onChange={setValue} disabled={disabled} />
+      <CockpitModePicker
+        value={value}
+        onChange={setValue}
+        disabled={disabled}
+      />
     </div>
   );
 }

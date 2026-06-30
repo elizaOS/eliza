@@ -36,7 +36,11 @@ export type CockpitModeConfig =
     };
 
 /** Stable id for one selectable picker option (tier is chosen separately). */
-export type CockpitModeOptionId = "eliza-cloud" | "opencode" | "claude" | "codex";
+export type CockpitModeOptionId =
+  | "eliza-cloud"
+  | "opencode"
+  | "claude"
+  | "codex";
 
 /** Badge kind → drives the chip's accent styling. */
 export type CockpitModeBadge = "cloud" | "sub";
