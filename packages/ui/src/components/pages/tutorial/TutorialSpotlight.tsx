@@ -19,6 +19,8 @@ import { Z_TUTORIAL } from "../../../lib/floating-layers";
 const PAD = 8; // glow  inset around the target
 
 export interface SpotlightCardProps {
+  /** Active tour frame id — stamped on the card so e2e can drive frame-by-frame. */
+  stepId: string;
   title: string;
   body: string;
   /** Narration muted — toggles the speaker control. */
@@ -246,6 +248,7 @@ function BackdropWithHole({ hole }: { hole: Rect }): React.ReactElement {
 }
 
 function SpotlightCard({
+  stepId,
   title,
   body,
   muted,
@@ -262,6 +265,7 @@ function SpotlightCard({
       className="absolute w-[300px] max-w-[calc(100vw-28px)] rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-xl motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       style={{ ...cardStyle, pointerEvents: "auto" }}
       data-testid="tutorial-card"
+      data-tutorial-step-id={stepId}
       role="dialog"
       aria-label="Tour step"
     >
