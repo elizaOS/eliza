@@ -791,6 +791,18 @@ declare module "./client-base" {
     updateSecrets(
       secrets: Record<string, string>,
     ): Promise<{ ok: boolean; updated: string[] }>;
+    /**
+     * Tunnel a single owner-submitted credential value to a blocked coding
+     * sub-agent via the parent runtime's one-shot CredentialTunnelService.
+     * Mutually exclusive with `updateSecrets`: a tunnel-routed value is never
+     * written to the long-term agent secret store.
+     */
+    tunnelCredential(input: {
+      credentialScopeId: string;
+      childSessionId: string;
+      key: string;
+      value: string;
+    }): Promise<{ ok: boolean }>;
     testPluginConnection(id: string): Promise<{
       success: boolean;
       pluginId: string;
@@ -2774,6 +2786,29 @@ ElizaClient.prototype.updateSecrets = async function (
   logSettingsClient("PUT /api/secrets ← ok", {
     baseUrl: this.getBaseUrl(),
     out,
+  });
+  return out;
+};
+
+ElizaClient.prototype.tunnelCredential = async function (
+  this: ElizaClient,
+  input,
+) {
+  // SECURITY: never log the value. Only the scope/session/key are safe to
+  // surface for debugging.
+  logSettingsClient("POST /api/credential-tunnel/submit → start", {
+    baseUrl: this.getBaseUrl(),
+    credentialScopeId: input.credentialScopeId,
+    childSessionId: input.childSessionId,
+    key: input.key,
+  });
+  const out = (await this.fetch("/api/credential-tunnel/submit", {
+    method: "POST",
+    body: JSON.stringify(input),
+  })) as { ok: boolean };
+  logSettingsClient("POST /api/credential-tunnel/submit ← ok", {
+    baseUrl: this.getBaseUrl(),
+    ok: out.ok,
   });
   return out;
 };
