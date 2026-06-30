@@ -11,10 +11,12 @@
  *
  * The fix adds a SEPARATE recovery pass over stuck `processing` rows that
  * re-approves a row ONLY when it provably never broadcast a transaction
- * (`broadcast_tx_hash IS NULL`). The broadcast hash is persisted the instant the
- * transaction is broadcast — before confirmation — so recovery can tell
+ * (`broadcast_tx_hash IS NULL`). The broadcast hash is persisted BEFORE the
+ * transaction is broadcast (#10588: EVM signs locally then sends a raw tx; Solana
+ * records the deterministic signature before the raw send) — so recovery can tell
  * "never broadcast" (safe to retry) from "broadcast, awaiting confirmation"
- * (must reconcile on-chain; re-broadcasting would DOUBLE-PAY).
+ * (must reconcile on-chain; re-broadcasting would DOUBLE-PAY). The previous flow
+ * recorded the hash AFTER the broadcast, leaving a sub-second double-pay window.
  *
  * These tests run the REAL `PayoutProcessorService.processBatch` against
  * in-process PGlite. Only the chain clients (viem) and the RPC/env helpers are
@@ -38,9 +40,30 @@ const FAIL_ADDRESS = "0x000000000000000000000000000000000000fa11";
 const OK_ADDRESS = "0x0000000000000000000000000000000000000111";
 
 // --- Chain client stubs (the only things that hit the network) ----------------
-const writeContractMock = mock(async (_args: { args: [string, bigint] }) => `0x${"b".repeat(64)}`);
+// #10588: executeEvmPayout now signs LOCALLY (prepare → sign → keccak256),
+// persists the hash, and only THEN broadcasts (sendRawTransaction). The recipient
+// is encoded in the signed calldata, so we decode it to let a test fail one
+// specific payout. The broadcast hash is keccak256 of the (fixed, valid-hex)
+// signed tx, computed with real viem so the DB value is deterministic.
+const TRANSFER_ABI = realViem.parseAbi([
+  "function transfer(address to, uint256 amount) returns (bool)",
+]);
+const SIGNED_TX = `0x${"ab".repeat(120)}` as const;
+const BROADCAST_HASH = realViem.keccak256(SIGNED_TX);
+
+const prepareTxMock = mock(async (args: { data: `0x${string}` }) => ({ ...args, nonce: 0 }));
+const signTxMock = mock(async () => SIGNED_TX);
+const sendRawTxMock = mock(
+  async (_args: { serializedTransaction: `0x${string}` }) => BROADCAST_HASH,
+);
 const waitReceiptMock = mock(async (_args: { hash: string }) => ({ status: "success" as const }));
 const readContractMock = mock(async () => 10n ** 30n); // hot-wallet balance: always sufficient
+
+/** Decode the ERC-20 transfer recipient from prepared calldata (real viem). */
+function recipientOf(data: `0x${string}`): string {
+  const decoded = realViem.decodeFunctionData({ abi: TRANSFER_ABI, data });
+  return (decoded.args[0] as string).toLowerCase();
+}
 
 // Keep the real env (so the db client still resolves DATABASE_URL=pglite://memory)
 // and only inject the EVM hot-wallet key. Solana stays unconfigured.
@@ -54,14 +77,18 @@ mock.module("../../config/evm-rpc", () => ({
 }));
 
 // Spread the real viem module (token-constants pulls parseAbi, parseUnits, …
-// from it) and override only the two client factories so no RPC is hit.
+// from it) and override only the client factories so no RPC is hit.
 mock.module("viem", () => ({
   ...realViem,
   createPublicClient: () => ({
     readContract: readContractMock,
     waitForTransactionReceipt: waitReceiptMock,
   }),
-  createWalletClient: () => ({ writeContract: writeContractMock }),
+  createWalletClient: () => ({
+    prepareTransactionRequest: prepareTxMock,
+    signTransaction: signTxMock,
+    sendRawTransaction: sendRawTxMock,
+  }),
 }));
 
 mock.module("viem/accounts", () => ({
@@ -239,11 +266,18 @@ beforeEach(async () => {
   await dbWrite.execute(`DELETE FROM redeemable_earnings_ledger;`);
   await dbWrite.execute(`DELETE FROM redeemable_earnings;`);
 
-  writeContractMock.mockReset();
+  prepareTxMock.mockReset();
+  signTxMock.mockReset();
+  sendRawTxMock.mockReset();
   waitReceiptMock.mockReset();
   readContractMock.mockReset();
   sendAlertMock.mockReset();
-  writeContractMock.mockImplementation(async () => `0x${"b".repeat(64)}`);
+  prepareTxMock.mockImplementation(async (args: { data: `0x${string}` }) => ({
+    ...args,
+    nonce: 0,
+  }));
+  signTxMock.mockImplementation(async () => SIGNED_TX);
+  sendRawTxMock.mockImplementation(async () => BROADCAST_HASH);
   waitReceiptMock.mockImplementation(async () => ({ status: "success" as const }));
   readContractMock.mockImplementation(async () => 10n ** 30n);
   sendAlertMock.mockImplementation(async () => undefined);
@@ -268,12 +302,12 @@ describe("payout stale-lock recovery (#10553)", () => {
       // reaching 'completed' proves recovery re-approved it and the batch then
       // paid it out.
       expect(row.status).toBe("completed");
-      expect(row.tx_hash).toBe(`0x${"b".repeat(64)}`);
-      expect(row.broadcast_tx_hash).toBe(`0x${"b".repeat(64)}`);
+      expect(row.tx_hash).toBe(BROADCAST_HASH);
+      expect(row.broadcast_tx_hash).toBe(BROADCAST_HASH);
       // recovery incremented retry_count on the way back to 'approved'.
       expect(Number(row.retry_count)).toBe(1);
       // A real transaction was broadcast exactly once.
-      expect(writeContractMock.mock.calls.length).toBe(1);
+      expect(sendRawTxMock.mock.calls.length).toBe(1);
     },
     PGLITE_TIMEOUT,
   );
@@ -298,7 +332,7 @@ describe("payout stale-lock recovery (#10553)", () => {
       expect(row.broadcast_tx_hash).toBe(broadcastHash);
       expect(row.tx_hash).toBeNull();
       // The load-bearing assertion: NO new transaction was broadcast.
-      expect(writeContractMock.mock.calls.length).toBe(0);
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
       // It is surfaced for on-chain reconciliation.
       expect(sendAlertMock.mock.calls.length).toBe(1);
     },
@@ -309,13 +343,16 @@ describe("payout stale-lock recovery (#10553)", () => {
     "(c) a throw in one redemption does not abort the batch",
     async () => {
       if (!pgliteReady) return;
-      // r1 will throw at broadcast (before any tx is sent); r2 must still pay out.
+      // r1 throws at PREPARE (before signing/recording/sending — genuinely
+      // pre-broadcast); r2 must still pay out.
       const r1 = await seedRedemption({ status: "approved", payoutAddress: FAIL_ADDRESS });
       const r2 = await seedRedemption({ status: "approved", payoutAddress: OK_ADDRESS });
 
-      writeContractMock.mockImplementation(async (call: { args: [string, bigint] }) => {
-        if (call.args[0] === FAIL_ADDRESS) throw new Error("RPC connection reset");
-        return `0x${"b".repeat(64)}`;
+      prepareTxMock.mockImplementation(async (args: { data: `0x${string}` }) => {
+        if (recipientOf(args.data) === FAIL_ADDRESS.toLowerCase()) {
+          throw new Error("RPC connection reset");
+        }
+        return { ...args, nonce: 0 };
       });
 
       // Must not throw out of processBatch.
@@ -329,20 +366,18 @@ describe("payout stale-lock recovery (#10553)", () => {
       expect(Number(row1.retry_count)).toBe(1);
       // r2 was reached despite r1 throwing → paid out.
       expect(row2.status).toBe("completed");
-      expect(row2.tx_hash).toBe(`0x${"b".repeat(64)}`);
+      expect(row2.tx_hash).toBe(BROADCAST_HASH);
       expect(stats.processed).toBe(2);
     },
     PGLITE_TIMEOUT,
   );
 
   test(
-    "(d) the tx hash is persisted at BROADCAST time, before confirmation",
+    "(d) the tx hash is persisted BEFORE broadcast; an eviction during confirm leaves it for reconciliation",
     async () => {
       if (!pgliteReady) return;
-      const broadcastHash = `0x${"e".repeat(64)}`;
       const id = await seedRedemption({ status: "approved" });
 
-      writeContractMock.mockImplementation(async () => broadcastHash);
       // Simulate a worker eviction / RPC failure DURING the confirmation wait,
       // i.e. AFTER the transaction was already broadcast.
       waitReceiptMock.mockImplementation(async () => {
@@ -352,13 +387,39 @@ describe("payout stale-lock recovery (#10553)", () => {
       await service.processBatch();
 
       const row = await readRedemption(id);
-      // The broadcast hash was persisted the moment writeContract returned,
-      // BEFORE waitForTransactionReceipt threw.
-      expect(row.broadcast_tx_hash).toBe(broadcastHash);
+      // The broadcast hash was persisted before the raw send, so it is set even
+      // though confirmation threw.
+      expect(row.broadcast_tx_hash).toBe(BROADCAST_HASH);
       // It never confirmed, so it is not completed and not re-approved — it is
       // left in 'processing' for on-chain reconciliation (never re-broadcast).
       expect(row.tx_hash).toBeNull();
       expect(row.status).toBe("processing");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(d2) #10588: the broadcast hash is persisted BEFORE the raw send (window closed)",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({ status: "approved" });
+
+      // Capture the DB state at the EXACT moment the raw transaction is sent. If
+      // the hash is already persisted then, a worker death anywhere in the
+      // broadcast→persist gap can never leave a NULL-hash row that recovery would
+      // re-broadcast → the double-pay window is closed.
+      let hashAtSendTime: string | null | "UNSET" = "UNSET";
+      sendRawTxMock.mockImplementation(async () => {
+        hashAtSendTime = (await readRedemption(id)).broadcast_tx_hash;
+        return BROADCAST_HASH;
+      });
+
+      await service.processBatch();
+
+      // The hash was already committed when sendRawTransaction ran (not after it).
+      expect(hashAtSendTime).toBe(BROADCAST_HASH);
+      const row = await readRedemption(id);
+      expect(row.status).toBe("completed");
     },
     PGLITE_TIMEOUT,
   );
@@ -380,7 +441,7 @@ describe("payout stale-lock recovery (#10553)", () => {
       // Recovery must not steal a row from a worker still inside the timeout.
       expect(row.status).toBe("processing");
       expect(Number(row.retry_count)).toBe(0);
-      expect(writeContractMock.mock.calls.length).toBe(0);
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
     },
     PGLITE_TIMEOUT,
   );
@@ -402,7 +463,7 @@ describe("payout stale-lock recovery (#10553)", () => {
       expect(row.status).toBe("failed");
       expect(row.broadcast_tx_hash).toBeNull();
       // Never silently re-broadcast.
-      expect(writeContractMock.mock.calls.length).toBe(0);
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
     },
     PGLITE_TIMEOUT,
   );

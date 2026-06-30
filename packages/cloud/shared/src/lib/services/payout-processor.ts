@@ -34,7 +34,15 @@
 
 import bs58 from "bs58";
 import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
-import { type Address, createPublicClient, createWalletClient, http, parseUnits } from "viem";
+import {
+  type Address,
+  createPublicClient,
+  createWalletClient,
+  encodeFunctionData,
+  http,
+  keccak256,
+  parseUnits,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
@@ -545,19 +553,41 @@ export class PayoutProcessorService {
       };
     }
 
-    // Execute transfer
-    const txHash = await walletClient.writeContract({
-      address: tokenAddress,
+    // Sign the transfer LOCALLY first so its hash is known BEFORE it is
+    // broadcast, then persist that hash BEFORE the raw send. This closes the
+    // residual double-pay window (#10588): the previous flow used
+    // `writeContract`, which broadcasts the tx and only THEN returns the hash, so
+    // a worker death in the gap between the broadcast and the recordBroadcast
+    // commit left a NULL-hash row that recovery re-approved → re-broadcast →
+    // double-pay. With sign → record → send, a NULL `broadcast_tx_hash` provably
+    // means the tx was never submitted (safe to re-approve), and anything from
+    // the send onward leaves the hash set (reconciled, never re-broadcast). The
+    // nonce is pinned by prepareTransactionRequest, so the recorded hash is the
+    // exact — and only — transaction that can reach the chain.
+    const data = encodeFunctionData({
       abi: ERC20_ABI,
       functionName: "transfer",
       args: [toAddress, amount],
     });
+    const preparedRequest = await walletClient.prepareTransactionRequest({
+      account,
+      to: tokenAddress,
+      data,
+      chain,
+    });
+    const serializedTransaction = await walletClient.signTransaction(
+      preparedRequest as Parameters<typeof walletClient.signTransaction>[0],
+    );
+    const txHash = keccak256(serializedTransaction);
 
-    // Persist the broadcast hash the INSTANT it is known — before waiting for
-    // confirmation. If this worker dies during the confirmation wait, recovery
-    // sees a non-NULL broadcast hash and will NOT re-approve (no double-pay);
-    // the redemption is reconciled on-chain instead.
+    // Persist BEFORE broadcasting. A crash before this commit means the tx was
+    // never sent (sendRawTransaction is below) → recovery safely re-approves.
     await this.recordBroadcast(redemption.id, txHash);
+
+    // Broadcast the pre-signed transaction. A throw here routes through
+    // handleProcessingThrow, which sees the persisted hash and reconciles rather
+    // than re-broadcasting.
+    await walletClient.sendRawTransaction({ serializedTransaction });
 
     // Wait for confirmation
     const receipt = await publicClient.waitForTransactionReceipt({
@@ -658,14 +688,29 @@ export class PayoutProcessorService {
     transaction.feePayer = this.solanaKeypair.publicKey;
     transaction.sign(this.solanaKeypair);
 
-    // Broadcast, then persist the signature BEFORE confirming — the same
-    // crash-recovery invariant as the EVM path. A recorded broadcast hash means
-    // recovery must never re-broadcast this payout (no double-pay); an expired
-    // blockhash / eviction during confirmation throws into processBatch's
-    // try/catch, which leaves the broadcast row in 'processing' for on-chain
-    // reconciliation rather than re-approving it.
-    const signature = await this.solanaConnection.sendRawTransaction(transaction.serialize());
+    // The signature (= the txid) is deterministic the INSTANT the transaction is
+    // signed — before it is sent — so persist it BEFORE the raw broadcast, the
+    // same as the EVM sign→record→send order (#10588). The previous flow sent
+    // first and recorded after, leaving the identical broadcast→persist window: a
+    // crash in that gap left a NULL-hash row that recovery re-approved and
+    // re-broadcast → double-pay. A recorded broadcast hash means recovery must
+    // never re-broadcast (no double-pay); an expired blockhash / eviction during
+    // confirmation throws into processBatch's try/catch, which leaves the
+    // broadcast row in 'processing' for on-chain reconciliation.
+    const serializedTransaction = transaction.serialize();
+    const signatureBytes = transaction.signature;
+    if (!signatureBytes) {
+      // Signing did not populate a signature — nothing was broadcast, safe to retry.
+      return {
+        success: false,
+        error: "Solana transaction has no signature after signing",
+        retryable: true,
+      };
+    }
+    const signature = bs58.encode(signatureBytes);
     await this.recordBroadcast(redemption.id, signature);
+
+    await this.solanaConnection.sendRawTransaction(serializedTransaction);
 
     const confirmation = await this.solanaConnection.confirmTransaction(
       { signature, blockhash, lastValidBlockHeight },
