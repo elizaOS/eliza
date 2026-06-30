@@ -1,15 +1,12 @@
 package ai.eliza.plugins.system
 
 import android.app.role.RoleManager
-import android.media.AudioManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import android.provider.Telephony
-import android.telecom.TelecomManager
 import androidx.activity.result.ActivityResult
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -21,43 +18,15 @@ import com.getcapacitor.annotation.CapacitorPlugin
 
 @CapacitorPlugin(name = "ElizaSystem")
 class SystemPlugin : Plugin() {
-    private val roleMap = mapOf(
-        "home" to RoleManager.ROLE_HOME,
-        "dialer" to RoleManager.ROLE_DIALER,
-        "sms" to RoleManager.ROLE_SMS,
-        "assistant" to RoleManager.ROLE_ASSISTANT
-    )
-    private val volumeStreamMap = mapOf(
-        "music" to AudioManager.STREAM_MUSIC,
-        "ring" to AudioManager.STREAM_RING,
-        "alarm" to AudioManager.STREAM_ALARM,
-        "notification" to AudioManager.STREAM_NOTIFICATION,
-        "system" to AudioManager.STREAM_SYSTEM,
-        "voiceCall" to AudioManager.STREAM_VOICE_CALL
-    )
+    // Device reads are delegated to a pure, Context-backed reader so they can be
+    // exercised by an instrumented androidTest without a Capacitor Bridge / WebView
+    // (issue #9967). This plugin stays a thin Capacitor binding: read via the
+    // reader, then marshal the result into the unchanged JS wire shape.
+    private val reader by lazy { SystemDeviceReader(context) }
 
     @PluginMethod
     fun getStatus(call: PluginCall) {
-        val result = JSObject()
-        val roles = JSArray()
-        result.put("packageName", context.packageName)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
-            for ((name, androidRole) in roleMap) {
-                val role = JSObject()
-                val available = roleManager.isRoleAvailable(androidRole)
-                val holders = if (available) roleHolders(name) else emptyList()
-                val held = holders.contains(context.packageName)
-                role.put("role", name)
-                role.put("androidRole", androidRole)
-                role.put("available", available)
-                role.put("held", held)
-                role.put("holders", JSArray(holders))
-                roles.put(role)
-            }
-        }
-        result.put("roles", roles)
-        call.resolve(result)
+        call.resolve(statusToJs(reader.readStatus()))
     }
 
     @PluginMethod
@@ -68,9 +37,9 @@ class SystemPlugin : Plugin() {
         }
 
         val roleName = call.getString("role")?.trim()
-        val androidRole = roleMap[roleName]
+        val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
         if (roleName.isNullOrEmpty() || androidRole == null) {
-            call.reject("role must be one of ${roleMap.keys.joinToString(", ")}")
+            call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
             return
         }
 
@@ -100,42 +69,14 @@ class SystemPlugin : Plugin() {
         }
 
         val roleName = call.getString("role")?.trim()
-        val androidRole = roleMap[roleName]
+        val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
         if (roleName.isNullOrEmpty() || androidRole == null) {
-            call.reject("role must be one of ${roleMap.keys.joinToString(", ")}")
+            call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
             return
         }
 
         val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
         call.resolve(roleRequestResult(roleName, roleManager.isRoleHeld(androidRole), result.resultCode))
-    }
-
-    private fun roleHolders(name: String): List<String> {
-        return when (name) {
-            "home" -> listOfNotNull(resolveHomePackage())
-            "dialer" -> listOfNotNull(resolveDefaultDialerPackage())
-            "sms" -> listOfNotNull(Telephony.Sms.getDefaultSmsPackage(context))
-            "assistant" -> listOfNotNull(resolveAssistantPackage())
-            else -> emptyList()
-        }
-    }
-
-    private fun resolveHomePackage(): String? {
-        val intent = Intent(Intent.ACTION_MAIN)
-        intent.addCategory(Intent.CATEGORY_HOME)
-        val resolved = context.packageManager.resolveActivity(intent, 0)
-        return resolved?.activityInfo?.packageName
-    }
-
-    private fun resolveDefaultDialerPackage(): String? {
-        val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-        return telecom?.defaultDialerPackage
-    }
-
-    private fun resolveAssistantPackage(): String? {
-        val flattened = Settings.Secure.getString(context.contentResolver, "assistant")
-        if (flattened.isNullOrBlank()) return null
-        return ComponentName.unflattenFromString(flattened)?.packageName
     }
 
     private fun roleRequestResult(roleName: String, held: Boolean, resultCode: Int): JSObject {
@@ -192,7 +133,7 @@ class SystemPlugin : Plugin() {
 
     @PluginMethod
     fun getDeviceSettings(call: PluginCall) {
-        call.resolve(deviceSettingsResult())
+        call.resolve(deviceSettingsToJs(reader.readDeviceSettings()))
     }
 
     @PluginMethod
@@ -203,7 +144,7 @@ class SystemPlugin : Plugin() {
             return
         }
         val clamped = brightness.coerceIn(0.0, 1.0)
-        if (!canWriteSettings()) {
+        if (!reader.canWriteSettings()) {
             call.reject("WRITE_SETTINGS permission is required to change system brightness")
             return
         }
@@ -218,7 +159,7 @@ class SystemPlugin : Plugin() {
                 Settings.System.SCREEN_BRIGHTNESS,
                 (clamped * 255.0).toInt().coerceIn(0, 255)
             )
-            call.resolve(deviceSettingsResult())
+            call.resolve(deviceSettingsToJs(reader.readDeviceSettings()))
         } catch (error: RuntimeException) {
             call.reject("Failed to set screen brightness", error)
         }
@@ -227,9 +168,9 @@ class SystemPlugin : Plugin() {
     @PluginMethod
     fun setVolume(call: PluginCall) {
         val streamName = call.getString("stream")?.trim()
-        val stream = volumeStreamMap[streamName]
+        val stream = SystemDeviceReader.VOLUME_STREAM_MAP[streamName]
         if (streamName.isNullOrEmpty() || stream == null) {
-            call.reject("stream must be one of ${volumeStreamMap.keys.joinToString(", ")}")
+            call.reject("stream must be one of ${SystemDeviceReader.VOLUME_STREAM_MAP.keys.joinToString(", ")}")
             return
         }
         val volume = call.getInt("volume")
@@ -244,56 +185,47 @@ class SystemPlugin : Plugin() {
         val flags = if (showUi) AudioManager.FLAG_SHOW_UI else 0
         try {
             audio.setStreamVolume(stream, clamped, flags)
-            call.resolve(volumeStatus(streamName, stream, audio))
+            call.resolve(volumeToJs(reader.readVolume(streamName, stream, audio)))
         } catch (error: RuntimeException) {
             call.reject("Failed to set $streamName volume", error)
         }
     }
 
-    private fun canWriteSettings(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.System.canWrite(context)
+    private fun statusToJs(status: SystemDeviceReader.SystemStatus): JSObject {
+        val result = JSObject()
+        result.put("packageName", status.packageName)
+        val roles = JSArray()
+        for (role in status.roles) {
+            val item = JSObject()
+            item.put("role", role.role)
+            item.put("androidRole", role.androidRole)
+            item.put("available", role.available)
+            item.put("held", role.held)
+            item.put("holders", JSArray(role.holders))
+            roles.put(item)
+        }
+        result.put("roles", roles)
+        return result
     }
 
-    private fun deviceSettingsResult(): JSObject {
+    private fun deviceSettingsToJs(settings: SystemDeviceReader.DeviceSettings): JSObject {
         val result = JSObject()
-        result.put("brightness", readBrightness())
-        result.put("brightnessMode", readBrightnessMode())
-        result.put("canWriteSettings", canWriteSettings())
-        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        result.put("brightness", settings.brightness)
+        result.put("brightnessMode", settings.brightnessMode)
+        result.put("canWriteSettings", settings.canWriteSettings)
         val volumes = JSArray()
-        for ((name, stream) in volumeStreamMap) {
-            volumes.put(volumeStatus(name, stream, audio))
+        for (volume in settings.volumes) {
+            volumes.put(volumeToJs(volume))
         }
         result.put("volumes", volumes)
         return result
     }
 
-    private fun readBrightness(): Double {
-        return try {
-            Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-                .coerceIn(0, 255) / 255.0
-        } catch (_: Settings.SettingNotFoundException) {
-            0.75
-        }
-    }
-
-    private fun readBrightnessMode(): String {
-        return try {
-            when (Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE)) {
-                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL -> "manual"
-                Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC -> "automatic"
-                else -> "unknown"
-            }
-        } catch (_: Settings.SettingNotFoundException) {
-            "unknown"
-        }
-    }
-
-    private fun volumeStatus(name: String, stream: Int, audio: AudioManager): JSObject {
+    private fun volumeToJs(volume: SystemDeviceReader.VolumeStatus): JSObject {
         val result = JSObject()
-        result.put("stream", name)
-        result.put("current", audio.getStreamVolume(stream))
-        result.put("max", audio.getStreamMaxVolume(stream))
+        result.put("stream", volume.stream)
+        result.put("current", volume.current)
+        result.put("max", volume.max)
         return result
     }
 }
