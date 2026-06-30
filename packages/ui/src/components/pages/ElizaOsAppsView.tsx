@@ -38,6 +38,26 @@ import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
+/**
+ * Gate a native read behind its permission check so we never invoke a native
+ * plugin call we already know will reject. Capacitor logs every rejected native
+ * call itself (`@capacitor/core` handleError → console.error), so issuing
+ * `listContacts` / `listMessages` without first confirming access turns an
+ * expected permission-denied state into a raw console error. `check`/`request`
+ * resolve to the relevant permission state ("granted" when allowed); on web the
+ * native plugins report "granted", so the read path is unchanged. Returns true
+ * when the read may proceed.
+ */
+export async function ensureNativeReadGranted(
+  check: (() => Promise<string>) | null,
+  request: (() => Promise<string>) | null,
+): Promise<boolean> {
+  if (!check) return true;
+  if ((await check().catch(() => null)) === "granted") return true;
+  if (request && (await request().catch(() => null)) === "granted") return true;
+  return false;
+}
+
 type PhonePanel = "dialer" | "recents" | "contacts" | "import" | "transcripts";
 
 const PHONE_PANEL_ITEMS: Array<{
@@ -1520,11 +1540,24 @@ export function MessagesPageView() {
     setBusy(true);
     setError(null);
     try {
-      const plugins = getPlugins();
-      if (typeof plugins.messages.plugin.listMessages !== "function") {
+      const messagesPlugin = getPlugins().messages.plugin;
+      if (typeof messagesPlugin.listMessages !== "function") {
         throw new Error("ElizaMessages plugin is unavailable");
       }
-      const result = await plugins.messages.plugin.listMessages({ limit: 100 });
+      const check = messagesPlugin.checkPermissions;
+      const request = messagesPlugin.requestPermissions;
+      const granted = await ensureNativeReadGranted(
+        check ? async () => (await check()).sms : null,
+        request ? async () => (await request()).sms : null,
+      );
+      if (!granted) {
+        setMessages([]);
+        setError(
+          "SMS permission is required. Grant Messages access to read your texts, then retry.",
+        );
+        return;
+      }
+      const result = await messagesPlugin.listMessages({ limit: 100 });
       setMessages(result.messages);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1789,11 +1822,24 @@ export function ContactsPageView() {
     setBusy(true);
     setError(null);
     try {
-      const plugins = getPlugins();
-      if (typeof plugins.contacts.plugin.listContacts !== "function") {
+      const contactsPlugin = getPlugins().contacts.plugin;
+      if (typeof contactsPlugin.listContacts !== "function") {
         throw new Error("ElizaContacts plugin is unavailable");
       }
-      const result = await plugins.contacts.plugin.listContacts(listOptions);
+      const check = contactsPlugin.checkPermissions;
+      const request = contactsPlugin.requestPermissions;
+      const granted = await ensureNativeReadGranted(
+        check ? async () => (await check()).contacts : null,
+        request ? async () => (await request()).contacts : null,
+      );
+      if (!granted) {
+        setContacts([]);
+        setError(
+          "Contacts permission is required. Grant Contacts access to read your address book, then retry.",
+        );
+        return;
+      }
+      const result = await contactsPlugin.listContacts(listOptions);
       setContacts(result.contacts);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
