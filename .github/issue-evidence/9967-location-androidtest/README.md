@@ -25,14 +25,38 @@ Branch: `fix/9967-location-androidtest`
 
 ## Evidence
 
+Local package validation:
+
+```bash
+bun run --cwd plugins/plugin-native-location test
+bun run --cwd plugins/plugin-native-location build
+./gradlew :elizaos-capacitor-location:compileDebugKotlin :elizaos-capacitor-location:compileDebugAndroidTestKotlin
+```
+
+Results:
+
+- `plugins/plugin-native-location` unit tests: 1 file, 16 tests passed.
+- `plugins/plugin-native-location` build: passed.
+- Android debug + androidTest Kotlin compile: passed.
+
+Connected Android validation:
+
 ```bash
 packages/app-core/platforms/android/gradlew -p packages/app-core/platforms/android :elizaos-capacitor-location:connectedDebugAndroidTest
 ```
 
-Result: passed on both connected Android targets:
+Result: passed on all connected Android targets:
 
-- Pixel 6a / Android 16 / API 36: pending rerun after rebase.
-- Android emulator / Android 14 / API 34: pending rerun after rebase.
+- Pixel 6a / Android 16 / API 36: 5 tests, 0 failures, 0 errors, 1 skipped.
+- JejuWallet Pixel 6 emulator (`emulator-5554`) / Android 14 / API 34:
+  5 tests, 0 failures, 0 errors, 1 skipped.
+- eliza-viewtest emulator (`emulator-5556`) / Android 14 / API 34:
+  5 tests, 0 failures, 0 errors, 1 skipped.
+
+The skipped test is `awaitNextLocation_readsBackAFusedFix`, which intentionally
+uses `Assume` when no live fused fix arrives in the current environment. The
+non-skipped tests cover permission state, provider state, result shaping, and
+accuracy mapping on each attached device.
 
 After rebasing onto the latest `origin/develop`, the same command was rerun and
 passed again on both connected Android targets.
@@ -42,10 +66,13 @@ Artifacts:
 - `location-connectedDebugAndroidTest.log`
 - `location-TEST-Pixel6a-Android16.xml`
 - `location-TEST-emulator-Android14.xml`
+- `location-TEST-emulator5556-Android14.xml`
 - `location-pixel6a-provider-logcat.txt`
 - `location-emulator-provider-logcat.txt`
+- `location-emulator5556-provider-logcat.txt`
 - `location-pixel6a-utp.log`
 - `location-emulator-utp.log`
+- `location-emulator5556-utp.log`
 - `location-androidtest-report/`
 - `location-device-info.txt`
 
@@ -57,9 +84,9 @@ Screenshot and screen recording evidence:
 - `location-showcase-emulator.mp4`
 
 The showcase Activity renders the live `LocationFixReader` output: foreground
-permission state and `LocationManager` provider state. Captures should show
-foreground permission/provider rows from Android rather than a desktop Chromium
-bridge mock.
+permission state and `LocationManager` provider state. The captured Pixel 6a and
+emulator screens show `foreground granted: true` and live enabled provider rows
+from Android rather than a desktop Chromium bridge mock.
 
 ## Notes
 

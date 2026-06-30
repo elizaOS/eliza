@@ -22,14 +22,16 @@ class LocationReaderShowcaseActivity : Activity() {
 
         val reader = LocationFixReader(this)
         val providers = reader.readProviderStatus()
+        val hasForegroundPermission = reader.hasForegroundPermission()
+        val foregroundStatus = if (hasForegroundPermission) "granted" else "denied"
 
         val text = buildString {
             appendLine("LocationFixReader - live on-device reads (#9967)")
             appendLine("package: $packageName")
             appendLine()
             appendLine("PERMISSIONS:")
-            appendLine("  foreground granted: ${reader.hasForegroundPermission()}")
-            appendLine("  background: ${reader.readBackgroundPermissionStatus("granted")}")
+            appendLine("  foreground granted: $hasForegroundPermission")
+            appendLine("  background: ${reader.readBackgroundPermissionStatus(foregroundStatus)}")
             appendLine()
             appendLine("PROVIDERS (live LocationManager):")
             appendLine("  gps: ${providers.gpsEnabled}")
