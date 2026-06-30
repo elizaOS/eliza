@@ -10,6 +10,7 @@
  * Telegram user sees what a Claude-Code user sees in-terminal.
  */
 
+import { statSync } from "node:fs";
 import type { Content, Media, UUID } from "@elizaos/core";
 import { ContentType, logger } from "@elizaos/core";
 import { parseCompletionEnvelope } from "./completion-envelope.js";
@@ -17,6 +18,8 @@ import { parseCompletionEnvelope } from "./completion-envelope.js";
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp)$/i;
 /** Cap how many screenshots we forward so a chatty task can't flood the chat. */
 export const MAX_SCREENSHOTS = 5;
+/** Cap the total known screenshot bytes in one completion delivery. */
+export const MAX_SCREENSHOT_TOTAL_BYTES = 20 * 1024 * 1024;
 
 /**
  * Pure: collect candidate screenshot paths for a completion. Prefers the
@@ -56,12 +59,57 @@ export function collectScreenshotPaths(
   return out;
 }
 
-/** Pure: turn screenshot paths into capped image `Media[]` for `Content.attachments`. */
+type ScreenshotAttachmentOptions = {
+  maxCount?: number;
+  maxTotalBytes?: number;
+  getSize?: (path: string) => number | undefined;
+};
+
+function getFileSize(path: string): number | undefined {
+  try {
+    return statSync(path).size;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeAttachmentOptions(
+  maxCountOrOptions: number | ScreenshotAttachmentOptions,
+): Required<ScreenshotAttachmentOptions> {
+  if (typeof maxCountOrOptions === "number") {
+    return {
+      maxCount: maxCountOrOptions,
+      maxTotalBytes: MAX_SCREENSHOT_TOTAL_BYTES,
+      getSize: getFileSize,
+    };
+  }
+  return {
+    maxCount: maxCountOrOptions.maxCount ?? MAX_SCREENSHOTS,
+    maxTotalBytes:
+      maxCountOrOptions.maxTotalBytes ?? MAX_SCREENSHOT_TOTAL_BYTES,
+    getSize: maxCountOrOptions.getSize ?? getFileSize,
+  };
+}
+
+/** Turn screenshot paths into capped image `Media[]` for `Content.attachments`. */
 export function screenshotsToAttachments(
   paths: string[],
-  maxCount = MAX_SCREENSHOTS,
+  maxCountOrOptions: number | ScreenshotAttachmentOptions = MAX_SCREENSHOTS,
 ): Media[] {
-  return paths.slice(0, maxCount).map((p, i) => ({
+  const { maxCount, maxTotalBytes, getSize } =
+    normalizeAttachmentOptions(maxCountOrOptions);
+  const selected: string[] = [];
+  let totalBytes = 0;
+  for (const path of paths) {
+    if (selected.length >= maxCount) break;
+    const size = getSize(path);
+    if (typeof size === "number" && Number.isFinite(size)) {
+      if (size > maxTotalBytes || totalBytes + size > maxTotalBytes) continue;
+      totalBytes += size;
+    }
+    selected.push(path);
+  }
+  return selected.map((p, i) => ({
     id: `screenshot-${i}` as UUID,
     url: p,
     title: p.split("/").pop() || `screenshot-${i}`,

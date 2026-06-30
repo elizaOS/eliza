@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   collectScreenshotPaths,
   deliverScreenshots,
+  MAX_SCREENSHOT_TOTAL_BYTES,
   MAX_SCREENSHOTS,
   screenshotsToAttachments,
 } from "../../src/services/screenshot-delivery.js";
@@ -57,6 +58,29 @@ describe("screenshotsToAttachments (#8904)", () => {
     expect(atts).toHaveLength(MAX_SCREENSHOTS);
     expect(atts[0]).toMatchObject({ url: "/tmp/0.png", contentType: "image" });
     expect(atts[0].title).toBe("0.png");
+  });
+
+  it("caps total known bytes across the forwarded screenshots", () => {
+    const atts = screenshotsToAttachments(
+      ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"],
+      {
+        maxCount: 5,
+        maxTotalBytes: 10,
+        getSize: (path) => (path.endsWith("b.png") ? 7 : 4),
+      },
+    );
+    expect(atts.map((att) => att.url)).toEqual(["/tmp/a.png", "/tmp/c.png"]);
+  });
+
+  it("skips a single screenshot larger than the total byte budget", () => {
+    const atts = screenshotsToAttachments(["/tmp/huge.png", "/tmp/small.png"], {
+      maxTotalBytes: MAX_SCREENSHOT_TOTAL_BYTES,
+      getSize: (path) =>
+        path.includes("huge")
+          ? MAX_SCREENSHOT_TOTAL_BYTES + 1
+          : MAX_SCREENSHOT_TOTAL_BYTES,
+    });
+    expect(atts.map((att) => att.url)).toEqual(["/tmp/small.png"]);
   });
 });
 
