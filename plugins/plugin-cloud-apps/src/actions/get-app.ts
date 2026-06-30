@@ -17,6 +17,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  extractAppReference,
   findAppByReference,
   formatAppDetail,
   getCloudClient,
@@ -30,22 +31,6 @@ const NO_REFERENCE_MESSAGE =
   "Which app would you like to know about? Tell me its name and I'll pull up the details.";
 const ERROR_MESSAGE =
   "I couldn't fetch that app's details right now — the Cloud API returned an error. Try again in a moment.";
-
-const OPTION_KEYS = ["app", "appName", "name", "id", "appId", "query"] as const;
-
-/** Pull an app reference from planner options or the raw message text. */
-function resolveReference(message: Memory, options?: unknown): string {
-  if (options && typeof options === "object") {
-    const opts = options as Record<string, unknown>;
-    for (const key of OPTION_KEYS) {
-      const value = opts[key];
-      if (typeof value === "string" && value.trim().length > 0) {
-        return value.trim();
-      }
-    }
-  }
-  return (message.content?.text ?? "").trim();
-}
 
 function notFoundMessage(reference: string, available: string[]): string {
   const base = `I couldn't find an app matching "${reference}".`;
@@ -92,7 +77,7 @@ export const getAppAction: Action = {
       };
     }
 
-    const reference = resolveReference(message, options);
+    const reference = extractAppReference(message, options);
     if (!reference) {
       await callback?.({ text: NO_REFERENCE_MESSAGE, actions: ["GET_APP"] });
       return {

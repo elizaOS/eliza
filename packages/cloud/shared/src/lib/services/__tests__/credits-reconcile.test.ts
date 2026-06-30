@@ -361,4 +361,50 @@ describe("CreditsService.reconcile", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "NON-IDEMPOTENT double-settle hazard: settling then a second reconcile(0) refunds AGAIN (the free-generation bug #10278's chargeSettled guard prevents)",
+    async () => {
+      if (!pgliteReady) return;
+
+      // reconcile() is a pure function of (reservedAmount - actualCost); it has NO
+      // settled-guard of its own. The metered media routes (generate-video /
+      // generate-music / generate-image) reserve the full amount up front, then on
+      // success call reconcile(actualCost) to settle. If a *post-settle*, non-critical
+      // step then throws (e.g. generationsService.create), the route's catch arm used
+      // to call reconcile(0) — refunding the FULL reservation a SECOND time and handing
+      // the user a free generation. This test pins that hazard at the money layer so the
+      // route-level `if (reservation && !chargeSettled)` guard can never be silently
+      // removed without a red test.
+
+      // 1) Settle: reserved 1.0, actual 0.4 -> refund the 0.6 over-reservation.
+      const settle = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0.4,
+        description: "media settle (charge committed)",
+        metadata: { user_id: USER_ID },
+      });
+      expect(settle.adjustmentType).toBe("refund");
+      expect(await getBalance()).toBeCloseTo(10.6, 6);
+
+      // 2) The OLD post-settle catch path: reconcile(0) on the same reservation.
+      //    Because reconcile is non-idempotent, this refunds the ENTIRE 1.0 again.
+      const doubleRefund = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0,
+        description: "media post-settle error -> erroneous second refund",
+        metadata: { user_id: USER_ID },
+      });
+      expect(doubleRefund.adjustmentType).toBe("refund");
+
+      // The damage: balance is 10.0 + 0.6 + 1.0 = 11.60 (1.0 of free credit on a
+      // request that only over-reserved by 0.6), and TWO refund rows exist. This is
+      // exactly what skipping reconcile(0) once chargeSettled is true prevents.
+      expect(await getBalance()).toBeCloseTo(11.6, 6);
+      expect(await countByType("refund")).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
 });

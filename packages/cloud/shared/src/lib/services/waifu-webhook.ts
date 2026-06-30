@@ -65,13 +65,18 @@ export interface EmitWaifuWebhookParams {
  * not wired to a waifu deployment (local dev, CI without secrets).
  */
 export function resolveWaifuWebhookTarget(): WaifuWebhookTarget | null {
+  // ELIZA_CLOUD_* are the canonical names; WAIFU_* are deprecated legacy
+  // aliases kept for zero-downtime migration. WAIFU_API_BASE_URL/WAIFU_CORE_URL
+  // stay as inbound waifu.fun identifiers (not renamed).
   const baseUrl = (
+    process.env.ELIZA_CLOUD_WEBHOOK_URL ??
     process.env.WAIFU_WEBHOOK_URL ??
     process.env.WAIFU_API_BASE_URL ??
     process.env.WAIFU_CORE_URL ??
     ""
   ).trim();
   const secret = (
+    process.env.ELIZA_CLOUD_WEBHOOK_SECRET ??
     process.env.WAIFU_WEBHOOK_SECRET ??
     process.env.WEBHOOK_RECEIVER_SECRET ??
     ""

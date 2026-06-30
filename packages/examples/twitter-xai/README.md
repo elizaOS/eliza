@@ -18,13 +18,14 @@ plugins:
 
 - An **xAI API key** for Grok (`XAI_API_KEY`).
 - An **X developer app** with **user-context write access**.
-  - Default: **OAuth 1.0a user-context** credentials (`TWITTER_API_KEY`,
-    `TWITTER_API_SECRET_KEY`, `TWITTER_ACCESS_TOKEN`,
-    `TWITTER_ACCESS_TOKEN_SECRET`).
+  - Default: **OAuth 1.0a user-context** credentials (`TWITTER_AUTH_MODE=env`):
+    `TWITTER_API_KEY`, `TWITTER_API_SECRET_KEY`, `TWITTER_ACCESS_TOKEN`,
+    `TWITTER_ACCESS_TOKEN_SECRET`.
   - Alternative: **OAuth 2.0 PKCE** (interactive login) with
     `TWITTER_AUTH_MODE=oauth`.
-  - Alternative: **Eliza Cloud broker** with `TWITTER_AUTH_MODE=broker` —
-    delegates OAuth to a managed service.
+  - Managed: **Eliza Cloud broker** (`TWITTER_AUTH_MODE=broker`) delegates OAuth
+    to a managed service. `@elizaos/plugin-x` runs `env|oauth`, so this
+    standalone example does not wire the broker flow — run it via Eliza Cloud.
 
 ## Quick start
 
@@ -61,7 +62,8 @@ bun run start
 
 ### X API v2 auth — `@elizaos/plugin-x`
 
-- `TWITTER_AUTH_MODE` — `broker` (default), `oauth`, or `env`.
+- `TWITTER_AUTH_MODE` — `env` (default, standalone), `oauth`, or `broker`
+  (managed Eliza Cloud).
 
 OAuth 1.0a user context (`TWITTER_AUTH_MODE=env`):
 
@@ -76,10 +78,11 @@ OAuth 2.0 PKCE (`TWITTER_AUTH_MODE=oauth`):
 - `TWITTER_REDIRECT_URI`
 - `TWITTER_SCOPES` (default `tweet.read tweet.write users.read offline.access`)
 
-Eliza Cloud broker (`TWITTER_AUTH_MODE=broker`):
+Eliza Cloud broker (`TWITTER_AUTH_MODE=broker`) — managed only:
 
 - `TWITTER_BROKER_TOKEN` or `ELIZAOS_CLOUD_API_KEY`
 - `TWITTER_BROKER_URL` (optional service URL override)
+- Not wired in this standalone example; run via Eliza Cloud to use it.
 
 ### Agent behavior toggles
 

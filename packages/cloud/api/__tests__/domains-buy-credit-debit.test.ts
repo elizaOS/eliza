@@ -35,6 +35,7 @@ const computeDomainPrice = mock();
 const upsertCloudflareRegisteredDomain = mock();
 const assignToResource = mock();
 const setCustomDomain = mock();
+const hasUnrefundedDomainPurchase = mock<() => Promise<boolean>>();
 
 // Chainable Drizzle write builder. The route uses:
 //   insert().values().onConflictDoNothing().returning()   -> [claim]
@@ -112,6 +113,10 @@ mock.module("@/lib/services/credits", () => ({
 
 mock.module("@/lib/services/domain-pricing", () => ({
   computeDomainPrice,
+}));
+
+mock.module("@/db/repositories/credit-transactions", () => ({
+  creditTransactionsRepository: { hasUnrefundedDomainPurchase },
 }));
 
 mock.module("@/lib/services/app-domains-compat", () => ({
@@ -220,6 +225,9 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     idempotencyReturning.mockResolvedValue([{ id: "claim-1" }]);
     dbWriteTerminal.mockClear();
     dbReadLimit.mockClear();
+
+    hasUnrefundedDomainPurchase.mockReset();
+    hasUnrefundedDomainPurchase.mockResolvedValue(false);
   });
 
   test("insufficient balance → 402, no registration, no refund", async () => {
@@ -234,8 +242,10 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(402);
-    expect(body.success).toBe(false);
-    expect(body.code).toBe("insufficient_balance");
+    expect(body).toMatchObject({
+      success: false,
+      code: "insufficient_balance",
+    });
     // The bug: a declined debit must NOT register a domain on Eliza's account.
     expect(registerDomain).not.toHaveBeenCalled();
     expect(refundCredits).not.toHaveBeenCalled();
@@ -254,8 +264,10 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(402);
-    expect(body.success).toBe(false);
-    expect(body.code).toBe("below_minimum");
+    expect(body).toMatchObject({
+      success: false,
+      code: "below_minimum",
+    });
     expect(registerDomain).not.toHaveBeenCalled();
     expect(refundCredits).not.toHaveBeenCalled();
   });
@@ -272,7 +284,7 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(402);
-    expect(body.code).toBe("org_not_found");
+    expect(body).toMatchObject({ code: "org_not_found" });
     expect(registerDomain).not.toHaveBeenCalled();
     expect(refundCredits).not.toHaveBeenCalled();
   });
@@ -289,12 +301,263 @@ describe("POST /apps/:id/domains/buy — credit debit gates registration", () =>
     const body = (await res.json()) as DomainBuyResponseBody;
 
     expect(res.status).toBe(200);
-    expect(body.success).toBe(true);
-    expect(body.domain).toBe("example.com");
+    expect(body).toMatchObject({
+      success: true,
+      domain: "example.com",
+    });
     expect(deductCredits).toHaveBeenCalledTimes(1);
     expect(registerDomain).toHaveBeenCalledTimes(1);
     expect(registerDomain).toHaveBeenCalledWith("example.com");
     // A successful purchase is not refunded.
     expect(refundCredits).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /apps/:id/domains/buy — refund-on-failure + recoverable orphan (#10247, #10253)", () => {
+  beforeEach(() => {
+    requireUserOrApiKeyWithOrg.mockReset();
+    requireUserOrApiKeyWithOrg.mockResolvedValue({ organization_id: "org-1" });
+    getById.mockReset();
+    getById.mockResolvedValue({
+      organization_id: "org-1",
+      app_url: "https://x.apps.elizacloud.ai",
+    });
+    getDomainByName.mockReset();
+    getDomainByName.mockResolvedValue(null);
+    checkAvailability.mockReset();
+    checkAvailability.mockResolvedValue({
+      available: true,
+      priceUsdCents: 1000,
+      renewalUsdCents: 1000,
+      currency: "USD",
+    });
+    computeDomainPrice.mockReset();
+    computeDomainPrice.mockReturnValue({
+      totalUsdCents: 1495,
+      wholesaleUsdCents: 1100,
+      marginUsdCents: 395,
+    });
+    registerDomain.mockReset();
+    getRegisteredDomain.mockReset();
+    getRegisteredDomain.mockResolvedValue(null);
+    deductCredits.mockReset();
+    deductCredits.mockResolvedValue({
+      success: true,
+      newBalance: 5,
+      transaction: { id: "txn-1" },
+    });
+    refundCredits.mockReset();
+    refundCredits.mockResolvedValue({
+      transaction: { id: "refund-1" },
+      newBalance: 6,
+    });
+    upsertCloudflareRegisteredDomain.mockReset();
+    upsertCloudflareRegisteredDomain.mockResolvedValue({
+      id: "md-1",
+      status: "pending",
+      verified: false,
+    });
+    assignToResource.mockReset();
+    assignToResource.mockResolvedValue({ id: "app-domain-1" });
+    setCustomDomain.mockReset();
+    setCustomDomain.mockResolvedValue(undefined);
+    idempotencyReturning.mockClear();
+    idempotencyReturning.mockResolvedValue([{ id: "claim-1" }]);
+    dbWriteTerminal.mockClear();
+    dbReadLimit.mockClear();
+    hasUnrefundedDomainPurchase.mockReset();
+    hasUnrefundedDomainPurchase.mockResolvedValue(false);
+  });
+
+  test("registrar throws after debit → refunds EXACTLY once, assigns no domain, returns 502", async () => {
+    registerDomain.mockRejectedValue(new Error("cf registrar 500"));
+
+    const res = await buy();
+    const body = (await res.json()) as DomainBuyResponseBody;
+
+    expect(res.status).toBe(502);
+    expect(body.success).toBe(false);
+    expect(deductCredits).toHaveBeenCalledTimes(1);
+    // Exactly-once refund, reconciling the original debit as a refund.
+    expect(refundCredits).toHaveBeenCalledTimes(1);
+    const refundArg = refundCredits.mock.calls[0]?.[0] as {
+      organizationId: string;
+      metadata: { type: string; domain: string };
+    };
+    expect(refundArg.organizationId).toBe("org-1");
+    expect(refundArg.metadata.type).toBe("domain_purchase_refund");
+    expect(refundArg.metadata.domain).toBe("example.com");
+    // No domain row written / assigned on a failed registration.
+    expect(upsertCloudflareRegisteredDomain).not.toHaveBeenCalled();
+    expect(assignToResource).not.toHaveBeenCalled();
+  });
+
+  test("post-register persist failure → 502 persist_failed_recoverable, NOT refunded (domain kept)", async () => {
+    registerDomain.mockResolvedValue({ registrationId: "reg-1" });
+    upsertCloudflareRegisteredDomain.mockRejectedValue(
+      new Error("db write failed"),
+    );
+
+    const res = await buy();
+    const body = (await res.json()) as DomainBuyResponseBody & {
+      code?: string;
+    };
+
+    expect(res.status).toBe(502);
+    expect(body.code).toBe("persist_failed_recoverable");
+    expect(registerDomain).toHaveBeenCalledTimes(1);
+    // The domain was registered + charged; it is genuinely the org's, so it is
+    // NOT refunded — it is recoverable via the unrefunded-debit ownership proof.
+    expect(refundCredits).not.toHaveBeenCalled();
+  });
+
+  test("recover an orphaned (registered, no row) domain WITHOUT a prior purchase → 409, no assign, no debit", async () => {
+    // Domain has no managed_domains row and is unavailable (already registered
+    // on our CF account) — the orphan shape. The caller never paid for it.
+    getDomainByName.mockResolvedValue(null);
+    checkAvailability.mockResolvedValue({ available: false });
+    getRegisteredDomain.mockResolvedValue({
+      domain: "example.com",
+      zoneId: "zone-1",
+      expiresAt: "2027-01-01T00:00:00Z",
+      autoRenew: true,
+    });
+    hasUnrefundedDomainPurchase.mockResolvedValue(false);
+
+    const res = await buy();
+    const body = (await res.json()) as DomainBuyResponseBody;
+
+    expect(res.status).toBe(409);
+    expect(body.success).toBe(false);
+    // Cross-tenant takeover blocked: no assignment, and never a free debit-less grab.
+    expect(upsertCloudflareRegisteredDomain).not.toHaveBeenCalled();
+    expect(assignToResource).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(hasUnrefundedDomainPurchase).toHaveBeenCalledWith(
+      "org-1",
+      "example.com",
+    );
+  });
+
+  test("recover OWN orphan (unrefunded prior purchase) → 200, assigns for free (no new debit)", async () => {
+    getDomainByName.mockResolvedValue(null);
+    checkAvailability.mockResolvedValue({ available: false });
+    getRegisteredDomain.mockResolvedValue({
+      domain: "example.com",
+      zoneId: "zone-1",
+      expiresAt: "2027-01-01T00:00:00Z",
+      autoRenew: true,
+    });
+    hasUnrefundedDomainPurchase.mockResolvedValue(true);
+
+    const res = await buy();
+    const body = (await res.json()) as DomainBuyResponseBody & {
+      recoveredFromRegistrar?: boolean;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.recoveredFromRegistrar).toBe(true);
+    expect(upsertCloudflareRegisteredDomain).toHaveBeenCalledTimes(1);
+    expect(assignToResource).toHaveBeenCalledTimes(1);
+    // Self-recovery does NOT re-charge.
+    expect(deductCredits).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /apps/:id/domains/buy — idempotency single-flights the purchase (#10247)", () => {
+  beforeEach(() => {
+    requireUserOrApiKeyWithOrg.mockReset();
+    requireUserOrApiKeyWithOrg.mockResolvedValue({ organization_id: "org-1" });
+    getById.mockReset();
+    getById.mockResolvedValue({
+      organization_id: "org-1",
+      app_url: "https://x.apps.elizacloud.ai",
+    });
+    getDomainByName.mockReset();
+    getDomainByName.mockResolvedValue(null);
+    checkAvailability.mockReset();
+    checkAvailability.mockResolvedValue({
+      available: true,
+      priceUsdCents: 1000,
+      currency: "USD",
+    });
+    computeDomainPrice.mockReset();
+    computeDomainPrice.mockReturnValue({
+      totalUsdCents: 1495,
+      wholesaleUsdCents: 1100,
+      marginUsdCents: 395,
+    });
+    deductCredits.mockReset();
+    deductCredits.mockResolvedValue({
+      success: true,
+      newBalance: 5,
+      transaction: { id: "txn-1" },
+    });
+    registerDomain.mockReset();
+    registerDomain.mockResolvedValue({ registrationId: "reg-1" });
+    refundCredits.mockReset();
+    getRegisteredDomain.mockReset();
+    getRegisteredDomain.mockResolvedValue(null);
+    upsertCloudflareRegisteredDomain.mockReset();
+    upsertCloudflareRegisteredDomain.mockResolvedValue({
+      id: "md-1",
+      status: "pending",
+      verified: false,
+    });
+    assignToResource.mockReset();
+    assignToResource.mockResolvedValue({ id: "app-domain-1" });
+    setCustomDomain.mockReset();
+    setCustomDomain.mockResolvedValue(undefined);
+    hasUnrefundedDomainPurchase.mockReset();
+    hasUnrefundedDomainPurchase.mockResolvedValue(false);
+    dbWriteTerminal.mockClear();
+    dbReadLimit.mockReset();
+  });
+
+  test("concurrent duplicate (claim lost the race, prior still processing) → 409, never charges/registers twice", async () => {
+    // This caller lost the unique-insert race: onConflictDoNothing returns no row.
+    idempotencyReturning.mockResolvedValue([]);
+    // The winning claim is still in flight.
+    dbReadLimit.mockResolvedValue([
+      { status: "processing", expires_at: new Date(Date.now() + 3_600_000) },
+    ]);
+
+    const res = await buy();
+    const body = (await res.json()) as DomainBuyResponseBody & {
+      code?: string;
+    };
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe("idempotency_in_progress");
+    // The losing caller must NOT charge or register — the winner owns the purchase.
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(registerDomain).not.toHaveBeenCalled();
+  });
+
+  test("retried duplicate of a completed purchase → replays the cached 200 without re-charging", async () => {
+    idempotencyReturning.mockResolvedValue([]);
+    dbReadLimit.mockResolvedValue([
+      {
+        status: "completed",
+        expires_at: new Date(Date.now() + 3_600_000),
+        response_body: { success: true, domain: "example.com", replayed: true },
+      },
+    ]);
+
+    const res = await buy();
+    const body = (await res.json()) as DomainBuyResponseBody & {
+      replayed?: boolean;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      success: true,
+      domain: "example.com",
+      replayed: true,
+    });
+    // A replay never re-charges or re-registers.
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(registerDomain).not.toHaveBeenCalled();
   });
 });

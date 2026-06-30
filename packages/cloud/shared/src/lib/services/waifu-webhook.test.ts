@@ -73,6 +73,28 @@ describe("resolveWaifuWebhookTarget", () => {
     const target = resolveWaifuWebhookTarget();
     expect(target).toEqual({ baseUrl: "https://api.waifu.fun", secret: "s".repeat(40) });
   });
+
+  test("resolves from the canonical ELIZA_CLOUD_WEBHOOK_URL + ELIZA_CLOUD_WEBHOOK_SECRET", () => {
+    process.env.ELIZA_CLOUD_WEBHOOK_URL = "https://api.waifu.fun/v2/webhooks/eliza-cloud/credits";
+    process.env.ELIZA_CLOUD_WEBHOOK_SECRET = "e".repeat(40);
+    const target = resolveWaifuWebhookTarget();
+    expect(target).toEqual({
+      baseUrl: "https://api.waifu.fun/v2/webhooks/eliza-cloud/credits",
+      secret: "e".repeat(40),
+    });
+  });
+
+  test("ELIZA_CLOUD_* takes precedence over the deprecated WAIFU_* aliases", () => {
+    process.env.ELIZA_CLOUD_WEBHOOK_URL = "https://api.example.test/new";
+    process.env.ELIZA_CLOUD_WEBHOOK_SECRET = "new".padEnd(40, "x");
+    process.env.WAIFU_WEBHOOK_URL = "https://api.example.test/old";
+    process.env.WAIFU_WEBHOOK_SECRET = "old".padEnd(40, "y");
+    const target = resolveWaifuWebhookTarget();
+    expect(target).toEqual({
+      baseUrl: "https://api.example.test/new",
+      secret: "new".padEnd(40, "x"),
+    });
+  });
 });
 
 describe("emitWaifuWebhook signing + delivery", () => {

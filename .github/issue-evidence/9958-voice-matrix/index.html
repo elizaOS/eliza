@@ -12,7 +12,7 @@ th{background:#f1f1f1;text-align:left}
 code{font-size:12px}
 </style>
 <h1>Voice Live Matrix</h1>
-<p>Generated 2026-06-29T20:52:25.406Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
+<p>Generated 2026-06-29T21:45:41.259Z on darwin arm64 (Shaws-MacBook-Pro.local).</p>
 <p>Pass 0 · Fail 0 · Pending 5 · Skip 10</p>
 <table><thead><tr><th>Cell</th><th>Status</th><th>Platform</th><th>Class</th><th>Dimensions</th><th>Probe / Result</th><th>Command</th><th>Evidence</th></tr></thead><tbody><tr class="pending"><td><code>web.fake-mic.roundtrip</code><br>Web fake-device mic capture -&gt; ASR -&gt; agent -&gt; TTS</td><td>pending</td><td>web</td><td>live-client-audio</td><td>transcriptionState=off
 chimeIn=should-respond
@@ -20,7 +20,7 @@ wakewordContext=idle-wake
 noiseRejection=quiet
 voices=owner</td><td>Chromium fake-device mic lane is host-runnable</td><td><code>bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts</code></td><td>packages/app/test-results
 e2e-recordings/app/test-results</td></tr>
-<tr class="pending"><td><code>web.fake-mic.transcript-roundtrip</code><br>Web fake-device transcript capture -&gt; record -&gt; player -&gt; chat attachment</td><td>pending</td><td>web</td><td>transcripts-roundtrip</td><td>transcriptionState=on
+<tr class="pending"><td><code>web.fake-mic.transcript-roundtrip</code><br>Web fake-device transcript capture -&gt; record -&gt; player -&gt; chat attachment + voice-control bridge parity</td><td>pending</td><td>web</td><td>transcripts-roundtrip-voice-control-bridge-parity</td><td>transcriptionState=on
 chimeIn=should-not-respond
 wakewordContext=mid-transcription-wake
 noiseRejection=quiet

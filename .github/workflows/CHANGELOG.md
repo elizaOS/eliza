@@ -16,12 +16,33 @@ do not have to carry CI-only history.
   The zero-key PR gate for main remains covered by `scenario-pr.yml`, and
   develop keeps the broader `Tests` orchestrator.
 
+- Switched the root `test:plugins` script from a direct Turbo sweep to the
+  shard-aware cross-package test runner at concurrency 3.
+
+  Why: `TEST_SHARD` is implemented in `run-all-tests.mjs`. Routing the plugin
+  lane through that runner makes the matrix real instead of cosmetic, while
+  preserving the existing bounded concurrency policy.
+
 ### Added
 
 - Added `packages/scripts/ci-workflow-dedup-contract.mjs`.
 
   Why: this locks the branch-trigger split and verifies nightly/release keep the
   Turbo remote-cache environment required by #10096.
+
+- Added develop/main quality gates for the prompt-secret scan, UI determinism
+  audit, and build-enabled lint.
+
+  Why: `ci.yaml` still runs only for `main`, while the default PR target is
+  `develop`. These checks now run through `quality.yml`, which already covers
+  develop PRs.
+
+- Split the plugin test lane into a four-way `TEST_SHARD` matrix with a stable
+  aggregate `Plugin Tests` check.
+
+  Why: the cross-package runner already had deterministic shard membership, but
+  no workflow used it. The plugin lane is the long pole in `test.yml`; sharding
+  it cuts wall-clock without reducing package coverage.
 
 ## 2026-06-14
 

@@ -55,12 +55,13 @@ crons = [
   "* * * * *",      # deployment-monitor + health-check + process-provisioning-jobs
   "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning + node-disk-cleanup
   "*/10 * * * *",   # cleanup-expired-crypto-payments
-  "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog
+  "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog + domain-health
   "0 * * * *",      # agent-billing
   "0 */6 * * *",    # cleanup-anonymous-sessions + agent-backups
   "0 0 * * *",      # container-billing + release-pending-earnings
   "0 1 * * *",      # compute-metrics
   "0 2 * * *",      # cleanup-webhook-events
+  "0 3 * * *",      # domain-renewals
 ]
 
 # -----------------------------------------------------------------------------

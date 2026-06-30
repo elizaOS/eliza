@@ -171,14 +171,6 @@ export {
   type BrowserLaunchWidgetProps,
 } from "./components/chat/widgets/browser-launch-widget";
 export {
-  type CredentialRequestVariant,
-  CredentialRequestWidget,
-  type CredentialRequestWidgetProps,
-  type ImageUploadVariant,
-  type OAuthLinkVariant,
-  type PasteSecretVariant,
-} from "./components/chat/widgets/credential-request-widget";
-export {
   getInlineWidget,
   getInlineWidgets,
   type InlineWidgetContext,
@@ -462,6 +454,7 @@ export * from "./first-run/pre-seed-local-runtime";
 export * from "./genui/index";
 export {
   DEFAULT_FRAME_BUDGET,
+  FRAME_SAMPLER_INIT,
   type FrameBudget,
   type FrameBudgetSummary,
   type FrameBudgetTelemetryEvent,

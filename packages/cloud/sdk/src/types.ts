@@ -974,6 +974,20 @@ export interface DeleteAppResponse {
   errors?: string[];
 }
 
+/**
+ * `POST /api/v1/apps/:id/regenerate-api-key` response.
+ *
+ * SECURITY: `apiKey` is the new plaintext app API key, returned ONCE. The
+ * previous key is invalidated immediately. Surface it to the user a single time
+ * and never log or persist it.
+ */
+export interface RegenerateAppApiKeyResponse {
+  success: boolean;
+  apiKey?: string;
+  message?: string;
+  error?: string;
+}
+
 /** `POST /api/v1/apps/:id/domains/buy` request body. */
 export interface BuyAppDomainInput {
   domain: string;

@@ -324,6 +324,45 @@ export async function getRegisteredDomain(domain: string): Promise<RegisteredDom
   };
 }
 
+/**
+ * Set a registered domain's auto-renew flag. Cloudflare renews enabled domains
+ * automatically at expiry (charging our CF account); toggling this is the
+ * actionable renew / lapse control. Returns the refreshed registration.
+ */
+export async function setDomainAutoRenew(
+  domain: string,
+  autoRenew: boolean,
+): Promise<RegisteredDomain> {
+  const cfg = config();
+  ensureConfigured(cfg);
+
+  if (cfg.devStub) {
+    return stubSetAutoRenew(domain, autoRenew);
+  }
+
+  await cloudflareApiRequest<CfRegistrationResource>(
+    `/accounts/${cfg.accountId}/registrar/registrations/${encodeURIComponent(domain)}`,
+    cfg.apiToken,
+    {
+      method: "PUT",
+      body: JSON.stringify({ auto_renew: autoRenew }),
+    },
+  );
+
+  return getRegisteredDomain(domain);
+}
+
+/**
+ * Renew a domain via the registrar. Cloudflare's registrar renews enabled
+ * domains automatically at expiry, so the actionable operation is ensuring
+ * auto-renew is on; the renewal cron recoups the cost from the org's credit
+ * balance BEFORE calling this (fail-closed, mirrors the buy path). Returns the
+ * refreshed registration (its `expiresAt` reflects CF's renewal once processed).
+ */
+export async function renewDomain(domain: string): Promise<RegisteredDomain> {
+  return setDomainAutoRenew(domain, true);
+}
+
 function workflowStatusCandidate(result: CfWorkflowStatus): unknown {
   return (
     result.context?.registration?.status ??
@@ -439,6 +478,14 @@ function stubGetDomain(domain: string): RegisteredDomain {
   };
 }
 
+function stubSetAutoRenew(domain: string, autoRenew: boolean): RegisteredDomain {
+  logger.info("[Cloudflare Registrar:STUB] set auto-renew", { domain, autoRenew });
+  if (domain.startsWith("fail-renew-")) {
+    throw new CloudflareApiError(400, [{ code: 1300, message: "stub: simulated renewal failure" }]);
+  }
+  return { ...stubGetDomain(domain), autoRenew };
+}
+
 export const cloudflareRegistrarService = {
   checkAvailability,
   checkAvailabilities,
@@ -446,4 +493,6 @@ export const cloudflareRegistrarService = {
   registerDomain,
   getRegistrationStatus,
   getRegisteredDomain,
+  renewDomain,
+  setDomainAutoRenew,
 };

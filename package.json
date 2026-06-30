@@ -142,7 +142,7 @@
     "test:regression-matrix:release-contract": "node packages/app-core/scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release-contract",
     "test:apple-entitlements": "bun run --cwd packages/app-core test:apple-entitlements",
     "test:cache-stability": "node packages/scripts/run-vitest.mjs run packages/core/src/runtime/__tests__/cache-key-stability.test.ts",
-    "test:plugins": "bun run build:core && node packages/scripts/run-turbo.mjs run test --concurrency 3 --filter='./plugins/*' --filter='!@elizaos/plugin-personal-assistant' --filter='!@elizaos/plugin-agent-orchestrator' && bun run --cwd plugins/plugin-personal-assistant test && node packages/scripts/run-turbo.mjs run test --concurrency 1 --filter='@elizaos/plugin-agent-orchestrator'",
+    "test:plugins": "bun run build:core && TEST_PACKAGE_FILTER='\\(plugins/' TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3",
     "test:client": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|plugins/plugin-personal-assistant|plugins/plugin-companion|plugins/plugin-training)\\)' TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --no-cloud",
     "test:core": "node packages/scripts/with-test-runtime.mjs node packages/scripts/run-turbo.mjs run test --filter=./packages/core",
     "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/core|packages/tui|packages/vault|packages/elizaos|packages/skills|packages/scenario-runner|packages/test)\\)' TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --no-cloud",
