@@ -2,7 +2,6 @@ package ai.eliza.plugins.appblocker
 
 import android.app.AppOpsManager
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Process
@@ -18,6 +17,11 @@ import java.time.Instant
 
 @CapacitorPlugin(name = "ElizaAppBlocker")
 class AppBlockerPlugin : Plugin() {
+    // The PackageManager launchable-app enumeration lives in InstalledAppsReader
+    // so it is exercisable by an instrumented androidTest without a Capacitor
+    // Bridge (issue #9967).
+    private val installedAppsReader by lazy { InstalledAppsReader(context) }
+
     @PluginMethod
     override fun checkPermissions(call: PluginCall) {
         call.resolve(buildPermissionResult())
@@ -38,38 +42,16 @@ class AppBlockerPlugin : Plugin() {
 
     @PluginMethod
     fun getInstalledApps(call: PluginCall) {
-        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val matches = if (Build.VERSION.SDK_INT >= 33) {
-            context.packageManager.queryIntentActivities(
-                launcherIntent,
-                PackageManager.ResolveInfoFlags.of(0),
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.queryIntentActivities(launcherIntent, 0)
-        }
-
-        val ownPackageName = context.packageName
-        val apps = matches
-            .asSequence()
-            .mapNotNull { resolveInfo ->
-                val packageName = resolveInfo.activityInfo?.packageName?.trim().orEmpty()
-                if (packageName.isEmpty() || packageName == ownPackageName) {
-                    return@mapNotNull null
-                }
-                val displayName = resolveInfo.loadLabel(context.packageManager)
-                    ?.toString()
-                    ?.trim()
-                    .takeUnless { it.isNullOrEmpty() }
-                    ?: packageName
-                JSObject().apply {
-                    put("packageName", packageName)
-                    put("displayName", displayName)
-                }
+        // The PackageManager launchable-app query is delegated to
+        // InstalledAppsReader so it can be exercised by an instrumented
+        // androidTest without a Capacitor Bridge (issue #9967); the JS shape
+        // below is unchanged.
+        val apps = installedAppsReader.listLaunchableApps().map { app ->
+            JSObject().apply {
+                put("packageName", app.packageName)
+                put("displayName", app.displayName)
             }
-            .distinctBy { it.getString("packageName") }
-            .sortedBy { it.getString("displayName")?.lowercase() ?: "" }
-            .toList()
+        }
 
         call.resolve(
             JSObject().apply {
