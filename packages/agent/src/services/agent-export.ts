@@ -41,6 +41,7 @@ import {
   isStoredMediaUrl,
   mediaFileNameFromUrl,
   readStoredMediaBytes,
+  storedMediaContentMatchesName,
   writeStoredMediaFile,
 } from "../api/media-store.ts";
 
@@ -282,15 +283,34 @@ function captureReferencedMedia(
 }
 
 /** Rehydrate the content-addressed store from the export's media entries. */
-function restoreMedia(
+export function restoreMedia(
   media: Array<{ fileName: string; base64: string }> | undefined,
 ): number {
   let restored = 0;
+  let rejected = 0;
   if (!media) return restored;
   for (const { fileName, base64 } of media) {
-    if (writeStoredMediaFile(fileName, Buffer.from(base64, "base64"))) {
+    const bytes = Buffer.from(base64, "base64");
+    // Content-addressed integrity gate (#9963): the bytes MUST hash back to their
+    // `<sha256>` name. A mismatch means a corrupt or tampered backup — skip it,
+    // loudly, rather than poison the content-addressed store with bytes filed
+    // under a hash that doesn't match their content (the dedup + unguessable-
+    // capability invariant the store relies on).
+    if (!storedMediaContentMatchesName(fileName, bytes)) {
+      rejected++;
+      logger.warn(
+        `[agent-export] Skipping restored media ${fileName}: sha256 content-hash mismatch (corrupt or tampered backup)`,
+      );
+      continue;
+    }
+    if (writeStoredMediaFile(fileName, bytes)) {
       restored++;
     }
+  }
+  if (rejected > 0) {
+    logger.warn(
+      `[agent-export] Rejected ${rejected} media file(s) on restore for content-hash mismatch`,
+    );
   }
   return restored;
 }
