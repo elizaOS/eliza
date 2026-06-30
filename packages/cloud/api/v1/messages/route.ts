@@ -59,6 +59,7 @@ import {
   type CreditReservation,
   creditsService,
 } from "@/lib/services/credits";
+import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
@@ -485,12 +486,38 @@ app.post("/", async (c) => {
 
   let user: { id: string; organization_id: string };
   let apiKey: { id: string } | null = null;
+  // #9899 fast-path: collapse auth + org + suspension into ONE KV read for the
+  // API-key inference path (this is the eliza-code / anthropic-proxy route, which
+  // previously did serial auth + a separate apiKeyId lookup + an uncached
+  // moderation Postgres read = ~2.5x slower than /v1/chat/completions). Mirrors
+  // that route's resolver; falls to the authoritative serial path for
+  // JWT/cookie/wallet creds or a cold cache.
+  let moderationAlreadyChecked = false;
   try {
-    const auth = await requireUserOrApiKeyWithOrg(c);
-    user = { id: auth.id, organization_id: auth.organization_id };
-    // Workers auth shim does not surface the apiKey row; attribution by
-    // apiKey id requires a separate lookup.
-    apiKey = await getRequestApiKeyId(c);
+    const resolution = await resolveInferenceAuthContext(c.req.raw);
+    if (resolution.kind === "suspended") {
+      return anthropicError(
+        "permission_error",
+        "Your account has been suspended due to policy violations.",
+        403,
+      );
+    }
+    if (resolution.kind === "authorized") {
+      user = {
+        id: resolution.ctx.userId,
+        organization_id: resolution.ctx.orgId,
+      };
+      apiKey = { id: resolution.ctx.apiKeyId };
+      // The resolver already verified not-suspended (cache hit = at populate;
+      // origin miss = just now), so the synchronous moderation read is skipped.
+      moderationAlreadyChecked = true;
+    } else {
+      const auth = await requireUserOrApiKeyWithOrg(c);
+      user = { id: auth.id, organization_id: auth.organization_id };
+      // Workers auth shim does not surface the apiKey row; attribution by
+      // apiKey id requires a separate lookup.
+      apiKey = await getRequestApiKeyId(c);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return anthropicError("authentication_error", message, 401);
@@ -541,7 +568,10 @@ app.post("/", async (c) => {
   const normalizedModel = normalizeModelName(model);
   const systemPrompt = normalizeSystemPrompt(request.system);
 
-  if (await contentModerationService.shouldBlockUser(user.id)) {
+  if (
+    !moderationAlreadyChecked &&
+    (await contentModerationService.shouldBlockUser(user.id))
+  ) {
     return anthropicError(
       "permission_error",
       "Your account has been suspended due to policy violations.",
