@@ -37,9 +37,6 @@ Result:
 - `native-plugin-result.json` shows `platform: "android"`,
   `pluginAvailable: true`, `status.packageName: "ai.elizaos.app"`, Android role
   rows from `RoleManager`, and the native-only `voiceCall` volume stream.
-- `webview-console.log` shows the JavaScript side calling
-  `ElizaSystem.getStatus` and `ElizaSystem.getDeviceSettings`, plus native
-  results.
 - `logcat.txt` shows Capacitor dispatching both calls to native Android:
   `pluginId: ElizaSystem, methodName: getStatus` and
   `pluginId: ElizaSystem, methodName: getDeviceSettings`.
@@ -49,20 +46,27 @@ Artifacts:
 - `device-and-build.txt` - device list, installed package timestamp, debug flag,
   APK path, and APK SHA-256.
 - `native-plugin-result.json` - structured result asserted by the test.
-- `webview-console.log` - WebView console/native bridge transcript.
 - `logcat.txt` - Android logcat around the run.
 - `native-plugin-device.png` - physical device screenshot captured during the
   run. The screen was secure/black on this Pixel, but the screenshot proves the
   device capture path executed.
-- `native-plugin-view-smoke.mp4` - physical device screenrecord captured during
-  the run.
+- Video walkthrough: **N/A** — the Pixel's secure display surface renders
+  screenrecord output black, so a recording carries no information. The
+  structured `native-plugin-result.json` + `logcat.txt` (showing the native
+  Kotlin dispatch) are the primary, reviewable proof for this native-bridge test.
+
+CI note: on the `ci:device`-labeled PR lane this smoke runs signal-only
+(`|| true`) until it is proven green on the x86_64 API-34 emulator that lane
+uses; the hard assertion runs in the `workflow_dispatch` `android-e2e` job
+(validated on this real arm64 device).
 
 Manual review:
 
 - Read `native-plugin-result.json`: the result is impossible for the web shim
   (`packageName` would be `web`, roles would be empty, and `voiceCall` is absent
   from the shim).
-- Read `webview-console.log` and `logcat.txt`: both show the exact native plugin
-  method names and returned Android values.
+- Read `logcat.txt`: it shows the exact native plugin method names
+  (`pluginId: ElizaSystem, methodName: getStatus`/`getDeviceSettings`) and
+  returned Android values.
 - Opened `native-plugin-device.png`: the physical display was black/secure
   during capture, so visual proof is secondary to the native JSON/log evidence.
