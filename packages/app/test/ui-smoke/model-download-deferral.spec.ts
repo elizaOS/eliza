@@ -61,9 +61,9 @@ const DOWNLOAD_HUB_SNAPSHOT: Record<string, unknown> = {
 // on-device runtime, selecting it must NOT trap them on a download/progress
 // screen — onboarding finishes immediately and drops them into the main chat
 // view while the model download proceeds in the background.
-// Source of the behavior: use-first-run-controller.finishLocal() — it
+// Source of the behavior: first-run-finish.ts finishLocal() — it
 // `void autoDownloadRecommendedLocalModelInBackground(...)` (fire-and-forget)
-// then `completeFirstRun("chat")` without awaiting the download.
+// then persists the first-run profile without awaiting the download.
 
 async function fulfillJson(
   route: Route,
