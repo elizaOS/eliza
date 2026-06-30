@@ -1,0 +1,769 @@
+{
+  "issue": 9142,
+  "part": 2,
+  "generatedAtNote": "stamp added by the caller (Date.now unavailable in-harness)",
+  "startState": "INPUT",
+  "endState": "OPEN_HALF_OR_OVER",
+  "frames": 34,
+  "samples": 142,
+  "crossfade": {
+    "pillMax": 1,
+    "grabberMax": 1
+  },
+  "pairDiffs": [
+    2131,
+    2051,
+    1320,
+    1193,
+    0,
+    2099,
+    3008,
+    29866,
+    44414,
+    58389,
+    60511,
+    0,
+    1857,
+    11587,
+    9285,
+    1884,
+    1462,
+    1412,
+    1424,
+    1404,
+    1421,
+    0,
+    1421,
+    0,
+    0,
+    0,
+    10461,
+    9049,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "flashes": [],
+  "twoPills": {
+    "worstOverlap": 0,
+    "violations": 0
+  },
+  "opacityTrace": [
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "INPUT"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "INPUT"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "INPUT"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "INPUT"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "INPUT"
+    },
+    {
+      "pill": 0,
+      "grabber": 0.569,
+      "state": "INPUT"
+    },
+    {
+      "pill": 0,
+      "grabber": 0.014,
+      "state": "INPUT"
+    },
+    {
+      "pill": 0.394,
+      "grabber": 0,
+      "state": "INPUT"
+    },
+    {
+      "pill": 0.798,
+      "grabber": 0,
+      "state": "INPUT"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 1,
+      "grabber": 0,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "CLOSED"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    },
+    {
+      "pill": 0,
+      "grabber": 1,
+      "state": "OPEN_HALF_OR_OVER"
+    }
+  ],
+  "pageErrors": [],
+  "failedRequests": [],
+  "canary": false,
+  "result": "passed"
+}
