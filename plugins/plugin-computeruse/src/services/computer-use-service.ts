@@ -96,10 +96,10 @@ import {
   getApplicationWindows,
   getScreenSize,
   getWindowBounds,
-  listWindows,
   maximizeWindow,
   minimizeWindow,
   moveWindow,
+  refreshWindows,
   resizeWindow,
   restoreWindow,
   switchWindow,
@@ -584,7 +584,9 @@ export class ComputerUseService extends Service {
         case "set_value": {
           this.requireCoordinate(params.coordinate, "set_value");
           if (typeof params.text !== "string") {
-            throw new Error("text (the value) is required for set_value action");
+            throw new Error(
+              "text (the value) is required for set_value action",
+            );
           }
           const g = this.toGlobal(params, params.coordinate);
           await driverSetValue(g.x, g.y, params.text);
@@ -1066,7 +1068,7 @@ export class ComputerUseService extends Service {
 
       switch (params.action) {
         case "list": {
-          const windows = listWindows();
+          const windows = refreshWindows();
           return this.succeedEntry(entry, {
             success: true,
             windows,

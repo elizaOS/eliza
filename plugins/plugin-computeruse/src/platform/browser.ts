@@ -13,13 +13,13 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { assertBrowserExecuteAllowed } from "../security/browser-script-policy.js";
 import type {
   BrowserInfo,
   BrowserState,
   BrowserTab,
   ClickableElement,
 } from "../types.js";
-import { assertBrowserExecuteAllowed } from "../security/browser-script-policy.js";
 import { currentPlatform } from "./helpers.js";
 import { assertScreenshotBase64NotBlank } from "./screenshot-quality.js";
 
@@ -186,6 +186,13 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
     "--disable-infobars",
     `--window-size=1280,900`,
   ];
+  if (currentPlatform() === "win32") {
+    // Edge on Windows can spawn the real browser process through a compatibility
+    // relaunch and let the original launcher exit with code 0. Puppeteer treats
+    // that clean parent exit as a failed launch unless this flag is present on
+    // the first process.
+    launchArgs.unshift("--edge-skip-compat-layer-relaunch");
+  }
   if (isCi) {
     launchArgs.push(
       "--no-sandbox",
@@ -440,33 +447,6 @@ export async function screenshotBrowser(): Promise<string> {
 
 export async function executeBrowser(_code: string): Promise<string> {
   assertBrowserExecuteAllowed();
-}
-
-function renderPlainData(value: unknown, indent = 0): string {
-  const prefix = "  ".repeat(indent);
-  if (value === null || value === undefined) {
-    return "none";
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return "items[0]:";
-    }
-    return [
-      `items[${value.length}]:`,
-      ...value.map((item) => `${prefix}- ${renderPlainData(item, indent + 1)}`),
-    ].join("\n");
-  }
-  if (typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([key, nestedValue]) => {
-        if (nestedValue && typeof nestedValue === "object") {
-          return `${key}:\n${renderPlainData(nestedValue, indent + 1)}`;
-        }
-        return `${key}: ${renderPlainData(nestedValue, indent + 1)}`;
-      })
-      .join("\n");
-  }
-  return String(value);
 }
 
 // ── Wait ────────────────────────────────────────────────────────────────────

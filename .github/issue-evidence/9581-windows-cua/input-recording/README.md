@@ -1,39 +1,28 @@
-# #9581 — Windows non-disruptive mouse/keyboard *effect* screen recording
+# #9581 — Windows non-disruptive mouse/keyboard effect screen recording
 
-The capture harness (`capture-windows-desktop-evidence.mjs`) proves Windows CUA
-input lands by reading the typed marker back through the clipboard. This is the
-moving-picture companion the issue's remaining item asks for — a real screen
-**recording** of CUA mouse + keyboard input taking effect on a controlled,
-maximized Notepad window.
+The capture harness proves Windows CUA input lands by reading the typed marker
+back. This is the moving-picture companion: a real screen recording of CUA mouse
+and keyboard input taking effect on a controlled Windows text-input window.
 
-Captured on a real Windows 11 Pro host (QEMU), 1728×1052, via
+Captured on a real Windows 11 Pro host (QEMU), 1728x1052, via
 `plugins/plugin-computeruse/scripts/record-windows-cua-input.mjs`:
 
-1. launch `notepad.exe` → resolve the real window → **maximize**
-2. `mouse_move` → `click` into the text area (focuses the window)
-3. progressive, chunked `type` of a marker phrase (frame captured after each chunk)
-4. `ctrl+a` to select, then verify by `ctrl+c` + clipboard read-back
+1. launch a generated Windows Forms text target through computeruse
+2. click inside the controlled text box bounds
+3. progressively paste a marker with `Ctrl+V` while capturing frames
+4. save with `Ctrl+S` and verify the marker from the real saved file/window
 
-`gdigrab` is blocked in this session (BitBlt access), so frames are captured
-through the computeruse capture path (WinRT/.NET `CopyFromScreen`) and assembled
-into the video with ffmpeg.
+Frames are captured through the computeruse WinRT/.NET capture path and
+assembled into MP4/GIF with ffmpeg.
 
 | File | What it is |
 |------|------------|
-| `windows-cua-input.gif` | The recording (renders inline on the issue). |
+| `windows-cua-input.gif` | Inline recording of the run. |
 | `windows-cua-input.mp4` | Same recording, H.264. |
-| `final-typed-selected.png` | Last frame — the marker phrase typed into Notepad and selected (`ctrl+a`), status bar shows "113 of 113 characters". |
-| `initial-empty-notepad.png` | An early frame — the maximized Notepad before/while typing. |
-| `recording-summary.json` | The run: 13 frames, `verified: true`, the marker read back from Notepad. |
+| `final-typed-selected.png` | Final frame after verification; the typed marker is visible in the target. |
+| `initial-empty-input-window.png` | Early frame before typing. |
+| `windows-cua-input-target.txt` | The real text file saved by the `Ctrl+S` step. |
+| `windows-cua-input-target.ps1` | The generated controlled Windows Forms target used for the run. |
+| `recording-summary.json` | Run metadata, including `verified: true` and verification method. |
 
-**Note on fidelity:** the legacy PowerShell/user32 input driver (used when the
-nutjs driver is unavailable) lower-cases letters and drops some symbol keys, so
-the visible phrase reads `elizaOS cua on windows -- 9581 …` rather than the
-exact mixed-case input. The lowercase-+-digits **marker** (`eliza-win-cua-<ts>`)
-round-trips exactly and is what the read-back verifies — input demonstrably
-reaches the window. Notepad's session-restore may also show a leftover line from
-a prior run above the typed phrase.
-
-Regenerate: `bun run --cwd plugins/plugin-computeruse scripts/record-windows-cua-input.mjs`
-(requires a *connected*/console-attached desktop session; a disconnected RDP
-session has no capturable surface — reattach with `tscon <id> /dest:console`).
+Verification method for this run: `saved-file`.
