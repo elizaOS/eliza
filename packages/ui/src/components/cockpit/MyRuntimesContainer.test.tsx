@@ -8,7 +8,11 @@ import type { AgentProfile } from "../../state/agent-profile-types";
 const mocks = vi.hoisted(() => ({
   loadAgentProfileRegistry: vi.fn(),
   addAgentProfile: vi.fn(),
-  switchRuntimeNonDestructive: vi.fn(() => ({ ok: true })),
+  // The container only reads `ok` + `reason`; type the mock to the subset it
+  // consumes so both success and the untrusted-remote case are assignable.
+  switchRuntimeNonDestructive: vi.fn(
+    (): { ok: boolean; reason?: string } => ({ ok: true }),
+  ),
   isTrustedRestoreApiBaseUrl: vi.fn(() => true),
   isStoreBuild: vi.fn(() => false),
   isAndroidCloudBuild: vi.fn(() => false),
