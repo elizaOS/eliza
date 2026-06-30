@@ -113,6 +113,25 @@ describe("wrapActionWithCache", () => {
     expect(calls()).toBe(2);
   });
 
+  it("does not cache action results with non-JSON fields", async () => {
+    const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
+    if (!cache) throw new Error("cache must be enabled");
+    const { action, calls } = makeFakeAction("web_search", () => ({
+      success: true,
+      text: "requires cleanup",
+      cleanup: () => {},
+    }));
+    const wrapped = wrapActionWithCache(action, cache, {
+      diskRoot: tempRoot,
+    });
+
+    const opts = { parameters: { q: "cleanup" } };
+    await wrapped.handler({} as never, {} as never, undefined, opts);
+    await wrapped.handler({} as never, {} as never, undefined, opts);
+
+    expect(calls()).toBe(2);
+  });
+
   it("createToolCallCacheFromConfig returns null when disabled", () => {
     const cache = createToolCallCacheFromConfig({ enabled: false });
     expect(cache).toBeNull();
