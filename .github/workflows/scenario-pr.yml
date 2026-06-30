@@ -639,6 +639,23 @@ jobs:
       - name: Agent image workflow contract
         run: bun test packages/scripts/__tests__/build-agent-image-workflow.test.ts
 
+      # Drift guard for the build:core package set + delegation (issue #10200).
+      # packages/scripts/__tests__ is outside workspace test discovery, so keep
+      # this explicit or the guard silently stops running in CI.
+      - name: build:core package-set drift guard
+        run: bun test packages/scripts/__tests__/build-core.test.ts
+
+      # Self-test for the shared plugin build driver (issue #10200): 57 plugin
+      # build.ts files delegate to buildPlugin; this drives it against fixture
+      # packages and asserts the real emitted dist/ tree.
+      - name: Shared plugin-build driver self-test
+        run: bun test packages/scripts/__tests__/plugin-build.test.ts
+
+      # Smoke-tests the packages/app extension of the script inventory tool
+      # (issue #10200, item 2) — the second dense script surface.
+      - name: Script inventory (packages/app) smoke test
+        run: bun test packages/scripts/__tests__/audit-scripts-inventory.test.ts
+
       # E2E coverage gate (issue #8802). Now REQUIRED: the baseline is green —
       # commands 38/38, #8791 shortcuts 1/1 (wired into SHORTCUT_COVERAGE),
       # plugin routes covered/exempt, view ship-gates intact, zero blocking gaps.

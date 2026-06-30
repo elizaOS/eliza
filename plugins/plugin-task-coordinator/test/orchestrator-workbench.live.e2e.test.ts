@@ -6,7 +6,7 @@ import { type BrowserContext, chromium, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Live UI e2e for the /orchestrator workbench. It drives the real running dev
-// stack (`bun run dev:web:ui`) with a headless browser and asserts the things
+// stack (`bun run dev`) with a headless browser and asserts the things
 // that actually broke in practice: raw ACP JSON leaking into the transcript,
 // horizontal overflow, the user's own message not appearing after sending, and
 // any console/page errors. It is gated on the stack being reachable, so it is a

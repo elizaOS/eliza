@@ -1,14 +1,22 @@
 #!/usr/bin/env node
 /**
- * Inventory + reachability classifier for build/dev/support scripts (issue #10194).
+ * Inventory + reachability classifier for build/dev/support scripts (issue
+ * #10194; packages/app surface added for #10200).
  *
- * Classifies every `packages/scripts/*.mjs` file and every root `package.json`
- * script as one of:
+ * Classifies every `packages/scripts/*.mjs` file, every root `package.json`
+ * script, and every `packages/app/package.json` script (the second dense script
+ * surface) as one of:
  *   - reachable-from-verify
  *   - reachable-from-test
  *   - reachable-from-build
  *   - reachable-from-ci-workflow
+ *   - reachable-from-app-internal   (packages/app scripts only)
  *   - orphan
+ *
+ * packages/app reachability also models Turbo task fan-out (`run-turbo run
+ * build|lint|typecheck` reaches app's same-named script), `--cwd packages/app
+ * <name>` invocations, `working-directory: packages/app` CI step blocks, app→app
+ * `bun run <name>`, and npm pre/post lifecycle pairs.
  *
  * Reachability model:
  *   1. Root scripts form a call graph: a script body that runs `bun run X` /
@@ -44,12 +52,25 @@ import { fileURLToPath } from "node:url";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..", "..");
 const SCRIPTS_DIR = path.join(ROOT, "packages", "scripts");
+const APP_PKG = path.join(ROOT, "packages", "app", "package.json");
 
 const CATEGORIES = [
   "reachable-from-verify",
   "reachable-from-test",
   "reachable-from-build",
   "reachable-from-ci-workflow",
+  "orphan",
+];
+
+// packages/app scripts can also be reached app-internally (one app script runs
+// another, or via an npm pre/post lifecycle pair) — a color the root/file graphs
+// don't need. Priority: verify > test > build > ci-workflow > app-internal.
+const APP_CATEGORIES = [
+  "reachable-from-verify",
+  "reachable-from-test",
+  "reachable-from-build",
+  "reachable-from-ci-workflow",
+  "reachable-from-app-internal",
   "orphan",
 ];
 
@@ -167,6 +188,108 @@ function filesFromRootScripts(reachedRoots, rootScripts, fileUniverse) {
   return seeds;
 }
 
+/**
+ * Turbo task names a body fans out across the workspace via
+ * `run-turbo.mjs run <task…>` / `turbo run <task…>`. Turbo runs each task on
+ * every workspace package, so a fan-out task reaches packages/app's same-named
+ * script — unless the invocation carries a positive `--filter=@elizaos/<pkg>`
+ * allowlist that omits app (e.g. `build:core`). Negative `--filter=!…` filters
+ * still include app.
+ */
+function turboFanoutTasks(body) {
+  const positiveElizaFilters = [
+    ...body.matchAll(/--filter=['"]?(@elizaos\/[a-z0-9.-]+)/g),
+  ].map((m) => m[1]);
+  if (
+    positiveElizaFilters.length &&
+    !positiveElizaFilters.some((f) => f === "@elizaos/app")
+  ) {
+    return new Set(); // restricted to a package set that excludes app
+  }
+  const tasks = new Set();
+  const re = /(?:run-turbo\.mjs|\bturbo)\s+run\s+([a-z0-9:_\- ]+)/g;
+  for (const match of body.matchAll(re)) {
+    for (const token of match[1].split(/\s+/)) {
+      if (/^[a-z0-9][a-z0-9:_-]*$/.test(token)) tasks.add(token);
+      else break; // first flag/operator ends the task list
+    }
+  }
+  return tasks;
+}
+
+/** App-script names a body invokes via `--cwd packages/app <name>`. */
+function appScriptsViaCwd(body, appUniverse) {
+  const found = new Set();
+  const re = /--cwd\s+packages\/app\s+([a-z0-9][a-z0-9:_-]*)/gi;
+  for (const match of body.matchAll(re)) {
+    if (appUniverse.has(match[1])) found.add(match[1]);
+  }
+  return found;
+}
+
+/** App-script names a body invokes via a bare `bun|npm|pnpm|yarn run <name>`. */
+function appScriptsViaRun(body, appUniverse) {
+  const found = new Set();
+  for (const name of referencedRootScripts(body)) {
+    if (appUniverse.has(name)) found.add(name);
+  }
+  return found;
+}
+
+/**
+ * App scripts referenced inside a `.github/` step whose `working-directory` is
+ * packages/app — there the `run:` body invokes app scripts without `--cwd`.
+ * Split each workflow into step blocks (list items under `steps:`) so a
+ * working-directory in one step never bleeds onto another step's commands.
+ */
+function appScriptsFromCiWorkdir(workflowChunks, appUniverse) {
+  const found = new Set();
+  for (const text of workflowChunks) {
+    for (const block of text.split(/\n(?=\s*- )/)) {
+      if (!/working-directory:\s*packages\/app(\s|$)/m.test(block)) continue;
+      for (const name of referencedRootScripts(block)) {
+        if (appUniverse.has(name)) found.add(name);
+      }
+    }
+  }
+  return found;
+}
+
+/** npm lifecycle pairs present in the app scripts: `pre<x>`/`post<x>` → `<x>`. */
+function lifecycleEdges(appUniverse) {
+  const edges = new Map();
+  for (const name of appUniverse) {
+    const base = name.replace(/^(pre|post)/, "");
+    if (base !== name && appUniverse.has(base)) edges.set(name, base);
+  }
+  return edges;
+}
+
+/** BFS app scripts: seeds + app→app `run` edges + lifecycle pre/post pairs. */
+function reachableAppScripts(seeds, appScripts, appUniverse) {
+  const lifecycle = lifecycleEdges(appUniverse);
+  // base -> [pre/post wrappers] so reaching a base reaches its lifecycle hooks.
+  const reverseLifecycle = new Map();
+  for (const [hook, base] of lifecycle) {
+    if (!reverseLifecycle.has(base)) reverseLifecycle.set(base, []);
+    reverseLifecycle.get(base).push(hook);
+  }
+  const reached = new Set();
+  const queue = [...seeds];
+  while (queue.length) {
+    const name = queue.shift();
+    if (reached.has(name) || !appUniverse.has(name)) continue;
+    reached.add(name);
+    for (const next of appScriptsViaRun(appScripts[name] ?? "", appUniverse)) {
+      if (!reached.has(next)) queue.push(next);
+    }
+    for (const hook of reverseLifecycle.get(name) ?? []) {
+      if (!reached.has(hook)) queue.push(hook);
+    }
+  }
+  return reached;
+}
+
 function buildInventory() {
   const rootScripts = readJson(path.join(ROOT, "package.json")).scripts ?? {};
   const fileUniverse = collectScriptFiles();
@@ -242,6 +365,88 @@ function buildInventory() {
   const rootTotals = Object.fromEntries(CATEGORIES.map((c) => [c, 0]));
   for (const r of roots) rootTotals[r.category] += 1;
 
+  // packages/app — the second dense script surface (issue #10200, item 2). An app
+  // script is reachable when a reachable root script or a CI workflow invokes it
+  // (via `--cwd packages/app <name>` or a `working-directory: packages/app` step),
+  // or when another reachable app script / npm lifecycle hook chains to it.
+  const appScripts = existsSync(APP_PKG)
+    ? (readJson(APP_PKG).scripts ?? {})
+    : {};
+  const appUniverse = new Set(Object.keys(appScripts));
+
+  const appSeedsByColor = {
+    "reachable-from-verify": new Set(),
+    "reachable-from-test": new Set(),
+    "reachable-from-build": new Set(),
+    "reachable-from-ci-workflow": new Set(),
+  };
+  for (const name of Object.keys(rootScripts)) {
+    const color = classifyRoot(name);
+    if (color === "orphan") continue;
+    for (const app of appScriptsViaCwd(rootScripts[name], appUniverse)) {
+      appSeedsByColor[color].add(app);
+    }
+    // Turbo fan-out: `run-turbo run build|lint|typecheck|…` reaches app's
+    // same-named script across the whole workspace.
+    for (const task of turboFanoutTasks(rootScripts[name])) {
+      if (appUniverse.has(task)) appSeedsByColor[color].add(task);
+    }
+  }
+  for (const app of appScriptsViaCwd(ciText, appUniverse)) {
+    appSeedsByColor["reachable-from-ci-workflow"].add(app);
+  }
+  for (const app of appScriptsFromCiWorkdir(workflowChunks, appUniverse)) {
+    appSeedsByColor["reachable-from-ci-workflow"].add(app);
+  }
+
+  const verifyApp = reachableAppScripts(
+    appSeedsByColor["reachable-from-verify"],
+    appScripts,
+    appUniverse,
+  );
+  const testApp = reachableAppScripts(
+    appSeedsByColor["reachable-from-test"],
+    appScripts,
+    appUniverse,
+  );
+  const buildApp = reachableAppScripts(
+    appSeedsByColor["reachable-from-build"],
+    appScripts,
+    appUniverse,
+  );
+  const ciApp = reachableAppScripts(
+    appSeedsByColor["reachable-from-ci-workflow"],
+    appScripts,
+    appUniverse,
+  );
+  // App-internal: reachable through the app graph from any directly-seeded script.
+  const directlySeeded = new Set([
+    ...verifyApp,
+    ...testApp,
+    ...buildApp,
+    ...ciApp,
+  ]);
+  const internalApp = reachableAppScripts(
+    directlySeeded,
+    appScripts,
+    appUniverse,
+  );
+
+  const classifyApp = (name) => {
+    if (verifyApp.has(name)) return "reachable-from-verify";
+    if (testApp.has(name)) return "reachable-from-test";
+    if (buildApp.has(name)) return "reachable-from-build";
+    if (ciApp.has(name)) return "reachable-from-ci-workflow";
+    if (internalApp.has(name)) return "reachable-from-app-internal";
+    return "orphan";
+  };
+  const appScriptList = Object.keys(appScripts).map((name) => ({
+    name,
+    category: classifyApp(name),
+  }));
+  const appTotals = Object.fromEntries(APP_CATEGORIES.map((c) => [c, 0]));
+  for (const a of appScriptList) appTotals[a.category] += 1;
+
   return {
     generatedAt: new Date().toISOString(),
     summary: {
@@ -254,9 +459,13 @@ function buildInventory() {
       filesByCategory: fileTotals,
       locByCategory: fileLocTotals,
       rootScriptsByCategory: rootTotals,
+      totalAppScripts: appScriptList.length,
+      orphanAppScripts: appTotals.orphan,
+      appScriptsByCategory: appTotals,
     },
     files,
     roots,
+    appScripts: appScriptList,
   };
 }
 
@@ -288,6 +497,33 @@ function printSummary(inv) {
   if (orphans.length) {
     w("  orphan files:\n");
     for (const f of orphans) w(`    - ${f.file} (${f.loc} LOC)\n`);
+    w("\n");
+  }
+
+  // packages/app — the second dense script surface (issue #10200, item 2).
+  w("[audit-scripts-inventory] packages/app/package.json reachability\n\n");
+  w("  category                       scripts\n");
+  w("  ---------------------------- ---------\n");
+  for (const c of APP_CATEGORIES) {
+    w(
+      `  ${c.padEnd(28)} ${String(summary.appScriptsByCategory[c]).padStart(7)}\n`,
+    );
+  }
+  w("  ---------------------------- ---------\n");
+  w(
+    `  ${"TOTAL".padEnd(28)} ${String(summary.totalAppScripts).padStart(7)}\n\n`,
+  );
+  w(
+    `  app scripts: ${summary.totalAppScripts} (${summary.orphanAppScripts} ` +
+      `with no detected automated caller)\n` +
+      '  note: orphan here means "no root/CI/app-internal caller found", not ' +
+      '"safe to delete" — many are\n  human/maintainer entrypoints ' +
+      "(build:ios:*, capture:*, preflight:*), the same as root DEV-ENTRY scripts.\n\n",
+  );
+  const appOrphans = inv.appScripts.filter((a) => a.category === "orphan");
+  if (appOrphans.length) {
+    w("  app scripts with no detected automated caller:\n");
+    for (const a of appOrphans) w(`    - ${a.name}\n`);
     w("\n");
   }
 }
