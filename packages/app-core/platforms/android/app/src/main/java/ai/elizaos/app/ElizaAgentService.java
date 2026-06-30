@@ -2146,8 +2146,8 @@ public class ElizaAgentService extends Service {
         Thread probe = new Thread(() -> {
             long deadline = launchStartedAtMs + STARTUP_HEALTH_GRACE_MS;
             while (!shuttingDown && System.currentTimeMillis() < deadline) {
-                ProbeResult result = probeHealth();
-                if (result == ProbeResult.OK) {
+                ElizaAgentWatchdogPolicy.ProbeResult result = probeHealth();
+                if (result == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
                     restartAttempts = 0;
                     synchronized (processLock) {
                         if (!detachedAgentMode || detachedLaunchStartedAtMs != launchStartedAtMs) {
@@ -2199,7 +2199,7 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    private ProbeResult probeHealth() {
+    private ElizaAgentWatchdogPolicy.ProbeResult probeHealth() {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(HEALTH_URL);
@@ -2216,14 +2216,14 @@ public class ElizaAgentService extends Service {
                 String body = readResponseBody(conn);
                 if (!isReadyHealthBody(body)) {
                     Log.w(TAG, "Agent health endpoint responded before ready: " + compactForLog(body));
-                    return ProbeResult.DEAD;
+                    return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
                 }
-                return ProbeResult.OK;
+                return ElizaAgentWatchdogPolicy.ProbeResult.OK;
             }
             // Non-2xx: agent process is up but not healthy/authenticated.
             // Treat as DEAD so strikes accumulate — this is a crash or
             // readiness signal, not a busy signal.
-            return ProbeResult.DEAD;
+            return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
         } catch (IOException error) {
             // HTTP request failed (timeout / connect refused / read
             // interrupt). If the direct child process is still alive the
@@ -2236,9 +2236,9 @@ public class ElizaAgentService extends Service {
                 current = agentProcess;
             }
             if (current != null && current.isAlive()) {
-                return ProbeResult.BUSY;
+                return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
             }
-            return ProbeResult.DEAD;
+            return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -2279,17 +2279,7 @@ public class ElizaAgentService extends Service {
     }
 
     private static boolean isReadyHealthBody(String body) {
-        if (body == null || body.trim().isEmpty()) return false;
-        try {
-            JSONObject json = new JSONObject(body);
-            if (!json.optBoolean("ready", false)) return false;
-            String runtime = json.optString("runtime", "");
-            if (!runtime.isEmpty() && !"ok".equals(runtime)) return false;
-            String agentState = json.optString("agentState", "");
-            return agentState.isEmpty() || "running".equals(agentState);
-        } catch (JSONException error) {
-            return false;
-        }
+        return ElizaAgentWatchdogPolicy.isReadyHealthBody(body);
     }
 
     private static String compactForLog(String value) {
@@ -2301,15 +2291,17 @@ public class ElizaAgentService extends Service {
 
     private void scheduleRestart() {
         if (shuttingDown) return;
-        if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
+        ElizaAgentWatchdogPolicy.RestartDecision decision =
+            ElizaAgentWatchdogPolicy.nextRestart(restartAttempts, MAX_RESTART_ATTEMPTS);
+        if (!decision.allowed) {
             Log.e(TAG, "Agent crashed " + restartAttempts + " times — giving up. Service stopping.");
             currentStatus = "fatal";
             updateNotification();
             stopSelf();
             return;
         }
-        long backoffMs = 1000L * (1L << restartAttempts);
-        restartAttempts++;
+        long backoffMs = decision.delayMs;
+        restartAttempts = decision.nextRestartAttempts;
         Log.w(TAG, "Restarting agent in " + backoffMs + "ms (attempt " + restartAttempts + "/" + MAX_RESTART_ATTEMPTS + ").");
         new Thread(() -> {
             try {
@@ -2356,23 +2348,31 @@ public class ElizaAgentService extends Service {
                 }
                 if (current == null) {
                     if (detachedAgentMode) {
-                        ProbeResult probe = probeHealth();
-                        if (probe == ProbeResult.OK) {
+                        ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
+                        ElizaAgentWatchdogPolicy.HealthDecision decision =
+                            ElizaAgentWatchdogPolicy.evaluateHealthProbe(
+                                probe,
+                                unhealthyTicks,
+                                HEALTH_FAIL_STRIKES
+                            );
+                        if (probe == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
                             if (unhealthyTicks > 0) {
                                 Log.i(TAG, "Detached agent health restored.");
                             }
-                            unhealthyTicks = 0;
-                            restartAttempts = 0;
+                            unhealthyTicks = decision.unhealthyTicks;
+                            if (decision.resetRestartAttempts) {
+                                restartAttempts = 0;
+                            }
                             if (!"running".equals(currentStatus)) {
                                 currentStatus = "running";
                                 updateNotification();
                             }
-                        } else if (probe == ProbeResult.DEAD) {
-                            unhealthyTicks++;
+                        } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.DEAD) {
+                            unhealthyTicks = decision.unhealthyTicks;
                             Log.w(TAG, "Detached agent health probe failed ("
-                                + unhealthyTicks + " consecutive).");
-                            if (unhealthyTicks >= HEALTH_FAIL_STRIKES) {
-                                unhealthyTicks = 0;
+                                + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)
+                                + " consecutive).");
+                            if (decision.restartRequired) {
                                 scheduleRestart();
                             }
                         }
@@ -2395,13 +2395,19 @@ public class ElizaAgentService extends Service {
                     continue;
                 }
 
-                ProbeResult probe = probeHealth();
-                if (probe == ProbeResult.OK) {
+                ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
+                ElizaAgentWatchdogPolicy.HealthDecision decision =
+                    ElizaAgentWatchdogPolicy.evaluateHealthProbe(
+                        probe,
+                        unhealthyTicks,
+                        HEALTH_FAIL_STRIKES
+                    );
+                if (probe == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
                     if (unhealthyTicks > 0) {
                         Log.i(TAG, "Agent health restored.");
                     }
-                    unhealthyTicks = 0;
-                    if (restartAttempts > 0) {
+                    unhealthyTicks = decision.unhealthyTicks;
+                    if (decision.resetRestartAttempts && restartAttempts > 0) {
                         // Reset backoff once the agent has been healthy for a tick.
                         restartAttempts = 0;
                     }
@@ -2409,7 +2415,7 @@ public class ElizaAgentService extends Service {
                         currentStatus = "running";
                         updateNotification();
                     }
-                } else if (probe == ProbeResult.BUSY) {
+                } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.BUSY) {
                     // HTTP listener didn't answer in HEALTH_TIMEOUT_MS but the
                     // bun process is still alive. The most likely cause is
                     // synchronous work inside the JS event loop — typically
@@ -2423,10 +2429,11 @@ public class ElizaAgentService extends Service {
                     // ProbeResult.DEAD: process is dead, OR /api/health
                     // did not return 2xx with ready=true. Only here do we
                     // accumulate strikes toward a force-restart.
-                    unhealthyTicks++;
-                    Log.w(TAG, "Agent health probe failed (" + unhealthyTicks + " consecutive).");
-                    if (unhealthyTicks >= HEALTH_FAIL_STRIKES) {
-                        unhealthyTicks = 0;
+                    unhealthyTicks = decision.unhealthyTicks;
+                    Log.w(TAG, "Agent health probe failed ("
+                        + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)
+                        + " consecutive).");
+                    if (decision.restartRequired) {
                         Log.w(TAG, "Agent unresponsive — force-restarting.");
                         stopAgentProcess();
                         scheduleRestart();
@@ -2435,24 +2442,6 @@ public class ElizaAgentService extends Service {
             }
         }
 
-    }
-
-    /**
-     * Outcome of a single watchdog health probe. The watchdog uses these
-     * to decide whether to count a strike toward force-restart:
-     *   OK   → process is healthy, reset strike counter.
-     *   BUSY → process is alive but the HTTP listener didn't answer in
-     *          HEALTH_TIMEOUT_MS. Typically means bun is synchronously
-     *          inside a native FFI call (llama_decode on a long prompt).
-     *          No strike.
-     *   DEAD → process is dead, OR the HTTP server did not return 2xx
-     *          with ready=true, OR a hard connection failure (port
-     *          closed). Count a strike.
-     */
-    private enum ProbeResult {
-        OK,
-        BUSY,
-        DEAD,
     }
 
     // ── Notification helpers ─────────────────────────────────────────────
