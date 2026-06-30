@@ -9,7 +9,7 @@
  * on. The emitted `dist/` is byte-identical to the previous hand-rolled build.
  */
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import {
   type ExternalsFromPackageJsonOptions,
@@ -89,6 +89,16 @@ export interface BuildPluginConfig {
    * single-/multi-target adopters that don't set it are unaffected.
    */
   flatten?: ReadonlyArray<{ from: string; to?: string }>;
+  /**
+   * After declaration emit (+ any `dtsShims`), copy an emitted file under
+   * `dist/<from>` to `dist/<to>`. Reproduces the hand-rolled
+   * `copyFileSync("dist/index.d.ts", "dist/index.d.mts")` step some plugins use
+   * to publish a `.d.mts` sibling of a `tsc`-generated `.d.ts`. Unlike a
+   * `dtsShim` (a frozen literal that would silently diverge from generated
+   * output on any source change), this copies the real emitted file. Off by
+   * default; adopters that don't set it are unaffected.
+   */
+  dtsCopies?: ReadonlyArray<{ from: string; to: string }>;
 }
 
 const RM_RECURSIVE = resolve(
@@ -213,6 +223,12 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     const target = join(distDir, shim.path);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, shim.content, "utf8");
+  }
+
+  for (const { from, to } of config.dtsCopies ?? []) {
+    const dest = join(distDir, to);
+    await mkdir(dirname(dest), { recursive: true });
+    await copyFile(join(distDir, from), dest);
   }
 
   if (config.rewriteDistImports) {
