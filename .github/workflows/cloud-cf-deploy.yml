@@ -94,7 +94,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
     steps:
       - name: Checkout repository
-        timeout-minutes: 15
+        timeout-minutes: 30
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -104,8 +104,11 @@ jobs:
           git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
             || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"
-          git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
-          git -C "$CHECKOUT_DIR" reset --hard FETCH_HEAD
+          git -C "$CHECKOUT_DIR" \
+            -c advice.detachedHead=false \
+            -c checkout.workers=8 \
+            -c checkout.thresholdForParallelism=100 \
+            checkout --force --detach FETCH_HEAD
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -120,8 +123,9 @@ jobs:
         run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS workspaces
+        timeout-minutes: 45
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun run build:core
+        run: bun run build:core -- --concurrency=4
 
       - name: Verify Worker
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -262,7 +266,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
     steps:
       - name: Checkout repository
-        timeout-minutes: 15
+        timeout-minutes: 30
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -272,8 +276,11 @@ jobs:
           git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
             || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"
-          git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
-          git -C "$CHECKOUT_DIR" reset --hard FETCH_HEAD
+          git -C "$CHECKOUT_DIR" \
+            -c advice.detachedHead=false \
+            -c checkout.workers=8 \
+            -c checkout.thresholdForParallelism=100 \
+            checkout --force --detach FETCH_HEAD
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -288,8 +295,9 @@ jobs:
         run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
+        timeout-minutes: 45
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun run build:core
+        run: bun run build:core -- --concurrency=4
 
       # The cloud console origin, built from packages/app. The vite build is the
       # gate (it resolves @elizaos/* to source); typecheck is enforced by the
@@ -452,7 +460,7 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
     steps:
       - name: Checkout repository
-        timeout-minutes: 15
+        timeout-minutes: 30
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
         run: |
@@ -462,8 +470,11 @@ jobs:
           git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
             || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"
-          git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
-          git -C "$CHECKOUT_DIR" reset --hard FETCH_HEAD
+          git -C "$CHECKOUT_DIR" \
+            -c advice.detachedHead=false \
+            -c checkout.workers=8 \
+            -c checkout.thresholdForParallelism=100 \
+            checkout --force --detach FETCH_HEAD
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -478,8 +489,9 @@ jobs:
         run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
+        timeout-minutes: 45
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun run build:core
+        run: bun run build:core -- --concurrency=4
 
       # The Eliza agent app. The vite build is the gate (it resolves @elizaos/*
       # to source); typecheck is enforced by the separate verify workflow.
