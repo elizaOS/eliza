@@ -1,0 +1,126 @@
+ACTIVITY MANAGER SERVICES (dumpsys activity services)
+  User 0 active services:
+  * ServiceRecord{2deef56 u0 ai.elizaos.app/.ElizaAgentService c:ai.elizaos.app}
+    intent={act=app.eliza.action.START_AGENT cmp=ai.elizaos.app/.ElizaAgentService}
+    packageName=ai.elizaos.app
+    processName=ai.elizaos.app
+    targetSdkVersion=35
+    baseDir=/data/app/~~iPKpve40kS1owuxV6e1dgg==/ai.elizaos.app-JepI-wGy1XRgfIz00s9DzA==/base.apk
+    dataDir=/data/user/0/ai.elizaos.app
+    app=ProcessRecord{9f5d31b 28586:ai.elizaos.app/u0a144}
+    useNewWiuLogic_forCapabilities()=true
+    useNewWiuLogic_forStart()=true
+    useNewBfslLogic()=true
+    mAllowWiu_noBinding=ACTIVITY_STARTER
+    mAllowWiu_inBindService=DENIED
+    mAllowWiu_byBindings=DENIED
+    getFgsAllowWiu_legacy=ACTIVITY_STARTER
+    getFgsAllowWiu_new=ACTIVITY_STARTER
+    getFgsAllowWiu_forStart=ACTIVITY_STARTER
+    getFgsAllowWiu_forCapabilities=ACTIVITY_STARTER
+    allowUiJobScheduling=true
+    recentCallingPackage=ai.elizaos.app
+    recentCallingUid=10144
+    mAllowStart_noBinding=ACTIVITY_STARTER
+    mAllowStart_inBindService=DENIED
+    mAllowStart_byBindings=DENIED
+    getFgsAllowStart_legacy=ACTIVITY_STARTER
+    getFgsAllowStart_new=ACTIVITY_STARTER
+    getFgsAllowStart=ACTIVITY_STARTER
+    startForegroundCount=1
+    infoAllowStartForeground=[callingPackage: ai.elizaos.app; callingUid: 10144; uidState: FGS ; uidBFSL: [BFSL]; intent: Intent { act=app.eliza.action.START_AGENT xflg=0x4 cmp=ai.elizaos.app/.ElizaAgentService }; code:ACTIVITY_STARTER; tempAllowListReason:<null>; allowWiu:52; targetSdkVersion:35; callerTargetSdkVersion:35; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+    isForeground=true foregroundId=2 types=0x40000000 foregroundNoti=Notification(channel=eliza_agent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 actions=1 vis=PRIVATE)
+    createTime=-5m19s65ms startingBgTimeout=--
+    lastActivity=-5m18s160ms restartTime=-5m19s64ms createdFromFg=true
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=3
+ startCommandResult=1
+
+  * ServiceRecord{32ee648 u0 ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0 c:ai.elizaos.app}
+    intent={cmp=ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0}
+    packageName=ai.elizaos.app
+    processName=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0
+    targetSdkVersion=36
+    baseDir=/data/app/~~DazWWuxZRDR_-hDCmx8OZQ==/com.google.android.webview-fNhnmz95RY9YtYpwMxGS1w==/base.apk
+    dataDir=/data/user/0/com.google.android.webview
+    app=ProcessRecord{22fda06 28625:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0a144i135}
+    isolationHostProc=ProcessRecord{22fda06 28625:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0a144i135}
+    useNewWiuLogic_forCapabilities()=true
+    useNewWiuLogic_forStart()=true
+    useNewBfslLogic()=true
+    mAllowWiu_noBinding=DENIED
+    mAllowWiu_inBindService=ACTIVITY_STARTER
+    mAllowWiu_byBindings=DENIED
+    getFgsAllowWiu_legacy=ACTIVITY_STARTER
+    getFgsAllowWiu_new=DENIED
+    getFgsAllowWiu_forStart=DENIED
+    getFgsAllowWiu_forCapabilities=DENIED
+    allowUiJobScheduling=false
+    recentCallingPackage=ai.elizaos.app
+    recentCallingUid=10144
+    mAllowStart_noBinding=DENIED
+    mAllowStart_inBindService=ACTIVITY_STARTER
+    mAllowStart_byBindings=DENIED
+    getFgsAllowStart_legacy=ACTIVITY_STARTER
+    getFgsAllowStart_new=DENIED
+    getFgsAllowStart=DENIED
+    startForegroundCount=0
+    infoAllowStartForeground=[callingPackage: ai.elizaos.app; callingUid: 10144; uidState: FGS ; uidBFSL: [BFSL]; intent: Intent { xflg=0x4 cmp=ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0 (has extras) }; code:ACTIVITY_STARTER; tempAllowListReason:<null>; allowWiu:52; targetSdkVersion:36; callerTargetSdkVersion:35; startForegroundCount:0; bindFromPackage:null: isBindService:true]
+    createTime=-5m18s861ms startingBgTimeout=--
+    lastActivity=-5m18s445ms restartTime=-5m18s784ms createdFromFg=true
+    Bindings:
+    * IntentBindRecord{bbd8c3a CREATE}:
+      intent={xflg=0x4 cmp=ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0}
+      binder=android.os.BinderProxy@f4a90eb
+      requested=true received=true hasBound=true doRebind=false
+      * Client AppBindRecord{ba97e48 ProcessRecord{9f5d31b 28586:ai.elizaos.app/u0a144}}
+        Per-process Connections:
+          ConnectionRecord{6701ef4 u0 CR WPRI ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0:@971d8c7 flags=0x80000021}
+          ConnectionRecord{e9dbd68 u0 CR IMP ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0:@db9d88b flags=0x80000041}
+    All Connections:
+      ConnectionRecord{6701ef4 u0 CR WPRI ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0:@971d8c7 flags=0x80000021}
+      ConnectionRecord{e9dbd68 u0 CR IMP ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0:@db9d88b flags=0x80000041}
+
+  * ServiceRecord{d460571 u0 ai.elizaos.app/.GatewayConnectionService c:ai.elizaos.app}
+    intent={cmp=ai.elizaos.app/.GatewayConnectionService}
+    packageName=ai.elizaos.app
+    processName=ai.elizaos.app
+    targetSdkVersion=35
+    baseDir=/data/app/~~iPKpve40kS1owuxV6e1dgg==/ai.elizaos.app-JepI-wGy1XRgfIz00s9DzA==/base.apk
+    dataDir=/data/user/0/ai.elizaos.app
+    app=ProcessRecord{9f5d31b 28586:ai.elizaos.app/u0a144}
+    useNewWiuLogic_forCapabilities()=true
+    useNewWiuLogic_forStart()=true
+    useNewBfslLogic()=true
+    mAllowWiu_noBinding=ACTIVITY_STARTER
+    mAllowWiu_inBindService=DENIED
+    mAllowWiu_byBindings=DENIED
+    getFgsAllowWiu_legacy=ACTIVITY_STARTER
+    getFgsAllowWiu_new=ACTIVITY_STARTER
+    getFgsAllowWiu_forStart=ACTIVITY_STARTER
+    getFgsAllowWiu_forCapabilities=ACTIVITY_STARTER
+    allowUiJobScheduling=true
+    recentCallingPackage=ai.elizaos.app
+    recentCallingUid=10144
+    mAllowStart_noBinding=ACTIVITY_STARTER
+    mAllowStart_inBindService=DENIED
+    mAllowStart_byBindings=DENIED
+    getFgsAllowStart_legacy=ACTIVITY_STARTER
+    getFgsAllowStart_new=ACTIVITY_STARTER
+    getFgsAllowStart=ACTIVITY_STARTER
+    startForegroundCount=1
+    infoAllowStartForeground=[callingPackage: ai.elizaos.app; callingUid: 10144; uidState: FGS ; uidBFSL: [BFSL]; intent: Intent { cmp=ai.elizaos.app/.GatewayConnectionService }; code:ACTIVITY_STARTER; tempAllowListReason:<null>; allowWiu:52; targetSdkVersion:35; callerTargetSdkVersion:35; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+    isForeground=true foregroundId=1 types=0x00000001 foregroundNoti=Notification(channel=gateway_connection shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 actions=1 vis=PRIVATE)
+    createTime=-5m19s73ms startingBgTimeout=--
+    lastActivity=-5m17s377ms restartTime=-5m19s72ms createdFromFg=true
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=4
+ startCommandResult=1
+
+  Connection bindings to services:
+  * ConnectionRecord{6701ef4 u0 CR WPRI ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0:@971d8c7 flags=0x80000021}
+    binding=AppBindRecord{ba97e48 ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0:ai.elizaos.app}
+    conn=android.os.BinderProxy@971d8c7 flags=0x80000021
+    ongoingCalls=false
+  * ConnectionRecord{e9dbd68 u0 CR IMP ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0:@db9d88b flags=0x80000041}
+    binding=AppBindRecord{ba97e48 ai.elizaos.app/org.chromium.content.app.SandboxedProcessService0:0:ai.elizaos.app}
+    conn=android.os.BinderProxy@db9d88b flags=0x80000041
+    ongoingCalls=false

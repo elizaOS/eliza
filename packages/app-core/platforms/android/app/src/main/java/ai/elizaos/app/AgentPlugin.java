@@ -38,6 +38,23 @@ public class AgentPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void debugCrashAndRestart(PluginCall call) {
+        if (!BuildConfig.DEBUG) {
+            call.reject("debugCrashAndRestart is only available in debug builds");
+            return;
+        }
+        try {
+            ElizaAgentService.debugCrashAndRestart(getContext());
+            JSObject result = new JSObject();
+            result.put("ok", true);
+            result.put("state", "restarting");
+            call.resolve(result);
+        } catch (RuntimeException e) {
+            call.reject("Failed to request debug local agent crash/restart", e);
+        }
+    }
+
+    @PluginMethod
     public void getStatus(PluginCall call) {
         String token = ElizaAgentService.localAgentToken(getContext());
         call.resolve(status(token == null || token.trim().isEmpty() ? "starting" : "running"));

@@ -66,6 +66,7 @@ public class ElizaAgentService extends Service {
     public static final String ACTION_STOP = "app.eliza.action.STOP_AGENT";
     public static final String ACTION_RESTART = "app.eliza.action.RESTART_AGENT";
     public static final String ACTION_UPDATE_STATUS = "app.eliza.action.UPDATE_AGENT_STATUS";
+    public static final String ACTION_DEBUG_CRASH_AND_RESTART = "app.eliza.action.DEBUG_CRASH_AGENT_AND_RESTART";
 
     // Extras
     private static final String EXTRA_STATUS = "status";
@@ -635,6 +636,15 @@ public class ElizaAgentService extends Service {
                 currentStatus = status;
                 updateNotification();
             }
+            return START_STICKY;
+        }
+        if (ACTION_DEBUG_CRASH_AND_RESTART.equals(action)) {
+            if (!BuildConfig.DEBUG) {
+                Log.w(TAG, "Ignoring debug crash request in a non-debug build.");
+                return START_STICKY;
+            }
+            Log.w(TAG, "Debug crash requested; killing agent and scheduling service restart.");
+            debugCrashAgentAndScheduleRestart();
             return START_STICKY;
         }
 
@@ -2031,6 +2041,34 @@ public class ElizaAgentService extends Service {
         }
     }
 
+    private void debugCrashAgentAndScheduleRestart() {
+        Process toCrash;
+        Thread outPump;
+        Thread errPump;
+        synchronized (processLock) {
+            toCrash = agentProcess;
+            outPump = stdoutPump;
+            errPump = stderrPump;
+            agentProcess = null;
+            stdoutPump = null;
+            stderrPump = null;
+            detachedAgentMode = true;
+            detachedLaunchStartedAtMs = 0L;
+            currentStatus = "restarting";
+            updateNotification();
+        }
+
+        if (toCrash != null && toCrash.isAlive()) {
+            Log.w(TAG, "Debug crash killing tracked agent process (pid=" + safePid(toCrash) + ").");
+            toCrash.destroyForcibly();
+        }
+        if (outPump != null) outPump.interrupt();
+        if (errPump != null) errPump.interrupt();
+
+        stopDetachedAgentProcess();
+        scheduleRestart();
+    }
+
     private static String shellQuote(String value) {
         return "'" + value.replace("'", "'\\''") + "'";
     }
@@ -2644,6 +2682,13 @@ public class ElizaAgentService extends Service {
     public static void restart(Context context) {
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_RESTART);
+        context.startService(intent);
+    }
+
+    /** Debug/test-only: kill the agent child and recover through scheduleRestart(). */
+    public static void debugCrashAndRestart(Context context) {
+        Intent intent = new Intent(context, ElizaAgentService.class);
+        intent.setAction(ACTION_DEBUG_CRASH_AND_RESTART);
         context.startService(intent);
     }
 

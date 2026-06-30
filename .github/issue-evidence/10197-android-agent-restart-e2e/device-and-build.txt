@@ -1,0 +1,5 @@
+6755f7725c2915bd41013710dea6d2153a9ad51629751bc3440f9a025703dda8  packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+-rw-rw-r-- 1 shaw shaw 390M Jun 29 23:10 packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+Pixel 6a
+16
+google/bluejay/bluejay:16/CP1A.260405.005/15001963:user/release-keys

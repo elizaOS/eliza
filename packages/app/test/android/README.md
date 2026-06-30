@@ -8,6 +8,7 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 |---|---|---|
 | `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
 | `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
+| `agent-restart.android.spec.ts` | Debug-crashes the embedded Android agent process, then proves the foreground service restarts it and `/api/health` recovers | Playwright Android driver + Capacitor `Agent` plugin + on-device agent |
 | `ios-onboarding-smoke.mjs` | Fresh iOS Capacitor first-run onboarding selects the same real remote host agent, completes first-run, and lands on the home/chat surface with screenshot + video artifacts | `xcrun simctl` + in-WebView smoke request/result via Capacitor Preferences |
 | `playwright.android.config.ts` (`test/android/*.android.spec.ts`) | Every route/feature renders on the real WebView against the live backend | Playwright Android driver (`_android`) over the WebView CDP socket |
 
@@ -82,6 +83,23 @@ start, model won't download/run, a route won't render, cloud won't provision
 | `--no-emulator-boot` | Use an already-running device, don't boot an AVD |
 | `ELIZA_ANDROID_REQUIRE_AGENT=0` | Don't gate route coverage on local agent health (cloud/remote mode) |
 | `ELIZA_EMULATOR_MEMORY_MB` / `ELIZA_EMULATOR_CORES` | Override emulator sizing |
+
+## Android agent restart lane
+
+```bash
+ANDROID_SERIAL=<device> \
+bun run --cwd packages/app test:e2e:android:agent-restart
+```
+
+This lane requires a WebView-debuggable debug APK with the local Android agent
+installed and healthy. It calls the Android-only `Agent.debugCrashAndRestart`
+Capacitor method, which is rejected in non-debug builds, kills the detached Bun
+agent process, and lets `ElizaAgentService.scheduleRestart()` recover it. The
+test owns its health gate through the Capacitor `Agent.request` bridge rather
+than the raw `adb forward` probe because local-agent auth is carried by the
+native bridge token. It records baseline/recovered `/api/health`, recovery
+latency, WebView console, `adb logcat`, a screenshot, and a screen recording under
+`packages/app/test-results/android-agent-restart/`.
 
 ## CI onboarding lane
 
