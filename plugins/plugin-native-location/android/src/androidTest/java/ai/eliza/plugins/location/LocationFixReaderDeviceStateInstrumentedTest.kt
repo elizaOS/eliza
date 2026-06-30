@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.location.Location
 import android.location.LocationManager
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -45,6 +46,34 @@ class LocationFixReaderDeviceStateInstrumentedTest {
             "background status must be a known permission state",
             reader.readBackgroundPermissionStatus("granted") in setOf("granted", "prompt", "denied"),
         )
+    }
+
+    /**
+     * The foreground status is a tri-state (`granted | denied | prompt`), not a
+     * boolean: a never-requested permission must report `prompt` so the app
+     * shows the OS prompt instead of deep-linking to settings. With fine+coarse
+     * granted by the rule, the Activity-scoped read must report `"granted"`
+     * (and never `"denied"`). The `readForegroundPermissionStatus` read needs a
+     * real [android.app.Activity], so drive it through a launched Activity.
+     */
+    @Test
+    fun readForegroundPermissionStatus_returnsTriStateGranted() {
+        ActivityScenario.launch(LocationReaderShowcaseActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val reader = LocationFixReader(activity)
+                val status = reader.readForegroundPermissionStatus(activity)
+
+                assertEquals(
+                    "fine+coarse granted (by rule) must map to the contract value \"granted\"",
+                    "granted",
+                    status,
+                )
+                assertTrue(
+                    "tri-state must be one of the JS LocationPermissionStatus values",
+                    status in setOf("granted", "denied", "prompt"),
+                )
+            }
+        }
     }
 
     @Test

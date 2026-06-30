@@ -1,12 +1,14 @@
 package ai.eliza.plugins.location
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.Looper
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -81,6 +83,40 @@ class LocationFixReader(private val context: Context) {
                 context,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
             ) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Tri-state foreground status matching the JS `LocationPermissionStatus`
+     * contract (`granted | denied | prompt`). A never-requested permission must
+     * report `prompt` (not `denied`) so the app shows the OS prompt instead of
+     * deep-linking to settings. `checkSelfPermission` alone cannot tell
+     * never-asked from denied, so — like the iOS `.notDetermined` mapping —
+     * we use [ActivityCompat.shouldShowRequestPermissionRationale]: it is `true`
+     * only after the user actively denied a prior request, so `rationale==true`
+     * on an ungranted permission is `denied`, otherwise `prompt`. (Like
+     * Capacitor's own default, an `Activity`-only read cannot tell a fresh
+     * never-asked permission from a permanent "don't ask again" deny — both
+     * yield `rationale==false` → `prompt`; Capacitor disambiguates the latter
+     * with a "has-been-requested" preference. The contract that matters here —
+     * a never-asked permission must report `prompt`, never `denied` — holds.)
+     * Needs an [Activity] (the rationale check is Activity-scoped); the
+     * production JS field still comes from Capacitor's
+     * `getPermissionState("location")`.
+     */
+    fun readForegroundPermissionStatus(activity: Activity): String {
+        if (hasForegroundPermission()) return "granted"
+
+        val shouldShowRationale =
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                activity,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+            ) ||
+                ActivityCompat.shouldShowRequestPermissionRationale(
+                    activity,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                )
+
+        return if (shouldShowRationale) "denied" else "prompt"
+    }
 
     fun readBackgroundPermissionStatus(foregroundStatus: String): String {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return foregroundStatus
