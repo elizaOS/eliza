@@ -11,7 +11,10 @@ import { Hono } from "hono";
 import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { checkAnonymousLimit, getAnonymousUser } from "@/lib/auth-anonymous";
+import {
+  getAnonymousUser,
+  reserveAnonymousMessageSlot,
+} from "@/lib/auth-anonymous";
 import {
   RateLimitPresets,
   rateLimit,
@@ -128,6 +131,7 @@ app.post("/", async (c) => {
   let settleReservation:
     | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
     | null = null;
+  let refundAnonymousMessageSlot: (() => Promise<void>) | null = null;
 
   try {
     let user: ChatBillingUser;
@@ -238,7 +242,7 @@ app.post("/", async (c) => {
     }
 
     if (isAnonymous && anonymousSession) {
-      const limitCheck = await checkAnonymousLimit(
+      const limitCheck = await reserveAnonymousMessageSlot(
         anonymousSession.session_token,
       );
       if (!limitCheck.allowed) {
@@ -263,6 +267,12 @@ app.post("/", async (c) => {
           429,
         );
       }
+      let anonymousMessageSlotRefunded = false;
+      refundAnonymousMessageSlot = async () => {
+        if (anonymousMessageSlotRefunded || !anonymousSession) return;
+        anonymousMessageSlotRefunded = true;
+        await anonymousSessionsService.refundMessageSlot(anonymousSession.id);
+      };
       logger.info("chat-api", "Anonymous user message allowed", {
         userId: user.id,
         remaining: limitCheck.remaining,
@@ -334,20 +344,6 @@ app.post("/", async (c) => {
           if (!usage) {
             await settleReservation?.(0);
             return;
-          }
-
-          if (isAnonymous && anonymousSession) {
-            await anonymousSessionsService.incrementMessageCount(
-              anonymousSession.id,
-            );
-            logger.info(
-              "chat-api",
-              "Incremented anonymous message count after success",
-              {
-                sessionId: anonymousSession.id,
-                newCount: anonymousSession.message_count + 1,
-              },
-            );
           }
 
           const userMessage = messages[messages.length - 1];
@@ -508,34 +504,18 @@ app.post("/", async (c) => {
         }
       },
       onAbort: async () => {
+        await refundAnonymousMessageSlot?.();
         await settleReservation?.(0);
         logger.info("chat-api", "Aborted chat stream before completion", {
           userId: user.id,
           model: selectedModel,
         });
       },
-      // A provider error during streaming (e.g. cerebras 429/5xx) fires onError
-      // — NOT onFinish or onAbort — so without this the upfront credit
-      // reservation is never reconciled and the paying user is billed ~1.5x the
-      // estimate for zero output. Mirrors v1/messages and v1/chat/completions.
-      // The settler is idempotent (first-call-wins), so this cannot
-      // double-refund if onFinish/onAbort also fire.
-      onError: async ({ error }: { error: unknown }) => {
-        await settleReservation?.(0);
-        logger.error(
-          "chat-api",
-          "Stream provider error — reservation refunded",
-          {
-            userId: user.id,
-            model: selectedModel,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
-      },
     });
 
     return result.toUIMessageStreamResponse();
   } catch (error) {
+    await refundAnonymousMessageSlot?.();
     await settleReservation?.(0);
     logger.error("chat-api", "Error processing chat", {
       error: error instanceof Error ? error.message : "Unknown error",
