@@ -9,12 +9,16 @@
  * `status='approved'`, and approved rows always have a NULL
  * `processing_started_at`, so it was unreachable dead code.
  *
- * The fix adds a SEPARATE recovery pass over stuck `processing` rows that
- * re-approves a row ONLY when it provably never broadcast a transaction
- * (`broadcast_tx_hash IS NULL`). The broadcast hash is persisted the instant the
- * transaction is broadcast — before confirmation — so recovery can tell
- * "never broadcast" (safe to retry) from "broadcast, awaiting confirmation"
- * (must reconcile on-chain; re-broadcasting would DOUBLE-PAY).
+ * The fix adds a SEPARATE recovery pass over stuck `processing` rows. A row that
+ * already broadcast a transaction (`broadcast_tx_hash IS NOT NULL`) is surfaced
+ * for on-chain reconciliation, never re-broadcast.
+ *
+ * #10588 hardening: a row with NO recorded broadcast (`broadcast_tx_hash IS NULL`)
+ * is NO LONGER auto-re-approved for retry. A null hash does not prove the tx was
+ * never broadcast — a worker can die between broadcasting the transaction and
+ * persisting its hash — so re-approving would re-broadcast and DOUBLE-PAY. Such
+ * rows are now escalated to `failed` + `requires_review` for human / on-chain
+ * verification instead.
  *
  * These tests run the REAL `PayoutProcessorService.processBatch` against
  * in-process PGlite. Only the chain clients (viem) and the RPC/env helpers are
@@ -135,9 +139,11 @@ async function readRedemption(id: string): Promise<{
   tx_hash: string | null;
   retry_count: string;
   processing_started_at: string | null;
+  requires_review: number;
 }> {
   const rows = await dbWrite.execute(
-    `SELECT status, broadcast_tx_hash, tx_hash, retry_count, processing_started_at
+    `SELECT status, broadcast_tx_hash, tx_hash, retry_count, processing_started_at,
+            (requires_review)::int AS requires_review
      FROM token_redemptions WHERE id = '${id}';`,
   );
   return rows.rows[0] as {
@@ -146,6 +152,7 @@ async function readRedemption(id: string): Promise<{
     tx_hash: string | null;
     retry_count: string;
     processing_started_at: string | null;
+    requires_review: number;
   };
 }
 
@@ -251,7 +258,7 @@ beforeEach(async () => {
 
 describe("payout stale-lock recovery (#10553)", () => {
   test(
-    "(a) a stale 'processing' row with NO broadcast hash is recovered, re-approved, and paid out",
+    "(a) a stale 'processing' row with NO recorded broadcast is escalated for review, NOT auto-re-paid (double-pay guard, #10588)",
     async () => {
       if (!pgliteReady) return;
       const id = await seedRedemption({
@@ -264,16 +271,16 @@ describe("payout stale-lock recovery (#10553)", () => {
       await service.processBatch();
 
       const row = await readRedemption(id);
-      // It started in 'processing' (NOT selectable by the approved-select), so
-      // reaching 'completed' proves recovery re-approved it and the batch then
-      // paid it out.
-      expect(row.status).toBe("completed");
-      expect(row.tx_hash).toBe(`0x${"b".repeat(64)}`);
-      expect(row.broadcast_tx_hash).toBe(`0x${"b".repeat(64)}`);
-      // recovery incremented retry_count on the way back to 'approved'.
-      expect(Number(row.retry_count)).toBe(1);
-      // A real transaction was broadcast exactly once.
-      expect(writeContractMock.mock.calls.length).toBe(1);
+      // A null broadcast hash does NOT prove the tx was never broadcast — the
+      // worker may have died between broadcasting and persisting the hash. So
+      // recovery must never auto-re-pay it (that would re-broadcast and
+      // double-pay); it is surfaced for human / on-chain review instead.
+      expect(row.status).toBe("failed");
+      expect(Number(row.requires_review)).toBe(1);
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(row.tx_hash).toBeNull();
+      // The load-bearing assertion: NO transaction was (re-)broadcast.
+      expect(writeContractMock.mock.calls.length).toBe(0);
     },
     PGLITE_TIMEOUT,
   );
@@ -386,20 +393,21 @@ describe("payout stale-lock recovery (#10553)", () => {
   );
 
   test(
-    "(f) a provably-safe stale row with retries exhausted is failed for manual intervention",
+    "(f) a stale 'processing' row with no broadcast is escalated regardless of retry_count",
     async () => {
       if (!pgliteReady) return;
       const id = await seedRedemption({
         status: "processing",
         broadcastTxHash: null,
         startedMinutesAgo: 10,
-        retryCount: 3, // == MAX_RETRY_ATTEMPTS
+        retryCount: 3, // recovery no longer keys off retry_count — all null-broadcast escalate
       });
 
       await service.processBatch();
 
       const row = await readRedemption(id);
       expect(row.status).toBe("failed");
+      expect(Number(row.requires_review)).toBe(1);
       expect(row.broadcast_tx_hash).toBeNull();
       // Never silently re-broadcast.
       expect(writeContractMock.mock.calls.length).toBe(0);

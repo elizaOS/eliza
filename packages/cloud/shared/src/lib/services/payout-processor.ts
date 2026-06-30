@@ -33,7 +33,7 @@
  */
 
 import bs58 from "bs58";
-import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { type Address, createPublicClient, createWalletClient, http, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { dbRead, dbWrite } from "../../db/client";
@@ -269,33 +269,21 @@ export class PayoutProcessorService {
     const config = getPayoutConfig();
     const staleThreshold = new Date(Date.now() - config.LOCK_TIMEOUT_MS);
 
-    // (1) Provably-safe, retries remaining → re-approve for retry.
-    const reapproved = await dbWrite
-      .update(tokenRedemptions)
-      .set({
-        status: "approved",
-        processing_started_at: null,
-        processing_worker_id: null,
-        failure_reason: "Recovered stale processing lock (no broadcast detected)",
-        retry_count: sql`${tokenRedemptions.retry_count} + 1`,
-        updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(tokenRedemptions.status, "processing"),
-          lt(tokenRedemptions.processing_started_at, staleThreshold),
-          isNull(tokenRedemptions.broadcast_tx_hash),
-          lt(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, config.MAX_RETRY_ATTEMPTS),
-        ),
-      )
-      .returning({ id: tokenRedemptions.id });
-
-    // (2) Provably-safe, retries exhausted → fail (manual intervention).
-    const exhausted = await dbWrite
+    // (1) No broadcast hash recorded → do NOT auto-retry. A null broadcast hash
+    // usually means the worker died before broadcasting, but it can ALSO mean it
+    // died in the window between the transaction being broadcast (writeContract /
+    // sendRawTransaction returning) and the hash being persisted by
+    // recordBroadcast. Re-approving such a row would re-broadcast and DOUBLE-PAY
+    // (#10588). Because we cannot prove it never broadcast, surface it for human /
+    // on-chain review instead of auto-retrying — the same fail-safe posture
+    // already applied to broadcast-but-unconfirmed rows in (2).
+    const escalated = await dbWrite
       .update(tokenRedemptions)
       .set({
         status: "failed",
-        failure_reason: "Stale processing lock exceeded MAX_RETRY_ATTEMPTS (no broadcast detected)",
+        failure_reason:
+          "Stale processing lock with no recorded broadcast — a payout may have been broadcast before the worker died; verify on-chain before resolving (not auto-retried to avoid double-pay)",
+        requires_review: true,
         processing_started_at: null,
         processing_worker_id: null,
         updated_at: new Date(),
@@ -305,12 +293,11 @@ export class PayoutProcessorService {
           eq(tokenRedemptions.status, "processing"),
           lt(tokenRedemptions.processing_started_at, staleThreshold),
           isNull(tokenRedemptions.broadcast_tx_hash),
-          gte(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, config.MAX_RETRY_ATTEMPTS),
         ),
       )
       .returning({ id: tokenRedemptions.id });
 
-    // (3) Broadcast-but-unconfirmed → NEVER re-approve. Surface for reconciliation.
+    // (2) Broadcast-but-unconfirmed → NEVER re-approve. Surface for reconciliation.
     const stuck = await dbWrite
       .select({
         id: tokenRedemptions.id,
@@ -326,16 +313,16 @@ export class PayoutProcessorService {
         ),
       );
 
-    if (reapproved.length > 0) {
-      logger.warn("[PayoutProcessor] Recovered stale processing locks for retry", {
-        count: reapproved.length,
-        redemptionIds: reapproved.map((r) => r.id),
-      });
-    }
-    if (exhausted.length > 0) {
-      logger.error("[PayoutProcessor] Stale processing locks exhausted retries; marked failed", {
-        count: exhausted.length,
-        redemptionIds: exhausted.map((r) => r.id),
+    if (escalated.length > 0) {
+      logger.error(
+        "[PayoutProcessor] Stale processing locks with no recorded broadcast escalated for review (NOT auto-retried to avoid double-pay)",
+        { count: escalated.length, redemptionIds: escalated.map((r) => r.id) },
+      );
+      void payoutAlertsService.sendAlert({
+        severity: "high",
+        title: "Payout stuck — stale lock, no recorded broadcast",
+        message: `${escalated.length} redemption(s) held a processing lock past the timeout with no recorded broadcast hash. They are NOT auto-retried — a transaction may have been broadcast before the worker died. Verify on-chain and resolve manually.`,
+        details: { redemptionIds: escalated.map((r) => r.id) },
       });
     }
     if (stuck.length > 0) {
