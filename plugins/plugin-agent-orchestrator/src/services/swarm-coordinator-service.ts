@@ -1,0 +1,806 @@
+/**
+ * @module services/swarm-coordinator-service
+ *
+ * SWARM_COORDINATOR service: the discoverable runtime adapter that bridges the
+ * orchestrator's `AcpService` session-event stream to the consumers that still
+ * speak the legacy "swarm coordinator" interface.
+ *
+ * ## Why this exists
+ *
+ * The `plugin-acpx` + `plugin-agent-orchestrator` consolidation
+ * (`dc1b89c2eb`) deleted `pty-service.ts` and `swarm-coordinator.ts`. The old
+ * `PtyService.start()` constructed a `SwarmCoordinator`, started it, and
+ * registered it on the runtime under `SWARM_COORDINATOR`. With those files
+ * gone, NOTHING registers a `SWARM_COORDINATOR` service anymore — but three
+ * consumers were never migrated and still discover it via
+ * `runtime.getService("SWARM_COORDINATOR")` (or `PTY_SERVICE.coordinator`):
+ *
+ *   1. `packages/agent/src/api/coordinator-wiring.ts`
+ *      (`wireCoordinatorBridgesWhenReady`) polls for the service for 90s and,
+ *      when it never appears, logs
+ *      `coordinator not available after 90s — coding agent features disabled`
+ *      and leaves the chat / ws / event-routing / swarm-synthesis bridges
+ *      unwired.
+ *   2. `packages/agent/src/api/server-helpers-swarm.ts`
+ *      (`getCoordinatorFromRuntime`, the `wireCodingAgent*Bridge` helpers)
+ *      look up the same service and expect the
+ *      `setChatCallback` / `setWsBroadcast` / `setAgentDecisionCallback` /
+ *      `setSwarmCompleteCallback` / `getTaskThread` / `sourceRoomId` surface.
+ *   3. `plugins/plugin-app-control/src/services/verification-room-bridge.ts`
+ *      needs `subscribe(listener)` so it can post verification verdicts back
+ *      into the originating chat room. Without it, it logs
+ *      `SWARM_COORDINATOR service still has no subscribe() after 60 retries;
+ *      bridge inactive.`
+ *
+ * This service restores the registration + the exact surface those consumers
+ * depend on, implemented as a thin adapter over the post-consolidation
+ * `AcpService` event bus (no resurrection of the deleted 2600-line coordinator
+ * or its `TaskRegistry` / pty internals).
+ *
+ * ## Event mapping
+ *
+ * `AcpService.onSessionEvent(sessionId, eventName, data)` is re-shaped to the
+ * legacy `SwarmEvent` (`{ type, sessionId, timestamp, data }`) and fanned out
+ * to every `subscribe()` listener AND to the injected `setWsBroadcast`
+ * callback. The chat / agent-decision / swarm-complete callbacks are stored and
+ * invoked from the points where the orchestrator already has the matching data
+ * (terminal session events trigger swarm-complete synthesis).
+ *
+ * The setters being present + returning a live coordinator is what makes
+ * `wireChatBridge` / `wireWsBridge` / `wireEventRouting` / `wireSwarmSynthesis`
+ * each return `true`, so `wireCoordinatorBridgesWhenReady` succeeds on boot
+ * instead of timing out.
+ */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger, Service } from "@elizaos/core";
+import { AcpService } from "./acp-service.js";
+import { OrchestratorTaskService } from "./orchestrator-task-service.js";
+import { TERMINAL_SESSION_STATUSES } from "./types.js";
+
+export const SWARM_COORDINATOR_SERVICE_TYPE = "SWARM_COORDINATOR";
+
+/** Legacy swarm event shape consumed by the bridges. */
+export interface SwarmEvent {
+  type: string;
+  sessionId: string;
+  timestamp: number;
+  data: unknown;
+}
+
+export type SwarmEventListener = (event: SwarmEvent) => void;
+
+export type ChatMessageCallback = (
+  text: string,
+  source?: string,
+  routing?: {
+    sessionId?: string;
+    threadId?: string;
+    roomId?: string | null;
+  },
+) => Promise<void>;
+
+export type WsBroadcastCallback = (event: SwarmEvent) => void;
+
+export interface TaskContextLike {
+  threadId: string;
+  sessionId: string;
+  agentType: string;
+  label: string;
+  originalTask: string;
+  workdir: string;
+  [key: string]: unknown;
+}
+
+export type AgentDecisionCallback = (
+  eventDescription: string,
+  sessionId: string,
+  taskContext: TaskContextLike,
+) => Promise<unknown | null>;
+
+export interface TaskCompletionSummary {
+  sessionId: string;
+  label: string;
+  agentType: string;
+  originalTask: string;
+  status: string;
+  completionSummary: string;
+  workdir?: string;
+  roomId?: string | null;
+  replyToExternalMessageId?: string | null;
+  [key: string]: unknown;
+}
+
+export type SwarmCompleteCallback = (payload: {
+  tasks: TaskCompletionSummary[];
+  total: number;
+  completed: number;
+  stopped: number;
+  errored: number;
+}) => Promise<void>;
+
+interface LegacyCoordinatorTask {
+  sessionId: string;
+  label?: string;
+  threadId?: string;
+  status: string;
+  agentType?: string;
+  originalTask?: string;
+  workdir?: string;
+  originMetadata?: {
+    messageId?: string;
+    roomId?: string;
+    replyToExternalMessageId?: string;
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
+}
+
+export class SwarmCoordinatorService extends Service {
+  static override serviceType = SWARM_COORDINATOR_SERVICE_TYPE;
+
+  override capabilityDescription =
+    "Bridges the orchestrator's ACP session-event stream to the legacy swarm-coordinator surface (subscribe + chat / ws / agent-decision / swarm-complete callbacks) so the server's coordinator bridges and the verification-room-bridge wire on boot.";
+
+  private readonly listeners = new Set<SwarmEventListener>();
+  private chatCallback: ChatMessageCallback | null = null;
+  private wsBroadcast: WsBroadcastCallback | null = null;
+  private agentDecisionCallback: AgentDecisionCallback | null = null;
+  private swarmCompleteCallback: SwarmCompleteCallback | null = null;
+  private readonly inFlightDecisionSessions = new Set<string>();
+  private readonly synthesizedCompletionSessions = new Set<string>();
+
+  /**
+   * Legacy coordinator surface consumed by Discord timeout suppression and
+   * task-agent connector routing. Keep this as a real, live Map while the
+   * post-consolidation ACP service remains the source of truth.
+   */
+  readonly tasks = new Map<string, LegacyCoordinatorTask>();
+
+  private unsubscribeAcp: (() => void) | null = null;
+  private acpBindAttempts = 0;
+  private acpBindTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
+
+  /**
+   * The room id that out-of-band synthesis routing falls back to. Declared on
+   * the interface the bridges read; the orchestrator routes per-task room ids
+   * through the completion payload instead, so this stays null and the bridges
+   * use their own per-task fallback. Kept for interface compatibility.
+   */
+  sourceRoomId: string | null = null;
+
+  static async start(runtime: IAgentRuntime): Promise<SwarmCoordinatorService> {
+    const service = new SwarmCoordinatorService(runtime);
+    service.bindToAcp();
+    return service;
+  }
+
+  override async stop(): Promise<void> {
+    this.stopped = true;
+    if (this.acpBindTimer) {
+      clearTimeout(this.acpBindTimer);
+      this.acpBindTimer = null;
+    }
+    const unsub = this.unsubscribeAcp;
+    this.unsubscribeAcp = null;
+    if (typeof unsub === "function") {
+      try {
+        unsub();
+      } catch (err) {
+        logger.warn(
+          `[SwarmCoordinator] AcpService unsubscribe threw during stop(): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    this.listeners.clear();
+    this.chatCallback = null;
+    this.wsBroadcast = null;
+    this.agentDecisionCallback = null;
+    this.swarmCompleteCallback = null;
+    this.inFlightDecisionSessions.clear();
+    this.synthesizedCompletionSessions.clear();
+    this.tasks.clear();
+  }
+
+  // ── subscribe() — the surface verification-room-bridge depends on ──────────
+
+  /**
+   * Register a listener for the in-process swarm event stream. Returns an
+   * unsubscribe function. Every AcpService session event is re-shaped to a
+   * {@link SwarmEvent} and delivered to every listener.
+   */
+  subscribe(listener: SwarmEventListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  // ── server-helpers-swarm.ts callback setters ───────────────────────────────
+
+  setChatCallback(cb: ChatMessageCallback): void {
+    this.chatCallback = cb;
+  }
+
+  setWsBroadcast(cb: WsBroadcastCallback): void {
+    this.wsBroadcast = cb;
+  }
+
+  setAgentDecisionCallback(cb: AgentDecisionCallback): void {
+    this.agentDecisionCallback = cb;
+  }
+
+  /** Compatibility helper retained from the deleted coordinator surface. */
+  getAgentDecisionCallback(): AgentDecisionCallback | null {
+    return this.agentDecisionCallback;
+  }
+
+  /** Compatibility helper retained from the deleted coordinator surface. */
+  async sendChatMessage(
+    text: string,
+    source?: string,
+    routing?: {
+      sessionId?: string;
+      threadId?: string;
+      roomId?: string | null;
+    },
+  ): Promise<boolean> {
+    if (!this.chatCallback) return false;
+    await this.chatCallback(text, source, routing);
+    return true;
+  }
+
+  setSwarmCompleteCallback(cb: SwarmCompleteCallback): void {
+    this.swarmCompleteCallback = cb;
+  }
+
+  /** Compatibility helper retained from the deleted coordinator surface. */
+  getSwarmCompleteCallback(): SwarmCompleteCallback | null {
+    return this.swarmCompleteCallback;
+  }
+
+  getTaskContext(sessionId: string): LegacyCoordinatorTask | null {
+    return this.tasks.get(sessionId) ?? null;
+  }
+
+  getAllTaskContexts(): LegacyCoordinatorTask[] {
+    return [...this.tasks.values()];
+  }
+
+  /**
+   * Resolve the originating chat room for a task thread, so the connector-route
+   * fallback in server-helpers-swarm can target the right room. Delegates to
+   * the OrchestratorTaskService task-origin resolver.
+   */
+  async getTaskThread(
+    threadId: string,
+  ): Promise<{ roomId?: string | null } | null> {
+    const taskService =
+      this.runtime.getService<OrchestratorTaskService>(
+        OrchestratorTaskService.serviceType,
+      ) ?? null;
+    if (!taskService) return null;
+    try {
+      const origin = await taskService.getTaskOriginTarget(threadId);
+      return origin ? { roomId: origin.roomId } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ── AcpService event bridge ────────────────────────────────────────────────
+
+  private acp(): AcpService | null {
+    return this.runtime.getService<AcpService>(AcpService.serviceType) ?? null;
+  }
+
+  /**
+   * Subscribe to the AcpService session-event stream. Service start order at
+   * boot is not deterministic, so if ACP isn't registered yet we retry on a
+   * short interval (bounded) until it appears.
+   */
+  private bindToAcp(): void {
+    if (this.stopped || this.unsubscribeAcp) return;
+    const acp = this.acp();
+    if (!acp) {
+      this.scheduleAcpBindRetry();
+      return;
+    }
+    if (this.acpBindTimer) {
+      clearTimeout(this.acpBindTimer);
+      this.acpBindTimer = null;
+    }
+    this.unsubscribeAcp = acp.onSessionEvent((sessionId, event, data) => {
+      void this.handleAcpEvent(sessionId, String(event), data);
+    });
+    logger.info(
+      `[SwarmCoordinator] subscribed to ACP session-event stream${
+        this.acpBindAttempts > 0
+          ? ` (after ${this.acpBindAttempts} retr${
+              this.acpBindAttempts === 1 ? "y" : "ies"
+            })`
+          : ""
+      }`,
+    );
+  }
+
+  private scheduleAcpBindRetry(): void {
+    // 500ms × 120 = 60s of patience — covers slow plugin-load cold boots while
+    // bounding the dangling-timer window after stop() to 0.5s.
+    const MAX_ATTEMPTS = 120;
+    const INTERVAL_MS = 500;
+    if (this.stopped) return;
+    if (this.acpBindAttempts >= MAX_ATTEMPTS) {
+      logger.warn(
+        "[SwarmCoordinator] AcpService never became available; swarm event stream inactive.",
+      );
+      return;
+    }
+    this.acpBindAttempts += 1;
+    this.acpBindTimer = setTimeout(() => {
+      this.acpBindTimer = null;
+      this.bindToAcp();
+    }, INTERVAL_MS);
+  }
+
+  /**
+   * Re-shape one AcpService session event into a legacy {@link SwarmEvent} and
+   * fan it out to subscribers + the ws-broadcast callback. Terminal events
+   * additionally drive the swarm-complete synthesis callback.
+   */
+  private async handleAcpEvent(
+    sessionId: string,
+    event: string,
+    data: unknown,
+  ): Promise<void> {
+    const enrichedData = await this.enrichEventData(sessionId, data);
+
+    // App/plugin creation flows carry a custom app-verification validator in
+    // session metadata. The verification-room bridge intentionally ignores raw
+    // ACP terminal events; it only accepts post-validator pass/fail payloads.
+    // Run the real verifier first and emit the legacy custom-validator event
+    // shape it expects, rather than announcing completion before validation.
+    if (
+      event === "task_complete" &&
+      this.hasAppVerificationValidator(enrichedData)
+    ) {
+      await this.runCustomValidatorAndDispatch(sessionId, enrichedData);
+      return;
+    }
+
+    const swarmEvent: SwarmEvent = {
+      type: event,
+      sessionId,
+      timestamp: Date.now(),
+      data: enrichedData,
+    };
+    this.updateLegacyTaskContext(sessionId, event, enrichedData);
+    this.dispatchSwarmEvent(swarmEvent);
+    await this.maybeFireSwarmComplete(sessionId, event, enrichedData);
+
+    if (event === "blocked" || event === "login_required") {
+      void this.maybeRouteAgentDecision(sessionId, event, enrichedData);
+    }
+  }
+
+  private updateLegacyTaskContext(
+    sessionId: string,
+    event: string,
+    data: unknown,
+  ): void {
+    if (!isRecord(data)) {
+      this.tasks.set(sessionId, { sessionId, status: event });
+      return;
+    }
+    const existing = this.tasks.get(sessionId);
+    const status = this.legacyStatusForEvent(event);
+    const label = readString(data, "label") ?? existing?.label;
+    const threadId =
+      readString(data, "threadId") ??
+      readString(data, "taskId") ??
+      existing?.threadId ??
+      sessionId;
+    const agentType = readString(data, "agentType") ?? existing?.agentType;
+    const originalTask =
+      readString(data, "initialTask") ??
+      readString(data, "task") ??
+      existing?.originalTask;
+    const workdir = readString(data, "workdir") ?? existing?.workdir;
+    const roomId =
+      readString(data, "originRoomId") ??
+      readString(data, "roomId") ??
+      existing?.originMetadata?.roomId;
+    const replyToExternalMessageId =
+      readString(data, "replyToExternalMessageId") ??
+      readString(data, "originConnectorMessageId") ??
+      existing?.originMetadata?.replyToExternalMessageId;
+    const originMessageId =
+      readString(data, "originConnectorMessageId") ??
+      readString(data, "messageId") ??
+      existing?.originMetadata?.messageId;
+
+    this.tasks.set(sessionId, {
+      sessionId,
+      ...(label ? { label } : {}),
+      threadId,
+      status,
+      ...(agentType ? { agentType } : {}),
+      ...(originalTask ? { originalTask } : {}),
+      ...(workdir ? { workdir } : {}),
+      originMetadata: {
+        ...(originMessageId ? { messageId: originMessageId } : {}),
+        ...(roomId ? { roomId } : {}),
+        ...(replyToExternalMessageId ? { replyToExternalMessageId } : {}),
+      },
+    });
+  }
+
+  private legacyStatusForEvent(event: string): string {
+    if (event === "task_complete") return "completed";
+    if (event === "error") return "error";
+    return event;
+  }
+
+  private async maybeFireSwarmComplete(
+    sessionId: string,
+    event: string,
+    data: unknown,
+  ): Promise<void> {
+    const cb = this.swarmCompleteCallback;
+    if (!cb) return;
+    const terminalStatus = this.completionStatusForEvent(event);
+    if (!terminalStatus) return;
+    if (this.synthesizedCompletionSessions.has(sessionId)) return;
+    this.synthesizedCompletionSessions.add(sessionId);
+
+    const record = isRecord(data) ? data : {};
+    let session: Awaited<ReturnType<AcpService["getSession"]>> | undefined;
+    try {
+      session = await this.acp()?.getSession(sessionId);
+    } catch {
+      session = undefined;
+    }
+    const meta = isRecord(session?.metadata) ? session.metadata : {};
+    const label =
+      readString(record, "label") ?? readString(meta, "label") ?? sessionId;
+    const agentType =
+      readString(record, "agentType") ??
+      readString(meta, "agentType") ??
+      session?.agentType ??
+      "unknown";
+    const originalTask =
+      readString(record, "initialTask") ??
+      readString(meta, "initialTask") ??
+      readString(record, "task") ??
+      readString(meta, "task") ??
+      "";
+    const workdir =
+      readString(record, "workdir") ??
+      readString(meta, "workdir") ??
+      session?.workdir;
+    const roomId =
+      readString(record, "originRoomId") ??
+      readString(meta, "originRoomId") ??
+      readString(record, "roomId") ??
+      readString(meta, "roomId") ??
+      null;
+    const replyToExternalMessageId =
+      readString(record, "replyToExternalMessageId") ??
+      readString(meta, "replyToExternalMessageId") ??
+      readString(record, "originConnectorMessageId") ??
+      readString(meta, "originConnectorMessageId") ??
+      null;
+    const completionSummary =
+      readString(record, "response") ??
+      readString(record, "summary") ??
+      readString(record, "message") ??
+      readString(record, "text") ??
+      (terminalStatus === "completed"
+        ? "Task completed."
+        : `${label} ${terminalStatus}.`);
+
+    try {
+      await cb({
+        tasks: [
+          {
+            sessionId,
+            label,
+            agentType,
+            originalTask,
+            status: terminalStatus,
+            completionSummary,
+            ...(workdir ? { workdir } : {}),
+            roomId,
+            replyToExternalMessageId,
+          },
+        ],
+        total: 1,
+        completed: terminalStatus === "completed" ? 1 : 0,
+        stopped: terminalStatus === "stopped" ? 1 : 0,
+        errored: terminalStatus === "errored" ? 1 : 0,
+      });
+    } catch (err) {
+      logger.warn(
+        `[SwarmCoordinator] swarm-complete callback failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  private completionStatusForEvent(
+    event: string,
+  ): "completed" | "stopped" | "errored" | null {
+    if (event === "task_complete") return "completed";
+    if (event === "stopped") return "stopped";
+    if (event === "error") return "errored";
+    return null;
+  }
+
+  private dispatchSwarmEvent(swarmEvent: SwarmEvent): void {
+    // Fan out to in-process subscribers (verification-room-bridge et al).
+    for (const listener of this.listeners) {
+      try {
+        listener(swarmEvent);
+      } catch (err) {
+        logger.warn(
+          `[SwarmCoordinator] subscriber threw: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    // Relay to the WS broadcast bridge (frontend dashboard live status).
+    if (this.wsBroadcast) {
+      try {
+        this.wsBroadcast(swarmEvent);
+      } catch (err) {
+        logger.warn(
+          `[SwarmCoordinator] wsBroadcast threw: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+  }
+
+  private async enrichEventData(
+    sessionId: string,
+    data: unknown,
+  ): Promise<Record<string, unknown> | unknown> {
+    const record: Record<string, unknown> = isRecord(data)
+      ? { ...data }
+      : { value: data };
+    try {
+      const session = await this.acp()?.getSession(sessionId);
+      const meta = isRecord(session?.metadata) ? session.metadata : {};
+      for (const key of [
+        "originRoomId",
+        "originConnectorMessageId",
+        "replyToExternalMessageId",
+        "messageId",
+        "roomId",
+        "taskRoomId",
+        "workdir",
+        "label",
+        "agentType",
+        "initialTask",
+        "task",
+        "threadId",
+        "validator",
+        "onVerificationFail",
+        "maxRetries",
+        "retryCount",
+      ]) {
+        if (record[key] === undefined && meta[key] !== undefined) {
+          record[key] = meta[key];
+        }
+      }
+      if (record.workdir === undefined && session?.workdir) {
+        record.workdir = session.workdir;
+      }
+      if (record.agentType === undefined && session?.agentType) {
+        record.agentType = session.agentType;
+      }
+    } catch {
+      // Best-effort enrichment only; raw data is still useful to consumers.
+    }
+    return record;
+  }
+
+  private hasAppVerificationValidator(data: unknown): boolean {
+    if (!isRecord(data)) return false;
+    const validator = isRecord(data.validator) ? data.validator : null;
+    return validator?.service === "app-verification";
+  }
+
+  private async runCustomValidatorAndDispatch(
+    sessionId: string,
+    enrichedData: unknown,
+  ): Promise<void> {
+    if (!isRecord(enrichedData)) return;
+    const validator = isRecord(enrichedData.validator)
+      ? enrichedData.validator
+      : null;
+    if (validator?.service !== "app-verification") return;
+    const method =
+      validator.method === "verifyApp" || validator.method === "verifyPlugin"
+        ? validator.method
+        : null;
+    if (!method) return;
+    const verificationService = this.runtime.getService?.("app-verification") as
+      | {
+          verifyApp?: (
+            opts: Record<string, unknown>,
+          ) => Promise<Record<string, unknown>>;
+          verifyPlugin?: (
+            opts: Record<string, unknown>,
+          ) => Promise<Record<string, unknown>>;
+        }
+      | null
+      | undefined;
+    const verify = verificationService?.[method];
+    if (typeof verify !== "function") {
+      logger.warn("[SwarmCoordinator] app-verification service unavailable");
+      return;
+    }
+    const params = {
+      ...(isRecord(validator.params) ? validator.params : {}),
+      ...(typeof enrichedData.workdir === "string"
+        ? { workdir: enrichedData.workdir }
+        : {}),
+    };
+    try {
+      const result = await verify.call(verificationService, params);
+      const verdict = result.verdict === "pass" ? "pass" : "fail";
+      const checks = Array.isArray(result.checks) ? result.checks : [];
+      const failed = checks
+        .filter(
+          (check): check is Record<string, unknown> =>
+            isRecord(check) && check.ok === false,
+        )
+        .map((check) => readString(check, "label") ?? readString(check, "name"))
+        .filter((value): value is string => Boolean(value));
+      const summary =
+        verdict === "pass"
+          ? "App verification passed."
+          : failed.length > 0
+            ? `App verification failed: ${failed.join(", ")}`
+            : "App verification failed.";
+      this.dispatchSwarmEvent({
+        type: verdict === "pass" ? "task_complete" : "escalation",
+        sessionId,
+        timestamp: Date.now(),
+        data: {
+          ...enrichedData,
+          summary,
+          verification: {
+            source: "custom-validator",
+            validator: { service: "app-verification", method },
+            params,
+            verdict,
+            result,
+          },
+        },
+      });
+    } catch (err) {
+      logger.warn(
+        `[SwarmCoordinator] custom validator failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      this.dispatchSwarmEvent({
+        type: "escalation",
+        sessionId,
+        timestamp: Date.now(),
+        data: {
+          ...enrichedData,
+          summary: err instanceof Error ? err.message : String(err),
+          verification: {
+            source: "custom-validator",
+            validator: { service: "app-verification", method },
+            params,
+            verdict: "fail",
+          },
+        },
+      });
+    }
+  }
+
+  /**
+   * Route user-action events through the server-provided Eliza pipeline. This
+   * is the post-consolidation equivalent of the deleted coordinator's
+   * decision-loop callback path: the server wires `setAgentDecisionCallback`,
+   * we invoke it for blocking/auth events, and a simple `respond` decision is
+   * sent back into the live ACP session.
+   */
+  private async maybeRouteAgentDecision(
+    sessionId: string,
+    event: string,
+    data: unknown,
+  ): Promise<void> {
+    const cb = this.agentDecisionCallback;
+    if (!cb || this.inFlightDecisionSessions.has(sessionId)) return;
+    this.inFlightDecisionSessions.add(sessionId);
+    try {
+      const acp = this.acp();
+      const session = acp ? await acp.getSession(sessionId) : undefined;
+      const meta = isRecord(session?.metadata) ? session.metadata : {};
+      const record = isRecord(data) ? data : {};
+      const label =
+        readString(meta, "label") ?? readString(record, "label") ?? sessionId;
+      const message =
+        readString(record, "message") ??
+        readString(record, "prompt") ??
+        readString(record, "text") ??
+        event;
+      const taskContext: TaskContextLike = {
+        threadId:
+          readString(meta, "threadId") ??
+          readString(meta, "taskId") ??
+          sessionId,
+        sessionId,
+        agentType:
+          readString(meta, "agentType") ?? session?.agentType ?? "unknown",
+        label,
+        originalTask:
+          readString(meta, "initialTask") ?? readString(meta, "task") ?? "",
+        workdir: session?.workdir ?? readString(meta, "workdir") ?? "",
+        status: event,
+      };
+      const eventDescription = `[${label}] ${event}: ${message}`;
+      const decision = await cb(eventDescription, sessionId, taskContext);
+      if (!isRecord(decision)) return;
+      if (
+        decision.action === "respond" &&
+        typeof decision.response === "string" &&
+        decision.response.trim().length > 0 &&
+        typeof acp?.sendPrompt === "function"
+      ) {
+        await acp
+          .sendPrompt(sessionId, decision.response.trim())
+          .catch((err: unknown) => {
+            logger.warn(
+              `[SwarmCoordinator] failed to send decision response: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          });
+      }
+    } catch (err) {
+      logger.warn(
+        `[SwarmCoordinator] agent decision callback failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    } finally {
+      this.inFlightDecisionSessions.delete(sessionId);
+    }
+  }
+
+  /**
+   * Whether a session status string is terminal. Exposed for parity with the
+   * shared TERMINAL_SESSION_STATUSES set the providers + progress hook use.
+   */
+  static isTerminalStatus(status: string): boolean {
+    return TERMINAL_SESSION_STATUSES.has(status);
+  }
+}
+
+export default SwarmCoordinatorService;
