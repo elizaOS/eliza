@@ -217,22 +217,43 @@ export class PayoutProcessorService {
     for (const redemption of redemptions) {
       stats.processed++;
 
-      // Try to acquire lock
-      const locked = await this.acquireLock(redemption.id);
-      if (!locked) {
-        stats.skipped++;
-        continue;
-      }
+      try {
+        // Try to acquire lock
+        const locked = await this.acquireLock(redemption.id);
+        if (!locked) {
+          stats.skipped++;
+          continue;
+        }
 
-      // Process the payout
-      const result = await this.processRedemption(redemption);
+        // Process the payout
+        const result = await this.processRedemption(redemption);
 
-      if (result.success) {
-        await this.markCompleted(redemption, result.txHash!);
-        stats.succeeded++;
-      } else {
-        await this.markFailed(redemption.id, result.error!, result.retryable ?? true);
+        if (result.success) {
+          await this.markCompleted(redemption, result.txHash!);
+          stats.succeeded++;
+        } else {
+          await this.markFailed(
+            redemption.id,
+            result.error!,
+            result.retryable ?? true,
+          );
+          stats.failed++;
+        }
+      } catch (err) {
+        // A throw here (RPC/DB error mid-processRedemption, or a Worker eviction)
+        // must NOT abort the whole batch — keep processing the remaining
+        // redemptions. Crucially, do NOT markFailed/re-approve this row: the
+        // payout may already have been BROADCAST (writeContract succeeded) while
+        // markCompleted had not yet persisted its tx_hash, so re-queuing it would
+        // risk a DOUBLE-PAY. Leave it in 'processing' for operator/on-chain
+        // reconciliation. (Full auto-recovery of stuck rows needs persisting the
+        // tx hash at broadcast time so a recovery can tell never-broadcast from
+        // broadcast-pending — tracked in #10553.)
         stats.failed++;
+        logger.error("[PayoutProcessor] Redemption processing threw", {
+          redemptionId: redemption.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
