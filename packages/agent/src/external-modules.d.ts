@@ -843,9 +843,6 @@ declare module "@elizaos/ui" {
   export type OverlayAppContext = AnyValue;
   export type ResolveCompanionInferenceNoticeArgs = AnyValue;
   export type ShareTargetPayload = AnyValue;
-  export type StewardApprovalQueueProps = AnyValue;
-  export type StewardLogoProps = AnyValue;
-  export type StewardTransactionHistoryProps = AnyValue;
   export type SurfaceTone = string;
 
   export interface IosLocalAgentNativeRequestOptions {

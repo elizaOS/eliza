@@ -11,7 +11,6 @@
 
 import type {
   AppBlockerSettingsCardProps,
-  StewardPolicyResult,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
 import type { ComponentType, ReactNode } from "react";
@@ -134,92 +133,6 @@ export interface FineTuningViewProps {
   contentHeader?: ReactNode;
 }
 
-export interface StewardLogoProps {
-  size?: number;
-  className?: string;
-}
-
-export type AppBootStewardTxStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "signed"
-  | "broadcast"
-  | "confirmed"
-  | "failed";
-
-export interface AppBootStewardTxRecord {
-  id: string;
-  agentId: string;
-  status: AppBootStewardTxStatus;
-  request: {
-    agentId: string;
-    tenantId: string;
-    to: string;
-    value: string;
-    data?: string;
-    chainId: number;
-  };
-  txHash?: string;
-  policyResults: StewardPolicyResult[];
-  createdAt: string;
-  signedAt?: string;
-  confirmedAt?: string;
-}
-
-export interface AppBootStewardPendingApproval {
-  queueId: string;
-  status: "pending" | "approved" | "rejected";
-  requestedAt: string;
-  transaction: AppBootStewardTxRecord;
-}
-
-export interface AppBootStewardApprovalActionResponse {
-  ok: boolean;
-  txHash?: string;
-  error?: string;
-}
-
-export interface StewardApprovalQueueProps {
-  embedded?: boolean;
-  refreshKey?: number | string;
-  getStewardPending: () => Promise<AppBootStewardPendingApproval[]>;
-  approveStewardTx: (
-    txId: string,
-  ) => Promise<AppBootStewardApprovalActionResponse>;
-  rejectStewardTx: (
-    txId: string,
-    reason?: string,
-  ) => Promise<AppBootStewardApprovalActionResponse>;
-  copyToClipboard: (text: string) => Promise<void>;
-  setActionNotice: (
-    text: string,
-    tone?: "info" | "success" | "error",
-    ttlMs?: number,
-  ) => void;
-  onPendingCountChange?: (count: number) => void;
-}
-
-export interface StewardTransactionHistoryProps {
-  embedded?: boolean;
-  getStewardHistory: (opts?: {
-    status?: string;
-    limit?: number;
-    offset?: number;
-  }) => Promise<{
-    records: AppBootStewardTxRecord[];
-    total: number;
-    offset: number;
-    limit: number;
-  }>;
-  copyToClipboard: (text: string) => Promise<void>;
-  setActionNotice: (
-    text: string,
-    tone?: "info" | "success" | "error",
-    ttlMs?: number,
-  ) => void;
-}
-
 export interface AppBootConfig {
   /** Branding overrides (product name, URLs, etc.). */
   branding: Partial<BrandingConfig>;
@@ -287,12 +200,6 @@ export interface AppBootConfig {
   appBlockerSettingsCard?: ComponentType<AppBlockerSettingsCardProps>;
   /** Website blocker settings card provided by the host app. */
   websiteBlockerSettingsCard?: ComponentType<WebsiteBlockerSettingsCardProps>;
-  /** Steward brand mark provided by the host app. */
-  stewardLogo?: ComponentType<StewardLogoProps>;
-  /** Steward approval queue provided by the host app. */
-  stewardApprovalQueue?: ComponentType<StewardApprovalQueueProps>;
-  /** Steward transaction history provided by the host app. */
-  stewardTransactionHistory?: ComponentType<StewardTransactionHistoryProps>;
   /** Shortcut behavior switches. Natural-language shortcuts are off by default. */
   shortcutFlags?: {
     naturalLanguage?: boolean;
