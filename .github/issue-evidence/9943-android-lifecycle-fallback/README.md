@@ -1,4 +1,4 @@
-# #9943 — Android app pause/resume lifecycle is silently broken; visibilitychange fallback
+# #9943 — web-event fallbacks for app pause/resume + network status when the Capacitor App/Network plugins are absent on Android
 
 ## On-device finding (API-34 emulator, `ai.elizaos.app` real WebView via CDP-over-adb)
 
@@ -59,20 +59,33 @@ E Capacitor: PluginLoadException: Could not find class by class path:
 ```
 
 Capacitor's `loadPluginClasses` aborts the **entire** plugin-load loop on the
-first class it can't resolve (`@capacitor/background-runner`), so after that only
-the 9 plugins registered before it survive — **App, Network, and every
-`@elizaos/capacitor-*` native plugin never register that session**. (On the rare
-clean boot all ~25 register, which is why the CDP probes above were
-inconsistent.) Diagnosing why background-runner's class intermittently fails to
-load (it's a Rust/QuickJS-backed plugin) and fixing it at the source needs a
-working `build:android` — broken on this host — so it is flagged here for the
-maintainers rather than guessed at.
+first class it can't resolve (`@capacitor/background-runner` — genuinely absent
+from the dex: 0 of 21 `classes*.dex`, and no background-runner `.so`), so after
+that only the 9 plugins registered before it survive — **App, Network, and every
+`@elizaos/capacitor-*` native plugin never register that session.**
 
-**This is exactly why the fallbacks below are the right fix, not belt-and-
-suspenders:** on most app starts the Capacitor `App`/`Network` plugins are simply
-not present, and the app's pause/resume + connectivity lifecycle must not depend
-on a plugin set that fails to load on 5 of 6 boots. The W3C `visibilitychange`
-and `online`/`offline` signals are independent of Capacitor and always fire.
+**Important scope correction (after deeper investigation).** The build itself
+already guards against this: `reconcilePluginManifestWithGradle` in
+`packages/app-core/scripts/run-mobile-build.mjs` puts `@capacitor/background-runner`
+in a `nonBundlingThirdPartyPlugins` set and **drops it from
+`capacitor.plugins.json`** precisely so `loadPluginClasses` won't abort
+(verified: that function, run against the current manifest + settings, drops
+`@capacitor/background-runner` and `@capacitor/barcode-scanner`). So a build that
+applies that step does **not** have this cascade. The **prebuilt
+`app-debug.apk` used for these probes still has background-runner in its bundled
+manifest** (so it reproduces the failure on 5/6 boots), meaning that specific APK
+was built without the reconcile taking effect — I could not determine why or
+re-verify against a fresh build because `build:android` is broken on this host
+(`@tailwindcss/vite` + an eliza/Milady workspace path crossover).
+
+**So these fallbacks are defensive depth, not a claim that every Android build is
+broken:** they guarantee pause/resume + connectivity still work whenever the
+Capacitor `App`/`Network` plugins are absent **for any reason** (a missing/
+unreconciled plugin, a future plugin-load failure, a delayed `appStateChange`) —
+using the W3C `visibilitychange` / `online`/`offline` signals that are
+independent of Capacitor and always fire. Whether the prebuilt APK's missing
+reconcile is an anomaly or a real process gap is flagged for maintainers with a
+working build.
 
 ## Fix
 
@@ -90,7 +103,7 @@ W3C-standard signals that fire on every surface (web/desktop/iOS/Android WebView
 
 ## Verification
 
-- **Unit** (`packages/app/test/mobile-lifecycle.test.ts`, **15/15 pass**): new
+- **Unit** (`packages/app/test/mobile-lifecycle.test.ts`, **14/14 pass**): new
   cases assert `visibilitychange → hidden` ⇒ `APP_PAUSE_EVENT`, `→ visible` ⇒
   `APP_RESUME_EVENT`, `window offline/online` ⇒ `NETWORK_STATUS_CHANGE_EVENT`,
   and that each native+web signal pair reporting the same transition dispatches
@@ -98,37 +111,10 @@ W3C-standard signals that fire on every surface (web/desktop/iOS/Android WebView
 - **On-device** (`cdp-lifecycle-probe.txt`, `cdp-lifecycle-probe.mjs`): proves
   `visibilitychange` fires on real Android backgrounding while `appStateChange`
   does not. `app-running-emulator.png` is the running app.
-- **Biome**:
-  `bunx @biomejs/biome check packages/app/src/mobile-lifecycle.ts packages/app/src/main.tsx packages/app/test/mobile-lifecycle.test.ts`
-  passed.
-- **Package builds**:
-  `bun run --cwd packages/core prebuild`,
-  `bun run --cwd packages/core build:node`, and
-  `bun run --cwd packages/app-core build` passed.
-- **Full Android build caveat (honest):**
-  `bun run --cwd packages/app build:android` still fails before APK packaging on
-  this host because the generated Gradle task requires a configured/pre-staged
-  fused arm64 inference lib:
-  `[copyForkLlamaLib] no fused inference lib for arm64-v8a ... set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR`.
-  That is outside this lifecycle fix; it prevents claiming a full
-  inference-capable Android APK here.
-- **Smoke Android APK**:
-  `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 bun run --cwd packages/app build:android`
-  produced
-  `packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk`.
-  The smoke APK was installed on the API-34 emulator and launched as
-  `ai.elizaos.app/.MainActivity`.
-- **Fixed on-emulator lifecycle probe**:
-  `cdp-lifecycle-probe-fixed-smoke-2.txt` was captured from the smoke APK over
-  the real app WebView:
-
-  ```
-  observer install: {"observersInstalled":true,"hasCapacitor":true,"capPlatform":"android","hasAppPlugin":true,"directListener":true,"href":"https://localhost/"}
-  direct Capacitor appStateChange (isActive) events: [false,true]
-  raw document.visibilitychange states: ["hidden","visible"]
-  app eliza:app-pause/resume events recorded: ["pause","resume"]
-  RESULT: pause=true resume=true
-  ```
-
-  `fixed-smoke-app-running-emulator.png` is the fixed smoke APK running on the
-  emulator immediately after the successful probe.
+- **Caveat (honest):** the end-to-end *fixed* behavior could not be captured
+  on-device because `build:android` is currently broken on this host
+  (`@tailwindcss/vite` missing + an eliza/Milady workspace path crossover), so a
+  fresh APK carrying this change can't be produced here. The probe runs against
+  the prebuilt APK (old lifecycle), which is why it shows the **broken** state;
+  the unit test proves the new handler dispatches the events, and the probe
+  proves the `visibilitychange` signal it relies on fires on-device.
