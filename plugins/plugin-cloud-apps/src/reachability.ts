@@ -55,7 +55,7 @@ export async function probeReachable(
   options: ProbeOptions = {},
 ): Promise<ReachabilityResult> {
   const fetchImpl =
-    options.fetchImpl ?? (globalThis.fetch as unknown as FetchLike | undefined);
+    options.fetchImpl ?? (globalThis.fetch as FetchLike | undefined);
   if (typeof fetchImpl !== "function") {
     return { ok: false, error: "no_fetch" };
   }

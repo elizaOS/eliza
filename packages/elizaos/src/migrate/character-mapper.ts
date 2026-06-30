@@ -83,8 +83,13 @@ export function mapToCharacter(
   // ---- knowledge: USER.md (about the human) - FIREWALLED ----
   const knowledge: Character["knowledge"] = [];
   if (!opts.firewall && src.user?.trim()) {
+    // NOTE(#10326): the runtime ingests an inline-text knowledge item
+    // ({ case: "text", value: { text } }), but core's `DocumentSourceItem`
+    // type currently models only path/directory/empty cases — no inline-text
+    // member — so this requires a double cast. The correct fix is to widen
+    // `DocumentSourceItem` (or the migrate-knowledge representation) so this
+    // shape is type-expressible; tracked as a follow-up on #10326.
     knowledge.push({
-      // DocumentSourceItem: inline text knowledge about the human.
       case: "text",
       value: { text: stripFrontHeading(src.user).trim() },
     } as unknown as NonNullable<Character["knowledge"]>[number]);
