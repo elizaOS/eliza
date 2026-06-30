@@ -7,6 +7,10 @@ import {
 } from "../services/goal-llm-verifier.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
+import {
+  type AttemptReflection,
+  MAX_ATTEMPT_REFLECTIONS,
+} from "../services/orchestrator-task-types.js";
 
 describe("shouldAutoVerifyGoal", () => {
   const prev = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
@@ -721,5 +725,194 @@ describe("independent read-only verifier (#8898)", () => {
 
     expect(fake.spawned).toHaveLength(0);
     expect(useModel).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Reflexion persistence (#8899): drive the REAL `autoVerifyCompletion` append
+ * path (orchestrator-task-service.ts) so each failed verdict writes a
+ * `{attempt, missing, summary}` post-mortem into `metadata.attemptReflections`,
+ * the buffer caps at {@link MAX_ATTEMPT_REFLECTIONS} (dropping the oldest), and
+ * malformed persisted entries are sanitized by `readAttemptReflections`. The
+ * shipped render leaf is already covered by goal-prompt.test.ts; this exercises
+ * the stateful loop end to end with no hand-injected reflection array.
+ */
+describe("attempt reflection persistence (#8899)", () => {
+  let savedFlag: string | undefined;
+  beforeEach(() => {
+    savedFlag = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+    delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+  });
+  afterEach(() => {
+    if (savedFlag === undefined)
+      delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+    else process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = savedFlag;
+  });
+
+  /**
+   * Seed a task (optionally with prior metadata), wire a fake ACP whose verifier
+   * model always returns `verdict`, then fire a single `task_complete` so the
+   * real auto-verify hook runs. Returns the store + ids so the caller can poll
+   * the persisted `metadata.attemptReflections`.
+   */
+  async function driveOneVerify(opts: {
+    acceptanceCriteria: string[];
+    seedMetadata?: Record<string, unknown>;
+    verdict: { passed: boolean; summary: string; missing: string[] };
+  }): Promise<{ store: OrchestratorTaskStore; taskId: string }> {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(
+      store,
+      opts.acceptanceCriteria,
+    );
+    if (opts.seedMetadata) {
+      await store.updateTask(taskId, { metadata: opts.seedMetadata });
+    }
+    const runtime = makeRuntime(fake.service, () =>
+      JSON.stringify(opts.verdict),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+    fake.emit(sessionId, "task_complete", { response: "I think it works" });
+    return { store, taskId };
+  }
+
+  async function reflectionsOf(
+    store: OrchestratorTaskStore,
+    taskId: string,
+  ): Promise<AttemptReflection[]> {
+    const doc = await store.getTask(taskId);
+    const raw = doc?.task.metadata?.attemptReflections;
+    return Array.isArray(raw) ? (raw as AttemptReflection[]) : [];
+  }
+
+  it("records a post-mortem for the first failed verification", async () => {
+    const { store, taskId } = await driveOneVerify({
+      acceptanceCriteria: ["tests pass"],
+      verdict: { passed: false, summary: "tests not run", missing: ["tests pass"] },
+    });
+    await vi.waitFor(async () => {
+      expect(await reflectionsOf(store, taskId)).toEqual([
+        { attempt: 1, summary: "tests not run", missing: ["tests pass"] },
+      ]);
+    });
+  });
+
+  it("accumulates a second post-mortem in attempt order", async () => {
+    const { store, taskId } = await driveOneVerify({
+      acceptanceCriteria: ["tests pass"],
+      seedMetadata: {
+        autoVerifyAttempts: 1,
+        attemptReflections: [
+          { attempt: 1, summary: "first failure", missing: ["tests pass"] },
+        ],
+      },
+      verdict: {
+        passed: false,
+        summary: "second failure",
+        missing: ["tests pass"],
+      },
+    });
+    await vi.waitFor(async () => {
+      expect(await reflectionsOf(store, taskId)).toEqual([
+        { attempt: 1, summary: "first failure", missing: ["tests pass"] },
+        { attempt: 2, summary: "second failure", missing: ["tests pass"] },
+      ]);
+    });
+  });
+
+  it("caps the buffer at MAX_ATTEMPT_REFLECTIONS, dropping the oldest", async () => {
+    const seeded: AttemptReflection[] = Array.from(
+      { length: MAX_ATTEMPT_REFLECTIONS },
+      (_unused, index) => ({
+        attempt: index + 1,
+        summary: `reflection-${index + 1}`,
+        missing: ["tests pass"],
+      }),
+    );
+    const { store, taskId } = await driveOneVerify({
+      acceptanceCriteria: ["tests pass"],
+      // Under the auto-verify attempt cap so the append branch (not the
+      // waiting_on_user escalation) runs and exercises `.slice(-MAX)`.
+      seedMetadata: { autoVerifyAttempts: 1, attemptReflections: seeded },
+      verdict: {
+        passed: false,
+        summary: "reflection-new",
+        missing: ["tests pass"],
+      },
+    });
+    await vi.waitFor(async () => {
+      const reflections = await reflectionsOf(store, taskId);
+      expect(reflections).toHaveLength(MAX_ATTEMPT_REFLECTIONS);
+      // Oldest dropped, newest appended.
+      expect(reflections.map((r) => r.summary)).toEqual([
+        "reflection-2",
+        "reflection-3",
+        "reflection-4",
+        "reflection-5",
+        "reflection-new",
+      ]);
+    });
+  });
+
+  it("sanitizes malformed persisted reflections through the real append", async () => {
+    const { store, taskId } = await driveOneVerify({
+      acceptanceCriteria: ["tests pass"],
+      seedMetadata: {
+        autoVerifyAttempts: 1,
+        attemptReflections: [
+          { bad: true },
+          "garbage",
+          { attempt: "x", summary: 1 },
+          { attempt: 1, summary: "real prior", missing: ["a", 2] },
+        ],
+      },
+      verdict: {
+        passed: false,
+        summary: "new failure",
+        missing: ["tests pass"],
+      },
+    });
+    await vi.waitFor(async () => {
+      expect(await reflectionsOf(store, taskId)).toEqual([
+        // Malformed rows dropped; the non-string missing entry (2) filtered out.
+        { attempt: 1, summary: "real prior", missing: ["a"] },
+        { attempt: 2, summary: "new failure", missing: ["tests pass"] },
+      ]);
+    });
+  });
+
+  it("does not record a reflection when verification passes", async () => {
+    const { store, taskId } = await driveOneVerify({
+      acceptanceCriteria: ["tests pass"],
+      verdict: { passed: true, summary: "all good", missing: [] },
+    });
+    await vi.waitFor(async () => {
+      const doc = await store.getTask(taskId);
+      expect(doc?.task.status).toBe("done");
+    });
+    expect(await reflectionsOf(store, taskId)).toEqual([]);
+  });
+
+  it("does not append a reflection past the attempt cap (escalation)", async () => {
+    const seeded: AttemptReflection[] = [
+      { attempt: 1, summary: "first", missing: ["tests pass"] },
+      { attempt: 2, summary: "second", missing: ["tests pass"] },
+    ];
+    const { store, taskId } = await driveOneVerify({
+      acceptanceCriteria: ["tests pass"],
+      seedMetadata: {
+        autoVerifyAttempts: MAX_AUTO_VERIFY_ATTEMPTS,
+        attemptReflections: seeded,
+      },
+      verdict: { passed: false, summary: "nope", missing: ["tests pass"] },
+    });
+    await vi.waitFor(async () => {
+      const doc = await store.getTask(taskId);
+      expect(doc?.task.status).toBe("waiting_on_user");
+    });
+    // The escalation branch parks for a human and leaves the buffer untouched.
+    expect(await reflectionsOf(store, taskId)).toEqual(seeded);
   });
 });
