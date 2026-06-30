@@ -54,6 +54,8 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
+import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import {
   buildCodingContainerCreatePayload,
@@ -199,6 +201,31 @@ async function createCodingContainer(
           `are not accepted while CONTAINER_IMAGE_REQUIRE_DIGEST is enabled.`,
       },
       403,
+    );
+  }
+
+  // ── Credit gate: require the minimum deposit before provisioning paid
+  // compute (same as every sibling provision route). Without this, a $0/negative
+  // org could launch a metered coding container and get free compute until the
+  // hourly cron's warning + 48h grace expires. The route's downstream 402
+  // "insufficient_credit" poll branch is dead — provision() has no credit gate —
+  // so this is the only real gate. ──
+  const creditCheck = await checkAgentCreditGate(user.organization_id);
+  if (!creditCheck.allowed) {
+    logger.warn("[CodingContainers API] provision blocked: insufficient credits", {
+      orgId: user.organization_id,
+      balance: creditCheck.balance,
+      required: AGENT_PRICING.MINIMUM_DEPOSIT,
+    });
+    return c.json(
+      {
+        success: false,
+        code: "insufficient_credits",
+        error: creditCheck.error,
+        requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
+        currentBalance: creditCheck.balance,
+      },
+      402,
     );
   }
 
