@@ -212,6 +212,36 @@ function readParsedAction(parsed: Record<string, unknown>): unknown {
   return parsed.action;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractModelActionToken(text: string): MusicSubaction | null {
+  const direct = normalizeSubaction(text);
+  if (direct) return direct;
+
+  const candidates = [
+    text.match(/<action>\s*([^<]+?)\s*<\/action>/i)?.[1],
+    text.match(/\baction\s*[:=]\s*["'`]?([a-z][a-z0-9_-]+)["'`]?/i)?.[1],
+    text.match(/`([a-z][a-z0-9_-]+)`/)?.[1],
+    text.match(/^\s*[-*]\s*([a-z][a-z0-9_-]+)\b/im)?.[1],
+  ];
+  for (const candidate of candidates) {
+    const resolved = normalizeSubaction(candidate);
+    if (resolved) return resolved;
+  }
+
+  const found = new Set<MusicSubaction>();
+  for (const subaction of MUSIC_SUBACTIONS) {
+    const pattern = new RegExp(
+      `(^|[^a-zA-Z0-9_])${escapeRegExp(subaction)}([^a-zA-Z0-9_]|$)`,
+      "i",
+    );
+    if (pattern.test(text)) found.add(subaction);
+  }
+  return found.size === 1 ? [...found][0] : null;
+}
+
 function getMessageText(message: Memory): string {
   return typeof message.content.text === "string" ? message.content.text : "";
 }
@@ -320,7 +350,10 @@ Return ONLY:
       ? cleaned
       : `<response>${cleaned}</response>`;
     const parsed = parseKeyValueXml(wrapped) ?? {};
-    return normalizeSubaction(readParsedAction(parsed));
+    return (
+      normalizeSubaction(readParsedAction(parsed)) ??
+      extractModelActionToken(cleaned)
+    );
   } catch (error) {
     logger.warn(
       `[MUSIC] subaction extraction failed: ${

@@ -212,6 +212,59 @@ describe("MUSIC umbrella action dispatch", () => {
     playAudioHandler.mockRestore();
   });
 
+  it("accepts a canonical action enum from non-XML model output", async () => {
+    const handler = vi
+      .spyOn(playbackOp, "handler")
+      .mockResolvedValue(resolved("playback pause"));
+    const useModel = vi.fn().mockResolvedValue("The matching action is pause.");
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("pausa la música"),
+      { values: { selectedContexts: ["media"] } } as never,
+      undefined,
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      text: "playback pause",
+    });
+    expect(handler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ op: "pause" }),
+      expect.any(Function),
+    );
+
+    handler.mockRestore();
+  });
+
+  it("rejects ambiguous non-XML model output instead of guessing", async () => {
+    const handler = vi.spyOn(playbackOp, "handler");
+    const useModel = vi
+      .fn()
+      .mockResolvedValue("It could be pause, but the final enum may be skip.");
+    const callback = vi.fn();
+
+    const result = await musicAction.handler?.(
+      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+      message("pausa la música"),
+      { values: { selectedContexts: ["media"] } } as never,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Could not classify a music subaction"),
+    });
+    expect(handler).not.toHaveBeenCalled();
+
+    handler.mockRestore();
+  });
+
   it("does not use sub-handler English regexes before model extraction", async () => {
     const handler = vi.spyOn(musicLibraryAction, "handler");
     const useModel = vi
