@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { generateVoiceCorpus } from "./corpus-generator";
 import type { VoiceScenario } from "./voice-scenario";
 import { buildVoiceWorkbenchReport } from "./voice-workbench-report";
+import { decodeMonoPcm16Wav } from "./wav-codec";
 import {
 	runVoiceScenarioHeadless,
 	runVoiceWorkbenchHeadless,
@@ -123,6 +127,99 @@ describe("runVoiceScenarioHeadless — scoring", () => {
 		const eot = run.cases.find((c) => c.kind === "eot-decision");
 		expect(eot?.passed).toBe(false);
 		expect(eot).toMatchObject({ falseTriggerRate: 0.5 });
+	});
+});
+
+describe("runVoiceScenarioHeadless — audio capture sink (#8934)", () => {
+	const tempDirs: string[] = [];
+	afterEach(() => {
+		for (const dir of tempDirs.splice(0)) {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+	function makeRunDir(): string {
+		const dir = mkdtempSync(path.join(tmpdir(), "voice-capture-"));
+		tempDirs.push(dir);
+		return dir;
+	}
+
+	it("writes corpus.wav + per-turn turn-<n>.wav and records run-dir-relative artifacts", async () => {
+		const corpus = await generateVoiceCorpus(SCENARIO);
+		const runDir = makeRunDir();
+		const audioDir = path.join(runDir, "audio", SCENARIO.id);
+
+		const run = await runVoiceScenarioHeadless({
+			scenario: SCENARIO,
+			corpus,
+			services: groundTruthMockServices(),
+			captureAudio: { dir: audioDir, relativeTo: runDir },
+		});
+
+		expect(run.status).toBe("ran");
+		const labels = corpus.groundTruth.turns;
+		const artifacts = run.audioArtifacts ?? [];
+		// The full synthesized corpus once + one consumed slice per corpus turn.
+		expect(artifacts).toHaveLength(1 + labels.length);
+
+		const generated = artifacts.filter((a) => a.kind === "generated");
+		const consumed = artifacts.filter((a) => a.kind === "consumed");
+		expect(generated).toHaveLength(1);
+		expect(consumed).toHaveLength(labels.length);
+
+		// (c) `generated` is the whole corpus at turn 0, path is run-dir-relative.
+		expect(generated[0].path).toBe(`audio/${SCENARIO.id}/corpus.wav`);
+		expect(generated[0].turnIndex).toBe(0);
+		expect(generated[0].sampleRate).toBe(corpus.sampleRate);
+
+		// (c) `consumed` per-turn slices carry the ground-truth speaker + index.
+		consumed.forEach((artifact, i) => {
+			expect(artifact.path).toBe(
+				`audio/${SCENARIO.id}/turn-${labels[i].index}.wav`,
+			);
+			expect(artifact.turnIndex).toBe(labels[i].index);
+			expect(artifact.speakerLabel).toBe(labels[i].speaker);
+		});
+
+		for (const artifact of artifacts) {
+			const absolute = path.join(runDir, artifact.path);
+			// (a) the file is actually on disk under the run dir.
+			expect(existsSync(absolute)).toBe(true);
+			const bytes = new Uint8Array(readFileSync(absolute));
+			// (b) raw RIFF/WAVE magic in the header.
+			expect(String.fromCharCode(...bytes.subarray(0, 4))).toBe("RIFF");
+			expect(String.fromCharCode(...bytes.subarray(8, 12))).toBe("WAVE");
+			// (b) the decoder enforces PCM16 mono (format=1 channels=1 bits=16) —
+			// it throws on any other shape, so a successful decode IS the assertion.
+			const decoded = decodeMonoPcm16Wav(bytes);
+			expect(decoded.sampleRate).toBe(corpus.sampleRate);
+			expect(decoded.pcm.length).toBeGreaterThan(0);
+			// The recorded durationMs matches the decoded sample count.
+			expect(artifact.durationMs).toBe(
+				Math.round((decoded.pcm.length / decoded.sampleRate) * 1000),
+			);
+		}
+
+		// The generated corpus.wav round-trips back to the full corpus length.
+		const corpusBytes = new Uint8Array(
+			readFileSync(path.join(runDir, generated[0].path)),
+		);
+		expect(decodeMonoPcm16Wav(corpusBytes).pcm.length).toBe(corpus.pcm.length);
+	});
+
+	it("writes nothing and records no artifacts when no capture sink is given", async () => {
+		const corpus = await generateVoiceCorpus(SCENARIO);
+		const runDir = makeRunDir();
+
+		const run = await runVoiceScenarioHeadless({
+			scenario: SCENARIO,
+			corpus,
+			services: groundTruthMockServices(),
+		});
+
+		expect(run.status).toBe("ran");
+		expect(run.audioArtifacts).toBeUndefined();
+		// No capture sink ⇒ zero audio IO into the run dir.
+		expect(existsSync(path.join(runDir, "audio"))).toBe(false);
 	});
 });
 
