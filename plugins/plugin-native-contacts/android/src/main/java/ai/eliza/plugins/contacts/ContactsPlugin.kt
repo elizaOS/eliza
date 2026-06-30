@@ -36,59 +36,32 @@ class ContactsPlugin : Plugin() {
             return
         }
 
-        val query = call.getString("query")?.trim()?.lowercase()
         val limit = call.getInt("limit") ?: 100
         if (limit <= 0 || limit > 500) {
             call.reject("limit must be between 1 and 500")
             return
         }
+        // The ContactsProvider query is delegated to ContactsReader so it can be
+        // exercised by an instrumented androidTest (write→read round-trip) without
+        // a Capacitor Bridge (issue #9967); the JS shape below is unchanged.
         val contacts = JSArray()
-        val projection = arrayOf(
-            ContactsContract.Contacts._ID,
-            ContactsContract.Contacts.LOOKUP_KEY,
-            ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
-            ContactsContract.Contacts.PHOTO_THUMBNAIL_URI,
-            ContactsContract.Contacts.HAS_PHONE_NUMBER,
-            ContactsContract.Contacts.STARRED
-        )
-        val cursor = context.contentResolver.query(
-            ContactsContract.Contacts.CONTENT_URI,
-            projection,
-            null,
-            null,
-            "${ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} ASC"
-        )
-        if (cursor == null) {
-            call.reject("Contacts provider returned no cursor")
-            return
-        }
-        cursor.use {
-            val idCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts._ID)
-            val lookupCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY)
-            val nameCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY)
-            val photoCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.PHOTO_THUMBNAIL_URI)
-            val phoneCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.HAS_PHONE_NUMBER)
-            val starredCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)
-            var count = 0
-            while (cursor.moveToNext() && count < limit) {
-                val id = cursor.getString(idCol)
-                val displayName = cursor.getString(nameCol) ?: ""
-                val phoneNumbers = readPhoneNumbers(id, cursor.getInt(phoneCol) > 0)
-                val emailAddresses = readEmailAddresses(id)
-                if (!matchesQuery(query, displayName, phoneNumbers, emailAddresses)) continue
+        try {
+            for (record in ContactsReader(context).listContacts(call.getString("query"), limit)) {
                 contacts.put(
                     contactJson(
-                        id = id,
-                        lookupKey = cursor.getString(lookupCol) ?: "",
-                        displayName = displayName,
-                        photoUri = cursor.getString(photoCol),
-                        phoneNumbers = phoneNumbers,
-                        emailAddresses = emailAddresses,
-                        starred = cursor.getInt(starredCol) == 1
-                    )
+                        id = record.id,
+                        lookupKey = record.lookupKey,
+                        displayName = record.displayName,
+                        photoUri = record.photoUri,
+                        phoneNumbers = record.phoneNumbers,
+                        emailAddresses = record.emailAddresses,
+                        starred = record.starred,
+                    ),
                 )
-                count += 1
             }
+        } catch (error: IllegalStateException) {
+            call.reject(error.message ?: "Contacts provider returned no cursor")
+            return
         }
 
         val result = JSObject()
@@ -235,55 +208,17 @@ class ContactsPlugin : Plugin() {
             val phoneCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.HAS_PHONE_NUMBER)
             val starredCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)
             val id = cursor.getString(idCol)
+            val reader = ContactsReader(context)
             return contactJson(
                 id = id,
                 lookupKey = cursor.getString(lookupCol) ?: "",
                 displayName = cursor.getString(nameCol) ?: "",
                 photoUri = cursor.getString(photoCol),
-                phoneNumbers = readPhoneNumbers(id, cursor.getInt(phoneCol) > 0),
-                emailAddresses = readEmailAddresses(id),
+                phoneNumbers = reader.readPhoneNumbers(id, cursor.getInt(phoneCol) > 0),
+                emailAddresses = reader.readEmailAddresses(id),
                 starred = cursor.getInt(starredCol) == 1
             )
         }
-    }
-
-    private fun readPhoneNumbers(contactId: String, hasPhone: Boolean): List<String> {
-        if (!hasPhone) return emptyList()
-        val numbers = mutableListOf<String>()
-        val cursor = context.contentResolver.query(
-            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-            arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
-            "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?",
-            arrayOf(contactId),
-            null
-        ) ?: return numbers
-        cursor.use {
-            val numberCol = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
-            while (cursor.moveToNext()) {
-                val number = cursor.getString(numberCol)?.trim()
-                if (!number.isNullOrEmpty()) numbers.add(number)
-            }
-        }
-        return numbers.distinct()
-    }
-
-    private fun readEmailAddresses(contactId: String): List<String> {
-        val emails = mutableListOf<String>()
-        val cursor = context.contentResolver.query(
-            ContactsContract.CommonDataKinds.Email.CONTENT_URI,
-            arrayOf(ContactsContract.CommonDataKinds.Email.ADDRESS),
-            "${ContactsContract.CommonDataKinds.Email.CONTACT_ID} = ?",
-            arrayOf(contactId),
-            null
-        ) ?: return emails
-        cursor.use {
-            val emailCol = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.ADDRESS)
-            while (cursor.moveToNext()) {
-                val email = cursor.getString(emailCol)?.trim()
-                if (!email.isNullOrEmpty()) emails.add(email)
-            }
-        }
-        return emails.distinct()
     }
 
     private fun contactJson(
@@ -306,18 +241,6 @@ class ContactsPlugin : Plugin() {
         return contact
     }
 
-    private fun matchesQuery(
-        query: String?,
-        displayName: String,
-        phoneNumbers: List<String>,
-        emailAddresses: List<String>
-    ): Boolean {
-        if (query.isNullOrEmpty()) return true
-        if (displayName.lowercase().contains(query)) return true
-        if (phoneNumbers.any { it.lowercase().contains(query) }) return true
-        return emailAddresses.any { it.lowercase().contains(query) }
-    }
-
     private fun readStringList(call: PluginCall, arrayKey: String, singleValue: String?): List<String> {
         val values = mutableListOf<String>()
         val array = call.getArray(arrayKey)
@@ -332,95 +255,8 @@ class ContactsPlugin : Plugin() {
         return values.distinct()
     }
 
-    private fun parseVCards(input: String): List<ParsedVCard> {
-        val unfolded = unfoldVCardLines(input)
-        val contacts = mutableListOf<ParsedVCard>()
-        var current = mutableListOf<String>()
-        var insideCard = false
-        for (line in unfolded) {
-            val upper = line.uppercase()
-            if (upper == "BEGIN:VCARD") {
-                insideCard = true
-                current = mutableListOf()
-            } else if (upper == "END:VCARD") {
-                if (insideCard) {
-                    parseVCard(current)?.let { contacts.add(it) }
-                }
-                insideCard = false
-                current = mutableListOf()
-            } else if (insideCard) {
-                current.add(line)
-            }
-        }
-        if (contacts.isEmpty()) {
-            parseVCard(unfolded)?.let { contacts.add(it) }
-        }
-        return contacts
-    }
-
-    private fun unfoldVCardLines(input: String): List<String> {
-        val lines = mutableListOf<String>()
-        for (rawLine in input.replace("\r\n", "\n").replace('\r', '\n').split('\n')) {
-            if ((rawLine.startsWith(" ") || rawLine.startsWith("\t")) && lines.isNotEmpty()) {
-                lines[lines.lastIndex] = lines.last() + rawLine.drop(1)
-            } else {
-                lines.add(rawLine.trimEnd())
-            }
-        }
-        return lines
-    }
-
-    private fun parseVCard(lines: List<String>): ParsedVCard? {
-        var fullName: String? = null
-        var structuredName: String? = null
-        val phoneNumbers = mutableListOf<String>()
-        val emailAddresses = mutableListOf<String>()
-        for (line in lines) {
-            val separator = line.indexOf(':')
-            if (separator <= 0) continue
-            val key = line.substring(0, separator).substringBefore(';').uppercase()
-            val value = decodeVCardValue(line.substring(separator + 1)).trim()
-            if (value.isEmpty()) continue
-            when (key) {
-                "FN" -> fullName = value
-                "N" -> structuredName = structuredNameToDisplayName(value)
-                "TEL" -> phoneNumbers.add(value)
-                "EMAIL" -> emailAddresses.add(value)
-            }
-        }
-        val displayName = fullName ?: structuredName ?: phoneNumbers.firstOrNull() ?: emailAddresses.firstOrNull()
-        if (displayName.isNullOrBlank()) return null
-        return ParsedVCard(
-            displayName = displayName,
-            phoneNumbers = phoneNumbers.map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
-            emailAddresses = emailAddresses.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        )
-    }
-
-    private fun structuredNameToDisplayName(value: String): String {
-        val parts = value.split(';').map { decodeVCardValue(it).trim() }
-        val family = parts.getOrNull(0).orEmpty()
-        val given = parts.getOrNull(1).orEmpty()
-        val additional = parts.getOrNull(2).orEmpty()
-        val prefix = parts.getOrNull(3).orEmpty()
-        val suffix = parts.getOrNull(4).orEmpty()
-        return listOf(prefix, given, additional, family, suffix)
-            .filter { it.isNotEmpty() }
-            .joinToString(" ")
-    }
-
-    private fun decodeVCardValue(value: String): String {
-        return value
-            .replace("\\n", "\n")
-            .replace("\\N", "\n")
-            .replace("\\,", ",")
-            .replace("\\;", ";")
-            .replace("\\\\", "\\")
-    }
-
-    private data class ParsedVCard(
-        val displayName: String,
-        val phoneNumbers: List<String>,
-        val emailAddresses: List<String>
-    )
+    // RFC 6350 vCard parsing lives in the device-free [ContactsVCardParser] so
+    // the unfolding / name-fallback / unescaping logic can be unit-tested.
+    private fun parseVCards(input: String): List<ContactsVCardParser.ParsedVCard> =
+        ContactsVCardParser.parse(input)
 }

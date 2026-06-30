@@ -37,12 +37,15 @@ class PhonePlugin : Plugin() {
 
     @PluginMethod
     fun getStatus(call: PluginCall) {
-        val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+        // Device read is delegated to PhoneStatusReader so it can be exercised by
+        // an instrumented androidTest without a Capacitor Bridge (issue #9967);
+        // the JS wire shape below is unchanged.
+        val status = PhoneStatusReader(context).readStatus()
         val result = JSObject()
-        result.put("hasTelecom", telecom != null)
-        result.put("canPlaceCalls", hasPermission(Manifest.permission.CALL_PHONE))
-        result.put("defaultDialerPackage", telecom?.defaultDialerPackage)
-        result.put("isDefaultDialer", telecom?.defaultDialerPackage == context.packageName)
+        result.put("hasTelecom", status.hasTelecom)
+        result.put("canPlaceCalls", status.canPlaceCalls)
+        result.put("defaultDialerPackage", status.defaultDialerPackage)
+        result.put("isDefaultDialer", status.isDefaultDialer)
         call.resolve(result)
     }
 
@@ -203,18 +206,9 @@ class PhonePlugin : Plugin() {
         return entries
     }
 
-    private fun callLogType(type: Int): String {
-        return when (type) {
-            CallLog.Calls.INCOMING_TYPE -> "incoming"
-            CallLog.Calls.OUTGOING_TYPE -> "outgoing"
-            CallLog.Calls.MISSED_TYPE -> "missed"
-            CallLog.Calls.VOICEMAIL_TYPE -> "voicemail"
-            CallLog.Calls.REJECTED_TYPE -> "rejected"
-            CallLog.Calls.BLOCKED_TYPE -> "blocked"
-            CallLog.Calls.ANSWERED_EXTERNALLY_TYPE -> "answered_externally"
-            else -> "unknown"
-        }
-    }
+    // Call-log type mapping lives in the device-free [PhoneCallLogTypes] so it
+    // can be unit-tested directly.
+    private fun callLogType(type: Int): String = PhoneCallLogTypes.toBridgeType(type)
 
     private fun JSONObject.optionalString(key: String): String? {
         if (!has(key) || isNull(key)) return null

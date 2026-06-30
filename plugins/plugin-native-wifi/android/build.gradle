@@ -14,6 +14,9 @@ android {
     defaultConfig {
         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
         targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
+        // Instrumented (androidTest) runner — exercises WiFiStateReader's real
+        // WifiManager read on a connected device/emulator (issue #9967).
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -32,4 +35,12 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+
+    // JVM unit test deps (src/test/*Test.kt format helpers).
+    testImplementation "junit:junit:$junitVersion"
+
+    // Instrumented test deps (issue #9967 — on-device Wi-Fi state read).
+    androidTestImplementation "androidx.test:core:1.5.0"
+    androidTestImplementation "androidx.test:runner:1.5.2"
+    androidTestImplementation "androidx.test.ext:junit:1.1.5"
 }
