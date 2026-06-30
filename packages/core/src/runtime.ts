@@ -4951,9 +4951,9 @@ export class AgentRuntime implements IAgentRuntime {
 		let handlerDeliveredStream = false;
 		let streamedText = "";
 		let secretSwapSession: SecretSwapSession | null = null;
-		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
+		let secretSwapStreamBuffer = "";
+		const emitModelStreamChunk = async (safeChunk: string): Promise<void> => {
 			if (abortSignal?.aborted) return;
-			const safeChunk = secretSwapSession?.substituteText(chunk) ?? chunk;
 			if (streamedText === "" && safeChunk.length > 0) {
 				markInference(INFERENCE_MARKS.firstToken);
 			}
@@ -4980,12 +4980,34 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			await runInsideModelStreamChunkDelivery(async () => {
 				if (structuredExtractor) {
-					structuredExtractor.push(chunk);
+					structuredExtractor.push(safeChunk);
 					return;
 				}
-				if (paramsChunk) await paramsChunk(chunk, msgId, undefined);
-				if (ctxChunk) await ctxChunk(chunk, msgId, undefined);
+				if (paramsChunk) await paramsChunk(safeChunk, msgId, undefined);
+				if (ctxChunk) await ctxChunk(safeChunk, msgId, undefined);
 			});
+		};
+		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
+			if (abortSignal?.aborted) return;
+			if (secretSwapSession) {
+				secretSwapStreamBuffer += chunk;
+				return;
+			}
+			await emitModelStreamChunk(chunk);
+		};
+		const flushSecretSwapStream = async (): Promise<void> => {
+			if (
+				abortSignal?.aborted ||
+				!secretSwapSession ||
+				secretSwapStreamBuffer.length === 0
+			) {
+				return;
+			}
+			const safeText = secretSwapSession.substituteText(secretSwapStreamBuffer);
+			secretSwapStreamBuffer = "";
+			if (safeText.length > 0) {
+				await emitModelStreamChunk(safeText);
+			}
 		};
 		// Wire the handler-facing stream callback for local providers AND for the
 		// prefer-local router ("eliza-router"): the router resolves to itself as
@@ -5167,6 +5189,7 @@ export class AgentRuntime implements IAgentRuntime {
 				if (abortSignal?.aborted) break;
 				await deliverModelStreamChunk(chunk);
 			}
+			await flushSecretSwapStream();
 			structuredExtractor?.flush();
 
 			const trajStreamEnd = getTrajectoryContext();
@@ -5298,6 +5321,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		if (handlerDeliveredStream) {
+			await flushSecretSwapStream();
 			structuredExtractor?.flush();
 			const trajStreamEnd = getTrajectoryContext();
 			await this.invokePipelineHooks(

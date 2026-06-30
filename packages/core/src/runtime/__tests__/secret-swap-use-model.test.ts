@@ -90,4 +90,33 @@ describe("AgentRuntime.useModel secret swap", () => {
 		expect(seenPrompt).toContain("__ELIZA_SECRET_");
 		expect(seenPrompt).not.toContain("sk-late_1234567890abcdef");
 	});
+
+	it("does not leak secrets split across stream chunks", async () => {
+		const runtime = makeRuntime(true);
+		const streamedChunks: string[] = [];
+		async function* textStream() {
+			yield "response whsec_123";
+			yield "4567890abcdef done";
+		}
+		const handler = vi.fn(async () => ({
+			text: Promise.resolve("response whsec_1234567890abcdef done"),
+			textStream: textStream(),
+			usage: Promise.resolve({}),
+			finishReason: Promise.resolve("stop"),
+		}));
+		runtime.registerModel(ModelType.TEXT_SMALL, handler, "test");
+
+		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+			prompt: "stream this",
+			stream: true,
+			onStreamChunk: (chunk: string) => {
+				streamedChunks.push(chunk);
+			},
+		});
+
+		expect(streamedChunks.join("")).toContain("__ELIZA_SECRET_1__");
+		expect(streamedChunks.join("")).not.toContain("whsec_1234567890abcdef");
+		expect(result).toContain("__ELIZA_SECRET_1__");
+		expect(result).not.toContain("whsec_1234567890abcdef");
+	});
 });
