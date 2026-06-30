@@ -1,0 +1,10 @@
+$ vitest run src/messageManager.outbound-media.test.ts
+
+ RUN  v4.1.5 /home/shaw/milady/eliza-issue-8904/plugins/plugin-telegram
+
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  23:39:30
+   Duration  574ms (transform 282ms, setup 82ms, import 304ms, tests 9ms, environment 0ms)
+

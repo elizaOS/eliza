@@ -1,0 +1,10 @@
+$ bunx vitest run --config vitest.config.ts __tests__/unit/screenshot-delivery.test.ts
+
+ RUN  v4.1.5 /home/shaw/milady/eliza-issue-8904/plugins/plugin-agent-orchestrator
+
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  23:39:22
+   Duration  7.27s (transform 5.62s, setup 44ms, import 6.97s, tests 73ms, environment 0ms)
+

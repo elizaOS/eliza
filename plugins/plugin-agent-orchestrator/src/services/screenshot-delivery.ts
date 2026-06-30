@@ -10,6 +10,7 @@
  * Telegram user sees what a Claude-Code user sees in-terminal.
  */
 
+import fs from "node:fs";
 import type { Content, Media, UUID } from "@elizaos/core";
 import { ContentType, logger } from "@elizaos/core";
 import { parseCompletionEnvelope } from "./completion-envelope.js";
@@ -17,6 +18,8 @@ import { parseCompletionEnvelope } from "./completion-envelope.js";
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp)$/i;
 /** Cap how many screenshots we forward so a chatty task can't flood the chat. */
 export const MAX_SCREENSHOTS = 5;
+/** Cap the total screenshot bytes forwarded in one completion. */
+export const MAX_SCREENSHOT_TOTAL_BYTES = 20 * 1024 * 1024;
 
 /**
  * Pure: collect candidate screenshot paths for a completion. Prefers the
@@ -70,6 +73,47 @@ export function screenshotsToAttachments(
   }));
 }
 
+type ScreenshotSizeOf = (path: string) => number | null;
+
+function statScreenshotSize(path: string): number | null {
+  try {
+    const stat = fs.statSync(path);
+    return stat.isFile() ? stat.size : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Select the screenshot paths that fit both the count cap and the total byte
+ * budget. Unknown-size paths are skipped because connector media dispatch reads
+ * local files; sending an unstatted path would only fail later with less context.
+ */
+export function selectScreenshotPathsForDelivery(
+  paths: string[],
+  options: {
+    maxCount?: number;
+    maxTotalBytes?: number;
+    sizeOf?: ScreenshotSizeOf;
+  } = {},
+): string[] {
+  const maxCount = options.maxCount ?? MAX_SCREENSHOTS;
+  const maxTotalBytes = options.maxTotalBytes ?? MAX_SCREENSHOT_TOTAL_BYTES;
+  const sizeOf = options.sizeOf ?? statScreenshotSize;
+  const selected: string[] = [];
+  let totalBytes = 0;
+
+  for (const path of paths) {
+    if (selected.length >= maxCount) break;
+    const size = sizeOf(path);
+    if (size === null || size < 0) continue;
+    if (totalBytes + size > maxTotalBytes) continue;
+    selected.push(path);
+    totalBytes += size;
+  }
+  return selected;
+}
+
 type SendToTarget = (
   target: { source: string; roomId: UUID },
   content: Content,
@@ -86,7 +130,8 @@ export async function deliverScreenshots(
   paths: string[],
   label?: string,
 ): Promise<number> {
-  const attachments = screenshotsToAttachments(paths);
+  const selectedPaths = selectScreenshotPathsForDelivery(paths);
+  const attachments = screenshotsToAttachments(selectedPaths);
   if (attachments.length === 0) return 0;
   const who = label ? ` from ${label}` : "";
   try {

@@ -1,0 +1,18 @@
+{
+  "issue": 8904,
+  "source": "telegram",
+  "delivered": 1,
+  "note": "Static artifact accompanying the focused tests. The orchestrator test validates ContentType.IMAGE attachment dispatch after byte-budget trimming; the Telegram outbound-media test validates image attachments use sendPhoto.",
+  "sentContentShape": {
+    "text": "📸 1 screenshot from #8904 evidence",
+    "source": "telegram",
+    "attachments": [
+      {
+        "contentType": "image",
+        "source": "sub-agent",
+        "title": "delivered-image.png",
+        "url": "/home/shaw/milady/eliza-issue-8904/.github/issue-evidence/8904-telegram-screenshot-delivery/delivered-image.png"
+      }
+    ]
+  }
+}
