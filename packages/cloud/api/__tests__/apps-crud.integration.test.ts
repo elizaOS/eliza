@@ -43,6 +43,7 @@ import * as realAppFactory from "@/lib/services/app-factory";
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global and leaks across files otherwise.
 import * as realApps from "@/lib/services/apps";
+import * as realChars from "@/lib/services/characters/characters";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { authMiddleware } from "../src/middleware/auth";
 
@@ -128,6 +129,7 @@ function makeApp(overrides: Partial<App>): App {
 // ---------------------------------------------------------------------------
 
 const store = new Map<string, App>();
+let createAppLimit: number | null = null;
 
 function slugFor(name: string): string {
   return name
@@ -196,6 +198,18 @@ const createApp = mock(
         `An app with the name "${data.name}" already exists. Please choose a different name.`,
         "app",
         `${data.name}-a1b2`,
+      );
+    }
+
+    if (
+      createAppLimit !== null &&
+      [...store.values()].filter(
+        (a) => a.organization_id === data.organization_id,
+      ).length >= createAppLimit
+    ) {
+      throw new realApps.AppCreationLimitError(
+        data.organization_id,
+        createAppLimit,
       );
     }
 
@@ -316,6 +330,20 @@ mock.module("@/lib/services/apps", () => ({
   appsService: appsServiceMock,
 }));
 
+// The PUT /apps/:id route validates each linked_character_id via the real
+// charactersService.getById (a DB query) to block cross-tenant character
+// linking. This unit-style suite mocks the apps store, not the DB, so stub the
+// lookup: report every requested character as an owned, public character so the
+// route's existence + ownership guard passes for the happy-path link test. No
+// test asserts a character rejection, so this stays faithful to the route.
+mock.module("@/lib/services/characters/characters", () => ({
+  ...realChars,
+  charactersService: {
+    ...realChars.charactersService,
+    getById: async (id: string) => ({ id, user_id: USER_A, is_public: true }),
+  },
+}));
+
 mock.module("@/lib/services/app-factory", () => ({
   ...realAppFactory,
   appFactoryService: { ...realAppFactory.appFactoryService, createApp },
@@ -345,6 +373,7 @@ const checkNameRoute = (await import("../v1/apps/check-name/route")).default;
 afterAll(() => {
   mock.module("@/lib/auth/workers-hono-auth", () => realAuth);
   mock.module("@/lib/services/apps", () => realApps);
+  mock.module("@/lib/services/characters/characters", () => realChars);
   mock.module("@/lib/services/app-factory", () => realAppFactory);
   mock.module("@/lib/services/app-cleanup", () => realAppCleanup);
   mock.module("@/lib/services/app-credits", () => realAppCredits);
@@ -430,6 +459,7 @@ const VALID_CREATE = {
 beforeEach(() => {
   store.clear();
   cleanupErrors = [];
+  createAppLimit = null;
   createApp.mockClear();
   updateMonetizationSettings.mockClear();
   deleteAppWithCleanup.mockClear();
@@ -479,6 +509,24 @@ describe("POST /api/v1/apps (create)", () => {
     expect(json.success).toBe(false);
     expect(json.conflictType).toBe("app");
     expect(json.suggestedName).toBe("My Cool App-a1b2");
+  });
+
+  test("429 when the organization app creation cap is reached", async () => {
+    createAppLimit = 1;
+    seed({ name: "Existing", slug: "existing", organization_id: ORG_A });
+
+    const { status, json } = await req("POST", "/api/v1/apps", {
+      key: KEY_A,
+      body: { ...VALID_CREATE, name: "Second App" },
+    });
+
+    expect(status).toBe(429);
+    expect(json.success).toBe(false);
+    expect(json.code).toBe("app_creation_limit_reached");
+    expect(json.limit).toBe(1);
+    expect(
+      [...store.values()].filter((a) => a.organization_id === ORG_A),
+    ).toHaveLength(1);
   });
 
   test("200 happy path defaults to no GitHub repo", async () => {

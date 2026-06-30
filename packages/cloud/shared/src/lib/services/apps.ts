@@ -16,6 +16,24 @@ import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { managedDomainsService } from "./managed-domains";
 
+const DEFAULT_MAX_APPS_PER_ORG = 25;
+
+function resolveMaxAppsPerOrg(): number {
+  const raw = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+  if (!raw) return DEFAULT_MAX_APPS_PER_ORG;
+
+  const value = raw.trim();
+  if (!/^[1-9]\d*$/.test(value)) {
+    logger.warn("[Apps] Invalid ELIZA_CLOUD_MAX_APPS_PER_ORG; using default", {
+      value: raw,
+      defaultValue: DEFAULT_MAX_APPS_PER_ORG,
+    });
+    return DEFAULT_MAX_APPS_PER_ORG;
+  }
+
+  return Number.parseInt(value, 10);
+}
+
 export class AppNameConflictError extends Error {
   constructor(
     message: string,
@@ -24,6 +42,16 @@ export class AppNameConflictError extends Error {
   ) {
     super(message);
     this.name = "AppNameConflictError";
+  }
+}
+
+export class AppCreationLimitError extends Error {
+  constructor(
+    public readonly organizationId: string,
+    public readonly limit: number,
+  ) {
+    super(`Organization has reached the app creation limit of ${limit}`);
+    this.name = "AppCreationLimitError";
   }
 }
 
@@ -251,6 +279,26 @@ export class AppsService {
     return await appsRepository.listAll(filters);
   }
 
+  async countByOrganization(organizationId: string): Promise<number> {
+    return await appsRepository.countByOrganization(organizationId);
+  }
+
+  async assertCanCreateForOrganization(organizationId: string): Promise<{ limit: number }> {
+    const limit = resolveMaxAppsPerOrg();
+    const currentCount = await appsRepository.countByOrganization(organizationId);
+
+    if (currentCount >= limit) {
+      logger.warn("[Apps] Rejected app create at organization cap", {
+        organizationId,
+        currentCount,
+        limit,
+      });
+      throw new AppCreationLimitError(organizationId, limit);
+    }
+
+    return { limit };
+  }
+
   async create(data: {
     name: string;
     description?: string;
@@ -276,6 +324,8 @@ export class AppsService {
       throw new Error("Failed to generate unique slug");
     }
 
+    const { limit } = await this.assertCanCreateForOrganization(data.organization_id);
+
     const { apiKey, plainKey } = await apiKeysService.create({
       name: `${data.name} - App API Key`,
       description: `API key for app: ${data.name}`,
@@ -284,19 +334,43 @@ export class AppsService {
       rate_limit: 10000,
     });
 
-    const app = await appsRepository.create({
-      name: data.name,
-      description: data.description,
-      slug,
-      organization_id: data.organization_id,
-      created_by_user_id: data.created_by_user_id,
-      app_url: data.app_url,
-      allowed_origins: data.allowed_origins || [data.app_url],
-      api_key_id: apiKey.id,
-      logo_url: data.logo_url,
-      website_url: data.website_url,
-      contact_email: data.contact_email,
-    });
+    let app: App | undefined;
+    try {
+      app = await appsRepository.createIfOrganizationBelowLimit(
+        {
+          name: data.name,
+          description: data.description,
+          slug,
+          organization_id: data.organization_id,
+          created_by_user_id: data.created_by_user_id,
+          app_url: data.app_url,
+          allowed_origins: data.allowed_origins || [data.app_url],
+          api_key_id: apiKey.id,
+          logo_url: data.logo_url,
+          website_url: data.website_url,
+          contact_email: data.contact_email,
+        },
+        limit,
+      );
+    } catch (error) {
+      await apiKeysService.delete(apiKey.id).catch((cleanupError) => {
+        logger.warn("[Apps] Failed to clean up API key after app create failure", {
+          apiKeyId: apiKey.id,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        });
+      });
+      throw error;
+    }
+
+    if (!app) {
+      await apiKeysService.delete(apiKey.id).catch((cleanupError) => {
+        logger.warn("[Apps] Failed to clean up API key after app cap rejection", {
+          apiKeyId: apiKey.id,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        });
+      });
+      throw new AppCreationLimitError(data.organization_id, limit);
+    }
 
     logger.info(`Created app: ${app.name} (${app.id})`, {
       appId: app.id,
