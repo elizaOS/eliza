@@ -60,6 +60,13 @@ function rootBuildCoreScript(): string {
   return pkg.scripts?.["build:core"] ?? "";
 }
 
+function corePrebuildScript(): string {
+  const pkg = JSON.parse(
+    readFileSync(path.join(REPO_ROOT, "packages/core/package.json"), "utf8"),
+  ) as { scripts?: Record<string, string> };
+  return pkg.scripts?.prebuild ?? "";
+}
+
 describe("build-core package set (issue #10200)", () => {
   test("every core package resolves to a real workspace package (drift guard)", () => {
     const workspaceNames = collectWorkspacePackageNames();
@@ -112,5 +119,13 @@ describe("build-core package set (issue #10200)", () => {
     expect(body).toBe("node packages/scripts/build-core.mjs");
     // Guard against regressing to the hand-maintained inline flag wall.
     expect(body).not.toContain("--filter=");
+  });
+
+  test("package-local core build prepares logger before core declarations", () => {
+    const body = corePrebuildScript();
+    expect(body).toContain("bun run --cwd ../logger build");
+    expect(body.indexOf("../logger build")).toBeLessThan(
+      body.indexOf("../contracts build"),
+    );
   });
 });
