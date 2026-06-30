@@ -50,6 +50,7 @@ import {
 } from "@elizaos/shared";
 import { getApps, loadRegistry } from "../registry";
 import { registerCoreSensitiveRequestAdapters } from "../services/sensitive-requests/index.js";
+import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.js";
 import {
   type AppRoutePluginRegistryEntry,
   drainAppRoutePluginLoaders,
@@ -739,6 +740,7 @@ export interface PostReadyBootSteps {
   registerAppRoutePlugins: (runtime: AgentRuntime) => Promise<void>;
   registerTrainingRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
   registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
+  registerSubAgentCredentialBridge: (runtime: AgentRuntime) => Promise<void>;
   shouldStartTelegramStandaloneBot: () => boolean;
   ensureTelegramBotPolling: (runtime: AgentRuntime) => Promise<void>;
   stopTelegramBotPolling: (reason: string) => void;
@@ -752,6 +754,7 @@ const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
   registerAppRoutePlugins,
   registerTrainingRuntimeHooks,
   registerCoreSensitiveRequestAdapters,
+  registerSubAgentCredentialBridge,
   shouldStartTelegramStandaloneBot,
   ensureTelegramBotPolling,
   stopTelegramBotPolling,
@@ -798,6 +801,10 @@ export async function runPostReadyBootTail(
   // Register first-party sensitive-request delivery adapters with the
   // dispatch registry (no-op when the registry service isn't present).
   steps.registerCoreSensitiveRequestAdapters(runtime);
+
+  // Wire the sub-agent credential bridge (#10317) onto parent runtimes that can
+  // host coding sub-agents. No-op on child/sandboxed runtimes.
+  await steps.registerSubAgentCredentialBridge(runtime);
 
   if (steps.shouldStartTelegramStandaloneBot()) {
     await steps.ensureTelegramBotPolling(runtime);

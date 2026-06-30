@@ -199,6 +199,17 @@ export interface SensitiveRequestDelivery {
   instruction?: string;
   privateRouteRequired?: boolean;
   canCollectValueInCurrentChannel?: boolean;
+  /**
+   * Present only when this secret request collects a credential for a blocked
+   * coding sub-agent. Identifiers only — the scoped token and the value are
+   * NEVER serialized here. When set, `SensitiveRequestBlock` tunnels the value
+   * to the waiting child via `client.tunnelCredential` instead of writing it to
+   * the agent secret store (the two paths are mutually exclusive).
+   */
+  tunnel?: {
+    credentialScopeId: string;
+    childSessionId: string;
+  };
 }
 
 export interface SensitiveRequestFormField {

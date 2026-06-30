@@ -14,15 +14,19 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
-const { clientMock, updateSecretsMock } = vi.hoisted(() => ({
-  clientMock: {
-    getPermission: vi.fn(),
-    requestPermission: vi.fn(),
-    openPermissionSettings: vi.fn(),
-    updateSecrets: vi.fn(),
-  },
-  updateSecretsMock: vi.fn(),
-}));
+const { clientMock, updateSecretsMock, tunnelCredentialMock } = vi.hoisted(
+  () => ({
+    clientMock: {
+      getPermission: vi.fn(),
+      requestPermission: vi.fn(),
+      openPermissionSettings: vi.fn(),
+      updateSecrets: vi.fn(),
+      tunnelCredential: vi.fn(),
+    },
+    updateSecretsMock: vi.fn(),
+    tunnelCredentialMock: vi.fn(),
+  }),
+);
 
 vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
@@ -125,6 +129,39 @@ function pendingOwnerInlineSecretRequest(): ConversationMessage["secretRequest"]
   };
 }
 
+function pendingTunnelSecretRequest(): ConversationMessage["secretRequest"] {
+  return {
+    key: "OPENAI_API_KEY",
+    reason: "Sub-agent needs this credential to continue",
+    status: "pending",
+    delivery: {
+      mode: "inline_owner_app",
+      instruction: "Provide it securely below.",
+      privateRouteRequired: true,
+      canCollectValueInCurrentChannel: true,
+      tunnel: {
+        credentialScopeId: "cred_scope_0011223344556677",
+        childSessionId: "pty-1-abc",
+      },
+    },
+    form: {
+      type: "sensitive_request_form",
+      kind: "secret",
+      mode: "inline_owner_app",
+      fields: [
+        {
+          name: "OPENAI_API_KEY",
+          label: "OPENAI_API_KEY",
+          input: "secret",
+          required: true,
+        },
+      ],
+      submitLabel: "Provide credential",
+      statusOnly: true,
+    },
+  };
+}
+
 function pendingOAuthRequest(): ConversationMessage["secretRequest"] {
   return {
     key: "GITHUB_OAUTH",
@@ -189,7 +226,9 @@ describe("MessageContent sensitive requests", () => {
 
   beforeEach(() => {
     updateSecretsMock.mockReset();
+    tunnelCredentialMock.mockReset();
     clientMock.updateSecrets.mockImplementation(updateSecretsMock);
+    clientMock.tunnelCredential.mockImplementation(tunnelCredentialMock);
     clientMock.getPermission.mockResolvedValue(permissionState());
     clientMock.requestPermission.mockResolvedValue(
       permissionState({ status: "granted", canRequest: false }),
@@ -270,6 +309,41 @@ describe("MessageContent sensitive requests", () => {
     ]);
     expect(container.textContent?.includes(rawSecret)).toBe(false);
     expect(screen.queryByLabelText("OPENAI_API_KEY")).toBeNull();
+    // Mutual exclusivity: a normal secret request never tunnels.
+    expect(tunnelCredentialMock).not.toHaveBeenCalled();
+  });
+
+  it("routes a tunnel-delivery request through client.tunnelCredential, never updateSecrets (#10317)", async () => {
+    tunnelCredentialMock.mockResolvedValueOnce({ ok: true });
+    const rawSecret = ["tunnel", "secret", String(Date.now())].join("-");
+    const { container } = render(
+      <MessageContent
+        message={baseMessage({ secretRequest: pendingTunnelSecretRequest() })}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("OPENAI_API_KEY"), {
+      target: { value: rawSecret },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Provide credential" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
+        "Saved",
+      );
+    });
+
+    expect(tunnelCredentialMock).toHaveBeenCalledTimes(1);
+    expect(tunnelCredentialMock.mock.calls[0]?.[0]).toEqual({
+      credentialScopeId: "cred_scope_0011223344556677",
+      childSessionId: "pty-1-abc",
+      key: "OPENAI_API_KEY",
+      value: rawSecret,
+    });
+    // MUTUALLY EXCLUSIVE: the value never reaches the agent secret store.
+    expect(updateSecretsMock).not.toHaveBeenCalled();
+    // The value is never rendered back into chat text.
+    expect(container.textContent?.includes(rawSecret)).toBe(false);
   });
 
   it("renders an image field as a file input and delivers it via updateSecrets (#8910)", async () => {
