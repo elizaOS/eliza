@@ -63,13 +63,21 @@ import type {
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
 const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
+const STAGING_DIRECT_CLOUD_BASE_URL = "https://staging.elizacloud.ai";
+const STAGING_DIRECT_CLOUD_API_BASE_URL = "https://api-staging.elizacloud.ai";
 const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
-const DIRECT_ELIZA_CLOUD_WEB_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
+const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
+  ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
+  ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
 ]);
-const DIRECT_ELIZA_CLOUD_API_HOST = "api.elizacloud.ai";
+const DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = new Map([
+  ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
+]);
 
 type DirectCloudAgent = {
   id?: string;
@@ -160,10 +168,7 @@ function isDirectCloudBase(client: ElizaClient): boolean {
 
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
-    return (
-      host === DIRECT_ELIZA_CLOUD_API_HOST ||
-      DIRECT_ELIZA_CLOUD_WEB_HOSTS.has(host)
-    );
+    return DIRECT_ELIZA_CLOUD_API_BY_HOST.has(host);
   } catch {
     return false;
   }
@@ -234,9 +239,7 @@ function resolveDirectCloudWebBase(cloudBase: string): string {
   const normalized = cloudBase.replace(/\/+$/, "");
   try {
     const host = new URL(normalized).hostname.toLowerCase();
-    if (host === DIRECT_ELIZA_CLOUD_API_HOST) {
-      return DEFAULT_DIRECT_CLOUD_BASE_URL;
-    }
+    return DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST.get(host) ?? normalized;
   } catch {
     // Fall back to the provided base below.
   }
@@ -248,12 +251,7 @@ function resolveDirectCloudAuthApiBase(cloudBase: string): string {
   try {
     const url = new URL(normalized);
     const host = url.hostname.toLowerCase();
-    if (
-      host === DIRECT_ELIZA_CLOUD_API_HOST ||
-      DIRECT_ELIZA_CLOUD_WEB_HOSTS.has(host)
-    ) {
-      return DEFAULT_DIRECT_CLOUD_API_BASE_URL;
-    }
+    return DIRECT_ELIZA_CLOUD_API_BY_HOST.get(host) ?? normalized;
   } catch {
     // Fall back to the provided base below.
   }
