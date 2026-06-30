@@ -16,9 +16,9 @@
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import {
+  APP_ID,
   adbDevice,
   adbReverse,
-  APP_ID,
   resolveAdb,
 } from "../../scripts/lib/android-device.mjs";
 import { expect, ORIGIN, test } from "./android-harness";

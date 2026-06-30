@@ -19,9 +19,9 @@ describe("normalizeRemoteAgentUrl", () => {
   });
 
   it("strips query and hash so one host has one identity", () => {
-    expect(
-      normalizeRemoteAgentUrl("https://agent.example.com/?x=1#frag"),
-    ).toBe("https://agent.example.com");
+    expect(normalizeRemoteAgentUrl("https://agent.example.com/?x=1#frag")).toBe(
+      "https://agent.example.com",
+    );
   });
 
   it("throws on an empty value", () => {
@@ -37,9 +37,7 @@ describe("normalizeRemoteAgentUrl", () => {
   });
 });
 
-function makeClient(
-  overrides: Partial<RemoteFirstRunClient> = {},
-): {
+function makeClient(overrides: Partial<RemoteFirstRunClient> = {}): {
   client: RemoteFirstRunClient;
   getFirstRunStatus: ReturnType<typeof vi.fn>;
   submitFirstRun: ReturnType<typeof vi.fn>;

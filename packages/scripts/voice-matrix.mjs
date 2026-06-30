@@ -183,20 +183,11 @@ const CELLS = [
       voices: "owner",
     },
     class: "desktop-live-voice",
-    command: [
-      "bun",
-      "run",
-      "--cwd",
-      "packages/app",
-      "capture:macos-desktop",
-      "--",
-      "--issue",
-      ISSUE,
-      "--slug",
-      "voice-macos-electrobun",
-    ],
+    command: ["bun", "run", "--cwd", "packages/app", "test:desktop:voice"],
+    env: { ELIZA_VOICE_DESKTOP_SELFTEST: "1" },
     evidence: [
-      `.github/issue-evidence/${ISSUE}-voice-macos-electrobun-macos-desktop.*`,
+      "$ELIZA_VOICE_MATRIX_OUT/macos.electrobun.live-roundtrip",
+      "packages/app/test-results",
     ],
     probe: "macosElectrobun",
   },
@@ -213,20 +204,11 @@ const CELLS = [
       voices: "owner",
     },
     class: "desktop-live-voice",
-    command: [
-      "bun",
-      "run",
-      "--cwd",
-      "packages/app",
-      "capture:windows-desktop",
-      "--",
-      "--issue",
-      ISSUE,
-      "--slug",
-      "voice-windows-electrobun",
-    ],
+    command: ["bun", "run", "--cwd", "packages/app", "test:desktop:voice"],
+    env: { ELIZA_VOICE_DESKTOP_SELFTEST: "1" },
     evidence: [
-      `.github/issue-evidence/${ISSUE}-voice-windows-electrobun-windows-desktop.*`,
+      "$ELIZA_VOICE_MATRIX_OUT/windows.electrobun.live-roundtrip",
+      "packages/app/test-results",
     ],
     probe: "windowsElectrobun",
   },
@@ -441,12 +423,59 @@ function commandExists(name) {
   return spawnSync(cmd, [name], { stdio: "ignore" }).status === 0;
 }
 
-function runCapture(command, cwd, extraEnv = {}) {
+function findFiles(root, predicate, found = []) {
+  if (!fs.existsSync(root)) return found;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) findFiles(fullPath, predicate, found);
+    else if (entry.isFile() && predicate(fullPath)) found.push(fullPath);
+  }
+  return found;
+}
+
+function hasPackagedDesktopLauncher(platform) {
+  const explicit = process.env.ELIZA_TEST_PACKAGED_LAUNCHER_PATH?.trim();
+  if (explicit) return fs.existsSync(explicit);
+  const roots = [
+    path.join(REPO_ROOT, "packages/app-core/platforms/electrobun/build"),
+    path.join(REPO_ROOT, "packages/app-core/platforms/electrobun/artifacts"),
+  ];
+  if (platform === "darwin") {
+    return roots.some(
+      (root) =>
+        findFiles(root, (fullPath) =>
+          fullPath.endsWith(
+            `${path.sep}Contents${path.sep}MacOS${path.sep}launcher`,
+          ),
+        ).length > 0,
+    );
+  }
+  if (platform === "win32") {
+    return roots.some(
+      (root) =>
+        findFiles(
+          root,
+          (fullPath) =>
+            path.basename(fullPath).toLowerCase() === "launcher.exe",
+        ).length > 0,
+    );
+  }
+  return false;
+}
+
+function runCapture(command, cwd, extraEnv = {}, context = {}) {
   const startedAt = new Date().toISOString();
   const result = spawnSync(command[0], command.slice(1), {
     cwd: path.resolve(REPO_ROOT, cwd ?? "."),
     encoding: "utf8",
-    env: { ...process.env, ...extraEnv },
+    env: {
+      ...process.env,
+      ...(context.matrixOut
+        ? { ELIZA_VOICE_MATRIX_OUT: context.matrixOut }
+        : {}),
+      ...(context.cellId ? { ELIZA_VOICE_MATRIX_CELL_ID: context.cellId } : {}),
+      ...extraEnv,
+    },
     maxBuffer: 64 * 1024 * 1024,
   });
   return {
@@ -508,9 +537,24 @@ function probeCell(cell) {
             "set ELIZA_VOICE_MACOS_ELECTROBUN_READY=1 on a macOS Electrobun voice runner with loopback mic/audio capture",
         };
       }
+      if (!process.env.ELIZA_VOICE_DESKTOP_API_BASE?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_DESKTOP_API_BASE is not set to a real app-core API base",
+        };
+      }
+      if (!hasPackagedDesktopLauncher("darwin")) {
+        return {
+          available: false,
+          reason:
+            "packaged macOS Electrobun launcher is missing; build/redeploy the latest desktop app before capture",
+        };
+      }
       return {
         available: true,
-        reason: "macOS Electrobun voice runner enabled",
+        reason:
+          "macOS Electrobun voice runner enabled with packaged launcher and API base",
       };
     case "windowsElectrobun":
       if (process.platform !== "win32")
@@ -525,9 +569,24 @@ function probeCell(cell) {
             "set ELIZA_VOICE_WINDOWS_ELECTROBUN_READY=1 on a Windows Electrobun voice runner with loopback mic/audio capture",
         };
       }
+      if (!process.env.ELIZA_VOICE_DESKTOP_API_BASE?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_DESKTOP_API_BASE is not set to a real app-core API base",
+        };
+      }
+      if (!hasPackagedDesktopLauncher("win32")) {
+        return {
+          available: false,
+          reason:
+            "packaged Windows Electrobun launcher is missing; build/redeploy the latest desktop app before capture",
+        };
+      }
       return {
         available: true,
-        reason: "Windows Electrobun voice runner enabled",
+        reason:
+          "Windows Electrobun voice runner enabled with packaged launcher and API base",
       };
     case "ios":
       if (process.platform !== "darwin")
@@ -696,6 +755,7 @@ async function main() {
     process.exit(2);
   }
 
+  const outDir = path.resolve(REPO_ROOT, args.out);
   const selected = CELLS.filter(
     (cell) =>
       args.platforms.size === 0 ||
@@ -707,7 +767,10 @@ async function main() {
     const probe = probeCell(cell);
     let execution = null;
     if (args.run && probe.available) {
-      execution = runCapture(cell.command, cell.cwd, cell.env);
+      execution = runCapture(cell.command, cell.cwd, cell.env, {
+        matrixOut: outDir,
+        cellId: cell.id,
+      });
       probe.reason =
         execution.exitCode === 0
           ? `command passed (${execution.finishedAt})`
@@ -752,7 +815,6 @@ async function main() {
     cells,
   };
 
-  const outDir = path.resolve(REPO_ROOT, args.out);
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(
     path.join(outDir, "voice-matrix.json"),
