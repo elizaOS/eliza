@@ -1,3 +1,4 @@
+import type { AiPricingEntry } from "../../../db/schemas/ai-pricing";
 import {
   EXTERNAL_CACHE_TTL_MS,
   type ExternalCacheValue,
@@ -49,4 +50,53 @@ export async function getCachedExternalEntries(
     expiresAt: Date.now() + EXTERNAL_CACHE_TTL_MS,
   });
   return entries;
+}
+
+// ── Persisted (DB) active-pricing read cache ────────────────────────────────
+// Unlike the external catalog above, these come from
+// `aiPricingRepository.listActiveEntriesForProviderModelPairs` and run on EVERY
+// inference inside `calculateTextCostFromCatalog` — which is part of the
+// synchronous credit-reserve and was measured at ~2 cross-region Postgres
+// round-trips (~300ms) of the pre-forward latency. Pricing is operator-refreshed
+// and near-static, so a short TTL is billing-correct: a change propagates within
+// PERSISTED_PRICING_CACHE_TTL_MS — a few seconds of negligible over/under-bill on
+// a rare change. Cached only on this billing hot path (the repository itself
+// stays uncached, so admin/refresh readers see fresh data). DB read errors are
+// NOT cached (transient → retry next request), unlike the external-catalog 404.
+const PERSISTED_PRICING_CACHE_TTL_MS = 60 * 1000;
+
+const persistedPricingCache = new Map<string, { entries: AiPricingEntry[]; expiresAt: number }>();
+
+function evictExpiredPersistedEntries(): void {
+  const now = Date.now();
+  for (const [key, value] of persistedPricingCache) {
+    if (value.expiresAt <= now) {
+      persistedPricingCache.delete(key);
+    }
+  }
+}
+
+export async function getCachedPersistedEntries(
+  cacheKey: string,
+  loader: () => Promise<AiPricingEntry[]>,
+): Promise<AiPricingEntry[]> {
+  const cached = persistedPricingCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.entries;
+  }
+
+  evictExpiredPersistedEntries();
+  // Do NOT cache a failure: a DB read error is transient (unlike a permanently
+  // dead external catalog), so let the next request retry against the DB.
+  const entries = await loader();
+  persistedPricingCache.set(cacheKey, {
+    entries,
+    expiresAt: Date.now() + PERSISTED_PRICING_CACHE_TTL_MS,
+  });
+  return entries;
+}
+
+/** Test hook: reset the persisted-pricing cache between tests. */
+export function __clearPersistedPricingCache(): void {
+  persistedPricingCache.clear();
 }
