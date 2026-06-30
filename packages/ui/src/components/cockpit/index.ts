@@ -2,6 +2,8 @@ export type { CockpitModePickerProps } from "./CockpitModePicker";
 export { CockpitModePicker } from "./CockpitModePicker";
 export type { CockpitNewSessionFormProps } from "./CockpitNewSessionForm";
 export { CockpitNewSessionForm } from "./CockpitNewSessionForm";
+export type { CockpitTierToggleProps } from "./CockpitTierToggle";
+export { CockpitTierToggle } from "./CockpitTierToggle";
 export type { CockpitViewProps } from "./CockpitView";
 export { CockpitView } from "./CockpitView";
 export type {
