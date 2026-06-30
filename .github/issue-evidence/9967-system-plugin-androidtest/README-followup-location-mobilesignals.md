@@ -55,3 +55,32 @@ orchestratable host-side. `location` depends on a GPS/network fix that neither
 available device can produce right now, so its live-fix assertion is skipped
 rather than faked — but the extraction still delivers the #9967 ask (the Kotlin
 now runs on a test, on a device) and positively verifies the delegated logic.
+
+## CI lane — the native-plugin androidTests now gate a PR
+
+The whole point of #9967 ("Kotlin runs on no test, on no device") isn't closed
+until the tests run in CI — and #9943 calls out "on-device never gates a PR." So
+this also wires a `native-plugin-androidtest` job into `android-device-e2e.yml`:
+boot a KVM emulator, sync the Capacitor Android project, and run
+`connectedDebugAndroidTest` for **all eight** native-plugin modules in one
+invocation (gradle fails the job on any test failure), then re-run the
+`mobile-signals` UsageStats tests under a host-granted `appops` so they assert
+positively. Label-gated (`ci:device`) or `workflow_dispatch`, like the existing
+device smokes, because booting an emulator is heavy.
+
+Proven locally against the API-34 emulator with the exact CI command
+(`ci-gate-connectedAndroidTest-emulator.txt`):
+
+```
+:elizaos-capacitor-system:connectedDebugAndroidTest   Finished 3 tests
+:elizaos-capacitor-wifi … phone … camera … contacts … messages   Finished 1 each
+:elizaos-capacitor-mobile-signals:connectedDebugAndroidTest   Finished
+:elizaos-capacitor-location:connectedDebugAndroidTest   Finished
+BUILD SUCCESSFUL in 1m 50s
+```
+
+Per-module JUnit: system 3/0/0, wifi/phone/camera/contacts/messages 1/0/0,
+mobile-signals 3 (2 Assume-skipped in the gate, then `OK (3 tests)` positive via
+the post-gate `appops` + `am instrument`), location 2 (1 fetch skip + mapping
+pass). `ci-gate-emulator-screen.png` is the running emulator;
+`ci-gate-mobile-signals-report.html` the gradle report. `actionlint` clean.
