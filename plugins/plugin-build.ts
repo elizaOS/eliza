@@ -117,16 +117,22 @@ const REWRITE_DIST_IMPORTS = resolve(
   "rewrite-dist-relative-imports-node-esm.mjs",
 );
 
+const TSC_BIN = resolve(
+  import.meta.dir,
+  "..",
+  "node_modules",
+  "typescript",
+  "bin",
+  "tsc",
+);
+
 /**
  * Recursively move every file under `fromDir` into `toDir`, preserving the
  * sub-tree below `fromDir` and creating parent dirs as needed. A plain rename
  * preserves file bytes (and any inner `//# sourceMappingURL` / map `file`
  * references) exactly. The caller removes the now-empty `fromDir`.
  */
-async function moveTreeContents(
-  fromDir: string,
-  toDir: string,
-): Promise<void> {
+async function moveTreeContents(fromDir: string, toDir: string): Promise<void> {
   const entries = await readdir(fromDir, {
     recursive: true,
     withFileTypes: true,
@@ -204,8 +210,9 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     const project = config.dtsProject;
     const emitDeclOnly = config.dtsEmitDeclarationOnly ?? false;
     const run = emitDeclOnly
-      ? () => Bun.$`tsc --project ${project} --emitDeclarationOnly --noCheck`
-      : () => Bun.$`tsc --project ${project} --noCheck`;
+      ? () =>
+          Bun.$`node ${TSC_BIN} --project ${project} --emitDeclarationOnly --noCheck`
+      : () => Bun.$`node ${TSC_BIN} --project ${project} --noCheck`;
     if (config.dtsTolerant) {
       try {
         await run();

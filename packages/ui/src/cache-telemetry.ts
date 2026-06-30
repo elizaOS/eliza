@@ -1,3 +1,5 @@
+import { resolveHeapUsage } from "./state/bounded-view-lru";
+
 export const MODULE_CACHE_TELEMETRY_EVENT = "eliza:module-cache-telemetry";
 
 export type ModuleCacheTelemetrySource =
@@ -31,6 +33,14 @@ export interface ModuleCacheTelemetryEvent {
   cacheSize: number;
   at: number;
   route?: string;
+  /**
+   * Live JS heap at emit time (Chromium `performance.memory`); absent on engines
+   * without the hint. Lets a `audit:views` soak read whether eviction tracked
+   * real heap growth, not just the static device-RAM tier (#10196).
+   */
+  usedJSHeapSize?: number;
+  jsHeapSizeLimit?: number;
+  heapPressureRatio?: number;
 }
 
 /** Non-optional eviction reason carried on cache telemetry events. */
@@ -46,10 +56,18 @@ function currentRoute(): string | undefined {
 export function emitModuleCacheTelemetry(
   event: Omit<ModuleCacheTelemetryEvent, "at" | "route">,
 ): void {
+  const heap = resolveHeapUsage();
   const detail: ModuleCacheTelemetryEvent = {
     ...event,
     at: Date.now(),
     route: currentRoute(),
+    ...(heap
+      ? {
+          usedJSHeapSize: heap.usedJSHeapSize,
+          jsHeapSizeLimit: heap.jsHeapSizeLimit,
+          heapPressureRatio: heap.usedJSHeapSize / heap.jsHeapSizeLimit,
+        }
+      : {}),
   };
 
   const globalObject = globalThis as typeof globalThis & {

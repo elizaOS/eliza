@@ -1146,9 +1146,23 @@ export function loadPersistedActiveServer(): PersistedActiveServer | null {
 }
 
 export function savePersistedActiveServer(server: PersistedActiveServer): void {
-  tryLocalStorage(() => {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  // The active-server record carries the sign-in state (kind/apiBase/token) and
+  // the backend the app reconnects to. A swallowed persist failure (quota,
+  // private-mode SecurityError) silently loses a freshly-recovered apiBase, so
+  // backfillCloudApiBase re-runs every boot with no diagnostic. Mirror
+  // savePersistedFirstRunComplete: still no-throw + no-op when unavailable, but
+  // surface the failure instead of swallowing it.
+  try {
     localStorage.setItem(ACTIVE_SERVER_STORAGE_KEY, JSON.stringify(server));
-  }, undefined);
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to save active server: ${describePersistenceError(err)}`,
+    );
+  }
 }
 
 export function clearPersistedActiveServer(): void {

@@ -80,6 +80,11 @@ import {
   resolveSafeBalanceThresholdUsd,
   writePendingInferenceCharge,
 } from "@/lib/services/inference-billing-fast-path";
+import {
+  admitInferenceChargeViaLedger,
+  createLedgerDebitSettler,
+  resolveInferenceBillingLedger,
+} from "@/lib/services/inference-billing-ledger";
 import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
@@ -1035,15 +1040,68 @@ export async function handleChatCompletionsPOST(
     } else {
       // Organization credits path. #9899 Tier-2: when optimistic billing is
       // enabled AND this org's balance comfortably clears SAFE_BALANCE_THRESHOLD,
-      // skip the synchronous reserve write — instead persist a durable
-      // pending-charge backstop and defer the FULL actual-cost debit to the
-      // post-response settler. Otherwise take the existing synchronous reserve.
-      // Only consider the optimistic path when the durable backstop is writable
-      // (cache available) — otherwise a forwarded request would have no recorded
-      // charge (free inference). Mirrors the IAC resolver's cache-health guard.
+      // skip the synchronous reserve write — instead reserve the charge against a
+      // durable backstop and defer the FULL actual-cost debit to the post-response
+      // settler. Otherwise take the existing synchronous reserve.
+      //
+      // The durable backstop is selected by INFERENCE_BILLING_LEDGER: "db" uses
+      // the inference_pending_charges ledger (atomic overdraw bound + exactly-once
+      // settle + age-ordered sweep), otherwise the KV backstop. The ledger's
+      // admission is itself the gate (it reads a fresh balance under a row lock),
+      // so it does not need the KV org-balance hint or a writable cache.
+      let optimisticReady = false;
+      const optimisticBillingEnabled = isOptimisticBillingEnabled();
+      const useDbLedger =
+        optimisticBillingEnabled && resolveInferenceBillingLedger() === "db";
+
+      if (useDbLedger) {
+        const { totalCost } = await calculateCost(
+          normalizedModel,
+          provider,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          billingSource,
+        );
+        const admission = await admitInferenceChargeViaLedger({
+          charge: {
+            requestId,
+            organizationId: user.organization_id,
+            userId: user.id,
+            apiKeyId: apiKey?.id ?? null,
+            model,
+            provider,
+            billingSource,
+          },
+          estimatedCostUsd: totalCost,
+          thresholdUsd: resolveSafeBalanceThresholdUsd(),
+        });
+        if (admission.admitted) {
+          reservation = creditsService.createAnonymousReservation();
+          optimisticSettler = createLedgerDebitSettler({
+            requestId,
+            organizationId: user.organization_id,
+            userId: user.id,
+            apiKeyId: apiKey?.id ?? null,
+            model,
+            provider,
+            billingSource,
+          });
+          optimisticReady = true;
+        }
+      }
+
+      // KV backstop path (unchanged). Only consider it when the DB ledger is not
+      // selected and the cache is writable — otherwise a forwarded request would
+      // have no recorded charge (free inference). Mirrors the IAC resolver's
+      // cache-health guard.
       let useOptimistic = false;
       let estimatedCostUsd = 0;
-      if (isOptimisticBillingEnabled() && isOptimisticBackstopAvailable()) {
+      if (
+        !optimisticReady &&
+        optimisticBillingEnabled &&
+        !useDbLedger &&
+        isOptimisticBackstopAvailable()
+      ) {
         const { totalCost } = await calculateCost(
           normalizedModel,
           provider,
@@ -1065,7 +1123,6 @@ export async function handleChatCompletionsPOST(
       // Optimistic path is taken ONLY if the durable pending-charge actually
       // persisted; a non-durable backstop falls through to the synchronous
       // reserve so we never forward on an un-recorded charge (#9899).
-      let optimisticReady = false;
       if (useOptimistic) {
         const persisted = await writePendingInferenceCharge(
           {
