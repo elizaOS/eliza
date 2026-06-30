@@ -1515,3 +1515,4 @@ waifu.fun/
 railway.json
 .railwayignore
 .dockerignore
+packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/
