@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  VIEW_RUNTIME_RING_MAX,
-  VIEW_RUNTIME_TELEMETRY_EVENT,
-  type ViewRuntimeTelemetryEvent,
-  type ViewRuntimeTelemetryReason,
   __resetViewRuntimeTelemetryForTests,
   emitViewRuntimeTelemetry,
   installViewRuntimeTelemetryRing,
   readViewRuntimeTelemetry,
+  VIEW_RUNTIME_RING_MAX,
+  VIEW_RUNTIME_TELEMETRY_EVENT,
+  type ViewRuntimeTelemetryEvent,
+  type ViewRuntimeTelemetryReason,
 } from "./view-runtime-telemetry";
 
 /**
@@ -19,7 +19,10 @@ import {
  */
 type EmitInput = Omit<ViewRuntimeTelemetryEvent, "at" | "route">;
 
-function sample(viewId: string, reason: ViewRuntimeTelemetryReason = "sample"): EmitInput {
+function sample(
+  viewId: string,
+  reason: ViewRuntimeTelemetryReason = "sample",
+): EmitInput {
   return {
     viewId,
     phase: "active",
@@ -73,7 +76,8 @@ describe("view-runtime-telemetry", () => {
   it("bounds the ring at VIEW_RUNTIME_RING_MAX, dropping the oldest", () => {
     installViewRuntimeTelemetryRing();
     const total = VIEW_RUNTIME_RING_MAX + 50;
-    for (let i = 0; i < total; i += 1) emitViewRuntimeTelemetry(sample(`v${i}`));
+    for (let i = 0; i < total; i += 1)
+      emitViewRuntimeTelemetry(sample(`v${i}`));
     const ring = readViewRuntimeTelemetry();
     expect(ring).toHaveLength(VIEW_RUNTIME_RING_MAX);
     // the oldest 50 were dropped → first retained is v50, last is the newest
@@ -84,11 +88,18 @@ describe("view-runtime-telemetry", () => {
   it("dispatches the CustomEvent carrying the detail", () => {
     installViewRuntimeTelemetryRing();
     const handler = vi.fn();
-    window.addEventListener(VIEW_RUNTIME_TELEMETRY_EVENT, handler as EventListener);
+    window.addEventListener(
+      VIEW_RUNTIME_TELEMETRY_EVENT,
+      handler as EventListener,
+    );
     const detail = emitViewRuntimeTelemetry(sample("chat", "hide"));
-    window.removeEventListener(VIEW_RUNTIME_TELEMETRY_EVENT, handler as EventListener);
+    window.removeEventListener(
+      VIEW_RUNTIME_TELEMETRY_EVENT,
+      handler as EventListener,
+    );
     expect(handler).toHaveBeenCalledTimes(1);
-    const evt = handler.mock.calls[0][0] as CustomEvent<ViewRuntimeTelemetryEvent>;
+    const evt = handler.mock
+      .calls[0][0] as CustomEvent<ViewRuntimeTelemetryEvent>;
     expect(evt.detail).toEqual(detail);
   });
 
