@@ -68,7 +68,8 @@ known to be present; it turns `pending` or `skip` into a failing exit.
 | `android.talkmode.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest` | TalkMode capture lifecycle/transcript/permission/barge-in bridge tests |
 | `android.swabble.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest` | Swabble wake-firing -> JS bridge event tests |
 | `wake.openwakeword.real-head` | gated real openWakeWord head run | idle wake, always-on inert wake, and mid-transcription non-corruption evidence |
-| `stt.stage-b.evaluation` | paired iOS/Android device benchmark | iOS `SFSpeechRecognizer`, Android `SpeechRecognizer`, and fused ASR latency/battery/accept matrix |
+| `stt.stage-b.apple-sfspeech` | `node packages/scripts/stage-b-stt-bench.mjs` (macOS) | **measured** on-device `SFSpeechRecognizer` latency/RTF/WER over on-device-synthesised speech (quiet + 10 dB noise), `.github/issue-evidence/9958-stt-stage-b-eval/` |
+| `stt.stage-b.evaluation` | paired iOS/Android device benchmark | iOS battery/energy telemetry, Android `SpeechRecognizer` (NNAPI), and fused ASR latency/battery/accept matrix (the Apple latency/WER arm is covered by `stt.stage-b.apple-sfspeech`) |
 
 ## Hardware Gates
 
