@@ -8,11 +8,11 @@ import { RollbackQueue } from "./rollback-queue";
 import { VoiceScheduler } from "./scheduler";
 import type {
 	AudioChunk,
-	OmniVoiceBackend,
 	Phrase,
 	SpeakerPreset,
 	StreamingTtsBackend,
 	TextToken,
+	TtsBackend,
 	TtsPcmChunk,
 	VadEvent,
 	VoiceSchedulerTelemetryEvent,
@@ -36,7 +36,7 @@ function makePreset(): SpeakerPreset {
 	};
 }
 
-class FakeBackend implements OmniVoiceBackend {
+class FakeBackend implements TtsBackend {
 	calls = 0;
 	cancelObserved: number[] = [];
 	delay = 0;
@@ -70,7 +70,7 @@ class FakeBackend implements OmniVoiceBackend {
 	}
 }
 
-class StreamingBackend implements OmniVoiceBackend, StreamingTtsBackend {
+class StreamingBackend implements TtsBackend, StreamingTtsBackend {
 	calls = 0;
 	streamCalls = 0;
 	cancelCalls = 0;

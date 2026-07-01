@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EngineVoiceBridge, StubOmniVoiceBackend } from "./engine-bridge";
+import { EngineVoiceBridge, StubTtsBackend } from "./engine-bridge";
 import type { VoiceLifecycleLoaders } from "./lifecycle";
 import {
 	canonicalizePhraseText,
@@ -12,12 +12,7 @@ import {
 	PhraseCache,
 } from "./phrase-cache";
 import type { MmapRegionHandle, RefCountedResource } from "./shared-resources";
-import type {
-	AudioChunk,
-	OmniVoiceBackend,
-	Phrase,
-	SpeakerPreset,
-} from "./types";
+import type { AudioChunk, Phrase, SpeakerPreset, TtsBackend } from "./types";
 import { writeVoicePresetFile } from "./voice-preset-format";
 
 // --- the canonical seed/filler constants -----------------------------------
@@ -98,7 +93,7 @@ describe("PhraseCache LRU", () => {
 
 // --- engine-bridge prewarm / filler gating ---------------------------------
 
-class RecordingBackend implements OmniVoiceBackend {
+class RecordingBackend implements TtsBackend {
 	readonly synthesized: string[] = [];
 	async synthesize(args: {
 		phrase: Phrase;
@@ -163,7 +158,7 @@ describe("EngineVoiceBridge phrase prewarm + first-audio filler", () => {
 			bundleRoot,
 			useFfiBackend: false,
 		});
-		expect(bridge.backend).toBeInstanceOf(StubOmniVoiceBackend);
+		expect(bridge.backend).toBeInstanceOf(StubTtsBackend);
 		expect(bridge.hasRealTtsBackend()).toBe(false);
 	});
 

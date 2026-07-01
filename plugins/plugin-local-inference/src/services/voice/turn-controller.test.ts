@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StubOmniVoiceBackend } from "./engine-bridge";
+import { StubTtsBackend } from "./engine-bridge";
 import type { EotClassifier } from "./eot-classifier";
 import { InMemoryAudioSink } from "./ring-buffer";
 import { VoiceScheduler } from "./scheduler";
@@ -55,7 +55,7 @@ function makeScheduler(): VoiceScheduler {
 			ringBufferCapacity: 4096,
 			sampleRate: 24000,
 		},
-		{ backend: new StubOmniVoiceBackend(24000), sink: new InMemoryAudioSink() },
+		{ backend: new StubTtsBackend(24000), sink: new InMemoryAudioSink() },
 	);
 }
 
