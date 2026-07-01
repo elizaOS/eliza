@@ -124,7 +124,8 @@ jobs:
           # checkout --force --detach fully materializes the working tree from the
           # fetched commit; the prior extra `git reset --hard` re-wrote the entire
           # tree a second time, doubling the slowest part on this large repo.
-          git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
+          timeout 300s git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD \
+            || { echo "::error::git checkout (working-tree materialization) timed out or failed after 300s"; exit 1; }
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -316,7 +317,8 @@ jobs:
           # checkout --force --detach fully materializes the working tree from the
           # fetched commit; the prior extra `git reset --hard` re-wrote the entire
           # tree a second time, doubling the slowest part on this large repo.
-          git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
+          timeout 300s git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD \
+            || { echo "::error::git checkout (working-tree materialization) timed out or failed after 300s"; exit 1; }
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -526,7 +528,8 @@ jobs:
           # checkout --force --detach fully materializes the working tree from the
           # fetched commit; the prior extra `git reset --hard` re-wrote the entire
           # tree a second time, doubling the slowest part on this large repo.
-          git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD
+          timeout 300s git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD \
+            || { echo "::error::git checkout (working-tree materialization) timed out or failed after 300s"; exit 1; }
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
