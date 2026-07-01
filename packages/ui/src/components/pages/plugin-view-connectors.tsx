@@ -109,6 +109,18 @@ interface ConnectorPluginCardProps
   plugin: PluginInfo;
 }
 
+export function shouldRenderConnectorPluginConfig({
+  hasParams,
+  isCloudOAuthMode,
+  isDiscordManagedMode,
+}: {
+  hasParams: boolean;
+  isCloudOAuthMode: boolean;
+  isDiscordManagedMode: boolean;
+}): boolean {
+  return hasParams && !isDiscordManagedMode && !isCloudOAuthMode;
+}
+
 type CloudOAuthConnectorCopy = {
   platform: "slack" | "twitter" | "google";
   /**
@@ -902,11 +914,11 @@ function ConnectorPluginCard({
   ) : null;
   const supportsConnectorSetupPanel =
     Boolean(setupPanelPluginId) && hasConnectorSetupPanel(setupPanelPluginId);
-  const showPluginConfig =
-    hasParams &&
-    setupPanelPluginId === plugin.id &&
-    !isDiscordManagedMode &&
-    !isCloudOAuthMode;
+  const showPluginConfig = shouldRenderConnectorPluginConfig({
+    hasParams,
+    isCloudOAuthMode,
+    isDiscordManagedMode,
+  });
 
   return (
     <div key={plugin.id} data-testid={`connector-section-${plugin.id}`}>
