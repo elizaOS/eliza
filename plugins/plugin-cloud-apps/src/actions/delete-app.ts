@@ -219,8 +219,9 @@ export const deleteAppAction: Action = {
 
     let app: AppDto | null;
     let available: string[];
+    let ambiguous: string[] | undefined;
     try {
-      ({ app, available } = await resolveApp(client, reference));
+      ({ app, available, ambiguous } = await resolveApp(client, reference));
     } catch (err) {
       logger.warn(
         `[DELETE_APP] Failed to resolve app "${reference}": ${
@@ -238,13 +239,22 @@ export const deleteAppAction: Action = {
     }
 
     if (!app) {
-      const msg = notFoundMessage(reference, available);
+      const candidates = ambiguous && ambiguous.length > 1 ? ambiguous : null;
+      const msg = candidates
+        ? `Which app do you mean? "${reference}" matches ${candidates.length}: ${candidates.join(", ")}. Reply with the exact name so I don't delete the wrong one.`
+        : notFoundMessage(reference, available);
       await callback?.({ text: msg, actions: ["DELETE_APP"] });
       return {
         success: false,
-        text: `No app matched "${reference}".`,
+        text: candidates
+          ? `Ambiguous reference "${reference}" (${candidates.length} matches).`
+          : `No app matched "${reference}".`,
         userFacingText: msg,
-        data: { reason: "not_found", reference },
+        data: {
+          reason: candidates ? "ambiguous" : "not_found",
+          reference,
+          ...(candidates ? { candidates } : {}),
+        },
       };
     }
 
