@@ -82,6 +82,8 @@ IGNORED_BENCHMARK_DIRS = {
     "hermes-adapter",
     "openclaw-adapter",
     "smithers-adapter",
+    # Harness bridge (multi-account Codex), not a standalone benchmark dir.
+    "codex-adapter",
     "lib",
     "nl2repo",
     "orchestrator",

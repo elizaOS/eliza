@@ -52,7 +52,8 @@ abliteration-robustness, scambench), the shared `standard` framework
 (woobench → hermes builder + SmithersClient), and subclassing
 (tau_bench → SmithersTauAgent). Adding the remaining bridge-free benchmarks is
 now mechanical (factory/branch + gate). See `docs/RESULTS_MATRIX.md` for the
-full 53-benchmark status.
+full per-benchmark status (44 registered + 9 adapter-only, reconciled against
+the registry).
 
 - All posted benchmarks: exact 4-way parity (woobench in range). The smithers harness emits native
   ai-SDK `ToolCallPart` / `ToolResultPart` messages, so multi-turn
@@ -62,6 +63,13 @@ full 53-benchmark status.
 Standalone BFCL smoke (larger samples) corroborates: smithers 87.5% (7/8) and
 100% (3/3); hermes 0.15.0 and openclaw 2026.5.27 both 100% (2/2). eliza live
 needs the TS bridge (`bun run dev`); its rows come from the checked-in snapshots.
+
+> **Provenance (#10193).** These 15 benchmarks are the **only** ones with a real
+> graded run recorded here. `docs/RESULTS_MATRIX.md` marks every other cell as
+> `not-run` (no committed `benchmark_results/latest/` run) or `gated`
+> (infra/credentials). Do not read a flat `1.00` elsewhere as a certified score —
+> the suite has **44 registered** benchmarks (`registry/commands.py`) plus 9
+> adapter-only ids; only the 15 above cleared the full validate + review path.
 
 Publication wiring: `smithers` was added to `LATEST_SNAPSHOT_AGENTS` but
 deliberately **not** to `CANONICAL_REAL_HARNESSES`, so it publishes partial
@@ -93,10 +101,10 @@ model-harness client in this sandbox** (15/15). Extending further requires
 running the eliza TS bench bridge and provisioning Docker/audio/chain infra —
 which would unblock those benchmarks for *all* harnesses, not just smithers.
 
-## Why full 53×4 certification was not completed here
+## Why a full 4-harness certification was not completed here
 
-A complete leaderboard run of all 53 discovered benchmarks across 4 harnesses is
-**not runnable in this environment** without:
+A complete leaderboard run across all discovered benchmarks (44 registered + 9
+adapter-only) × 4 harnesses is **not runnable in this environment** without:
 
 - **Infra**: Docker daemon (terminal_bench, swe_bench, osworld), real audio
   assets (voicebench / voicebench_quality / voiceagentbench), a multimodal

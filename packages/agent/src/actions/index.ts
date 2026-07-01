@@ -1,4 +1,5 @@
 export * from "./compact-conversation.ts";
+export * from "./connect-account.ts";
 export * from "./connector-resolver.ts";
 export * from "./contact.ts";
 export * from "./context-signal.ts";

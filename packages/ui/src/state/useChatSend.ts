@@ -995,6 +995,9 @@ export function useChatSend(deps: UseChatSendDeps) {
             mode: "complete",
             fullText: data.text,
             ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+            ...(data.accountConnect
+              ? { accountConnect: data.accountConnect }
+              : {}),
             ...(data.reasoning ? { reasoning: data.reasoning } : {}),
           });
         } else if (data.failureKind) {
@@ -1005,6 +1008,17 @@ export function useChatSend(deps: UseChatSendDeps) {
             messageId: assistantMsgId,
             mode: "fail",
             failureKind: data.failureKind,
+          });
+        } else if (data.accountConnect) {
+          // Streaming text already matched but the server flagged a
+          // "connect another account" request — stamp it (via complete, which
+          // carries accountConnect) so the renderer swaps in the
+          // AccountConnectBlock while keeping the already-streamed text.
+          applyStreamingTextModification(setConversationMessages, {
+            messageId: assistantMsgId,
+            mode: "complete",
+            fullText: data.text,
+            accountConnect: data.accountConnect,
           });
         }
         if (data.usage) {

@@ -27,6 +27,7 @@ import {
 import { mergeStreamingText } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import type {
+  AccountConnectRequest,
   ChatActionResultSummary,
   ChatFailureKind,
   ChatTokenUsage,
@@ -73,6 +74,7 @@ type StreamChatEvent = {
   thought?: string;
   noResponseReason?: string;
   failureKind?: ChatFailureKind;
+  accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
   actionResults?: ChatActionResultSummary[];
   // `type: "status"` carries the in-flight phase flat on the event (the server
@@ -129,6 +131,7 @@ type StreamChatState = {
   doneNoResponseReason: "ignored" | null;
   doneUsage: ChatTokenUsage | undefined;
   doneFailureKind: ChatFailureKind | undefined;
+  doneAccountConnect: AccountConnectRequest | undefined;
   doneLocalInference: LocalInferenceChatMetadata | undefined;
   doneActionResults: ChatActionResultSummary[] | undefined;
   receivedDone: boolean;
@@ -216,6 +219,9 @@ function applyStreamChatDoneEvent(
   }
   if (typeof parsed.failureKind === "string") {
     state.doneFailureKind = parsed.failureKind;
+  }
+  if (parsed.accountConnect && typeof parsed.accountConnect === "object") {
+    state.doneAccountConnect = parsed.accountConnect;
   }
   if (parsed.localInference && typeof parsed.localInference === "object") {
     state.doneLocalInference = parsed.localInference;
@@ -1498,6 +1504,7 @@ export class ElizaClient {
     noResponseReason?: "ignored";
     usage?: ChatTokenUsage;
     failureKind?: ChatFailureKind;
+    accountConnect?: AccountConnectRequest;
     localInference?: LocalInferenceChatMetadata;
     actionResults?: ChatActionResultSummary[];
   }> {
@@ -1546,6 +1553,7 @@ export class ElizaClient {
       doneNoResponseReason: null,
       doneUsage: undefined,
       doneFailureKind: undefined,
+      doneAccountConnect: undefined,
       doneLocalInference: undefined,
       doneActionResults: undefined,
       receivedDone: false,
@@ -1633,6 +1641,9 @@ export class ElizaClient {
       ...(streamState.doneUsage ? { usage: streamState.doneUsage } : {}),
       ...(streamState.doneFailureKind
         ? { failureKind: streamState.doneFailureKind }
+        : {}),
+      ...(streamState.doneAccountConnect
+        ? { accountConnect: streamState.doneAccountConnect }
         : {}),
       ...(streamState.doneLocalInference
         ? { localInference: streamState.doneLocalInference }
