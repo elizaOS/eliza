@@ -93,6 +93,12 @@ async function fillOrToggleInput(input: Locator, index: number): Promise<void> {
     await input.fill("42");
     return;
   }
+  if (type === "color") {
+    // A color input only accepts a valid #rrggbb value — filling arbitrary text
+    // (e.g. the Custom background color picker) throws "Malformed value".
+    await input.fill("#3366ff");
+    return;
+  }
   if (type === "email" || label.includes("email")) {
     await input.fill("smoke@example.com");
     return;
