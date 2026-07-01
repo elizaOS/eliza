@@ -61,6 +61,7 @@ CI_LANE_BY_BENCHMARK: dict[str, str] = {
     "openclaw_bench": "smoke",
     "orchestrator_lifecycle": "smoke",
     "realm": "smoke",
+    "recall_bench": "smoke",
     "rlm_bench": "smoke",
     "scambench": "smoke",
     "mind2web": "smoke",

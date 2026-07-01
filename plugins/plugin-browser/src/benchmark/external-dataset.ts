@@ -4,8 +4,9 @@
  * This is intentionally small and committed in-repo: CI can gate the adapter
  * without downloading the full Mind2Web/WebArena corpora. Each row mirrors the
  * external benchmark shape (site, start URL, natural-language goal, DOM routes,
- * action trace, and observable reward checks), then compiles into the same
- * BenchmarkTask contract used by the MiniWoB lane. Execution still goes through
+ * action trace, and observable reward checks), including Mind2Web's CLICK /
+ * TYPE / SELECT operation mix, then compiles into the same BenchmarkTask
+ * contract used by the MiniWoB lane. Execution still goes through
  * BrowserBenchmarkAdapter -> real BROWSER commands.
  */
 
@@ -72,17 +73,22 @@ export const EXTERNAL_WEB_DATASET_FIXTURE: readonly ExternalDatasetRecord[] = [
     sourceDataset: "Mind2Web",
     site: "travel",
     description: "Fill a travel search form from a natural-language goal.",
-    goal: "Search for a flight from SFO to JFK on 2026-07-14 and include flexible dates.",
+    goal: "Search for an economy flight from SFO to JFK on 2026-07-14 and include flexible dates.",
     startUrl: travelStart,
     routes: [
       {
         url: travelStart,
         html: page(
           "Travel Search",
-          `<div id="task">Search for a flight from SFO to JFK on 2026-07-14 and include flexible dates.</div>
+          `<div id="task">Search for an economy flight from SFO to JFK on 2026-07-14 and include flexible dates.</div>
 <label>From <input id="from" name="from" value="" /></label>
 <label>To <input id="to" name="to" value="" /></label>
 <label>Date <input id="date" name="date" value="" /></label>
+<label>Cabin <select id="cabin" name="cabin">
+  <option value="">Choose cabin</option>
+  <option value="economy">Economy</option>
+  <option value="business">Business</option>
+</select></label>
 <label><input id="flexible" type="checkbox" /> Flexible dates</label>
 <button id="search" type="button">Search</button>`,
         ),
@@ -92,6 +98,7 @@ export const EXTERNAL_WEB_DATASET_FIXTURE: readonly ExternalDatasetRecord[] = [
       { type: "fill", selector: "#from", value: "SFO", note: "origin" },
       { type: "fill", selector: "#to", value: "JFK", note: "destination" },
       { type: "fill", selector: "#date", value: "2026-07-14", note: "date" },
+      { type: "select", selector: "#cabin", value: "economy", note: "cabin" },
       { type: "check", selector: "#flexible", note: "flexible dates" },
       { type: "click", selector: "#search", note: "submit search" },
     ],
@@ -99,9 +106,10 @@ export const EXTERNAL_WEB_DATASET_FIXTURE: readonly ExternalDatasetRecord[] = [
       { type: "value", selector: "#from", equals: "SFO" },
       { type: "value", selector: "#to", equals: "JFK" },
       { type: "value", selector: "#date", equals: "2026-07-14" },
+      { type: "value", selector: "#cabin", equals: "economy" },
       { type: "checked", selector: "#flexible", equals: true },
     ],
-    maxSteps: 7,
+    maxSteps: 8,
   },
   {
     id: "mind2web-support-return",

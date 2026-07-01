@@ -252,6 +252,24 @@ export const INTENT_VIEW_IDS: readonly string[] = [
  * Map a passive domain intent to a concrete view id, or null when no rule
  * matches. Used both as a `runViewsShow` fallback (when normal resolution
  * fails) and by `inferMode` to route intent-only utterances to `show`.
+ *
+ * #10471 boundary — RETAINED, INTENTIONAL FAST-PATH ALLOW-LIST (not a smell).
+ * This deterministic matcher is deliberately kept out of the string-smell
+ * cleanup for three reasons, documented here as the required written
+ * justification:
+ *   1. It is *multilingual by construction* — `matchViewCommand` covers explicit
+ *      "open X" navigation in every language, and `INTENT_VIEW_RULES` carries
+ *      parallel English + ES/FR/DE/ZH/JA/KO rules — so it is the opposite of the
+ *      i18n-hostile English-only matching #10471 targets.
+ *   2. It is a *fallback that never decides against the model*: it fires only
+ *      after normal id/label/fuzzy resolution returns nothing, and never
+ *      overrides an explicit navigation the planner already produced.
+ *   3. Eliza is local-first; a small/on-device planner cannot be relied on to
+ *      route navigation across languages, so this pre-LLM safety net is a
+ *      correctness requirement, not a shortcut. Removing it would regress
+ *      weak-local-model multilingual navigation.
+ * Keep the rules anchored on a possessive / navigation verb around a surface
+ * noun (as below) so they only fire on genuine navigation intent.
  */
 export function resolveIntentView(text: string | undefined): string | null {
 	const t = (text ?? "").toLowerCase();

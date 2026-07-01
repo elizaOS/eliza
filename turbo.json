@@ -371,10 +371,6 @@
       "dependsOn": ["@elizaos/plugin-sql#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-hyperliquid#typecheck": {
-      "dependsOn": ["@elizaos/app-core#build", "^build"],
-      "outputs": []
-    },
     "@elizaos/plugin-tailscale#typecheck": {
       "dependsOn": ["@elizaos/plugin-tunnel#build"],
       "outputs": []
@@ -406,6 +402,19 @@
       "dependsOn": [
         "@elizaos/capacitor-contacts#build",
         "@elizaos/ui#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-hyperliquid#typecheck": {
+      "dependsOn": [
+        "@elizaos/app-core#build",
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/ui#build",
+        "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-app-manager#build",
+        "@elizaos/plugin-task-coordinator#build",
         "^build"
       ],
       "outputs": []

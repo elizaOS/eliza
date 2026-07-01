@@ -16,6 +16,7 @@ export {
   launchChromiumBenchmarkBrowser,
   resolveChromiumExecutable,
   resolveChromiumExecutablePath,
+  resolveChromiumHeadlessShellExecutablePath,
 } from "./chromium-executor.js";
 export {
   EXTERNAL_DATASET_ORIGIN,

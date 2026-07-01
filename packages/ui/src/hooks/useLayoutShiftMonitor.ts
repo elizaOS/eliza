@@ -74,6 +74,10 @@ type LayoutShiftEntry = PerformanceEntry & {
   sources?: Array<{ node?: Node | null }>;
 };
 
+type PendingLayoutShiftSample = LayoutShiftSample & {
+  route?: string;
+};
+
 type RenderTelemetryGlobal = typeof globalThis & {
   __ELIZA_RENDER_TELEMETRY__?: unknown[];
 };
@@ -116,6 +120,14 @@ function hasTransientLayoutShiftIntent(entry: LayoutShiftEntry): boolean {
   return sawIntentionalSource;
 }
 
+function maxNumber(values: Iterable<number>): number {
+  let max = 0;
+  for (const value of values) {
+    if (Number.isFinite(value) && value > max) max = value;
+  }
+  return max;
+}
+
 /**
  * Start observing layout shifts. Returns a stop function. No-op (returns a no-op
  * stop) when render telemetry is disabled or the engine lacks the layout-shift
@@ -136,34 +148,46 @@ export function startLayoutShiftMonitor(
   const clsBudget = options.clsBudget ?? DEFAULT_CLS_BUDGET;
   const emitHealthy = options.emitHealthy ?? false;
 
-  let pending: LayoutShiftSample[] = [];
-  let largest = 0;
+  let pending: PendingLayoutShiftSample[] = [];
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   const flush = () => {
     flushTimer = null;
     const samples = pending;
-    const largestShift = largest;
     pending = [];
-    largest = 0;
-    const cls = cumulativeLayoutShift(samples);
-    const shiftCount = samples.filter(
-      (s) => !s.hadRecentInput && s.value > 0,
-    ).length;
-    if (shiftCount === 0) return;
-    const flagged = cls > clsBudget;
-    if (!flagged && !emitHealthy) return;
-    emitLayoutShift({
-      source: "layoutShift",
-      severity: flagged ? "error" : "info",
-      cls,
-      shiftCount,
-      largestShift,
-      windowMs,
-      at: Date.now(),
-      sequence: nextRenderTelemetrySequence(),
-      route: currentRoute(),
-    });
+    const samplesByRoute = new Map<string | undefined, LayoutShiftSample[]>();
+    for (const sample of samples) {
+      const route = sample.route;
+      const grouped = samplesByRoute.get(route);
+      if (grouped) grouped.push(sample);
+      else samplesByRoute.set(route, [sample]);
+    }
+
+    for (const [route, routeSamples] of samplesByRoute) {
+      const cls = cumulativeLayoutShift(routeSamples);
+      const shiftCount = routeSamples.filter(
+        (s) => !s.hadRecentInput && !s.intentional && s.value > 0,
+      ).length;
+      if (shiftCount === 0) continue;
+      const flagged = cls > clsBudget;
+      if (!flagged && !emitHealthy) continue;
+      const largestShift = maxNumber(
+        routeSamples.map((s) =>
+          !s.hadRecentInput && !s.intentional ? s.value : 0,
+        ),
+      );
+      emitLayoutShift({
+        source: "layoutShift",
+        severity: flagged ? "error" : "info",
+        cls,
+        shiftCount,
+        largestShift,
+        windowMs,
+        at: Date.now(),
+        sequence: nextRenderTelemetrySequence(),
+        route,
+      });
+    }
   };
 
   let observer: PerformanceObserver | null = null;
@@ -171,14 +195,13 @@ export function startLayoutShiftMonitor(
     observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries() as LayoutShiftEntry[]) {
         if (!Number.isFinite(entry.value) || entry.value <= 0) continue;
+        const intentional = hasTransientLayoutShiftIntent(entry);
         pending.push({
           value: entry.value,
           hadRecentInput: entry.hadRecentInput === true,
-          intentional: hasTransientLayoutShiftIntent(entry),
+          intentional,
+          route: currentRoute(),
         });
-        if (!entry.hadRecentInput && entry.value > largest) {
-          largest = entry.value;
-        }
       }
       // Coalesce a reflow burst into one window: only the first shift arms the
       // timer; nothing runs while the layout is stable (no rAF, no poll).
@@ -186,7 +209,7 @@ export function startLayoutShiftMonitor(
         flushTimer = setTimeout(flush, windowMs);
       }
     });
-    observer.observe({ type: "layout-shift", buffered: true });
+    observer.observe({ type: "layout-shift", buffered: false });
   } catch {
     // `layout-shift` unsupported: nothing to observe; treat as 0 reflow.
     observer = null;

@@ -1,4 +1,4 @@
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,
@@ -16,6 +16,8 @@ import {
 let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
 let globalFetchBridgeInstalled = false;
+let restartRequestListenerInstalled = false;
+let restartRequestInFlight: Promise<void> | null = null;
 let originalFetch: typeof fetch | null = null;
 let fullBunRuntime:
   | Promise<FullBunRuntimePlugin | null>
@@ -81,6 +83,11 @@ interface FullBunRuntimeModule {
   ElizaBunRuntime: FullBunRuntimePlugin;
 }
 
+type IosLocalAgentRestartRequestDetail = {
+  attempt?: number;
+  source?: string;
+};
+
 const IOS_FULL_BUN_ARGV = [
   "bun",
   "--no-install",
@@ -107,6 +114,8 @@ const IOS_FULL_BUN_ENV: Record<string, string> = {
 };
 const STARTUP_TRACE_ID_WINDOW_KEY = "__ELIZA_STARTUP_TRACE_ID__";
 const STARTUP_TRACE_WINDOW_KEY = "__ELIZA_STARTUP_TRACE__";
+const IOS_RESTART_LISTENER_WINDOW_KEY =
+  "__ELIZA_IOS_LOCAL_AGENT_RESTART_LISTENER_INSTALLED__";
 
 type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
@@ -118,6 +127,7 @@ declare global {
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
+    [IOS_RESTART_LISTENER_WINDOW_KEY]?: boolean;
   }
 }
 
@@ -240,6 +250,10 @@ function isNativeIosCloudRuntime(): boolean {
   return runtimeMode === "cloud" || runtimeMode === "cloud-hybrid";
 }
 
+function isPureRemoteRuntimeMode(mode: string | null): boolean {
+  return mode === "cloud";
+}
+
 function usesStrictIosNetworkPolicy(): boolean {
   return isNativeIosStoreBuild() || isNativeIosCloudRuntime();
 }
@@ -308,9 +322,22 @@ function isMobileLocalAgentUrl(value: string): boolean {
   return isConfiguredMobileLocalAgentUrl(value);
 }
 
+/**
+ * Whether the selected iOS runtime owns an on-device agent process/runtime.
+ * `cloud` is the only pure remote mode. `cloud-hybrid` still runs the bundled
+ * agent while routing inference through cloud, and `tunnel-to-mobile` exposes
+ * the phone-side agent through a relay for a remote client.
+ */
+function iosRuntimeHasOnDeviceAgent(): boolean {
+  const mode = readRuntimeMode();
+  return (
+    mode === "local" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
+  );
+}
+
 function canUseIosLocalAgentIpc(): boolean {
   if (!isNativeIos()) return false;
-  if (readRuntimeMode() === "local" || shouldRequireFullBunRuntime()) {
+  if (iosRuntimeHasOnDeviceAgent() || shouldRequireFullBunRuntime()) {
     return true;
   }
   return !usesStrictIosNetworkPolicy();
@@ -487,10 +514,7 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   }
   fullBunRuntime ??= (async () => {
     try {
-      const mod = (await import(
-        "@elizaos/capacitor-bun-runtime"
-      )) as FullBunRuntimeModule;
-      const runtime = wrapFullBunRuntime(mod.ElizaBunRuntime);
+      const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
         return runtime;
@@ -538,6 +562,83 @@ export function primeIosFullBunRuntime(runtime: unknown): void {
     kind: "primed",
     runtime: candidate ? wrapFullBunRuntime(candidate) : null,
   };
+}
+
+async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
+  let mod: Partial<FullBunRuntimeModule> | null = null;
+  try {
+    mod = (await import(
+      "@elizaos/capacitor-bun-runtime"
+    )) as Partial<FullBunRuntimeModule>;
+  } catch {
+    mod = null;
+  }
+  return (
+    mod?.ElizaBunRuntime ??
+    registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime")
+  );
+}
+
+async function restartIosFullBunRuntimeFromWatchdog(): Promise<void> {
+  if (restartRequestInFlight) return restartRequestInFlight;
+  restartRequestInFlight = (async () => {
+    if (!isNativeIos()) return;
+    if (isPureRemoteRuntimeMode(readRuntimeMode())) return;
+    if (!isFullBunRuntimePluginAvailable()) {
+      throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
+    }
+
+    const runtime = isPrimedFullBunRuntime(fullBunRuntime)
+      ? fullBunRuntime.runtime
+      : wrapFullBunRuntime(await importFullBunRuntimePlugin());
+    if (!runtime) {
+      throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
+    }
+
+    const started = await runtime.start({
+      engine: "bun",
+      argv: IOS_FULL_BUN_ARGV,
+      env: iosFullBunEnv(),
+    });
+    if (!started.ok) {
+      throw new Error(started.error ?? "runtime start returned ok=false");
+    }
+    const status = await runtime.getStatus();
+    if (!status.ready || status.engine !== "bun") {
+      throw new Error(
+        `runtime status was ready=${String(status.ready)} engine=${
+          status.engine ?? "unknown"
+        }`,
+      );
+    }
+    fullBunRuntime = { kind: "primed", runtime };
+  })().finally(() => {
+    restartRequestInFlight = null;
+  });
+  return restartRequestInFlight;
+}
+
+function installIosLocalAgentRestartRequestListener(): void {
+  if (restartRequestListenerInstalled) return;
+  if (typeof window === "undefined") return;
+  if (typeof window.addEventListener !== "function") return;
+  if (window[IOS_RESTART_LISTENER_WINDOW_KEY]) return;
+  window.addEventListener(
+    "eliza:local-agent-restart-requested",
+    (event: Event) => {
+      const detail = (event as CustomEvent<IosLocalAgentRestartRequestDetail>)
+        .detail;
+      void restartIosFullBunRuntimeFromWatchdog().catch((error) => {
+        console.error("[ios-local-agent] Watchdog restart request failed", {
+          attempt: detail?.attempt,
+          source: detail?.source,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    },
+  );
+  window[IOS_RESTART_LISTENER_WINDOW_KEY] = true;
+  restartRequestListenerInstalled = true;
 }
 
 async function tryFullBunNativeRequest(
@@ -633,7 +734,11 @@ export async function handleIosLocalAgentNativeRequest(
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
-  if (isNativeIosCloudRuntime() && !isCloudRuntimeAllowedLocalAgentPath(path)) {
+  if (
+    isNativeIosCloudRuntime() &&
+    !iosRuntimeHasOnDeviceAgent() &&
+    !isCloudRuntimeAllowedLocalAgentPath(path)
+  ) {
     throw new TypeError(
       "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
     );
@@ -682,10 +787,12 @@ export async function handleIosLocalAgentNativeRequest(
 }
 
 export function installIosLocalAgentNativeRequestBridge(): void {
-  if (globalRequestHandlerInstalled) return;
   if (typeof window === "undefined") return;
-  window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ = handleIosLocalAgentNativeRequest;
-  globalRequestHandlerInstalled = true;
+  if (!globalRequestHandlerInstalled) {
+    window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ = handleIosLocalAgentNativeRequest;
+    globalRequestHandlerInstalled = true;
+  }
+  installIosLocalAgentRestartRequestListener();
 }
 
 function shouldBridgeFetchUrl(url: URL): boolean {
@@ -729,6 +836,7 @@ function localAgentUrlForFetch(url: URL): string {
 }
 
 export function installIosLocalAgentFetchBridge(): void {
+  installIosLocalAgentRestartRequestListener();
   if (globalFetchBridgeInstalled) return;
   if (typeof globalThis.fetch !== "function") return;
   const nativeFetch = globalThis.fetch;

@@ -1126,7 +1126,7 @@ function applyConnectorHints(
       continue;
     }
     const basePath = `connectors.${id}`;
-    const current = next[basePath] ?? {};
+    const current = next[basePath];
     const label = connector.label?.trim();
     const help = connector.description?.trim();
     next[basePath] = {
@@ -1190,11 +1190,11 @@ function applyHeartbeatTargetHints(
     "agents.list.*.heartbeat.target",
   ];
   for (const path of paths) {
-    const current = next[path] ?? {};
+    const current = next[path];
     next[path] = {
       ...current,
-      help: current.help ?? help,
-      placeholder: current.placeholder ?? "last",
+      help: current?.help ?? help,
+      placeholder: current?.placeholder ?? "last",
     };
   }
   return next;

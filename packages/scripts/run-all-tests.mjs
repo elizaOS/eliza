@@ -59,6 +59,10 @@
  *     lanes and any post-merge lane always serialize. Default 1 preserves the
  *     historical fully-serial behaviour, so existing callers are unaffected.
  *
+ *   --plan[=text|json]
+ *     Discover and print the test plan without spawning package tests or
+ *     preparing local services. This is the audit/inventory path for #10200.
+ *
  * Companion env knobs (legacy, still honoured):
  *   TEST_PACKAGE_FILTER  — same surface as --filter
  *   TEST_SCRIPT_FILTER   — regex over script name (test, test:e2e, ...)
@@ -73,6 +77,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  isParallelSafeTask,
   normalizeConcurrency,
   parseShardSpec,
   partitionTasks,
@@ -153,21 +158,26 @@ function failUsage(message) {
 
 const noCloud = parseFlag("--no-cloud");
 const helpFlag = parseFlag("--help") || parseFlag("-h");
+const barePlanFlag = parseFlag("--plan");
 let filterFlag;
 let patternFlag;
 let onlyFlag;
 let excludeFlags;
 let concurrencyFlag;
+let planFlag;
 try {
   filterFlag = parseFlagValue("--filter");
   patternFlag = parseFlagValue("--pattern");
   onlyFlag = parseFlagValue("--only"); // "e2e" | "test"
   excludeFlags = parseRepeatedFlagValue("--exclude");
   concurrencyFlag = parseFlagValue("--concurrency");
+  planFlag = parseFlagValue("--plan");
 } catch (error) {
   failUsage(error.message);
 }
 const allFlag = parseFlag("--all");
+const planEnabled = planFlag !== null || barePlanFlag;
+const planFormat = planFlag || "text";
 
 if (helpFlag) {
   process.stdout.write(
@@ -183,6 +193,7 @@ if (helpFlag) {
       "  --exclude=<path>     Exclude a repo-relative test path from this lane.",
       "  --concurrency=<n>    Run parallel-safe `test` tasks through an n-worker",
       "                       pool (pr lane only; default 1 = fully serial).",
+      "  --plan[=text|json]   Print the discovered test plan without running it.",
       "",
       "Env vars:",
       "  TEST_LANE=pr|post-merge        Lane select (default: pr).",
@@ -204,6 +215,9 @@ if (allFlag && onlyFlag) {
 }
 if (onlyFlag && !["e2e", "test"].includes(onlyFlag)) {
   failUsage(`--only must be "e2e" or "test", got "${onlyFlag}"`);
+}
+if (!["text", "json"].includes(planFormat)) {
+  failUsage(`--plan must be "text" or "json", got "${planFormat}"`);
 }
 if (argv.length > 0) {
   failUsage(`unknown argument(s): ${argv.join(" ")}`);
@@ -765,6 +779,85 @@ function buildLaneEnv() {
   return extra;
 }
 
+function buildPlanSummary(tasks) {
+  const { parallel, serial } = partitionTasks(tasks, TEST_LANE);
+  const byScript = {};
+  const byPackage = {};
+  for (const task of tasks) {
+    byScript[task.scriptName] = (byScript[task.scriptName] ?? 0) + 1;
+    byPackage[task.packageName] = (byPackage[task.packageName] ?? 0) + 1;
+  }
+  return {
+    lane: TEST_LANE,
+    only: onlyFlag || "all",
+    noCloud,
+    shard: shardConfig,
+    filters: packageFilters.map((rx) => rx.source),
+    scriptFilter: scriptFilter?.source ?? null,
+    startAt: startAt || null,
+    concurrency,
+    packageCount: new Set(tasks.map((task) => task.packageName)).size,
+    taskCount: tasks.length,
+    parallelSafeTaskCount: parallel.length,
+    serialTaskCount: serial.length,
+    cloudStep: !noCloud,
+    byScript,
+    byPackage,
+  };
+}
+
+function printableTask(task) {
+  return {
+    packageName: task.packageName,
+    relativeDir: path.relative(repoRoot, task.cwd) || ".",
+    scriptName: task.scriptName,
+    label: task.label,
+    parallelSafe: isParallelSafeTask({
+      scriptName: task.scriptName,
+      lane: TEST_LANE,
+      packageName: task.packageName,
+    }),
+  };
+}
+
+function printPlan(tasks) {
+  const summary = buildPlanSummary(tasks);
+  const taskRows = tasks.map(printableTask);
+  if (planFormat === "json") {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          summary,
+          tasks: taskRows,
+          skipped: skippedPlanEntries,
+          cloudStep: summary.cloudStep
+            ? { label: "cloud#test", command: "bun run test:cloud" }
+            : null,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return;
+  }
+
+  process.stdout.write(
+    [
+      `[eliza-test] PLAN lane=${summary.lane} only=${summary.only} tasks=${summary.taskCount} packages=${summary.packageCount}`,
+      `[eliza-test] PLAN parallel-safe=${summary.parallelSafeTaskCount} serial=${summary.serialTaskCount} concurrency=${summary.concurrency}`,
+      `[eliza-test] PLAN cloud-step=${summary.cloudStep ? "yes" : "no"}`,
+      ...taskRows.map(
+        (task) =>
+          `[eliza-test] PLAN ${task.parallelSafe ? "parallel" : "serial"} ${task.label}`,
+      ),
+      ...skippedPlanEntries.map(
+        (entry) => `[eliza-test] PLAN skip ${entry.label} (${entry.reason})`,
+      ),
+      "",
+    ].join("\n"),
+  );
+}
+
 function buildForwardedScriptArgs(scriptName, scripts) {
   if (excludeFlags.length === 0) {
     return [];
@@ -930,8 +1023,6 @@ function runCloudTests() {
 // Main
 // ---------------------------------------------------------------------------
 
-ensurePluginSqlPostgresEnv();
-
 const packageJsonPaths = collectPackageJsonPaths();
 
 let started = startAt.length === 0;
@@ -940,6 +1031,7 @@ let started = startAt.length === 0;
 // filters/skips. Collecting up front lets the runner dispatch the parallel-safe
 // subset through a worker pool instead of the historical strictly-serial loop.
 const tasks = [];
+const skippedPlanEntries = [];
 
 for (const packageJsonPath of packageJsonPaths) {
   const cwd = path.dirname(packageJsonPath);
@@ -952,9 +1044,19 @@ for (const packageJsonPath of packageJsonPaths) {
     continue;
   }
   if (noCloud && NO_CLOUD_PACKAGE_DIRS.has(relativeDir)) {
-    console.log(
-      `[eliza-test] SKIP ${packageJson.name || relativeDir} (${relativeDir}) (cloud package skipped by --no-cloud)`,
-    );
+    const label = `${packageJson.name || relativeDir} (${relativeDir})`;
+    if (planEnabled) {
+      skippedPlanEntries.push({
+        label,
+        packageName: packageJson.name || relativeDir,
+        relativeDir,
+        reason: "cloud package skipped by --no-cloud",
+      });
+    } else {
+      console.log(
+        `[eliza-test] SKIP ${label} (cloud package skipped by --no-cloud)`,
+      );
+    }
     continue;
   }
 
@@ -980,9 +1082,19 @@ for (const packageJsonPath of packageJsonPaths) {
       continue;
     }
     if (shouldSkipEmptyVitestScript(cwd, scriptName, scripts)) {
-      console.log(
-        `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
-      );
+      if (planEnabled) {
+        skippedPlanEntries.push({
+          label,
+          packageName,
+          relativeDir,
+          scriptName,
+          reason: "no local test files for vitest script",
+        });
+      } else {
+        console.log(
+          `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
+        );
+      }
       continue;
     }
 
@@ -991,6 +1103,13 @@ for (const packageJsonPath of packageJsonPaths) {
 }
 
 const laneEnv = buildLaneEnv();
+
+if (planEnabled) {
+  printPlan(tasks);
+  process.exit(0);
+}
+
+ensurePluginSqlPostgresEnv();
 
 // Run one task, logging START/PASS/SKIP/FAIL. `stream` echoes child output live
 // (serial path); when false the output is buffered and flushed only on failure

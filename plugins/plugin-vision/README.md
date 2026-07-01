@@ -62,18 +62,18 @@ All settings can also be prefixed with `VISION_` (e.g. `VISION_CAMERA_NAME`).
 
 ## Actions
 
-The plugin registers a single `VISION` action that routes to one of these sub-operations based on explicit `action` parameter or natural-language inference:
+The plugin registers a single `VISION` action that routes to one of these sub-operations from the structured `action` / `subaction` / `op` parameter. Mode changes use the structured `mode` parameter, and entity naming uses the structured `name` parameter.
 
-| Sub-operation | Trigger examples | What it does |
+| Sub-operation | Structured parameter example | What it does |
 |--------------|-----------------|-------------|
-| `describe` | "what do you see?", "describe the scene" | Returns the current VLM scene description |
-| `capture` | "take a photo", "screenshot" | Captures a frame and returns it as a base64 image attachment |
-| `set_mode` | "set vision mode to screen" | Switches between `OFF`, `CAMERA`, `SCREEN`, `BOTH` |
-| `enable_camera` / `disable_camera` | "turn on the camera" | Toggles camera input |
-| `enable_screen` / `disable_screen` | "enable screen capture" | Toggles screen input |
-| `name_entity` | "the person is named Alice" | Assigns a display name to the most prominent tracked entity |
-| `identify_person` | "who is that?" | Lists tracked people with names and presence duration |
-| `track_entity` | "track the person in the red shirt" | Refreshes entity tracking and reports statistics |
+| `describe` | `action: "describe"` | Returns the current VLM scene description |
+| `capture` | `action: "capture"` | Captures a frame and returns it as a base64 image attachment |
+| `set_mode` | `action: "set_mode", mode: "SCREEN"` | Switches between `OFF`, `CAMERA`, `SCREEN`, `BOTH` |
+| `enable_camera` / `disable_camera` | `action: "enable_camera"` | Toggles camera input |
+| `enable_screen` / `disable_screen` | `action: "enable_screen"` | Toggles screen input |
+| `name_entity` | `action: "name_entity", name: "Alice"` | Assigns a display name to the most prominent tracked entity |
+| `identify_person` | `action: "identify_person"` | Lists tracked people with names and presence duration |
+| `track_entity` | `action: "track_entity"` | Refreshes entity tracking and reports statistics |
 
 ## Vision Provider
 
