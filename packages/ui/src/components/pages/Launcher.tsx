@@ -20,6 +20,7 @@ import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import {
   LAUNCHER_DOCK_LIMIT,
+  LAUNCHER_PAGE_SIZE,
   type LauncherLayout,
   moveIcon,
   readLauncherLayout,
@@ -32,6 +33,14 @@ import { ViewTileImage } from "../views/ViewTileImage";
 
 export interface LauncherProps {
   entries: ViewEntry[];
+  /**
+   * Explicit, curated pages as ordered id lists (page 1 = apps, page 2 =
+   * developer). When supplied the launcher renders these fixed pages read-only
+   * (no reorder / favorites / edit mode) instead of the persisted free-form
+   * layout; a group longer than one page paginates but never merges into the
+   * next group. Omit for the standalone/free-form launcher (stories, tests).
+   */
+  pageGroups?: string[][];
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
   onEdgeSwipeRight?: () => void;
@@ -251,6 +260,7 @@ const IconTile = memo(function IconTile({
 
 export function Launcher({
   entries,
+  pageGroups,
   loading = false,
   onLaunch,
   onEdgeSwipeRight,
@@ -267,6 +277,9 @@ export function Launcher({
   showPageDots = true,
   className,
 }: LauncherProps) {
+  // Curated mode: the caller owns page composition, so the launcher renders
+  // those fixed pages and disables the free-form layout / edit affordances.
+  const grouped = pageGroups != null;
   const availableIds = useMemo(() => entries.map((e) => e.id), [entries]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
 
@@ -306,7 +319,8 @@ export function Launcher({
 
   const editingControlled = editingProp !== undefined;
   const [localEditing, setLocalEditing] = useState(false);
-  const editing = editingProp ?? localEditing;
+  // Curated pages are read-only: never enter reorder/favorite edit mode.
+  const editing = grouped ? false : (editingProp ?? localEditing);
   const setEditingState = useCallback(
     (next: boolean) => {
       if (editingControlled) onEditingChange?.(next);
@@ -373,16 +387,32 @@ export function Launcher({
   );
 
   const toggleEditMode = useCallback(() => {
+    if (grouped) return; // Curated pages never enter edit mode.
     emitViewInteraction({
       source: "launcher",
       action: editing ? "edit-mode-exit" : "edit-mode-enter",
     });
     setEditingState(!editing);
-  }, [editing, setEditingState]);
+  }, [grouped, editing, setEditingState]);
+
+  // Curated mode chunks each supplied group onto its own page(s) so a group
+  // boundary always starts a fresh page (page 1 = apps, page 2 = developer),
+  // never merging two groups even when the first is short.
+  const curatedPages = useMemo(() => {
+    if (!pageGroups) return null;
+    const result: string[][] = [];
+    for (const group of pageGroups) {
+      const present = group.filter((id) => byId.has(id));
+      for (let i = 0; i < present.length; i += LAUNCHER_PAGE_SIZE) {
+        result.push(present.slice(i, i + LAUNCHER_PAGE_SIZE));
+      }
+    }
+    return result.length > 0 ? result : [[]];
+  }, [pageGroups, byId]);
 
   const pages = useMemo(
-    () => (layout.pages.length > 0 ? layout.pages : [[]]),
-    [layout.pages],
+    () => curatedPages ?? (layout.pages.length > 0 ? layout.pages : [[]]),
+    [curatedPages, layout.pages],
   );
 
   // Report the page count up so an outer surface (the rail) can size the single
@@ -396,8 +426,8 @@ export function Launcher({
   // (desktop-tab) favorites are capped at the pinning source too, but clamp
   // here as defense so the dock can never overflow regardless of caller.
   const favoriteIdList = useMemo(
-    () => (favorites ?? layout.favorites).slice(0, LAUNCHER_DOCK_LIMIT),
-    [favorites, layout.favorites],
+    () => (grouped ? [] : (favorites ?? layout.favorites).slice(0, LAUNCHER_DOCK_LIMIT)),
+    [grouped, favorites, layout.favorites],
   );
   const favoriteEntries = useMemo(
     () =>

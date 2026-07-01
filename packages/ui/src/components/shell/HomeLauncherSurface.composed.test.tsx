@@ -17,7 +17,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
-import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
@@ -27,9 +26,6 @@ import { HomeLauncherSurface } from "./HomeLauncherSurface";
 vi.mock("../../hooks/useAvailableViews", () => ({
   useRoutableViews: vi.fn(),
 }));
-vi.mock("../../hooks/useViewCatalog", () => ({
-  useViewCatalog: vi.fn(),
-}));
 vi.mock("../../state/useViewKinds", () => ({
   useEnabledViewKinds: vi.fn(),
 }));
@@ -38,7 +34,6 @@ vi.mock("../../platform/platform-guards", () => ({
 }));
 
 const useRoutableViewsMock = vi.mocked(useRoutableViews);
-const useViewCatalogMock = vi.mocked(useViewCatalog);
 const useEnabledViewKindsMock = vi.mocked(useEnabledViewKinds);
 
 function view(
@@ -61,14 +56,13 @@ function view(
   };
 }
 
-// Four formerly dock-favorite views + 24 page views, which pack beyond one
-// launcher page. The composed surface deliberately renders no page-indicator
-// strip: home/launcher navigation is gesture-only, and the inner
-// Launcher dots stay suppressed.
+// Curated apps + 24 extra loaded apps, which pack beyond one launcher page. The
+// composed surface deliberately renders no page-indicator strip: home/launcher
+// navigation is gesture-only, and the inner Launcher dots stay suppressed.
 const DOCK_VIEWS = [
   view("settings", "Settings", "/settings", { icon: "Settings" }),
-  view("files", "Files", "/apps/files", { icon: "FolderClosed" }),
-  view("tasks", "Tasks", "/apps/tasks", { icon: "ListTodo" }),
+  view("browser", "Browser", "/browser", { icon: "Globe" }),
+  view("character", "Character", "/character", { icon: "Bot" }),
   view("activity", "Activity", "/activity", { icon: "Activity" }),
 ];
 const PAGE_VIEWS = Array.from({ length: 24 }, (_, i) =>
@@ -92,13 +86,6 @@ beforeEach(() => {
     loading: false,
     error: null,
     refresh: vi.fn(),
-  });
-  useViewCatalogMock.mockReturnValue({
-    entries: [],
-    loading: false,
-    error: null,
-    refresh: vi.fn(),
-    get: vi.fn(async () => {}),
   });
 });
 
@@ -194,60 +181,35 @@ describe("Home ↔ Launcher composed surface", () => {
     expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
   });
 
-  it("swiping back from the launcher returns HOME and is NOT in edit mode (#3)", () => {
+  it("swiping back from the launcher returns HOME (#3)", () => {
     const surface = renderComposed();
     openLauncher();
     expect(surface.getAttribute("data-page")).toBe("launcher");
 
-    // Enter edit mode via a long-press on a tile (the Edit button was removed).
-    vi.useFakeTimers();
-    const settingsTile = screen
-      .getByTestId("launcher-tile-settings")
-      .querySelector("button");
-    if (!settingsTile) throw new Error("settings tile button missing");
-    fireEvent.pointerDown(settingsTile, { clientX: 50, clientY: 50 });
-    act(() => vi.advanceTimersByTime(600));
-    fireEvent.pointerUp(settingsTile);
-    vi.useRealTimers();
-    // Edit mode is on: per-tile pin affordances appear (no Done button now).
-    expect(screen.getByTestId("launcher-fav-settings")).toBeTruthy();
-
     // Swipe back. This is the exact gesture that used to strand the user in
-    // jiggle mode. It must return home AND drop edit mode (store invariant).
+    // jiggle mode; the curated launcher is read-only, so it just returns home.
     swipeBackHome();
     expect(surface.getAttribute("data-page")).toBe("home");
 
-    // Re-enter the launcher: it must be a CLEAN launch view, not stale edit.
     openLauncher();
     expect(surface.getAttribute("data-page")).toBe("launcher");
-    expect(screen.queryByTestId("launcher-fav-settings")).toBeNull();
   });
 
-  it("a horizontal swipe that starts ON a tile never ghost-fires edit mode (#3)", () => {
+  it("is read-only: a long-press never enters edit mode (#3)", () => {
     vi.useFakeTimers();
     renderComposed();
     openLauncher();
 
-    // Press a tile and PAN past the slop before the long-press timer elapses.
+    // A stationary hold past the long-press threshold must NOT surface pin/edit
+    // affordances — the curated launcher has a fixed placement, no reordering.
     const tile = screen
-      .getByTestId("launcher-tile-app0")
+      .getByTestId("launcher-tile-settings")
       .querySelector("button");
-    if (!tile) throw new Error("tile button missing");
+    if (!tile) throw new Error("settings tile button missing");
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 50 });
-    fireEvent.pointerMove(tile, { clientX: 90, clientY: 52 }); // dx 40 > slop
     act(() => vi.advanceTimersByTime(600));
-    // Swipe ⇒ NOT a long-press ⇒ NOT edit mode (no pin affordances surfaced).
-    expect(screen.queryByTestId("launcher-fav-app0")).toBeNull();
-
-    // Control: a STATIONARY hold past the threshold DOES enter edit mode, so the
-    // intentional long-press affordance still works.
-    const tile2 = screen
-      .getByTestId("launcher-tile-app1")
-      .querySelector("button");
-    if (!tile2) throw new Error("tile button missing");
-    fireEvent.pointerDown(tile2, { clientX: 50, clientY: 50 });
-    act(() => vi.advanceTimersByTime(600));
-    expect(screen.getByTestId("launcher-fav-app1")).toBeTruthy();
+    expect(screen.queryByTestId("launcher-fav-settings")).toBeNull();
+    vi.useRealTimers();
   });
 
   it("does not render a Background tile because backgrounds live in Settings", () => {
@@ -275,22 +237,24 @@ describe("Home ↔ Launcher composed surface", () => {
     const settingsVisual = document.querySelector<HTMLElement>(
       '[data-view-visual="settings"]',
     );
-    const filesVisual = document.querySelector<HTMLElement>(
-      '[data-view-visual="files"]',
+    const browserVisual = document.querySelector<HTMLElement>(
+      '[data-view-visual="browser"]',
     );
     expect(settingsVisual).toBeTruthy();
-    expect(filesVisual).toBeTruthy();
+    expect(browserVisual).toBeTruthy();
     expect(screen.getByTestId("launcher-image-settings")).toBeTruthy();
-    expect(screen.getByTestId("launcher-image-files")).toBeTruthy();
+    expect(screen.getByTestId("launcher-image-browser")).toBeTruthy();
     expect(settingsVisual?.getAttribute("style")).toContain("linear-gradient");
-    expect(filesVisual?.getAttribute("style")).toContain("linear-gradient");
+    expect(browserVisual?.getAttribute("style")).toContain("linear-gradient");
 
     const settingsGlyph = settingsVisual
       ?.querySelector("svg")
       ?.getAttribute("class");
-    const filesGlyph = filesVisual?.querySelector("svg")?.getAttribute("class");
+    const browserGlyph = browserVisual
+      ?.querySelector("svg")
+      ?.getAttribute("class");
     expect(settingsGlyph).toContain("lucide-settings");
-    expect(filesGlyph).toContain("lucide-folder-closed");
-    expect(settingsGlyph).not.toBe(filesGlyph);
+    expect(browserGlyph).toContain("lucide-globe");
+    expect(settingsGlyph).not.toBe(browserGlyph);
   });
 });

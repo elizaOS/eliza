@@ -154,6 +154,10 @@ import {
 import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
 import { LauncherSurface } from "./components/pages/LauncherSurface";
+import {
+  isWalletSectionPath,
+  WalletSectionNav,
+} from "./components/pages/WalletSectionNav";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
@@ -468,13 +472,16 @@ function KioskShell() {
 function TabScrollView({
   children,
   className = "",
+  nav,
 }: {
   children: ReactNode;
   className?: string;
+  nav?: ReactNode;
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
+      nav={nav}
       main={
         <div
           data-shell-scroll-region="true"
@@ -490,14 +497,17 @@ function TabScrollView({
 function TabContentView({
   children,
   surface = "opaque",
+  nav,
 }: {
   children: ReactNode;
   surface?: "opaque" | "transparent";
+  nav?: ReactNode;
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
       surface={surface}
+      nav={nav}
       main={
         <div
           data-shell-content-region="true"
@@ -881,10 +891,10 @@ function findRemoteViewForRoute(
   );
 }
 
-function renderRemoteView(view: ViewRegistryEntry): ReactNode {
+function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   if (!view.bundleUrl) return null;
   return (
-    <TabContentView>
+    <TabContentView nav={nav}>
       <DynamicViewLoader
         bundleUrl={view.bundleUrl}
         componentExport={view.componentExport}
@@ -1061,11 +1071,13 @@ function renderStaticViewRouterTab({
   androidPhoneSurfaceEnabled,
   navigationPath,
   settingsInitialSection,
+  walletNav,
 }: {
   tab: string;
   androidPhoneSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
+  walletNav?: ReactNode;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     tutorial: (
@@ -1190,7 +1202,7 @@ function renderStaticViewRouterTab({
   }
   if (tab === "inventory") {
     return (
-      <TabScrollView>
+      <TabScrollView nav={walletNav}>
         <WalletInventoryPage />
       </TabScrollView>
     );
@@ -1240,13 +1252,19 @@ function renderViewRouterContent({
       </TabContentView>
     );
   }
+  // Hyperliquid + Polymarket are sub-views of Wallet: the wallet family of
+  // routes shares one sub-nav rendered in the workspace chrome nav slot.
+  const walletNav = isWalletSectionPath(navigationPath) ? (
+    <WalletSectionNav activePath={navigationPath} />
+  ) : undefined;
+
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   if (
     appShellPageForRoute &&
     isViewVisible(appShellPageForRoute, enabledKinds)
   ) {
     return (
-      <TabContentView>
+      <TabContentView nav={walletNav}>
         <RegisteredAppShellPage registration={appShellPageForRoute} />
       </TabContentView>
     );
@@ -1257,12 +1275,13 @@ function renderViewRouterContent({
     tab,
     appSlug,
   );
-  if (remoteView?.bundleUrl) return renderRemoteView(remoteView);
+  if (remoteView?.bundleUrl) return renderRemoteView(remoteView, walletNav);
   return renderStaticViewRouterTab({
     tab,
     androidPhoneSurfaceEnabled,
     navigationPath,
     settingsInitialSection,
+    walletNav,
   });
 }
 
