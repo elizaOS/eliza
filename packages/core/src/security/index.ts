@@ -8,6 +8,7 @@
  * @module security
  */
 
+export { mnemonicValid } from "./bip39-wordlist.js";
 export {
 	applyCapabilityManifest,
 	assertHostAllowed,
@@ -30,7 +31,6 @@ export {
 	wrapExternalContent,
 	wrapWebContent,
 } from "./external-content.js";
-
 export {
 	hardenIncomingUserMessage,
 	type IncomingMessageSecurityMetadata,
@@ -38,7 +38,6 @@ export {
 	registerCoreIncomingMessageSecurityHook,
 	scrubIncomingMessageTextForStorage,
 } from "./incoming-message-security.js";
-export { mnemonicValid } from "./bip39-wordlist.js";
 export {
 	cardBrand,
 	detectPii,

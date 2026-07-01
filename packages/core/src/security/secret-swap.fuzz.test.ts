@@ -71,7 +71,21 @@ function genApiKey(rng: () => number): string {
 		? `AKIA${body.toUpperCase().slice(0, 16)}`
 		: `${pre}${body}`;
 }
-const SECRET_GENERATORS = [genVisa, genEmail, genApiKey] as const;
+// Known-valid instances of the issue-named classes (seed phrase / DB cred / WIF /
+// anthropic / webhook), so the no-leak + round-trip invariants cover them too.
+const NEW_CLASS_POOL = [
+	"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+	"legal winner thank year wave sausage worth useful legal winner thank yellow",
+	"postgres://app_user:s3cr3tP4ss@db.internal:5432/prod",
+	"https://admin:hunter2hunter2@internal.example.com/api",
+	"5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ",
+	"sk-ant-api03-9fK3xQ7zL2mNpR8tV4wYbC1dE6gH0jKlMnOpQr",
+	"whsec_aBcD1234efGH5678ijKL9012mnOPqrSt",
+];
+function genNewClass(rng: () => number): string {
+	return pick(rng, NEW_CLASS_POOL);
+}
+const SECRET_GENERATORS = [genVisa, genEmail, genApiKey, genNewClass] as const;
 
 const BENIGN_WORDS = [
 	"the",

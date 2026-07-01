@@ -26,7 +26,7 @@
  */
 
 import { createHash } from "../utils/crypto-compat";
-import { findMnemonicPhrase } from "./bip39-wordlist";
+import { findAllMnemonicPhrases } from "./bip39-wordlist";
 
 /** A single PII / token class detector. */
 export interface PiiDetector {
@@ -49,6 +49,16 @@ export interface PiiDetector {
 	 * context (`password=...`) but swap only the value.
 	 */
 	readonly extract?: (match: RegExpMatchArray) => string;
+	/**
+	 * Custom span finder that fully replaces the regex loop for this detector.
+	 * Used when a single regex match can contain several independent secrets
+	 * (e.g. two adjacent BIP-39 mnemonics in one word run), so every one is
+	 * emitted rather than just the first. When present, `pattern`/`validate`/
+	 * `extract` are ignored for this detector.
+	 */
+	readonly findSpans?: (
+		text: string,
+	) => ReadonlyArray<{ value: string; start: number; end: number }>;
 }
 
 /** A detected span: the sensitive value, its class, and its position in the text. */
@@ -249,14 +259,13 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 			/\beyJ[A-Za-z0-9_-]{6,}\.eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\b/g,
 	},
 	// BIP-39 mnemonic seed phrase — wordlist + checksum validated (near-zero FP;
-	// an ordinary 12-word English sentence is rejected by the checksum). The
-	// broad word-run pattern is narrowed to the exact valid window by the
-	// validator/extractor so surrounding words are not swallowed.
+	// an ordinary 12-word English sentence is rejected by the checksum). Uses a
+	// custom span finder so every phrase in a word run is emitted (a single regex
+	// match over two adjacent mnemonics would otherwise leave the second unswapped).
 	{
 		kind: "seed-phrase",
 		pattern: /\b(?:[a-zA-Z]{3,8}[ \t]+){11,}[a-zA-Z]{3,8}\b/g,
-		validate: (match) => findMnemonicPhrase(match) !== null,
-		extract: (match) => findMnemonicPhrase(match[0]) ?? match[0],
+		findSpans: (text) => findAllMnemonicPhrases(text),
 	},
 	// Bitcoin WIF private key — base58check (version + 4-byte double-SHA256)
 	// validated, so an IPFS CID / other base58 blob is rejected.
@@ -387,6 +396,19 @@ export function detectPii(
 	const candidates: PiiMatch[] = [];
 	for (const detector of PII_DETECTORS) {
 		if (disabled?.has(detector.kind)) continue;
+		if (detector.findSpans) {
+			for (const span of detector.findSpans(text)) {
+				if (span.value) {
+					candidates.push({
+						kind: detector.kind,
+						value: span.value,
+						start: span.start,
+						end: span.end,
+					});
+				}
+			}
+			continue;
+		}
 		detector.pattern.lastIndex = 0;
 		for (const match of text.matchAll(detector.pattern)) {
 			const whole = match[0];

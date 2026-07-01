@@ -5,6 +5,7 @@ import {
 	withCanonicalProviderDocs,
 } from "./action-docs";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
+import { deriveKnownSecrets } from "./constants/secrets";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import {
@@ -53,7 +54,6 @@ import {
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
-import { deriveKnownSecrets } from "./constants/secrets";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import {
