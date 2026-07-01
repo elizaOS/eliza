@@ -66,11 +66,7 @@ export function isClaudeSubscriptionLimitMessage(text: string): boolean {
   // A genuine short ANSWER about limits ("No, you haven't hit your rate limit
   // yet.") shares vocabulary with the envelope; the envelope itself never
   // contains negation.
-  if (
-    /\b(no|not|haven't|havent|hasn't|hasnt|didn't|didnt|isn't|isnt|wasn't|wasnt)\b/.test(
-      t,
-    )
-  ) {
+  if (/\b(no|not|haven't|havent|hasn't|hasnt|didn't|didnt|isn't|isnt|wasn't|wasnt)\b/.test(t)) {
     return false;
   }
   return (
@@ -440,11 +436,11 @@ export class ClaudeSdkSession {
     // as a REPLY, text mode as the completion). "rate limit" in the thrown
     // message routes it through isRateLimitError.
     const limitEnvelope = [text, resultText ?? ""].find((candidate) =>
-      isClaudeSubscriptionLimitMessage(candidate),
+      isClaudeSubscriptionLimitMessage(candidate)
     );
     if (sawResult && limitEnvelope !== undefined) {
       throw new Error(
-        `[cli-inference:sdk] subscription rate limit reached: ${limitEnvelope.trim().slice(0, 120)}`,
+        `[cli-inference:sdk] subscription rate limit reached: ${limitEnvelope.trim().slice(0, 120)}`
       );
     }
 
