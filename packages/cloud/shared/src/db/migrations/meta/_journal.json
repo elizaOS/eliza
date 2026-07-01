@@ -1093,6 +1093,13 @@
       "when": 1780532400000,
       "tag": "0157_app_frontend_deployments",
       "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1780618800000,
+      "tag": "0158_compliance_review_and_usdc_payouts",
+      "breakpoints": true
     }
   ]
 }

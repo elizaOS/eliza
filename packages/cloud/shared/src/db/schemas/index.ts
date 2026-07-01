@@ -31,6 +31,7 @@ export * from "./app-domains";
 export * from "./app-earnings";
 export * from "./app-frontend-deployments";
 export * from "./app-image-generation-idempotency";
+export * from "./app-reviews";
 export * from "./apps";
 export * from "./auth-events";
 export * from "./cli-auth-sessions";
