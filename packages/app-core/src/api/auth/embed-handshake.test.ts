@@ -2,22 +2,11 @@ import { createHmac } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The embed handshake gates on the single core `hasRoleAccess` primitive. Mock
-// it so each case controls the resolved trust level without standing up a full
-// world/role graph. `vi.hoisted` is required because `vi.mock` factories are
-// hoisted above imports. `createUniqueUuid` is kept real so entity scoping is
-// exercised end to end.
-const { hasRoleAccess } = vi.hoisted(() => ({
-  hasRoleAccess: vi.fn(
-    async (_r: unknown, _m: unknown, _role: string) => false,
-  ),
-}));
-vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/core")>();
-  return { ...actual, hasRoleAccess };
-});
-
 import { type EmbedLaunchInput, verifyEmbedLaunch } from "./embed-handshake";
+
+const hasRoleAccess = vi.fn(
+  async (_r: unknown, _m: unknown, _role: string) => false,
+);
 
 const TEST_BOT_TOKEN = "123456:test-bot-token-abc";
 const TELEGRAM_USER_ID = "987654321";
@@ -92,6 +81,7 @@ describe("verifyEmbedLaunch", () => {
       telegramInput(),
       makeRuntime({ TELEGRAM_BOT_TOKEN: TEST_BOT_TOKEN }),
       NOW,
+      { hasRoleAccess },
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -107,6 +97,7 @@ describe("verifyEmbedLaunch", () => {
       telegramInput(),
       makeRuntime({ TELEGRAM_BOT_TOKEN: TEST_BOT_TOKEN }),
       NOW,
+      { hasRoleAccess },
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -121,6 +112,7 @@ describe("verifyEmbedLaunch", () => {
       telegramInput(),
       makeRuntime({ TELEGRAM_BOT_TOKEN: TEST_BOT_TOKEN }),
       NOW,
+      { hasRoleAccess },
     );
     expect(result).toEqual({
       ok: false,
@@ -137,6 +129,7 @@ describe("verifyEmbedLaunch", () => {
       { platform: "telegram", signedLaunchPayload: forged },
       makeRuntime({ TELEGRAM_BOT_TOKEN: TEST_BOT_TOKEN }),
       NOW,
+      { hasRoleAccess },
     );
     expect(result).toEqual({
       ok: false,
@@ -153,6 +146,7 @@ describe("verifyEmbedLaunch", () => {
       telegramInput({}, telegramFields(staleDate)),
       makeRuntime({ TELEGRAM_BOT_TOKEN: TEST_BOT_TOKEN }),
       NOW,
+      { hasRoleAccess },
     );
     expect(result).toEqual({
       ok: false,
@@ -163,7 +157,14 @@ describe("verifyEmbedLaunch", () => {
   });
 
   it("rejects telegram when the bot token is unconfigured", async () => {
-    const result = await verifyEmbedLaunch(telegramInput(), makeRuntime(), NOW);
+    const result = await verifyEmbedLaunch(
+      telegramInput(),
+      makeRuntime(),
+      NOW,
+      {
+        hasRoleAccess,
+      },
+    );
     expect(result).toEqual({
       ok: false,
       status: 403,
@@ -182,6 +183,7 @@ describe("verifyEmbedLaunch", () => {
       },
       makeRuntime(),
       NOW,
+      { hasRoleAccess },
     );
     expect(discordExchange).toHaveBeenCalledWith("oauth2-code-xyz");
     expect(result.ok).toBe(true);
@@ -204,6 +206,7 @@ describe("verifyEmbedLaunch", () => {
       },
       makeRuntime(),
       NOW,
+      { hasRoleAccess },
     );
     expect(result).toEqual({
       ok: false,
@@ -223,6 +226,7 @@ describe("verifyEmbedLaunch", () => {
       },
       makeRuntime(),
       NOW,
+      { hasRoleAccess },
     );
     expect(result).toEqual({
       ok: false,

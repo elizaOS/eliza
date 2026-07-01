@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
+  hasRoleAccess as coreHasRoleAccess,
   createUniqueUuid,
-  hasRoleAccess,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -42,6 +42,10 @@ export interface DiscordVerifiedUser {
 export type DiscordExchange = (
   code: string,
 ) => Promise<DiscordVerifiedUser | null>;
+
+export interface EmbedLaunchDeps {
+  hasRoleAccess?: typeof coreHasRoleAccess;
+}
 
 export interface EmbedLaunchInput {
   platform: EmbedPlatform;
@@ -164,7 +168,9 @@ async function authorizeEntity(
   entityKey: string,
   userId: string,
   now: number,
+  deps: EmbedLaunchDeps,
 ): Promise<EmbedLaunchResult> {
+  const hasRoleAccess = deps.hasRoleAccess ?? coreHasRoleAccess;
   const entityId = createUniqueUuid(runtime, entityKey) as UUID;
   const roomId = createUniqueUuid(
     runtime,
@@ -192,6 +198,7 @@ async function verifyTelegramLaunch(
   input: EmbedLaunchInput,
   runtime: IAgentRuntime,
   now: number,
+  deps: EmbedLaunchDeps,
 ): Promise<EmbedLaunchResult> {
   const botTokenSetting = runtime.getSetting("TELEGRAM_BOT_TOKEN");
   const botToken =
@@ -216,6 +223,7 @@ async function verifyTelegramLaunch(
     scopedKey(accountId, verification.userId),
     verification.userId,
     now,
+    deps,
   );
 }
 
@@ -223,6 +231,7 @@ async function verifyDiscordLaunch(
   input: EmbedLaunchInput,
   runtime: IAgentRuntime,
   now: number,
+  deps: EmbedLaunchDeps,
 ): Promise<EmbedLaunchResult> {
   const { discordExchange } = input;
   if (!discordExchange) {
@@ -246,6 +255,7 @@ async function verifyDiscordLaunch(
     scopedKey(accountId, user.id),
     user.id,
     now,
+    deps,
   );
 }
 
@@ -258,9 +268,10 @@ export async function verifyEmbedLaunch(
   input: EmbedLaunchInput,
   runtime: IAgentRuntime,
   now: number = Date.now(),
+  deps: EmbedLaunchDeps = {},
 ): Promise<EmbedLaunchResult> {
   if (input.platform === "telegram") {
-    return verifyTelegramLaunch(input, runtime, now);
+    return verifyTelegramLaunch(input, runtime, now, deps);
   }
-  return verifyDiscordLaunch(input, runtime, now);
+  return verifyDiscordLaunch(input, runtime, now, deps);
 }

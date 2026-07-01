@@ -11,17 +11,10 @@ import { createHmac } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-const { hasRoleAccess } = vi.hoisted(() => ({
-  hasRoleAccess: vi.fn(
-    async (_runtime: unknown, _message: unknown, role: string) =>
-      role === "OWNER",
-  ),
-}));
-
-vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/core")>();
-  return { ...actual, hasRoleAccess };
-});
+const hasRoleAccess = vi.fn(
+  async (_runtime: unknown, _message: unknown, role: string) =>
+    role === "OWNER",
+);
 
 import { verifyEmbedLaunch } from "./embed-handshake.ts";
 import {
@@ -76,6 +69,7 @@ describe("embed launch — full local end-to-end (#9947)", () => {
       { platform: "telegram", signedLaunchPayload: initData },
       runtime,
       NOW + 1000,
+      { hasRoleAccess },
     );
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
@@ -109,6 +103,7 @@ describe("embed launch — full local end-to-end (#9947)", () => {
       { platform: "telegram", signedLaunchPayload: forged },
       runtime,
       NOW + 1000,
+      { hasRoleAccess },
     );
     expect(verified.ok).toBe(false);
     // Nothing to mint — the seam stops before any credential is issued.
