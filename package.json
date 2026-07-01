@@ -192,6 +192,8 @@
     "bench:eliza-1": "bun run --cwd packages/benchmarks/eliza-1 start",
     "bench:memperf": "node packages/benchmarks/memperf/run-all.mjs",
     "bench:memperf:json": "node packages/benchmarks/memperf/run-all.mjs --json",
+    "check:view-bundle-size": "node packages/benchmarks/view-bundle-size/run-all.mjs",
+    "check:view-bundle-size:json": "node packages/benchmarks/view-bundle-size/run-all.mjs --json",
     "bench:recall": "bun run --cwd packages/benchmarks/recall-bench bench",
     "bench:recall:1k": "bun run --cwd packages/benchmarks/recall-bench bench:1k",
     "bench:three-agent": "bun run --cwd packages/benchmarks/three-agent-dialogue bench",

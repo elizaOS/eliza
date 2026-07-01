@@ -1,0 +1,143 @@
+{
+  "_comment": "Per-plugin view-bundle size budgets for the #10724 bundle-size regression gate. The harness (bundle-size-kpi.mjs) builds every plugin's dist/views bundle, sums the gzipped bytes of its emitted JS/CSS, and exits non-zero when a bundle (or the total) exceeds its gzip ceiling. Budgets are gzipped bytes at level 9 (see GZIP_LEVEL in lib.mjs). Each gzipBudgetBytes was set from the MEASURED baseline (measuredGzipBytes) plus ~10-15% headroom for cross-environment/minor-change variance; measuredRawBytes/measuredGzipBytes are recorded for context and ratcheting. A bundle that fails to build is measured:false with size null and NEVER satisfies its budget (null is not zero). Goal is monotonic improvement — ratchet gzipBudgetBytes DOWN as views shrink; only widen with a real, justified reason.",
+  "_baseline": {
+    "capturedOn": "local darwin (mac) build of origin/develop; CI re-confirms on ubuntu",
+    "measuredTotalGzipBytes": 273472,
+    "measuredTotalRawBytes": 1201792,
+    "measuredBundleCount": 26,
+    "gzipLevel": 9
+  },
+  "totalGzipBudgetBytes": 315000,
+  "bundles": {
+    "app-model-tester": {
+      "measuredRawBytes": 12072,
+      "measuredGzipBytes": 3865,
+      "gzipBudgetBytes": 4500
+    },
+    "plugin-app-control": {
+      "measuredRawBytes": 5767,
+      "measuredGzipBytes": 2245,
+      "gzipBudgetBytes": 3000
+    },
+    "plugin-blocker": {
+      "measuredRawBytes": 5863,
+      "measuredGzipBytes": 1870,
+      "gzipBudgetBytes": 2500
+    },
+    "plugin-calendar": {
+      "measuredRawBytes": 9824,
+      "measuredGzipBytes": 3107,
+      "gzipBudgetBytes": 4000
+    },
+    "plugin-contacts": {
+      "measuredRawBytes": 22639,
+      "measuredGzipBytes": 7454,
+      "gzipBudgetBytes": 9000
+    },
+    "plugin-documents": {
+      "measuredRawBytes": 9328,
+      "measuredGzipBytes": 2657,
+      "gzipBudgetBytes": 3500
+    },
+    "plugin-facewear": {
+      "measuredRawBytes": 19357,
+      "measuredGzipBytes": 5068,
+      "gzipBudgetBytes": 6000
+    },
+    "plugin-feed": {
+      "measuredRawBytes": 16262,
+      "measuredGzipBytes": 4695,
+      "gzipBudgetBytes": 5500
+    },
+    "plugin-finances": {
+      "measuredRawBytes": 9581,
+      "measuredGzipBytes": 2856,
+      "gzipBudgetBytes": 3500
+    },
+    "plugin-goals": {
+      "measuredRawBytes": 7166,
+      "measuredGzipBytes": 2424,
+      "gzipBudgetBytes": 3000
+    },
+    "plugin-health": {
+      "measuredRawBytes": 10552,
+      "measuredGzipBytes": 3331,
+      "gzipBudgetBytes": 4000
+    },
+    "plugin-hyperliquid": {
+      "measuredRawBytes": 16427,
+      "measuredGzipBytes": 4387,
+      "gzipBudgetBytes": 5500
+    },
+    "plugin-inbox": {
+      "measuredRawBytes": 7402,
+      "measuredGzipBytes": 2680,
+      "gzipBudgetBytes": 3500
+    },
+    "plugin-messages": {
+      "measuredRawBytes": 24235,
+      "measuredGzipBytes": 8511,
+      "gzipBudgetBytes": 10000
+    },
+    "plugin-phone": {
+      "measuredRawBytes": 22452,
+      "measuredGzipBytes": 7758,
+      "gzipBudgetBytes": 9000
+    },
+    "plugin-polymarket": {
+      "measuredRawBytes": 15655,
+      "measuredGzipBytes": 4328,
+      "gzipBudgetBytes": 5000
+    },
+    "plugin-relationships": {
+      "measuredRawBytes": 7762,
+      "measuredGzipBytes": 2497,
+      "gzipBudgetBytes": 3000
+    },
+    "plugin-screenshare": {
+      "measuredRawBytes": 15375,
+      "measuredGzipBytes": 4283,
+      "gzipBudgetBytes": 5000
+    },
+    "plugin-shopify": {
+      "measuredRawBytes": 24696,
+      "measuredGzipBytes": 5763,
+      "gzipBudgetBytes": 7000
+    },
+    "plugin-social-alpha": {
+      "measuredRawBytes": 6952,
+      "measuredGzipBytes": 2266,
+      "gzipBudgetBytes": 3000
+    },
+    "plugin-task-coordinator": {
+      "measuredRawBytes": 593263,
+      "measuredGzipBytes": 126643,
+      "gzipBudgetBytes": 150000
+    },
+    "plugin-todos": {
+      "measuredRawBytes": 5853,
+      "measuredGzipBytes": 2087,
+      "gzipBudgetBytes": 2500
+    },
+    "plugin-training": {
+      "measuredRawBytes": 209039,
+      "measuredGzipBytes": 30553,
+      "gzipBudgetBytes": 36000
+    },
+    "plugin-trajectory-logger": {
+      "measuredRawBytes": 17846,
+      "measuredGzipBytes": 5134,
+      "gzipBudgetBytes": 6000
+    },
+    "plugin-vector-browser": {
+      "measuredRawBytes": 36307,
+      "measuredGzipBytes": 10311,
+      "gzipBudgetBytes": 12000
+    },
+    "plugin-wallet-ui": {
+      "measuredRawBytes": 69997,
+      "measuredGzipBytes": 16265,
+      "gzipBudgetBytes": 19000
+    }
+  }
+}
