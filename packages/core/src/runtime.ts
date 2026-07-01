@@ -55,6 +55,19 @@ import {
 } from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
 import { BM25 } from "./search";
+import {
+	CompositeEntityRecognizer,
+	DEFAULT_PSEUDONYM_BLOCKLIST,
+	PII_ENTITY_RECOGNIZER_SERVICE,
+	PII_SWAP_DISABLED_KINDS_SETTING,
+	PII_SWAP_ENABLED_SETTING,
+	PII_SWAP_EXEMPT_VALUES_SETTING,
+	type PiiEntityRecognizer,
+	type PiiEntityRecognizerService,
+	PseudonymSession,
+	parsePiiSwapList,
+	RegexEntityRecognizer,
+} from "./security/index.js";
 import { redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
@@ -1191,6 +1204,64 @@ export class AgentRuntime implements IAgentRuntime {
 				this.getSetting(SECRET_SWAP_EXEMPT_VALUES_SETTING),
 			),
 		});
+	}
+
+	private isPiiSwapEnabled(): boolean {
+		return (
+			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ?? false
+		);
+	}
+
+	/**
+	 * Build the turn's PII pseudonymization session (#10469 / #7007). The
+	 * recognizer is the composite of the runtime's built-in regex recognizer
+	 * (street addresses) and — if a plugin registered the
+	 * `PII_ENTITY_RECOGNIZER_SERVICE` — the local NER model (person/org/location).
+	 * With no model plugin present the layer runs regex-only: degraded coverage,
+	 * but still never leaks what it does detect. The agent's own name is added to
+	 * the blocklist so the model's identity is never pseudonymized.
+	 */
+	private createPiiSwapSession(): PseudonymSession {
+		const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()];
+		const nerService = this.getService(
+			PII_ENTITY_RECOGNIZER_SERVICE,
+		) as unknown as PiiEntityRecognizerService | null;
+		const nerRecognizer = nerService?.getRecognizer?.() ?? null;
+		if (nerRecognizer) recognizers.push(nerRecognizer);
+
+		const blocklist = [
+			...DEFAULT_PSEUDONYM_BLOCKLIST,
+			...(this.character.name ? [this.character.name] : []),
+			...parsePiiSwapList(this.getSetting(PII_SWAP_EXEMPT_VALUES_SETTING)),
+		];
+		return new PseudonymSession({
+			recognizer: new CompositeEntityRecognizer(recognizers, { blocklist }),
+			blocklist,
+			disabledKinds: parsePiiSwapList(
+				this.getSetting(PII_SWAP_DISABLED_KINDS_SETTING),
+			),
+		});
+	}
+
+	/** Flatten every string leaf of the model params plus the system prompt into
+	 * one text blob for the PII recognizer to scan. */
+	private collectPromptText(
+		params: unknown,
+		systemPrompt: string | undefined,
+	): string {
+		const parts: string[] = [];
+		const walk = (value: unknown): void => {
+			if (typeof value === "string") {
+				parts.push(value);
+			} else if (Array.isArray(value)) {
+				for (const item of value) walk(item);
+			} else if (value && typeof value === "object") {
+				for (const child of Object.values(value)) walk(child);
+			}
+		};
+		walk(params);
+		if (systemPrompt) parts.push(systemPrompt);
+		return parts.join("\n");
 	}
 
 	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
@@ -4961,6 +5032,7 @@ export class AgentRuntime implements IAgentRuntime {
 		let streamedText = "";
 		let secretSwapSession: SecretSwapSession | null = null;
 		let secretSwapStreamBuffer = "";
+		let piiSwapSession: PseudonymSession | null = null;
 		const emitModelStreamChunk = async (safeChunk: string): Promise<void> => {
 			if (abortSignal?.aborted) return;
 			if (streamedText === "" && safeChunk.length > 0) {
@@ -5088,6 +5160,31 @@ export class AgentRuntime implements IAgentRuntime {
 					: secretSwapSession.substituteText(effectiveSystemPrompt);
 		}
 
+		if (this.isPiiSwapEnabled() && !binaryModels.includes(resolvedModelKey)) {
+			// Turn-scoped like the secret session (same nonce/mapping all turn), so
+			// the execution boundary can restore what this call swapped.
+			const trajectoryCtx = getTrajectoryContext();
+			piiSwapSession =
+				trajectoryCtx?.piiSwapSession ?? this.createPiiSwapSession();
+			if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
+				trajectoryCtx.piiSwapSession = piiSwapSession;
+			}
+			// The ONE awaited detection step: learn every named entity in the
+			// assembled prompt (params + system prompt), then substitute
+			// synchronously. Ordered after the secret pass, so the NER model reads
+			// opaque `__ELIZA_SECRET_…__` placeholders, never a raw secret. The ONNX
+			// inference is offloaded to onnxruntime's worker threadpool, so it
+			// overlaps the event loop rather than blocking other turns.
+			await piiSwapSession.learn(
+				this.collectPromptText(modelParams, effectiveSystemPrompt),
+			);
+			modelParams = piiSwapSession.substituteInValue(modelParams);
+			effectiveSystemPrompt =
+				effectiveSystemPrompt === undefined
+					? undefined
+					: piiSwapSession.substituteText(effectiveSystemPrompt);
+		}
+
 		await this.invokePipelineHooks(
 			"pre_model",
 			preModelPipelineHookContext({
@@ -5109,6 +5206,20 @@ export class AgentRuntime implements IAgentRuntime {
 				postHookSystemPrompt === undefined
 					? undefined
 					: secretSwapSession.substituteText(postHookSystemPrompt);
+		}
+		if (piiSwapSession) {
+			// Re-apply the learned mapping (sync) after pre_model hooks — idempotent,
+			// so surrogates already in place are preserved and any hook-injected copy
+			// of an already-learned entity is masked too.
+			modelParams = piiSwapSession.substituteInValue(modelParams);
+			const postHookSystemPrompt = resolveEffectiveSystemPrompt({
+				params: modelParams,
+				fallback: effectiveSystemPrompt,
+			});
+			effectiveSystemPrompt =
+				postHookSystemPrompt === undefined
+					? undefined
+					: piiSwapSession.substituteText(postHookSystemPrompt);
 		}
 
 		const hookedParamsObj =
