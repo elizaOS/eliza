@@ -113,8 +113,9 @@ export const FRAUD_PATTERNS = {
 // ============================================================================
 
 export const ADMIN_CONTROLS = {
-  // Require admin approval for redemptions above this amount
-  ADMIN_APPROVAL_THRESHOLD_USD: 500,
+  // Every payout requires admin approval (#10732): threshold 0 means any amount
+  // (>= $0) lands in the admin approval queue. No auto-payout.
+  ADMIN_APPROVAL_THRESHOLD_USD: 0,
 
   // Maximum time a redemption can sit in pending (auto-expire)
   MAX_PENDING_AGE_MS: 24 * 60 * 60 * 1000, // 24 hours

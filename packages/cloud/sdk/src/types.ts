@@ -989,7 +989,13 @@ export interface AppFrontendDeploymentDto {
   id: string;
   app_id: string;
   version: number;
-  status: "pending" | "uploading" | "ready" | "active" | "superseded" | "failed";
+  status:
+    | "pending"
+    | "uploading"
+    | "ready"
+    | "active"
+    | "superseded"
+    | "failed";
   r2_prefix: string;
   content_hash: string | null;
   file_count: number;
@@ -1199,4 +1205,96 @@ export interface ApiKeyCreateResponse {
 
 export interface ApiKeyListResponse {
   keys: ApiKeySummary[];
+}
+
+// ---- Influencer marketplace (#10687) ----
+
+export interface InfluencerProfileDto {
+  id: string;
+  display_name: string;
+  niche: string | null;
+  bio: string | null;
+  platforms: Array<{ platform: string; handle: string; followers: number }>;
+  status: "active" | "inactive";
+}
+
+export interface CreateInfluencerProfileInput {
+  displayName: string;
+  niche?: string;
+  bio?: string;
+  platforms?: Array<{ platform: string; handle: string; followers: number }>;
+  rateCard?: Record<string, unknown>;
+}
+
+export interface CreateInfluencerProfileResponse {
+  success: boolean;
+  profile: InfluencerProfileDto;
+}
+
+export interface ListInfluencersResponse {
+  success: boolean;
+  profiles: InfluencerProfileDto[];
+}
+
+export interface InfluencerBookingDto {
+  id: string;
+  advertiser_org_id: string;
+  influencer_profile_id: string;
+  amount: string;
+  status:
+    | "funding"
+    | "offered"
+    | "accepted"
+    | "delivered"
+    | "approved"
+    | "rejected"
+    | "cancelled";
+  brief: string;
+}
+
+export interface CreateBookingInput {
+  profileId: string;
+  brief: string;
+  amount: number;
+  /** Optional create key: a retry with the same key returns the original booking instead of funding twice. */
+  idempotencyKey?: string;
+}
+
+export interface CreateBookingResponse {
+  success: boolean;
+  booking?: InfluencerBookingDto;
+  error?: string;
+}
+
+// ---- Ad inventory / SSP (#10687) ----
+
+export type AdSlotFormat = "banner" | "native" | "interstitial" | "feed";
+
+export interface AdSlotDto {
+  id: string;
+  app_id: string;
+  name: string;
+  format: AdSlotFormat;
+  status: "active" | "paused";
+  floor_cpm: string;
+  total_impressions: number;
+  total_clicks: number;
+  total_revenue: string;
+}
+
+export interface CreateAdSlotInput {
+  appId: string;
+  name: string;
+  format: AdSlotFormat;
+  floorCpm?: number;
+}
+
+export interface CreateAdSlotResponse {
+  success: boolean;
+  slot: AdSlotDto;
+}
+
+export interface ListAdSlotsResponse {
+  success: boolean;
+  slots: AdSlotDto[];
 }

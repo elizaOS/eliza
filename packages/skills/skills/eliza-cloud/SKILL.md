@@ -183,3 +183,46 @@ For domain-specific ops:
 
 For the build-and-monetize flow specifically:
 - `build-monetized-app` — ships a new app, then proactively offers a custom domain at the end
+
+## Monetization & promotion surfaces (ads + influencers)
+
+Beyond inference markup / purchase share, an app can **earn from ads** and the
+agent can **promote** by hiring influencers — reusing existing credit + earnings
+rails only (no new payment infra).
+
+**Ad inventory / SSP — the app *sells* ad placements and earns.**
+
+| User says | Endpoint | Method | Agent action |
+|---|---|---|---|
+| `monetize my app with ads` / `sell ad space` | `/api/v1/marketing/inventory` | POST | `CREATE_AD_SLOT` |
+| `show my ad slots / ad earnings` | `/api/v1/marketing/inventory` | GET | `LIST_AD_SLOTS` |
+| `pause/edit an ad slot` | `/api/v1/marketing/inventory/{slotId}` | PATCH/DELETE | — |
+| `ad slot analytics` | `/api/v1/marketing/inventory/{slotId}/analytics` | GET | — |
+
+The public `…/inventory/serve?slot=` + `…/inventory/click` endpoints are the
+miniapp's ad tag (they fill a slot with an eligible campaign, debit the
+advertiser exactly once, and credit the publisher's redeemable earnings).
+
+**Influencer marketplace — publish a profile to earn, or hire influencers to promote.**
+
+| User says | Endpoint | Method | Agent action |
+|---|---|---|---|
+| `list me as an influencer` / `offer promo services` | `/api/v1/marketing/influencers` | POST | `CREATE_INFLUENCER_PROFILE` |
+| `find/hire an influencer` | `/api/v1/marketing/influencers?niche=` | GET | `LIST_INFLUENCERS` |
+| `book/hire X to promote for $Y` | `/api/v1/marketing/influencers/bookings` | POST | `BOOK_INFLUENCER` (money — two-step confirm) |
+| influencer accepts / delivers | `…/bookings/{id}/accept` \| `…/deliver` | POST | — |
+| advertiser approves (releases escrow) / rejects / cancels (refunds) | `…/bookings/{id}/approve` \| `reject` \| `cancel` | POST | — |
+
+Booking is **escrowed**: the advertiser's org credits are debited when the offer
+is funded, released to the influencer on approval, or refunded on
+reject/cancel (the influencer can decline from `offered` or `accepted`). Every
+money move is idempotent on the booking id and runs before the status
+finalizes, so a failed payout/refund leaves a retryable state and a retry moves
+money at most once. `BOOK_INFLUENCER` never moves money on the first ask; it
+funds only on an explicit structured confirmation (and sends a per-confirmation
+idempotency key so a transport retry cannot fund twice).
+
+Together with managed **frontend hosting** (publish a full app site via
+`DEPLOY_FRONTEND` / `/api/v1/apps/{id}/frontend`), this is the complete agent
+loop: **build → host a full app → deploy backend → attach a domain → monetize
+(markup / purchase / ads) → promote (influencers) → track earnings → pay out.**

@@ -81,6 +81,12 @@ const publicPathPrefixes = [
   // entry the session gate 401s every Stripe delivery → a checkout would charge
   // the card but never settle (payment_request stuck "pending").
   "/api/v1/stripe/webhook",
+  // OxaPay settlement webhook for the same unified payment_requests surface
+  // (#10732). Public like /api/v1/stripe/webhook above; the handler fails
+  // closed without a valid HMAC-SHA512 `hmac` header. Without this entry the
+  // session gate 401s every OxaPay delivery → an invoice would collect crypto
+  // but the payment_request would never settle (user pays, no credit).
+  "/api/v1/oxapay/webhook",
   "/api/crypto/webhook",
   "/api/crypto/status",
   "/api/crypto/direct-payments/config",
@@ -97,6 +103,9 @@ const publicPathPrefixes = [
   // Public hosted-frontend serve path: renders an app's active frontend from R2
   // for public visitors (fails closed to 404 on any unresolved host).
   "/api/v1/hosted-frontend/serve",
+  // Public SSP ad-serve + click tracking, consumed by miniapp ad tags.
+  "/api/v1/marketing/inventory/serve",
+  "/api/v1/marketing/inventory/click",
   // Legacy birdeye proxy is a 308 redirect to /api/v1/apis/birdeye/*. The
   // redirect itself is public so unauthenticated clients learn the new URL;
   // the target /api/v1/apis/birdeye is still auth-gated.
