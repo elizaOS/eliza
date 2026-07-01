@@ -401,6 +401,61 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("routes a grabber flick whose moves were coalesced into the release to the launcher (#9943)", () => {
+    // REAL touch on a janked Android WebView delivers pointerdown → pointerup
+    // with the whole travel between them (every pointermove coalesced away).
+    // The swipe must still commit from the release deltas.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    expect(getShellSurface().page).toBe("home");
+
+    fireEvent.pointerDown(grabber, {
+      clientX: 260,
+      clientY: 420,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(grabber, {
+      clientX: 110,
+      clientY: 414,
+      pointerId: 1,
+    });
+
+    expect(getShellSurface().page).toBe("launcher");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("routes a grabber flick that ends in pointercancel after crossing the threshold to the launcher (#9943)", () => {
+    // Android's touch pipeline can revoke the pointer AFTER the finger already
+    // completed the swipe (renderer-unresponsive ack timeout) — the observed
+    // track must commit instead of being discarded.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    expect(getShellSurface().page).toBe("home");
+
+    fireEvent.pointerDown(grabber, {
+      clientX: 260,
+      clientY: 420,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(grabber, {
+      clientX: 110,
+      clientY: 414,
+      pointerId: 1,
+    });
+    fireEvent.pointerCancel(grabber, {
+      clientX: 0,
+      clientY: 0,
+      pointerId: 1,
+    });
+
+    expect(getShellSurface().page).toBe("launcher");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
   // Regression guard for #9142: the grabber bar was hardcoded `opacity-0`
   // unconditionally, so on desktop/web (no OS home indicator) the handle was
   // grabbable but the bar never painted. It must be visible off-iOS.
