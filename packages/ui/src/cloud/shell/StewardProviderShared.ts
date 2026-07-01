@@ -25,15 +25,35 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-const ELIZA_CLOUD_COOKIE_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-]);
-const ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT =
-  "https://api.elizacloud.ai/api/auth/steward-session";
-const ELIZA_CLOUD_DIRECT_REFRESH_ENDPOINT =
-  "https://api.elizacloud.ai/api/auth/steward-refresh";
+// Hosts where the SPA is co-hosted with a Cloudflare Pages/Worker deployment
+// that proxies the Steward auth endpoints to the API worker. We bypass that
+// proxy and hit the matching API worker directly so session-sync + refresh keep
+// working even when the Pages Functions bundle / FRONTEND_ALIAS proxy is stale.
+// Per-host base — staging MUST resolve to api-staging, NOT prod api. When it
+// fell through to the same-origin relative path (staging absent here), a stale
+// worker proxy 401'd a valid session and clearStaleStewardSession wiped it →
+// the sign-in loop. Mirrors steward-url.ts's ELIZA_CLOUD_DIRECT_API_BY_HOST.
+const ELIZA_CLOUD_DIRECT_API_BY_HOST: Record<string, string> = {
+  "elizacloud.ai": "https://api.elizacloud.ai",
+  "www.elizacloud.ai": "https://api.elizacloud.ai",
+  "dev.elizacloud.ai": "https://api.elizacloud.ai",
+  "staging.elizacloud.ai": "https://api-staging.elizacloud.ai",
+};
+
+function directCloudApiBase(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return ELIZA_CLOUD_DIRECT_API_BY_HOST[window.location.hostname.toLowerCase()];
+}
+
+function directStewardSessionEndpoint(): string | undefined {
+  const base = directCloudApiBase();
+  return base ? `${base}${STEWARD_SESSION_ENDPOINT}` : undefined;
+}
+
+function directStewardRefreshEndpoint(): string | undefined {
+  const base = directCloudApiBase();
+  return base ? `${base}${STEWARD_REFRESH_ENDPOINT}` : undefined;
+}
 
 export type LocalStewardAuthValue = {
   isAuthenticated: boolean;
@@ -63,10 +83,7 @@ function isLocalhostApiBase(value: string): boolean {
 }
 
 function isBrowserOnElizaHost(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    ELIZA_CLOUD_COOKIE_HOSTS.has(window.location.hostname.toLowerCase())
-  );
+  return directCloudApiBase() !== undefined;
 }
 
 function configuredApiBase(): string | undefined {
@@ -86,8 +103,9 @@ export function configuredSessionEndpoint(): string {
       return `${trimTrailingSlash(apiBase)}${STEWARD_SESSION_ENDPOINT}`;
     }
   }
-  if (isBrowserOnElizaHost()) {
-    return ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT;
+  const direct = directStewardSessionEndpoint();
+  if (direct) {
+    return direct;
   }
   return STEWARD_SESSION_ENDPOINT;
 }
@@ -99,8 +117,9 @@ export function configuredRefreshEndpoint(): string {
       return `${trimTrailingSlash(apiBase)}${STEWARD_REFRESH_ENDPOINT}`;
     }
   }
-  if (isBrowserOnElizaHost()) {
-    return ELIZA_CLOUD_DIRECT_REFRESH_ENDPOINT;
+  const direct = directStewardRefreshEndpoint();
+  if (direct) {
+    return direct;
   }
   return STEWARD_REFRESH_ENDPOINT;
 }
@@ -108,8 +127,9 @@ export function configuredRefreshEndpoint(): string {
 function stewardSessionClearUrls(): string[] {
   if (typeof window === "undefined") return [configuredSessionEndpoint()];
   const urls = new Set([STEWARD_SESSION_ENDPOINT, configuredSessionEndpoint()]);
-  if (isBrowserOnElizaHost()) {
-    urls.add(ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT);
+  const direct = directStewardSessionEndpoint();
+  if (direct) {
+    urls.add(direct);
   }
   return [...urls];
 }
