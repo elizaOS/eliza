@@ -8,6 +8,7 @@ import {
 } from "@elizaos/agent";
 import {
   type IAgentRuntime,
+  logger,
   ModelType,
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
@@ -123,7 +124,11 @@ import {
   SCHEDULE_CLOUD_SYNC_TTL_MS,
   SCHEDULE_OBSERVATION_LOOKBACK_MS,
 } from "../schedule-state.js";
-import { processDueScheduledTasks } from "../scheduled-task/scheduler.js";
+import {
+  type ProcessDueScheduledTasksResult,
+  processDueScheduledTasks,
+} from "../scheduled-task/scheduler.js";
+import { isMissingLifeOpsRelationError } from "../scheduler-task.js";
 import {
   DEFAULT_REMINDER_INTENSITY,
   DEFAULT_REMINDER_PROCESS_LIMIT,
@@ -294,6 +299,16 @@ function buildAdaptiveWindowProfile(args: {
 type RuntimeMessageTarget = Parameters<IAgentRuntime["sendMessageToTarget"]>[0];
 type ReminderAttemptLifecycle = "plan" | "escalation";
 
+/**
+ * One failed subsystem inside a scheduler tick. The tick continues past
+ * subsystem failures, so the returned summary is where they surface to
+ * callers (the LIFEOPS_SCHEDULER task result and its logs).
+ */
+export type LifeOpsScheduledWorkSubsystemFailure = {
+  subsystem: string;
+  error: string;
+};
+
 type RuntimeOwnerContactResolution = {
   sourceOfTruth: "config" | "relationships" | "config+relationships";
   preferredCommunicationChannel: string | null;
@@ -375,6 +390,7 @@ export interface LifeOpsReminderService {
     workflowRuns: LifeOpsWorkflowRun[];
     scheduledTaskFires: Array<Record<string, unknown>>;
     scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
+    subsystemFailures: LifeOpsScheduledWorkSubsystemFailure[];
   }>;
   relockWebsiteAccessGroup(groupKey: string, now?: Date): Promise<{ ok: true }>;
   resolveWebsiteAccessCallback(
@@ -5093,6 +5109,7 @@ export class RemindersDomain {
     workflowRuns: LifeOpsWorkflowRun[];
     scheduledTaskFires: Array<Record<string, unknown>>;
     scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
+    subsystemFailures: LifeOpsScheduledWorkSubsystemFailure[];
   }> {
     const now =
       request.now === undefined
@@ -5113,125 +5130,207 @@ export class RemindersDomain {
             request.scheduledTaskLimit,
             "scheduledTaskLimit",
           );
-    await this.syncWebsiteAccessState(now);
-    const previousSchedule = await this.readEffectiveScheduleState({ now });
-    const currentSchedule = await this.refreshEffectiveScheduleState({ now });
-    if (currentSchedule !== null) {
-      // Persist the canonical circadian state row. Boot rehydration reads
-      // this on the next runtime start; downstream consumers can subscribe
-      // to transitions via life_audit_events owner_type=circadian_state.
-      const priorState = await this.ctx.repository.readCircadianState(
-        this.ctx.agentId(),
-      );
-      const stateChanged =
-        priorState === null ||
-        priorState.circadianState !== currentSchedule.circadianState;
-      await this.ctx.repository.upsertCircadianState({
-        agentId: this.ctx.agentId(),
-        circadianState: currentSchedule.circadianState,
-        stateConfidence: currentSchedule.stateConfidence,
-        uncertaintyReason: currentSchedule.uncertaintyReason,
-        enteredAt: stateChanged ? now.toISOString() : priorState.enteredAt,
-        sinceSleepDetectedAt:
-          currentSchedule.circadianState === "sleeping" ||
-          currentSchedule.circadianState === "napping"
-            ? (currentSchedule.currentSleepStartedAt ??
-              priorState?.sinceSleepDetectedAt ??
-              null)
-            : null,
-        sinceWakeObservedAt:
-          currentSchedule.circadianState === "waking" ||
-          currentSchedule.circadianState === "awake"
-            ? (currentSchedule.wakeAt ??
-              priorState?.sinceWakeObservedAt ??
-              null)
-            : null,
-        sinceWakeConfirmedAt:
-          currentSchedule.circadianState === "awake"
-            ? (currentSchedule.wakeAt ??
-              priorState?.sinceWakeConfirmedAt ??
-              null)
-            : (priorState?.sinceWakeConfirmedAt ?? null),
-        evidenceRefs: currentSchedule.circadianRuleFirings.map(
-          (firing) => firing.name,
-        ),
-        createdAt: priorState?.createdAt ?? now.toISOString(),
-        updatedAt: now.toISOString(),
-      });
-    }
-    const derivedEvents =
-      currentSchedule === null
-        ? []
-        : deriveSleepWakeEvents({
-            previous: previousSchedule,
-            current: currentSchedule,
-            now,
-          });
-    // Persist each derived circadian event via createAuditEventIfNew so a
-    // runtime restart that re-runs deriveSleepWakeEvents on the same state
-    // pair does not duplicate the emit (audit id is deterministic:
-    // `${eventKind}:${agentId}:${occurredAt}`). Only events that were
-    // newly inserted get dispatched to runtime.emitEvent.
-    const lifeOpsEvents: typeof derivedEvents = [];
-    for (const event of derivedEvents) {
-      const inserted = await this.ctx.repository.createAuditEventIfNew({
-        id: event.id,
-        agentId: this.ctx.agentId(),
-        eventType: "circadian_event_emitted",
-        ownerType: "circadian_state",
-        ownerId:
-          currentSchedule?.id ??
-          `lifeops-schedule-merged:${this.ctx.agentId()}:local:${currentSchedule?.timezone ?? "UTC"}`,
-        reason: event.kind,
-        inputs: {
-          previousStateId: event.payload.previousStateId,
-          currentStateId: event.payload.currentStateId,
-        },
-        decision: {
-          kind: event.kind,
-          occurredAt: event.occurredAt,
-          confidence: event.confidence,
-          circadianState: event.payload.circadianState,
-          uncertaintyReason: event.payload.uncertaintyReason,
-        },
-        actor: "agent",
-        createdAt: now.toISOString(),
-      });
-      if (inserted) {
-        lifeOpsEvents.push(event);
-        const eventPayload = {
-          runtime: this.ctx.runtime,
-          occurredAt: event.occurredAt,
-          confidence: event.confidence,
-          payload: event.payload,
-        };
-        await this.ctx.runtime.emitEvent(event.kind, eventPayload);
+    // The scheduler tick is a serial chain of independent subsystems. One
+    // throwing subsystem must not abort the rest of the tick (a broken
+    // website-access sync would otherwise silence every reminder). Each
+    // subsystem runs in its own guard; failures are logged and collected
+    // into the returned summary. Missing-relation errors keep propagating
+    // so the task worker can rerun migrations and retry the whole tick.
+    const subsystemFailures: LifeOpsScheduledWorkSubsystemFailure[] = [];
+    const runSubsystem = async <T>(
+      subsystem: string,
+      fallback: T,
+      run: () => Promise<T>,
+    ): Promise<T> => {
+      try {
+        return await run();
+      } catch (error) {
+        if (isMissingLifeOpsRelationError(error)) {
+          throw error;
+        }
+        logger.error(
+          { subsystem, err: error instanceof Error ? error : undefined },
+          `[RemindersDomain] processScheduledWork subsystem "${subsystem}" failed; continuing tick: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        subsystemFailures.push({
+          subsystem,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return fallback;
       }
-    }
-    const reminderResult = await this.processReminders({
-      now: now.toISOString(),
-      limit: reminderLimit,
-    });
+    };
+
+    await runSubsystem("website_access_sync", undefined, () =>
+      this.syncWebsiteAccessState(now),
+    );
+
+    const circadianFallback: {
+      currentSchedule: LifeOpsScheduleMergedStateRecord | null;
+      lifeOpsEvents: LifeOpsDerivedEvent[];
+    } = { currentSchedule: null, lifeOpsEvents: [] };
+    const { currentSchedule, lifeOpsEvents } = await runSubsystem(
+      "circadian_state",
+      circadianFallback,
+      async () => {
+        const previousSchedule = await this.readEffectiveScheduleState({
+          now,
+        });
+        const refreshedSchedule = await this.refreshEffectiveScheduleState({
+          now,
+        });
+        if (refreshedSchedule !== null) {
+          // Persist the canonical circadian state row. Boot rehydration reads
+          // this on the next runtime start; downstream consumers can subscribe
+          // to transitions via life_audit_events owner_type=circadian_state.
+          const priorState = await this.ctx.repository.readCircadianState(
+            this.ctx.agentId(),
+          );
+          const stateChanged =
+            priorState === null ||
+            priorState.circadianState !== refreshedSchedule.circadianState;
+          await this.ctx.repository.upsertCircadianState({
+            agentId: this.ctx.agentId(),
+            circadianState: refreshedSchedule.circadianState,
+            stateConfidence: refreshedSchedule.stateConfidence,
+            uncertaintyReason: refreshedSchedule.uncertaintyReason,
+            enteredAt: stateChanged ? now.toISOString() : priorState.enteredAt,
+            sinceSleepDetectedAt:
+              refreshedSchedule.circadianState === "sleeping" ||
+              refreshedSchedule.circadianState === "napping"
+                ? (refreshedSchedule.currentSleepStartedAt ??
+                  priorState?.sinceSleepDetectedAt ??
+                  null)
+                : null,
+            sinceWakeObservedAt:
+              refreshedSchedule.circadianState === "waking" ||
+              refreshedSchedule.circadianState === "awake"
+                ? (refreshedSchedule.wakeAt ??
+                  priorState?.sinceWakeObservedAt ??
+                  null)
+                : null,
+            sinceWakeConfirmedAt:
+              refreshedSchedule.circadianState === "awake"
+                ? (refreshedSchedule.wakeAt ??
+                  priorState?.sinceWakeConfirmedAt ??
+                  null)
+                : (priorState?.sinceWakeConfirmedAt ?? null),
+            evidenceRefs: refreshedSchedule.circadianRuleFirings.map(
+              (firing) => firing.name,
+            ),
+            createdAt: priorState?.createdAt ?? now.toISOString(),
+            updatedAt: now.toISOString(),
+          });
+        }
+        const derivedEvents =
+          refreshedSchedule === null
+            ? []
+            : deriveSleepWakeEvents({
+                previous: previousSchedule,
+                current: refreshedSchedule,
+                now,
+              });
+        // Persist each derived circadian event via createAuditEventIfNew so a
+        // runtime restart that re-runs deriveSleepWakeEvents on the same state
+        // pair does not duplicate the emit (audit id is deterministic:
+        // `${eventKind}:${agentId}:${occurredAt}`). Only events that were
+        // newly inserted get dispatched to runtime.emitEvent.
+        const insertedEvents: typeof derivedEvents = [];
+        for (const event of derivedEvents) {
+          const inserted = await this.ctx.repository.createAuditEventIfNew({
+            id: event.id,
+            agentId: this.ctx.agentId(),
+            eventType: "circadian_event_emitted",
+            ownerType: "circadian_state",
+            ownerId:
+              refreshedSchedule?.id ??
+              `lifeops-schedule-merged:${this.ctx.agentId()}:local:${refreshedSchedule?.timezone ?? "UTC"}`,
+            reason: event.kind,
+            inputs: {
+              previousStateId: event.payload.previousStateId,
+              currentStateId: event.payload.currentStateId,
+            },
+            decision: {
+              kind: event.kind,
+              occurredAt: event.occurredAt,
+              confidence: event.confidence,
+              circadianState: event.payload.circadianState,
+              uncertaintyReason: event.payload.uncertaintyReason,
+            },
+            actor: "agent",
+            createdAt: now.toISOString(),
+          });
+          if (inserted) {
+            insertedEvents.push(event);
+            const eventPayload = {
+              runtime: this.ctx.runtime,
+              occurredAt: event.occurredAt,
+              confidence: event.confidence,
+              payload: event.payload,
+            };
+            await this.ctx.runtime.emitEvent(event.kind, eventPayload);
+          }
+        }
+        return {
+          currentSchedule: refreshedSchedule,
+          lifeOpsEvents: insertedEvents,
+        };
+      },
+    );
+
+    const reminderResult = await runSubsystem(
+      "reminders",
+      { now: now.toISOString(), attempts: [] as LifeOpsReminderAttempt[] },
+      () =>
+        this.processReminders({
+          now: now.toISOString(),
+          limit: reminderLimit,
+        }),
+    );
     const workflowRunner = this.deps;
-    const workflowRuns = await workflowRunner.runDueWorkflows({
-      now: now.toISOString(),
-      limit: workflowLimit,
-    });
-    const eventWorkflowRuns = await workflowRunner.runDueEventWorkflows({
-      now: now.toISOString(),
-      limit: workflowLimit,
-      lifeOpsEvents,
-    });
-    const scheduledTaskResult = await processDueScheduledTasks({
-      runtime: this.ctx.runtime,
-      agentId: this.ctx.agentId(),
-      now,
-      limit: scheduledTaskLimit,
-    });
-    await this.processSleepCycleCheckins({
-      now,
-      currentSchedule,
-    });
+    const workflowRuns = await runSubsystem(
+      "workflows",
+      [] as LifeOpsWorkflowRun[],
+      () =>
+        workflowRunner.runDueWorkflows({
+          now: now.toISOString(),
+          limit: workflowLimit,
+        }),
+    );
+    const eventWorkflowRuns = await runSubsystem(
+      "event_workflows",
+      [] as LifeOpsWorkflowRun[],
+      () =>
+        workflowRunner.runDueEventWorkflows({
+          now: now.toISOString(),
+          limit: workflowLimit,
+          lifeOpsEvents,
+        }),
+    );
+    const scheduledTaskFallback: ProcessDueScheduledTasksResult = {
+      fires: [],
+      completionTimeouts: [],
+      pendingPrompts: [],
+      errors: [],
+    };
+    const scheduledTaskResult = await runSubsystem(
+      "scheduled_tasks",
+      scheduledTaskFallback,
+      () =>
+        processDueScheduledTasks({
+          runtime: this.ctx.runtime,
+          agentId: this.ctx.agentId(),
+          now,
+          limit: scheduledTaskLimit,
+        }),
+    );
+    await runSubsystem("sleep_cycle_checkins", undefined, () =>
+      this.processSleepCycleCheckins({
+        now,
+        currentSchedule,
+      }),
+    );
     await this.runTelemetryMaintenanceIfDue(now);
     return {
       now: now.toISOString(),
@@ -5244,6 +5343,7 @@ export class RemindersDomain {
         scheduledTaskResult.completionTimeouts.map((timeout) => ({
           ...timeout,
         })),
+      subsystemFailures,
     };
   }
 
