@@ -1009,10 +1009,16 @@ try {
     );
     await snap(p, "state-keyboard-collapsed");
 
-    // pull to FULL with the keyboard still up — the WORST case for height
-    await gesture(p, 120, { pointer: "touch", slow: true }); // → HALF
+    // pull to FULL with the keyboard still up — the WORST case for height.
+    // Structural flicks (fast, 2 steps), not slow drags: a slow drag settles by
+    // free-rest magnetism and 120+240px of travel cannot arithmetically reach
+    // the full-detent magnet band with the keyboard mock open (panelMaxH 464 −
+    // magnet 64 = 400). The old `slow: true` variant only passed when harness
+    // timing accidentally crossed the 0.5 px/ms flick threshold — a race that
+    // flipped under load.
+    await gesture(p, 120, { pointer: "touch", slow: false, steps: 2 }); // → HALF
     await p.waitForTimeout(SETTLE);
-    await gesture(p, 240, { pointer: "touch", slow: true }); // → FULL
+    await gesture(p, 240, { pointer: "touch", slow: false, steps: 2 }); // → FULL
     await p.waitForTimeout(SETTLE);
     assert(
       (await detent(p)) === "full",

@@ -158,7 +158,10 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   );
 
   const handleSave = useCallback(async () => {
-    await handlePluginConfigSave(plugin.id, pendingConfig);
+    // Only clear the draft when the save persisted — sensitive params never
+    // echo back from the server, so wiping on failure loses the pasted token.
+    const saved = await handlePluginConfigSave(plugin.id, pendingConfig);
+    if (!saved) return;
     setPluginConfigs((prev) => {
       const next = { ...prev };
       delete next[plugin.id];
