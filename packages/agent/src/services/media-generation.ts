@@ -3,10 +3,12 @@ import {
   IMediaGenerationService,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
+  ModelType,
   ServiceType,
 } from "@elizaos/core";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
 import { loadElizaConfig } from "../config/config.ts";
+import type { ImageConfig } from "../config/types.eliza.ts";
 import {
   createAudioProvider,
   createImageProvider,
@@ -27,11 +29,59 @@ function getMediaProviderOptions(): MediaProviderFactoryOptions {
   };
 }
 
+function imageConfigUsesCloud(
+  config: ImageConfig | undefined,
+  options: MediaProviderFactoryOptions,
+): boolean {
+  const mode =
+    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
+  return mode === "cloud" && !options.cloudMediaDisabled;
+}
+
+function hasImageGenerationModel(runtime: IAgentRuntime): boolean {
+  return typeof runtime.getModel(ModelType.IMAGE) === "function";
+}
+
+async function generateImageWithModel(
+  runtime: IAgentRuntime,
+  request: MediaGenerationRequest,
+): Promise<MediaGenerationResponse> {
+  if (!hasImageGenerationModel(runtime)) {
+    throw new Error(
+      "Image generation requires Eliza Cloud or a direct image provider. " +
+        "Enable @elizaos/plugin-elizacloud with ELIZAOS_CLOUD_API_KEY, or configure an own-key image provider.",
+    );
+  }
+
+  const imageResponse = await runtime.useModel(ModelType.IMAGE, {
+    prompt: request.prompt,
+    size: request.size,
+    count: 1,
+  });
+  const firstImage = Array.isArray(imageResponse)
+    ? imageResponse[0]
+    : undefined;
+  const imageUrl = firstImage?.url;
+
+  if (!imageUrl) {
+    throw new Error(
+      "Image generation requires Eliza Cloud or a direct image provider, but no image URL was returned.",
+    );
+  }
+
+  return {
+    mediaType: "image",
+    url: imageUrl,
+    imageUrl,
+    mimeType: "image/png",
+  };
+}
+
 export class AgentMediaGenerationService extends IMediaGenerationService {
   static override readonly serviceType = ServiceType.MEDIA_GENERATION;
 
   override readonly capabilityDescription: string =
-    "Generates image, video, and audio through configured local media providers.";
+    "Generates image, video, and audio through configured media providers or a registered image model.";
 
   static async start(
     runtime: IAgentRuntime,
@@ -48,6 +98,9 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
     const providerOptions = getMediaProviderOptions();
     try {
       if (request.mediaType === "image") {
+        if (imageConfigUsesCloud(config.media?.image, providerOptions)) {
+          return hasImageGenerationModel(this.runtime);
+        }
         createImageProvider(config.media?.image, providerOptions);
         return true;
       }
@@ -69,6 +122,10 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
     const providerOptions = getMediaProviderOptions();
 
     if (request.mediaType === "image") {
+      if (imageConfigUsesCloud(config.media?.image, providerOptions)) {
+        return generateImageWithModel(this.runtime, request);
+      }
+
       const result = await createImageProvider(
         config.media?.image,
         providerOptions,
