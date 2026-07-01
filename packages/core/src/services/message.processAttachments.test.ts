@@ -127,25 +127,22 @@ describe("DefaultMessageService.processAttachments", () => {
 	it.each([
 		["text/csv; charset=utf-8", "name,score\nada,99", "csv"],
 		["text/markdown; charset=utf-8", "# Title\n\n- a\n- b", "md"],
-	])(
-		"extracts %s documents (previously skipped)",
-		async (mime, body, ext) => {
-			const bytes = Buffer.from(body, "utf8");
-			const localFetch = localDocFetch(bytes, mime);
-			const svc = new DefaultMessageService();
-			const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+	])("extracts %s documents (previously skipped)", async (mime, body, ext) => {
+		const bytes = Buffer.from(body, "utf8");
+		const localFetch = localDocFetch(bytes, mime);
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
 
-			const out = await svc.processAttachments(runtime, [
-				{
-					id: "doc",
-					url: `/api/media/abc.${ext}`,
-					contentType: ContentType.DOCUMENT,
-				},
-			]);
+		const out = await svc.processAttachments(runtime, [
+			{
+				id: "doc",
+				url: `/api/media/abc.${ext}`,
+				contentType: ContentType.DOCUMENT,
+			},
+		]);
 
-			expect(out[0].text).toBe(body);
-		},
-	);
+		expect(out[0].text).toBe(body);
+	});
 
 	it("extracts real text from an application/pdf document (previously skipped)", async () => {
 		// A minimal, valid single-page PDF with known text + correct xref, so the
@@ -167,7 +164,8 @@ describe("DefaultMessageService.processAttachments", () => {
 		});
 		const xrefStart = body.length;
 		body += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
-		for (const off of offsets) body += `${String(off).padStart(10, "0")} 00000 n \n`;
+		for (const off of offsets)
+			body += `${String(off).padStart(10, "0")} 00000 n \n`;
 		body += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
 		const bytes = Buffer.from(body, "latin1");
 
