@@ -11,7 +11,7 @@
  */
 
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import { ServiceType, stringToUuid } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -38,6 +38,7 @@ interface MockRuntimeHandle {
   deletedTaskIds: UUID[];
   updatedTasks: Array<{ id: UUID; patch: Partial<Task> }>;
   warnings: unknown[][];
+  notifyCalls: Array<Record<string, unknown>>;
   setDispatchResult: (
     result: { ok: true; executionId?: string } | { ok: false; error: string },
   ) => void;
@@ -49,6 +50,13 @@ function makeRuntime(): MockRuntimeHandle {
   const deletedTaskIds: UUID[] = [];
   const updatedTasks: Array<{ id: UUID; patch: Partial<Task> }> = [];
   const warnings: unknown[][] = [];
+  const notifyCalls: Array<Record<string, unknown>> = [];
+
+  const notificationService = {
+    async notify(input: Record<string, unknown>) {
+      notifyCalls.push(input);
+    },
+  };
   let dispatchResult: {
     ok: boolean;
     executionId?: string;
@@ -78,10 +86,12 @@ function makeRuntime(): MockRuntimeHandle {
       error: vi.fn(),
       debug: vi.fn(),
     },
-    getService: (name: string) =>
-      name === "WORKFLOW_DISPATCH" && workflowServicePresent
-        ? workflowService
-        : null,
+    getService: (name: string) => {
+      if (name === "WORKFLOW_DISPATCH")
+        return workflowServicePresent ? workflowService : null;
+      if (name === ServiceType.NOTIFICATION) return notificationService;
+      return null;
+    },
     deleteTask: vi.fn(async (id: UUID) => {
       deletedTaskIds.push(id);
     }),
@@ -96,6 +106,7 @@ function makeRuntime(): MockRuntimeHandle {
     deletedTaskIds,
     updatedTasks,
     warnings,
+    notifyCalls,
     setDispatchResult: (result) => {
       dispatchResult = result;
     },
@@ -194,6 +205,45 @@ describe("executeTriggerTask", () => {
     } as Task);
     expect(persisted?.runCount).toBe(1);
     expect(persisted?.lastStatus).toBe("success");
+  });
+
+  it("emits a low-priority completion notification on a successful run (#10697)", async () => {
+    const task = makeTriggerTask({
+      triggerType: "interval",
+      displayName: "Nightly backup",
+    });
+
+    await executeTriggerTask(handle.runtime, task, { source: "scheduler" });
+
+    expect(handle.notifyCalls).toHaveLength(1);
+    const notif = handle.notifyCalls[0];
+    expect(notif.title).toBe('Automation "Nightly backup" completed');
+    expect(notif.category).toBe("workflow");
+    expect(notif.priority).toBe("low");
+    expect(notif.source).toBe("trigger");
+    // Grouped per trigger so a frequently scheduled automation updates one
+    // rail entry instead of spamming a fresh notification every run.
+    expect(notif.groupKey).toBe(`trigger:${task.id}`);
+  });
+
+  it("emits a high-priority failure notification when the dispatch errors", async () => {
+    handle.setDispatchResult({ ok: false, error: "workflow blew up" });
+    const task = makeTriggerTask({
+      triggerType: "interval",
+      displayName: "Nightly backup",
+    });
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("error");
+    expect(handle.notifyCalls).toHaveLength(1);
+    const notif = handle.notifyCalls[0];
+    expect(notif.title).toBe('Automation "Nightly backup" failed');
+    expect(notif.category).toBe("workflow");
+    expect(notif.priority).toBe("high");
+    expect(notif.groupKey).toBe(`trigger:${task.id}`);
   });
 
   it("dispatches a workflow-kind cron trigger and recomputes the next schedule", async () => {
