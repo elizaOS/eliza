@@ -9,7 +9,10 @@
 // The post-login landing is the join flow (`/join`): it select-or-provisions a
 // Cloud agent and drops the user straight into chat (the headline migration
 // outcome), instead of a "No agents yet" management table. See cloud/join.
-const DEFAULT_LOGIN_RETURN_TO = "/join";
+// Exported so every post-auth surface (login, email magic-link callback, invite
+// accept) lands on the same place — a bare `/dashboard` has no index route and
+// dead-ends on the cloud 404 (`CloudRouterShell` `dashboard/*` → CloudNotFound).
+export const DEFAULT_LOGIN_RETURN_TO = "/join";
 const PENDING_OAUTH_RETURN_TO_KEY = "eliza.login.oauth.returnTo";
 const PENDING_OAUTH_RETURN_TO_TTL_MS = 10 * 60 * 1000;
 
