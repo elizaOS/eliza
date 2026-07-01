@@ -25,11 +25,15 @@ import { useBackgroundConfig } from "../state/useBackgroundConfig";
 export const BACKGROUND_APPLY_EVENT = "background:apply";
 
 /** Operation carried by a `background:apply` event payload. */
-export type BackgroundApplyOp = "set" | "undo" | "reset";
+export type BackgroundApplyOp = "set" | "undo" | "redo" | "reset";
 
 export function useBackgroundApplyChannel(): void {
-  const { backgroundConfig, setBackgroundConfig, undoBackgroundConfig } =
-    useBackgroundConfig();
+  const {
+    backgroundConfig,
+    setBackgroundConfig,
+    undoBackgroundConfig,
+    redoBackgroundConfig,
+  } = useBackgroundConfig();
 
   useViewEvent(BACKGROUND_APPLY_EVENT, (event) => {
     const payload = event.payload;
@@ -37,6 +41,11 @@ export function useBackgroundApplyChannel(): void {
 
     if (op === "undo") {
       undoBackgroundConfig();
+      return;
+    }
+    if (op === "redo") {
+      // Forward half of undo/redo (#10694) — re-apply the last undone config.
+      redoBackgroundConfig();
       return;
     }
     if (op === "reset") {
