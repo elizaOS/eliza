@@ -102,7 +102,11 @@ describe("LifeOps scheduled-task simulation harness", () => {
     });
     const fired = await h.firePrimitive(triage);
 
-    expect(fired.state.status).toBe("fired");
+    // #11041 (#10721 H2): a typed {ok:false} dispatch is now recorded as
+    // "failed", NOT "fired" — recording a failed connector send as "fired" was
+    // silent message loss that the retry/backoff policy could never see. The
+    // typed DispatchResult is still preserved on metadata as the domain artifact.
+    expect(fired.state.status).toBe("failed");
     expect(fired.metadata?.lastDispatchResult).toEqual({
       ok: false,
       reason: "auth_expired",
