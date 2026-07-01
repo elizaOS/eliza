@@ -281,6 +281,22 @@ jobs:
           path: packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
           if-no-files-found: ignore
 
+      # Immersive WebGL e2e (#10722): the REAL enterImmersiveScene() production
+      # export against an IWER emulated Quest 3 in headless-chromium WebGL2 —
+      # per-eye gl.readPixels framebuffer probes at math-predicted pixels,
+      # SecurityError→solidColorTexel fallback, teardown. Previously the doc
+      # claimed this was validated but no committed test ran it anywhere.
+      - name: Immersive WebGL framebuffer e2e (#10722)
+        run: bun run --cwd packages/ui test:immersive-e2e
+
+      - name: Upload immersive e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immersive-e2e-artifacts
+          path: packages/ui/src/spatial/__e2e__/output-immersive/
+          if-no-files-found: ignore
+
       # Perf gate (#9954): drive REAL overlay-scroll + conversation-swipe in
       # headless chromium, feed REAL rAF/longtask/layout-shift entries through the
       # shared frame-budget + layout-stability detectors, HARD-FAIL on dropped
