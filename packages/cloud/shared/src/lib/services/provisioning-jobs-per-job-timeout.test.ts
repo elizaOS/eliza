@@ -29,8 +29,9 @@ import { withTimeout } from "../utils/with-timeout";
 // Import the provider's REAL pull ceiling so this test tracks the production
 // constant (and goes red if either drifts), rather than asserting against a
 // hand-copied literal that can silently diverge.
-import { PULL_TIMEOUT_MS } from "./docker-sandbox-provider";
-import { PER_JOB_TIMEOUT_MS } from "./provisioning-jobs";
+import { HEALTH_CHECK_TIMEOUT_MS, PULL_TIMEOUT_MS } from "./docker-sandbox-provider";
+import { JOB_TYPES } from "./provisioning-job-types";
+import { PER_JOB_TIMEOUT_MS, resolvePerJobTimeoutMs } from "./provisioning-jobs";
 
 /** A cold `docker pull` of a freshly-pinned image takes ~2.5 min on the node. */
 const COLD_PULL_MS = 150_000;
@@ -97,5 +98,46 @@ describe("PER_JOB_TIMEOUT_MS sizing (cold-pull orphaning fix)", () => {
     await expect(withTimeout(hungCreate, newCeiling, "job agent_provision")).rejects.toThrow(
       /timed out/,
     );
+  });
+});
+
+/**
+ * Cold-boot-aware per-job timeout (#10919). The flat PER_JOB_TIMEOUT_MS (300s)
+ * matches only the leaf `docker pull` ceiling, not a FULL cold boot
+ * (pull + agent health-check ≈ up to 11 min). At the flat 300s the wrap rejected
+ * a slow cold provision mid-boot → incrementAttempt flipped it to `pending` → a
+ * later poll re-claimed it → a second provision force-removed the first
+ * still-booting container. `resolvePerJobTimeoutMs` fixes this by giving cold-boot
+ * job types the full boot budget.
+ */
+describe("resolvePerJobTimeoutMs — cold-boot job types outlast a full boot (#10919)", () => {
+  /** The real worst-case cold boot: image pull + agent health-check. */
+  const FULL_COLD_BOOT_MS = PULL_TIMEOUT_MS + HEALTH_CHECK_TIMEOUT_MS;
+
+  test("AGENT_PROVISION's per-job timeout exceeds the full cold-boot budget", () => {
+    const timeout = resolvePerJobTimeoutMs(JOB_TYPES.AGENT_PROVISION);
+    // Must clear pull(300s) + health(360s) ≈ 11 min so the wrap can't fire
+    // before a legitimate cold boot finishes (the flat 300s did not).
+    expect(timeout).toBeGreaterThanOrEqual(FULL_COLD_BOOT_MS);
+    expect(timeout).toBeGreaterThan(PER_JOB_TIMEOUT_MS);
+  });
+
+  test("every cold-boot lifecycle type gets the extended budget", () => {
+    for (const type of [
+      JOB_TYPES.AGENT_PROVISION,
+      JOB_TYPES.AGENT_RESUME,
+      JOB_TYPES.AGENT_WAKE,
+      JOB_TYPES.AGENT_RESTART,
+      JOB_TYPES.AGENT_UPGRADE,
+      JOB_TYPES.AGENT_DOWNGRADE,
+    ]) {
+      expect(resolvePerJobTimeoutMs(type)).toBeGreaterThanOrEqual(FULL_COLD_BOOT_MS);
+    }
+  });
+
+  test("fast ops (e.g. AGENT_DELETE) keep the tight flat ceiling", () => {
+    expect(resolvePerJobTimeoutMs(JOB_TYPES.AGENT_DELETE)).toBe(PER_JOB_TIMEOUT_MS);
+    // An unknown/non-lifecycle type also falls back to the flat ceiling.
+    expect(resolvePerJobTimeoutMs("some_other_job")).toBe(PER_JOB_TIMEOUT_MS);
   });
 });
