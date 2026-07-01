@@ -529,3 +529,49 @@ component-level fuzz harness that renders the **real** `useShellController` +
     mutations, RemotePluginHostSection, LogsView/RelationshipsView/RuntimeView,
     CustomActionEditor, GameViewOverlay postMessage auth — each a zero-coverage
     surface with a written checklist ready to drive tests.
+
+## 8. Phase-4 larp-review round (self-audit + fresh sweep)
+
+A second adversarial pass audited this campaign's OWN new tests for slop and swept 7 fresh surfaces. **Self-audit: all 6 new artifacts verdict=REAL** (after hardening the count-blind ratchet, weak redis TTLs, and the near-tautological planner guard — see commit `14d2759179`). `slopInMyWork = []`.
+
+Surfaces confirmed genuinely well-tested (NOT larp — do not churn): scenario-runner harness (judgeRubric IS fail-closed), core model/agent-loop layer, plugin-companion/training/documents/health, and the bodies of the security + benchmark-registry suites.
+
+### Fresh findings (27: 1 critical, 10 high, 9 medium, 7 low)
+
+| Sev | Cat | File | Status |
+| --- | --- | --- | --- |
+| critical | excluded-from-ci | `eliza/plugins/plugin-sql/src/vitest.config.ts` |  |
+| high | green-but-meaningless | `eliza/plugins/plugin-sql/src/__tests__/integration/live-query-latency.test.ts` | ✅ shipped |
+| high | green-but-meaningless | `eliza/plugins/plugin-sql/src/__tests__/integration/electric-sync-live-query.test.ts` | ✅ shipped |
+| high | green-but-meaningless | `packages/benchmarks/voice-emotion/elizaos_voice_emotion/runner.py` |  |
+| high | excluded-from-ci | `packages/examples/scripts/verify-examples.mjs` |  |
+| high | green-but-meaningless | `packages/examples/discord/package.json` |  |
+| high | green-but-meaningless | `packages/examples/app/capacitor/backend/package.json` |  |
+| high | green-but-meaningless | `packages/examples/app/electron/backend/package.json` |  |
+| high | green-but-meaningless | `packages/examples/vercel/package.json` |  |
+| high | excluded-from-ci | `packages/security/src/__tests__ (entire suite: aead, hkdf, local-adapter, steward-adapter, dispatcher, factory, memory-adapter, key-namespace)` | ✅ shipped |
+| high | excluded-from-ci | `packages/security/soc2-verify/src/__tests__ (dynamic.test.ts, runner.test.ts, report.test.ts)` | ✅ shipped |
+| medium | green-but-meaningless | `eliza/plugins/plugin-sql/src/__tests__/integration/electric-sync-end-to-end.test.ts` |  |
+| medium | green-but-meaningless | `eliza/plugins/plugin-sql/src/__tests__/integration/electric-write-back.test.ts` |  |
+| medium | green-but-meaningless | `.github/workflows/voice-bench-smoke.yml` |  |
+| medium | incomplete | `.github/workflows/voice-bench-smoke.yml` |  |
+| medium | excluded-from-ci | `packages/benchmarks/tests/test_registry_scores.py` |  |
+| medium | larp | `packages/examples/react/smoke.test.js` |  |
+| medium | green-but-meaningless | `packages/scenario-runner/src/final-checks/index.ts` |  |
+| medium | excluded-from-ci | `packages/scenario-runner/src/judge.ts` |  |
+| medium | incomplete | `packages/security/soc2-verify/src/controls/{supply-chain,codeowners,k8s,db-and-pii,plugins,training,audit-actions,observability}.ts` | ✅ shipped |
+| low | green-but-meaningless | `.github/workflows/benchmark-orchestrator-scheduled.yml` |  |
+| low | green-but-meaningless | `packages/examples/cloud/clone-ur-crush/package.json` |  |
+| low | incomplete | `packages/examples/rest-api/express/server.test.ts` |  |
+| low | green-but-meaningless | `packages/scenario-runner/src/corpus-assertion-guard.test.ts` |  |
+| low | green-but-meaningless | `plugins/plugin-companion/src/components/companion/resolve-companion-inference-notice.test.ts` |  |
+| low | excluded-from-ci | `packages/core/src/runtime/__tests__/field-registry-cerebras.live.test.ts` |  |
+| low | incomplete | `packages/security/src/network-policy.ts (and src/mcp-server-config.ts)` |  |
+
+**Shipped from this round:** plugin-sql `live-query-latency` + `electric-sync-live-query` (9 tests were fake-passing via `if(!liveNs) return` → now load the live extension + assert, commit `fc4dd17851`); security + soc2-verify wired into `test:server` PR lane (66 tests, commit `98a6fb0951`).
+
+**Remaining tracked backlog (highest first):**
+- **[critical]** `plugins/plugin-sql/src/vitest.config.ts` unconditionally excludes `**/*.real.test.ts` — the whole real DatabaseAdapter/migration/RLS/CRUD suite (52 files, real PGlite) runs in no lane. Add a PGlite real-lane (needs no external service).
+- **[high]** `packages/examples`: the example test runner (`verify-examples.mjs --mode test`) is in no workflow; `discord` / `app/capacitor/backend` / `app/electron/backend` are `vitest run --passWithNoTests` with zero tests yet VALIDATION.md claims them `test`-verified; `vercel` `test` swallows failures with `|| echo skipping`.
+- **[high]** `packages/benchmarks/voice-emotion/.../runner.py`: `_FIXTURE_ROWS` hardcodes predicted==gold for all 14 rows → the fixture suite always scores perfect (tautology). Gate the real classifier pytest instead.
+- **[medium/low]** remaining 16 findings (per-plugin harness lane, PA `test:background-real`, examples doc claims, benchmark CI no-op decorations) — see machine-readable findings in the workflow output.
