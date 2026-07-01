@@ -15,6 +15,18 @@ intake.
 The matching `.html` files were rendered through GitHub's Markdown API, then
 captured with Playwright.
 
+## Live GitHub Captures
+
+- `10707-evidence-mandate-live-github-pr-10747.png`
+- `10707-evidence-mandate-live-github-pr-template-branch.png`
+- `10707-evidence-mandate-live-github-bug-template-branch.png`
+- `10707-evidence-mandate-live-github-feature-template-branch.png`
+- `live-github-render-summary.txt`
+
+These screenshots were captured from the live GitHub PR and branch file pages
+after the draft PR was opened. The summary records HTTP status, page title, byte
+size, and whether evidence text was detected on each branch template page.
+
 ## Walkthrough
 
 - `10707-evidence-mandate-walkthrough.mp4`
