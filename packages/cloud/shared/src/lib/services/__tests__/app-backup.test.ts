@@ -20,7 +20,12 @@ import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { appConfig } from "../../../db/schemas/app-config";
 import { appEarnings } from "../../../db/schemas/app-earnings";
-import { appDeploymentStatusEnum, apps, userDatabaseStatusEnum } from "../../../db/schemas/apps";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  userDatabaseStatusEnum,
+} from "../../../db/schemas/apps";
 import { organizations } from "../../../db/schemas/organizations";
 import { users } from "../../../db/schemas/users";
 
@@ -61,6 +66,7 @@ beforeAll(async () => {
         appConfig,
         appEarnings,
         appDeploymentStatusEnum,
+        appReviewStatusEnum,
         userDatabaseStatusEnum,
       } as never,
       dbWrite as never,
