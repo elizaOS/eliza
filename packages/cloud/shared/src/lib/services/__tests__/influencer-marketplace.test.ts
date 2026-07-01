@@ -22,10 +22,7 @@ import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
 import { creditTransactions } from "../../../db/schemas/credit-transactions";
-import {
-  influencerBookings,
-  influencerProfiles,
-} from "../../../db/schemas/influencer-marketplace";
+import { influencerBookings, influencerProfiles } from "../../../db/schemas/influencer-marketplace";
 import { organizations } from "../../../db/schemas/organizations";
 import {
   earningsSourceEnum,
@@ -217,7 +214,10 @@ describe("Influencer marketplace escrow (#10687)", () => {
     if (!pgliteReady) return;
     const inf = await seedProfile();
     // fund the influencer's own org so the failure is the self-book guard, not credits
-    await dbWrite.update(organizations).set({ credit_balance: "100.00" }).where(eq(organizations.id, inf.orgId));
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "100.00" })
+      .where(eq(organizations.id, inf.orgId));
     const res = await service.createBooking({
       advertiserOrgId: inf.orgId,
       profileId: inf.profileId,

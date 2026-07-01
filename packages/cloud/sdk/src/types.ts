@@ -1235,7 +1235,13 @@ export interface InfluencerBookingDto {
   advertiser_org_id: string;
   influencer_profile_id: string;
   amount: string;
-  status: "offered" | "accepted" | "delivered" | "approved" | "rejected" | "cancelled";
+  status:
+    | "offered"
+    | "accepted"
+    | "delivered"
+    | "approved"
+    | "rejected"
+    | "cancelled";
   brief: string;
 }
 

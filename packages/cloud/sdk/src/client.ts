@@ -27,11 +27,6 @@ import {
   type ContainerGetResponse,
   type ContainerHealthResponse,
   type ContainerListResponse,
-  type CreateBookingInput,
-  type CreateBookingResponse,
-  type CreateInfluencerProfileInput,
-  type CreateInfluencerProfileResponse,
-  type ListInfluencersResponse,
   type ContainerQuotaResponse,
   type CreateAgentRequest,
   type CreateAgentResponse,
@@ -43,10 +38,14 @@ import {
   type CreateAppCreditsCheckoutResponse,
   type CreateAppInput,
   type CreateAppResponse,
+  type CreateBookingInput,
+  type CreateBookingResponse,
   type CreateContainerRequest,
   type CreateContainerResponse,
   type CreateCreditsCheckoutRequest,
   type CreateCreditsCheckoutResponse,
+  type CreateInfluencerProfileInput,
+  type CreateInfluencerProfileResponse,
   type CreateRedemptionRequest,
   type CreateRedemptionResponse,
   type CreateX402PaymentRequest,
@@ -79,6 +78,7 @@ import {
   type LinkAffiliateResponse,
   type ListAppChargesResponse,
   type ListAppsResponse,
+  type ListInfluencersResponse,
   type ListRedemptionsResponse,
   type ListX402PaymentRequestsResponse,
   type ModelListResponse,
@@ -888,22 +888,33 @@ export class ElizaCloudClient {
   createInfluencerProfile(
     input: CreateInfluencerProfileInput,
   ): Promise<CreateInfluencerProfileResponse> {
-    return this.request<CreateInfluencerProfileResponse>("POST", "/api/v1/marketing/influencers", {
-      json: input,
-    });
+    return this.request<CreateInfluencerProfileResponse>(
+      "POST",
+      "/api/v1/marketing/influencers",
+      {
+        json: input,
+      },
+    );
   }
 
   /** `GET /api/v1/marketing/influencers` — browse active influencer profiles. */
   listInfluencers(niche?: string): Promise<ListInfluencersResponse> {
     const q = niche ? `?niche=${encodeURIComponent(niche)}` : "";
-    return this.request<ListInfluencersResponse>("GET", `/api/v1/marketing/influencers${q}`);
+    return this.request<ListInfluencersResponse>(
+      "GET",
+      `/api/v1/marketing/influencers${q}`,
+    );
   }
 
   /** `POST /api/v1/marketing/influencers/bookings` — fund an escrowed influencer booking (#10687). */
   createBooking(input: CreateBookingInput): Promise<CreateBookingResponse> {
-    return this.request<CreateBookingResponse>("POST", "/api/v1/marketing/influencers/bookings", {
-      json: input,
-    });
+    return this.request<CreateBookingResponse>(
+      "POST",
+      "/api/v1/marketing/influencers/bookings",
+      {
+        json: input,
+      },
+    );
   }
 
   createContainer(

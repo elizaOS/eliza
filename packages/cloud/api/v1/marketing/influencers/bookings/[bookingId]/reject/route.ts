@@ -17,16 +17,23 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("bookingId");
-    if (!id) return c.json({ success: false, error: "Missing booking id" }, 400);
+    if (!id)
+      return c.json({ success: false, error: "Missing booking id" }, 400);
 
     const booking = await influencerMarketplaceService.getBooking(id);
-    if (!booking) return c.json({ success: false, error: "Booking not found" }, 404);
+    if (!booking)
+      return c.json({ success: false, error: "Booking not found" }, 404);
 
-    let result: Awaited<ReturnType<typeof influencerMarketplaceService.rejectBooking>>;
+    let result: Awaited<
+      ReturnType<typeof influencerMarketplaceService.rejectBooking>
+    >;
     if (booking.influencer_user_id === user.id) {
       result = await influencerMarketplaceService.rejectBooking(id, user.id);
     } else if (booking.advertiser_org_id === user.organization_id) {
-      result = await influencerMarketplaceService.rejectDeliverable(id, user.organization_id);
+      result = await influencerMarketplaceService.rejectDeliverable(
+        id,
+        user.organization_id,
+      );
     } else {
       return c.json({ success: false, error: "Access denied" }, 403);
     }

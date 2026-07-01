@@ -28,7 +28,9 @@ app.get("/", async (c) => {
     const bookings =
       c.req.query("as") === "influencer"
         ? await influencerMarketplaceService.listBookingsForInfluencer(user.id)
-        : await influencerMarketplaceService.listBookingsForOrg(user.organization_id);
+        : await influencerMarketplaceService.listBookingsForOrg(
+            user.organization_id,
+          );
     return c.json({ success: true, bookings });
   } catch (error) {
     logger.error("[Influencer API] list bookings failed:", error);
@@ -39,10 +41,16 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const parsed = CreateBookingSchema.safeParse(await c.req.json().catch(() => ({})));
+    const parsed = CreateBookingSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.flatten() },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.flatten(),
+        },
         400,
       );
     }

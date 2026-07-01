@@ -7,7 +7,14 @@
  *                             discovery, before booking).
  */
 
-import type { Action, ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getCloudClient, resolveCloudApiKey } from "../client.js";
 
@@ -18,12 +25,18 @@ function readOpt(options: unknown): Record<string, unknown> {
   if (!options || typeof options !== "object") return {};
   const o = options as Record<string, unknown>;
   const nested = o.parameters;
-  return nested && typeof nested === "object" ? (nested as Record<string, unknown>) : o;
+  return nested && typeof nested === "object"
+    ? (nested as Record<string, unknown>)
+    : o;
 }
 
 export const createInfluencerProfileAction: Action = {
   name: "CREATE_INFLUENCER_PROFILE",
-  similes: ["BECOME_INFLUENCER", "PUBLISH_INFLUENCER_PROFILE", "OFFER_INFLUENCER_SERVICES"],
+  similes: [
+    "BECOME_INFLUENCER",
+    "PUBLISH_INFLUENCER_PROFILE",
+    "OFFER_INFLUENCER_SERVICES",
+  ],
   description:
     "Publish an influencer profile on Eliza Cloud so the agent/user can be booked by advertisers and earn. Use when the user wants to become / list as an influencer or offer promotion services.",
   descriptionCompressed: "Publish an influencer profile to be booked + earn.",
@@ -31,7 +44,8 @@ export const createInfluencerProfileAction: Action = {
   contextGate: { anyOf: ["settings", "finance"] },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => resolveCloudApiKey(runtime) !== null,
+  validate: async (runtime: IAgentRuntime): Promise<boolean> =>
+    resolveCloudApiKey(runtime) !== null,
 
   handler: async (
     runtime: IAgentRuntime,
@@ -42,8 +56,16 @@ export const createInfluencerProfileAction: Action = {
   ): Promise<ActionResult> => {
     const client = getCloudClient(runtime);
     if (!client) {
-      await callback?.({ text: NO_KEY_MESSAGE, actions: ["CREATE_INFLUENCER_PROFILE"] });
-      return { success: false, text: "No Cloud API key.", userFacingText: NO_KEY_MESSAGE, data: { reason: "no_key" } };
+      await callback?.({
+        text: NO_KEY_MESSAGE,
+        actions: ["CREATE_INFLUENCER_PROFILE"],
+      });
+      return {
+        success: false,
+        text: "No Cloud API key.",
+        userFacingText: NO_KEY_MESSAGE,
+        data: { reason: "no_key" },
+      };
     }
     const rec = readOpt(options);
     const displayName =
@@ -52,7 +74,10 @@ export const createInfluencerProfileAction: Action = {
         : runtime.character?.name || "Creator";
     const niche = typeof rec.niche === "string" ? rec.niche : undefined;
     try {
-      const { profile } = await client.createInfluencerProfile({ displayName, niche });
+      const { profile } = await client.createInfluencerProfile({
+        displayName,
+        niche,
+      });
       const reply = `Published your influencer profile "${profile.display_name}"${profile.niche ? ` (${profile.niche})` : ""}. Advertisers can now book you.`;
       await callback?.({ text: reply, actions: ["CREATE_INFLUENCER_PROFILE"] });
       return {
@@ -60,20 +85,36 @@ export const createInfluencerProfileAction: Action = {
         text: `Published influencer profile ${profile.display_name}.`,
         userFacingText: reply,
         verifiedUserFacing: true,
-        data: { profile: { id: profile.id, displayName: profile.display_name } },
+        data: {
+          profile: { id: profile.id, displayName: profile.display_name },
+        },
       };
     } catch (err) {
-      logger.warn(`[CREATE_INFLUENCER_PROFILE] failed: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn(
+        `[CREATE_INFLUENCER_PROFILE] failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
       const msg = "I couldn't publish that profile right now.";
       await callback?.({ text: msg, actions: ["CREATE_INFLUENCER_PROFILE"] });
-      return { success: false, text: "Failed to publish profile.", userFacingText: msg, error: err instanceof Error ? err : new Error(String(err)), data: { reason: "error" } };
+      return {
+        success: false,
+        text: "Failed to publish profile.",
+        userFacingText: msg,
+        error: err instanceof Error ? err : new Error(String(err)),
+        data: { reason: "error" },
+      };
     }
   },
 
   examples: [
     [
       { name: "{{user}}", content: { text: "list me as a tech influencer" } },
-      { name: "{{agent}}", content: { text: 'Published your influencer profile "Creator" (tech). Advertisers can now book you.', actions: ["CREATE_INFLUENCER_PROFILE"] } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: 'Published your influencer profile "Creator" (tech). Advertisers can now book you.',
+          actions: ["CREATE_INFLUENCER_PROFILE"],
+        },
+      },
     ],
   ],
 };
@@ -88,7 +129,8 @@ export const listInfluencersAction: Action = {
   contextGate: { anyOf: ["settings", "finance", "apps"] },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => resolveCloudApiKey(runtime) !== null,
+  validate: async (runtime: IAgentRuntime): Promise<boolean> =>
+    resolveCloudApiKey(runtime) !== null,
 
   handler: async (
     runtime: IAgentRuntime,
@@ -100,10 +142,18 @@ export const listInfluencersAction: Action = {
     const client = getCloudClient(runtime);
     if (!client) {
       await callback?.({ text: NO_KEY_MESSAGE, actions: ["LIST_INFLUENCERS"] });
-      return { success: false, text: "No Cloud API key.", userFacingText: NO_KEY_MESSAGE, data: { reason: "no_key" } };
+      return {
+        success: false,
+        text: "No Cloud API key.",
+        userFacingText: NO_KEY_MESSAGE,
+        data: { reason: "no_key" },
+      };
     }
     const rec = readOpt(options);
-    const niche = typeof rec.niche === "string" && rec.niche.trim() ? rec.niche.trim() : undefined;
+    const niche =
+      typeof rec.niche === "string" && rec.niche.trim()
+        ? rec.niche.trim()
+        : undefined;
     try {
       const { profiles } = await client.listInfluencers(niche);
       const reply =
@@ -111,24 +161,50 @@ export const listInfluencersAction: Action = {
           ? `No influencer profiles${niche ? ` in "${niche}"` : ""} found yet.`
           : `${profiles.length} influencer(s)${niche ? ` in "${niche}"` : ""}:\n${profiles
               .map((p) => {
-                const reach = p.platforms.reduce((n, pl) => n + (pl.followers || 0), 0);
+                const reach = p.platforms.reduce(
+                  (n, pl) => n + (pl.followers || 0),
+                  0,
+                );
                 return `• ${p.display_name}${p.niche ? ` (${p.niche})` : ""}${reach ? ` — ~${reach.toLocaleString()} followers` : ""}`;
               })
               .join("\n")}`;
       await callback?.({ text: reply, actions: ["LIST_INFLUENCERS"] });
-      return { success: true, text: `Listed ${profiles.length} influencers.`, userFacingText: reply, verifiedUserFacing: true, data: { count: profiles.length } };
+      return {
+        success: true,
+        text: `Listed ${profiles.length} influencers.`,
+        userFacingText: reply,
+        verifiedUserFacing: true,
+        data: { count: profiles.length },
+      };
     } catch (err) {
-      logger.warn(`[LIST_INFLUENCERS] failed: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn(
+        `[LIST_INFLUENCERS] failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
       const msg = "I couldn't browse influencers right now.";
       await callback?.({ text: msg, actions: ["LIST_INFLUENCERS"] });
-      return { success: false, text: "Failed to list influencers.", userFacingText: msg, error: err instanceof Error ? err : new Error(String(err)), data: { reason: "error" } };
+      return {
+        success: false,
+        text: "Failed to list influencers.",
+        userFacingText: msg,
+        error: err instanceof Error ? err : new Error(String(err)),
+        data: { reason: "error" },
+      };
     }
   },
 
   examples: [
     [
-      { name: "{{user}}", content: { text: "find tech influencers to promote my app" } },
-      { name: "{{agent}}", content: { text: "2 influencer(s) in \"tech\":\n• Creator (tech) — ~50,000 followers", actions: ["LIST_INFLUENCERS"] } },
+      {
+        name: "{{user}}",
+        content: { text: "find tech influencers to promote my app" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: '2 influencer(s) in "tech":\n• Creator (tech) — ~50,000 followers',
+          actions: ["LIST_INFLUENCERS"],
+        },
+      },
     ],
   ],
 };

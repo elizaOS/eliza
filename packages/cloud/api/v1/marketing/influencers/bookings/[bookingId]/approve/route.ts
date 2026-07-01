@@ -11,8 +11,12 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("bookingId");
-    if (!id) return c.json({ success: false, error: "Missing booking id" }, 400);
-    const result = await influencerMarketplaceService.approveBooking(id, user.organization_id);
+    if (!id)
+      return c.json({ success: false, error: "Missing booking id" }, 400);
+    const result = await influencerMarketplaceService.approveBooking(
+      id,
+      user.organization_id,
+    );
     if (!result.ok) return c.json({ success: false, error: result.error }, 409);
     return c.json({ success: true, booking: result.booking });
   } catch (error) {

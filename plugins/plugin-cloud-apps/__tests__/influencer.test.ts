@@ -11,7 +11,9 @@ import {
   unkeyedRuntime,
 } from "./helpers";
 
-mock.module("@elizaos/cloud-sdk", () => ({ ElizaCloudClient: FakeElizaCloudClient }));
+mock.module("@elizaos/cloud-sdk", () => ({
+  ElizaCloudClient: FakeElizaCloudClient,
+}));
 
 const { createInfluencerProfileAction, listInfluencersAction } = await import(
   "../src/actions/influencer.ts"
@@ -21,13 +23,29 @@ describe("CREATE_INFLUENCER_PROFILE", () => {
   beforeEach(() => resetSdk());
 
   it("validate: true with key, false without", async () => {
-    expect(await createInfluencerProfileAction.validate(keyedRuntime(), makeMessage("x"))).toBe(true);
-    expect(await createInfluencerProfileAction.validate(unkeyedRuntime(), makeMessage("x"))).toBe(false);
+    expect(
+      await createInfluencerProfileAction.validate(
+        keyedRuntime(),
+        makeMessage("x"),
+      ),
+    ).toBe(true);
+    expect(
+      await createInfluencerProfileAction.validate(
+        unkeyedRuntime(),
+        makeMessage("x"),
+      ),
+    ).toBe(false);
   });
 
   it("no key → no_key", async () => {
     const cb = captureCallback();
-    const res = await createInfluencerProfileAction.handler(unkeyedRuntime(), makeMessage("become an influencer"), undefined, {}, cb.callback);
+    const res = await createInfluencerProfileAction.handler(
+      unkeyedRuntime(),
+      makeMessage("become an influencer"),
+      undefined,
+      {},
+      cb.callback,
+    );
     expect(res.success).toBe(false);
     expect(res.data).toMatchObject({ reason: "no_key" });
   });
@@ -38,7 +56,14 @@ describe("CREATE_INFLUENCER_PROFILE", () => {
       captured = input;
       return Promise.resolve({
         success: true,
-        profile: { id: "inf_x", display_name: input.displayName, niche: input.niche ?? null, bio: null, platforms: [], status: "active" },
+        profile: {
+          id: "inf_x",
+          display_name: input.displayName,
+          niche: input.niche ?? null,
+          bio: null,
+          platforms: [],
+          status: "active",
+        },
       });
     });
     const cb = captureCallback();
@@ -59,7 +84,13 @@ describe("LIST_INFLUENCERS", () => {
 
   it("reports empty results", async () => {
     const cb = captureCallback();
-    const res = await listInfluencersAction.handler(keyedRuntime(), makeMessage("find influencers"), undefined, {}, cb.callback);
+    const res = await listInfluencersAction.handler(
+      keyedRuntime(),
+      makeMessage("find influencers"),
+      undefined,
+      {},
+      cb.callback,
+    );
     expect(res.success).toBe(true);
     expect(res.userFacingText).toContain("No influencer profiles");
   });
@@ -69,12 +100,28 @@ describe("LIST_INFLUENCERS", () => {
       Promise.resolve({
         success: true,
         profiles: [
-          { id: "a", display_name: "Nova", niche: "tech", bio: null, status: "active", platforms: [{ platform: "x", handle: "@nova", followers: 40000 }, { platform: "yt", handle: "nova", followers: 10000 }] },
+          {
+            id: "a",
+            display_name: "Nova",
+            niche: "tech",
+            bio: null,
+            status: "active",
+            platforms: [
+              { platform: "x", handle: "@nova", followers: 40000 },
+              { platform: "yt", handle: "nova", followers: 10000 },
+            ],
+          },
         ],
       }),
     );
     const cb = captureCallback();
-    const res = await listInfluencersAction.handler(keyedRuntime(), makeMessage("find tech influencers"), undefined, { niche: "tech" }, cb.callback);
+    const res = await listInfluencersAction.handler(
+      keyedRuntime(),
+      makeMessage("find tech influencers"),
+      undefined,
+      { niche: "tech" },
+      cb.callback,
+    );
     expect(res.success).toBe(true);
     expect(res.userFacingText).toContain("Nova");
     expect(res.userFacingText).toContain("50,000");

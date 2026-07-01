@@ -180,7 +180,9 @@ export class InfluencerMarketplaceService {
       return { ok: false, error: "Booking not found" };
     }
     const moved = await this.transition(id, "offered", "accepted");
-    return moved ? { ok: true, booking: moved } : { ok: false, error: "Not in an acceptable state" };
+    return moved
+      ? { ok: true, booking: moved }
+      : { ok: false, error: "Not in an acceptable state" };
   }
 
   async submitDeliverable(
@@ -195,7 +197,9 @@ export class InfluencerMarketplaceService {
     const moved = await this.transition(id, "accepted", "delivered", {
       deliverable_url: deliverableUrl,
     });
-    return moved ? { ok: true, booking: moved } : { ok: false, error: "Not awaiting a deliverable" };
+    return moved
+      ? { ok: true, booking: moved }
+      : { ok: false, error: "Not awaiting a deliverable" };
   }
 
   /** Advertiser approves the deliverable → release escrow to the influencer. */
