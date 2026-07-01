@@ -205,227 +205,208 @@ describe("view interact WS wire round-trip", () => {
     expect((data.result as Record<string, unknown>).marker).toBe(marker);
   }
 
-  it(
-    "completes the full wire: POST interact → WS broadcast → client result → HTTP response",
-    { timeout: 60_000 },
-    async () => {
-      const client = await connect("tab-happy");
+  it("completes the full wire: POST interact → WS broadcast → client result → HTTP response", {
+    timeout: 60_000,
+  }, async () => {
+    const client = await connect("tab-happy");
 
-      const interact = req(port(), "POST", "/api/views/settings/interact", {
+    const interact = req(port(), "POST", "/api/views/settings/interact", {
+      capability: "get-state",
+      params: { probe: "value-123" },
+      timeoutMs: 10_000,
+    });
+
+    // The REAL broadcast the dashboard would receive, over the real socket.
+    const broadcast = await client.waitFor(
+      isInteractBroadcast,
+      15_000,
+      "view:interact broadcast",
+    );
+    expect(broadcast.viewId).toBe("settings");
+    expect(broadcast.viewType).toBe("gui");
+    expect(broadcast.capability).toBe("get-state");
+    expect(broadcast.params).toEqual({ probe: "value-123" });
+    expect(typeof broadcast.requestId).toBe("string");
+    expect(String(broadcast.requestId)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+
+    client.send({
+      type: "view:interact:result",
+      requestId: broadcast.requestId,
+      success: true,
+      result: { answered: "by-client", echo: broadcast.params },
+    });
+
+    const { status, data } = await interact;
+    expect(status).toBe(200);
+    expect(data.requestId).toBe(broadcast.requestId);
+    expect(data.success).toBe(true);
+    expect(data.result).toEqual({
+      answered: "by-client",
+      echo: { probe: "value-123" },
+    });
+
+    await disconnectAll();
+  });
+
+  it("returns 504 when a connected client never responds, and a late result is a no-op", {
+    timeout: 60_000,
+  }, async () => {
+    const client = await connect("tab-silent");
+
+    const interact = req(port(), "POST", "/api/views/settings/interact", {
+      capability: "get-state",
+      params: { case: "silent" },
+      timeoutMs: 500,
+    });
+    const broadcast = await client.waitFor(
+      (msg) =>
+        isInteractBroadcast(msg) &&
+        (msg.params as Record<string, unknown> | undefined)?.case === "silent",
+      15_000,
+      "view:interact broadcast (silent case)",
+    );
+
+    // Deliberately do NOT respond before the server-side timeout fires.
+    const { status, data } = await interact;
+    expect(status).toBe(504);
+    expect(String(data.error)).toContain(
+      'did not respond to capability "get-state" within 500ms',
+    );
+
+    // The dashboard tab wakes up late; the pending slot is already gone.
+    // resolve() on an unknown requestId must be a no-op, not a crash.
+    client.send({
+      type: "view:interact:result",
+      requestId: broadcast.requestId,
+      success: true,
+      result: { tooLate: true },
+    });
+
+    await healthyRoundTrip(client, "after-late-result");
+    await disconnectAll();
+  });
+
+  it("returns 504 when no client is connected at all", {
+    timeout: 60_000,
+  }, async () => {
+    await disconnectAll();
+
+    const { status, data } = await req(
+      port(),
+      "POST",
+      "/api/views/settings/interact",
+      {
         capability: "get-state",
-        params: { probe: "value-123" },
-        timeoutMs: 10_000,
-      });
+        params: { case: "no-client" },
+        timeoutMs: 400,
+      },
+    );
+    expect(status).toBe(504);
+    expect(String(data.error)).toContain(
+      'View "settings" did not respond to capability "get-state" within 400ms',
+    );
+  });
 
-      // The REAL broadcast the dashboard would receive, over the real socket.
-      const broadcast = await client.waitFor(
-        isInteractBroadcast,
-        15_000,
-        "view:interact broadcast",
-      );
-      expect(broadcast.viewId).toBe("settings");
-      expect(broadcast.viewType).toBe("gui");
-      expect(broadcast.capability).toBe("get-state");
-      expect(broadcast.params).toEqual({ probe: "value-123" });
-      expect(typeof broadcast.requestId).toBe("string");
-      expect(String(broadcast.requestId)).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-      );
+  it("broadcasts to every connected tab; the first result wins and the second is ignored", {
+    timeout: 60_000,
+  }, async () => {
+    const tabA = await connect("tab-a");
+    const tabB = await connect("tab-b");
 
-      client.send({
-        type: "view:interact:result",
-        requestId: broadcast.requestId,
-        success: true,
-        result: { answered: "by-client", echo: broadcast.params },
-      });
+    const interact = req(port(), "POST", "/api/views/settings/interact", {
+      capability: "get-state",
+      params: { case: "multi-tab" },
+      timeoutMs: 10_000,
+    });
 
-      const { status, data } = await interact;
-      expect(status).toBe(200);
-      expect(data.requestId).toBe(broadcast.requestId);
-      expect(data.success).toBe(true);
-      expect(data.result).toEqual({
-        answered: "by-client",
-        echo: { probe: "value-123" },
-      });
+    const isMultiTab = (msg: WsMessage) =>
+      isInteractBroadcast(msg) &&
+      (msg.params as Record<string, unknown> | undefined)?.case === "multi-tab";
+    const [broadcastA, broadcastB] = await Promise.all([
+      tabA.waitFor(isMultiTab, 15_000, "view:interact on tab A"),
+      tabB.waitFor(isMultiTab, 15_000, "view:interact on tab B"),
+    ]);
+    // The same request really reached both sockets.
+    expect(broadcastA.requestId).toBe(broadcastB.requestId);
 
-      await disconnectAll();
-    },
-  );
+    tabA.send({
+      type: "view:interact:result",
+      requestId: broadcastA.requestId,
+      success: true,
+      result: { from: "A" },
+    });
 
-  it(
-    "returns 504 when a connected client never responds, and a late result is a no-op",
-    { timeout: 60_000 },
-    async () => {
-      const client = await connect("tab-silent");
+    const { status, data } = await interact;
+    expect(status).toBe(200);
+    expect((data.result as Record<string, unknown>).from).toBe("A");
 
-      const interact = req(port(), "POST", "/api/views/settings/interact", {
-        capability: "get-state",
-        params: { case: "silent" },
-        timeoutMs: 500,
-      });
-      const broadcast = await client.waitFor(
-        (msg) =>
-          isInteractBroadcast(msg) &&
-          (msg.params as Record<string, unknown> | undefined)?.case ===
-            "silent",
-        15_000,
-        "view:interact broadcast (silent case)",
-      );
+    // Tab B answers the already-resolved request — must be a no-op.
+    tabB.send({
+      type: "view:interact:result",
+      requestId: broadcastB.requestId,
+      success: true,
+      result: { from: "B" },
+    });
 
-      // Deliberately do NOT respond before the server-side timeout fires.
-      const { status, data } = await interact;
-      expect(status).toBe(504);
-      expect(String(data.error)).toContain(
-        'did not respond to capability "get-state" within 500ms',
-      );
+    await healthyRoundTrip(tabA, "after-duplicate-result");
+    await disconnectAll();
+  });
 
-      // The dashboard tab wakes up late; the pending slot is already gone.
-      // resolve() on an unknown requestId must be a no-op, not a crash.
-      client.send({
-        type: "view:interact:result",
-        requestId: broadcast.requestId,
-        success: true,
-        result: { tooLate: true },
-      });
+  it("ignores malformed and unknown-requestId result frames without corrupting the wire", {
+    timeout: 60_000,
+  }, async () => {
+    const client = await connect("tab-adversarial");
 
-      await healthyRoundTrip(client, "after-late-result");
-      await disconnectAll();
-    },
-  );
+    client.sendRaw("not-json{");
+    client.send({ type: "view:interact:result" }); // missing requestId
+    client.send({ type: "view:interact:result", requestId: 12345 as never });
+    client.send({
+      type: "view:interact:result",
+      requestId: "00000000-0000-0000-0000-000000000000",
+      success: true,
+      result: { ghost: true },
+    });
+    client.send({ type: "definitely-not-a-real-type", requestId: "x" });
 
-  it(
-    "returns 504 when no client is connected at all",
-    { timeout: 60_000 },
-    async () => {
-      await disconnectAll();
+    await healthyRoundTrip(client, "after-adversarial-frames");
+    await disconnectAll();
+  });
 
-      const { status, data } = await req(
-        port(),
-        "POST",
-        "/api/views/settings/interact",
-        {
-          capability: "get-state",
-          params: { case: "no-client" },
-          timeoutMs: 400,
-        },
-      );
-      expect(status).toBe(504);
-      expect(String(data.error)).toContain(
-        'View "settings" did not respond to capability "get-state" within 400ms',
-      );
-    },
-  );
+  it("resolves the pending slot via the HTTP fallback POST /api/views/interact-result", {
+    timeout: 60_000,
+  }, async () => {
+    const client = await connect("tab-http-fallback");
 
-  it(
-    "broadcasts to every connected tab; the first result wins and the second is ignored",
-    { timeout: 60_000 },
-    async () => {
-      const tabA = await connect("tab-a");
-      const tabB = await connect("tab-b");
-
-      const interact = req(port(), "POST", "/api/views/settings/interact", {
-        capability: "get-state",
-        params: { case: "multi-tab" },
-        timeoutMs: 10_000,
-      });
-
-      const isMultiTab = (msg: WsMessage) =>
+    const interact = req(port(), "POST", "/api/views/settings/interact", {
+      capability: "get-state",
+      params: { case: "http-fallback" },
+      timeoutMs: 10_000,
+    });
+    const broadcast = await client.waitFor(
+      (msg) =>
         isInteractBroadcast(msg) &&
         (msg.params as Record<string, unknown> | undefined)?.case ===
-          "multi-tab";
-      const [broadcastA, broadcastB] = await Promise.all([
-        tabA.waitFor(isMultiTab, 15_000, "view:interact on tab A"),
-        tabB.waitFor(isMultiTab, 15_000, "view:interact on tab B"),
-      ]);
-      // The same request really reached both sockets.
-      expect(broadcastA.requestId).toBe(broadcastB.requestId);
+          "http-fallback",
+      15_000,
+      "view:interact broadcast (http fallback case)",
+    );
 
-      tabA.send({
-        type: "view:interact:result",
-        requestId: broadcastA.requestId,
-        success: true,
-        result: { from: "A" },
-      });
+    // Answer over HTTP instead of the socket — the documented fallback for
+    // clients whose WS send path is unavailable.
+    const resultPost = await req(port(), "POST", "/api/views/interact-result", {
+      requestId: broadcast.requestId,
+      success: true,
+      result: { via: "http" },
+    });
+    expect(resultPost.status).toBe(200);
+    expect(resultPost.data.ok).toBe(true);
 
-      const { status, data } = await interact;
-      expect(status).toBe(200);
-      expect((data.result as Record<string, unknown>).from).toBe("A");
+    const { status, data } = await interact;
+    expect(status).toBe(200);
+    expect((data.result as Record<string, unknown>).via).toBe("http");
 
-      // Tab B answers the already-resolved request — must be a no-op.
-      tabB.send({
-        type: "view:interact:result",
-        requestId: broadcastB.requestId,
-        success: true,
-        result: { from: "B" },
-      });
-
-      await healthyRoundTrip(tabA, "after-duplicate-result");
-      await disconnectAll();
-    },
-  );
-
-  it(
-    "ignores malformed and unknown-requestId result frames without corrupting the wire",
-    { timeout: 60_000 },
-    async () => {
-      const client = await connect("tab-adversarial");
-
-      client.sendRaw("not-json{");
-      client.send({ type: "view:interact:result" }); // missing requestId
-      client.send({ type: "view:interact:result", requestId: 12345 as never });
-      client.send({
-        type: "view:interact:result",
-        requestId: "00000000-0000-0000-0000-000000000000",
-        success: true,
-        result: { ghost: true },
-      });
-      client.send({ type: "definitely-not-a-real-type", requestId: "x" });
-
-      await healthyRoundTrip(client, "after-adversarial-frames");
-      await disconnectAll();
-    },
-  );
-
-  it(
-    "resolves the pending slot via the HTTP fallback POST /api/views/interact-result",
-    { timeout: 60_000 },
-    async () => {
-      const client = await connect("tab-http-fallback");
-
-      const interact = req(port(), "POST", "/api/views/settings/interact", {
-        capability: "get-state",
-        params: { case: "http-fallback" },
-        timeoutMs: 10_000,
-      });
-      const broadcast = await client.waitFor(
-        (msg) =>
-          isInteractBroadcast(msg) &&
-          (msg.params as Record<string, unknown> | undefined)?.case ===
-            "http-fallback",
-        15_000,
-        "view:interact broadcast (http fallback case)",
-      );
-
-      // Answer over HTTP instead of the socket — the documented fallback for
-      // clients whose WS send path is unavailable.
-      const resultPost = await req(
-        port(),
-        "POST",
-        "/api/views/interact-result",
-        {
-          requestId: broadcast.requestId,
-          success: true,
-          result: { via: "http" },
-        },
-      );
-      expect(resultPost.status).toBe(200);
-      expect(resultPost.data.ok).toBe(true);
-
-      const { status, data } = await interact;
-      expect(status).toBe(200);
-      expect((data.result as Record<string, unknown>).via).toBe("http");
-
-      await disconnectAll();
-    },
-  );
+    await disconnectAll();
+  });
 });
