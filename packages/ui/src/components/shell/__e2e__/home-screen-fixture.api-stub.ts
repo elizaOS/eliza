@@ -40,4 +40,10 @@ export const client = {
   // this esbuild bundle, so stub them here explicitly.
   listAutomations: async () => ({ automations: [] }),
   listScheduledTasks: async () => ({ tasks: [] }),
+  // CalendarUpcomingWidget probes Google connectivity through the typed client
+  // before showing events; report a connected account so it renders the seeded
+  // feed instead of the "Connect calendar" affordance.
+  listConnectorAccounts: async () => ({
+    accounts: [{ id: "google-owner", provider: "google", status: "connected" }],
+  }),
 };
