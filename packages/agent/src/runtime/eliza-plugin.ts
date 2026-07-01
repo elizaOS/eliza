@@ -15,6 +15,7 @@ import {
 } from "@elizaos/core";
 import type { CommandDefinition } from "@elizaos/plugin-commands";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
+import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
 import { filesAction } from "../actions/files.ts";
@@ -245,6 +246,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(runtimeAction),
       ...promoteSubactionsToActions(databaseAction),
       compactConversationAction,
+      connectAccountAction,
       notifyAction,
       ...promoteSubactionsToActions(memoryAction),
       filesAction,

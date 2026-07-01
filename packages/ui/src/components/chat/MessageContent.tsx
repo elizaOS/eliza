@@ -30,6 +30,7 @@ import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
+import { AccountConnectBlock } from "./AccountConnectBlock";
 import { MessageAttachments } from "./MessageAttachments";
 import {
   buildInlinePluginConfigModel,
@@ -965,6 +966,10 @@ export function MessageContent({
 
   if (message.secretRequest) {
     return <SensitiveRequestBlock request={message.secretRequest} />;
+  }
+
+  if (message.accountConnect) {
+    return <AccountConnectBlock request={message.accountConnect} />;
   }
 
   if (
