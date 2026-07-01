@@ -3771,9 +3771,20 @@ export function messageHandlerFromFieldResult(
 	// candidate backstop (which excludes creative-writing / explanation asks), so
 	// it is model-agnostic and regresses neither the direct-answer nor the
 	// poem-about-an-app path.
+	// An explicit, runnable spawn/delegation candidate in the model's OWN
+	// candidate list — for a message that structurally looks like coding work — is
+	// a firm "delegate this" commitment, and must win EVEN when the model ALSO
+	// (contradictorily) routed contexts=[simple] with a chatty complete-looking
+	// replyText. Previously this also required a non-simple planning context
+	// (`initialPlanningContexts.length > 0`); dropping that requirement closes the
+	// live bug where "build the app" came back with contexts=[simple] +
+	// candidateActionNames=[TASKS_SPAWN_AGENT], so shouldPreferCompleteDirectReply
+	// treated the spawn as "weak", suppressed it, and the bot said "I'm building
+	// it" while never spawning. Still safe: looksLikeCodingWorkRequest excludes
+	// creative-writing / explanation asks, and the candidate must be a REGISTERED
+	// delegation action — so this never fires on a poem or a how-do-I question.
 	const modelCommittedToDelegation =
 		!preemptDirect &&
-		initialPlanningContexts.length > 0 &&
 		looksLikeCodingWorkRequest(currentMessageText) &&
 		modelProvidedRunnableDelegationCandidate(
 			rawCandidateActions,
