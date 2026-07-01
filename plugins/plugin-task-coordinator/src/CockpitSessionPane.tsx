@@ -34,7 +34,7 @@ import {
   useRegisterViewChatBinding,
 } from "@elizaos/ui";
 import { ArrowLeft, ScrollText, SquareTerminal } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CockpitTerminalPanel } from "./CockpitTerminalPanel";
 import { TaskInspector } from "./OrchestratorWorkbench";
 import { ConversationBlockView } from "./orchestrator-stream";
@@ -78,21 +78,35 @@ export function CockpitSessionPane({
   // so the inspector's "Add agent" affordance works end to end.
   const [addAgentOpen, setAddAgentOpen] = useState(false);
 
-  // CLI face: "transcript" (pretty) ⇄ "terminal" (real-CLI / PTY watch view).
+  // CLI face: "transcript" (pretty) ⇄ "terminal" (a read-mostly PTY-output WATCH
+  // view — ACP sessions run --no-terminal, so it's not an interactive shell
+  // until a PTY_SERVICE-backed build exists; see CockpitTerminalPanel).
   const [view, setView] = useState<"transcript" | "terminal">("transcript");
 
   // The PTY session feed (CodingAgentSession[]) is a separate source from the
   // task detail; poll it and narrow to THIS task's sessions by matching
   // sessionId against the task's session records.
   const [ptySessions, setPtySessions] = useState<CodingAgentSession[]>([]);
+  const ptyPollFailedRef = useRef(false);
   useEffect(() => {
     let alive = true;
     const pull = async () => {
       try {
         const status = await client.getCodingAgentStatus();
-        if (alive) setPtySessions(status?.tasks ?? []);
-      } catch {
-        // best-effort; the terminal shows its empty state if unavailable.
+        if (!alive) return;
+        setPtySessions(status?.tasks ?? []);
+        ptyPollFailedRef.current = false;
+      } catch (e) {
+        // Don't silently swallow a persistently-broken status endpoint (Shaw's
+        // review): warn once per failure streak (not every 3s), and the terminal
+        // shows its empty state meanwhile.
+        if (!ptyPollFailedRef.current) {
+          ptyPollFailedRef.current = true;
+          console.warn(
+            "[cockpit] coding-agent status poll failed; terminal sessions unavailable",
+            e,
+          );
+        }
       }
     };
     void pull();
@@ -143,13 +157,11 @@ export function CockpitSessionPane({
             model,
           },
         });
-        // Re-spawn so the next turn actually runs on the new tier's model.
-        await client.addOrchestratorAgent(taskId, {
-          framework: "elizaos",
-          providerSource: "eliza-cloud",
-          model,
-          task: "Continue on the selected tier.",
-        });
+        // RESTART (stopActive) rather than add-agent: restartTask stops the
+        // worker(s) running on the OLD model, then respawns a single fresh one
+        // from the just-updated providerPolicy. Adding a worker would accumulate
+        // live agents on the task with each tier flip (Shaw's review of #10544).
+        await client.restartOrchestratorTask(taskId, { stopActive: true });
       });
     },
     [taskId, runMutation],
@@ -197,9 +209,20 @@ export function CockpitSessionPane({
   // Claim the floating composer's SEND while this pane is open: route it to THIS
   // task's room. Stable identity (only `taskId` matters) so the binding does not
   // needlessly re-register on every transcript tick.
+  const [composerError, setComposerError] = useState<string | null>(null);
   const onComposerSubmit = useCallback(
     (text: string): boolean => {
-      void client.postOrchestratorTaskMessage(taskId, text);
+      setComposerError(null);
+      // Surface a delivery failure: the composer has already cleared by the time
+      // this resolves, so a silently-dropped post would lose the user's message
+      // (Shaw's review of #10544). Still return true — the send WAS claimed.
+      client.postOrchestratorTaskMessage(taskId, text).catch((e: unknown) => {
+        setComposerError(
+          e instanceof Error
+            ? `Couldn't deliver your message: ${e.message}`
+            : "Couldn't deliver your message.",
+        );
+      });
       return true;
     },
     [taskId],
@@ -240,9 +263,8 @@ export function CockpitSessionPane({
             className="shrink-0"
           />
         ) : null}
-        <div
-          className="flex shrink-0 items-center gap-1"
-          role="group"
+        <fieldset
+          className="flex shrink-0 items-center gap-1 border-0 p-0"
           aria-label={t("cockpit.session.viewMode", {
             defaultValue: "View mode",
           })}
@@ -268,7 +290,9 @@ export function CockpitSessionPane({
             onClick={() => setView("terminal")}
             aria-pressed={view === "terminal"}
             data-testid="cockpit-view-terminal"
-            title={t("cockpit.session.terminal", { defaultValue: "Terminal" })}
+            title={t("cockpit.session.watch", {
+              defaultValue: "Watch (terminal output)",
+            })}
             className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
               view === "terminal"
                 ? "bg-accent/15 text-accent"
@@ -277,8 +301,18 @@ export function CockpitSessionPane({
           >
             <SquareTerminal className="h-4 w-4" aria-hidden />
           </button>
-        </div>
+        </fieldset>
       </header>
+
+      {composerError ? (
+        <div
+          role="alert"
+          data-testid="cockpit-session-error"
+          className="shrink-0 border-destructive/40 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
+          {composerError}
+        </div>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {view === "terminal" ? (

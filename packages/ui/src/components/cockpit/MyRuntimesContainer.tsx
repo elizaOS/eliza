@@ -32,7 +32,12 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
   // phone users only ever drive a cloud/remote runtime.
   const hideLocal = isAndroidCloudBuild() || isStoreBuild();
   const visibleProfiles = hideLocal
-    ? registry.profiles.filter((p) => p.kind !== "local")
+    ? // Hide local runtimes — but keep the one that's CURRENTLY active visible,
+      // else the Active badge would vanish on a store build whose persisted
+      // active profile is local (onSwitch still refuses switching TO a local).
+      registry.profiles.filter(
+        (p) => p.kind !== "local" || p.id === registry.activeProfileId,
+      )
     : registry.profiles;
 
   const refresh = useCallback(() => {

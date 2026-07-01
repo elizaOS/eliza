@@ -58,6 +58,10 @@ export {
   getInjectedCharacters,
 } from "./character-catalog";
 export * from "./chat/index";
+export {
+  useRegisterViewChatBinding,
+  type ViewChatBinding,
+} from "./state/view-chat-binding";
 // App-hosted Eliza Cloud surfaces (API client, query client, steward-session
 // glue, cloud-route registry). Namespaced to avoid colliding with the many
 // generic names (`api`, `ApiError`, `queryClient`, …) in the root barrel.

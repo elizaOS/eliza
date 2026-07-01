@@ -1573,7 +1573,14 @@ export function ContinuousChatOverlay({
       // claim the send to drive its OWN target instead of the host agent. If it
       // consumes the text, clear the composer and stop — do not fall through to
       // controller.send. Returns false/undefined → driver mode (host agent).
-      if (trimmed && viewChatBinding?.onSubmit?.(trimmed)) {
+      // ONLY claim a text-only turn: the binding's onSubmit is text-only, so a
+      // turn carrying images must fall through to the host agent (which can send
+      // images) rather than have the images silently dropped.
+      if (
+        trimmed &&
+        images.length === 0 &&
+        viewChatBinding?.onSubmit?.(trimmed)
+      ) {
         setDraft("");
         setSlashDismissed(false);
         setPendingImages([]);

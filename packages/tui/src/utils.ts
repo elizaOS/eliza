@@ -9,7 +9,7 @@ export function getSegmenter(): Intl.Segmenter {
 
 /**
  * Check if a grapheme cluster (after segmentation) could possibly be an RGI emoji.
- * This is a fast heuristic to avoid the expensive rgiEmojiRegex test.
+ * This is a fast heuristic to avoid expensive exact emoji classification.
  * The tested Unicode blocks are deliberately broad so newer Unicode versions
  * keep matching likely emoji ranges.
  */
@@ -30,7 +30,13 @@ const zeroWidthRegex =
   /^(?:\p{Default_Ignorable_Code_Point}|\p{Control}|\p{Mark}|\p{Surrogate})+$/u;
 const leadingNonPrintingRegex =
   /^[\p{Default_Ignorable_Code_Point}\p{Control}\p{Format}\p{Mark}\p{Surrogate}]+/u;
-const rgiEmojiRegex = /^\p{RGI_Emoji}$/v;
+const sgrAndCursorRegex = new RegExp("\\x1b\\[[0-9;]*[mGKHJ]", "g");
+const osc8HyperlinkRegex = new RegExp("\\x1b\\]8;;[^\\x07]*\\x07", "g");
+const apcSequenceRegex = new RegExp(
+  "\\x1b_[^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)",
+  "g",
+);
+const ansiSgrParamsRegex = new RegExp("\\x1b\\[([\\d;]*)m");
 
 // Cache for non-ASCII strings
 const WIDTH_CACHE_SIZE = 512;
@@ -39,7 +45,7 @@ const widthCache = new Map<string, number>();
 /**
  * Calculate the terminal width of a single grapheme cluster.
  * Based on code from the string-width library, but includes a possible-emoji
- * check to avoid running the RGI_Emoji regex unnecessarily.
+ * check to avoid exact emoji classification unnecessarily.
  */
 function graphemeWidth(segment: string): number {
   // Zero-width clusters
@@ -108,11 +114,11 @@ export function visibleWidth(str: string): number {
   }
   if (clean.includes("\x1b")) {
     // Strip SGR codes (\x1b[...m) and cursor codes (\x1b[...G/K/H/J)
-    clean = clean.replace(/\x1b\[[0-9;]*[mGKHJ]/g, "");
+    clean = clean.replace(sgrAndCursorRegex, "");
     // Strip OSC 8 hyperlinks: \x1b]8;;URL\x07 and \x1b]8;;\x07
-    clean = clean.replace(/\x1b\]8;;[^\x07]*\x07/g, "");
+    clean = clean.replace(osc8HyperlinkRegex, "");
     // Strip APC sequences: \x1b_...\x07 or \x1b_...\x1b\\ (used for cursor marker)
-    clean = clean.replace(/\x1b_[^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
+    clean = clean.replace(apcSequenceRegex, "");
   }
 
   // Calculate width
@@ -206,7 +212,7 @@ class AnsiCodeTracker {
     }
 
     // Extract the parameters between \x1b[ and m
-    const match = ansiCode.match(/\x1b\[([\d;]*)m/);
+    const match = ansiCode.match(ansiSgrParamsRegex);
     if (!match) return;
 
     const params = match[1];
