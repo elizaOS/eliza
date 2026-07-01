@@ -11,6 +11,7 @@ import {
   getSystemTheme,
   loadBackgroundConfig,
   loadBackgroundHistory,
+  loadHomeTimeWidgetHidden,
   loadUiThemeMode,
   MAX_BACKGROUND_HISTORY,
   normalizeBackgroundConfig,
@@ -18,6 +19,7 @@ import {
   resolveUiTheme,
   saveBackgroundConfig,
   saveBackgroundHistory,
+  saveHomeTimeWidgetHidden,
   saveUiTheme,
   saveUiThemeMode,
 } from "./persistence";
@@ -49,6 +51,11 @@ export function useDisplayPreferences() {
   const [backgroundRedo, setBackgroundRedoState] = useState<BackgroundConfig[]>(
     [],
   );
+  // Home time/date tile visibility (#10706): shown by default, hideable from
+  // Appearance settings, persisted across reload.
+  const [homeTimeWidgetHidden, setHomeTimeWidgetHiddenState] = useState<boolean>(
+    loadHomeTimeWidgetHidden,
+  );
   const backgroundConfigRef = useRef(backgroundConfig);
   backgroundConfigRef.current = backgroundConfig;
   const backgroundHistoryRef = useRef(backgroundHistory);
@@ -68,6 +75,10 @@ export function useDisplayPreferences() {
     },
     [setUiThemeMode],
   );
+
+  const setHomeTimeWidgetHidden = useCallback((hidden: boolean) => {
+    setHomeTimeWidgetHiddenState(hidden);
+  }, []);
 
   // Setting pushes the outgoing config onto the undo stack (unless unchanged),
   // and clears the redo stack — a new edit invalidates the redo future.
@@ -141,6 +152,10 @@ export function useDisplayPreferences() {
     saveBackgroundHistory(backgroundHistory);
   }, [backgroundHistory]);
 
+  useEffect(() => {
+    saveHomeTimeWidgetHidden(homeTimeWidgetHidden);
+  }, [homeTimeWidgetHidden]);
+
   return {
     state: {
       uiTheme,
@@ -148,11 +163,13 @@ export function useDisplayPreferences() {
       backgroundConfig,
       canUndoBackground: backgroundHistory.length > 0,
       canRedoBackground: backgroundRedo.length > 0,
+      homeTimeWidgetHidden,
     },
     setUiTheme,
     setUiThemeMode,
     setBackgroundConfig,
     undoBackgroundConfig,
     redoBackgroundConfig,
+    setHomeTimeWidgetHidden,
   };
 }

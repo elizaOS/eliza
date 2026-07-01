@@ -93,6 +93,27 @@ export function loadUiThemeMode(): UiThemeMode {
   }, "system");
 }
 
+/* ── Home time/date widget visibility (#10706) ───────────────────────── */
+
+const HOME_TIME_WIDGET_HIDDEN_STORAGE_KEY = "eliza:home-time-widget-hidden";
+
+/** Load whether the home time/date tile is hidden. Defaults to shown (false). */
+export function loadHomeTimeWidgetHidden(): boolean {
+  return tryLocalStorage(
+    () => localStorage.getItem(HOME_TIME_WIDGET_HIDDEN_STORAGE_KEY) === "1",
+    false,
+  );
+}
+
+export function saveHomeTimeWidgetHidden(hidden: boolean): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      HOME_TIME_WIDGET_HIDDEN_STORAGE_KEY,
+      hidden ? "1" : "0",
+    );
+  }, undefined);
+}
+
 export function saveUiThemeMode(mode: UiThemeMode): void {
   tryLocalStorage(() => {
     localStorage.setItem(UI_THEME_MODE_STORAGE_KEY, normalizeUiThemeMode(mode));
