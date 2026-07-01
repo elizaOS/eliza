@@ -68,8 +68,9 @@ const composerMock = vi.hoisted(() => ({
 }));
 
 const { useAppSelectorShallowMock } = vi.hoisted(() => ({
-  useAppSelectorShallowMock: (selector: (value: typeof appMock.value) => unknown) =>
-    selector(appMock.value),
+  useAppSelectorShallowMock: (
+    selector: (value: typeof appMock.value) => unknown,
+  ) => selector(appMock.value),
 }));
 
 // Controllable voice-capture leaf: records the last handle + the onTranscript
@@ -105,7 +106,9 @@ vi.mock("../../local-inference/useHomeModelStatus", () => ({
 
 vi.mock("../../../voice/voice-capture-factory", () => ({
   createVoiceCapture: vi.fn(
-    (opts: { onTranscript?: (seg: { text: string; final: boolean }) => void }) => {
+    (opts: {
+      onTranscript?: (seg: { text: string; final: boolean }) => void;
+    }) => {
       voiceCapture.handleCount += 1;
       voiceCapture.onTranscript = opts.onTranscript ?? null;
       return {
@@ -247,7 +250,9 @@ describe("useShellController — interleaved send/voice/new-chat fuzz (#10700)",
       expect(result.current.recording).toBe(false);
       expect(result.current.transcript).toBe("");
       // new-chat actually reached the loader each time it was invoked.
-      expect(appMock.value.handleNewConversation).toHaveBeenCalledTimes(newChats);
+      expect(appMock.value.handleNewConversation).toHaveBeenCalledTimes(
+        newChats,
+      );
     });
   }
 
