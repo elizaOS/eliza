@@ -5165,6 +5165,16 @@ export async function startApiServer(opts?: {
 
   // Broadcast status to all connected WebSocket clients (flattened — PR #36 fix)
   const broadcastStatus = () => {
+    // Skip the payload build + computeCanRespond() when no dashboard is
+    // connected. This fires every 5s (statusInterval) plus on every state
+    // change for the whole process lifetime; a headless / background agent
+    // commonly has zero WS clients, so this was pure idle-CPU waste. A newly
+    // connected client gets its authoritative status on connect (see
+    // activateAuthenticatedConnection), so nothing depends on this running
+    // while the client set is empty.
+    if (wsClients.size === 0) {
+      return;
+    }
     broadcastWs({
       type: "status",
       state: state.agentState,
