@@ -86,7 +86,10 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
   const appManifestPlugins = readAppManifestPlugins();
 
   it("discovers app-manifest plugins from package.json", () => {
-    expect(appManifestPlugins.length).toBeGreaterThanOrEqual(28);
+    // Ratcheted 28 → 26 (#11036): plugin-companion was removed by #10434 and
+    // plugin-elizamaker by c3944534b0 — both intentional deletions that shrank
+    // the app-manifest set without this floor being updated.
+    expect(appManifestPlugins.length).toBeGreaterThanOrEqual(26);
   });
 
   it("resolves >=1 home widget for every app-manifest plugin", () => {

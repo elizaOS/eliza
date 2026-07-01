@@ -76,8 +76,8 @@ describe("overlay-app-registry AOSP gating", () => {
       userAgent: ELIZAOS_AOSP_UA,
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
-      "@elizaos/plugin-feed",
       "@elizaos/plugin-contacts",
+      "@elizaos/plugin-feed",
       "@elizaos/plugin-phone",
       "@elizaos/plugin-wifi",
     ]);
@@ -89,8 +89,8 @@ describe("overlay-app-registry AOSP gating", () => {
       userAgent: WHITE_LABEL_AOSP_UA,
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
-      "@elizaos/plugin-feed",
       "@elizaos/plugin-contacts",
+      "@elizaos/plugin-feed",
       "@elizaos/plugin-phone",
       "@elizaos/plugin-wifi",
     ]);
