@@ -9591,12 +9591,17 @@ export class DefaultMessageService implements IMessageService {
 							url,
 							isRemote,
 						);
-						const isPlainText = contentType.startsWith("text/plain");
+						// Any text/* document (plain, csv, markdown — all on the chat
+						// upload allow-list) is readable as text; PDFs are extracted via
+						// unpdf. Previously only text/plain was handled, so csv/markdown/
+						// pdf were skipped and never seen by the agent (#10714).
+						const isText = contentType.startsWith("text/");
+						const isPdf = contentType.startsWith("application/pdf");
 
-						if (isPlainText) {
+						if (isText) {
 							runtime.logger.debug(
 								{ src: "service:message", documentUrl: attachment.url },
-								"Processing plain text document",
+								"Processing text document",
 							);
 
 							const textContent = buffer.toString("utf8");
@@ -9611,10 +9616,30 @@ export class DefaultMessageService implements IMessageService {
 								},
 								"Extracted text content",
 							);
+						} else if (isPdf) {
+							const { convertPdfToTextFromBuffer } = await import(
+								"../features/documents/utils.ts"
+							);
+							const textContent = await convertPdfToTextFromBuffer(
+								buffer,
+								processedAttachment.title ?? undefined,
+							);
+							processedAttachment.text = textContent;
+							processedAttachment.title =
+								processedAttachment.title || "PDF Document";
+
+							runtime.logger.debug(
+								{
+									src: "service:message",
+									textLength: textContent.length,
+									textPreview: textContent.substring(0, 100),
+								},
+								"Extracted PDF text content",
+							);
 						} else {
 							runtime.logger.warn(
 								{ src: "service:message", contentType },
-								"Skipping non-plain-text document",
+								"Skipping unsupported document type",
 							);
 						}
 					} else if (
