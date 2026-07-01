@@ -213,6 +213,78 @@ describe("documentAction.handler structured routing", () => {
 		expect(res?.data).toMatchObject({ subaction: "write" });
 	});
 
+	it("asks for clarification when search has no query the extractor can supply", async () => {
+		const service = makeService();
+		const { runtime, useModel } = makeRuntime(service);
+		const clarifications: string[] = [];
+		useModel.mockResolvedValueOnce(
+			JSON.stringify({
+				action: "search",
+				params: {},
+				missing: ["query"],
+				confidence: 1,
+			}),
+		);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("search my documents"),
+			undefined,
+			options({ action: "search" }),
+			async (content) => {
+				if (typeof content.text === "string") {
+					clarifications.push(content.text);
+				}
+				return [];
+			},
+		);
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(service.searchDocuments).not.toHaveBeenCalled();
+		expect(res?.success).toBe(false);
+		expect(res?.values).toMatchObject({
+			error: "missing_sub_action",
+			missing: ["query"],
+		});
+		expect(clarifications).toHaveLength(1);
+	});
+
+	it("asks for clarification when write has no text the extractor can supply", async () => {
+		const service = makeService();
+		const { runtime, useModel } = makeRuntime(service);
+		const clarifications: string[] = [];
+		useModel.mockResolvedValueOnce(
+			JSON.stringify({
+				action: "write",
+				params: {},
+				missing: ["text"],
+				confidence: 1,
+			}),
+		);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("save this as a document"),
+			undefined,
+			options({ action: "write" }),
+			async (content) => {
+				if (typeof content.text === "string") {
+					clarifications.push(content.text);
+				}
+				return [];
+			},
+		);
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(service.addDocument).not.toHaveBeenCalled();
+		expect(res?.success).toBe(false);
+		expect(res?.values).toMatchObject({
+			error: "missing_sub_action",
+			missing: ["text"],
+		});
+		expect(clarifications).toHaveLength(1);
+	});
+
 	it("forwards a structured documentId to read without scanning the text", async () => {
 		const service = makeService();
 		service.getDocumentById.mockResolvedValueOnce({
