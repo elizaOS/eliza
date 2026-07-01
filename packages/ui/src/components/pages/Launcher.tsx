@@ -534,6 +534,7 @@ export function Launcher({
           ref={pager.viewportRef}
           data-testid="launcher-page-window"
           className="relative flex min-h-0 flex-1 overflow-hidden touch-pan-y"
+          style={{ touchAction: "pan-y" }}
           onPointerDown={pager.handlers.onPointerDown}
           onPointerMove={pager.handlers.onPointerMove}
           onPointerUp={pager.handlers.onPointerUp}
@@ -569,6 +570,7 @@ export function Launcher({
                     data-testid={`launcher-page-${pageIndex}`}
                     aria-hidden={!active}
                     inert={!active || undefined}
+                    style={{ touchAction: "pan-y" }}
                     className={cn(
                       "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
                       !active && "pointer-events-none",
