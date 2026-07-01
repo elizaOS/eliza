@@ -642,3 +642,18 @@ verifiable UI gaps ("especially ui") and the surmountable infra items.
   chipping the highest-risk surfaces first (security/auth/identity-graph/destructive
   actions), then the data/content views (memory, trajectories, plugins, database,
   skills, transcripts, background).
+
+### 9a. Real bug found by Phase-5 batch 2: wake-word toggle is dead in Settings
+
+Writing the VoiceSectionMount test surfaced a genuine wiring gap (not a test issue):
+`VoiceSectionMount` (what Settings → Voice actually renders) mounts `<VoiceSection
+prefs onPrefsChange profilesClient />` but passes **neither `wakeWordEnabled` nor
+`onWakeWordToggle`**. `VoiceSection` renders the wake-word checkbox with
+`checked={wakeWordEnabled}` (defaults false) and `onActivate → onWakeWordToggle?.(…)`
+(undefined). No other non-test code wires `onWakeWordToggle` anywhere. Net: the
+wake-word toggle in Settings renders unchecked and does nothing when clicked — the
+setting cannot be changed from the UI. The correct fix wires the mount to the
+wake-word master switch (`voice/useWakeController` — "the user's wake-word setting");
+left for a focused voice-subsystem change rather than a guessed persistence target.
+Tracked here so the VoiceSectionMount test asserts the REAL current behavior + the
+gap rather than pinning the bug.
