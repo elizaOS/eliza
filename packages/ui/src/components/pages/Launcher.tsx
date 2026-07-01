@@ -425,10 +425,14 @@ export function Launcher({
     return result.length > 0 ? result : [[]];
   }, [pageGroups, byId, favoriteSet]);
 
-  const pages = useMemo(
-    () => curatedPages ?? (layout.pages.length > 0 ? layout.pages : [[]]),
-    [curatedPages, layout.pages],
-  );
+  const pages = useMemo(() => {
+    const sourcePages =
+      curatedPages ?? (layout.pages.length > 0 ? layout.pages : [[]]);
+    const filtered = sourcePages
+      .map((page) => page.filter((id) => !favoriteSet.has(id)))
+      .filter((page) => page.length > 0);
+    return filtered.length > 0 ? filtered : [[]];
+  }, [curatedPages, layout.pages, favoriteSet]);
 
   // Report the page count up so an outer surface (the rail) can size the single
   // unified page indicator. Fires only on an actual count change.
