@@ -330,7 +330,7 @@ async function trustPayerProof(payment: { id: string; metadata: unknown }) {
   const metadata = payment.metadata as Record<string, unknown>;
   const network = String(metadata.direct_network ?? "");
   const payerAddress = String(metadata.payer_wallet_address ?? "");
-  const scheme = network === "solana" ? "solana-ed25519" : "evm-personal-sign";
+  const scheme = network === "solana" ? "solana-ed25519" : "evm-eip712";
   const patch = JSON.stringify({
     payer_proof_verified_at: "2026-07-01T20:00:00.000Z",
     payer_proof_address: payerAddress,
@@ -400,7 +400,7 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       });
       const hash = `0x${"a".repeat(64)}`;
       await trustPayerProof(payment);
-      const attached = await service.attachTransaction({
+      const attached = await service.attachTransaction(env, {
         paymentId: payment.id,
         txHash: hash,
         userId: USER_ID,
@@ -423,8 +423,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       });
       const hash = `0x${"b".repeat(64)}`;
       await trustPayerProof(payment);
-      await service.attachTransaction({ paymentId: payment.id, txHash: hash, userId: USER_ID });
-      const second = await service.attachTransaction({
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
+      const second = await service.attachTransaction(env, {
         paymentId: payment.id,
         txHash: hash,
         userId: USER_ID,
@@ -446,9 +450,13 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       const hashA = `0x${"c".repeat(64)}`;
       const hashB = `0x${"d".repeat(64)}`;
       await trustPayerProof(payment);
-      await service.attachTransaction({ paymentId: payment.id, txHash: hashA, userId: USER_ID });
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hashA,
+        userId: USER_ID,
+      });
       await expect(
-        service.attachTransaction({ paymentId: payment.id, txHash: hashB, userId: USER_ID }),
+        service.attachTransaction(env, { paymentId: payment.id, txHash: hashB, userId: USER_ID }),
       ).rejects.toThrow(/different transaction hash/);
     });
 
@@ -511,7 +519,11 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       const hash = `0x${"f".repeat(64)}`;
 
       await trustPayerProof(payment);
-      await service.attachTransaction({ paymentId: payment.id, txHash: hash, userId: USER_ID });
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
 
       chainTxs.set(hash, {
         from: PAYER_EVM,
@@ -686,7 +698,11 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       });
       const hash = `0x${"8".repeat(64)}`;
       await trustPayerProof(payment);
-      await service.attachTransaction({ paymentId: payment.id, txHash: hash, userId: USER_ID });
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
       // No entry in chainTxs => transient "not found". One pass bumps verify_attempts.
       await service.processBroadcastBatch(env);
       const row1 = await dbWrite.query.cryptoPayments.findFirst();
@@ -766,7 +782,11 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       const receive = env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS;
       const hash = `0x${"4".repeat(64)}`;
       await trustPayerProof(payment);
-      await service.attachTransaction({ paymentId: payment.id, txHash: hash, userId: USER_ID });
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
       chainTxs.set(hash, {
         from: PAYER_EVM,
         to: tokenAddress,
@@ -797,7 +817,11 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       const tokenAddress = meta.token_address as string;
       const hash = `0x${"5".repeat(64)}`;
       await trustPayerProof(payment);
-      await service.attachTransaction({ paymentId: payment.id, txHash: hash, userId: USER_ID });
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
       // Tx exists but reverted — that's terminal.
       chainTxs.set(hash, {
         from: PAYER_EVM,
@@ -827,7 +851,11 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       });
       const hash = `0x${"6".repeat(64)}`;
       await trustPayerProof(payment);
-      await service.attachTransaction({ paymentId: payment.id, txHash: hash, userId: USER_ID });
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
       // No entry in chainTxs — viem mock throws "Transaction receipt not found".
 
       const stats = await service.processBroadcastBatch(env);

@@ -55,7 +55,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       );
     }
 
-    const result = await directWalletPaymentsService.attachTransaction({
+    const result = await directWalletPaymentsService.attachTransaction(c.env, {
       paymentId: id,
       txHash: parsed.data.transactionHash,
       userId: user.id,

@@ -169,6 +169,11 @@ describe("/api/crypto/direct-payments", () => {
         creditsToAdd?: string;
         bonusCredits?: number;
         payerProofMessage?: string;
+        payerProofTypedData?: {
+          domain?: { name?: string; version?: string; chainId?: number };
+          primaryType?: string;
+          message?: Record<string, unknown>;
+        };
         payerProofScheme?: string;
       };
     };
@@ -183,13 +188,20 @@ describe("/api/crypto/direct-payments", () => {
       bonusCredits: 0,
     });
     expect(created.instructions?.receiveAddress).toMatch(/^0x[a-fA-F0-9]{40}$/);
-    expect(created.instructions?.payerProofScheme).toBe("evm-personal-sign");
-    expect(created.instructions?.payerProofMessage).toContain(
-      `Payment ID: ${created.paymentId}`,
+    expect(created.instructions?.payerProofScheme).toBe("evm-eip712");
+    expect(created.instructions?.payerProofTypedData).toMatchObject({
+      domain: { name: "Eliza Cloud Direct Wallet", version: "1" },
+      primaryType: "DirectWalletPayment",
+    });
+    const proofMessage = created.instructions?.payerProofTypedData?.message;
+    expect(proofMessage).toMatchObject({
+      paymentId: created.paymentId,
+      amountUnits: "1000000",
+    });
+    expect(String(proofMessage?.payerAddress).toLowerCase()).toBe(
+      payerAddress.toLowerCase(),
     );
-    expect(created.instructions?.payerProofMessage).toContain(
-      `Payer address: ${payerAddress.toLowerCase()}`,
-    );
+    expect(proofMessage?.nonce).toEqual(expect.any(String));
 
     const confirmRes = await api.post(
       `/api/crypto/direct-payments/${created.paymentId}/confirm`,

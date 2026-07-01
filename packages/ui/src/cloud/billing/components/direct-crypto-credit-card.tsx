@@ -30,7 +30,7 @@ import { erc20Abi } from "viem";
 import { useAccount, useConfig, useSwitchChain } from "wagmi";
 import {
   sendTransaction,
-  signMessage,
+  signTypedData,
   waitForTransactionReceipt,
   writeContract,
 } from "wagmi/actions";
@@ -43,6 +43,32 @@ import {
 } from "./payment-waiting-overlay";
 
 type DirectNetwork = "base" | "bsc" | "solana";
+
+interface DirectPayerProofTypedData {
+  domain: {
+    name: string;
+    version: string;
+    chainId: number;
+  };
+  types: {
+    DirectWalletPayment: Array<{ name: string; type: string }>;
+  };
+  primaryType: "DirectWalletPayment";
+  message: {
+    paymentId: string;
+    organizationId: string;
+    userId: string;
+    network: "base" | "bsc";
+    chainId: string;
+    payerAddress: `0x${string}`;
+    receiveAddress: `0x${string}`;
+    tokenSymbol: string;
+    tokenReference: string;
+    amountUnits: string;
+    nonce: string;
+    expiresAt: string;
+  };
+}
 
 interface DirectCryptoCreditCardProps {
   amount: number | null;
@@ -72,8 +98,9 @@ interface DirectPaymentResponse {
     amountToken: string;
     creditsToAdd: string;
     bonusCredits: number;
-    payerProofMessage: string;
-    payerProofScheme: "evm-personal-sign" | "solana-ed25519";
+    payerProofMessage?: string;
+    payerProofTypedData?: DirectPayerProofTypedData | null;
+    payerProofScheme: "evm-eip712" | "solana-ed25519";
   };
 }
 
@@ -330,12 +357,11 @@ export function DirectCryptoCreditCard({
     payment: DirectPaymentResponse,
     paymentNetwork: DirectNetwork,
   ): Promise<string> {
-    const message = payment.instructions.payerProofMessage?.trim();
-    if (!message) {
-      throw new Error("Payment is missing its wallet proof challenge");
-    }
-
     if (paymentNetwork === "solana") {
+      const message = payment.instructions.payerProofMessage?.trim();
+      if (!message) {
+        throw new Error("Payment is missing its wallet proof challenge");
+      }
       if (!solana.publicKey || !solana.signMessage) {
         throw new Error(
           "Your Solana wallet must support message signing to pay this way",
@@ -348,9 +374,20 @@ export function DirectCryptoCreditCard({
     }
 
     if (!evm.address) throw new Error("Connect your EVM wallet first");
-    return await signMessage(wagmiConfig, {
+    const typedData = payment.instructions.payerProofTypedData;
+    if (!typedData) {
+      throw new Error("Payment is missing its EIP-712 wallet proof challenge");
+    }
+    return await signTypedData(wagmiConfig, {
       account: evm.address,
-      message,
+      domain: typedData.domain,
+      types: typedData.types,
+      primaryType: typedData.primaryType,
+      message: {
+        ...typedData.message,
+        chainId: BigInt(typedData.message.chainId),
+        amountUnits: BigInt(typedData.message.amountUnits),
+      },
     });
   }
 

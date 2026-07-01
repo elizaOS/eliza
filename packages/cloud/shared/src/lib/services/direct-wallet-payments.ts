@@ -40,7 +40,10 @@ import { type BnbPriceQuote, getBnbUsdQuote } from "./bnb-price-oracle";
 import { creditsService } from "./credits";
 import {
   buildDirectWalletPayerProofMessage,
+  buildDirectWalletPayerProofTypedData,
   type DirectWalletPayerProofScheme,
+  type DirectWalletPayerProofTypedData,
+  type DirectWalletPayerProofTypedDataVerifier,
   payerProofSchemeForNetwork,
   verifyDirectWalletPayerProof,
 } from "./direct-wallet-payer-proof";
@@ -453,6 +456,73 @@ function metadataOf(payment: CryptoPayment): Record<string, unknown> {
   return payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
 }
 
+function objectOf(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function payerProofTypedDataOf(
+  metadata: Record<string, unknown>,
+): DirectWalletPayerProofTypedData | null {
+  const typedData = objectOf(metadata.payer_proof_typed_data);
+  const domain = objectOf(typedData?.domain);
+  const message = objectOf(typedData?.message);
+  if (!typedData || !domain || !message) return null;
+  if (
+    domain.name !== "Eliza Cloud Direct Wallet" ||
+    domain.version !== "1" ||
+    typedData.primaryType !== "DirectWalletPayment"
+  ) {
+    return null;
+  }
+  const network = message.network;
+  if (network !== "base" && network !== "bsc") return null;
+  const chainId = Number(domain.chainId);
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) return null;
+  const payerAddress = String(message.payerAddress ?? "");
+  const receiveAddress = String(message.receiveAddress ?? "");
+  if (!isAddress(payerAddress) || !isAddress(receiveAddress)) return null;
+  return {
+    domain: {
+      name: "Eliza Cloud Direct Wallet",
+      version: "1",
+      chainId,
+    },
+    types: {
+      DirectWalletPayment: [
+        { name: "paymentId", type: "string" },
+        { name: "organizationId", type: "string" },
+        { name: "userId", type: "string" },
+        { name: "network", type: "string" },
+        { name: "chainId", type: "uint256" },
+        { name: "payerAddress", type: "address" },
+        { name: "receiveAddress", type: "address" },
+        { name: "tokenSymbol", type: "string" },
+        { name: "tokenReference", type: "string" },
+        { name: "amountUnits", type: "uint256" },
+        { name: "nonce", type: "string" },
+        { name: "expiresAt", type: "string" },
+      ],
+    },
+    primaryType: "DirectWalletPayment",
+    message: {
+      paymentId: String(message.paymentId ?? ""),
+      organizationId: String(message.organizationId ?? ""),
+      userId: String(message.userId ?? ""),
+      network,
+      chainId: String(message.chainId ?? ""),
+      payerAddress: getAddress(payerAddress),
+      receiveAddress: getAddress(receiveAddress),
+      tokenSymbol: String(message.tokenSymbol ?? ""),
+      tokenReference: String(message.tokenReference ?? ""),
+      amountUnits: String(message.amountUnits ?? ""),
+      nonce: String(message.nonce ?? ""),
+      expiresAt: String(message.expiresAt ?? ""),
+    },
+  };
+}
+
 function directMetadata(payment: CryptoPayment): {
   metadata: Record<string, unknown>;
   network: DirectWalletNetwork;
@@ -466,7 +536,9 @@ function directMetadata(payment: CryptoPayment): {
   bonusCredits: number;
   slippageBps: number;
   payerProofMessage: string;
+  payerProofTypedData: DirectWalletPayerProofTypedData | null;
   payerProofScheme: DirectWalletPayerProofScheme;
+  payerProofExpiresAt: string;
 } {
   const metadata = metadataOf(payment);
   if (metadata.kind !== "direct_wallet_credit_purchase") {
@@ -505,16 +577,29 @@ function directMetadata(payment: CryptoPayment): {
     bonusCredits: Number(metadata.bonus_credits ?? 0),
     slippageBps: Number(metadata.slippage_bps ?? 0),
     payerProofMessage: String(metadata.payer_proof_message ?? ""),
+    payerProofTypedData: payerProofTypedDataOf(metadata),
     payerProofScheme:
       metadata.payer_proof_scheme === "solana-ed25519"
         ? "solana-ed25519"
         : payerProofSchemeForNetwork(network),
+    payerProofExpiresAt: String(metadata.payer_proof_expires_at ?? ""),
   };
+}
+
+function evmPayerProofVerifier(
+  cfg: DirectWalletNetworkConfig,
+): DirectWalletPayerProofTypedDataVerifier {
+  const client = createPublicClient({
+    chain: cfg.network === "base" ? base : bsc,
+    transport: http(cfg.rpcUrl),
+  });
+  return async (params) => await client.verifyTypedData(params);
 }
 
 async function verifyPayerProofOrThrow(
   direct: ReturnType<typeof directMetadata>,
   signature: string | undefined,
+  cfg?: DirectWalletNetworkConfig,
 ): Promise<Record<string, unknown> | null> {
   if (
     typeof direct.metadata.payer_proof_verified_at === "string" &&
@@ -531,15 +616,29 @@ async function verifyPayerProofOrThrow(
   if (!direct.payerProofMessage) {
     throw new Error("Payer wallet proof challenge missing");
   }
+  if (direct.network !== "solana" && !direct.payerProofTypedData) {
+    throw new Error("Payer wallet EIP-712 challenge missing");
+  }
   if (!signature?.trim()) {
     throw ValidationError("Payer wallet signature required");
+  }
+  const proofExpiryMs = Date.parse(direct.payerProofExpiresAt);
+  if (Number.isFinite(proofExpiryMs) && proofExpiryMs < Date.now()) {
+    throw ValidationError("Payer wallet signature challenge expired");
+  }
+
+  if (direct.network !== "solana" && !cfg) {
+    throw new Error("Payer wallet EIP-712 verifier unavailable");
   }
 
   const valid = await verifyDirectWalletPayerProof({
     network: direct.network,
     payerAddress: direct.payerAddress,
     message: direct.payerProofMessage,
+    typedData: direct.payerProofTypedData ?? undefined,
     signature: signature.trim(),
+    verifyEvmTypedData:
+      direct.network === "solana" || !cfg ? undefined : evmPayerProofVerifier(cfg),
   });
   if (!valid) {
     throw ValidationError("Invalid payer wallet signature");
@@ -549,7 +648,7 @@ async function verifyPayerProofOrThrow(
     payer_proof_verified_at: new Date().toISOString(),
     payer_proof_address: normalizePayer(direct.network, direct.payerAddress),
     payer_proof_scheme: direct.payerProofScheme,
-    payer_proof_signature: signature.trim(),
+    payer_proof_nonce_burned_at: new Date().toISOString(),
   };
 }
 
@@ -980,20 +1079,32 @@ export class DirectWalletPaymentsService {
       return created;
     });
 
-    const payerProofMessage = buildDirectWalletPayerProofMessage({
+    const payerProofNonce = crypto.randomUUID();
+    const payerProofInput = {
       paymentId: payment.id,
       organizationId: params.organizationId,
       userId: params.userId,
       network: params.network,
+      chainId: cfg.chainId ?? null,
       payerAddress: params.payerAddress,
       receiveAddress: cfg.receiveAddress ?? "",
       tokenSymbol: selectedToken.symbol,
       tokenAddress: selectedToken.tokenAddress ?? null,
       tokenMint: selectedToken.tokenMint ?? null,
       expectedTokenUnits,
+      nonce: payerProofNonce,
       expiresAt: payment.expires_at,
-    });
+    };
+    const payerProofMessage = buildDirectWalletPayerProofMessage(payerProofInput);
     const payerProofScheme = payerProofSchemeForNetwork(params.network);
+    const payerProofTypedData =
+      params.network === "solana"
+        ? null
+        : buildDirectWalletPayerProofTypedData({
+            ...payerProofInput,
+            network: params.network,
+            chainId: cfg.chainId ?? 0,
+          });
 
     const { signature: quoteSignature, canonicalInput: quoteCanonicalInput } = await signQuote(
       env,
@@ -1016,6 +1127,9 @@ export class DirectWalletPaymentsService {
           quote_signature: quoteSignature,
           quote_canonical_input: quoteCanonicalInput,
           payer_proof_message: payerProofMessage,
+          payer_proof_typed_data: payerProofTypedData,
+          payer_proof_nonce: payerProofNonce,
+          payer_proof_expires_at: payment.expires_at.toISOString(),
           payer_proof_scheme: payerProofScheme,
           payer_proof_required: true,
         })}::jsonb`,
@@ -1043,6 +1157,7 @@ export class DirectWalletPaymentsService {
         quoteSignature,
         quoteCanonicalInput,
         payerProofMessage,
+        payerProofTypedData,
         payerProofScheme,
       },
     };
@@ -1058,12 +1173,15 @@ export class DirectWalletPaymentsService {
    * Idempotent: a second call with the same hash is a no-op. A different
    * hash on an already-attached payment errors.
    */
-  async attachTransaction(params: {
-    paymentId: string;
-    txHash: string;
-    userId: string;
-    payerSignature?: string;
-  }): Promise<{
+  async attachTransaction(
+    env: Bindings,
+    params: {
+      paymentId: string;
+      txHash: string;
+      userId: string;
+      payerSignature?: string;
+    },
+  ): Promise<{
     payment: CryptoPayment;
     alreadyAttached: boolean;
   }> {
@@ -1092,7 +1210,8 @@ export class DirectWalletPaymentsService {
         throw new Error(`Cannot attach tx to payment in status ${payment.status}`);
       }
       const direct = directMetadata(payment);
-      const payerProofPatch = await verifyPayerProofOrThrow(direct, params.payerSignature);
+      const cfg = directPaymentConfig(env, direct.network);
+      const payerProofPatch = await verifyPayerProofOrThrow(direct, params.payerSignature, cfg);
 
       // Guard against the same tx being attached to two different payments.
       const existingTx = await tx
@@ -1249,7 +1368,7 @@ export class DirectWalletPaymentsService {
         throw new Error("Quote signature mismatch — payment may have been tampered with.");
       }
 
-      const payerProofPatch = await verifyPayerProofOrThrow(direct, params.payerSignature);
+      const payerProofPatch = await verifyPayerProofOrThrow(direct, params.payerSignature, cfg);
 
       const existingTx = await tx
         .select()
