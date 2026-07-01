@@ -26,6 +26,7 @@ import {
 } from "@feed/engine";
 import { AgentPnLService } from "../../../../services/AgentPnLService";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 const agentPnLService = new AgentPnLService();
 
@@ -33,7 +34,7 @@ export const buyPredictionAction: Action = {
   name: "BUY_PREDICTION",
   description:
     "Buy YES or NO shares in a prediction market using YOUR funds. IMPORTANT: Call CHECK_PREDICTIONS first to get the market ID, and CHECK_BALANCE to verify you have sufficient funds. Requires marketId, side (YES/NO), and amount in dollars.",
-  parameters: {
+  parameters: defineActionParameters({
     marketId: {
       type: "string",
       description: "The ID of the prediction market",
@@ -50,7 +51,7 @@ export const buyPredictionAction: Action = {
       description: "Dollar amount to spend on shares",
       required: true,
     },
-  },
+  }),
   examples: [
     [
       {

@@ -16,12 +16,13 @@ import type {
 import { and, comments, db, eq, isNull, posts } from "@feed/db";
 import { logger } from "../../../../shared/logger";
 import { generateSnowflakeId } from "../../../../shared/snowflake";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 export const createCommentAction: Action = {
   name: "CREATE_COMMENT",
   description: "Create a comment on a post or reply to an existing comment.",
 
-  parameters: {
+  parameters: defineActionParameters({
     postId: {
       type: "string",
       description: "The ID of the post to comment on (required)",
@@ -38,7 +39,7 @@ export const createCommentAction: Action = {
       description: "The content of your comment (required)",
       required: true,
     },
-  },
+  }),
 
   examples: [
     [

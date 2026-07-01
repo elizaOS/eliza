@@ -5,6 +5,7 @@
 
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -43,13 +44,13 @@ export const createPostAction: Action = {
     );
   },
 
-  handler: (async (
+  handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
     _options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult | undefined> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
@@ -59,7 +60,7 @@ export const createPostAction: Action = {
           action: "CREATE_POST",
         });
       }
-      return;
+      return undefined;
     }
 
     // Extract post content
@@ -73,7 +74,7 @@ export const createPostAction: Action = {
           action: "CREATE_POST",
         });
       }
-      return;
+      return undefined;
     }
 
     const result = (await feedRuntime.a2aClient.createPost(
@@ -94,7 +95,8 @@ export const createPostAction: Action = {
         });
       }
     }
-  }),
+    return undefined;
+  },
 };
 
 /**
@@ -123,13 +125,13 @@ export const commentAction: Action = {
     return content.includes("comment") || content.includes("reply");
   },
 
-  handler: (async (
+  handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
     _options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult | undefined> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
@@ -139,7 +141,7 @@ export const commentAction: Action = {
           action: "COMMENT_ON_POST",
         });
       }
-      return;
+      return undefined;
     }
 
     // Parse message
@@ -149,18 +151,17 @@ export const commentAction: Action = {
       content.match(/(?:with|:)\s*["'](.+?)["']/) ||
       content.match(/comment\s+(.+)$/i);
 
-    if (!postIdMatch || !commentMatch) {
+    const postId = postIdMatch?.[1];
+    const commentContent = commentMatch?.[1];
+    if (!postId || !commentContent) {
       if (callback) {
         callback({
           text: "Could not parse comment parameters. Please specify post ID and comment text.",
           action: "COMMENT_ON_POST",
         });
       }
-      return;
+      return undefined;
     }
-
-    const postId = postIdMatch[1]!;
-    const commentContent = commentMatch[1]!;
 
     const result = (await feedRuntime.a2aClient.createComment(
       postId,
@@ -180,7 +181,8 @@ export const commentAction: Action = {
         });
       }
     }
-  }),
+    return undefined;
+  },
 };
 
 /**
@@ -209,13 +211,13 @@ export const likePostAction: Action = {
     return content.includes("like") || content.includes("upvote");
   },
 
-  handler: (async (
+  handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
     _options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult | undefined> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
@@ -225,24 +227,23 @@ export const likePostAction: Action = {
           action: "LIKE_POST",
         });
       }
-      return;
+      return undefined;
     }
 
     // Parse message
     const content = message.content.text || "";
     const postIdMatch = content.match(/post[:\s-]+([a-zA-Z0-9-]+)/);
 
-    if (!postIdMatch) {
+    const postId = postIdMatch?.[1];
+    if (!postId) {
       if (callback) {
         callback({
           text: "Could not parse post ID. Please specify which post to like.",
           action: "LIKE_POST",
         });
       }
-      return;
+      return undefined;
     }
-
-    const postId = postIdMatch[1]!;
 
     const result = (await feedRuntime.a2aClient.likePost(postId)) as {
       success?: boolean;
@@ -263,5 +264,6 @@ export const likePostAction: Action = {
         });
       }
     }
-  }),
+    return undefined;
+  },
 };

@@ -23,7 +23,7 @@ const statusIcons: Record<string, string> = {
 };
 
 export const DagNode = memo(function DagNode({ data }: NodeProps) {
-  const d = data as DagNodeData;
+  const d = data as unknown as DagNodeData;
 
   const borderColor = d.isActive
     ? "#4ade80"
