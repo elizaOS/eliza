@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_LAUNCHER_FAVORITES,
   defaultLayout,
   emptyLayout,
   LAUNCHER_DOCK_LIMIT,
@@ -62,11 +63,11 @@ describe("launcher-layout reconcile", () => {
     expect(out.pages[0]).toEqual(["a", "b", "c"]);
   });
 
-  it("keeps favorites in the page grid", () => {
+  it("keeps favorites out of the page grid", () => {
     const layout = { favorites: ["a"], pages: [["a", "b"]] };
     const out = reconcileLayout(layout, ["a", "b"], 4);
     expect(out.favorites).toEqual(["a"]);
-    expect(out.pages.flat()).toEqual(["a", "b"]);
+    expect(out.pages.flat()).toEqual(["b"]);
   });
 
   it("repacks pages so removals leave no holes", () => {
@@ -83,14 +84,14 @@ describe("launcher-layout reconcile", () => {
 });
 
 describe("launcher-layout favorites", () => {
-  it("toggles an id into and out of favorites metadata", () => {
+  it("toggles an id into and out of the dock", () => {
     const added = toggleFavorite(emptyLayout(), "a");
     expect(added.favorites).toEqual(["a"]);
     const removed = toggleFavorite(added, "a");
     expect(removed.favorites).toEqual([]);
   });
 
-  it("evicts the oldest favorite when metadata reaches the shared pin cap", () => {
+  it("evicts the oldest favorite when the dock is full", () => {
     let layout = emptyLayout();
     for (const id of ["a", "b", "c", "d", "e"]) {
       layout = toggleFavorite(layout, id);
@@ -108,10 +109,10 @@ describe("launcher-layout moveIcon", () => {
     expect(out.pages.flat().filter((id) => id === "a")).toHaveLength(1);
   });
 
-  it("preserves favorite metadata when moving a page tile", () => {
+  it("removes the icon from the dock when moved to a page", () => {
     const layout = { favorites: ["a"], pages: [["b"]] };
     const out = moveIcon(layout, "a", 0, 0, 4);
-    expect(out.favorites).toEqual(["a"]);
+    expect(out.favorites).toEqual([]);
     expect(out.pages[0]).toEqual(["a", "b"]);
   });
 
@@ -187,33 +188,45 @@ describe("launcher-layout persistence", () => {
   });
 });
 
-describe("launcher-layout without a favorites dock (#10789)", () => {
+describe("launcher-layout default dock (#9144)", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("seeds an empty layout on first run", () => {
+  it("seeds Chat and Settings into the dock on first run", () => {
     expect(readLauncherLayout()).toEqual(defaultLayout());
-    expect(readLauncherLayout().favorites).toEqual([]);
+    expect(readLauncherLayout().favorites).toEqual(DEFAULT_LAUNCHER_FAVORITES);
     expect(readLauncherLayout().pages).toEqual([]);
   });
 
-  it("first-run default seeds no favorites", () => {
-    expect(defaultLayout().favorites).toEqual([]);
+  it("first-run default exposes the canonical dock seed", () => {
+    expect(defaultLayout().favorites).toEqual(DEFAULT_LAUNCHER_FAVORITES);
   });
 
-  it("flows every available view onto pages (no favorites row reserved)", () => {
-    // With no favorites row, every available id lands on a page tile.
+  it("reserves default favorites in the dock and flows the rest onto pages", () => {
     const out = reconcileLayout(defaultLayout(), [
+      "chat",
       "settings",
       "activity",
       "files",
       "notes",
+    ]);
+    expect(out.favorites).toEqual(["chat", "settings"]);
+    expect(out.pages.flat()).toEqual(["activity", "files", "notes"]);
+  });
+
+  it("drops unavailable default favorites without inventing missing views", () => {
+    const out = reconcileLayout(defaultLayout(), ["settings", "activity"]);
+    expect(out.favorites).toEqual(["settings"]);
+    expect(out.pages.flat()).toEqual(["activity"]);
+  });
+
+  it("respects an explicitly cleared stored dock", () => {
+    writeLauncherLayout({ favorites: [], pages: [] });
+    const out = reconcileLayout(readLauncherLayout(), [
+      "chat",
+      "settings",
+      "activity",
     ]);
     expect(out.favorites).toEqual([]);
-    expect(out.pages.flat()).toEqual([
-      "settings",
-      "activity",
-      "files",
-      "notes",
-    ]);
+    expect(out.pages.flat()).toEqual(["chat", "settings", "activity"]);
   });
 });

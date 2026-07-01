@@ -41,7 +41,7 @@ describe("curateLauncherPages", () => {
     );
 
     expect(ids(pages)).toEqual([
-      ["wallet", "browser", "settings"],
+      ["settings", "wallet", "browser"],
       ["trajectories", "database", "runtime", "logs", "skills", "plugins"],
     ]);
   });
@@ -64,7 +64,7 @@ describe("curateLauncherPages", () => {
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
 
-    expect(ids(pages)).toEqual([["wallet"]]);
+    expect(ids(pages)).toEqual([["chat", "wallet"]]);
   });
 
   it("keeps hyperliquid/polymarket out of the launcher (wallet sub-views)", () => {
@@ -190,7 +190,8 @@ describe("curateLauncherPages — full realistic view set", () => {
   // Mirrors what /api/views + builtin shell views + loaded plugins return so the
   // asserted layout is the actual launcher a user sees, not a toy subset.
   const REAL_VIEWS: ViewEntry[] = [
-    // Shell surfaces that must never tile.
+    // Shell surfaces that must never tile, except Chat which is launchable from
+    // the seeded dock.
     entry("chat"),
     entry("views"),
     entry("views-manager"),
@@ -255,6 +256,8 @@ describe("curateLauncherPages — full realistic view set", () => {
       ),
     ).toEqual([
       [
+        "chat",
+        "settings",
         "wallet",
         "automations",
         "browser",
@@ -265,7 +268,6 @@ describe("curateLauncherPages — full realistic view set", () => {
         "memories",
         "feed",
         "stream",
-        "settings",
       ],
       ["trajectories", "database", "runtime", "logs", "skills", "plugins"],
     ]);
