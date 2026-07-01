@@ -158,7 +158,12 @@ def _cmd_inventory(args: argparse.Namespace) -> int:
     return 2 if report.has_gaps else 0
 
 
-def _cmd_run(args: argparse.Namespace) -> int:
+def _execute_run(args: argparse.Namespace) -> dict[str, int]:
+    """Run the selected benchmarks/harnesses and print a summary.
+
+    Returns the outcome counts by status so callers (``run`` and ``review``) can
+    apply their own success criteria without reimplementing the run loop.
+    """
     workspace_root = _workspace_root_from_here()
     _apply_model_profile(args, workspace_root)
     discovery = discover_adapters(workspace_root)
@@ -180,17 +185,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(f"Viewer snapshot: {viewer_snapshot}")
     print("")
 
-    succeeded = 0
-    failed = 0
-    skipped = 0
-    incompatible = 0
+    counts = {"succeeded": 0, "failed": 0, "skipped": 0, "incompatible": 0}
     # Default-on: suppress per-outcome printing for incompatible (harness/benchmark
     # mismatch) rows in the summary. They are always recorded in SQLite either way.
     skip_incompatible = bool(getattr(args, "skip_incompatible", True))
 
     for outcome in all_outcomes:
         if outcome.status == "incompatible" and skip_incompatible:
-            incompatible += 1
+            counts["incompatible"] += 1
             continue
         print(
             f"- {outcome.benchmark_id:16s} "
@@ -198,21 +200,20 @@ def _cmd_run(args: argparse.Namespace) -> int:
             f"status={outcome.status} "
             f"score={outcome.score}"
         )
-        if outcome.status == "succeeded":
-            succeeded += 1
-        elif outcome.status == "failed":
-            failed += 1
-        elif outcome.status == "skipped":
-            skipped += 1
-        elif outcome.status == "incompatible":
-            incompatible += 1
+        if outcome.status in counts:
+            counts[outcome.status] += 1
 
     print("")
     print(
-        f"Summary: succeeded={succeeded} failed={failed} "
-        f"skipped={skipped} incompatible={incompatible}"
+        f"Summary: succeeded={counts['succeeded']} failed={counts['failed']} "
+        f"skipped={counts['skipped']} incompatible={counts['incompatible']}"
     )
-    return 1 if failed > 0 else 0
+    return counts
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    counts = _execute_run(args)
+    return 1 if counts["failed"] > 0 else 0
 
 
 def _selected_harnesses(args: argparse.Namespace) -> tuple[str, ...]:
@@ -232,11 +233,11 @@ def _selected_harnesses(args: argparse.Namespace) -> tuple[str, ...]:
             values.extend(part.strip().lower() for part in str(item).split(",") if part.strip())
         deduped: list[str] = []
         for value in values:
-            if value not in {"eliza", "hermes", "openclaw", *SYNTHETIC_HARNESSES}:
+            if value not in {"eliza", "hermes", "openclaw", "smithers", "codex", *SYNTHETIC_HARNESSES}:
                 raise SystemExit(
                     "Unknown harness "
-                    f"'{value}'. Expected eliza, hermes, openclaw, random_v1, "
-                    "perfect_v1, wrong_v1, or half_v1."
+                    f"'{value}'. Expected eliza, hermes, openclaw, smithers, "
+                    "codex, random_v1, perfect_v1, wrong_v1, or half_v1."
                 )
             if value not in deduped:
                 deduped.append(value)
@@ -449,6 +450,205 @@ def _cmd_verify_artifacts(args: argparse.Namespace) -> int:
     report = build_artifact_guard_report(workspace_root)
     print(report.to_markdown())
     return 0 if report.ok else 1
+
+
+def _cmd_review(args: argparse.Namespace) -> int:
+    """One operator wrapper (#10199): preflight -> run -> validate -> package -> verify.
+
+    Chains the existing subcommands in order and fails clearly at the first step
+    that cannot proceed. It never reimplements a step — each phase delegates to
+    the same ``_cmd_*`` function the standalone subcommand uses. When the run
+    step needs a provider key it does not have, that step fails loudly (a missing
+    required env var is recorded as a ``failed`` run), so the wrapper exits
+    nonzero rather than silently reporting success.
+    """
+    workspace_root = _workspace_root_from_here()
+    _apply_model_profile(args, workspace_root)
+
+    out_dir = Path(args.out).expanduser()
+    steps_ran: list[str] = []
+
+    def _emit(step: str, code: int) -> None:
+        steps_ran.append(step)
+        print(f"[review] {step}: {'ok' if code == 0 else f'FAILED (exit {code})'}")
+
+    # --- 1. Preflight: static inventory. Fail on registry<->adapter drift. ---
+    #
+    # The trust concern (#10193) is that the registry and the adapters agree:
+    # every registered benchmark must have an adapter. Legacy/vendored benchmark
+    # directories that were never wired as adapters are a known, pre-existing
+    # baseline (they predate this wrapper) and are NOT drift to block a review on
+    # — so preflight fails only when a *registered* benchmark has no adapter.
+    print("[review] step 1/5: preflight (inventory)")
+    inventory = build_inventory_report(workspace_root.parent)
+    print(inventory_report_to_markdown(inventory))
+    if inventory.registry_entries_without_adapters:
+        _emit("preflight (inventory)", 2)
+        print(
+            "[review] preflight failed: registered benchmarks have no orchestrator "
+            "adapter (registry<->adapter drift): "
+            f"{', '.join(inventory.registry_entries_without_adapters)}. "
+            "Fix the drift before running."
+        )
+        return 2
+    if inventory.benchmark_directories_without_adapters:
+        print(
+            "[review] note: "
+            f"{len(inventory.benchmark_directories_without_adapters)} legacy "
+            "benchmark directory(ies) have no adapter (pre-existing baseline, "
+            "not blocking): "
+            f"{', '.join(inventory.benchmark_directories_without_adapters)}"
+        )
+    _emit("preflight (inventory)", 0)
+
+    # --- 2. Run the selected benchmarks/adapters/provider/model. ---
+    #
+    # The review is stricter than a bare `run`: a `run` exits 0 as long as
+    # nothing *failed*, but a review must produce real graded runs. So any
+    # failed outcome, OR a run that produced zero successes (every selected
+    # benchmark was incompatible/skipped — the harness could not actually run
+    # it), fails the review loudly rather than packaging an empty result.
+    print("[review] step 2/5: run")
+    run_args = _review_run_namespace(args)
+    counts = _execute_run(run_args)
+    if counts["failed"] > 0:
+        _emit("run", 1)
+        print(
+            "[review] run failed: a harness could not run, a scorer could not "
+            "parse, a provider key is absent, or trajectories are missing "
+            f"(failed={counts['failed']}). Not packaging a blocked run."
+        )
+        return 1
+    if counts["succeeded"] == 0:
+        _emit("run", 1)
+        print(
+            "[review] run produced no graded results "
+            f"(succeeded=0, incompatible={counts['incompatible']}, "
+            f"skipped={counts['skipped']}): the selected harness cannot run the "
+            "selected benchmark(s) here. Not packaging an empty result."
+        )
+        return 1
+    _emit("run", 0)
+
+    # --- 3. Validate gates: latest readiness (publishability + comparability). --
+    print("[review] step 3/5: validate gates (latest readiness)")
+    readiness_args = argparse.Namespace(
+        tolerance=float(args.tolerance),
+        latest_dir=None,
+        skip_runtime_gates=bool(args.skip_runtime_gates),
+        include_benchmarks=_review_selected_benchmarks_csv(args),
+        exclude_benchmarks=None,
+        json=False,
+    )
+    readiness_code = _cmd_validate_latest_readiness(readiness_args)
+    _emit("validate gates (latest readiness)", readiness_code)
+    if readiness_code != 0:
+        print(
+            "[review] validate failed: latest rows are not complete/publishable/"
+            "comparable. Not packaging an unready matrix."
+        )
+        return readiness_code
+
+    # --- 4. Review package: scorecard.md + manifest.json (needs reviewer note). --
+    print("[review] step 4/5: review-package")
+    package_args = argparse.Namespace(
+        latest_dir=None,
+        out_dir=str(out_dir),
+        reviewed_by=args.reviewed_by,
+        reviewer_note=args.reviewer_note,
+        tolerance=float(args.tolerance),
+        skip_runtime_gates=bool(args.skip_runtime_gates),
+        include_benchmarks=_review_selected_benchmarks_csv(args),
+        exclude_benchmarks=None,
+    )
+    package_code = _cmd_review_package(package_args)
+    _emit("review-package", package_code)
+    if package_code != 0:
+        print(
+            "[review] review-package is blocked; inspect blocking_findings in "
+            f"{out_dir / 'manifest.json'}."
+        )
+        return package_code
+
+    # --- 5. Verify artifacts: no generated benchmark output would be committed. --
+    print("[review] step 5/5: verify-artifacts")
+    verify_code = _cmd_verify_artifacts(argparse.Namespace())
+    _emit("verify-artifacts", verify_code)
+    if verify_code != 0:
+        print(
+            "[review] verify-artifacts failed: generated benchmark output is "
+            "staged/committed. `git rm --cached` it; only the reviewed scorecard "
+            "belongs in version control."
+        )
+        return verify_code
+
+    print("")
+    print(f"[review] all steps passed: {', '.join(steps_ran)}")
+    print(f"[review] scorecard + manifest written to {out_dir}")
+    return 0
+
+
+def _review_selected_benchmarks_csv(args: argparse.Namespace) -> str | None:
+    """The benchmark ids the review targets, as a CSV string (or None for all)."""
+    if bool(getattr(args, "all", False)):
+        return None
+    benchmarks = getattr(args, "benchmarks", None)
+    if not benchmarks:
+        return None
+    ids: list[str] = []
+    for item in benchmarks:
+        ids.extend(part.strip() for part in str(item).split(",") if part.strip())
+    return ",".join(ids) if ids else None
+
+
+def _review_run_namespace(args: argparse.Namespace) -> argparse.Namespace:
+    """Build the ``run`` step's args from the review flags.
+
+    ``--adapters`` selects the harness(es) via the run step's ``--harnesses``
+    mechanism; ``--accounts`` is forwarded through ``--extra`` so the codex
+    harness (and any account-aware harness) can iterate materialized CODEX_HOMEs.
+    Benchmarks come from ``--all`` or ``--benchmarks``.
+    """
+    adapters = _split_review_adapters(getattr(args, "adapters", None))
+    extra_config = _parse_json_arg(getattr(args, "extra", None))
+    accounts = getattr(args, "accounts", None)
+    if accounts not in (None, ""):
+        extra_config["accounts"] = accounts
+    return argparse.Namespace(
+        all=bool(getattr(args, "all", False)),
+        benchmarks=list(getattr(args, "benchmarks", None) or []) or None,
+        agent=adapters[0] if adapters else "eliza",
+        harnesses=list(adapters) if adapters else None,
+        all_harnesses=False,
+        include_random_baseline=False,
+        include_calibration_harnesses=False,
+        provider=args.provider,
+        model=args.model,
+        model_profile=None,  # already applied on the review args
+        extra=json.dumps(extra_config, ensure_ascii=True) if extra_config else None,
+        expand_scenarios=False,
+        count_scenarios=False,
+        validate_scenarios=False,
+        resume=False,
+        rerun_failed=bool(getattr(args, "rerun_failed", False)),
+        force=bool(getattr(args, "force", False)),
+        skip_incompatible=True,
+    )
+
+
+def _split_review_adapters(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    values: list[str] = []
+    for item in raw:
+        values.extend(part.strip().lower() for part in str(item).split(",") if part.strip())
+    deduped: list[str] = []
+    for value in values:
+        if value not in deduped:
+            deduped.append(value)
+    return deduped
 
 
 def _cmd_review_package(args: argparse.Namespace) -> int:
@@ -902,6 +1102,81 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated benchmark IDs to exclude from the review package",
     )
     p_review.set_defaults(func=_cmd_review_package)
+
+    p_review_all = sub.add_parser(
+        "review",
+        help=(
+            "One operator wrapper (#10199): preflight (inventory) -> run -> "
+            "validate gates -> review-package -> verify-artifacts. Fails clearly "
+            "at the first step that cannot proceed."
+        ),
+    )
+    p_review_all.add_argument("--all", action="store_true", help="Run all registered benchmarks")
+    p_review_all.add_argument(
+        "--benchmarks",
+        nargs="+",
+        default=None,
+        help="Benchmark IDs to run/package (space- or comma-separated)",
+    )
+    p_review_all.add_argument(
+        "--adapters",
+        nargs="+",
+        default=None,
+        help="Harness adapters to run (e.g. eliza hermes openclaw smithers codex)",
+    )
+    p_review_all.add_argument("--provider", default="cerebras", help="Model provider")
+    p_review_all.add_argument("--model", default="gpt-oss-120b", help="Model name")
+    p_review_all.add_argument(
+        "--model-profile",
+        default=None,
+        help=(
+            "Model profile JSON path or name under benchmarks/orchestrator/profiles. "
+            "Profile provider/model override --provider/--model."
+        ),
+    )
+    p_review_all.add_argument(
+        "--accounts",
+        default=None,
+        help=(
+            "Account selection forwarded to account-aware harnesses (e.g. codex): "
+            "an integer N (first N materialized CODEX_HOMEs) or a comma-separated "
+            "account-id list. Omit to use all materialized accounts."
+        ),
+    )
+    p_review_all.add_argument(
+        "--extra", default=None, help="JSON object with benchmark-specific options"
+    )
+    p_review_all.add_argument("--rerun-failed", action="store_true", help="Only re-run failed signatures")
+    p_review_all.add_argument(
+        "--force", action="store_true", help="Force a new run regardless of existing success"
+    )
+    p_review_all.add_argument(
+        "--out",
+        required=True,
+        help="Directory that receives the reviewed scorecard.md + manifest.json",
+    )
+    p_review_all.add_argument(
+        "--reviewed-by",
+        default="",
+        help="Human reviewer name or handle recorded in the manifest",
+    )
+    p_review_all.add_argument(
+        "--reviewer-note",
+        required=True,
+        help="Manual note confirming trajectories/replays were opened and spot-reviewed",
+    )
+    p_review_all.add_argument(
+        "--tolerance",
+        type=float,
+        default=0.08,
+        help="Allowed absolute score spread across required real harnesses",
+    )
+    p_review_all.add_argument(
+        "--skip-runtime-gates",
+        action="store_true",
+        help="Validate/package without probing host runtime prerequisites",
+    )
+    p_review_all.set_defaults(func=_cmd_review)
 
     p_run = sub.add_parser("run", help="Run one or more benchmarks idempotently")
     p_run.add_argument("--all", action="store_true", help="Run all integrated benchmarks")
