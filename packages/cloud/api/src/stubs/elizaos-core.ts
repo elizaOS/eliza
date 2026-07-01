@@ -10,6 +10,8 @@
 const NOT_AVAILABLE =
   "@elizaos/core runtime APIs are not available in the Cloudflare Workers API bundle. Route agent runtime work through the agent-server sidecar.";
 
+export const DEFAULT_CEREBRAS_TEXT_MODEL = "gemma-4-31b";
+
 function unavailable(name: string): never {
   throw new Error(`${name}: ${NOT_AVAILABLE}`);
 }

@@ -94,6 +94,9 @@ const publicPathPrefixes = [
   "/api/v1/track",
   "/api/v1/discovery",
   "/api/v1/domains/resolve",
+  // Public hosted-frontend serve path: renders an app's active frontend from R2
+  // for public visitors (fails closed to 404 on any unresolved host).
+  "/api/v1/hosted-frontend/serve",
   // Legacy birdeye proxy is a 308 redirect to /api/v1/apis/birdeye/*. The
   // redirect itself is public so unauthenticated clients learn the new URL;
   // the target /api/v1/apis/birdeye is still auth-gated.

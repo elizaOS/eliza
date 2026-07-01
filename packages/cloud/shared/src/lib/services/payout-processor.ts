@@ -52,6 +52,7 @@ import { dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { tokenRedemptions } from "../../db/schemas/token-redemptions";
 import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
+import { getPayoutTokenConfig } from "../config/payout-assets";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
@@ -583,12 +584,12 @@ export class PayoutProcessorService {
       };
     }
 
-    const tokenAddress = ELIZA_TOKEN_ADDRESSES[network] as Address;
+    // Asset-aware (#10732): USDC (6 decimals) or the legacy elizaOS token (9).
+    // `eliza_amount` holds the payout-token amount in either case.
+    const tokenConfig = getPayoutTokenConfig(network, redemption.asset);
+    const tokenAddress = tokenConfig.address as Address;
     const toAddress = redemption.payout_address as Address;
-    const amount = parseUnits(
-      redemption.eliza_amount.toString(),
-      ELIZA_DECIMALS[network as keyof typeof ELIZA_DECIMALS],
-    );
+    const amount = parseUnits(redemption.eliza_amount.toString(), tokenConfig.decimals);
 
     const account = privateKeyToAccount(this.evmPrivateKey);
 
@@ -709,14 +710,46 @@ export class PayoutProcessorService {
       getAccount,
       TokenAccountNotFoundError,
     } = require("@solana/spl-token") as typeof import("@solana/spl-token");
-    const mintAddress = new PublicKey(ELIZA_TOKEN_ADDRESSES.solana);
+    // Asset-aware (#10732): USDC SPL mint (6 decimals) or the legacy elizaOS mint (9).
+    const tokenConfig = getPayoutTokenConfig("solana", redemption.asset);
+    const mintAddress = new PublicKey(tokenConfig.address);
     const toAddress = new PublicKey(redemption.payout_address);
-    const amount = BigInt(
-      Math.floor(Number(redemption.eliza_amount) * 10 ** ELIZA_DECIMALS.solana),
-    );
+    const amount = BigInt(Math.floor(Number(redemption.eliza_amount) * 10 ** tokenConfig.decimals));
 
     // Get source token account (hot wallet's ATA)
     const sourceAta = await getAssociatedTokenAddress(mintAddress, this.solanaKeypair.publicKey);
+    let sourceAccount;
+    try {
+      sourceAccount = await getAccount(this.solanaConnection, sourceAta);
+    } catch (error) {
+      if (error instanceof TokenAccountNotFoundError) {
+        logger.error("[PayoutProcessor] Source token account not found", {
+          redemptionId: redemption.id,
+          asset: redemption.asset,
+          mint: tokenConfig.address,
+          sourceAta: sourceAta.toBase58(),
+        });
+        return {
+          success: false,
+          error: "Source token account not configured - contact support",
+          retryable: true,
+        };
+      }
+      throw error;
+    }
+    if (sourceAccount.amount < amount) {
+      logger.error("[PayoutProcessor] Insufficient Solana hot wallet balance", {
+        redemptionId: redemption.id,
+        asset: redemption.asset,
+        required: amount.toString(),
+        available: sourceAccount.amount.toString(),
+      });
+      return {
+        success: false,
+        error: "Insufficient hot wallet balance - contact support",
+        retryable: true,
+      };
+    }
 
     // Get or create destination token account
     const destinationAta = await getAssociatedTokenAddress(mintAddress, toAddress);

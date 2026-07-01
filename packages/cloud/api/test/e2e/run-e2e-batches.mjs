@@ -282,8 +282,13 @@ function ensureDatabase() {
   }
 }
 
+const onlyFilter = (process.env.E2E_ONLY || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 const testFiles = readdirSync(testDir)
   .filter((name) => name.endsWith(".test.ts"))
+  .filter((name) => onlyFilter.length === 0 || onlyFilter.some((f) => name.includes(f)))
   .sort()
   .map((name) => relative(appRoot, join(testDir, name)));
 

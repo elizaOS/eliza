@@ -329,6 +329,39 @@ export class NoModelProviderConfiguredError extends Error {
 	}
 }
 
+/** One failed TEXT_EMBEDDING dimension-probe attempt, kept for diagnostics. */
+export interface EmbeddingProbeAttempt {
+	provider: string;
+	modelKey: string;
+	error: string;
+}
+
+/**
+ * Thrown by `AgentRuntime.ensureEmbeddingDimension` when EVERY registered
+ * TEXT_EMBEDDING provider failed the null dimension probe. Carries the
+ * per-provider failure list so callers (and logs) can show exactly which
+ * providers were tried and why each one failed.
+ *
+ * `AgentRuntime.initialize` catches this error type — and only this type —
+ * non-fatally: the runtime keeps booting with embedding generation disabled
+ * (memory writes persist without vectors) instead of either crashing boot or
+ * leaving the vector column at its default width, where later real vectors
+ * would be silently dropped on dimension mismatch by the SQL adapter (#8769).
+ */
+export class EmbeddingDimensionProbeError extends Error {
+	readonly attempts: readonly EmbeddingProbeAttempt[];
+	constructor(attempts: readonly EmbeddingProbeAttempt[]) {
+		const detail = attempts
+			.map((attempt) => `${attempt.provider}: ${attempt.error}`)
+			.join("; ");
+		super(
+			`All ${attempts.length} registered TEXT_EMBEDDING provider(s) failed the embedding dimension probe — ${detail}`,
+		);
+		this.name = "EmbeddingDimensionProbeError";
+		this.attempts = attempts;
+	}
+}
+
 const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
 	ModelType.TEXT_NANO,
 	ModelType.TEXT_SMALL,
@@ -817,6 +850,26 @@ export class AgentRuntime implements IAgentRuntime {
 	private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
 	models = new Map<string, ModelHandler[]>();
 	routes: Route[] = [];
+	/**
+	 * Provider that answered the boot-time TEXT_EMBEDDING dimension probe. The
+	 * SQL adapter's vector column is sized from that provider's output, so all
+	 * later embedding calls without an explicit provider are pinned to it —
+	 * letting a different registration serve an embedding call can emit a
+	 * different-width vector that the adapter silently drops on dimension
+	 * mismatch (#8769). Re-set on every successful `ensureEmbeddingDimension`.
+	 */
+	private pinnedEmbeddingProvider: string | undefined;
+	/**
+	 * Non-null while embedding generation is disabled because every registered
+	 * TEXT_EMBEDDING provider failed the dimension probe. While set, memory
+	 * writes skip vector generation entirely (see `addEmbeddingToMemory` /
+	 * `queueEmbeddingGeneration`) instead of producing vectors the SQL adapter
+	 * would silently drop against a default-sized column. Cleared by the next
+	 * successful `ensureEmbeddingDimension` (e.g. the deferred boot re-probe).
+	 */
+	private embeddingGenerationDisabledReason: string | null = null;
+	/** Once-latch so the embedding-skip warning fires once, not per write. */
+	private embeddingSkipWarned = false;
 	private taskWorkers = new Map<string, TaskWorker>();
 	private sendHandlers = new Map<string, SendHandlerFunction>();
 	private messageConnectors = new Map<string, MessageConnector>();
@@ -2582,7 +2635,28 @@ export class AgentRuntime implements IAgentRuntime {
 				"No TEXT_EMBEDDING model registered, skipping embedding setup",
 			);
 		} else {
-			await this.ensureEmbeddingDimension();
+			try {
+				await this.ensureEmbeddingDimension();
+			} catch (error) {
+				if (!(error instanceof EmbeddingDimensionProbeError)) {
+					throw error;
+				}
+				// Every registered TEXT_EMBEDDING provider failed the dimension
+				// probe. Do not abort boot: ensureEmbeddingDimension() has already
+				// flipped the runtime into embedding-disabled mode, so memory writes
+				// skip vector generation instead of emitting vectors the SQL adapter
+				// would silently drop against its default-sized column (#8769). The
+				// deferred boot re-probe (packages/agent) re-runs the probe after
+				// late plugins register and re-enables embeddings on success.
+				this.logger.error(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						attempts: error.attempts,
+					},
+					"All registered TEXT_EMBEDDING providers failed the dimension probe; continuing boot with embedding generation disabled — memory recall over new memories is degraded until a provider recovers",
+				);
+			}
 		}
 
 		// Resolve init promise to allow services to start
@@ -5002,9 +5076,24 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
+		// TEXT_EMBEDDING calls without an explicit provider are pinned to the
+		// provider that answered the dimension probe: the vector column was sized
+		// from its output, so serving an embedding call from any other
+		// registration (including via rate-limit failover) can emit a
+		// different-width vector that the SQL adapter silently drops (#8769).
+		// Pinning also disables mid-call provider failover for embeddings — an
+		// embedding either comes from the provider the column was sized for, or
+		// the call fails loudly. An explicit provider argument still wins.
+		const requestedProvider =
+			provider === undefined &&
+			requestedModelKey === ModelType.TEXT_EMBEDDING &&
+			this.pinnedEmbeddingProvider !== undefined
+				? this.pinnedEmbeddingProvider
+				: provider;
+
 		const resolvedModels = this.resolveModelRegistrations(
 			requestedModelKey,
-			provider,
+			requestedProvider,
 		);
 		if (resolvedModels.length === 0) {
 			this.throwNoModelHandler(requestedModelKey);
@@ -5713,7 +5802,7 @@ export class AgentRuntime implements IAgentRuntime {
 				lastModelError = error;
 				const nextModel = resolvedModels[resolvedIndex + 1];
 				if (
-					provider !== undefined ||
+					requestedProvider !== undefined ||
 					!nextModel ||
 					!this.shouldFailOverModelProvider(error)
 				) {
@@ -7975,41 +8064,163 @@ ${section_end}`;
 		}
 	}
 
+	/**
+	 * True while embedding generation is disabled because every registered
+	 * TEXT_EMBEDDING provider failed the dimension probe. While true, memory
+	 * writes persist without vectors (recall over new memories is degraded)
+	 * rather than emitting vectors the SQL adapter would silently drop against
+	 * a default-sized column. Cleared by the next successful
+	 * {@link ensureEmbeddingDimension} (e.g. the deferred boot re-probe).
+	 */
+	isEmbeddingGenerationDisabled(): boolean {
+		return this.embeddingGenerationDisabledReason !== null;
+	}
+
+	private disableEmbeddingGeneration(reason: string): void {
+		this.embeddingGenerationDisabledReason = reason;
+		this.embeddingSkipWarned = false;
+	}
+
+	private enableEmbeddingGeneration(): void {
+		if (this.embeddingGenerationDisabledReason !== null) {
+			this.logger.info(
+				{ src: "agent", agentId: this.agentId },
+				"TEXT_EMBEDDING provider recovered; embedding generation re-enabled",
+			);
+		}
+		this.embeddingGenerationDisabledReason = null;
+		this.embeddingSkipWarned = false;
+	}
+
+	/**
+	 * Once-latch warn for skipped embedding generation: the first skipped write
+	 * logs a structured warning, subsequent skips stay quiet until the flag is
+	 * cleared and re-set (a fresh degradation event warns again).
+	 */
+	private warnEmbeddingGenerationSkipped(): void {
+		if (this.embeddingSkipWarned) {
+			return;
+		}
+		this.embeddingSkipWarned = true;
+		this.logger.warn(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				reason: this.embeddingGenerationDisabledReason,
+			},
+			"Embedding generation is disabled (every TEXT_EMBEDDING provider failed the dimension probe); memory writes are persisted WITHOUT vectors — recall over new memories is degraded until a provider recovers",
+		);
+	}
+
 	async ensureEmbeddingDimension() {
 		if (!this.adapter) {
 			throw new Error(
 				"Database adapter not initialized before ensureEmbeddingDimension",
 			);
 		}
-		const model = this.getModel(ModelType.TEXT_EMBEDDING);
-		if (!model) {
+		const registrations = this.resolveModelRegistrations(
+			ModelType.TEXT_EMBEDDING,
+		);
+		if (registrations.length === 0) {
 			throw new Error("No TEXT_EMBEDDING model registered");
 		}
 
-		// Pass null to get a test vector for dimension detection
-		// Model handlers should return a zero-filled vector of the correct dimension when null is passed
-		let embedding: unknown;
-		try {
-			embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
-		} catch (error) {
-			if (error instanceof NoModelProviderConfiguredError) {
-				this.logger.warn(
-					{ src: "agent", agentId: this.agentId },
-					"No backing TEXT_EMBEDDING provider registered, skipping embedding setup",
-				);
-				return;
+		// Probe every registered TEXT_EMBEDDING provider in the same priority
+		// order useModel resolves them. The probe passes null; handlers return a
+		// zero-filled vector of their real output width. A provider that cannot
+		// answer the null probe cannot produce usable vectors either, so ANY
+		// probe failure — not just a rate limit — advances to the next
+		// registration. First success wins: it sizes the adapter's vector column
+		// and pins that provider for subsequent embedding calls, so the column
+		// width and the vectors written to it always come from the same provider.
+		const attempts: EmbeddingProbeAttempt[] = [];
+		const probedProviders = new Set<string>();
+		let allFailuresBenign = true;
+		for (const registration of registrations) {
+			if (probedProviders.has(registration.provider)) {
+				continue;
 			}
-			throw error;
-		}
-		if (!Array.isArray(embedding) || embedding.length === 0) {
-			throw new Error("Invalid embedding received");
+			probedProviders.add(registration.provider);
+
+			let embedding: unknown;
+			try {
+				embedding = await this.useModel(
+					ModelType.TEXT_EMBEDDING,
+					null,
+					registration.provider,
+				);
+			} catch (error) {
+				if (!(error instanceof NoModelProviderConfiguredError)) {
+					allFailuresBenign = false;
+				}
+				attempts.push({
+					provider: registration.provider,
+					modelKey: registration.modelKey,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						provider: registration.provider,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
+				);
+				continue;
+			}
+			if (!Array.isArray(embedding) || embedding.length === 0) {
+				allFailuresBenign = false;
+				attempts.push({
+					provider: registration.provider,
+					modelKey: registration.modelKey,
+					error: `Invalid embedding received (${Array.isArray(embedding) ? "empty array" : typeof embedding})`,
+				});
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						provider: registration.provider,
+					},
+					"TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
+				);
+				continue;
+			}
+
+			await this.adapter.ensureEmbeddingDimension(embedding.length);
+			this.pinnedEmbeddingProvider = registration.provider;
+			this.enableEmbeddingGeneration();
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					dimension: embedding.length,
+					provider: registration.provider,
+					failedProviders: attempts.map((attempt) => attempt.provider),
+				},
+				"Embedding dimension set",
+			);
+			return;
 		}
 
-		await this.adapter.ensureEmbeddingDimension(embedding.length);
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, dimension: embedding.length },
-			"Embedding dimension set",
-		);
+		// Every registered handler reported "no backing provider configured"
+		// (e.g. a cloud proxy handler before login). Nothing can emit vectors,
+		// so a default-width column cannot cause a dimension mismatch — keep the
+		// long-standing benign skip.
+		if (allFailuresBenign) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId },
+				"No backing TEXT_EMBEDDING provider registered, skipping embedding setup",
+			);
+			return;
+		}
+
+		// All probes failed for real. Disable embedding generation so memory
+		// writes skip vector generation coherently (no silent drops downstream),
+		// and surface a typed error carrying every provider's failure.
+		const probeError = new EmbeddingDimensionProbeError(attempts);
+		this.disableEmbeddingGeneration(probeError.message);
+		throw probeError;
 	}
 
 	registerTaskWorker(taskHandler: TaskWorker): void {
@@ -8265,6 +8476,14 @@ ${section_end}`;
 		if (!memoryText) {
 			throw new Error("Cannot generate embedding: Memory content is empty");
 		}
+		if (this.embeddingGenerationDisabledReason !== null) {
+			// Every TEXT_EMBEDDING provider failed the dimension probe, so the
+			// vector column was never sized for this runtime. Skip generation
+			// explicitly (warn once) instead of producing a vector the SQL
+			// adapter would silently drop on dimension mismatch (#8769).
+			this.warnEmbeddingGenerationSkipped();
+			return memory;
+		}
 		memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
 			text: memoryText,
 		});
@@ -8281,6 +8500,13 @@ ${section_end}`;
 	): Promise<void> {
 		priority = priority || "normal";
 		if (!memory || memory.embedding || !memory.content.text) {
+			return;
+		}
+		if (this.embeddingGenerationDisabledReason !== null) {
+			// See addEmbeddingToMemory: no provider passed the dimension probe,
+			// so queueing would only produce per-item generation failures (or
+			// silently dropped vectors). Skip explicitly, warn once.
+			this.warnEmbeddingGenerationSkipped();
 			return;
 		}
 

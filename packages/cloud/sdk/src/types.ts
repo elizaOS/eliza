@@ -957,6 +957,67 @@ export interface AppDeployStatusResponse {
   startedAt: string | null;
 }
 
+// ---- Managed frontend hosting (#10690) -----------------------------------
+
+/** One file in a frontend deploy bundle. `content` is UTF-8 unless base64. */
+export interface FrontendUploadFileInput {
+  path: string;
+  content: string;
+  encoding?: "utf8" | "base64";
+  contentType?: string;
+}
+
+/** `POST /api/v1/apps/:id/frontend` body — publish a static site in one call. */
+export interface DeployAppFrontendInput {
+  files: FrontendUploadFileInput[];
+  /** Document served for "/" and (with spaFallback) unmatched routes. Default "index.html". */
+  entrypoint?: string;
+  /** Fall back to the entrypoint for unmatched extensionless routes. Default true. */
+  spaFallback?: boolean;
+  /** Activate immediately after finalize. Default true. */
+  activate?: boolean;
+  buildMeta?: {
+    source?: string | null;
+    framework?: string | null;
+    gitCommit?: string | null;
+    note?: string | null;
+  };
+}
+
+/** A managed frontend deployment record. */
+export interface AppFrontendDeploymentDto {
+  id: string;
+  app_id: string;
+  version: number;
+  status: "pending" | "uploading" | "ready" | "active" | "superseded" | "failed";
+  r2_prefix: string;
+  content_hash: string | null;
+  file_count: number;
+  total_bytes: number;
+  error: string | null;
+  created_at: string;
+  activated_at: string | null;
+}
+
+/** `POST /api/v1/apps/:id/frontend` response (201). */
+export interface DeployAppFrontendResponse {
+  success: boolean;
+  deployment: AppFrontendDeploymentDto;
+}
+
+/** `GET /api/v1/apps/:id/frontend` response. */
+export interface ListAppFrontendDeploymentsResponse {
+  success: boolean;
+  active_deployment_id: string | null;
+  deployments: AppFrontendDeploymentDto[];
+}
+
+/** `POST /api/v1/apps/:id/frontend/:deploymentId/activate` response. */
+export interface ActivateAppFrontendResponse {
+  success: boolean;
+  deployment: AppFrontendDeploymentDto;
+}
+
 /** Per-resource counts the cleanup pass reports on app deletion. */
 export interface AppCleanupSummary {
   domainsRemoved: number;
@@ -1138,4 +1199,60 @@ export interface ApiKeyCreateResponse {
 
 export interface ApiKeyListResponse {
   keys: ApiKeySummary[];
+}
+
+// ---- Influencer marketplace (#10687) ----
+
+export interface InfluencerProfileDto {
+  id: string;
+  display_name: string;
+  niche: string | null;
+  bio: string | null;
+  platforms: Array<{ platform: string; handle: string; followers: number }>;
+  status: "active" | "inactive";
+}
+
+export interface CreateInfluencerProfileInput {
+  displayName: string;
+  niche?: string;
+  bio?: string;
+  platforms?: Array<{ platform: string; handle: string; followers: number }>;
+  rateCard?: Record<string, unknown>;
+}
+
+export interface CreateInfluencerProfileResponse {
+  success: boolean;
+  profile: InfluencerProfileDto;
+}
+
+export interface ListInfluencersResponse {
+  success: boolean;
+  profiles: InfluencerProfileDto[];
+}
+
+export interface InfluencerBookingDto {
+  id: string;
+  advertiser_org_id: string;
+  influencer_profile_id: string;
+  amount: string;
+  status:
+    | "offered"
+    | "accepted"
+    | "delivered"
+    | "approved"
+    | "rejected"
+    | "cancelled";
+  brief: string;
+}
+
+export interface CreateBookingInput {
+  profileId: string;
+  brief: string;
+  amount: number;
+}
+
+export interface CreateBookingResponse {
+  success: boolean;
+  booking?: InfluencerBookingDto;
+  error?: string;
 }

@@ -49,7 +49,8 @@ export interface ConfirmTarget {
 export type CloudAppConfirmationAction =
   | "DELETE_APP"
   | "REGENERATE_APP_API_KEY"
-  | "WITHDRAW_APP_EARNINGS";
+  | "WITHDRAW_APP_EARNINGS"
+  | "BOOK_INFLUENCER";
 
 export const CLOUD_APP_CONFIRM_TAG = "cloud-apps-confirm";
 
@@ -62,6 +63,11 @@ export interface CloudAppConfirmationMetadata {
   amount?: number;
   cta?: ConnectorCta;
   intentCreatedAt?: string;
+  /**
+   * BOOK_INFLUENCER only: the campaign brief for the pending booking. (For that
+   * action `appId`/`appName` carry the influencer profile id + display name.)
+   */
+  brief?: string;
 }
 
 export interface PendingCloudAppConfirmation {

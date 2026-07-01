@@ -18,7 +18,12 @@ import {
   computePurchaseSplit,
   computeReconciliation,
 } from "./app-credit-math";
-import { creditsService } from "./credits";
+import {
+  type CreditReconciliationResult,
+  type CreditReservation,
+  creditsService,
+  InsufficientCreditsError,
+} from "./credits";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
 /**
@@ -123,6 +128,48 @@ function validateMetadata(
 }
 
 /**
+ * Thread the caller's stable per-charge id into the metadata consumed by
+ * `recordCreatorEarnings`/`reverseCreatorEarnings`. The key is passed RAW:
+ * stage discrimination lives in ONE place — the `leg` component of the
+ * earnings dedupe sourceId (`${chargeKey}:${type}:${leg}`) — so the estimate
+ * deduct and a later reconcile adjustment each dedupe independently without a
+ * second, route-level phase suffix (#10847 follow-up composing with #10892).
+ */
+function withChargeIdempotencyKey(
+  metadata: Record<string, unknown> | undefined,
+  idempotencyKey: string | undefined,
+): Record<string, unknown> | undefined {
+  if (!idempotencyKey) return metadata;
+  return {
+    ...metadata,
+    idempotencyKey,
+  };
+}
+
+function mapAppReconciliationToCreditResult(
+  result: AppCreditReconciliationResult,
+  reservedAmount: number,
+  actualCost: number,
+  reservationTransactionId: string | null,
+): CreditReconciliationResult {
+  let adjustmentType: CreditReconciliationResult["adjustmentType"] = "none";
+
+  if (result.action === "refund" && result.reconciled) {
+    adjustmentType = "refund";
+  } else if (result.action === "charge") {
+    adjustmentType = result.reconciled ? "overage" : "uncollected_overage";
+  }
+
+  return {
+    reservedAmount,
+    actualCost,
+    reservationTransactionId,
+    settlementTransactionIds: [],
+    adjustmentType,
+  };
+}
+
+/**
  * Parameters for purchasing app credits.
  */
 export interface AppCreditPurchaseParams {
@@ -172,6 +219,27 @@ export interface AppCreditDeductionResult {
   newBalance: number;
   transactionId?: string;
   message?: string;
+}
+
+/**
+ * Parameters for atomically reserving app inference credits before model work.
+ */
+export interface AppCreditInferenceReservationParams {
+  appId: string;
+  userId: string;
+  estimatedBaseCost: number;
+  description: string;
+  metadata?: Record<string, unknown>;
+  /**
+   * Stable request id used to dedupe creator earnings across settlement
+   * retries. Pass the SAME value for the whole request: the earnings layer
+   * appends the movement leg (deduct / reconcile_charge / reconcile_refund /
+   * compensation_reversal) to the dedupe key, so the upfront estimate and a
+   * later reconcile adjustment each credit the creator exactly once.
+   */
+  idempotencyKey?: string;
+  /** Optional: pass pre-fetched app to avoid N+1 query */
+  app?: App;
 }
 
 /**
@@ -338,6 +406,54 @@ export class AppCreditsService {
       platformOffset,
       creatorEarnings,
       newBalance,
+    };
+  }
+
+  async reserveInferenceCredits(
+    params: AppCreditInferenceReservationParams,
+  ): Promise<CreditReservation> {
+    const { appId, userId, estimatedBaseCost, description, metadata, idempotencyKey, app } = params;
+
+    const deduction = await this.deductCredits({
+      appId,
+      userId,
+      baseCost: estimatedBaseCost,
+      description,
+      metadata: withChargeIdempotencyKey(metadata, idempotencyKey),
+      app,
+    });
+
+    if (!deduction.success) {
+      throw new InsufficientCreditsError(
+        deduction.totalCost,
+        deduction.newBalance,
+        "insufficient_balance",
+      );
+    }
+
+    const reservationTransactionId = deduction.transactionId ?? null;
+
+    return {
+      reservedAmount: deduction.totalCost,
+      reservationTransactionId,
+      reconcile: async (actualBaseCost: number) => {
+        const reconciliation = await this.reconcileCredits({
+          appId,
+          userId,
+          estimatedBaseCost,
+          actualBaseCost,
+          description,
+          metadata: withChargeIdempotencyKey(metadata, idempotencyKey),
+          app,
+        });
+
+        return mapAppReconciliationToCreditResult(
+          reconciliation,
+          deduction.totalCost,
+          actualBaseCost,
+          reservationTransactionId,
+        );
+      },
     };
   }
 
