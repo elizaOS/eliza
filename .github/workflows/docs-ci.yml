@@ -64,7 +64,7 @@ jobs:
         # best-effort; downstream "Check for Changes" steps already handle
         # the no-op path.
         continue-on-error: true
-        uses: anthropics/claude-code-action@80b31826338489861333dc17217865dfe8085cdc
+        uses: anthropics/claude-code-action@fad22eb3fa582b7357fc0ea48af6645851b884fd
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
@@ -135,7 +135,7 @@ jobs:
         # best-effort; downstream "Check for Changes" steps already handle
         # the no-op path.
         continue-on-error: true
-        uses: anthropics/claude-code-action@80b31826338489861333dc17217865dfe8085cdc
+        uses: anthropics/claude-code-action@fad22eb3fa582b7357fc0ea48af6645851b884fd
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
