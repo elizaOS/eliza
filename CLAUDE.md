@@ -227,6 +227,13 @@ The non-negotiables in practice:
 - **Always sync before opening or updating a PR.** `git fetch origin &&
   git rebase origin/develop`, resolve **every** conflict, `bun install`, then
   `bun run verify`. A branch that can't fast-forward onto `develop` is not ready.
+- **Frontend-testable changes are not done without rendered proof.** Any change a
+  user can exercise in the web, desktop, mobile, or cloud UI must attach a video
+  walkthrough; before and after full-page screenshots for desktop and mobile;
+  backend structured logs; frontend console and network logs; and real-LLM
+  trajectories when agent/action/provider/prompt/model behavior changes. If one
+  row does not apply, keep it visible and write `N/A - <reason>` in the PR and
+  issue evidence.
 - **Attach complete, real, manually-reviewed evidence** — prove the real thing
   happened, not a mock of it:
   - **Real-LLM trajectories** for agent/action/prompt/model changes —

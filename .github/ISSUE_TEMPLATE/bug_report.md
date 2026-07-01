@@ -20,7 +20,20 @@ assignees: ""
 
 **Screenshots**
 
-<!-- If applicable, add screenshots to help explain your problem. -->
+<!-- Attach screenshots of the broken behavior when possible. -->
+
+**Evidence / reproduction proof**
+
+Attach proof that lets a maintainer reproduce and inspect the real failure:
+
+- [ ] Screen recording or before/after screenshots of the broken behavior.
+- [ ] Backend logs (`[ClassName] ...`) and frontend console/network logs when relevant.
+- [ ] Real-LLM trajectory when the bug involves agent/action/prompt/model behavior.
+- [ ] Domain artifacts when relevant (DB rows, memories, scheduled tasks, generated files, wallet/on-chain output).
+
+Store large or durable artifacts under
+`.github/issue-evidence/<issue#>-<short-slug>.<ext>`. If an item is unavailable,
+write `N/A - <reason>`.
 
 **Additional context**
 
