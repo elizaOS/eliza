@@ -1068,7 +1068,7 @@ async function warmupEmbeddingModelImpl(
   }
 
   const config = loadElizaConfig();
-  upstreamConfigureLocalEmbeddingPlugin({} as Plugin, config);
+  await upstreamConfigureLocalEmbeddingPlugin({} as Plugin, config);
 
   const preset = li.detectEmbeddingPreset();
   const modelsDir = process.env.MODELS_DIR ?? li.DEFAULT_MODELS_DIR;

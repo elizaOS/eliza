@@ -663,6 +663,8 @@ export function nativeModuleStubPlugin(
         strippedId === "@elizaos/plugin-local-inference" ||
         strippedId === "@elizaos/plugin-local-inference/routes" ||
         strippedId === "@elizaos/plugin-local-inference/runtime" ||
+        strippedId ===
+          "@elizaos/plugin-local-inference/runtime/embedding-presets" ||
         strippedId === "@elizaos/plugin-local-inference/services"
       ) {
         return [
@@ -671,8 +673,12 @@ export function nativeModuleStubPlugin(
           "const proxy = new Proxy(noop, { get: () => proxy, apply: () => proxy });",
           // Server-only constants
           "export const DEFAULT_MODELS_DIR = '/.eliza/models';",
+          "export const EMBEDDING_PRESETS = {};",
           // Server-only functions used by app-core/runtime/eliza.ts
           "export const detectEmbeddingPreset = noop;",
+          "export const detectEmbeddingTier = noop;",
+          "export const selectEmbeddingPresetFromHardware = noop;",
+          "export const selectEmbeddingTierFromHardware = noop;",
           "export const embeddingGgufFilePresent = () => false;",
           "export const ensureLocalInferenceHandler = asyncNoop;",
           "export const ensureModel = asyncNoop;",
