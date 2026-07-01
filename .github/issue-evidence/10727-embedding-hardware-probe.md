@@ -57,7 +57,7 @@ Passed:
 
 Blocked / unrelated current-tree failure:
 
-- `bun run verify` fails before the package lanes at `audit:type-safety-ratchet`: `as unknown as` is 109/77 and `?? 0` is 384/380 in unrelated tracked production files.
+- `bun run verify` fails before the package lanes at `audit:type-safety-ratchet` after scanning 9918 tracked production source files: `?? 0` is 382/380 in unrelated tracked production files. The same gate reports `as unknown as` is now below baseline (75/77).
 
 ## Evidence Applicability
 
