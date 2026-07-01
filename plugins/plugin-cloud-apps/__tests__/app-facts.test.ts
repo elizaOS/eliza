@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-  recordAppDeployFact,
-  removeAppDeployFact,
-} from "../src/app-facts.ts";
+import { recordAppDeployFact, removeAppDeployFact } from "../src/app-facts.ts";
 import { makeApp, makeRoomMessage, memoryRuntime } from "./helpers";
 
 const appIdOf = (m: { metadata?: unknown }) =>

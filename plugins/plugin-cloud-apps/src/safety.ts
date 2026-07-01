@@ -10,13 +10,13 @@
  * non-English confirmations depend on the planner's structured extraction
  * instead of English keyword banks.
  *
- * ── Connector-agnostic CTA (for the DEFERRED paid actions) ────────────────────
+ * ── Connector-agnostic CTA (for the paid actions) ────────────────────────────
  * Paid actions that must hand the user off to a browser (withdraw earnings, buy
- * a domain — both deferred to Phase 3c) build a neutral {label,url,kind} object
- * the connector renders however it can (Discord link button, Telegram URL
- * button, in-app card). Money and credentials NEVER transit the connector: the
- * CTA carries only a human label plus an https URL the user opens themselves.
- * {@link buildConnectorCta} is the single seam those actions will reuse.
+ * a domain) build a neutral {label,url,kind} object the connector renders
+ * however it can (Discord link button, Telegram URL button, in-app card). Money
+ * and credentials NEVER transit the connector: the CTA carries only a human
+ * label plus an https URL the user opens themselves. {@link buildConnectorCta}
+ * is the single seam those actions reuse.
  */
 
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
@@ -47,6 +47,7 @@ export interface ConfirmTarget {
 }
 
 export type CloudAppConfirmationAction =
+  | "BUY_APP_DOMAIN"
   | "DELETE_APP"
   | "REGENERATE_APP_API_KEY"
   | "WITHDRAW_APP_EARNINGS"
@@ -61,6 +62,20 @@ export interface CloudAppConfirmationMetadata {
   appName: string;
   appSlug?: string;
   amount?: number;
+  /**
+   * The confirmed charge in integer USD cents (BUY_APP_DOMAIN) — compared
+   * exactly against the re-checked price at purchase time so the server never
+   * debits a price the user did not confirm.
+   */
+  amountUsdCents?: number;
+  /** The exact domain a pending BUY_APP_DOMAIN confirmation is for. */
+  domain?: string;
+  /**
+   * True when the pending BUY_APP_DOMAIN is a recovery retry of a purchase
+   * that already charged + registered but failed to attach (the server
+   * finishes it without a new charge).
+   */
+  recovery?: boolean;
   cta?: ConnectorCta;
   intentCreatedAt?: string;
   /**
