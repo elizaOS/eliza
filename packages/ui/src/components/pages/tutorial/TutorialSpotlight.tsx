@@ -152,6 +152,10 @@ export function TutorialSpotlight({
       style={{ pointerEvents: "none", zIndex: Z_TUTORIAL }}
       aria-live="polite"
       data-testid="tutorial-spotlight"
+      // Marks this layer as painted above the chat glass so the chat's
+      // outside-tap swallower cedes taps on the card's interactive children
+      // (the root itself is pointer-transparent).
+      data-above-shell-overlay
       data-tutorial-target-missing={targetMissing ? targetSelector : undefined}
     >
       <style>{SPOTLIGHT_KEYFRAMES}</style>

@@ -69,6 +69,7 @@ import { ChatTranscript } from "../composites/chat/chat-transcript";
 import type { ChatMessageData } from "../composites/chat/chat-types";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import { useConversationReset } from "../shell/use-conversation-reset";
+import { pickProblemSessionToAutoFocus } from "./ChatView.terminal-focus";
 import {
   useChatVoiceController,
   useGameModalMessages,
@@ -303,14 +304,20 @@ export function ChatView({
     [setState],
   );
 
-  // Route a problem session into the Terminal channel so the user sees it.
+  // Route a problem session into the Terminal channel so the user sees it —
+  // but only ONCE per transition into error/blocked. "blocked" is a routine,
+  // long-lived "waiting for input" state: without the once-per-transition
+  // guard, closing the panel or selecting a conversation would immediately
+  // bounce the user back to the terminal for as long as the session waits.
+  const handledProblemSessionsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (activeTerminalSessionId) return;
-    const problemSession = ptySessions.find(
-      (s) => s.status === "error" || s.status === "blocked",
+    const sessionId = pickProblemSessionToAutoFocus(
+      ptySessions,
+      activeTerminalSessionId,
+      handledProblemSessionsRef.current,
     );
-    if (problemSession) {
-      focusTerminalSession(problemSession.sessionId);
+    if (sessionId) {
+      focusTerminalSession(sessionId);
     }
   }, [ptySessions, activeTerminalSessionId, focusTerminalSession]);
 

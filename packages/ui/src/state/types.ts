@@ -862,10 +862,11 @@ export interface AppActions {
   loadPlugins: (options?: { silent?: boolean }) => Promise<void>;
   ensurePluginsLoaded: () => Promise<void>;
   handlePluginToggle: (pluginId: string, enabled: boolean) => Promise<void>;
+  /** Resolves true only when the config actually persisted (false = save failed; the caller must keep the user's typed draft). */
   handlePluginConfigSave: (
     pluginId: string,
     config: Record<string, string>,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 
   // Skills
   loadSkills: () => Promise<void>;

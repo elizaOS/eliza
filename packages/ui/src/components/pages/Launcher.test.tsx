@@ -99,7 +99,11 @@ describe("Launcher", () => {
     expect(page.getByTestId("launcher-tile-wallet")).toBeTruthy();
   });
 
-  it("preserves the manual order from a migrated Springboard layout", () => {
+  it("re-seeds the dock when migrating a dock-less Springboard layout (upgrade path)", () => {
+    // A springboard-era layout has favorites [] with no dockCleared marker —
+    // that predates the dock feature, so migration re-seeds chat+settings into
+    // the dock instead of suppressing it forever (#10800 QA). The seeded ids
+    // leave the page grid (an icon lives in exactly one surface).
     window.localStorage.setItem(
       LEGACY_SPRINGBOARD_STORAGE_KEY,
       JSON.stringify({
@@ -111,6 +115,38 @@ describe("Launcher", () => {
 
     render(<Launcher entries={FEW} onLaunch={() => {}} />);
 
+    const dockIds = Array.from(
+      screen
+        .getByTestId("launcher-dock")
+        .querySelectorAll<HTMLElement>('[data-testid^="launcher-tile-"]'),
+    ).map((node) =>
+      node.getAttribute("data-testid")?.replace("launcher-tile-", ""),
+    );
+    expect(dockIds).toEqual(["chat", "settings"]);
+    expect(
+      screen
+        .queryByTestId("launcher-page-0")
+        ?.querySelectorAll('[data-testid^="launcher-tile-"]').length ?? 0,
+    ).toBe(0);
+  });
+
+  it("preserves the manual page order of non-dock ids from a migrated Springboard layout", () => {
+    window.localStorage.setItem(
+      LEGACY_SPRINGBOARD_STORAGE_KEY,
+      JSON.stringify({
+        favorites: [],
+        pages: [["beta", "alpha"]],
+        manual: true,
+      }),
+    );
+
+    render(
+      <Launcher
+        entries={[entry("alpha", "Alpha"), entry("beta", "Beta")]}
+        onLaunch={() => {}}
+      />,
+    );
+
     const tileIds = Array.from(
       screen
         .getByTestId("launcher-page-0")
@@ -118,7 +154,7 @@ describe("Launcher", () => {
     ).map((node) =>
       node.getAttribute("data-testid")?.replace("launcher-tile-", ""),
     );
-    expect(tileIds).toEqual(["settings", "chat"]);
+    expect(tileIds).toEqual(["beta", "alpha"]);
   });
 
   it("marks preview and developer tiles without changing release tiles", () => {

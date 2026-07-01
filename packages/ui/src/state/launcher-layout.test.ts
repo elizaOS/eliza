@@ -162,9 +162,9 @@ describe("launcher-layout persistence", () => {
     expect(readLauncherLayout()).toEqual(layout);
   });
 
-  it("returns an empty layout on malformed storage", () => {
+  it("falls back to the first-run default (seeded dock) on malformed storage", () => {
     window.localStorage.setItem(LAUNCHER_STORAGE_KEY, "{not json");
-    expect(readLauncherLayout()).toEqual(emptyLayout());
+    expect(readLauncherLayout()).toEqual(defaultLayout());
   });
 
   it("migrates a pre-rename 'springboard' layout forward (#9951)", () => {
@@ -228,5 +228,37 @@ describe("launcher-layout default dock (#9144)", () => {
     ]);
     expect(out.favorites).toEqual([]);
     expect(out.pages.flat()).toEqual(["chat", "settings", "activity"]);
+  });
+
+  it("stamps dockCleared when an empty dock is explicitly committed", () => {
+    writeLauncherLayout({ favorites: [], pages: [["a"]] });
+    const stored = JSON.parse(
+      window.localStorage.getItem(LAUNCHER_STORAGE_KEY) ?? "{}",
+    ) as LauncherLayout;
+    expect(stored.dockCleared).toBe(true);
+  });
+
+  it("re-seeds the dock for a pre-dock-era payload (favorites [] without the marker)", () => {
+    // The no-dock era (#10789–#10800) persisted `favorites: []` on every
+    // commit; the product had no clear-dock affordance, so an unmarked empty
+    // dock is residue, not intent — it must not suppress the dock forever.
+    window.localStorage.setItem(
+      LAUNCHER_STORAGE_KEY,
+      JSON.stringify({ favorites: [], pages: [["b", "a"]], manual: true }),
+    );
+    const layout = readLauncherLayout();
+    expect(layout.favorites).toEqual(DEFAULT_LAUNCHER_FAVORITES);
+    expect(layout.pages).toEqual([["b", "a"]]);
+    expect(layout.manual).toBe(true);
+  });
+
+  it("re-seeds the dock when migrating a dock-less springboard-era payload", () => {
+    window.localStorage.setItem(
+      "elizaos.views.springboard",
+      JSON.stringify({ favorites: [], pages: [["d"]] }),
+    );
+    const layout = readLauncherLayout();
+    expect(layout.favorites).toEqual(DEFAULT_LAUNCHER_FAVORITES);
+    expect(layout.pages).toEqual([["d"]]);
   });
 });

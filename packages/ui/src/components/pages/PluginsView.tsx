@@ -405,7 +405,10 @@ function PluginListView({
   const handleConfigSave = async (pluginId: string) => {
     if (pluginId === "__ui-showcase__") return;
     const config = pluginConfigs[pluginId] ?? {};
-    await handlePluginConfigSave(pluginId, config);
+    // Only clear the draft when the save persisted — sensitive params never
+    // echo back from the server, so wiping on failure loses the pasted token.
+    const saved = await handlePluginConfigSave(pluginId, config);
+    if (!saved) return;
     setPluginConfigs((prev) => {
       const next = { ...prev };
       delete next[pluginId];

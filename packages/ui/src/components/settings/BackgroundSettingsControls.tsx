@@ -4,6 +4,7 @@ import {
   ImagePlus,
   Loader2,
   Pipette,
+  Redo2,
   Sparkles,
   Undo2,
 } from "lucide-react";
@@ -76,6 +77,8 @@ export function BackgroundSettingsControls({
     setBackgroundConfig,
     undoBackgroundConfig,
     canUndoBackground,
+    redoBackgroundConfig,
+    canRedoBackground,
   } = useBackgroundConfig();
   const { cloudConnected, cloudAuthRejected } = useAppSelectorShallow((s) => ({
     cloudConnected: s.elizaCloudConnected,
@@ -173,6 +176,14 @@ export function BackgroundSettingsControls({
     description: "Revert to the previous background",
     onActivate: () => undoBackgroundConfig(),
   });
+  const redoButton = useAgentElement<HTMLButtonElement>({
+    id: "background-redo",
+    role: "button",
+    label: "Redo background change",
+    group: "background-controls",
+    description: "Restore the background change that was undone",
+    onActivate: () => redoBackgroundConfig(),
+  });
 
   return (
     <div
@@ -266,6 +277,19 @@ export function BackgroundSettingsControls({
             {...undoButton.agentProps}
           >
             <Undo2 className="h-5 w-5" aria-hidden />
+          </button>
+        ) : null}
+        {canRedoBackground ? (
+          <button
+            ref={redoButton.ref}
+            type="button"
+            onClick={() => redoBackgroundConfig()}
+            title="Redo"
+            aria-label="Redo background change"
+            className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent"
+            {...redoButton.agentProps}
+          >
+            <Redo2 className="h-5 w-5" aria-hidden />
           </button>
         ) : null}
       </div>

@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   User,
   Wallet,
+  Wallpaper,
   Webhook,
 } from "lucide-react";
 import type { ComponentType } from "react";
@@ -31,6 +32,7 @@ import { AdvancedSection } from "./AdvancedSection";
 import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
 import { AppPermissionsSection } from "./AppPermissionsSection";
 import { AppsManagementSection } from "./AppsManagementSection";
+import { BackgroundSettingsSection } from "./BackgroundSettingsSection";
 import { CapabilitiesSection } from "./CapabilitiesSection";
 import { CloudAgentsSection } from "./CloudAgentsSection";
 import { CloudOverviewSection } from "./CloudOverviewSection";
@@ -164,6 +166,14 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     hue: "rose",
     labelKey: "settings.sections.appearance.label",
     Component: AppearanceSettingsSection,
+  },
+  background: {
+    icon: Wallpaper,
+    tone: "neutral",
+    hue: "rose",
+    labelKey: "settings.sections.background.label",
+    // Chrome-light so the live wallpaper shows through while choices apply.
+    Component: BackgroundSettingsSection,
   },
   "remote-plugins": {
     icon: Puzzle,

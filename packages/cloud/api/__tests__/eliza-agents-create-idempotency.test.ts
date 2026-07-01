@@ -63,8 +63,23 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
 
+// Mirror the real exported error so the route's `instanceof` check works.
+class AgentQuotaExceededError extends Error {
+  readonly count: number;
+  readonly max: number;
+  constructor(count: number, max: number) {
+    super(
+      `Agent quota exceeded: your organization already has ${count} active agents (limit ${max}).`,
+    );
+    this.name = "AgentQuotaExceededError";
+    this.count = count;
+    this.max = max;
+  }
+}
+
 mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: { createAgent, updateAgentEnvironment, listAgents },
+  AgentQuotaExceededError,
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
@@ -199,10 +214,50 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     expect(createAgent).toHaveBeenCalledTimes(1);
     const passed = createAgent.mock.calls[0]?.[0] as {
       reuseExistingNonTerminal?: boolean;
+      maxNonTerminalAgents?: number;
     };
     expect(passed.reuseExistingNonTerminal).toBe(false);
+    // #11023: a user-facing forceCreate must be bounded by the org's balance
+    // tier — $100 balance → the top (500) ceiling — so it can't mint unbounded
+    // dedicated containers.
+    expect(passed.maxNonTerminalAgents).toBe(500);
     // A fresh create still provisions normally.
     expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
+  });
+
+  test("#11023: a forceCreate that exceeds the org's per-org quota → 429, no provision job", async () => {
+    // At the credit tier's ceiling, the atomic quota check in createAgent throws;
+    // the route must surface 429 (not 500) and never enqueue provisioning.
+    createAgent.mockRejectedValue(new AgentQuotaExceededError(500, 500));
+
+    const res = await postCreate({
+      agentName: "alpha",
+      dockerImage: "ghcr.io/example/agent:latest",
+      forceCreate: true,
+    });
+
+    // The security-relevant behavior: the quota rejection maps to 429 (not a 500
+    // or a silent success) and NO provisioning is enqueued. (Body serialization
+    // is provided by the worker's onError middleware, not mounted in this bare
+    // test app — matches the sibling 400 test, which also asserts status only.)
+    expect(res.status).toBe(429);
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+    expect(triggerImmediate).not.toHaveBeenCalled();
+  });
+
+  test("#11023: default (no forceCreate) create passes NO cap (uncapped reuse path unchanged)", async () => {
+    const agent = pendingAgent();
+    createAgent.mockResolvedValue({ agent, idempotent: true });
+
+    await postCreate({
+      agentName: "alpha",
+      dockerImage: "ghcr.io/example/agent:latest",
+    });
+
+    const passed = createAgent.mock.calls[0]?.[0] as {
+      maxNonTerminalAgents?: number;
+    };
+    expect(passed.maxNonTerminalAgents).toBeUndefined();
   });
 
   test("forceCreate:true on a SHARED-tier create is rejected (400) — no unmetered shared mint past the reuse guard", async () => {

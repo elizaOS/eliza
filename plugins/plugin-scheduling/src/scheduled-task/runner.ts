@@ -359,12 +359,16 @@ export interface EscalationCursorView {
  *   `task` is the post-mutation state.
  * - `raced` — another tick atomically claimed this task first. Caller drops
  *   the attempt silently; the winning tick's dispatch is authoritative.
- * - `skipped` — the task was skipped without dispatch: global-pause active,
- *   a gate denied, or the task was already terminal and not eligible for
- *   recurrence refire.
- * - `dispatch_failed` — the atomic claim succeeded but the dispatcher threw.
- *   The runner persists the row as `"failed"` and writes a failed state-log
- *   entry so history does not strand the task as successfully fired.
+ * - `skipped` — the task was not delivered on this attempt: global-pause
+ *   active, a gate denied, the task was already terminal and not eligible for
+ *   recurrence refire, or the dispatcher returned a transient
+ *   `DispatchResult { ok: false, retryAfterMinutes }` and the row was
+ *   rescheduled to retry the SAME escalation step.
+ * - `dispatch_failed` — the atomic claim succeeded but the dispatch did not
+ *   reach the user: the dispatcher threw, OR it returned a non-retriable
+ *   `DispatchResult { ok: false }`. Either way the runner persists the row as
+ *   `"failed"`, writes a failed state-log entry, and runs `pipeline.onFail` so
+ *   history does not strand the task as successfully fired.
  */
 export type ScheduledTaskFireResult =
   | { kind: "fired"; task: ScheduledTask }
@@ -943,6 +947,47 @@ export function createScheduledTaskRunner(
     }
   }
 
+  /**
+   * Record a claimed task as `failed` and return the `dispatch_failed`
+   * outcome. Shared by two callers: (1) the dispatcher THREW, and (2) the
+   * dispatcher RETURNED a non-retriable `DispatchResult { ok: false }`. Both
+   * mean the user-visible send did not happen, so history must not strand the
+   * row as successfully `fired`. The failure runs `pipeline.onFail` exactly
+   * like the throw path always has.
+   *
+   * `dispatchResult` is attached to `metadata.lastDispatchResult` on the
+   * returned-failure path so the connector-degradation surface can read the
+   * typed reason; on the throw path there is no result to attach.
+   */
+  async function recordDispatchFailure(
+    claimed: ScheduledTask,
+    failure: { error: Error; dispatchResult?: DispatchResult },
+  ): Promise<ScheduledTaskFireResult> {
+    const reason = `dispatch_failed: ${failure.error.message}`;
+    claimed.state.status = "failed";
+    claimed.state.lastDecisionLog = reason;
+    claimed.metadata = {
+      ...(claimed.metadata ?? {}),
+      lastDispatchError: {
+        name: failure.error.name,
+        message: failure.error.message,
+      },
+      ...(failure.dispatchResult
+        ? { lastDispatchResult: failure.dispatchResult }
+        : {}),
+    };
+    await persist(claimed);
+    await logger.log(claimed.taskId, "failed", {
+      reason,
+      detail: {
+        errorName: failure.error.name,
+        message: failure.error.message,
+      },
+    });
+    await runPipeline(claimed, "failed");
+    return { kind: "dispatch_failed", task: claimed, error: failure.error };
+  }
+
   async function fireWithResult(
     taskId: string,
     args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
@@ -1093,27 +1138,65 @@ export function createScheduledTaskRunner(
       });
     } catch (error) {
       const wrapped = error instanceof Error ? error : new Error(String(error));
-      const reason = `dispatch_failed: ${wrapped.message}`;
-      claimed.state.status = "failed";
-      claimed.state.lastDecisionLog = reason;
-      claimed.metadata = {
-        ...(claimed.metadata ?? {}),
-        lastDispatchError: {
-          name: wrapped.name,
-          message: wrapped.message,
-        },
-      };
-      await persist(claimed);
-      await logger.log(claimed.taskId, "failed", {
-        reason,
-        detail: {
-          errorName: wrapped.name,
-          message: wrapped.message,
-        },
-      });
-      await runPipeline(claimed, "failed");
-      return { kind: "dispatch_failed", task: claimed, error: wrapped };
+      return recordDispatchFailure(claimed, { error: wrapped });
     }
+
+    // A returned `DispatchResult { ok: false }` means the send did NOT reach
+    // the user. It must NOT be recorded as `fired`. Route it by the generic,
+    // spine-owned `retryAfterMinutes` signal the connector layer encodes onto
+    // the result (the connector applies `decideDispatchPolicy` before it
+    // returns): a positive backoff is a transient failure that reschedules the
+    // SAME step (escalation ladder NOT advanced); anything else is a permanent
+    // failure routed through the same `failed` path a throw uses. The runner
+    // stays policy-agnostic — it only reads `ok` and `retryAfterMinutes`.
+    if (dispatchResult && dispatchResult.ok === false) {
+      const retryAfterMinutes =
+        typeof dispatchResult.retryAfterMinutes === "number" &&
+        dispatchResult.retryAfterMinutes > 0
+          ? dispatchResult.retryAfterMinutes
+          : null;
+
+      if (retryAfterMinutes !== null) {
+        // Transient failure → reschedule the same step. The escalation cursor
+        // is left untouched (stepIndex stays at the just-fired position) so the
+        // ladder does not advance; `scheduledOverrideDue` re-fires the row once
+        // `firedAt` passes.
+        const retryAtIso = new Date(
+          now().getTime() + retryAfterMinutes * 60_000,
+        ).toISOString();
+        claimed.state.status = "scheduled";
+        claimed.state.firedAt = retryAtIso;
+        claimed.state.lastDecisionLog = `dispatch retry (${dispatchResult.reason}) in ${retryAfterMinutes}m`;
+        claimed.metadata = {
+          ...(claimed.metadata ?? {}),
+          lastDispatchResult: dispatchResult,
+        };
+        await persist(claimed);
+        await logger.log(claimed.taskId, "snoozed", {
+          reason: `dispatch-retry: ${dispatchResult.reason}`,
+          detail: {
+            retryAfterMinutes,
+            retryAtIso,
+            dispatchReason: dispatchResult.reason,
+          },
+        });
+        return {
+          kind: "skipped",
+          task: claimed,
+          reason: `dispatch-retry:${dispatchResult.reason}`,
+        };
+      }
+
+      // Permanent failure → same terminal path as a thrown dispatcher error.
+      const message = dispatchResult.message
+        ? `${dispatchResult.reason}: ${dispatchResult.message}`
+        : dispatchResult.reason;
+      return recordDispatchFailure(claimed, {
+        error: new Error(message),
+        dispatchResult,
+      });
+    }
+
     if (dispatchResult) {
       claimed.metadata = {
         ...(claimed.metadata ?? {}),

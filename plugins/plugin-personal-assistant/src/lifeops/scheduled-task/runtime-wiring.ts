@@ -45,6 +45,7 @@ import {
 } from "@elizaos/plugin-scheduling";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
+import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import { resolveGlobalPauseStore } from "../global-pause/store.js";
 import {
@@ -288,6 +289,34 @@ function deniedDecisionToDispatchResult(
   };
 }
 
+/**
+ * Apply the runner's dispatch fallback policy to a raw `DispatchResult` before
+ * handing it back to the ScheduledTask runner. This is where
+ * {@link decideDispatchPolicy} is actually exercised in production (it was
+ * previously unit-tested but never wired to a live dispatch): for a
+ * retry-class failure such as `rate_limited` that a connector reported WITHOUT
+ * an explicit `retryAfterMinutes`, the policy supplies the default backoff so
+ * the runner reschedules the same escalation step instead of treating it as a
+ * hard failure. Non-retry decisions leave the result untouched — the runner
+ * reads the spine-owned `ok` / `retryAfterMinutes` fields and routes the rest.
+ */
+function applyDispatchPolicy(result: DispatchResult): DispatchResult {
+  if (result.ok) return result;
+  const decision = decideDispatchPolicy(result, {
+    // A dispatcher issues a single send attempt; ladder advancement and the
+    // step-dependent advance / surface_degraded / fail decisions belong to the
+    // runner, which owns the escalation cursor. Here we only consume the
+    // step-independent retry decision to fill a missing backoff, so a
+    // single-step context is the correct view.
+    currentStepIndex: 0,
+    totalSteps: 1,
+  });
+  if (decision.kind === "retry" && result.retryAfterMinutes === undefined) {
+    return { ...result, retryAfterMinutes: decision.retryAfterMinutes };
+  }
+  return result;
+}
+
 export function createProductionScheduledTaskDispatcher(opts: {
   runtime: IAgentRuntime;
 }): ScheduledTaskDispatcher {
@@ -380,12 +409,12 @@ export function createProductionScheduledTaskDispatcher(opts: {
             messageId: `in_app:${record.taskId}:${record.firedAtIso}`,
           };
         }
-        return {
+        return applyDispatchPolicy({
           ok: false,
           reason: "disconnected",
           userActionable: true,
           message: `Channel "${record.channelKey}" is not connected for send.`,
-        };
+        });
       }
 
       const payload = {
@@ -416,10 +445,10 @@ export function createProductionScheduledTaskDispatcher(opts: {
       });
       if (policyDecision) {
         const denied = deniedDecisionToDispatchResult(policyDecision);
-        if (denied) return denied;
+        if (denied) return applyDispatchPolicy(denied);
       }
 
-      return channel.send(payload);
+      return applyDispatchPolicy(await channel.send(payload));
     },
   };
 }

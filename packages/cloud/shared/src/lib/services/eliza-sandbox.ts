@@ -99,6 +99,32 @@ export interface CreateAgentParams {
    * for one org and must NOT collapse them.
    */
   reuseExistingNonTerminal?: boolean;
+  /**
+   * Ceiling on an org's NON-TERMINAL (`pending`/`provisioning`/`running`,
+   * non-pool) agent sandboxes, enforced ATOMICALLY under the org advisory lock
+   * before a fresh (non-reuse) insert. Prevents a user-facing caller from
+   * minting unbounded dedicated containers on the shared fleet (#11023: a
+   * `forceCreate`+`alwaysOn` loop on a ~$0.11 balance otherwise exhausts the
+   * fleet — the credit gate is threshold-only, never a per-agent debit). The
+   * user-facing `POST /api/v1/eliza/agents` route sets this from the org's
+   * balance tier; trusted internal multi-agent callers leave it unset (uncapped).
+   * A create that would exceed the cap throws {@link AgentQuotaExceededError}.
+   */
+  maxNonTerminalAgents?: number;
+}
+
+/** Thrown by createAgent when a fresh create would exceed `maxNonTerminalAgents`. */
+export class AgentQuotaExceededError extends Error {
+  readonly count: number;
+  readonly max: number;
+  constructor(count: number, max: number) {
+    super(
+      `Agent quota exceeded: your organization already has ${count} active agents (limit ${max}). Delete or stop an agent, or add credits to raise the limit.`,
+    );
+    this.name = "AgentQuotaExceededError";
+    this.count = count;
+    this.max = max;
+  }
 }
 
 export type ProvisionResult =
@@ -642,8 +668,45 @@ export class ElizaSandboxService {
     // Multi-agent-per-org callers (waifu launches, compat) leave the flag unset
     // and keep the plain insert — they legitimately mint several agents per org.
     if (!params.reuseExistingNonTerminal) {
-      const created = await agentSandboxesRepository.create(this.buildAgentInsertData(params));
-      return { agent: created, idempotent: false };
+      // Uncapped fast path for trusted internal multi-agent callers.
+      if (params.maxNonTerminalAgents === undefined) {
+        const created = await agentSandboxesRepository.create(
+          this.buildAgentInsertData(params),
+        );
+        return { agent: created, idempotent: false };
+      }
+
+      // Capped path (#11023): a user-facing forceCreate that bypasses the reuse
+      // guard must still not mint unbounded dedicated containers. Count the org's
+      // non-terminal sandboxes UNDER the same org advisory lock the reuse guard
+      // uses — so the count→insert is atomic and two concurrent creates can't both
+      // read `count = max-1` and both insert — and refuse past the cap.
+      const cap = params.maxNonTerminalAgents;
+      return dbWrite.transaction(async (tx) => {
+        await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+
+        const [{ count } = { count: 0 }] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(agentSandboxes)
+          .where(
+            and(
+              eq(agentSandboxes.organization_id, params.organizationId),
+              sql`${agentSandboxes.pool_status} IS NULL`,
+              sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
+            ),
+          );
+
+        if (count >= cap) {
+          throw new AgentQuotaExceededError(count, cap);
+        }
+
+        const [created] = await tx
+          .insert(agentSandboxes)
+          .values(this.buildAgentInsertData(params))
+          .returning();
+        if (!created) throw new Error("Failed to create agent record");
+        return { agent: created, idempotent: false };
+      });
     }
 
     // Mirrors createCodingContainerAgent: an org-scoped advisory lock + a

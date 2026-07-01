@@ -57,8 +57,14 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 const getBalance = mock();
 const reduceEarnings = mock();
 const addEarnings = mock();
+const hasEarningBySourceId = mock();
 mock.module("@/lib/services/redeemable-earnings", () => ({
-  redeemableEarningsService: { getBalance, reduceEarnings, addEarnings },
+  redeemableEarningsService: {
+    getBalance,
+    reduceEarnings,
+    addEarnings,
+    hasEarningBySourceId,
+  },
 }));
 
 mock.module("@/lib/stripe", () => ({
@@ -100,6 +106,9 @@ beforeEach(() => {
   getBalance.mockReset();
   reduceEarnings.mockReset();
   addEarnings.mockReset();
+  hasEarningBySourceId.mockReset();
+  // Default: no prior compensating refund exists (the common case).
+  hasEarningBySourceId.mockResolvedValue(false);
 
   requireAdmin.mockResolvedValue({ userId: "admin-1" });
   findByUserId.mockResolvedValue({
@@ -223,5 +232,61 @@ describe("Stripe Connect transfer route — money-path invariants (#10279)", () 
     expect(res.status).toBe(409);
     expect(transferToConnectAccount).not.toHaveBeenCalled();
     expect(addEarnings).not.toHaveBeenCalled();
+  });
+
+  // #11022: a DEDUPLICATED debit whose key was already rejected + refunded must
+  // NOT fire a fresh transfer (that double-pays: fiat out + balance kept).
+  test("refuses a same-key retry after a rejected+refunded attempt (deduplicated debit + existing :refund → 409, no transfer)", async () => {
+    reduceEarnings.mockResolvedValue({
+      success: true,
+      newBalance: 100, // balance unchanged: the dedup reused the prior (rolled-back) adjustment
+      ledgerEntryId: "led_1",
+      deduplicated: true,
+    });
+    // A compensating `${key}:refund` earning from the definitively-rejected first
+    // attempt exists → the debit no longer holds funds.
+    hasEarningBySourceId.mockResolvedValue(true);
+
+    const res = await callTransfer(10);
+    const body = (await res.json()) as { success: boolean; error: string };
+
+    expect(res.status).toBe(409);
+    expect(body.success).toBe(false);
+    expect(body.error).toMatch(/fresh idempotency_key/i);
+    // The critical invariant: NO fresh transfer, so no double-pay.
+    expect(transferToConnectAccount).not.toHaveBeenCalled();
+    expect(addEarnings).not.toHaveBeenCalled();
+    // It checked the refund marker keyed on `${key}:refund`.
+    const checkArg = hasEarningBySourceId.mock.calls[0]?.[0] as {
+      sourceId: string;
+      source: string;
+    };
+    expect(checkArg.sourceId).toBe(`${IDEMPOTENCY_KEY}:refund`);
+    expect(checkArg.source).toBe("creator_revenue_share");
+  });
+
+  // The legitimate ambiguous-retry path must still work: a deduplicated debit
+  // with NO prior refund is Stripe's own transfer-idempotency replaying the
+  // single transfer — it must proceed (debited 1×, paid 1×), not be blocked.
+  test("still proceeds on a deduplicated debit when no refund exists (ambiguous-timeout retry, Stripe replays)", async () => {
+    reduceEarnings.mockResolvedValue({
+      success: true,
+      newBalance: 90,
+      ledgerEntryId: "led_1",
+      deduplicated: true,
+    });
+    hasEarningBySourceId.mockResolvedValue(false); // no compensating refund
+    transferToConnectAccount.mockResolvedValue({
+      transferId: "tr_replay",
+      amountCents: 1000,
+    });
+
+    const res = await callTransfer(10);
+    const body = (await res.json()) as { success: boolean; transferId?: string };
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.transferId).toBe("tr_replay");
+    expect(transferToConnectAccount).toHaveBeenCalledTimes(1);
   });
 });
