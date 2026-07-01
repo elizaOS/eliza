@@ -391,7 +391,7 @@ export class JobsRepository {
     type: string;
     organizationId?: string;
     staleThresholdMs: number;
-    maxAttempts: number;
+    maxAttempts?: number;
   }): Promise<number> {
     const staleThreshold = new Date(Date.now() - filters.staleThresholdMs);
     const conditions = [
@@ -416,10 +416,11 @@ export class JobsRepository {
     // Process each stale job, incrementing attempts and failing if max reached
     for (const job of staleJobs) {
       const newAttempts = (job.attempts || 0) + 1;
-      const isFailed = newAttempts >= filters.maxAttempts;
+      const maxAttempts = job.max_attempts ?? filters.maxAttempts ?? 3;
+      const isFailed = newAttempts >= maxAttempts;
       const timeoutError = isFailed
         ? `Job timed out ${newAttempts} times - max attempts reached`
-        : `Job timed out - recovered for retry (attempt ${newAttempts}/${filters.maxAttempts})`;
+        : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
 
       await dbWrite
         .update(jobs)
