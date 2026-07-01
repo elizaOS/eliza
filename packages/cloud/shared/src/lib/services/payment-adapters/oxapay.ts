@@ -65,6 +65,23 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
         throw new Error("OxaPay payment amount must be greater than zero");
       }
 
+      // OxaPay → us settlement callback. The unified rail settles via
+      // /api/v1/oxapay/webhook (markSettled on payment_requests); without an
+      // explicit per-invoice callback OxaPay falls back to the merchant-panel
+      // default, which points at the legacy /api/crypto/webhook and can never
+      // settle a payment_request — the user would pay and never be credited.
+      // So resolve it here and fail invoice creation loudly if we cannot.
+      const env = getCloudAwareEnv();
+      const callbackUrl =
+        readMetaString(request, "callback_url") ??
+        env.OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL ??
+        (env.NEXT_PUBLIC_APP_URL ? `${env.NEXT_PUBLIC_APP_URL}/api/v1/oxapay/webhook` : undefined);
+      if (!callbackUrl) {
+        throw new Error(
+          "OxaPay settlement callback URL unresolved — set NEXT_PUBLIC_APP_URL or OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL so invoices settle via /api/v1/oxapay/webhook",
+        );
+      }
+
       const returnUrl = request.successUrl ?? readMetaString(request, "success_url");
       const invoice = await oxaPayService.createInvoice({
         amount: amountUsd,
@@ -72,7 +89,7 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
         // The order id is our handle back to this payment request on the webhook.
         orderId: request.id,
         description: request.reason ?? readMetaString(request, "product_description"),
-        callbackUrl: readMetaString(request, "callback_url"),
+        callbackUrl,
         returnUrl,
       });
 

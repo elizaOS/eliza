@@ -28,6 +28,8 @@ import {
   type ContainerHealthResponse,
   type ContainerListResponse,
   type ContainerQuotaResponse,
+  type CreateAdSlotInput,
+  type CreateAdSlotResponse,
   type CreateAgentRequest,
   type CreateAgentResponse,
   type CreateAppChargeCheckoutRequest,
@@ -76,6 +78,7 @@ import {
   type JsonObject,
   type LinkAffiliateRequest,
   type LinkAffiliateResponse,
+  type ListAdSlotsResponse,
   type ListAppChargesResponse,
   type ListAppsResponse,
   type ListInfluencersResponse,
@@ -914,6 +917,28 @@ export class ElizaCloudClient {
       {
         json: input,
       },
+    );
+  }
+
+  /**
+   * `POST /api/v1/marketing/inventory` — create an ad slot so an app can earn
+   * from serving ads on its surface (SSP, #10687).
+   */
+  createAdSlot(input: CreateAdSlotInput): Promise<CreateAdSlotResponse> {
+    return this.request<CreateAdSlotResponse>(
+      "POST",
+      "/api/v1/marketing/inventory",
+      {
+        json: input,
+      },
+    );
+  }
+
+  /** `GET /api/v1/marketing/inventory` — list the org's ad slots. */
+  listAdSlots(): Promise<ListAdSlotsResponse> {
+    return this.request<ListAdSlotsResponse>(
+      "GET",
+      "/api/v1/marketing/inventory",
     );
   }
 

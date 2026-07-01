@@ -125,6 +125,14 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
   // back to `draft` so it must be re-submitted before it can keep monetizing.
   // Grandfathered apps (no hash) keep their legacy approval. (Enforcement is
   // airtight regardless via the content-hash check in isAppMonetizationApproved.)
+  //
+  // DECISION (explicit, not an accident): resetting review_status blocks NEW
+  // paid charges and re-enabling monetization immediately, but already-flowing
+  // inference-markup earnings are NOT cut off — they keep accruing until the
+  // re-review lands (grandfather-style). Rationale: markup rides existing usage
+  // of an app that previously passed review; hard-stopping it on every metadata
+  // edit would let a rename freeze a creator's live revenue. A rejected
+  // re-review DOES cut everything off.
   if (existing.review_status === "approved" && existing.review_content_hash) {
     const nextHash = buildReviewCandidate({
       name: updateData.name ?? existing.name,

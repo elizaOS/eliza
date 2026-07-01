@@ -177,6 +177,9 @@ export const bookInfluencerAction: Action = {
           profileId: pending.metadata.appId,
           brief: pending.metadata.brief,
           amount: pending.metadata.amount,
+          // Stable per-confirmation key: a transport-level retry of this
+          // confirm cannot fund a second escrow (server dedupes on it).
+          idempotencyKey: `influencer-confirm-${pending.taskId}`,
         });
         if (!result.success) {
           const msg = result.error
