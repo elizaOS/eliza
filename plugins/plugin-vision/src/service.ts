@@ -212,7 +212,8 @@ interface CameraDevice {
 }
 
 export class VisionService extends Service {
-  static override serviceType: ServiceTypeName = VisionServiceType.VISION;
+  static override serviceType: ServiceTypeName =
+    VisionServiceType.VISION as ServiceTypeName;
   override capabilityDescription =
     "Provides visual perception through camera integration and scene analysis.";
 
