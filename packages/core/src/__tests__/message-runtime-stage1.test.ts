@@ -6,9 +6,14 @@ import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evalu
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
+	GazetteerEntityRecognizer,
+	PseudonymSession,
+} from "../security/index.js";
+import {
 	messageHandlerFromFieldResult,
 	runV5MessageRuntimeStage1,
 } from "../services/message";
+import { runWithTrajectoryContext } from "../trajectory-context";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
@@ -174,6 +179,35 @@ function makeRuntime(
 	} as IAgentRuntime;
 }
 
+function makePiiSession(): PseudonymSession {
+	return new PseudonymSession({
+		salt: "fixed",
+		recognizer: new GazetteerEntityRecognizer([
+			{ kind: "person", value: "Dana Whitfield" },
+			{ kind: "org", value: "Acme Robotics" },
+		]),
+	});
+}
+
+async function seededPiiSession(): Promise<{
+	session: PseudonymSession;
+	dana: string;
+	acme: string;
+}> {
+	const session = makePiiSession();
+	await session.learn("Dana Whitfield works at Acme Robotics.");
+	const dana = session.entries.find(
+		(entry) => entry.value === "Dana Whitfield",
+	)?.surrogate;
+	const acme = session.entries.find(
+		(entry) => entry.value === "Acme Robotics",
+	)?.surrogate;
+	if (!dana || !acme) {
+		throw new Error("PII test session did not mint expected surrogates");
+	}
+	return { session, dana, acme };
+}
+
 describe("runV5MessageRuntimeStage1", () => {
 	it("keeps the message pipeline from laundering missing planner inputs through empty fallbacks", async () => {
 		const source = await readFile(
@@ -256,6 +290,128 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
+		}
+	});
+
+	it("restores PII surrogates at the direct reply boundary only", async () => {
+		const { session, dana, acme } = await seededPiiSession();
+		const redactedReply = `I can email ${dana} at ${acme}.`;
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Direct answer.",
+				contexts: ["simple"],
+				replyText: redactedReply,
+			}),
+		]);
+
+		const result = await runWithTrajectoryContext(
+			{ runId: "pii-direct-reply", piiSwapSession: session },
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage(),
+					state: makeState(),
+					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				}),
+		);
+
+		expect(result.kind).toBe("direct_reply");
+		expect(result.messageHandler.plan.reply).toBe(redactedReply);
+		expect(result.messageHandler.plan.reply).not.toContain("Dana Whitfield");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I can email Dana Whitfield at Acme Robotics.",
+			);
+			expect(result.result.responseMessages[0]?.content.text).toBe(
+				"I can email Dana Whitfield at Acme Robotics.",
+			);
+		}
+	});
+
+	it("restores terminal planner messageToUser while keeping planner context redacted", async () => {
+		const { session, dana } = await seededPiiSession();
+		const earlyRedactedReply = `I'll check ${dana}'s status.`;
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Acknowledge, then plan.",
+				contexts: ["general"],
+				replyText: earlyRedactedReply,
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Finished.",
+				toolCalls: [],
+				messageToUser: `${dana} is available for the renewal call.`,
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runWithTrajectoryContext(
+			{ runId: "pii-planner-message-to-user", piiSwapSession: session },
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage(),
+					state: makeState(),
+					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+					onResponseHandlerEarlyReply: earlyReply,
+				}),
+		);
+
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "I'll check Dana Whitfield's status.",
+			}),
+		);
+		const plannerParams = JSON.stringify(useModelCalls(runtime)[1]?.[1] ?? {});
+		expect(plannerParams).toContain(dana);
+		expect(plannerParams).not.toContain("Dana Whitfield");
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Dana Whitfield is available for the renewal call.",
+			);
+		}
+	});
+
+	it("restores terminal planner REPLY text at final delivery", async () => {
+		const { session, dana } = await seededPiiSession();
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Planner should provide the terminal reply.",
+				contexts: ["general"],
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-1",
+						name: "REPLY",
+						arguments: {
+							text: `I can follow up with ${dana}.`,
+						},
+					},
+				],
+			},
+		]);
+
+		const result = await runWithTrajectoryContext(
+			{ runId: "pii-terminal-reply", piiSwapSession: session },
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage(),
+					state: makeState(),
+					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				}),
+		);
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I can follow up with Dana Whitfield.",
+			);
 		}
 	});
 

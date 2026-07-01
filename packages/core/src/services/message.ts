@@ -6115,7 +6115,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			typeof onResponseHandlerEarlyReply === "function";
 		if (earlyReplySent && typeof onResponseHandlerEarlyReply === "function") {
 			await onResponseHandlerEarlyReply({
-				text: earlyReplyText,
+				text: restorePiiInUserReplyText(earlyReplyText),
 				messageHandler,
 			});
 		}
