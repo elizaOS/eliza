@@ -351,16 +351,15 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // Header (post home↔launcher consolidation, #9450): Maximize + Copy +
-  // Clear on the left, a single Launcher button on the right (the old
-  // Home/Views/Settings trio collapsed into one launcher target). Copy only
-  // shows when there's a thread (the default fixture seeds one).
+  // Header (post home↔launcher consolidation, #9450): Maximize + Clear on the
+  // left, a single Launcher button on the right (the old Home/Views/Settings
+  // trio collapsed into one launcher target). The stray copy-conversation button
+  // was removed in #10713 (#10749), so the FULL header is exactly these three.
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
       (await p.getByTestId("chat-full-clear").count()) === 1 &&
-      (await p.getByTestId("chat-full-copy-conversation").count()) === 1 &&
       (await p.getByTestId("chat-full-launcher").count()) === 1,
-    `[${pointer}] header shows maximize + copy + clear + launcher`,
+    `[${pointer}] header shows maximize + clear + launcher`,
   );
   // Maximize → full-bleed (edge-to-edge): data-maximized flips + panel reaches x=0.
   await p.getByTestId("chat-full-maximize").click();
