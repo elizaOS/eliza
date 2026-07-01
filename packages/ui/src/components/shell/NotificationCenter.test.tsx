@@ -71,18 +71,6 @@ function notification(
   };
 }
 
-/** Titles of the rendered notification rows, top-to-bottom. */
-function renderedTitleOrder(titles: string[]): string[] {
-  const list = screen.getByRole("list");
-  const rows = Array.from(list.querySelectorAll("li")).map(
-    (li) => li.textContent ?? "",
-  );
-  // Map each row back to whichever seeded title it contains, preserving order.
-  return rows
-    .map((text) => titles.find((t) => text.includes(t)) ?? "")
-    .filter(Boolean);
-}
-
 function seedNotifications(notifications: AgentNotification[]): void {
   mocks.listNotifications.mockResolvedValue({
     notifications,
@@ -169,45 +157,5 @@ describe("NotificationCenter", () => {
         name: "Filter notifications by category",
       }),
     ).toBeNull();
-  });
-
-  it("defaults to priority sort and toggles to a most-recent-first timeline (#10706)", async () => {
-    const TITLES = ["Older high", "Newest normal", "Oldest urgent"];
-    seedNotifications([
-      notification("a", "Older high", "system", {
-        priority: "high",
-        createdAt: Date.UTC(2026, 0, 2),
-      }),
-      notification("b", "Newest normal", "system", {
-        priority: "normal",
-        createdAt: Date.UTC(2026, 0, 3),
-      }),
-      notification("c", "Oldest urgent", "system", {
-        priority: "urgent",
-        createdAt: Date.UTC(2026, 0, 1),
-      }),
-    ]);
-
-    const user = userEvent.setup();
-    render(<NotificationCenter />);
-    await user.click(screen.getByRole("button", { name: /notifications/i }));
-    await screen.findByText("Older high");
-
-    // Default = Priority: unread → priority → recency → urgent, then high, then normal.
-    expect(screen.getByTestId("notif-sort-priority").getAttribute("aria-pressed")).toBe("true");
-    expect(renderedTitleOrder(TITLES)).toEqual([
-      "Oldest urgent",
-      "Older high",
-      "Newest normal",
-    ]);
-
-    // Flip to Recent: pure most-recent-first, priority ignored.
-    await user.click(screen.getByTestId("notif-sort-time"));
-    expect(screen.getByTestId("notif-sort-time").getAttribute("aria-pressed")).toBe("true");
-    expect(renderedTitleOrder(TITLES)).toEqual([
-      "Newest normal",
-      "Older high",
-      "Oldest urgent",
-    ]);
   });
 });

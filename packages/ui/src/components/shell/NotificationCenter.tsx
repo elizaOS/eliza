@@ -1,8 +1,10 @@
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import {
+  ArrowDownWideNarrow,
   Bell,
   BellRing,
   CheckCheck,
+  Clock,
   Inbox,
   Trash2,
   X,
@@ -32,7 +34,8 @@ import { rankHomeNotifications } from "../../widgets/home-priority";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
-type NotificationSortMode = "priority" | "time";
+/** Notification list ordering: attention-ranked or strictly newest-first. */
+type SortBy = "priority" | "time";
 
 const CATEGORY_LABEL: Record<NotificationCategory, string> = {
   reminder: "Reminders",
@@ -215,16 +218,27 @@ function FilterChip({
 export function NotificationCenter({
   className,
   headless = false,
+  isPanelMode = false,
+  onNavigate,
 }: {
   className?: string;
   headless?: boolean;
+  /**
+   * Render as the pulled-down notification-center panel (#10706): the full
+   * list with a priority↔time sort toggle in the header, no bell/Popover
+   * wrapper. When false, the floating bell + Popover surface is rendered.
+   */
+  isPanelMode?: boolean;
+  /** Called after a row's deep-link navigation so the panel host can close. */
+  onNavigate?: () => void;
 }): ReactNode {
   const { notifications, unreadCount } = useNotifications();
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
-  // Default to attention-first (unread → priority → recency); the user can flip
-  // to a plain most-recent-first timeline (#10706).
-  const [sortMode, setSortMode] = useState<NotificationSortMode>("priority");
+  // The panel defaults to attention-ranked order (unread → priority → recency);
+  // the toggle flips it to strict newest-first. The Popover/bell surface always
+  // shows raw store order (newest-first insertion), unchanged.
+  const [sortBy, setSortBy] = useState<SortBy>("priority");
 
   // Categories actually present in the inbox, in a stable display order. Drives
   // the filter chips — empty/single-category inboxes get no filter clutter.
@@ -245,13 +259,13 @@ export function NotificationCenter({
       effectiveCategory === "all"
         ? notifications
         : notifications.filter((n) => n.category === effectiveCategory);
-    // Priority: reuse the home ranker (unread → priority → recency) so the two
-    // surfaces agree. Time: a plain most-recent-first timeline. Both are pure +
-    // stable, so equal items never reshuffle between renders.
-    return sortMode === "priority"
-      ? rankHomeNotifications(filtered)
-      : [...filtered].sort((a, b) => b.createdAt - a.createdAt);
-  }, [notifications, effectiveCategory, sortMode]);
+    // The Popover surface keeps raw store order (newest-first insertion). The
+    // panel applies its sort: attention-ranked, or strict newest-createdAt-first.
+    if (!isPanelMode) return filtered;
+    return sortBy === "time"
+      ? [...filtered].sort((a, b) => b.createdAt - a.createdAt)
+      : rankHomeNotifications(filtered);
+  }, [notifications, effectiveCategory, isPanelMode, sortBy]);
 
   // Boot the notification store (hydrate + subscribe to the live stream) and
   // route its interrupt toasts through the shell's ActionNotice. Idempotent —
@@ -270,10 +284,109 @@ export function NotificationCenter({
   }, []);
 
   const hasUnread = unreadCount > 0;
+  const toggleSort = useCallback(
+    () => setSortBy((prev) => (prev === "priority" ? "time" : "priority")),
+    [],
+  );
 
   // Hidden for now: keep the store + toast routing live (the effect above) but
   // render no bell. Drop the `headless` prop to bring the button back.
   if (headless) return null;
+
+  // The list body (empty state + rows) is identical between the panel and the
+  // Popover surface — only the wrapping chrome differs. Rows close the panel on
+  // deep-link navigation via `onNavigate`; the Popover closes itself.
+  const listBody =
+    notifications.length === 0 ? (
+      <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+        <Inbox className="h-7 w-7 text-muted/70" />
+        <span className="text-sm text-muted">You're all caught up</span>
+      </div>
+    ) : (
+      <ul
+        className={cn(
+          "overflow-y-auto p-1.5",
+          isPanelMode ? "flex-1 min-h-0" : "max-h-[min(440px,60vh)]",
+        )}
+      >
+        {visibleNotifications.map((notification) => (
+          <NotificationRow
+            key={notification.id}
+            notification={notification}
+            onClose={() => onNavigate?.()}
+          />
+        ))}
+      </ul>
+    );
+
+  if (isPanelMode) {
+    return (
+      <div
+        data-testid="notification-center-panel"
+        className={cn("flex min-h-0 flex-1 flex-col", className)}
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
+          <span className="text-sm font-semibold text-txt">Notifications</span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="notification-sort-toggle"
+              aria-label={
+                sortBy === "priority"
+                  ? "Sort by time (newest first)"
+                  : "Sort by priority"
+              }
+              title={
+                sortBy === "priority"
+                  ? "Sort by time (newest first)"
+                  : "Sort by priority"
+              }
+              onClick={toggleSort}
+              className="gap-1.5 text-xs text-muted-strong"
+            >
+              {sortBy === "priority" ? (
+                <ArrowDownWideNarrow className="h-4 w-4" />
+              ) : (
+                <Clock className="h-4 w-4" />
+              )}
+              <span>{sortBy === "priority" ? "Priority" : "Time"}</span>
+            </Button>
+            {hasUnread && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Mark all read"
+                title="Mark all read"
+                onClick={handleMarkAll}
+              >
+                <CheckCheck className="h-4 w-4" />
+              </Button>
+            )}
+            {notifications.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Clear all"
+                title="Clear all"
+                onClick={handleClear}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+        {presentCategories.length > 1 && (
+          <CategoryFilterBar
+            categories={presentCategories}
+            active={effectiveCategory}
+            onSelect={setActiveCategory}
+          />
+        )}
+        {listBody}
+      </div>
+    );
+  }
 
   return (
     <Popover>
@@ -341,55 +454,7 @@ export function NotificationCenter({
             onSelect={setActiveCategory}
           />
         )}
-        {notifications.length > 1 && (
-          <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
-            <span className="text-2xs font-medium uppercase tracking-wide text-muted">
-              Sort
-            </span>
-            <div className="ml-auto flex items-center gap-0.5 rounded-md bg-surface p-0.5">
-              {(
-                [
-                  ["priority", "Priority"],
-                  ["time", "Recent"],
-                ] as const
-              ).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  data-testid={`notif-sort-${mode}`}
-                  aria-pressed={sortMode === mode}
-                  onClick={() => setSortMode(mode)}
-                  className={cn(
-                    "rounded px-2 py-0.5 text-2xs font-medium transition-colors",
-                    sortMode === mode
-                      ? "bg-accent/15 text-accent"
-                      : "text-muted hover:text-txt",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {notifications.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-            <Inbox className="h-7 w-7 text-muted/70" />
-            <span className="text-sm text-muted">You're all caught up</span>
-          </div>
-        ) : (
-          <ul className="max-h-[min(440px,60vh)] overflow-y-auto p-1.5">
-            {visibleNotifications.map((notification) => (
-              <NotificationRow
-                key={notification.id}
-                notification={notification}
-                onClose={() => {
-                  /* popover closes on navigation via deep-link below */
-                }}
-              />
-            ))}
-          </ul>
-        )}
+        {listBody}
       </PopoverContent>
     </Popover>
   );

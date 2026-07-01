@@ -61,6 +61,7 @@ import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { NotificationCenter } from "./components/shell/NotificationCenter";
+import { NotificationCenterPanel } from "./components/shell/NotificationCenterPanel";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
@@ -1441,6 +1442,7 @@ type ShellContentProps = {
   viewLayout: ActiveViewLayout | null;
   onClearViewLayout: () => void;
   onNavigateBack: () => void;
+  onNotificationCenterOpen: () => void;
 };
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
@@ -1453,7 +1455,10 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   return (
     <div key="chat-shell" className={APP_SHELL_CLASS_TRANSPARENT}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
-        <HomeScreenMount initialPage="home" />
+        <HomeScreenMount
+          initialPage="home"
+          onNotificationCenterOpen={props.onNotificationCenterOpen}
+        />
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -1612,8 +1617,11 @@ function ContinuousChatOverlayMount(): ReactNode {
  */
 function HomeScreenMount({
   initialPage = "home",
+  onNotificationCenterOpen,
 }: {
   initialPage?: "home" | "launcher";
+  /** Pull-DOWN on the home widget area opens the notification center (#10706). */
+  onNotificationCenterOpen?: () => void;
 }): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
   const { views } = useAvailableViews();
@@ -1645,9 +1653,13 @@ function HomeScreenMount({
   const Home = HomeScreenOverride ?? HomeScreen;
   const home = useMemo(
     () => (
-      <Home onOpenTile={onOpenTile} showNativeOsTiles={isAospShellEnabled()} />
+      <Home
+        onOpenTile={onOpenTile}
+        showNativeOsTiles={isAospShellEnabled()}
+        onNotificationCenterOpen={onNotificationCenterOpen}
+      />
     ),
-    [Home, onOpenTile],
+    [Home, onOpenTile, onNotificationCenterOpen],
   );
   const launcher = useMemo(() => <LauncherSurface />, []);
   return (
@@ -1893,6 +1905,9 @@ export function App() {
 
   const [customActionsPanelOpen, setCustomActionsPanelOpen] = useState(false);
   const [customActionsEditorOpen, setCustomActionsEditorOpen] = useState(false);
+  // The pulled-down notification center (#10706): opened by an iOS-style
+  // pull-DOWN on the home widget area, closed from the panel's close affordance.
+  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<
     string | null
   >(null);
@@ -2167,6 +2182,10 @@ export function App() {
   // shellContent is memoized before early returns to satisfy the Rules of Hooks.
   // Deps are local state/callbacks — not high-frequency AppContext fields like
   // ptySessions/agentStatus — so the shell subtree stays stable across polls.
+  const handleNotificationCenterOpen = useCallback(
+    () => setNotificationCenterOpen(true),
+    [],
+  );
   const shellContent = useMemo(
     () => (
       <ShellContent
@@ -2186,6 +2205,7 @@ export function App() {
         viewLayout={viewLayout}
         onClearViewLayout={handleClearViewLayout}
         onNavigateBack={handleShellBack}
+        onNotificationCenterOpen={handleNotificationCenterOpen}
       />
     ),
     [
@@ -2202,6 +2222,7 @@ export function App() {
       viewLayout,
       handleClearViewLayout,
       handleShellBack,
+      handleNotificationCenterOpen,
     ],
   );
 
@@ -2428,12 +2449,18 @@ export function App() {
             only when the tutorial is active (launched from the home Tutorial
             tile or the Help view). */}
         <TutorialOverlay />
-        {/* Notification center, headless for now: the visible bell is hidden,
-            but this still self-boots the notification store (hydrate + live
-            stream) and routes interrupt toasts through ActionNotice. Restore
-            the floating bell by rendering <NotificationCenter /> in a
-            top-right fixed wrapper again (HomePill owns bottom-center). */}
+        {/* Notification center store/toast boot: the visible bell is hidden,
+            but this headless instance self-boots the notification store
+            (hydrate + live stream) and routes interrupt toasts through
+            ActionNotice — it must stay mounted even while the panel is closed
+            so notifications keep flowing. The pulled-down panel below hosts the
+            visible list (#10706), mounting its own NotificationCenter only when
+            open. */}
         <NotificationCenter headless />
+        <NotificationCenterPanel
+          isOpen={notificationCenterOpen}
+          onClose={() => setNotificationCenterOpen(false)}
+        />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

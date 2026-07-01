@@ -14,6 +14,7 @@ import { cn } from "../../lib/utils";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
+import { usePullGesture } from "./use-pull-gesture";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -144,6 +145,12 @@ export interface HomeScreenProps {
    * without the framework providing one.
    */
   clockAccessory?: React.ReactNode;
+  /**
+   * Open the notification center. When provided, an iOS-style pull-DOWN gesture
+   * on the home widget area invokes it (#10706). Distinct from the chat sheet's
+   * bottom grabber, which owns its own pull handling on a separate element.
+   */
+  onNotificationCenterOpen?: () => void;
 }
 
 /**
@@ -161,6 +168,7 @@ export function HomeScreen({
   onOpenTile,
   showNativeOsTiles = false,
   clockAccessory,
+  onNotificationCenterOpen,
 }: HomeScreenProps): React.JSX.Element {
   // Only the AOSP native-OS tiles remain, and they need an AOSP build. On every
   // other platform `tiles` is empty and the grid renders nothing.
@@ -172,10 +180,47 @@ export function HomeScreen({
   const enterClass = useEnterOnceClass();
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
+  const homeScreenRef = useRef<HTMLDivElement>(null);
+  const pullStartedAtTopRef = useRef(true);
+
+  // iOS-style pull-DOWN on the home widget area opens the notification center
+  // (#10706). `swipeEnabled: false` keeps this purely vertical, and the gesture
+  // axis-locks vertical at ~8px + releases pointer capture the instant a drag
+  // commits horizontal — so the parent home↔launcher horizontal pager keeps its
+  // left/right swipes, and the chat sheet's bottom grabber (a separate element)
+  // keeps its own pull handling. The pull-down only opens when the gesture
+  // starts at scrollTop 0 so a normal downward scroll in overflowing home
+  // content never summons the panel.
+  const pullBinding = usePullGesture({
+    onPullDown: () => {
+      if (
+        pullStartedAtTopRef.current &&
+        (homeScreenRef.current?.scrollTop ?? 0) <= 0
+      ) {
+        onNotificationCenterOpen?.();
+      }
+    },
+    swipeEnabled: false,
+    distanceThreshold: 80,
+  });
+  // Only bind the pull handlers when a consumer wired the open callback; the
+  // fixture / hosts without a notification center leave the div gesture-free.
+  const pullHandlers = onNotificationCenterOpen
+    ? {
+        ...pullBinding,
+        onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
+          pullStartedAtTopRef.current =
+            (homeScreenRef.current?.scrollTop ?? 0) <= 0;
+          pullBinding.onPointerDown(event);
+        },
+      }
+    : undefined;
 
   return (
     <div
+      ref={homeScreenRef}
       data-testid="home-screen"
+      {...pullHandlers}
       className={cn(
         "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
         // The shell root already reserves the status-bar safe area (its
