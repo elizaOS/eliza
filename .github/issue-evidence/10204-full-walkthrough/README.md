@@ -44,8 +44,9 @@ by hand:
   (Thumbnails point at the run-dir PNGs, so open it against a local run for
   images; the per-step data + jump links work standalone.)
 - `<viewport>/steps.json` — the per-step manifest (route, viewport, DOM markers,
-  assertions, per-step console/network diagnostics, gate result, timestamps).
-- `<viewport>/logs/` — console + network logs.
+  assertions, per-step `newConsoleErrors` / `newServerErrors`, the run `gate`
+  result, timestamps). The console/network `.log` files stay gitignored; their
+  gated contents are surfaced here (both empty this run — a green gate).
 
 **Manual review:** all **25 steps captured on both viewports, none skipped**, and
 **both gates are green** (`ok: true`, 0 console/page errors, 0 5xx — see each
