@@ -284,6 +284,47 @@ describe("deductCredits — debits the same org ledger", () => {
     expect(refund.metadata.reason).toBe("post_debit_accounting_failed");
     expect(refund.metadata.originalChargeTransactionId).toBe("tx-2");
   });
+
+  // #10846: when the failure happens AFTER creator earnings are committed (the
+  // apps aggregate-counter update throws), compensating only the consumer would
+  // leave the creator holding `creatorMarkup` of unbacked redeemable earnings.
+  // The catch must ALSO reverse those earnings.
+  test("reverses committed creator earnings when the apps-counter update throws post-earnings", async () => {
+    reserveAndDeductCredits.mockResolvedValue({
+      success: true,
+      newBalance: 41.4,
+      transaction: { id: "tx-2" },
+    });
+    // trackAppUserActivity + recordCreatorEarnings (addInferenceEarnings /
+    // createTransaction / addEarnings) all succeed (defaults) — so the creator's
+    // app-earnings + redeemable balance ARE committed...
+    // ...then the very next write, the apps aggregate-counter update, throws.
+    whereMock.mockRejectedValueOnce(new Error("apps counter update failed"));
+
+    await expect(
+      freshService().deductCredits({
+        appId: APP_ID,
+        userId: USER_ID,
+        baseCost: 1, // 10% markup → creatorMarkup = 0.10, totalCost = 1.10
+        description: "inference",
+      }),
+    ).rejects.toThrow("apps counter update failed");
+
+    // Consumer is made whole (the full $1.10).
+    expect(addCredits).toHaveBeenCalledTimes(1);
+    expect(addCredits.mock.calls[0][0].amount).toBeCloseTo(1.1, 10);
+
+    // AND the committed creator earnings are reversed — the two stores
+    // recordCreatorEarnings incremented: the app-earnings ledger gets a NEGATIVE
+    // adjustment, and the creator's redeemable balance is reduced. Without the
+    // fix, neither of these fires and unbacked earnings are minted.
+    const negativeAppEarnings = addInferenceEarnings.mock.calls.filter(
+      (c) => typeof c[1] === "number" && c[1] < 0,
+    );
+    expect(negativeAppEarnings.length).toBe(1);
+    expect(negativeAppEarnings[0][1]).toBeCloseTo(-0.1, 10);
+    expect(reduceEarnings).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("reconcileCredits — charges/refunds the estimate↔actual delta (#9145)", () => {
