@@ -32,3 +32,15 @@ it (see the commit message for the full finding list).
 
 Companion per-view captures regenerate deterministically via
 `bun run packages/ui/src/components/**/__e2e__/run-*.mjs`.
+
+## Full-app audit (post-fix, this branch)
+
+`bun run --cwd packages/app audit:app` — **349/349 view×viewport combos passed;
+broken=0, needs-work=0, needs-eyeball=212, good=136, minimalism-budget-failures=0**
+(the audit walks every builtin + plugin view at mobile-portrait, mobile-landscape,
+desktop-landscape, and ipad-portrait). Curated captures:
+
+| file | view |
+|------|------|
+| `audit-chat-desktop.png` / `audit-chat-mobile.png` | chat view, desktop + mobile |
+| `audit-settings-desktop.png` / `audit-settings-mobile.png` | settings view (incl. new Background section entry) |
