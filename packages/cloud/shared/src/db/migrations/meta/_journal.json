@@ -1086,6 +1086,13 @@
       "when": 1780446000000,
       "tag": "0156_app_earnings_withdrawal_idempotency_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1780532400000,
+      "tag": "0157_ad_slots_ssp",
+      "breakpoints": true
     }
   ]
 }

@@ -94,6 +94,9 @@ const publicPathPrefixes = [
   "/api/v1/track",
   "/api/v1/discovery",
   "/api/v1/domains/resolve",
+  // Public SSP ad-serve + click tracking, consumed by miniapp ad tags.
+  "/api/v1/marketing/inventory/serve",
+  "/api/v1/marketing/inventory/click",
   // Legacy birdeye proxy is a 308 redirect to /api/v1/apis/birdeye/*. The
   // redirect itself is public so unauthenticated clients learn the new URL;
   // the target /api/v1/apis/birdeye is still auth-gated.
