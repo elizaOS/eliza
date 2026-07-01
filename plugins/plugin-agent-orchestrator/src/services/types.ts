@@ -184,6 +184,9 @@ export interface SessionStore {
 }
 
 export interface SessionStoreRuntime {
+  /** Modern eliza runtime exposes the DB adapter as `runtime.adapter`. */
+  adapter?: unknown;
+  /** Legacy alias kept for pre-2026 runtimes and custom container harnesses. */
   databaseAdapter?: unknown;
   logger?: {
     warn?: (message: string, ...args: unknown[]) => void;
