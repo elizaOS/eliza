@@ -103,8 +103,7 @@ export function CloudAgentsSection() {
   const [wakingId, setWakingId] = useState<string | null>(null);
   const activeId = useMemo(() => activeCloudAgentId(), []);
 
-  const cloudApiBase =
-    getBootConfig().cloudApiBase || "https://www.elizacloud.ai";
+  const cloudApiBase = getBootConfig().cloudApiBase || "https://elizacloud.ai";
 
   const refresh = useCallback(async () => {
     setLoading(true);

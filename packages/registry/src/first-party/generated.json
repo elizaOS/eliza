@@ -2044,7 +2044,7 @@
           "type": "url",
           "required": false,
           "sensitive": false,
-          "default": "https://www.elizacloud.ai/api/v1",
+          "default": "https://elizacloud.ai/api/v1",
           "label": "Cloud Base Url",
           "help": "Base URL for all ElizaOS Cloud API requests.",
           "advanced": false
@@ -8254,7 +8254,7 @@
           "type": "url",
           "required": false,
           "sensitive": false,
-          "default": "https://www.elizacloud.ai/api/v1/twitter",
+          "default": "https://elizacloud.ai/api/v1/twitter",
           "label": "Broker URL",
           "help": "Eliza Cloud X (Twitter) broker base URL. Override only to point at a self-hosted broker; otherwise leave the default.",
           "advanced": true,

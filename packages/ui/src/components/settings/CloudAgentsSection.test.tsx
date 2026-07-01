@@ -72,7 +72,7 @@ vi.mock("../../api/client-cloud", () => ({
 }));
 
 vi.mock("../../config/boot-config", () => ({
-  getBootConfig: () => ({ cloudApiBase: "https://www.elizacloud.ai" }),
+  getBootConfig: () => ({ cloudApiBase: "https://elizacloud.ai" }),
 }));
 
 vi.mock("../../config/branding", () => ({
