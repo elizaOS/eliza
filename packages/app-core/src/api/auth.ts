@@ -13,6 +13,8 @@ import { resolveApiToken } from "@elizaos/shared";
 import { type AuthIdentityRow, AuthStore } from "../services/auth-store.js";
 import {
   type EmbedSessionClaims,
+  type EmbedSessionSecretRuntime,
+  readEmbedSessionSecretSetting,
   resolveEmbedSessionSecret,
   verifyEmbedSessionToken,
 } from "./auth/embed-session-token.js";
@@ -28,7 +30,9 @@ import { sendJsonError } from "./response.js";
 export { tokenMatches } from "./auth/tokens.js";
 
 interface CompatStateLike {
-  current: { adapter?: { db?: unknown } | null } | null;
+  current:
+    | (EmbedSessionSecretRuntime & { adapter?: { db?: unknown } | null })
+    | null;
 }
 
 /**
@@ -220,6 +224,7 @@ export async function ensureCompatApiAuthorizedAsync(
   options: {
     store: import("../services/auth-store").AuthStore;
     now?: number;
+    readSetting?: (key: string) => unknown;
     /**
      * Skip CSRF enforcement for routes that ALWAYS handle CSRF themselves
      * (e.g. login routes that mint the cookie, where there is no prior
@@ -288,7 +293,7 @@ export async function ensureCompatApiAuthorizedAsync(
     // Embed session token (cross-origin Mini App / Activity iframe): a valid,
     // unexpired token minted by /api/embed/auth authenticates the verified
     // OWNER/ADMIN principal. Bearer-only, so CSRF-exempt like the paths above.
-    if (resolveEmbedPrincipal(req, options.now)) {
+    if (resolveEmbedPrincipal(req, options.now, options.readSetting)) {
       return true;
     }
   }
@@ -556,7 +561,9 @@ async function resolveAuthorizedRouteRole(
     // Embed session token → its verified boundary role (OWNER→OWNER,
     // ADMIN→USER). Fails closed on a tampered/expired token or no secret.
     const embedRole = embedBoundaryRole(
-      resolveEmbedPrincipal(req, options.now),
+      resolveEmbedPrincipal(req, options.now, (key) =>
+        readEmbedSessionSecretSetting(state.current, key),
+      ),
     );
     if (embedRole) {
       return { ok: true, role: embedRole };
@@ -650,5 +657,6 @@ export async function ensureRouteAuthorized(
     store,
     now: options.now,
     skipCsrf: options.skipCsrf,
+    readSetting: (key) => readEmbedSessionSecretSetting(state.current, key),
   });
 }

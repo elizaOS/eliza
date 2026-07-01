@@ -1,11 +1,14 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AuthStore } from "../services/auth-store";
+import { ensureCompatApiAuthorizedAsync } from "./auth";
 import { verifyEmbedSessionToken } from "./auth/embed-session-token";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
 
 const EMBED_SECRET = "embed-secret-at-least-16-chars";
+const EMBED_ENTITY_ID = "11111111-1111-1111-1111-111111111111";
 
 // No module mocks: both collaborators are supplied directly. The request body
 // is delivered as the pre-parsed `req.body` the rawPath plugin-route adapter
@@ -13,6 +16,11 @@ const EMBED_SECRET = "embed-secret-at-least-16-chars";
 // is dependency-injected. Module mocks (vi.mock) race under app-core's vmForks
 // pool at full-suite parallelism, which previously hung/failed this file.
 const verifyEmbedLaunch = vi.fn();
+
+const noSessionStore = {
+  findSession: async () => null,
+  findIdentity: async () => null,
+} as unknown as AuthStore;
 
 function fakeRes() {
   let bodyText = "";
@@ -47,6 +55,21 @@ function fakeReq(
   return req;
 }
 
+function authReq(token: string): http.IncomingMessage {
+  const req = new http.IncomingMessage(new Socket());
+  req.method = "GET";
+  req.headers = {
+    host: "localhost:2138",
+    "x-forwarded-for": "203.0.113.9",
+    authorization: `Bearer ${token}`,
+  };
+  Object.defineProperty(req.socket, "remoteAddress", {
+    value: "203.0.113.9",
+    configurable: true,
+  });
+  return req;
+}
+
 const runtimeState = (current: unknown): CompatRuntimeState =>
   ({
     current,
@@ -65,6 +88,13 @@ const call = (
 
 beforeEach(() => {
   verifyEmbedLaunch.mockReset();
+  delete process.env.ELIZA_EMBED_SESSION_SECRET;
+  delete process.env.ELIZA_API_TOKEN;
+});
+
+afterEach(() => {
+  delete process.env.ELIZA_EMBED_SESSION_SECRET;
+  delete process.env.ELIZA_API_TOKEN;
 });
 
 describe("handleEmbedAuthRoutes", () => {
@@ -138,7 +168,7 @@ describe("handleEmbedAuthRoutes", () => {
   it("200 with the verified principal on success", async () => {
     verifyEmbedLaunch.mockResolvedValue({
       ok: true,
-      entityId: "11111111-1111-1111-1111-111111111111",
+      entityId: EMBED_ENTITY_ID,
       role: "OWNER",
       adminMode: true,
     });
@@ -166,14 +196,14 @@ describe("handleEmbedAuthRoutes", () => {
       expiresAt: number;
     };
     expect(body).toMatchObject({
-      entityId: "11111111-1111-1111-1111-111111111111",
+      entityId: EMBED_ENTITY_ID,
       role: "OWNER",
       adminMode: true,
     });
     // The minted scoped token round-trips to the same verified principal.
     expect(typeof body.token).toBe("string");
     const decoded = verifyEmbedSessionToken(body.token, EMBED_SECRET);
-    expect(decoded?.entityId).toBe("11111111-1111-1111-1111-111111111111");
+    expect(decoded?.entityId).toBe(EMBED_ENTITY_ID);
     expect(decoded?.role).toBe("OWNER");
     // The handshake is called with the live runtime + the parsed input.
     expect(verifyEmbedLaunch).toHaveBeenCalledWith(
@@ -204,5 +234,73 @@ describe("handleEmbedAuthRoutes", () => {
     );
     expect(r.status()).toBe(200);
     expect((r.body() as { token: unknown }).token).toBeNull();
+  });
+
+  it("mints an env-only token that the API auth gate accepts", async () => {
+    process.env.ELIZA_EMBED_SESSION_SECRET = EMBED_SECRET;
+    verifyEmbedLaunch.mockResolvedValue({
+      ok: true,
+      entityId: EMBED_ENTITY_ID,
+      role: "OWNER",
+      adminMode: true,
+    });
+    const runtime = {
+      agentId: "agent",
+      getSetting: () => undefined,
+    };
+    const r = fakeRes();
+    await call(
+      fakeReq("POST", "/api/embed/auth", {
+        platform: "telegram",
+        signedLaunchPayload: "valid",
+      }),
+      r.res,
+      runtimeState(runtime),
+    );
+
+    const body = r.body() as { token: string; expiresAt: number };
+    expect(typeof body.token).toBe("string");
+    const ok = await ensureCompatApiAuthorizedAsync(
+      authReq(body.token),
+      fakeRes().res,
+      { store: noSessionStore, now: body.expiresAt - 1 },
+    );
+    expect(ok).toBe(true);
+  });
+
+  it("mints a runtime-only token that the API auth gate accepts through the same reader", async () => {
+    verifyEmbedLaunch.mockResolvedValue({
+      ok: true,
+      entityId: EMBED_ENTITY_ID,
+      role: "OWNER",
+      adminMode: true,
+    });
+    const runtime = {
+      agentId: "agent",
+      getSetting: (key: string) =>
+        key === "ELIZA_EMBED_SESSION_SECRET" ? EMBED_SECRET : undefined,
+    };
+    const r = fakeRes();
+    await call(
+      fakeReq("POST", "/api/embed/auth", {
+        platform: "telegram",
+        signedLaunchPayload: "valid",
+      }),
+      r.res,
+      runtimeState(runtime),
+    );
+
+    const body = r.body() as { token: string; expiresAt: number };
+    expect(typeof body.token).toBe("string");
+    const ok = await ensureCompatApiAuthorizedAsync(
+      authReq(body.token),
+      fakeRes().res,
+      {
+        store: noSessionStore,
+        now: body.expiresAt - 1,
+        readSetting: runtime.getSetting,
+      },
+    );
+    expect(ok).toBe(true);
   });
 });

@@ -44,6 +44,10 @@ export const EMBED_SESSION_SECRET_KEYS = [
 /** Minimum secret length; a shorter value is treated as unconfigured. */
 export const EMBED_SESSION_SECRET_MIN_LENGTH = 16;
 
+export interface EmbedSessionSecretRuntime {
+  getSetting?: (key: string) => unknown;
+}
+
 /**
  * Resolve the embed-session HMAC secret from a settings reader (the runtime's
  * `getSetting` at mint time, or `process.env` on the auth path). The mint and
@@ -65,6 +69,37 @@ export function resolveEmbedSessionSecret(
     }
   }
   return null;
+}
+
+/**
+ * Read an embed-session secret key from the runtime first, then from the real
+ * process env. Runtime settings win when set, but env-only deployments also
+ * work for keys intentionally not forwarded into character settings.
+ */
+export function readEmbedSessionSecretSetting(
+  runtime: EmbedSessionSecretRuntime | null | undefined,
+  key: string,
+  env: Record<string, string | undefined> = process.env,
+): unknown {
+  const runtimeValue = runtime?.getSetting?.(key);
+  if (typeof runtimeValue === "string" && runtimeValue.trim()) {
+    return runtimeValue;
+  }
+  const envValue = env[key];
+  if (typeof envValue === "string" && envValue.trim()) {
+    return envValue;
+  }
+  return runtimeValue;
+}
+
+/** Resolve the shared mint/verify secret from runtime settings or process env. */
+export function resolveEmbedSessionSecretForRuntime(
+  runtime: EmbedSessionSecretRuntime | null | undefined,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  return resolveEmbedSessionSecret((key) =>
+    readEmbedSessionSecretSetting(runtime, key, env),
+  );
 }
 
 function base64url(input: Buffer | string): string {
