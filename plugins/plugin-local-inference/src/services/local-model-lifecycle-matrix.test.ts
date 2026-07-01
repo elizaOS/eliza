@@ -157,6 +157,44 @@ describe("buildLocalModelLifecycleMatrix", () => {
 		expect(matrix.summary.failingRows).toBeGreaterThan(0);
 	});
 
+	it("allows CPU fallback when the detected accelerator is unsupported by the tier", () => {
+		const matrix = buildLocalModelLifecycleMatrix({
+			catalog: [catalogModel({ id: "eliza-1-2b", displayName: "eliza-1-2B" })],
+			installed: [],
+			assignments: {},
+			hardware: hardware({
+				gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 24 },
+			}),
+			observedAt: "2026-07-01T00:00:00.000Z",
+		});
+
+		const text = matrix.rows.find((row) => row.component === "text");
+		expect(text?.runtime.supportedBackends).not.toContain("cuda");
+		expect(text?.runtime.expectedPrimaryBackend).toBe("cpu");
+		expect(text?.runtime.cpuFallbackAllowed).toBe(true);
+		expect(text?.checks.backendPolicy.status).toBe("skipped");
+		expect(text?.checks.backendPolicy.detail).toContain(
+			"not supported by this model tier",
+		);
+	});
+
+	it("uses an accelerator when the host and tier support the same backend", () => {
+		const matrix = buildLocalModelLifecycleMatrix({
+			catalog: [catalogModel({ id: "eliza-1-2b", displayName: "eliza-1-2B" })],
+			installed: [],
+			assignments: {},
+			hardware: hardware({
+				gpu: { backend: "vulkan", totalVramGb: 8, freeVramGb: 8 },
+			}),
+			observedAt: "2026-07-01T00:00:00.000Z",
+		});
+
+		const text = matrix.rows.find((row) => row.component === "text");
+		expect(text?.runtime.expectedPrimaryBackend).toBe("vulkan");
+		expect(text?.runtime.cpuFallbackAllowed).toBe(false);
+		expect(text?.checks.backendPolicy.status).toBe("pass");
+	});
+
 	it("fails expected components that are not advertised by the catalog", () => {
 		const model = catalogModel({
 			sourceModel: {

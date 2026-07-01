@@ -291,11 +291,17 @@ function installedById(
 }
 
 function expectedPrimaryBackend(
-	backends: ReadonlyArray<Eliza1Backend>,
+	deviceBackends: ReadonlyArray<Eliza1Backend>,
+	supportedBackends: ReadonlyArray<Eliza1Backend> = [
+		...ACCELERATED_BACKEND_ORDER,
+		"cpu",
+	],
 ): Eliza1Backend {
 	return (
-		ACCELERATED_BACKEND_ORDER.find((backend) => backends.includes(backend)) ??
-		"cpu"
+		ACCELERATED_BACKEND_ORDER.find(
+			(backend) =>
+				deviceBackends.includes(backend) && supportedBackends.includes(backend),
+		) ?? "cpu"
 	);
 }
 
@@ -464,17 +470,27 @@ function loadRunCheck(installed: InstalledModel | undefined): LifecycleCheck {
 
 function backendPolicyCheck(
 	deviceBackends: ReadonlyArray<Eliza1Backend>,
+	supportedBackends: ReadonlyArray<Eliza1Backend>,
 	expectedBackend: Eliza1Backend,
 ): LifecycleCheck {
 	if (expectedBackend === "cpu") {
+		const detectedAccelerators = ACCELERATED_BACKEND_ORDER.filter((backend) =>
+			deviceBackends.includes(backend),
+		);
+		if (detectedAccelerators.length === 0) {
+			return status(
+				"skipped",
+				"no accelerated backend was detected; CPU fallback is allowed",
+			);
+		}
 		return status(
 			"skipped",
-			"no accelerated backend was detected; CPU fallback is allowed",
+			`detected accelerators (${detectedAccelerators.join(", ")}) are not supported by this model tier (supported: ${supportedBackends.join(", ")}); CPU fallback is allowed`,
 		);
 	}
 	return status(
 		"pass",
-		`accelerated backend ${expectedBackend} is available; CPU must not be the default (device backends: ${deviceBackends.join(", ")})`,
+		`accelerated backend ${expectedBackend} is available and supported; CPU must not be the default (device backends: ${deviceBackends.join(", ")}, supported: ${supportedBackends.join(", ")})`,
 	);
 }
 
@@ -523,6 +539,11 @@ export function buildLocalModelLifecycleMatrix(
 				`catalog model disappeared while building ${artifact.key}`,
 			);
 		}
+		const supportedBackends = supportedBackendsForModel(model);
+		const rowPrimaryBackend = expectedPrimaryBackend(
+			deviceBackends,
+			supportedBackends,
+		);
 		const installed = byInstalledId.get(model.id);
 		const componentPath = installed
 			? componentPathFor(installed, artifact)
@@ -543,7 +564,11 @@ export function buildLocalModelLifecycleMatrix(
 		);
 		const installedStatus = installedCheck(installed, fileCheck);
 		const loadRun = loadRunCheck(installed);
-		const backend = backendPolicyCheck(deviceBackends, primaryBackend);
+		const backend = backendPolicyCheck(
+			deviceBackends,
+			supportedBackends,
+			rowPrimaryBackend,
+		);
 		const row: LocalModelLifecycleRow = {
 			...artifact,
 			publishStatus,
@@ -552,10 +577,10 @@ export function buildLocalModelLifecycleMatrix(
 			runtime: {
 				preferredBackend: model.runtime?.preferredBackend ?? null,
 				requiredKernels: model.runtime?.optimizations?.requiresKernel ?? [],
-				supportedBackends: supportedBackendsForModel(model),
+				supportedBackends,
 				deviceBackends,
-				expectedPrimaryBackend: primaryBackend,
-				cpuFallbackAllowed: primaryBackend === "cpu",
+				expectedPrimaryBackend: rowPrimaryBackend,
+				cpuFallbackAllowed: rowPrimaryBackend === "cpu",
 			},
 			local: {
 				installed: Boolean(installed),
