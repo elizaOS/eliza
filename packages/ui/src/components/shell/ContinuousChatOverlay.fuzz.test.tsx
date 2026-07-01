@@ -779,3 +779,91 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
     assertInvariants("send-commits-open");
   });
 });
+
+// ── Extended long-path adversarial fuzz (longer paths, input variety) ─────────
+// A senior-QA / adversarial pass on top of the state-machine matrix above: LONG
+// seeded random walks (150 steps each, 6 seeds = 900 driven interactions) that
+// interleave every gesture / keyboard / backdrop action with a corpus of
+// ADVERSARIAL composer inputs (empty, whitespace, 5k chars, emoji + CJK + RTL,
+// markup, control chars, multiline, symbol soup). After EVERY step the full
+// invariant set must hold; whenever the composer is live it must round-trip the
+// exact input; and after the whole storm the sheet must recover to a usable,
+// unstuck composer. Reproduces deterministically per seed.
+describe("ContinuousChatOverlay — long adversarial random walk", () => {
+  const ADVERSARIAL_INPUTS: readonly string[] = [
+    "",
+    "   ",
+    "\n\n\t  ",
+    "hi",
+    "the quick brown fox jumps over the lazy dog",
+    "a".repeat(5000),
+    "😀🎉🔥 emoji · 你好世界 · مرحبا بالعالم",
+    "<script>alert('xss')</script>",
+    "line one\nline two\nline three",
+    "```ts\nconst x = 1;\n```",
+    "  padded surface  ",
+    "\u001b[31mansi\u001b[0m control",
+    "@#$%^&*(){}[]|\\/<>?~`",
+  ];
+
+  const walkActions: Array<() => void> = [
+    () => grabber() && tap(grabber() as Element, 180),
+    () => grabber() && flickUp(grabber() as Element),
+    () => grabber() && flickDown(grabber() as Element),
+    () => grabber() && slowDrag(grabber() as Element, 420, 200),
+    () => grabber() && slowDrag(grabber() as Element, 200, 420),
+    () => tap(pill(), 400),
+    () => flick(pill(), 420, 400),
+    focusReal,
+    blurReal,
+    () => fireEvent.keyDown(input(), { key: "Enter" }),
+    () => fireEvent.keyDown(input(), { key: "Enter", shiftKey: true }),
+    () => fireEvent.keyDown(input(), { key: "Escape" }),
+    () => fireEvent.click(backdrop()),
+    () => fireEvent.pointerDown(document.body),
+    () => {
+      const b = screen.queryByTestId("chat-full-maximize");
+      if (b) fireEvent.click(b);
+    },
+    () => {
+      const b = screen.queryByTestId("chat-full-clear");
+      if (b) fireEvent.click(b);
+    },
+  ];
+
+  for (const seed of [1, 7, 42, 101, 2718, 31337]) {
+    it(`seed ${seed}: 150-step walk keeps invariants + round-trips input + recovers`, () => {
+      render(<ContinuousChatOverlay controller={makeController()} />);
+      let s = seed >>> 0;
+      const rand = () => {
+        s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff;
+        return s / 0x7fffffff;
+      };
+      for (let step = 0; step < 150; step += 1) {
+        if (rand() < 0.3) {
+          const payload =
+            ADVERSARIAL_INPUTS[Math.floor(rand() * ADVERSARIAL_INPUTS.length)];
+          // The composer is live in every detent except the collapsed pill.
+          if (detentOf() !== "pill") {
+            fireEvent.change(input(), { target: { value: payload } });
+            expect(
+              input().value,
+              `seed ${seed} step ${step} input round-trip`,
+            ).toBe(payload);
+          }
+        } else {
+          walkActions[Math.floor(rand() * walkActions.length)]();
+        }
+        assertInvariants(`seed ${seed} step ${step}`);
+      }
+      // No stuck state after the storm: reach a live composer and round-trip.
+      if (detentOf() === "pill") tap(pill(), 400);
+      focusReal();
+      fireEvent.change(input(), { target: { value: "recovered" } });
+      expect(input().value, `seed ${seed} recovered composer`).toBe(
+        "recovered",
+      );
+      assertInvariants(`seed ${seed} recovered`);
+    });
+  }
+});
