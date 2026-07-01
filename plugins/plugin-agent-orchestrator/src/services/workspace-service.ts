@@ -69,7 +69,7 @@ import {
 export type { AuthPromptCallback } from "./workspace-github.js";
 
 import { readConfigEnvKey } from "./config-env.js";
-import { normalizeRepositoryInput } from "./repo-input.js";
+import { assertSafeGitRemote, normalizeRepositoryInput } from "./repo-input.js";
 import {
   commit as gitCommit,
   createPR as gitCreatePR,
@@ -357,16 +357,13 @@ export class CodingWorkspaceService {
       workspace: CloneOverrideWorkspace,
       token?: string,
     ) => {
+      const safeRepo = assertSafeGitRemote(
+        normalizeRepositoryInput(workspace.repo),
+      );
       await new Promise<void>((resolve, reject) => {
         execFile(
           "git",
-          [
-            "clone",
-            "--branch",
-            workspace.branch.baseBranch,
-            normalizeRepositoryInput(workspace.repo),
-            ".",
-          ],
+          ["clone", "--branch", workspace.branch.baseBranch, safeRepo, "."],
           {
             cwd: workspace.path,
             env: gitHubTokenEnv(workspace.repo, token),
@@ -412,8 +409,14 @@ export class CodingWorkspaceService {
     }
 
     // Normalize common shorthand like owner/repo before handing it to the
-    // lower-level clone service, which expects an actual remote URL.
-    const repo = normalizeRepositoryInput(options.repo);
+    // lower-level clone service, which expects an actual remote URL. Then hard-
+    // gate the result: this is the single chokepoint before the repo string
+    // reaches BOTH `resolveDefaultBranch` (git ls-remote) and the dependency's
+    // provision() — including its unauthenticated clone path, which interpolates
+    // the remote into a shell `git clone`. `installCredentialSafeClone` only
+    // overrides the credentialed clone, so this gate is what protects the
+    // public/no-token path from git-remote command injection.
+    const repo = assertSafeGitRemote(normalizeRepositoryInput(options.repo));
     const executionId = options.execution?.id ?? `exec-${Date.now()}`;
     const taskId = options.task?.id ?? `task-${Date.now()}`;
     const userCredentials = this.resolveUserCredentials(

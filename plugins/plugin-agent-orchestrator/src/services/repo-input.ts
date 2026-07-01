@@ -85,6 +85,88 @@ export function normalizeRepositoryInput(repo: string): string {
   return withoutTrailingSlash;
 }
 
+/** Thrown by {@link assertSafeGitRemote} when a repo string is unsafe to hand
+ * to `git` as a positional remote argument. */
+export class UnsafeGitRemoteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsafeGitRemoteError";
+  }
+}
+
+// A remote-helper transport prefix like `ext::`, `fd::`, `foo::` — the `ext`
+// helper executes an arbitrary shell command, so `git clone 'ext::sh -c "…"'`
+// is remote code execution. Matches a scheme-like leading token immediately
+// followed by `::`. Deliberately does NOT match IPv6 URL literals such as
+// `https://[::1]/repo` (there the `::` is not preceded by a bare leading token).
+const GIT_TRANSPORT_HELPER_RE = /^[A-Za-z][A-Za-z0-9+.-]*::/;
+// Only https / http / ssh URL transports are allowed. `file:` (local repo
+// disclosure) and `git:` (unauthenticated, MITM-able) are rejected.
+const ALLOWED_GIT_URL_SCHEME_RE = /^(?:https?|ssh):\/\//i;
+// scp-style SSH remote: `[user@]host:path`, with a single `:` (not `::`, which
+// would be a transport helper) and no whitespace.
+const SCP_LIKE_REMOTE_RE = /^[^\s@:]+@[^\s:]+:(?!:)[^\s]+$/;
+
+/**
+ * Validate that a repository string is safe to pass to `git` as a positional
+ * remote argument, returning it unchanged when safe and throwing
+ * {@link UnsafeGitRemoteError} otherwise.
+ *
+ * The coding orchestrator clones repos on behalf of sub-agents whose task text
+ * is model/attacker-influenced. Without this gate a repo string reaches
+ * `git clone` / `git ls-remote` verbatim — including the underlying
+ * git-workspace-service unauthenticated clone path, which interpolates the
+ * remote into a shell `git clone` — and git exposes several code-exec /
+ * disclosure vectors through the remote argument:
+ *  - `ext::sh -c "…"` (and any `<helper>::…`) runs an arbitrary command;
+ *  - a leading `-` (e.g. `--upload-pack=…`) is parsed as a git *option*
+ *    (argument injection);
+ *  - `file://…` clones an arbitrary local repository (info disclosure);
+ *  - shell metacharacters (`;`, `|`, `$(…)`, backticks, whitespace) reach the
+ *    shell used by the dependency's unauthenticated clone.
+ *
+ * This is the application-level allowlist half of a defense-in-depth pair;
+ * callers should also spawn git with `GIT_ALLOW_PROTOCOL` restricted.
+ */
+export function assertSafeGitRemote(repo: string): string {
+  const value = repo.trim();
+  if (!value) {
+    throw new UnsafeGitRemoteError("Git remote is empty.");
+  }
+  if (value.startsWith("-")) {
+    throw new UnsafeGitRemoteError(
+      `Git remote may not begin with "-" (argument injection): ${repo}`,
+    );
+  }
+  if (GIT_TRANSPORT_HELPER_RE.test(value)) {
+    throw new UnsafeGitRemoteError(
+      `Git remote uses an unsupported transport helper (e.g. ext::/fd::): ${repo}`,
+    );
+  }
+  if (/\s/.test(value)) {
+    throw new UnsafeGitRemoteError(
+      `Git remote may not contain whitespace: ${repo}`,
+    );
+  }
+  // Shell command-substitution / metacharacters have no legitimate place in a
+  // git remote. The unauthenticated clone path in git-workspace-service runs
+  // `git clone … <remote> …` through a shell (promisify(exec)), and URL
+  // normalization percent-encodes some but NOT all of these (a literal `$(…)`
+  // survives), so reject them at the allowlist. Backtick, `$`, `;`, `|`, `&`,
+  // `<`, `>`, quotes, and parens are all disallowed.
+  if (/[`$;|&<>()'"\\]/.test(value)) {
+    throw new UnsafeGitRemoteError(
+      `Git remote contains shell metacharacters: ${repo}`,
+    );
+  }
+  if (ALLOWED_GIT_URL_SCHEME_RE.test(value) || SCP_LIKE_REMOTE_RE.test(value)) {
+    return value;
+  }
+  throw new UnsafeGitRemoteError(
+    `Git remote is not an https/http/ssh URL or an ssh scp-style remote: ${repo}`,
+  );
+}
+
 export function diagnoseWorkspaceBootstrapFailure(
   repo: string,
   errorMessage: string,
