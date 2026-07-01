@@ -619,6 +619,19 @@ class CryptoPaymentsService {
         organizationId: payment.organization_id,
         amount: receivedDecimal.toNumber(),
         description: `Crypto payment (${payCurrency} on ${payment.network})`,
+        // Grant the credit INSIDE the confirmation transaction so it commits
+        // atomically with the status="confirmed" flip: a throw later in the tx
+        // (invoice insert conflict, referral split, etc.) rolls the credit back
+        // together with the status, instead of leaving credits committed on the
+        // global connection while the row reverts to "pending" and gets
+        // reprocessed. And key it on the stable per-payment id (as the adjacent
+        // app-purchase path already does) so the SQL-level dedupe makes a re-credit
+        // of the same payment a no-op. Without both, a partial post-credit failure
+        // followed by a reprocess (e.g. the user-pollable status endpoint) could
+        // double-credit — or, if the invoice's unique id already committed,
+        // repeatedly re-credit — one crypto payment.
+        stripePaymentIntentId: `crypto:${payment.id}`,
+        db: tx,
         metadata: {
           crypto_payment_id: payment.id,
           transaction_hash: txHash,
