@@ -3464,7 +3464,7 @@ export const allActionsSpec = {
 		{
 			name: "ALARM",
 			description:
-				"Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Subaction inferred from message text when not explicitly provided.",
+				"Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Pass the operation as the structured `action` parameter; when omitted it is inferred from the other structured params (a schedule payload → set, an id → cancel, otherwise list).",
 			parameters: [
 				{
 					name: "action",
@@ -3481,14 +3481,14 @@ export const allActionsSpec = {
 				{
 					name: "subaction",
 					description:
-						"Operation to perform: set, cancel, or list. Inferred from message text when omitted.",
+						"Operation to perform: set, cancel, or list. Inferred from the other structured parameters when omitted.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["set", "cancel", "list"],
 					},
 					descriptionCompressed:
-						"Operation to perform: set, cancel, or list. Inferred from msg text when omitted.",
+						"Operation to perform: set, cancel, or list. Inferred from the other structured params when omitted.",
 				},
 				{
 					name: "timeIso",
@@ -6697,6 +6697,8 @@ export const allActionsSpec = {
 							"queue_clear",
 							"playlist_play",
 							"playlist_save",
+							"playlist_delete",
+							"playlist_add",
 							"search",
 							"play_query",
 							"download",
@@ -6733,13 +6735,14 @@ export const allActionsSpec = {
 				},
 				{
 					name: "playlistName",
-					description: "Playlist name for playlist_play / playlist_save.",
+					description:
+						"Playlist name for playlist_play / playlist_save / playlist_delete / playlist_add.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Playlist name for playlist_play/playlist_save.",
+						"Playlist name for playlist_play/playlist_save/playlist_delete/playlist_add.",
 				},
 				{
 					name: "song",
@@ -6816,6 +6819,15 @@ export const allActionsSpec = {
 					descriptionCompressed: "Routing target ids.",
 				},
 				{
+					name: "targetId",
+					description: "Single routing or zone target id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Single routing or zone target id.",
+				},
+				{
 					name: "prompt",
 					description:
 						"Suno generation prompt for action=generate/custom_generate.",
@@ -6889,7 +6901,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
+				"Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save/playlist_delete/playlist_add, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
 			similes: [
 				"GENERATE_MUSIC",
 				"CREATE_MUSIC",
@@ -6915,6 +6927,7 @@ export const allActionsSpec = {
 							mode: "example",
 							sourceId: "example",
 							targetIds: "example",
+							targetId: "example",
 							prompt: "example",
 							audio_id: "example",
 							duration: 30,
@@ -10463,16 +10476,73 @@ export const allActionsSpec = {
 		{
 			name: "XR_RESIZE_VIEW",
 			description:
-				"Resizes or repositions the active XR view panel. Accepts scale (0.5 = half, 2.0 = double) and distance.",
-			parameters: [],
+				"Resizes or repositions the active XR view panel. Set scale (0.5 = half, 1.0 = default, 2.0 = double), distance in meters (1.5 = default, smaller = closer), or fullscreen.",
+			parameters: [
+				{
+					name: "scale",
+					description:
+						"Panel scale multiplier — e.g. 1.5 for bigger, 0.6 for smaller, 1.0 default.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Panel scale multiplier - e. g. 1. 5 for bigger, 0. 6 for smaller, 1. 0 default.",
+				},
+				{
+					name: "distance",
+					description:
+						"Panel distance from the user in meters — e.g. 0.8 for closer, 2.5 for farther, 1.5 default.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Panel distance from user in meters - e. g. 0. 8 for closer, 2. 5 for farther, 1. 5 default.",
+				},
+				{
+					name: "fullscreen",
+					description: "Set true to fullscreen the panel.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Set true to fullscreen the panel.",
+				},
+				{
+					name: "viewId",
+					description:
+						"Optional id of the view/panel to resize; defaults to the active panel.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional id of the view/panel to resize. defaults to the active panel.",
+				},
+			],
 			similes: [
 				"RESIZE_XR_PANEL",
 				"XR_MAKE_BIGGER",
 				"XR_MAKE_SMALLER",
 				"XR_SCALE",
 			],
+			exampleCalls: [
+				{
+					user: "Use XR_RESIZE_VIEW with the provided parameters.",
+					actions: ["XR_RESIZE_VIEW"],
+					params: {
+						XR_RESIZE_VIEW: {
+							scale: 1,
+							distance: 1,
+							fullscreen: false,
+							viewId: "example",
+						},
+					},
+				},
+			],
 			descriptionCompressed:
-				"Resizes or repositions the active XR view panel. Accepts scale (0. 5 = half, 2. 0 = double) and distance.",
+				"Resizes or repositions the active XR view panel. Set scale (0. 5 = half, 1. 0 = default, 2. 0 = double), distance in meters (1. 5 = default, smaller =...",
 		},
 		{
 			name: "XR_SWITCH_VIEW",
