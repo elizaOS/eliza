@@ -235,11 +235,22 @@ describe("extractPartnerClaim", () => {
     ["Bob is my husband", "Bob", "husband"],
     ["Sam is my partner", "Sam", "partner"],
     ["this is Jill, my wife", "Jill", "wife"],
+    // Label-before-name phrasing must bind the name, not mint a "this" entity.
+    ["this is my wife Jill", "Jill", "wife"],
+    ["this is my husband Bob", "Bob", "husband"],
+    // A single trailing name token — must not over-capture the verb.
+    ["my husband Bob just called", "Bob", "husband"],
   ])("extracts %s → %s + %s", (input, name, label) => {
     const claim = extractPartnerClaim(input);
     expect(claim?.name).toBe(name);
     expect(claim?.label).toBe(label);
     expect(claim?.type).toBe("partner_of");
+  });
+
+  it("never returns a stopword ('this') as the partner name", () => {
+    const claim = extractPartnerClaim("this is my wife Jill");
+    expect(claim?.name).toBe("Jill");
+    expect(claim?.name).not.toBe("this");
   });
 
   it("returns null on no claim", () => {
