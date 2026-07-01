@@ -239,7 +239,10 @@ export async function adoptRotatedCodexTokens(
     // older materialized copy (e.g. the account was re-linked via OAuth after
     // that session ran) would clobber a fresh login with dead tokens.
     const materializedAt = Date.parse(parsed.last_refresh ?? "");
-    if (!Number.isFinite(materializedAt) || materializedAt <= record.updatedAt) {
+    if (
+      !Number.isFinite(materializedAt) ||
+      materializedAt <= record.updatedAt
+    ) {
       return false;
     }
     // Prefer the access token's own exp claim; an undecodable token is saved

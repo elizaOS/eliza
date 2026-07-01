@@ -12,8 +12,8 @@ import { Service, ServiceType } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import {
   accountMetaFromSessionMetadata,
-  classifyAccountFailure,
   type CodingAccountFailureKind,
+  classifyAccountFailure,
   getCodingAccountBridge,
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
@@ -991,8 +991,8 @@ export class SubAgentRouter extends Service {
         : stateLostExhausted
           ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.loopState.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
           : capExceeded
-          ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.loopState.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
-          : composeNarration(event, origin.label, session, data, changeSet),
+            ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.loopState.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
+            : composeNarration(event, origin.label, session, data, changeSet),
     );
     // Fact-check any URLs the sub-agent claimed. Weak coding models
     // routinely report "the app is live at <url>" without writing the

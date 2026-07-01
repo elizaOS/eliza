@@ -18,10 +18,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  loadAccount,
-  saveAccount,
-} from "@elizaos/agent/auth/account-storage";
+import { loadAccount, saveAccount } from "@elizaos/agent/auth/account-storage";
 import type { AccountCredentialProvider } from "@elizaos/agent/auth/types";
 import { writeJsonAtomicSync } from "@elizaos/agent/utils/atomic-json";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -168,16 +165,11 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
   it("refuses to clobber a FRESHER canonical login with a stale materialized copy", async () => {
     // The user re-linked via OAuth after the old session ran: canonical is
     // newer than the materialized copy and must win.
-    writeAccount(
-      "openai-codex",
-      "codex-work",
-      {
-        access: "fresh-login-access",
-        refresh: "rt-fresh-login",
-        expires: Date.now() + 8 * HOUR_MS,
-      },
-      { updatedAt: Date.now() },
-    );
+    writeAccount("openai-codex", "codex-work", {
+      access: "fresh-login-access",
+      refresh: "rt-fresh-login",
+      expires: Date.now() + 8 * HOUR_MS,
+    });
     writeMaterializedCodexAuth(
       "codex-work",
       { access_token: "stale", refresh_token: "rt-stale-session" },
