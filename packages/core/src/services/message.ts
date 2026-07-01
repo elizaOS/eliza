@@ -1406,6 +1406,7 @@ type FailureReplyAttempt =
 export {
 	buildFailureReplyPrompt,
 	isAuthError,
+	isModelProviderFallbackError,
 	isRateLimitError,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
