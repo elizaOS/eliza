@@ -678,3 +678,32 @@ and was independently re-run green before commit.
 surfaces, each proven to fail on a concrete regression. The remaining checklist GAP items
 (the largest being home-shell variants, per-section provider panels, and connector detail
 panels) continue via the batch loop.
+
+### 9c. Phase-5 close-out — batches 6–8 + two full larp-review passes
+
+| Batch | Surfaces | Tests |
+| --- | --- | ---: |
+| 6 | CompactOnboarding, LoginView, TutorialOverlay, HelpView, workflow/music/messages/feed widgets | 95 |
+| 7 | ProviderRoutingPanel, ApiKeyConfig, CapabilitiesSection, RuntimeSettings, VaultInventory, CustomActionsPanel, MessageAttachments, priority-widget nav | 115 |
+| 8 | LauncherSurface, AssistantOverlay, ChatSurface, DesktopWorkspaceSection, CloudAgentsSection, RelationshipsDocumentsPanel, InventoryAppView, TrainingDashboard | 110 |
+
+**Total UI/agent behavioral tests added/strengthened this session: ~757**, across ~71
+previously zero/thin-coverage surfaces (launcher, every settings sub-section, chat, shell,
+dashboard/widgets, data views, onboarding/auth, cloud/desktop, wallet, training).
+
+**Two larp-review passes** (the "no slop" bar):
+1. Per-batch adversarial LarpVerify on every new file → all verdict=real before commit.
+2. A final corpus-wide audit of **all 78 session test files** → 70 clean, **14 weak spots
+   (0 larp)**, every one fixed: dropped tautological substring checks, replaced generic
+   role=status with distinguishing aria-labels, turned two zero-`expect()` no-throw tests
+   into explicit `resolves.not.toThrow`, asserted keystroke-swallow via `preventDefault`,
+   cross-checked a live-query count against an independent DB read, renamed over-claiming
+   tests, and re-rendered-with-store-flip to prove a switch is genuinely store-controlled.
+
+Every test proven to fail on a concrete regression (mutation-verified where load-bearing).
+Real production bugs found and fixed/flagged along the way: cloud 500-on-bad-JSON → 400,
+widget hover no-op, dead wake-word toggle in Settings, a render-loop test hang, no
+confirm-gate on destructive SQL, unguarded catalog-launch/run-now double-fire, no
+empty-name validation in IdentitySettings. The fail-without-fix discipline also caught and
+corrected larp in this campaign's OWN tests (SSRF throw-mask, background empty-history-undo,
++ the 14 above). CI larp-gate (`audit:test-larp-gate`) guards against regression.
