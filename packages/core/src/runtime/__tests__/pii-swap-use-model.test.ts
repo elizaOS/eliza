@@ -314,6 +314,44 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 		expect(seenPrompt).not.toContain("1600 Amphitheatre Parkway");
 	});
 
+	it("composes with the secret-swap layer (both enabled): secret → placeholder, name → surrogate", async () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "PiiSwapAgent",
+				bio: "test",
+				secrets: { WEBHOOK_SECRET: "whsec_composeSecret1234567890" },
+				settings: {
+					ELIZA_PII_SWAP_ENABLED: true,
+					ELIZA_SECRET_SWAP_ENABLED: true,
+				},
+			} as Character,
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);
+		let seenPrompt = "";
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_rt, params: { prompt: string }) => {
+				seenPrompt = params.prompt;
+				return "ok";
+			},
+			"test",
+		);
+
+		await runtime.useModel(ModelType.TEXT_SMALL, {
+			prompt:
+				"Send WEBHOOK_SECRET=whsec_composeSecret1234567890 to Dana Whitfield.",
+		});
+
+		// The two layers do not clobber each other: the secret becomes an opaque
+		// placeholder, the name becomes a realistic surrogate; neither is real.
+		expect(seenPrompt).not.toContain("whsec_composeSecret1234567890");
+		expect(seenPrompt).not.toContain("Dana Whitfield");
+		expect(seenPrompt).toMatch(/__ELIZA_SECRET_/);
+		expect(seenPrompt).toMatch(/to [A-Z][a-z]+ [A-Z][a-z]+\./);
+	});
+
 	it("is a pure no-op when disabled", async () => {
 		const runtime = makeRuntime(false);
 		let seenPrompt = "";
