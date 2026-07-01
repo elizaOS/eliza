@@ -129,12 +129,16 @@ jobs:
         timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
+        working-directory: /tmp
         run: |
           set -euo pipefail
-          mkdir -p "$CHECKOUT_DIR"
-          git init "$CHECKOUT_DIR"
-          git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-            || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          init_checkout_dir() {
+            mkdir -p "$CHECKOUT_DIR"
+            git init -q "$CHECKOUT_DIR"
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          }
+          init_checkout_dir
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
@@ -146,7 +150,11 @@ jobs:
               break
             fi
             echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            sleep 10
+            if [ "$attempt" -lt 2 ]; then
+              rm -rf "$CHECKOUT_DIR"
+              sleep 10
+              init_checkout_dir
+            fi
           done
           [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
@@ -378,12 +386,16 @@ jobs:
         timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
+        working-directory: /tmp
         run: |
           set -euo pipefail
-          mkdir -p "$CHECKOUT_DIR"
-          git init "$CHECKOUT_DIR"
-          git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-            || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          init_checkout_dir() {
+            mkdir -p "$CHECKOUT_DIR"
+            git init -q "$CHECKOUT_DIR"
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          }
+          init_checkout_dir
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
@@ -399,7 +411,11 @@ jobs:
               break
             fi
             echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            sleep 10
+            if [ "$attempt" -lt 2 ]; then
+              rm -rf "$CHECKOUT_DIR"
+              sleep 10
+              init_checkout_dir
+            fi
           done
           [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
@@ -662,12 +678,16 @@ jobs:
         timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
+        working-directory: /tmp
         run: |
           set -euo pipefail
-          mkdir -p "$CHECKOUT_DIR"
-          git init "$CHECKOUT_DIR"
-          git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-            || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          init_checkout_dir() {
+            mkdir -p "$CHECKOUT_DIR"
+            git init -q "$CHECKOUT_DIR"
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          }
+          init_checkout_dir
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
@@ -683,7 +703,11 @@ jobs:
               break
             fi
             echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            sleep 10
+            if [ "$attempt" -lt 2 ]; then
+              rm -rf "$CHECKOUT_DIR"
+              sleep 10
+              init_checkout_dir
+            fi
           done
           [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
