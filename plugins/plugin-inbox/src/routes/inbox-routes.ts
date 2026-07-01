@@ -128,6 +128,10 @@ async function handleTriageWrite(
 async function inboxRouteHandler(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
+  if (ctx.isTrustedLocal !== true) {
+    return json(403, { ok: false, error: "Inbox routes are owner-only" });
+  }
+
   const path = ctx.path;
   if (path === "/api/lifeops/inbox/triage") {
     return ctx.method === "POST"
