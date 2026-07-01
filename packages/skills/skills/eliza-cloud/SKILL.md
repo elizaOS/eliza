@@ -215,9 +215,12 @@ advertiser exactly once, and credit the publisher's redeemable earnings).
 
 Booking is **escrowed**: the advertiser's org credits are debited when the offer
 is funded, released to the influencer on approval, or refunded on
-reject/cancel — every move gated by an atomic booking-status transition.
-`BOOK_INFLUENCER` never moves money on the first ask; it funds only on an
-explicit structured confirmation.
+reject/cancel (the influencer can decline from `offered` or `accepted`). Every
+money move is idempotent on the booking id and runs before the status
+finalizes, so a failed payout/refund leaves a retryable state and a retry moves
+money at most once. `BOOK_INFLUENCER` never moves money on the first ask; it
+funds only on an explicit structured confirmation (and sends a per-confirmation
+idempotency key so a transport retry cannot fund twice).
 
 Together with managed **frontend hosting** (publish a full app site via
 `DEPLOY_FRONTEND` / `/api/v1/apps/{id}/frontend`), this is the complete agent
