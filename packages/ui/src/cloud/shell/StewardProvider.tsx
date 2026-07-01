@@ -73,6 +73,35 @@ function shouldLoadStewardRuntime(pathname: string): boolean {
   );
 }
 
+/**
+ * Suspense fallback for the lazy `@stwd/*` runtime chunk. It must NOT render the
+ * page children: reaching this branch means `needsStewardRuntime` is true, so the
+ * children depend on Steward auth context (e.g. `AuthorizeContent` calls
+ * `useAuth()`). Rendering them before `StewardProvider` is in the tree throws
+ * "useAuth must be used within a <StewardProvider>" (#10680). Show a neutral
+ * loading state until the runtime resolves, then the real tree renders.
+ */
+function StewardRuntimeLoading() {
+  return (
+    <main
+      aria-busy="true"
+      aria-live="polite"
+      role="status"
+      style={{
+        alignItems: "center",
+        background: "#f8f4ef",
+        color: "#2f261f",
+        display: "flex",
+        justifyContent: "center",
+        minHeight: "100vh",
+        padding: "24px",
+      }}
+    >
+      <span style={{ fontSize: 16 }}>Loading…</span>
+    </main>
+  );
+}
+
 function StewardConfigError() {
   return (
     <main
@@ -162,7 +191,7 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Suspense fallback={children}>
+    <Suspense fallback={<StewardRuntimeLoading />}>
       <StewardAuthRuntimeProvider apiUrl={apiUrl} tenantId={tenantId}>
         {children}
       </StewardAuthRuntimeProvider>
