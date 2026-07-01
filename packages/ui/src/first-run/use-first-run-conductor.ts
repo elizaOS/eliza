@@ -141,6 +141,21 @@ function cloudOAuthSecretRequest(
   };
 }
 
+interface FirstRunTurnWriter {
+  seedTurn(turn: ConversationMessage): void;
+  replaceTurn(id: string, next: ConversationMessage): void;
+}
+
+export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
+  const connectTurn = makeTurn(
+    "first-run:cloud-oauth",
+    "Connect your Eliza Cloud account to continue, then pick Eliza Cloud again.",
+    { secretRequest: cloudOAuthSecretRequest("failed") },
+  );
+  writer.seedTurn(connectTurn);
+  writer.replaceTurn("first-run:cloud-oauth", connectTurn);
+}
+
 export function useFirstRunConductor(): void {
   const {
     firstRunComplete,
@@ -323,22 +338,16 @@ export function useFirstRunConductor(): void {
             outcome.agents.map((a) => ({ id: a.agent_id, name: a.agent_name })),
           );
           return;
-        case "needs-cloud-login":
-          replaceTurn(
-            "first-run:cloud-oauth",
-            makeTurn(
-              "first-run:cloud-oauth",
-              "Connect your Eliza Cloud account to continue, then pick Eliza Cloud again.",
-              { secretRequest: cloudOAuthSecretRequest("failed") },
-            ),
-          );
+        case "needs-cloud-login": {
+          surfaceCloudLoginRetryTurn({ seedTurn, replaceTurn });
           return;
+        }
         case "error":
           seedError(outcome.message);
           return;
       }
     },
-    [seedTutorial, seedCloudAgentChoice, replaceTurn, seedError],
+    [seedTutorial, seedCloudAgentChoice, seedTurn, replaceTurn, seedError],
   );
 
   const handleFirstRunAction = React.useCallback(
