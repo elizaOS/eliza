@@ -348,4 +348,180 @@ describe("MessageAttachments — unsafe-URL handling (security/error path)", () 
       document.querySelector('img[src="https://x/cat.png"]'),
     ).not.toBeNull();
   });
+
+  // SVG is a script-capable active type. Even a `data:image/svg+xml` payload —
+  // which naively matches the `image/` prefix — must be neutralized to the
+  // non-clickable card and never emitted as href/src. The existing suite covers
+  // `data:text/html`; this closes the SVG active-type gap explicitly.
+  for (const url of [
+    "data:image/svg+xml,<svg onload=alert(1)></svg>",
+    "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+    "https://x/logo.svg", // an .svg over http() is a served asset — still safe.
+  ]) {
+    it(`handles the SVG active type for ${url.slice(0, 24)}...`, () => {
+      const { container } = render(
+        <MessageAttachments
+          attachments={[{ id: "svg", url, contentType: "image", title: "s" }]}
+        />,
+      );
+      if (url.startsWith("data:")) {
+        // data: SVG is script-capable → neutralized, never handed to the DOM.
+        expect(screen.getByTestId("unsafe-attachment")).not.toBeNull();
+        expect(container.querySelector("img")).toBeNull();
+        const emitted = Array.from(
+          container.querySelectorAll("[href],[src]"),
+        ).map((el) => el.getAttribute("href") ?? el.getAttribute("src"));
+        expect(emitted).not.toContain(url);
+      } else {
+        // A served https .svg is a normal image tile (the scheme is safe).
+        expect(screen.queryByTestId("unsafe-attachment")).toBeNull();
+        expect(
+          container.querySelector(`img[src="${url}"]`),
+        ).not.toBeNull();
+      }
+    });
+  }
+});
+
+// The kind + preview-kind derivation must work off `mimeType` alone, for
+// connectors that give a served/opaque URL (no file extension) and omit the
+// coarse `contentType`. Each tile is asserted by its download affordance —
+// the native `<a download="…">` anchor is this renderer's transport-aware
+// download path on web (there is no download-share indirection here; that util
+// belongs to FilesView, not this component).
+describe("MessageAttachments — mimeType-derived kind + download affordance", () => {
+  it("derives an image tile from mimeType and exposes a download anchor", () => {
+    const dataUrl = "data:image/png;base64,iVBORw0KGgo=";
+    const { container } = render(
+      <MessageAttachments
+        attachments={[{ id: "img1", url: dataUrl, mimeType: "image/png" }]}
+      />,
+    );
+    // mimeType image/* → ImageTile (no contentType, no extension).
+    expect(container.querySelector(`img[src="${dataUrl}"]`)).not.toBeNull();
+    const dl = screen.getByRole("link", { name: /download image/i });
+    expect(dl.getAttribute("href")).toBe(dataUrl);
+    // No title and an unparseable (data:) URL → id-derived filename + image ext.
+    expect(dl.getAttribute("download")).toBe("img1.png");
+  });
+
+  it("derives an inline PDF tile from mimeType and downloads as .pdf", () => {
+    const { container } = render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "pdf1",
+            url: "https://x/opaque",
+            mimeType: "application/pdf",
+            title: "quarterly report",
+          },
+        ]}
+      />,
+    );
+    // application/pdf + served (non-data) URL → inline iframe preview.
+    expect(container.querySelector("iframe")).not.toBeNull();
+    expect(screen.getByTestId("pdf-attachment")).not.toBeNull();
+    // The header carries a real download anchor → the .pdf bytes.
+    const dl = screen.getByRole("link", { name: /download/i });
+    expect(dl.getAttribute("href")).toBe("https://x/opaque");
+    expect(dl.getAttribute("download")).toBe("quarterly report");
+  });
+
+  it("derives a text/code tile from mimeType and previews att.text inline", () => {
+    render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "code1",
+            url: "https://x/opaque",
+            mimeType: "text/x-python",
+            title: "main.py",
+            text: "print('hi')",
+          },
+        ]}
+      />,
+    );
+    // text/* mime → code preview; att.text renders inline via CodeBlock.
+    expect(screen.getByTestId("code-attachment")).not.toBeNull();
+    expect(screen.getByText(/print\('hi'\)/)).not.toBeNull();
+    const dl = screen.getByRole("link", { name: /download/i });
+    expect(dl.getAttribute("download")).toBe("main.py");
+  });
+
+  it("falls back to a generic link card for an unknown mimeType with no extension", () => {
+    render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "unk",
+            url: "https://x/opaque",
+            mimeType: "application/x-weird-thing",
+          },
+        ]}
+      />,
+    );
+    // Unknown mime + no extension → "link" kind → a non-download link card.
+    // A regression that mis-derives this as a document/file would attach a
+    // `download` attr; a plain link must NOT.
+    const link = screen.getByRole("link");
+    expect(link.getAttribute("href")).toBe("https://x/opaque");
+    expect(link.hasAttribute("download")).toBe(false);
+    // No inline preview tiles were produced for the unknown type.
+    expect(screen.queryByTestId("pdf-attachment")).toBeNull();
+    expect(screen.queryByTestId("code-attachment")).toBeNull();
+    expect(document.querySelector("img")).toBeNull();
+  });
+
+  it("renders multiple mixed attachments in order, one tile each", () => {
+    render(
+      <MessageAttachments
+        attachments={[
+          { id: "m-img", url: "https://x/a", mimeType: "image/jpeg" },
+          {
+            id: "m-pdf",
+            url: "https://x/b",
+            mimeType: "application/pdf",
+            title: "b.pdf",
+          },
+          {
+            id: "m-code",
+            url: "https://x/c",
+            mimeType: "text/markdown",
+            title: "notes.md",
+            text: "# hi",
+          },
+          {
+            id: "m-file",
+            url: "https://x/archive.zip",
+            contentType: "document",
+            title: "blob.bin",
+          },
+        ]}
+      />,
+    );
+    const container = screen.getByTestId("message-attachments");
+    // Exactly one preview tile of each derived kind.
+    expect(container.querySelectorAll("img").length).toBe(1);
+    expect(container.querySelectorAll("iframe").length).toBe(1);
+    expect(screen.getAllByTestId("code-attachment").length).toBe(1);
+    // The non-previewable document downloads under its title, not a preview.
+    const fileLink = screen.getByRole("link", { name: /blob\.bin/i });
+    expect(fileLink.getAttribute("download")).toBe("blob.bin");
+  });
+
+  it("keeps a single lightbox when an image expand is double-clicked (idempotent)", () => {
+    render(
+      <MessageAttachments
+        attachments={[
+          { id: "img2", url: "https://x/cat.png", mimeType: "image/png" },
+        ]}
+      />,
+    );
+    const [expandBtn] = screen.getAllByRole("button", { name: /expand image/i });
+    fireEvent.click(expandBtn);
+    fireEvent.click(expandBtn);
+    fireEvent.click(expandBtn);
+    // Rapid re-clicks reuse the same overlay — never a stack of lightboxes.
+    expect(screen.getAllByTestId("attachment-lightbox").length).toBe(1);
+  });
 });

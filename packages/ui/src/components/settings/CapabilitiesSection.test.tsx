@@ -36,8 +36,10 @@ vi.mock("../../state", () => ({
 
 vi.mock("../../api/client", () => ({ client: clientMock }));
 
+const advancedMock = vi.hoisted(() => ({ enabled: false }));
+
 vi.mock("./AdvancedToggle.hooks", () => ({
-  useAdvancedSettingsEnabled: () => false,
+  useAdvancedSettingsEnabled: () => advancedMock.enabled,
 }));
 
 vi.mock("./AdvancedToggle", () => ({ AdvancedToggle: () => <div /> }));
@@ -421,5 +423,220 @@ describe("CapabilitiesSection auto-training gating", () => {
       expect((toggle as HTMLButtonElement).disabled).toBe(false);
     });
     expect(postCount()).toBe(1);
+  });
+});
+
+/**
+ * Wires the mount-time auto-training GETs (service unavailable — not under test
+ * here) plus a controllable handler for the capability-router connect POST.
+ */
+function mockRouterFetch(
+  connect: (init: RequestInit | undefined) => unknown | Promise<unknown>,
+) {
+  clientMock.fetch.mockImplementation(async (path: string, init?: unknown) => {
+    if (path === "/api/training/auto/config") {
+      return {
+        config: {
+          autoTrain: false,
+          triggerThreshold: 0,
+          triggerCooldownHours: 0,
+          backends: [],
+        },
+      };
+    }
+    if (path === "/api/training/auto/status") {
+      return { serviceRegistered: false };
+    }
+    if (path === "/api/capability-router/connect") {
+      return connect(init as RequestInit | undefined);
+    }
+    return {};
+  });
+}
+
+function connectPosts() {
+  return clientMock.fetch.mock.calls.filter(
+    ([path]) => path === "/api/capability-router/connect",
+  );
+}
+
+function lastConnectBody() {
+  const calls = connectPosts();
+  const [, init] = calls[calls.length - 1] as [string, RequestInit];
+  return JSON.parse(init.body as string);
+}
+
+describe("CapabilitiesSection capability router connect (advanced)", () => {
+  beforeEach(() => {
+    advancedMock.enabled = true;
+    appMock.value = {
+      walletEnabled: false,
+      browserEnabled: false,
+      computerUseEnabled: false,
+      setState: vi.fn(),
+      t: (_key, options) => options?.defaultValue ?? _key,
+    };
+    clientMock.getConfig.mockReset();
+    clientMock.getConfig.mockResolvedValue({ env: {} });
+    clientMock.updateConfig.mockReset();
+    clientMock.updateConfig.mockResolvedValue({});
+    clientMock.fetch.mockReset();
+    mockRouterFetch(() => ({
+      success: true,
+      sync: { registered: ["fs", "shell"] },
+    }));
+  });
+
+  afterEach(() => {
+    advancedMock.enabled = false;
+    cleanup();
+  });
+
+  it("gates an empty endpoint submit: shows the required-URL error and never POSTs", async () => {
+    const user = userEvent.setup();
+    render(<CapabilitiesSection />);
+
+    // Let the mount-time auto-training fetches settle before asserting.
+    await screen.findByLabelText("Capability router endpoint URL");
+
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Endpoint URL is required.",
+    );
+    expect(connectPosts()).toHaveLength(0);
+  });
+
+  it("POSTs the normalized endpoint payload: deduped modules, direct provider omitted, empty optionals dropped", async () => {
+    const user = userEvent.setup();
+    render(<CapabilitiesSection />);
+
+    const url = await screen.findByLabelText(
+      "Capability router endpoint URL",
+    );
+    await user.type(url, "https://cap.example");
+    await user.type(
+      screen.getByLabelText("Allowed remote module IDs"),
+      "fs, shell, fs, ,git",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(connectPosts()).toHaveLength(1));
+
+    const [, init] = connectPosts()[0] as [string, RequestInit];
+    expect(init.method).toBe("POST");
+    expect(lastConnectBody()).toEqual({
+      endpoint: { baseUrl: "https://cap.example" },
+      persist: true,
+      unloadMissing: false,
+      allowedModuleIds: ["fs", "shell", "git"],
+    });
+
+    // Success footer reflects the registered modules returned by the server.
+    await waitFor(() => {
+      const status = screen.getByRole("status");
+      expect(status.textContent).toContain(
+        "Connected remote capability endpoint.",
+      );
+      expect(status.textContent).toContain("fs, shell");
+    });
+  });
+
+  it("gates cloud mode field-by-field: apiBase → auth token → name, no POST until satisfied", async () => {
+    const user = userEvent.setup();
+    render(<CapabilitiesSection />);
+
+    await screen.findByLabelText("Capability router endpoint URL");
+    // Switch to the Cloud connection mode.
+    await user.click(screen.getByRole("button", { name: "Cloud" }));
+
+    // Empty → API base required.
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Cloud API base URL is required.",
+    );
+    expect(connectPosts()).toHaveLength(0);
+
+    // API base only → auth token required.
+    await user.type(
+      screen.getByLabelText("Capability cloud API base URL"),
+      "https://api.elizacloud.ai",
+    );
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Cloud auth token is required.",
+    );
+
+    // + token → sandbox name required.
+    await user.type(
+      screen.getByLabelText("Capability cloud auth token"),
+      "secret-token",
+    );
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Cloud sandbox name is required.",
+    );
+    expect(connectPosts()).toHaveLength(0);
+
+    // + name → the cloud payload finally POSTs.
+    await user.type(
+      screen.getByLabelText("Capability cloud sandbox name"),
+      "Remote Tools",
+    );
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(connectPosts()).toHaveLength(1));
+    expect(lastConnectBody()).toEqual({
+      cloud: {
+        cloudApiBase: "https://api.elizacloud.ai",
+        authToken: "secret-token",
+        name: "Remote Tools",
+      },
+      persist: true,
+      unloadMissing: false,
+    });
+  });
+
+  it("masks the bearer-token inputs (type=password)", async () => {
+    render(<CapabilitiesSection />);
+
+    const endpointToken = (await screen.findByLabelText(
+      "Capability router endpoint token",
+    )) as HTMLInputElement;
+    expect(endpointToken.type).toBe("password");
+  });
+
+  it("locks out a rapid second submit while the connect is in flight (single POST)", async () => {
+    let resolveConnect: ((value: unknown) => void) | undefined;
+    mockRouterFetch(
+      () =>
+        new Promise((resolve) => {
+          resolveConnect = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    render(<CapabilitiesSection />);
+
+    const url = await screen.findByLabelText(
+      "Capability router endpoint URL",
+    );
+    await user.type(url, "https://cap.example");
+
+    const connect = screen.getByRole("button", { name: "Connect" });
+    await user.click(connect);
+
+    // In-flight → the submit button disables, so a second click cannot re-POST.
+    await waitFor(() =>
+      expect((connect as HTMLButtonElement).disabled).toBe(true),
+    );
+    fireEvent.click(connect);
+    expect(connectPosts()).toHaveLength(1);
+
+    resolveConnect?.({ success: true, endpoint: { baseUrl: "https://cap.example" } });
+    await waitFor(() =>
+      expect((connect as HTMLButtonElement).disabled).toBe(false),
+    );
+    expect(connectPosts()).toHaveLength(1);
   });
 });
