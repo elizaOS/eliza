@@ -37,7 +37,7 @@ describe("curateLauncherPages", () => {
         entry("skills"),
         entry("plugins"),
       ],
-      { isAosp: false, enabledKinds: ENABLED },
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
 
     expect(ids(pages)).toEqual([
@@ -61,7 +61,7 @@ describe("curateLauncherPages", () => {
         entry("facewear", { viewKind: "preview" }),
         entry("smartglasses", { viewKind: "preview" }),
       ],
-      { isAosp: false, enabledKinds: ENABLED },
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
 
     expect(ids(pages)).toEqual([["wallet"]]);
@@ -70,7 +70,7 @@ describe("curateLauncherPages", () => {
   it("keeps hyperliquid/polymarket out of the launcher (wallet sub-views)", () => {
     const pages = curateLauncherPages(
       [entry("wallet"), entry("hyperliquid"), entry("polymarket")],
-      { isAosp: false, enabledKinds: ENABLED },
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
     expect(ids(pages)).toEqual([["wallet"]]);
   });
@@ -86,11 +86,49 @@ describe("curateLauncherPages", () => {
     ];
 
     expect(
-      ids(curateLauncherPages(views, { isAosp: false, enabledKinds: ENABLED })),
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: ENABLED,
+          cloudActive: true,
+        }),
+      ),
     ).toEqual([["wallet"]]);
     expect(
-      ids(curateLauncherPages(views, { isAosp: true, enabledKinds: ENABLED })),
+      ids(
+        curateLauncherPages(views, {
+          isAosp: true,
+          enabledKinds: ENABLED,
+          cloudActive: true,
+        }),
+      ),
     ).toEqual([["wallet", "phone", "messages", "contacts", "camera", "files"]]);
+  });
+
+  it("gates cloud-only tiles behind an active Eliza Cloud connection (#10725)", () => {
+    // cloud-apps is viewKind:"release", so without the gate it would show as an
+    // "Apps" tile regardless of cloud state.
+    const views = [entry("wallet"), entry("cloud-apps", { label: "Apps" })];
+    // Signed out of cloud: the cloud dashboard tile is hidden.
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: ENABLED,
+          cloudActive: false,
+        }),
+      ),
+    ).toEqual([["wallet"]]);
+    // Signed in: it surfaces on the apps page.
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: ENABLED,
+          cloudActive: true,
+        }),
+      ),
+    ).toEqual([["wallet", "cloud-apps"]]);
   });
 
   it("collapses duplicate wallet + automations registrations to one tile", () => {
@@ -104,7 +142,7 @@ describe("curateLauncherPages", () => {
         entry("tasks"),
         entry("todos"),
       ],
-      { isAosp: false, enabledKinds: ENABLED },
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
     expect(ids(pages)).toEqual([["wallet", "automations"]]);
   });
@@ -117,7 +155,7 @@ describe("curateLauncherPages", () => {
         entry("wallet"),
         entry("alpha-app"),
       ],
-      { isAosp: false, enabledKinds: ENABLED },
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
     expect(ids(pages)).toEqual([
       ["wallet", "browser", "alpha-app", "zebra-app"],
@@ -131,12 +169,19 @@ describe("curateLauncherPages", () => {
         curateLauncherPages(views, {
           isAosp: false,
           enabledKinds: { developer: false, preview: false },
+          cloudActive: true,
         }),
       ),
     ).toEqual([["wallet"]]);
     // vector-browser-style dev views join the developer page when enabled.
     expect(
-      ids(curateLauncherPages(views, { isAosp: false, enabledKinds: ENABLED })),
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: ENABLED,
+          cloudActive: true,
+        }),
+      ),
     ).toEqual([["wallet"], ["secret"]]);
   });
 });
@@ -227,7 +272,11 @@ describe("curateLauncherPages — full realistic view set", () => {
 
   it("appends the native-OS tiles to page 1 on the AOSP fork", () => {
     const [appsPage] = ids(
-      curateLauncherPages(REAL_VIEWS, { isAosp: true, enabledKinds: ENABLED }),
+      curateLauncherPages(REAL_VIEWS, {
+        isAosp: true,
+        enabledKinds: ENABLED,
+        cloudActive: true,
+      }),
     );
     expect(appsPage.slice(-5)).toEqual([
       "phone",
