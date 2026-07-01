@@ -290,7 +290,7 @@ function MobileHub({
 }) {
   return (
     <div className="w-full pb-32">
-      <h1 className="mb-4 text-2xl font-semibold tracking-tight text-txt-strong">
+      <h1 className="mb-4 min-h-10 pl-12 text-2xl font-semibold tracking-tight text-txt-strong">
         {t("nav.settings", { defaultValue: "Settings" })}
       </h1>
       <SettingsStack>
@@ -333,7 +333,7 @@ function DesktopLayout({
     <div className="flex w-full gap-7 pb-32">
       <nav className="w-60 shrink-0" aria-label="Settings sections">
         <div className="sticky top-2 space-y-5">
-          <h1 className="px-2.5 text-lg font-semibold tracking-tight text-txt-strong">
+          <h1 className="min-h-8 px-2.5 pl-12 text-lg font-semibold tracking-tight text-txt-strong">
             {t("nav.settings", { defaultValue: "Settings" })}
           </h1>
           {grouped.map(({ group, label, items }) => (

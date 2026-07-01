@@ -1,0 +1,1 @@
+$ tsc --noCheck -p tsconfig.build.json

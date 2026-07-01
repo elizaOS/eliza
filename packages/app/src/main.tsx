@@ -135,6 +135,7 @@ import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { isTrustedAppLink } from "./deep-link-handler";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
+import { runEmbedHandshake } from "./embed-bootstrap";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
@@ -2614,6 +2615,12 @@ function applyStoredDetachedShellTheme(): void {
 async function main(): Promise<void> {
   markStartup("main-start");
   registerViewServiceWorker();
+
+  // #9947: when served at /embed inside a Telegram Mini App / Discord Activity
+  // iframe, exchange the platform's signed launch payload for a scoped session
+  // token and install it on the ElizaClient BEFORE any authenticated agent API
+  // call is made. No-op (and never throws) off the /embed route.
+  await runEmbedHandshake({ client });
 
   const appWindowSlug = window.location.pathname.startsWith("/apps/")
     ? window.location.pathname.slice("/apps/".length).split("/")[0]

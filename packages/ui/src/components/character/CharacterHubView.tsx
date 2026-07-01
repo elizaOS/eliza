@@ -189,6 +189,8 @@ export function CharacterHubView({
     : null;
   const setDocumentRecords = hubData.documents.mutate;
   const setExperienceRecords = hubData.experiences.mutate;
+  const setDocumentRecordsRef = useRef(setDocumentRecords);
+  setDocumentRecordsRef.current = setDocumentRecords;
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
     null,
   );
@@ -303,12 +305,9 @@ export function CharacterHubView({
   // closure, looping the hub (render-guard trips on /character/documents).
   // `setDocumentRecords` is the hook's mutate fn — it flips state to
   // "success" so the loading flag derived from it also goes false.
-  const handleDocumentsChange = useCallback(
-    (docs: DocumentRecord[]) => {
-      setDocumentRecords(docs);
-    },
-    [setDocumentRecords],
-  );
+  const handleDocumentsChange = useCallback((docs: DocumentRecord[]) => {
+    setDocumentRecordsRef.current(docs);
+  }, []);
 
   const overviewWidgets = useMemo<CharacterOverviewWidget[]>(() => {
     const styleItems = Object.values(d.style ?? {}).reduce(

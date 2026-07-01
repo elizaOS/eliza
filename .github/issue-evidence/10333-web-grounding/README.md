@@ -39,8 +39,8 @@ bun run --cwd plugins/plugin-browser test:real:grounding       # gated assertion
 bun run --cwd plugins/plugin-browser bench:grounding:chromium  # overlay screenshots + scorecard
 ```
 
-Captured on a Windows 11 host against the Playwright-installed Chromium. As in
-the computeruse harness, the large/licensed real ScreenSpot-Web dataset is not
+Captured against the Playwright-installed Chromium headless-shell. As in the
+computeruse harness, the large/licensed real ScreenSpot-Web dataset is not
 vendored — these synthetic-but-**real-rendered** samples exercise the scorer +
 the browser screenshot/bbox path end to end. Swapping in a learned grounder (a
 VLM predicting points from the screenshot) is a drop-in for `centerGrounder`.

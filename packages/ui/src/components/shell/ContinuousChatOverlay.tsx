@@ -3199,20 +3199,32 @@ export function ContinuousChatOverlay({
             "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0",
           )}
         >
-          {/* SURFACE — absolute fill; the bg/border + the live corner radius.
-              Crossfades in by openProgress (compositor opacity). */}
+          {/* SURFACE — absolute fill; the frosted-glass bg/border + the live
+              corner radius. Crossfades in by openProgress (compositor opacity). */}
           <motion.div
             aria-hidden="true"
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
-              // Border-only chat: no dark card, just a hairline edge over the
-              // ambient orange field or current view.
+              // Frosted-glass chat panel: a blurred, dark-tinted scrim behind the
+              // whole conversation so the white transcript + composer text stays
+              // legible over ANY surface — the warm ambient home, a photo
+              // wallpaper, or a live view. Fades in with the panel (glassOpacity)
+              // so the collapsed pill stays chrome-free. Hairline edge catches the
+              // light; full-bleed drops the border for a true edge-to-edge sheet.
               fullBleed ? "border-0" : "border border-white/22",
-              "bg-transparent",
             )}
             style={{
               opacity: glassOpacity,
               borderRadius: fullBleed ? 0 : panelRadius,
+              // Dark translucent tint + backdrop blur = the frosted glass. Set
+              // inline (not via a Tailwind backdrop-* class) so it renders
+              // identically in the app and in the raw-esbuild e2e harness,
+              // independent of any backdrop-utility config.
+              backgroundColor: fullBleed
+                ? "rgba(10,10,12,0.55)"
+                : "rgba(10,10,12,0.42)",
+              backdropFilter: "blur(24px) saturate(140%)",
+              WebkitBackdropFilter: "blur(24px) saturate(140%)",
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android

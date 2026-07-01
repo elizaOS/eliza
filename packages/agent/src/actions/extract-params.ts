@@ -4,6 +4,11 @@
  * Project policy:
  *   - The action planner is the *primary* extractor of params.
  *   - Handlers MUST NOT use regex / string matching for intent inference.
+ *   - The only natural-language shortcut exception is an explicit
+ *     `ShortcutDefinition` (or package-local deterministic shortcut) with a
+ *     stable id, narrow scope, tests, and documented routing target. Shortcuts
+ *     may select an action or route a known shell command, but they must not
+ *     become ad hoc parameter extractors inside handlers/providers/evaluators.
  *   - But planners get params wrong frequently — small models drop fields,
  *     misname keys, send strings as numbers, etc.
  *   - When that happens, the action handler runs its OWN small LLM call

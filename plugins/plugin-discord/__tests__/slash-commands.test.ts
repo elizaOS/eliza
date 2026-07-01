@@ -21,6 +21,8 @@ import {
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
 const HTTPS_EMBED_URL = "https://app.eliza.example/embed";
+const HTTPS_DISCORD_EMBED_URL =
+	"https://app.eliza.example/embed?platform=discord";
 
 function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
 	return {
@@ -82,7 +84,7 @@ describe("/app embedded-app launch command (#9947)", () => {
 		expect(payload.commands.some((c) => c.name === "app")).toBe(true);
 	});
 
-	it("returns the https /embed launch link for an elevated member", async () => {
+	it("returns the platform-tagged https /embed launch link for an elevated member", async () => {
 		hasRoleAccess.mockResolvedValue(true);
 		const interaction = makeInteraction();
 		await appCommand().execute(
@@ -92,7 +94,7 @@ describe("/app embedded-app launch command (#9947)", () => {
 
 		const reply = lastReply(interaction);
 		expect(reply.ephemeral).toBe(true);
-		expect(reply.content).toContain(HTTPS_EMBED_URL);
+		expect(reply.content).toContain(HTTPS_DISCORD_EMBED_URL);
 		// The gate was evaluated against the ADMIN role.
 		expect(hasRoleAccess).toHaveBeenCalled();
 		expect(hasRoleAccess.mock.calls[0][2]).toBe("ADMIN");
@@ -106,7 +108,7 @@ describe("/app embedded-app launch command (#9947)", () => {
 			makeRuntime({ ELIZA_APP_URL: "https://app.eliza.example/" }),
 		);
 
-		expect(lastReply(interaction).content).toContain(HTTPS_EMBED_URL);
+		expect(lastReply(interaction).content).toContain(HTTPS_DISCORD_EMBED_URL);
 	});
 
 	it("returns an ephemeral denial for a non-elevated member", async () => {

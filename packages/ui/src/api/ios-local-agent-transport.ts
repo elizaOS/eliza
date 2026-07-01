@@ -96,7 +96,7 @@ const IOS_FULL_BUN_ENV: Record<string, string> = {
   RUNTIME_MODE: "local-safe",
   LOCAL_RUNTIME_MODE: "local-safe",
   ELIZA_IOS_LOCAL_BACKEND: "1",
-  ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "60000",
+  ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
   ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
   ELIZA_VAULT_BACKEND: "file",
   ELIZA_DISABLE_VAULT_PROFILE_RESOLVER: "1",
@@ -307,14 +307,14 @@ function isMobileLocalAgentUrl(value: string): boolean {
 
 /**
  * Whether the selected runtime runs an on-device agent that serves local-agent
- * IPC. Both `local` (on-device inference) and `cloud-hybrid` (on-device runtime
- * that routes inference through Eliza Cloud) run the bundled agent on the
- * device and therefore must be allowed to use the in-process IPC bridge — only
- * a pure `cloud` runtime talks exclusively to a remote agent.
+ * IPC. `local`, `cloud-hybrid`, and `tunnel-to-mobile` all run the bundled
+ * phone-side agent; only pure `cloud` talks exclusively to a remote agent.
  */
 function iosRuntimeHasOnDeviceAgent(): boolean {
   const mode = readRuntimeMode();
-  return mode === "local" || mode === "cloud-hybrid";
+  return (
+    mode === "local" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
+  );
 }
 
 function canUseIosLocalAgentIpc(): boolean {
@@ -472,18 +472,7 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       // letting the import error escape to the strict handler and fail iOS local
       // startup with "Backend Timeout" (the reported first-run hang). A genuine
       // failure still surfaces below: runtime.start() throwing is NOT caught here.
-      let mod: Partial<FullBunRuntimeModule> | null = null;
-      try {
-        mod = (await import(
-          "@elizaos/capacitor-bun-runtime"
-        )) as Partial<FullBunRuntimeModule>;
-      } catch {
-        mod = null;
-      }
-      const plugin =
-        mod?.ElizaBunRuntime ??
-        registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime");
-      const runtime = wrapFullBunRuntime(plugin);
+      const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
         return runtime;
@@ -531,6 +520,21 @@ export function primeIosFullBunRuntime(runtime: unknown): void {
     kind: "primed",
     runtime: candidate ? wrapFullBunRuntime(candidate) : null,
   };
+}
+
+async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
+  let mod: Partial<FullBunRuntimeModule> | null = null;
+  try {
+    mod = (await import(
+      "@elizaos/capacitor-bun-runtime"
+    )) as Partial<FullBunRuntimeModule>;
+  } catch {
+    mod = null;
+  }
+  return (
+    mod?.ElizaBunRuntime ??
+    registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime")
+  );
 }
 
 async function tryFullBunNativeRequest(

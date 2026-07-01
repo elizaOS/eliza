@@ -171,7 +171,7 @@ export async function inferMusicLibraryOp(
   if (await validateSearchYouTube(runtime, message, state, options)) {
     return "search_youtube";
   }
-  if (await validatePlayMusicQuery(runtime, message, state)) {
+  if (await validatePlayMusicQuery(runtime, message, state, options)) {
     return "play_query";
   }
   if (await validateDownloadMusic(runtime, message, state, options)) {
