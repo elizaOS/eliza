@@ -4,7 +4,11 @@ import {
   client,
   type OrchestratorRoomRosterOverview,
 } from "@elizaos/ui";
-import { useCallback, useEffect, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import {
+  CockpitInteractiveTerminal,
+  type CockpitTerminalTier,
+} from "./CockpitInteractiveTerminal";
 import { CockpitSessionPane } from "./CockpitSessionPane";
 
 /** How often the deck re-polls the live task-room roster. */
@@ -25,6 +29,11 @@ export function CockpitRoute() {
   const [busy, setBusy] = useState(false);
   // Drill-in: which task room is focused (its session pane replaces the deck).
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  // When set, a full-panel interactive eliza-code CLI (the "tap-in" pillar) is
+  // open at the chosen Cerebras tier, overlaying the deck.
+  const [terminalTier, setTerminalTier] = useState<CockpitTerminalTier | null>(
+    null,
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -88,12 +97,66 @@ export function CockpitRoute() {
   }
 
   return (
-    <CockpitView
-      rooms={rooms}
-      onCreateSession={onCreateSession}
-      busy={busy}
-      error={error}
-      onSelectRoom={setSelectedTaskId}
-    />
+    <div style={{ position: "relative", height: "100%", minHeight: 0 }}>
+      <CockpitView
+        rooms={rooms}
+        onCreateSession={onCreateSession}
+        busy={busy}
+        error={error}
+        onSelectRoom={setSelectedTaskId}
+      />
+
+      {terminalTier === null ? (
+        <div
+          style={{
+            position: "absolute",
+            right: 16,
+            bottom: 16,
+            display: "flex",
+            gap: 8,
+            zIndex: 10,
+          }}
+        >
+          <button
+            type="button"
+            data-testid="cockpit-open-terminal-fast"
+            onClick={() => setTerminalTier("fast")}
+            style={terminalLaunchButtonStyle}
+          >
+            ⌨ Terminal · Fast
+          </button>
+          <button
+            type="button"
+            data-testid="cockpit-open-terminal-smart"
+            onClick={() => setTerminalTier("smart")}
+            style={terminalLaunchButtonStyle}
+          >
+            ⌨ Terminal · Smart
+          </button>
+        </div>
+      ) : (
+        <div
+          data-testid="cockpit-terminal-overlay"
+          style={{ position: "absolute", inset: 0, zIndex: 20 }}
+        >
+          <CockpitInteractiveTerminal
+            tier={terminalTier}
+            onClose={() => setTerminalTier(null)}
+          />
+        </div>
+      )}
+    </div>
   );
 }
+
+const terminalLaunchButtonStyle: CSSProperties = {
+  padding: "8px 14px",
+  background: "var(--accent, #5a9a2a)",
+  border: "none",
+  borderRadius: 999,
+  color: "#fff",
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 600,
+  boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+};

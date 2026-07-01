@@ -1124,6 +1124,8 @@ declare module "./client-base" {
       cols?: number;
       rows?: number;
     }): Promise<{ sessionId: string }>;
+    /** Kill an interactive PTY session (DELETE /api/pty/sessions/:id). */
+    stopPtySession(sessionId: string): Promise<boolean>;
     subscribePtyOutput(sessionId: string): void;
     unsubscribePtyOutput(sessionId: string): void;
     sendPtyInput(sessionId: string, data: string): void;
@@ -4312,6 +4314,21 @@ ElizaClient.prototype.spawnPtySession = async function (
     },
   );
   return { sessionId: res.session.sessionId };
+};
+
+ElizaClient.prototype.stopPtySession = async function (
+  this: ElizaClient,
+  sessionId,
+) {
+  try {
+    await this.fetch<{ ok: boolean }>(
+      `/api/pty/sessions/${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" },
+    );
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 ElizaClient.prototype.subscribePtyOutput = function (
