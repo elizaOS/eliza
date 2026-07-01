@@ -166,6 +166,44 @@ export async function selectCodingAccount(
 }
 
 /**
+ * Explain a single-account fallback loudly, or return null when the fallback is
+ * benign. `selectCodingAccount` correctly returns null (→ single-account) whether
+ * the pool is empty by design or degraded by a transient fault — but those two
+ * cases must not look the same to an operator. This surfaces ONLY the degraded
+ * case (#9960's "a misconfigured pool silently degrades to single-account"):
+ * a multi-account agent type that has accounts connected but none healthy, so
+ * the spawn is about to run on single-account credentials nobody chose.
+ *
+ * Benign (returns null, no warning): not a multi-account agent type, no bridge
+ * (single-account host), or zero accounts connected (single-account by choice).
+ */
+export function diagnoseCodingAccountFallback(
+  agentType: string,
+): string | null {
+  if (!isMultiAccountAgentType(agentType)) return null;
+  const bridge = getCodingAccountBridge();
+  if (!bridge) return null;
+  let rows: CodingProviderAvailability[];
+  try {
+    rows = bridge.describe()[agentType.toLowerCase()] ?? [];
+  } catch {
+    return null;
+  }
+  const total = rows.reduce((sum, r) => sum + r.total, 0);
+  const healthy = rows.reduce((sum, r) => sum + r.healthy, 0);
+  if (total === 0) return null;
+  if (healthy === 0) {
+    return (
+      `${agentType}: ${total} account(s) connected but 0 healthy — ` +
+      "spawning with single-account credentials. Reconnect or clear the " +
+      "rate-limit / needs-reauth state in Settings → AI models (or the " +
+      "in-chat account panel)."
+    );
+  }
+  return null;
+}
+
+/**
  * Per-agent-type readiness verdict: how many healthy pooled accounts back this
  * coding agent vs. how many the requested posture needs.
  */
