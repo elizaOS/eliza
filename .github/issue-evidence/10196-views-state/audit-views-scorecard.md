@@ -13,8 +13,9 @@ release.
 - Render-guard errors: 0
 - Module/view evictions attributed in scorecard: 58
 - Module cleanups attributed in scorecard: 0
+- Network log classification: 0 unexpected / 59 total (36 navigation aborts, 23 optional-route 404s)
 - Heap series: 225.2MB -> 213.4MB -> 214.7MB (1.01x)
-- Raw artifacts: `audit-views-render-telemetry.json`, `audit-views-runtime-telemetry.json`, `audit-views-module-cache-telemetry.json`, `audit-views-heap-series.json`, `audit-views-frontend-log.json`, `audit-views-network-log.json`
+- Raw artifacts: `audit-views-render-telemetry.json`, `audit-views-runtime-telemetry.json`, `audit-views-module-cache-telemetry.json`, `audit-views-heap-series.json`, `audit-views-frontend-log.json`, `audit-views-network-log.json`, `audit-views-network-summary.json`
 - Video: `audit-views-soak.webm`
 
 ## Per-View Scorecard

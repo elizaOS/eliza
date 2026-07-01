@@ -125,6 +125,7 @@ function buildScorecard({
   navRecords,
   heapSamples,
   videoArtifact,
+  networkSummary,
 }) {
   const rows = views.map((view) => {
     const runtime = runtimeEventsForView(raw.viewRuntime, view);
@@ -214,8 +215,9 @@ release.
 - Render-guard errors: ${summary.renderErrors}
 - Module/view evictions attributed in scorecard: ${summary.moduleEvicts}
 - Module cleanups attributed in scorecard: ${summary.moduleCleanups}
+- Network log classification: ${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total (${networkSummary.expectedAbortCount} navigation aborts, ${networkSummary.expectedOptionalRoute404Count} optional-route 404s)
 - Heap series: ${heapSamples.map((sample) => `${(sample / 1e6).toFixed(1)}MB`).join(" -> ")} (${heapRatio.toFixed(2)}x)
-- Raw artifacts: \`audit-views-render-telemetry.json\`, \`audit-views-runtime-telemetry.json\`, \`audit-views-module-cache-telemetry.json\`, \`audit-views-heap-series.json\`, \`audit-views-frontend-log.json\`, \`audit-views-network-log.json\`
+- Raw artifacts: \`audit-views-render-telemetry.json\`, \`audit-views-runtime-telemetry.json\`, \`audit-views-module-cache-telemetry.json\`, \`audit-views-heap-series.json\`, \`audit-views-frontend-log.json\`, \`audit-views-network-log.json\`, \`audit-views-network-summary.json\`
 - Video: ${videoArtifact ? `\`${videoArtifact}\`` : "N/A (VIDEO=0)"}
 
 ## Per-View Scorecard
@@ -224,6 +226,70 @@ ${table}
 `;
 
   return { rows, summary, markdown };
+}
+
+function classifyNetworkEntry(entry) {
+  if (entry.kind === "requestfailed" && entry.failure === "net::ERR_ABORTED") {
+    return {
+      expected: true,
+      reason: "navigation_churn_abort",
+      note: "The soak intentionally switches routes quickly; in-flight fetches may be aborted by navigation/unmount cleanup.",
+    };
+  }
+
+  const pathname = (() => {
+    try {
+      return new URL(entry.url).pathname;
+    } catch {
+      return "";
+    }
+  })();
+  const optionalMissingRoutes = new Set([
+    "/api/connectors/google/accounts",
+    "/api/database/status",
+    "/api/transcripts",
+  ]);
+  if (
+    entry.kind === "response" &&
+    entry.status === 404 &&
+    optionalMissingRoutes.has(pathname)
+  ) {
+    return {
+      expected: true,
+      reason: "optional_route_not_installed",
+      note: "Optional local services/connectors are not installed in this audit stack; the UI handles the missing route.",
+    };
+  }
+
+  return {
+    expected: false,
+    reason: "unexpected_network_failure",
+    note: "Unclassified network failure; investigate before accepting audit evidence.",
+  };
+}
+
+function summarizeNetworkLog(networkLog) {
+  const classified = networkLog.map((entry) => ({
+    ...entry,
+    classification: classifyNetworkEntry(entry),
+  }));
+  const byReason = {};
+  for (const entry of classified) {
+    const reason = entry.classification.reason;
+    byReason[reason] = (byReason[reason] ?? 0) + 1;
+  }
+  const unexpected = classified.filter(
+    (entry) => !entry.classification.expected,
+  );
+  return {
+    total: classified.length,
+    expectedAbortCount: byReason.navigation_churn_abort ?? 0,
+    expectedOptionalRoute404Count: byReason.optional_route_not_installed ?? 0,
+    unexpectedCount: unexpected.length,
+    byReason,
+    unexpected,
+    classified,
+  };
 }
 
 async function isFirstRunChooserVisible(page) {
@@ -551,6 +617,12 @@ if (video) {
 }
 await browser.close();
 
+const networkSummary = summarizeNetworkLog(networkLog);
+assert(
+  networkSummary.unexpectedCount === 0,
+  `no unexpected network failures during the soak (${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total; expected navigation aborts=${networkSummary.expectedAbortCount}, expected optional-route 404s=${networkSummary.expectedOptionalRoute404Count})`,
+);
+
 const finalRaw = afterReleaseSnapshot.raw;
 writeJson("audit-views-render-telemetry.json", finalRaw.render);
 writeJson("audit-views-runtime-telemetry.json", finalRaw.viewRuntime);
@@ -567,12 +639,14 @@ writeJson("audit-views-frontend-log.json", {
   pageErrors,
 });
 writeJson("audit-views-network-log.json", networkLog);
+writeJson("audit-views-network-summary.json", networkSummary);
 const scorecard = buildScorecard({
   views,
   raw: finalRaw,
   navRecords,
   heapSamples,
   videoArtifact,
+  networkSummary,
 });
 writeJson("audit-views-scorecard.json", scorecard.rows);
 writeFileSync(join(OUT, "audit-views-scorecard.md"), scorecard.markdown);
@@ -607,6 +681,7 @@ const report = {
     navigation: join(OUT, "audit-views-navigation.json"),
     frontendLog: join(OUT, "audit-views-frontend-log.json"),
     networkLog: join(OUT, "audit-views-network-log.json"),
+    networkSummary: join(OUT, "audit-views-network-summary.json"),
     video: videoArtifact ? join(OUT, videoArtifact) : null,
   },
   checks,

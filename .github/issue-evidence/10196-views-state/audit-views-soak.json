@@ -79,7 +79,8 @@
     "navigation": "/Users/shawwalters/.codex/worktrees/46ba/eliza/.github/issue-evidence/10196-views-state/audit-views-navigation.json",
     "frontendLog": "/Users/shawwalters/.codex/worktrees/46ba/eliza/.github/issue-evidence/10196-views-state/audit-views-frontend-log.json",
     "networkLog": "/Users/shawwalters/.codex/worktrees/46ba/eliza/.github/issue-evidence/10196-views-state/audit-views-network-log.json",
-    "video": "/Users/shawwalters/.codex/worktrees/46ba/eliza/.github/issue-evidence/10196-views-state/audit-views-soak.webm"
+    "video": "/Users/shawwalters/.codex/worktrees/46ba/eliza/.github/issue-evidence/10196-views-state/audit-views-soak.webm",
+    "networkSummary": "/Users/shawwalters/.codex/worktrees/46ba/eliza/.github/issue-evidence/10196-views-state/audit-views-network-summary.json"
   },
   "checks": [
     {
@@ -121,7 +122,21 @@
     {
       "ok": true,
       "msg": "no uncaught page errors during the soak ([])"
+    },
+    {
+      "ok": true,
+      "msg": "no unexpected network failures during the soak (0 unexpected / 59 total; expected navigation aborts=36, expected optional-route 404s=23)"
     }
   ],
-  "pass": true
+  "pass": true,
+  "network": {
+    "total": 59,
+    "expectedAbortCount": 36,
+    "expectedOptionalRoute404Count": 23,
+    "unexpectedCount": 0,
+    "byReason": {
+      "optional_route_not_installed": 23,
+      "navigation_churn_abort": 36
+    }
+  }
 }
