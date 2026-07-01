@@ -99,8 +99,8 @@ jobs:
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
       - name: Reclaim disk from leaked checkouts of prior runs
+        continue-on-error: true
         run: |
-          set -uo pipefail
           # Cancelled/killed deploy runs never reach the trailing "Clean temp
           # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
           # monorepo materialization) leak and pile up on this shared self-hosted
@@ -112,12 +112,19 @@ jobs:
           # serialized), so sibling runs materialize at the same time; the age
           # filter never deletes another run's actively-writing checkout (its mtime
           # stays fresh), and we also exclude this run's own dirs by name.
-          # (The prior run_id-only filter deleted concurrent siblings' live
-          # checkouts — this replaces it.) Best-effort; never fails the deploy.
+          # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
+          # same moment, so one sibling's rm -rf can race another's find into
+          # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
+          # this step previously set) that killed whole deploy jobs at step one.
+          # set +e swallows every failure mode, exit 0 guarantees the step, and
+          # continue-on-error guards future edits.
+          set +e
+          set +o pipefail
           stale=$(find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" 2>/dev/null | wc -l | tr -d ' ')
-          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null || true
-          echo "Reclaimed ${stale} stale (idle >90min) leaked checkout dir(s)."
-          df -h /tmp / 2>/dev/null | tail -2 || true
+          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null
+          echo "Reclaimed ${stale:-0} stale (idle >90min) leaked checkout dir(s)."
+          df -h /tmp / 2>/dev/null | tail -2
+          exit 0
       - name: Checkout repository
         timeout-minutes: 20
         env:
@@ -337,8 +344,8 @@ jobs:
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
       - name: Reclaim disk from leaked checkouts of prior runs
+        continue-on-error: true
         run: |
-          set -uo pipefail
           # Cancelled/killed deploy runs never reach the trailing "Clean temp
           # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
           # monorepo materialization) leak and pile up on this shared self-hosted
@@ -350,12 +357,19 @@ jobs:
           # serialized), so sibling runs materialize at the same time; the age
           # filter never deletes another run's actively-writing checkout (its mtime
           # stays fresh), and we also exclude this run's own dirs by name.
-          # (The prior run_id-only filter deleted concurrent siblings' live
-          # checkouts — this replaces it.) Best-effort; never fails the deploy.
+          # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
+          # same moment, so one sibling's rm -rf can race another's find into
+          # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
+          # this step previously set) that killed whole deploy jobs at step one.
+          # set +e swallows every failure mode, exit 0 guarantees the step, and
+          # continue-on-error guards future edits.
+          set +e
+          set +o pipefail
           stale=$(find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" 2>/dev/null | wc -l | tr -d ' ')
-          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null || true
-          echo "Reclaimed ${stale} stale (idle >90min) leaked checkout dir(s)."
-          df -h /tmp / 2>/dev/null | tail -2 || true
+          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null
+          echo "Reclaimed ${stale:-0} stale (idle >90min) leaked checkout dir(s)."
+          df -h /tmp / 2>/dev/null | tail -2
+          exit 0
       - name: Checkout repository
         timeout-minutes: 20
         env:
@@ -610,8 +624,8 @@ jobs:
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
       - name: Reclaim disk from leaked checkouts of prior runs
+        continue-on-error: true
         run: |
-          set -uo pipefail
           # Cancelled/killed deploy runs never reach the trailing "Clean temp
           # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
           # monorepo materialization) leak and pile up on this shared self-hosted
@@ -623,12 +637,19 @@ jobs:
           # serialized), so sibling runs materialize at the same time; the age
           # filter never deletes another run's actively-writing checkout (its mtime
           # stays fresh), and we also exclude this run's own dirs by name.
-          # (The prior run_id-only filter deleted concurrent siblings' live
-          # checkouts — this replaces it.) Best-effort; never fails the deploy.
+          # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
+          # same moment, so one sibling's rm -rf can race another's find into
+          # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
+          # this step previously set) that killed whole deploy jobs at step one.
+          # set +e swallows every failure mode, exit 0 guarantees the step, and
+          # continue-on-error guards future edits.
+          set +e
+          set +o pipefail
           stale=$(find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" 2>/dev/null | wc -l | tr -d ' ')
-          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null || true
-          echo "Reclaimed ${stale} stale (idle >90min) leaked checkout dir(s)."
-          df -h /tmp / 2>/dev/null | tail -2 || true
+          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null
+          echo "Reclaimed ${stale:-0} stale (idle >90min) leaked checkout dir(s)."
+          df -h /tmp / 2>/dev/null | tail -2
+          exit 0
       - name: Checkout repository
         timeout-minutes: 20
         env:
