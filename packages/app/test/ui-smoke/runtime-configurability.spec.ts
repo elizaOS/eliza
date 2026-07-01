@@ -7,15 +7,10 @@ import {
 } from "./helpers";
 
 // "Local, Cloud, etc. all work out of the box and are successfully
-// configurable." Onboarding now happens IN the chat (#9952): a fresh profile
-// auto-opens the REAL floating ContinuousChatOverlay and the headless conductor
-// seeds the runtime question as inline ChoiceWidgets — Cloud (Eliza Cloud
-// managed) / On this device / Bring your own keys. This spec lands on that
-// in-chat surface and drives each branch (including the Local → provider
-// sub-choice) to prove every runtime is reachable and configurable, not just
-// displayed. The full-screen onboarding gate and the separate Remote-connect
-// form were removed — "Bring your own keys" runs the local backend with the
-// other-provider default.
+// configurable." Runtime/provider setup now lives in the floating first-run
+// chooser: Cloud (Eliza Cloud managed), Local (this device), and Bring your own
+// keys behind Advanced setup. This spec drives Local → provider to prove every
+// runtime is reachable and configurable, not just displayed.
 
 async function fulfillJson(
   route: Route,
@@ -69,12 +64,14 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
 async function expectInChatFirstRun(page: Page): Promise<void> {
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
+  const chooser = page.getByTestId("first-run-runtime-chooser");
+  await expect(chooser).toBeVisible({ timeout: 20_000 });
   await expect(
-    chatOverlay.getByText("Let's get you set up", { exact: false }),
+    chooser.getByText("Choose how Eliza should run", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
 }
 
-test("in-chat first-run exposes cloud, local, and bring-your-own-keys runtimes and Local is configurable", async ({
+test("first-run chooser exposes cloud, local, and bring-your-own-keys runtimes and Local is configurable", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -87,28 +84,27 @@ test("in-chat first-run exposes cloud, local, and bring-your-own-keys runtimes a
 
   await expectInChatFirstRun(page);
 
-  // All three runtimes are offered as inline ChoiceWidget options.
-  const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
-  const local = page.getByTestId("choice-__first_run__:runtime:local");
-  const other = page.getByTestId("choice-__first_run__:runtime:other");
+  const chooser = page.getByTestId("first-run-runtime-chooser");
+  const cloud = chooser.getByTestId("first-run-chooser-cloud");
+  const local = chooser.getByTestId("first-run-chooser-local");
+  const other = chooser.getByTestId("first-run-chooser-other");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
   await expect(local).toBeVisible();
+  await chooser.getByRole("button", { name: /Advanced setup/i }).click();
   await expect(other).toBeVisible();
 
-  // Local is configurable: selecting it advances to the provider sub-choice,
+  // Local is configurable: selecting it advances to the provider step,
   // where the on-device default, Eliza Cloud inference, and other are offered.
   await local.click();
+  await expect(chooser.getByTestId("first-run-provider-on-device")).toBeVisible(
+    { timeout: 15_000 },
+  );
   await expect(
-    page.getByTestId("choice-__first_run__:provider:on-device"),
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(
-    page.getByTestId("choice-__first_run__:provider:elizacloud"),
+    chooser.getByTestId("first-run-provider-elizacloud"),
   ).toBeVisible();
+  await expect(chooser.getByTestId("first-run-provider-other")).toBeVisible();
   await expect(
-    page.getByTestId("choice-__first_run__:provider:other"),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Which model provider should", { exact: false }),
+    chooser.getByText("Choose how Eliza should think", { exact: true }),
   ).toBeVisible();
 
   await expectNoRenderTelemetryErrors(page, "runtime configurability");

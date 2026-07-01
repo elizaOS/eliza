@@ -194,10 +194,9 @@ const views: ViewSpec[] = [
     lastNativeTab: "chat",
     firstRunIncomplete: true,
     readyChecks: [
-      // #9952: onboarding is in-chat — the conductor greets + offers the runtime
-      // CHOICE inside the floating ContinuousChatOverlay (no full-screen shell).
       { selector: '[data-testid="continuous-chat-overlay"]' },
-      { selector: '[data-testid="choice-__first_run__:runtime:cloud"]' },
+      { selector: '[data-testid="first-run-runtime-chooser"]' },
+      { selector: '[data-testid="first-run-chooser-cloud"]' },
     ],
   },
   {
@@ -707,17 +706,11 @@ async function applyState(page: Page, capture: CaptureSpec): Promise<void> {
     });
   }
   if (capture.stateId === "first-run-local") {
-    // #9952: in-chat onboarding — pick Local, then await the on-device provider
-    // sub-choice the conductor seeds next.
-    await page
-      .locator('[data-testid="choice-__first_run__:runtime:local"]')
-      .click();
-    await page
-      .locator('[data-testid="choice-__first_run__:provider:on-device"]')
-      .waitFor({
-        state: "visible",
-        timeout: 10_000,
-      });
+    await page.locator('[data-testid="first-run-chooser-local"]').click();
+    await page.locator('[data-testid="first-run-provider-on-device"]').waitFor({
+      state: "visible",
+      timeout: 10_000,
+    });
   }
 }
 

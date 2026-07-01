@@ -15,6 +15,9 @@ type RuntimeChoice = "cloud" | "local" | "other";
 type ProviderChoice = "on-device" | "elizacloud" | "other";
 type ChooserStep = "runtime" | "provider";
 
+const FIRST_RUN_BACKUP_RESTORE_CHOICE_PATTERN =
+  /\[CHOICE:first-run id=backup-restore\]/;
+
 type ChoiceDefinition = {
   id: RuntimeChoice;
   title: string;
@@ -22,6 +25,40 @@ type ChoiceDefinition = {
   Icon: typeof Cloud;
   testId: string;
 };
+
+type FirstRunChoiceCandidate = {
+  id: string;
+  text?: string;
+  content?: string;
+};
+
+function firstRunChoiceBody(message: FirstRunChoiceCandidate): string {
+  if (typeof message.content === "string") return message.content;
+  if (typeof message.text === "string") return message.text;
+  return "";
+}
+
+export function hasPendingFirstRunBackupRestoreChoice(
+  messages: FirstRunChoiceCandidate[],
+): boolean {
+  let hasBackupRestoreChoice = false;
+  let hasRuntimeGreeting = false;
+
+  for (const message of messages) {
+    if (message.id === "first-run:greeting") {
+      hasRuntimeGreeting = true;
+    }
+
+    if (
+      message.id.startsWith("first-run:backup-restore") &&
+      FIRST_RUN_BACKUP_RESTORE_CHOICE_PATTERN.test(firstRunChoiceBody(message))
+    ) {
+      hasBackupRestoreChoice = true;
+    }
+  }
+
+  return hasBackupRestoreChoice && !hasRuntimeGreeting;
+}
 
 const PRIMARY_CHOICES: ChoiceDefinition[] = [
   {
@@ -300,6 +337,8 @@ export function FirstRunRuntimeChooser(): React.ReactElement | null {
     useConversationMessages();
   const active =
     firstRunComplete === false && startupPhase === "first-run-required";
+  const backupRestorePending =
+    hasPendingFirstRunBackupRestoreChoice(conversationMessages);
 
   const removeSyntheticChoiceTurns = React.useCallback(
     (...ids: string[]) => {
@@ -318,7 +357,7 @@ export function FirstRunRuntimeChooser(): React.ReactElement | null {
   );
 
   React.useEffect(() => {
-    if (!active || dismissed) return;
+    if (!active || dismissed || backupRestorePending) return;
     const hasSyntheticChoiceTurns = conversationMessages.some(
       (message) =>
         message.id === "first-run:greeting" ||
@@ -326,7 +365,13 @@ export function FirstRunRuntimeChooser(): React.ReactElement | null {
     );
     if (!hasSyntheticChoiceTurns) return;
     removeSyntheticChoiceTurns("first-run:greeting", "first-run:provider");
-  }, [active, conversationMessages, dismissed, removeSyntheticChoiceTurns]);
+  }, [
+    active,
+    backupRestorePending,
+    conversationMessages,
+    dismissed,
+    removeSyntheticChoiceTurns,
+  ]);
 
   React.useEffect(() => {
     if (active) return;
@@ -337,7 +382,7 @@ export function FirstRunRuntimeChooser(): React.ReactElement | null {
     setError(null);
   }, [active]);
 
-  if (!active || dismissed) return null;
+  if (!active || dismissed || backupRestorePending) return null;
 
   const appName = getBootConfig().branding?.appName ?? "elizaOS";
 
