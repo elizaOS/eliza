@@ -306,6 +306,16 @@ type MemoryBrowseItem = {
 
 type TaggedMemory = Memory & { _table: string };
 
+/** Ordering key — `Memory.createdAt` is optional; rows without one sort as oldest. */
+const memoryCreatedAt = (memory: { createdAt?: number }): number =>
+  memory.createdAt ?? 0;
+
+/** Newest-first comparator shared by the browse/search/feed list routes. */
+const byNewestFirst = (
+  a: { createdAt?: number },
+  b: { createdAt?: number },
+): number => memoryCreatedAt(b) - memoryCreatedAt(a);
+
 function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
   const content = memory.content as Record<string, unknown> | undefined;
   return {
@@ -315,7 +325,7 @@ function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
     entityId: memory.entityId,
     roomId: memory.roomId,
     agentId: memory.agentId ?? null,
-    createdAt: memory.createdAt ?? 0,
+    createdAt: memoryCreatedAt(memory),
     metadata: (memory.metadata as Record<string, unknown>) ?? null,
     source: (content?.source as string) ?? null,
   };
@@ -371,7 +381,7 @@ async function fetchMemoriesFromTables(
 
   const beforeTs = params.before;
   if (beforeTs) {
-    return filtered.filter((m) => (m.createdAt ?? 0) < beforeTs);
+    return filtered.filter((m) => memoryCreatedAt(m) < beforeTs);
   }
   return filtered;
 }
@@ -531,7 +541,7 @@ export async function handleMemoryRoutes(
       before,
     });
 
-    allMemories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    allMemories.sort(byNewestFirst);
     const items = allMemories.slice(0, limit).map(memoryToBrowseItem);
 
     json(res, {
@@ -575,7 +585,7 @@ export async function handleMemoryRoutes(
       limit: limit + offset + 100,
     });
 
-    allMemories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    allMemories.sort(byNewestFirst);
 
     let filtered = allMemories;
     if (searchQuery) {
@@ -633,7 +643,7 @@ export async function handleMemoryRoutes(
       limit: limit + offset + 100,
     });
 
-    allMemories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    allMemories.sort(byNewestFirst);
     const total = allMemories.length;
     const page = allMemories
       .slice(offset, offset + limit)
