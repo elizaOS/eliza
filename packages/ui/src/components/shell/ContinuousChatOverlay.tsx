@@ -3742,6 +3742,28 @@ export function ContinuousChatOverlay({
               </span>
               {/* Trailing controls. */}
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                {/* Transcription start/stop — only in voice mode (hands-free /
+                recording), sitting next to the mic. The mic stays the master
+                voice control (a mic tap ends both); this button starts/stops the
+                record-only transcription layer and LEAVES THE MIC ON, matching
+                toggleTranscriptionMode's off-path (#10699). Hidden when a
+                send/stop control is showing (a draft or a streaming reply). */}
+                {(handsFree || recording || transcriptionMode) &&
+                !((hasDraft || hasImages) && !recording) &&
+                !(!recording && responding) ? (
+                  <SoftButton
+                    icon={FileText}
+                    label={
+                      transcriptionMode
+                        ? "stop transcription"
+                        : "start transcription"
+                    }
+                    active={transcriptionMode}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={toggleTranscriptionMode}
+                    testId="chat-composer-transcribe"
+                  />
+                ) : null}
                 {/* One trailing control, ChatGPT-style: mic when there's nothing
                 to send (or while recording, to stop), swapping to send once the
                 user starts typing or attaches an image. It morphs IN PLACE (one
