@@ -547,6 +547,10 @@ export function ConversationsSidebar({
 
   const handleNewChat = () => {
     setState("activeInboxChat", null);
+    // Mirror handleRowSelect's conversation branch: an active terminal session
+    // otherwise keeps rendering over the fresh conversation (ChatView prefers
+    // the terminal branch), making "New chat" look dead.
+    setState("activeTerminalSessionId", null);
     setTab("chat");
     void handleNewConversation();
     onClose?.();
@@ -804,16 +808,10 @@ export function ConversationsSidebar({
         collapseButtonAriaLabel={t("aria.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         collapsedRailAction={
-          showNewTerminalAction ? (
-            <SidebarCollapsedActionButton
-              aria-label={t("conversations.newTerminal", {
-                defaultValue: "New terminal",
-              })}
-              onClick={() => void spawnShell()}
-            >
-              <Plus className="h-4 w-4" />
-            </SidebarCollapsedActionButton>
-          ) : showNewChatAction ? (
+          // Chat-first: the single collapsed-rail "+" always starts a new
+          // CHAT. New terminal stays reachable from the expanded terminal
+          // section header — a shell session is never the primary affordance.
+          showNewChatAction ? (
             <SidebarCollapsedActionButton
               aria-label={t("conversations.newChat")}
               onClick={handleNewChat}

@@ -2891,6 +2891,19 @@ export function ContinuousChatOverlay({
         submitText(exec.text);
         return;
       }
+      // The CommandPalette is a Radix dialog (Z_DIALOG=170) that paints UNDER
+      // the open chat glass (Z_SHELL_OVERLAY=9000): opening it from the
+      // composer left an invisible, focus-trapped dialog behind the sheet.
+      // Collapse first so the palette opens over the pill, fully visible and
+      // dismissible; skip the composer refocus so focus stays in the palette.
+      const opensPalette =
+        exec.kind === "client" &&
+        (exec.clientAction === "open-command-palette" ||
+          exec.clientAction === "show-commands");
+      const openPaletteCollapsed = () => {
+        collapse();
+        slash.openCommandPalette();
+      };
       runSlashExecution(exec, {
         navigateTab: slash.navigateTab,
         navigateSettings: slash.navigateSettings,
@@ -2900,16 +2913,25 @@ export function ContinuousChatOverlay({
         // The overlay owns full-screen via the `maximized` detent flag, not a
         // controller method, so toggle it directly here.
         toggleFullscreen: toggleMaximize,
-        openCommandPalette: slash.openCommandPalette,
-        showCommands: slash.openCommandPalette,
+        openCommandPalette: openPaletteCollapsed,
+        showCommands: openPaletteCollapsed,
         toggleTranscription: toggleTranscriptionMode,
         send: (text) => submitText(text),
       });
       setDraft("");
       setSlashDismissed(true);
-      inputRef.current?.focus();
+      if (!opensPalette) {
+        inputRef.current?.focus();
+      }
     },
-    [slash, controller, submitText, toggleMaximize, toggleTranscriptionMode],
+    [
+      slash,
+      controller,
+      submitText,
+      toggleMaximize,
+      toggleTranscriptionMode,
+      collapse,
+    ],
   );
 
   const submit = React.useCallback(() => {
@@ -3005,10 +3027,21 @@ export function ContinuousChatOverlay({
     const isGrabber = (target: EventTarget | null): boolean =>
       target instanceof Element &&
       !!target.closest('[data-testid="chat-sheet-grabber"]');
+    // Surfaces painted ABOVE the chat glass (notification sheet at z-9501,
+    // tutorial at Z_TUTORIAL, any open Radix dialog) must win the tap — the
+    // swallower otherwise eats their first tap AND collapses the chat under
+    // them. "Tap outside collapses" is only for the background view.
+    const isAboveShellOverlay = (target: EventTarget | null): boolean =>
+      target instanceof Element &&
+      !!target.closest('[data-above-shell-overlay], [role="dialog"]');
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0 && event.pointerType === "mouse") return;
-      if (isInsidePanel(event.target) || isGrabber(event.target)) {
+      if (
+        isInsidePanel(event.target) ||
+        isGrabber(event.target) ||
+        isAboveShellOverlay(event.target)
+      ) {
         outsideSheetPointerRef.current = null;
         return;
       }
@@ -3077,6 +3110,20 @@ export function ContinuousChatOverlay({
     if (typeof document === "undefined" || !sheetOpen) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // An open Radix dialog (data-state="open" — e.g. the command palette)
+        // or the notification pull-down sheet (mounts only while open) sits
+        // above the chat: let ITS Escape handling win — collapsing here too
+        // closed both at once (e.g. an invisible palette + the chat). Scoped
+        // to exactly these; broad role="dialog" would match always-mounted
+        // shell surfaces (AssistantOverlay, tutorial card) and permanently
+        // disable Escape-collapse.
+        if (
+          document.querySelector(
+            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"]',
+          )
+        ) {
+          return;
+        }
         e.preventDefault();
         collapse();
       }

@@ -125,7 +125,10 @@ function NotificationRow({
         type="button"
         aria-label="Dismiss notification"
         onClick={handleRemove}
-        className="absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-0 transition-opacity hover:bg-card hover:text-txt  group-hover:opacity-100"
+        // Visible at rest (dimmed): on touch there is no hover, and an
+        // invisible-but-hit-testable X silently deleted the notification on a
+        // near-edge tap. Full opacity on hover AND keyboard focus.
+        className="absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-50 transition-opacity hover:bg-card hover:text-txt group-hover:opacity-100 focus-visible:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -402,6 +405,7 @@ export function NotificationCenter({
           type="button"
           aria-label="Dismiss notifications"
           data-testid="notification-sheet-backdrop"
+          data-above-shell-overlay
           onClick={() => onOpenChange?.(false)}
           className="fixed inset-0 z-[9500] bg-black/40"
         />
@@ -409,6 +413,7 @@ export function NotificationCenter({
           role="dialog"
           aria-label="Notifications"
           data-testid="notification-sheet"
+          data-above-shell-overlay
           className={cn(
             "fixed inset-x-0 top-0 z-[9501] mx-auto flex max-h-[85vh] w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover shadow-xl",
             "pt-[var(--safe-area-top,0px)]",

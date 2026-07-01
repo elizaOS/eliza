@@ -1,27 +1,19 @@
 // @vitest-environment jsdom
 //
-// #10717: the web/desktop `< >` pager edge buttons — desktop fine-pointer
-// gated (never on touch/phone-width), self-hiding at the first/last page,
-// click → goPrev/goNext.
+// #10717: the web/desktop `< >` pager edge buttons — fine-pointer gated
+// (never on touch/coarse pointers, but at ANY viewport width), self-hiding at
+// the first/last page, click → goPrev/goNext.
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PagerEdgeButtons } from "./PagerEdgeButtons";
 
-function mockDesktopPointer({
-  finePointer,
-  desktopWidth = true,
-}: {
-  finePointer: boolean;
-  desktopWidth?: boolean;
-}) {
+function mockPointerCapability({ finePointer }: { finePointer: boolean }) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches:
       finePointer &&
-      desktopWidth &&
       query.includes("(hover: hover)") &&
-      query.includes("(pointer: fine)") &&
-      query.includes("(min-width: 1024px)"),
+      query.includes("(pointer: fine)"),
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -39,7 +31,7 @@ afterEach(() => {
 
 describe("PagerEdgeButtons (#10717)", () => {
   it("renders nothing on touch / coarse pointers", () => {
-    mockDesktopPointer({ finePointer: false });
+    mockPointerCapability({ finePointer: false });
     const { queryByTestId } = render(
       <PagerEdgeButtons canPrev canNext goPrev={vi.fn()} goNext={vi.fn()} />,
     );
@@ -47,17 +39,23 @@ describe("PagerEdgeButtons (#10717)", () => {
     expect(queryByTestId("pager-edge-next")).toBeNull();
   });
 
-  it("renders nothing at phone width even if the browser reports a fine pointer", () => {
-    mockDesktopPointer({ finePointer: true, desktopWidth: false });
+  it("gates on pointer capability only — no min-width clause, so a narrow fine-pointer window still gets a paging control", () => {
+    mockPointerCapability({ finePointer: true });
     const { queryByTestId } = render(
       <PagerEdgeButtons canPrev canNext goPrev={vi.fn()} goNext={vi.fn()} />,
     );
-    expect(queryByTestId("pager-edge-prev")).toBeNull();
-    expect(queryByTestId("pager-edge-next")).toBeNull();
+    // The buttons render from the pointer-capability match alone; the media
+    // gate never consults the viewport width (below 1024px there are no page
+    // dots in production, so these arrows are the only paging control).
+    expect(queryByTestId("pager-edge-prev")).not.toBeNull();
+    expect(queryByTestId("pager-edge-next")).not.toBeNull();
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      expect.not.stringContaining("min-width"),
+    );
   });
 
   it("renders both arrows on fine pointers and routes clicks", () => {
-    mockDesktopPointer({ finePointer: true });
+    mockPointerCapability({ finePointer: true });
     const goPrev = vi.fn();
     const goNext = vi.fn();
     const { getByTestId } = render(
@@ -70,7 +68,7 @@ describe("PagerEdgeButtons (#10717)", () => {
   });
 
   it("hides the arrow with no page to move to (first / last page)", () => {
-    mockDesktopPointer({ finePointer: true });
+    mockPointerCapability({ finePointer: true });
     const first = render(
       <PagerEdgeButtons
         canPrev={false}
@@ -96,7 +94,7 @@ describe("PagerEdgeButtons (#10717)", () => {
   });
 
   it("uses neutral icon color with no card chrome or blue", () => {
-    mockDesktopPointer({ finePointer: true });
+    mockPointerCapability({ finePointer: true });
     const { getByTestId } = render(
       <PagerEdgeButtons canPrev canNext goPrev={vi.fn()} goNext={vi.fn()} />,
     );
