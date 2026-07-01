@@ -26,7 +26,12 @@ import { adAccounts } from "../../../db/schemas/ad-accounts";
 import { adCampaigns } from "../../../db/schemas/ad-campaigns";
 import { adCreatives } from "../../../db/schemas/ad-creatives";
 import { adSlotEvents, adSlots } from "../../../db/schemas/ad-slots";
-import { appDeploymentStatusEnum, apps, userDatabaseStatusEnum } from "../../../db/schemas/apps";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  userDatabaseStatusEnum,
+} from "../../../db/schemas/apps";
 import { organizations } from "../../../db/schemas/organizations";
 import {
   earningsSourceEnum,
@@ -154,6 +159,7 @@ beforeAll(async () => {
       redeemableEarningsLedger,
       redeemedEarningsTracking,
       appDeploymentStatusEnum,
+      appReviewStatusEnum,
       userDatabaseStatusEnum,
       earningsSourceEnum,
       ledgerEntryTypeEnum,

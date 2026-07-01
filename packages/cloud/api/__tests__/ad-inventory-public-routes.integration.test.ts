@@ -12,7 +12,14 @@
  * Self-skips LOUDLY if PGlite/pushSchema is unavailable.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -22,16 +29,18 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.ELIZA_AD_TAG_SECRET = "route-test-ad-tag-secret";
 
-import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { closeDatabaseConnectionsForTests, dbWrite } from "@/db/client";
+// Via cloud-shared so `drizzle-kit` (its devDependency) resolves at runtime.
+import { pushSchema } from "@/db/push-schema-for-tests";
 import { adAccounts } from "@/db/schemas/ad-accounts";
 import { adCampaigns } from "@/db/schemas/ad-campaigns";
 import { adCreatives } from "@/db/schemas/ad-creatives";
 import { adSlotEvents, adSlots } from "@/db/schemas/ad-slots";
 import {
   appDeploymentStatusEnum,
+  appReviewStatusEnum,
   apps,
   userDatabaseStatusEnum,
 } from "@/db/schemas/apps";
@@ -158,11 +167,11 @@ function serveUrl(slotId: string, token?: string): string {
   return `/api/v1/marketing/inventory/serve?${qs.toString()}`;
 }
 
-function get(path: string, ip: string): Promise<Response> {
+async function get(path: string, ip: string): Promise<Response> {
   return api.request(path, { headers: { "cf-connecting-ip": ip } }, ENV);
 }
 
-function postClick(body: unknown, ip: string): Promise<Response> {
+async function postClick(body: unknown, ip: string): Promise<Response> {
   return api.request(
     "/api/v1/marketing/inventory/click",
     {
@@ -197,6 +206,7 @@ beforeAll(async () => {
       redeemableEarningsLedger,
       redeemedEarningsTracking,
       appDeploymentStatusEnum,
+      appReviewStatusEnum,
       userDatabaseStatusEnum,
       earningsSourceEnum,
       ledgerEntryTypeEnum,
@@ -217,6 +227,14 @@ afterAll(async () => {
 });
 
 describe("public SSP routes (#10687) — signed ad-tag boundary", () => {
+  beforeEach(async () => {
+    // Each test seeds its own world; pause every earlier campaign so the
+    // eligible-ad pick (highest remaining budget, ties arbitrary) is
+    // deterministic within a test.
+    if (pgliteReady)
+      await dbWrite.update(adCampaigns).set({ status: "paused" });
+  });
+
   test("pglite applied (loud)", () => {
     expect(pgliteReady).toBe(true);
   });
