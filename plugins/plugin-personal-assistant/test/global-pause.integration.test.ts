@@ -142,7 +142,10 @@ describe("global pause integration", () => {
     expect(skipped?.state.lastDecisionLog).toContain("global_pause");
 
     // The emergency task fired straight through the active pause window.
-    const fired = await repo.getScheduledTask(runtime.agentId, emergency.taskId);
+    const fired = await repo.getScheduledTask(
+      runtime.agentId,
+      emergency.taskId,
+    );
     expect(fired?.state.status).toBe("fired");
     expect(fired?.state.firedAt).toBeDefined();
 
