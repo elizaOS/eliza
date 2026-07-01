@@ -332,6 +332,17 @@ try {
       );
     }
   }
+  // No home widget may fall back to the "Widget failed to render" boundary — an
+  // ErrorBoundary catch is invisible to the page-error guard, so assert it here.
+  {
+    const errorCards = await mobile
+      .locator('[data-testid^="widget-error-"]')
+      .allTextContents();
+    assert(
+      errorCards.length === 0,
+      `no home widget hit its error boundary (${errorCards.length})`,
+    );
+  }
   // No general quick-access tiles anymore — Launcher is the adjacent
   // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
   // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).

@@ -46,4 +46,9 @@ export const client = {
   listConnectorAccounts: async () => ({
     accounts: [{ id: "google-owner", provider: "google", status: "connected" }],
   }),
+  // MessagesWidget cold-seeds from the conversation list then fetches each
+  // candidate's messages; empty results make it self-hide cleanly instead of
+  // throwing (which would surface a "Widget failed to render" fallback).
+  listConversations: async () => ({ conversations: [] }),
+  getConversationMessages: async () => ({ messages: [] }),
 };
