@@ -115,9 +115,18 @@ async function fulfillJson(
 ): Promise<void> {
   await route.fulfill({
     status,
-    contentType: "application/json",
-    body: JSON.stringify(body),
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "*",
+      "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      "content-type": "application/json",
+    },
+    body: requestAllowsBody(route) ? JSON.stringify(body) : "",
   });
+}
+
+function requestAllowsBody(route: Route): boolean {
+  return route.request().method() !== "HEAD";
 }
 
 // -- Seeded attention payloads (mirror home-widget-priority.spec) -------------
@@ -326,7 +335,10 @@ async function routeFirstRunIncomplete(
       await route.fallback();
       return;
     }
-    await fulfillJson(route, { complete: false, cloudProvisioned: false });
+    await fulfillJson(route, {
+      complete: state.firstRunPosts.length > 0,
+      cloudProvisioned: false,
+    });
   });
   await page.route("**/api/first-run", async (route) => {
     if (route.request().method() !== "POST") {
@@ -381,6 +393,18 @@ export async function installHomeRoutes(
       totalBuffered: 0,
       replayed: true,
     });
+  });
+
+  await page.route("**/api/coding-agents", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await fulfillJson(route, {});
+      return;
+    }
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, []);
   });
 
   // Local-inference shell-level GETs — a fresh agent has no local model, so an
@@ -910,6 +934,143 @@ export async function completeCloudOnboardingToHome(
   ).toBe(1);
 
   return { surface };
+}
+
+export async function completeCloudInferenceOnboardingToHome(
+  page: Page,
+  click: (locator: Locator) => Promise<void>,
+  opts: { state: OnboardingRouteState; tutorial?: "start" | "skip" },
+): Promise<{ surface: Locator }> {
+  const { state, tutorial = "skip" } = opts;
+
+  await expectChatFirstOnboarding(page);
+
+  const local = page.getByTestId(RUNTIME_CHOICE("local"));
+  await expect(local).toBeEnabled({ timeout: 15_000 });
+  await click(local);
+
+  const cloudInference = page.getByTestId(PROVIDER_CHOICE("elizacloud"));
+  await expect(cloudInference).toBeVisible({ timeout: 15_000 });
+  await click(cloudInference);
+
+  await pickTutorial(page, click, tutorial);
+
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const surface = await expectPopulatedHome(page);
+
+  expect(
+    state.firstRunPosts.length,
+    "POST /api/first-run must fire exactly once for the cloud-inference local path",
+  ).toBe(1);
+
+  return { surface };
+}
+
+export async function completeOtherProviderSettingsHandoff(
+  page: Page,
+  click: (locator: Locator) => Promise<void>,
+  opts: { state: OnboardingRouteState; tutorial?: "start" | "skip" },
+): Promise<{ surface: Locator }> {
+  const { state, tutorial = "skip" } = opts;
+
+  await expectChatFirstOnboarding(page);
+
+  const chooser = page.getByTestId("first-run-runtime-chooser");
+  await chooser.getByRole("button", { name: /Advanced setup/i }).click();
+  const otherRuntime = page.getByTestId(RUNTIME_CHOICE("other"));
+  await expect(otherRuntime).toBeVisible({ timeout: 15_000 });
+  await click(otherRuntime);
+
+  const otherProvider = page.getByTestId(PROVIDER_CHOICE("other"));
+  await expect(otherProvider).toBeVisible({ timeout: 15_000 });
+  await click(otherProvider);
+
+  await pickTutorial(page, click, tutorial);
+
+  await expect(
+    page.getByText("Choose a model provider in Settings before sending", {
+      exact: false,
+    }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Open Settings" })).toBeVisible(
+    { timeout: 15_000 },
+  );
+
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const surface = await expectPopulatedHome(page);
+
+  expect(
+    state.firstRunPosts.length,
+    "POST /api/first-run must fire exactly once for the Other/settings handoff path",
+  ).toBe(1);
+
+  return { surface };
+}
+
+export async function connectRemoteFirstRunToHome(
+  page: Page,
+  opts: { state: OnboardingRouteState; apiBase?: string },
+): Promise<{ surface: Locator; activeServer: string | null }> {
+  const { state } = opts;
+
+  await expectChatFirstOnboarding(page);
+
+  const apiBase =
+    opts.apiBase ??
+    (await page.evaluate(() => window.location.origin.toString()));
+
+  await page.evaluate((gatewayUrl) => {
+    document.dispatchEvent(
+      new CustomEvent("eliza:connect", {
+        detail: {
+          gatewayUrl,
+          completeFirstRun: true,
+          skipConfirm: true,
+        },
+      }),
+    );
+  }, apiBase);
+
+  const surface = page.getByTestId("home-launcher-surface");
+  await expect(surface).toBeVisible({ timeout: 60_000 });
+  await expect(surface).toHaveAttribute("data-page", "home");
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId("first-run-runtime-chooser")).toBeHidden({
+    timeout: 15_000,
+  });
+
+  const firstRunComplete = await page.evaluate(() =>
+    localStorage.getItem("eliza:first-run-complete"),
+  );
+  expect(
+    firstRunComplete,
+    "remote adoption must persist local completion",
+  ).toBe("1");
+
+  expect(
+    state.firstRunPosts.length <= 1,
+    "remote first-run adoption must not double-submit first-run setup",
+  ).toBe(true);
+
+  const activeServer = await page.evaluate(() =>
+    localStorage.getItem("elizaos:active-server"),
+  );
+  expect(activeServer, "remote active-server persisted").toBeTruthy();
+  expect(activeServer).toContain('"kind":"remote"');
+
+  return { surface, activeServer };
 }
 
 /**

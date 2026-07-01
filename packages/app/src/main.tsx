@@ -41,7 +41,10 @@ import {
   subscribeDesktopBridgeEvent,
 } from "@elizaos/ui/bridge";
 import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
-import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
+import {
+  initializeStorageBridge,
+  setStorageValue,
+} from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
@@ -1657,10 +1660,27 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
   // SECURITY: never accept a bearer token from an OS-delivered deep link (see
   // the `connect` case below). A pairing-disabled remote that needs a token is
   // connected via the trusted in-app Settings entry instead.
-  dispatchAppEvent(CONNECT_EVENT, {
-    gatewayUrl: validatedUrl.href,
-    completeFirstRun: true,
+  const connection = applyLaunchConnection({
+    kind: "remote",
+    apiBase: validatedUrl.href,
+    token: null,
+    allowPublicHttps: true,
   });
+  const dispatchConnect = () => {
+    dispatchAppEvent(CONNECT_EVENT, {
+      gatewayUrl: connection.apiBase,
+      completeFirstRun: true,
+    });
+  };
+  const activeServer = JSON.stringify({
+    id: `remote:${connection.apiBase}`,
+    kind: "remote",
+    label: validatedUrl.hostname || "Remote agent",
+    apiBase: connection.apiBase,
+  });
+  void setStorageValue("elizaos:active-server", activeServer).finally(
+    dispatchConnect,
+  );
 }
 
 function handleDeepLink(url: string): void {
@@ -1691,6 +1711,17 @@ function handleDeepLink(url: string): void {
   const path = isAppLink
     ? parsed.pathname.replace(/^\/+|\/+$/g, "")
     : getDeepLinkPath(parsed);
+  if (path === "first-run/runtime/remote") {
+    const rawApiBase =
+      parsed.searchParams.get("api")?.trim() ||
+      parsed.searchParams.get("apiBase")?.trim() ||
+      parsed.searchParams.get("url")?.trim() ||
+      parsed.searchParams.get("host")?.trim();
+    if (rawApiBase) {
+      connectFirstRunRemoteDeepLink(rawApiBase);
+    }
+    return;
+  }
 
   // eliza://settings/connectors/<provider> — open Settings → Connectors.
   // The new Connectors section renders one inline expansion per connector;

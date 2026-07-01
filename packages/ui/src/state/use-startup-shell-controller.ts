@@ -175,6 +175,8 @@ export function useStartupShellController(): StartupShellController {
             token: connection.token,
             uiLanguage,
           });
+          setState("firstRunComplete", true);
+          coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();

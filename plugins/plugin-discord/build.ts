@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { mkdir, writeFile } from "node:fs/promises";
 /**
  * Build script for @elizaos/plugin-discord (Node). Orchestration lives in the
  * shared driver; this lists only what differs. Single bundled `dist/index.js`
@@ -22,3 +23,9 @@ await buildPlugin({
 	dtsProject: "tsconfig.build.json",
 	rewriteDistImports: true,
 });
+
+await mkdir("dist/user-account-scraper", { recursive: true });
+await writeFile(
+	"dist/user-account-scraper/index.js",
+	'export * from "../index.js";\n',
+);

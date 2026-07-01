@@ -219,79 +219,93 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       }
 
       try {
+        const storageSeed = ALLOW_FIRST_RUN ? {} : SEED_STORAGE;
         await page.waitForLoadState("domcontentloaded").catch(() => {});
-        await page.addInitScript((seed: Record<string, string>) => {
-          const globalObject = globalThis as typeof globalThis & {
-            process?: { env?: Record<string, string> };
-            __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
-            __ELIZAOS_UI_APP_STORE__?: {
-              value?: {
-                setState?: (key: string, value: unknown) => void;
-              } | null;
+        await page.addInitScript(
+          (args: { seed: Record<string, string>; allowFirstRun: boolean }) => {
+            const globalObject = globalThis as typeof globalThis & {
+              process?: { env?: Record<string, string> };
+              __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
+              __ELIZAOS_UI_APP_STORE__?: {
+                value?: {
+                  setState?: (key: string, value: unknown) => void;
+                } | null;
+              };
             };
-          };
-          globalObject.process ??= {};
-          globalObject.process.env ??= {};
-          globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
-          globalObject.process.env.NODE_ENV = "test";
-          globalObject.__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
-          globalObject.__ELIZAOS_UI_APP_STORE__?.value?.setState?.(
-            "firstRunComplete",
-            true,
-          );
-          for (const [key, value] of Object.entries(seed)) {
-            localStorage.setItem(key, value);
-          }
-        }, SEED_STORAGE);
-        await page.evaluate(async (seed: Record<string, string>) => {
-          const globalObject = globalThis as typeof globalThis & {
-            process?: { env?: Record<string, string> };
-            __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
-            __ELIZAOS_UI_APP_STORE__?: {
-              value?: {
-                setState?: (key: string, value: unknown) => void;
-              } | null;
+            globalObject.process ??= {};
+            globalObject.process.env ??= {};
+            globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
+            globalObject.process.env.NODE_ENV = "test";
+            globalObject.__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
+            if (!args.allowFirstRun) {
+              globalObject.__ELIZAOS_UI_APP_STORE__?.value?.setState?.(
+                "firstRunComplete",
+                true,
+              );
+            }
+            for (const [key, value] of Object.entries(args.seed)) {
+              localStorage.setItem(key, value);
+            }
+          },
+          { seed: storageSeed, allowFirstRun: ALLOW_FIRST_RUN },
+        );
+        await page.evaluate(
+          async (args: {
+            seed: Record<string, string>;
+            allowFirstRun: boolean;
+          }) => {
+            const globalObject = globalThis as typeof globalThis & {
+              process?: { env?: Record<string, string> };
+              __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
+              __ELIZAOS_UI_APP_STORE__?: {
+                value?: {
+                  setState?: (key: string, value: unknown) => void;
+                } | null;
+              };
             };
-          };
-          globalObject.process ??= {};
-          globalObject.process.env ??= {};
-          globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
-          globalObject.process.env.NODE_ENV = "test";
-          globalObject.__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
-          globalObject.__ELIZAOS_UI_APP_STORE__?.value?.setState?.(
-            "firstRunComplete",
-            true,
-          );
-          for (const [key, value] of Object.entries(seed)) {
-            localStorage.setItem(key, value);
-          }
-          const preferences = (
-            window as Window & {
-              Capacitor?: {
-                Plugins?: {
-                  Preferences?: {
-                    set?: (args: {
-                      key: string;
-                      value: string;
-                    }) => Promise<void>;
+            globalObject.process ??= {};
+            globalObject.process.env ??= {};
+            globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
+            globalObject.process.env.NODE_ENV = "test";
+            globalObject.__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
+            if (!args.allowFirstRun) {
+              globalObject.__ELIZAOS_UI_APP_STORE__?.value?.setState?.(
+                "firstRunComplete",
+                true,
+              );
+            }
+            for (const [key, value] of Object.entries(args.seed)) {
+              localStorage.setItem(key, value);
+            }
+            const preferences = (
+              window as Window & {
+                Capacitor?: {
+                  Plugins?: {
+                    Preferences?: {
+                      set?: (args: {
+                        key: string;
+                        value: string;
+                      }) => Promise<void>;
+                    };
                   };
                 };
-              };
+              }
+            ).Capacitor?.Plugins?.Preferences;
+            if (preferences?.set) {
+              await Promise.all(
+                Object.entries(args.seed).map(([key, value]) =>
+                  preferences.set?.({ key, value }),
+                ),
+              );
             }
-          ).Capacitor?.Plugins?.Preferences;
-          if (preferences?.set) {
-            await Promise.all(
-              Object.entries(seed).map(([key, value]) =>
-                preferences.set?.({ key, value }),
-              ),
-            );
-          }
-        }, SEED_STORAGE);
+          },
+          { seed: storageSeed, allowFirstRun: ALLOW_FIRST_RUN },
+        );
         // Native localStorage is proxied to Capacitor Preferences on a later
         // task. Let those writes land before the reload that rehydrates startup
         // state from Preferences.
         await delay(750);
-        if (ALLOW_FIRST_RUN && (await isFirstRunShowing(page))) {
+        if (ALLOW_FIRST_RUN) {
           await use(page);
           return;
         }
