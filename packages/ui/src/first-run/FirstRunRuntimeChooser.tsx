@@ -114,7 +114,7 @@ export function FirstRunRuntimeChooserSurface({
   const onProviderStep = step === "provider";
   return (
     <div
-      className="fixed inset-0 flex items-start justify-center overflow-y-auto bg-black/60 px-5 py-[calc(var(--safe-area-top,0px)+3rem)] text-white backdrop-blur-xl sm:items-center sm:py-8"
+      className="fixed inset-0 flex items-start justify-center overflow-y-auto bg-black/60 px-5 py-[calc(var(--safe-area-top,0px)+3rem)] text-white sm:items-center sm:py-8"
       data-testid="first-run-runtime-chooser"
       role="dialog"
       aria-modal="true"

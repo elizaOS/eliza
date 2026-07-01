@@ -743,9 +743,11 @@ function TurnStatusIndicator({
           FLOAT_SHADOW,
           // Orange (the accent) ONLY for spoken replies; every other phase is
           // neutral white glass. No blue anywhere.
+          // #10698: no own scrim — the shared panel glass carries the contrast;
+          // keep only the tone border (orange when speaking) + FLOAT_SHADOW.
           speaking
-            ? "border-[rgba(255,180,120,0.45)] bg-black/55"
-            : "border-white/10 bg-black/45",
+            ? "border-[rgba(255,180,120,0.45)]"
+            : "border-white/10",
         )}
       >
         <TurnStatusInner status={status} />
@@ -881,7 +883,10 @@ const ThreadLine = React.memo(function ThreadLine({
       >
         <div
           className={cn(
-            "max-w-[85%] rounded-2xl rounded-bl-md border border-amber-300/30 bg-black/60 px-3.5 py-3 text-white",
+            // #10698: minimize the own scrim (0.60 → 0.35) now the shared glass
+            // carries contrast, but keep a fill so this critical no-provider CTA
+            // stays prominent over any wallpaper; structure/amber border kept.
+            "max-w-[85%] rounded-2xl rounded-bl-md border border-amber-300/30 bg-black/35 px-3.5 py-3 text-white",
             FLOAT_SHADOW,
           )}
         >
@@ -934,17 +939,14 @@ const ThreadLine = React.memo(function ThreadLine({
           // Message text must remain selectable for normal highlight/copy.
           // Assistant bubbles still keep the press-and-hold copy shortcut.
           "select-text [-webkit-touch-callout:default]",
+          // #10698: no per-message fill — text floats transparently on the one
+          // shared panel glass. FLOAT_SHADOW + light text keep it legible; a
+          // hairline edge remains to define the item boundary.
           floating
-            ? cn(
-                "border",
-                isUser
-                  ? "border-white/15 bg-black/30 text-white"
-                  : "border-white/15 bg-black text-white",
-                FLOAT_SHADOW,
-              )
+            ? cn("border border-white/15 text-white", FLOAT_SHADOW)
             : isUser
-              ? "bg-white/20 text-white"
-              : "bg-white/10 text-white/90",
+              ? "text-white"
+              : "text-white/90",
         )}
       >
         <div data-chat-selectable="true">
@@ -3193,15 +3195,17 @@ export function ContinuousChatOverlay({
             style={{
               opacity: glassOpacity,
               borderRadius: fullBleed ? 0 : panelRadius,
-              // Dark translucent tint + backdrop blur = the frosted glass. Set
-              // inline (not via a Tailwind backdrop-* class) so it renders
-              // identically in the app and in the raw-esbuild e2e harness,
-              // independent of any backdrop-utility config.
+              // Soft glass WITHOUT a GPU backdrop blur (#10698, #9141 battery
+              // gate): a dark translucent tint carries the contrast the removed
+              // blur used to add (bumped a touch to compensate), and a faint
+              // top-sheen gradient reads as glass. The battery gate bans the GPU
+              // backdrop blur, so it is intentionally absent. Inline (not a
+              // Tailwind class) so it renders identically in the raw-esbuild e2e.
               backgroundColor: fullBleed
-                ? "rgba(10,10,12,0.55)"
-                : "rgba(10,10,12,0.42)",
-              backdropFilter: "blur(24px) saturate(140%)",
-              WebkitBackdropFilter: "blur(24px) saturate(140%)",
+                ? "rgba(10,10,12,0.62)"
+                : "rgba(10,10,12,0.5)",
+              backgroundImage:
+                "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 24%)",
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android
