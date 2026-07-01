@@ -14,7 +14,10 @@ export function getSegmenter(): Intl.Segmenter {
  * keep matching likely emoji ranges.
  */
 function couldBeEmoji(segment: string): boolean {
-  const cp = segment.codePointAt(0)!;
+  const cp = segment.codePointAt(0);
+  if (cp === undefined) {
+    return false;
+  }
   return (
     (cp >= 0x1f000 && cp <= 0x1fbff) || // Emoji and Pictograph
     (cp >= 0x2300 && cp <= 0x23ff) || // Misc technical
@@ -30,12 +33,16 @@ const zeroWidthRegex =
   /^(?:\p{Default_Ignorable_Code_Point}|\p{Control}|\p{Mark}|\p{Surrogate})+$/u;
 const leadingNonPrintingRegex =
   /^[\p{Default_Ignorable_Code_Point}\p{Control}\p{Format}\p{Mark}\p{Surrogate}]+/u;
+// biome-ignore lint/complexity/useRegexLiterals: ANSI control escapes trip noControlCharactersInRegex as literals.
 const sgrAndCursorRegex = new RegExp("\\x1b\\[[0-9;]*[mGKHJ]", "g");
+// biome-ignore lint/complexity/useRegexLiterals: ANSI control escapes trip noControlCharactersInRegex as literals.
 const osc8HyperlinkRegex = new RegExp("\\x1b\\]8;;[^\\x07]*\\x07", "g");
+// biome-ignore lint/complexity/useRegexLiterals: ANSI control escapes trip noControlCharactersInRegex as literals.
 const apcSequenceRegex = new RegExp(
   "\\x1b_[^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)",
   "g",
 );
+// biome-ignore lint/complexity/useRegexLiterals: ANSI control escapes trip noControlCharactersInRegex as literals.
 const ansiSgrParamsRegex = new RegExp("\\x1b\\[([\\d;]*)m");
 
 // Cache for non-ASCII strings
@@ -70,7 +77,10 @@ function graphemeWidth(segment: string): number {
   // Trailing halfwidth/fullwidth forms
   if (segment.length > 1) {
     for (const char of segment.slice(1)) {
-      const c = char.codePointAt(0)!;
+      const c = char.codePointAt(0);
+      if (c === undefined) {
+        continue;
+      }
       if (c >= 0xff00 && c <= 0xffef) {
         width += eastAsianWidth(c);
       }
@@ -153,7 +163,11 @@ export function extractAnsiCode(
   // CSI sequence: ESC [ ... m/G/K/H/J
   if (next === "[") {
     let j = pos + 2;
-    while (j < str.length && !/[mGKHJ]/.test(str[j]!)) j++;
+    while (j < str.length) {
+      const char = str[j];
+      if (char === undefined || /[mGKHJ]/.test(char)) break;
+      j++;
+    }
     if (j < str.length)
       return { code: str.substring(pos, j + 1), length: j + 1 - pos };
     return null;
