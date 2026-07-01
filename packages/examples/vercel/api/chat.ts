@@ -157,9 +157,19 @@ export default async function handler(request: Request): Promise<Response> {
     } as Record<string, unknown>);
   }
 
+  // A malformed JSON body is a CLIENT error — parse it in its own guard so it
+  // returns 400, not the generic 500 below (which is for genuine server faults).
+  let body: Record<string, unknown>;
   try {
-    const body = (await request.json()) as Record<string, unknown>;
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return jsonResponse(400, {
+      error: "Request body must be valid JSON",
+      code: "BAD_REQUEST",
+    });
+  }
 
+  try {
     if (typeof body.message !== "string" || !body.message.trim()) {
       return jsonResponse(400, {
         error: "Message is required and must be a non-empty string",
