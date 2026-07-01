@@ -62,6 +62,24 @@ export const NoProviderGate: Story = {
 };
 
 /**
+ * `accountConnect` renders the AccountConnectBlock: a per-provider row (name +
+ * current count + "Add account") that opens the existing AddAccountDialog
+ * OAuth/API-key flow inline. Live account counts come from the api client
+ * (`listAccounts`), so outside a running backend the rows show "0 connected".
+ */
+export const AccountConnect: Story = {
+  args: {
+    message: makeMessage({
+      text: "Sure — pick a provider below to sign into another account.",
+      accountConnect: {
+        providers: ["anthropic-subscription", "openai-codex"],
+        reason: "You asked to connect another provider account.",
+      },
+    }),
+  },
+};
+
+/**
  * `failureKind: "rate_limited"` (and `provider_issue`) render the graceful
  * message with a one-tap Retry that resends the preceding user turn.
  */

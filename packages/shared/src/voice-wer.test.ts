@@ -72,3 +72,48 @@ describe("wordErrorRate", () => {
     expect(wordErrorRate("alpha beta", "gamma delta")).toBe(1);
   });
 });
+
+// De-larp guard (#10726). The voice self-test's WER quality gate accepts a
+// transcript only when `wer <= werTolerance` (default 0.34 in
+// voice-selftest-harness.ts). The mocked-ASR self-test lane always feeds the
+// EXPECTED phrase back verbatim, so its measured WER is always 0.0 — a
+// tautology that proves the gate ACCEPTS a perfect transcript but never that it
+// REJECTS a bad one. These cases pin that the metric genuinely discriminates
+// ASR quality across the 0.34 boundary, so a real (degraded) transcript would
+// fail the gate rather than sail through.
+describe("WER discriminates real vs degraded ASR (self-test gate = 0.34)", () => {
+  const GATE = 0.34; // voice-selftest-harness.ts default `werTolerance`
+  const REFERENCE = "the quick brown fox jumps over the lazy dog"; // 9 words
+  const passesGate = (hyp: string) => wordErrorRate(REFERENCE, hyp) <= GATE;
+
+  it("a perfect transcript passes the gate (WER 0)", () => {
+    expect(wordErrorRate(REFERENCE, REFERENCE)).toBe(0);
+    expect(passesGate(REFERENCE)).toBe(true);
+  });
+
+  it("a near-perfect transcript (1 slip in 9) passes the gate", () => {
+    // realistic single-word ASR slip → 1/9 ≈ 0.111, well under 0.34
+    const hyp = "the quick brown fox jumped over the lazy dog";
+    expect(wordErrorRate(REFERENCE, hyp)).toBeLessThan(GATE);
+    expect(passesGate(hyp)).toBe(true);
+  });
+
+  it("a heavily degraded transcript FAILS the gate (WER > 0.34)", () => {
+    // ~half the words wrong — the kind of output a broken/unloaded ASR model
+    // produces. The gate MUST reject it.
+    const hyp = "the quiet brown box bumps under a hazy dog";
+    expect(wordErrorRate(REFERENCE, hyp)).toBeGreaterThan(GATE);
+    expect(passesGate(hyp)).toBe(false);
+  });
+
+  it("garbage / hallucinated output FAILS the gate", () => {
+    const hyp = "please connect a provider to continue";
+    expect(wordErrorRate(REFERENCE, hyp)).toBeGreaterThan(GATE);
+    expect(passesGate(hyp)).toBe(false);
+  });
+
+  it("an empty transcript (silent / dropped capture) FAILS the gate", () => {
+    expect(wordErrorRate(REFERENCE, "")).toBe(1);
+    expect(passesGate("")).toBe(false);
+  });
+});

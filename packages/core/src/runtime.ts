@@ -4911,6 +4911,16 @@ export class AgentRuntime implements IAgentRuntime {
 			ModelType.AUDIO,
 			ModelType.VIDEO,
 		];
+		// PII swap skips binary-input modalities (nothing to swap) and TEXT_EMBEDDING
+		// (a random per-turn surrogate would destabilize embeddings), but — unlike
+		// the secret gate — swaps IMAGE prompts, whose text can carry real names.
+		const PII_SWAP_SKIP_MODELS: string[] = [
+			ModelType.TRANSCRIPTION,
+			ModelType.AUDIO,
+			ModelType.VIDEO,
+			ModelType.TEXT_EMBEDDING,
+			ModelType.TEXT_EMBEDDING_BATCH,
+		];
 		let modelParams: ModelParamsMap[T];
 		const paramsClone = isPlainObject(params)
 			? { ...(params as Record<string, JsonValue | object>) }
@@ -5160,24 +5170,35 @@ export class AgentRuntime implements IAgentRuntime {
 					: secretSwapSession.substituteText(effectiveSystemPrompt);
 		}
 
-		if (this.isPiiSwapEnabled() && !binaryModels.includes(resolvedModelKey)) {
-			// Turn-scoped like the secret session (same nonce/mapping all turn), so
-			// the execution boundary can restore what this call swapped.
+		// Models the PII swap must NOT touch: binary-input modalities (nothing to
+		// swap) and — unlike the secret gate — IMAGE is INCLUDED (its text prompt
+		// can carry real names), while TEXT_EMBEDDING is EXCLUDED (a per-turn-random
+		// surrogate would embed the same real text differently every turn and wreck
+		// semantic memory retrieval; embeddings stay on the real text).
+		let piiIngressText = "";
+		if (
+			this.isPiiSwapEnabled() &&
+			!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
+		) {
+			// Turn-scoped like the secret session (same mapping all turn), so the
+			// execution boundary can restore what this call swapped.
 			const trajectoryCtx = getTrajectoryContext();
 			piiSwapSession =
 				trajectoryCtx?.piiSwapSession ?? this.createPiiSwapSession();
 			if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
 				trajectoryCtx.piiSwapSession = piiSwapSession;
 			}
-			// The ONE awaited detection step: learn every named entity in the
-			// assembled prompt (params + system prompt), then substitute
-			// synchronously. Ordered after the secret pass, so the NER model reads
-			// opaque `__ELIZA_SECRET_…__` placeholders, never a raw secret. The ONNX
-			// inference is offloaded to onnxruntime's worker threadpool, so it
-			// overlaps the event loop rather than blocking other turns.
-			await piiSwapSession.learn(
-				this.collectPromptText(modelParams, effectiveSystemPrompt),
+			// The awaited detection step: learn every named entity in the assembled
+			// prompt (params + system prompt), then substitute synchronously. Ordered
+			// after the secret pass, so the NER model reads opaque
+			// `__ELIZA_SECRET_…__` placeholders, never a raw secret. The ONNX
+			// inference is offloaded to onnxruntime's threadpool, so it overlaps the
+			// event loop rather than blocking other turns.
+			piiIngressText = this.collectPromptText(
+				modelParams,
+				effectiveSystemPrompt,
 			);
+			await piiSwapSession.learn(piiIngressText);
 			modelParams = piiSwapSession.substituteInValue(modelParams);
 			effectiveSystemPrompt =
 				effectiveSystemPrompt === undefined
@@ -5208,9 +5229,17 @@ export class AgentRuntime implements IAgentRuntime {
 					: secretSwapSession.substituteText(postHookSystemPrompt);
 		}
 		if (piiSwapSession) {
-			// Re-apply the learned mapping (sync) after pre_model hooks — idempotent,
-			// so surrogates already in place are preserved and any hook-injected copy
-			// of an already-learned entity is masked too.
+			// pre_model hooks may have injected fresh text (RAG snippets, extra
+			// context) with never-seen PII. If the assembled text changed, re-run
+			// detection so that new PII is swapped too — not just already-learned
+			// values re-masked. learn() is idempotent, so this only adds new entities.
+			const postHookText = this.collectPromptText(
+				modelParams,
+				effectiveSystemPrompt,
+			);
+			if (postHookText !== piiIngressText) {
+				await piiSwapSession.learn(postHookText);
+			}
 			modelParams = piiSwapSession.substituteInValue(modelParams);
 			const postHookSystemPrompt = resolveEffectiveSystemPrompt({
 				params: modelParams,

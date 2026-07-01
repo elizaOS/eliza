@@ -67,11 +67,10 @@ export {
 	PII_SWAP_DISABLED_KINDS_SETTING,
 	PII_SWAP_ENABLED_SETTING,
 	PII_SWAP_EXEMPT_VALUES_SETTING,
-	parsePiiSwapList,
 	type PseudonymEntry,
-	type PseudonymKind,
 	PseudonymSession,
 	type PseudonymSessionOptions,
+	parsePiiSwapList,
 } from "./pii-pseudonymizer.js";
 export {
 	createSecretsRedactor,
