@@ -8,7 +8,7 @@
  * credited separately (idempotent on the same impression_id) by the service.
  */
 
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { adCampaigns } from "../schemas/ad-campaigns";
 import { adCreatives } from "../schemas/ad-creatives";
@@ -29,6 +29,12 @@ export interface EligibleAd {
   callToAction: string | null;
   destinationUrl: string | null;
   media: unknown;
+}
+
+class AdServeBudgetExhausted extends Error {
+  constructor() {
+    super("Campaign budget exhausted");
+  }
 }
 
 export class AdSlotsRepository {
@@ -72,11 +78,7 @@ export class AdSlotsRepository {
     if (patch.name !== undefined) set.name = patch.name;
     if (patch.status !== undefined) set.status = patch.status;
     if (patch.floorCpm !== undefined) set.floor_cpm = patch.floorCpm.toFixed(4);
-    const [row] = await dbWrite
-      .update(adSlots)
-      .set(set)
-      .where(eq(adSlots.id, id))
-      .returning();
+    const [row] = await dbWrite.update(adSlots).set(set).where(eq(adSlots.id, id)).returning();
     return row;
   }
 
@@ -90,9 +92,7 @@ export class AdSlotsRepository {
    * the publisher's own org (no self-serve), joined to one of its active
    * creatives. Highest remaining budget wins (a simple first-price proxy).
    */
-  async findEligibleAd(input: {
-    publisherOrgId: string;
-  }): Promise<EligibleAd | undefined> {
+  async findEligibleAd(input: { publisherOrgId: string }): Promise<EligibleAd | undefined> {
     const [row] = await dbRead
       .select({
         campaignId: adCampaigns.id,
@@ -110,15 +110,10 @@ export class AdSlotsRepository {
           eq(adCampaigns.status, "active"),
           eq(adCreatives.status, "active"),
           sql`${adCampaigns.organization_id} <> ${input.publisherOrgId}`,
-          gt(
-            sql`${adCampaigns.credits_allocated} - ${adCampaigns.credits_spent}`,
-            sql`0`,
-          ),
+          gt(sql`${adCampaigns.credits_allocated} - ${adCampaigns.credits_spent}`, sql`0`),
         ),
       )
-      .orderBy(
-        desc(sql`${adCampaigns.credits_allocated} - ${adCampaigns.credits_spent}`),
-      )
+      .orderBy(desc(sql`${adCampaigns.credits_allocated} - ${adCampaigns.credits_spent}`))
       .limit(1);
     return row;
   }
@@ -137,51 +132,67 @@ export class AdSlotsRepository {
     price: number;
     publisherRevenue: number;
   }): Promise<AdSlotEvent | null> {
-    return dbWrite.transaction(async (tx) => {
-      const [event] = await tx
-        .insert(adSlotEvents)
-        .values({
-          slot_id: input.slotId,
-          campaign_id: input.campaignId,
-          creative_id: input.creativeId,
-          type: "impression",
-          impression_id: input.impressionId,
-          revenue: input.publisherRevenue.toFixed(6),
-        })
-        .onConflictDoNothing({
-          target: [adSlotEvents.impression_id, adSlotEvents.type],
-        })
-        .returning();
-      if (!event) return null; // replay — already served
+    const price = input.price.toFixed(2);
+    try {
+      return await dbWrite.transaction(async (tx) => {
+        const [event] = await tx
+          .insert(adSlotEvents)
+          .values({
+            slot_id: input.slotId,
+            campaign_id: input.campaignId,
+            creative_id: input.creativeId,
+            type: "impression",
+            impression_id: input.impressionId,
+            revenue: input.publisherRevenue.toFixed(6),
+          })
+          .onConflictDoNothing({
+            target: [adSlotEvents.impression_id, adSlotEvents.type],
+          })
+          .returning();
+        if (!event) return null; // replay — already served
 
-      // Debit the advertiser's pre-funded campaign budget (bounded).
-      await tx
-        .update(adCampaigns)
-        .set({
-          credits_spent: sql`${adCampaigns.credits_spent} + ${input.price.toFixed(2)}`,
-          total_impressions: sql`${adCampaigns.total_impressions} + 1`,
-          updated_at: new Date(),
-        })
-        .where(eq(adCampaigns.id, input.campaignId));
+        // Debit the advertiser's pre-funded campaign budget atomically. The
+        // earlier eligibility query is only a candidate picker; this conditional
+        // update is the money gate that prevents concurrent serves from
+        // overspending the campaign.
+        const [campaign] = await tx
+          .update(adCampaigns)
+          .set({
+            credits_spent: sql`${adCampaigns.credits_spent} + ${price}`,
+            total_impressions: sql`${adCampaigns.total_impressions} + 1`,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(adCampaigns.id, input.campaignId),
+              gte(
+                sql`${adCampaigns.credits_allocated} - ${adCampaigns.credits_spent}`,
+                sql`${price}`,
+              ),
+            ),
+          )
+          .returning({ id: adCampaigns.id });
+        if (!campaign) throw new AdServeBudgetExhausted();
 
-      await tx
-        .update(adSlots)
-        .set({
-          total_impressions: sql`${adSlots.total_impressions} + 1`,
-          total_revenue: sql`${adSlots.total_revenue} + ${input.publisherRevenue.toFixed(6)}`,
-          updated_at: new Date(),
-        })
-        .where(eq(adSlots.id, input.slotId));
+        await tx
+          .update(adSlots)
+          .set({
+            total_impressions: sql`${adSlots.total_impressions} + 1`,
+            total_revenue: sql`${adSlots.total_revenue} + ${input.publisherRevenue.toFixed(6)}`,
+            updated_at: new Date(),
+          })
+          .where(eq(adSlots.id, input.slotId));
 
-      return event;
-    });
+        return event;
+      });
+    } catch (error) {
+      if (error instanceof AdServeBudgetExhausted) return null;
+      throw error;
+    }
   }
 
   /** Record a click against a prior impression (idempotent on impression_id). */
-  async recordClick(input: {
-    slotId: string;
-    impressionId: string;
-  }): Promise<AdSlotEvent | null> {
+  async recordClick(input: { slotId: string; impressionId: string }): Promise<AdSlotEvent | null> {
     return dbWrite.transaction(async (tx) => {
       // The impression must exist; find its campaign/creative for attribution.
       const [impression] = await tx
@@ -191,6 +202,7 @@ export class AdSlotsRepository {
           and(
             eq(adSlotEvents.impression_id, input.impressionId),
             eq(adSlotEvents.type, "impression"),
+            eq(adSlotEvents.slot_id, input.slotId),
           ),
         )
         .limit(1);

@@ -29,7 +29,10 @@ app.post("/", async (c) => {
     const slotId = body.slot?.trim();
     const impressionId = body.impression_id?.trim();
     if (!slotId || !impressionId) {
-      return c.json({ success: false, error: "Missing slot or impression_id" }, 400);
+      return c.json(
+        { success: false, error: "Missing slot or impression_id" },
+        400,
+      );
     }
     const recorded = await adInventoryService.recordClick(slotId, impressionId);
     return c.json({ success: true, recorded });

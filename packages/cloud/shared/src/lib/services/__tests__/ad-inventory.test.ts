@@ -29,20 +29,19 @@ import { adSlotEvents, adSlots } from "../../../db/schemas/ad-slots";
 import { appDeploymentStatusEnum, apps, userDatabaseStatusEnum } from "../../../db/schemas/apps";
 import { organizations } from "../../../db/schemas/organizations";
 import {
-  secretEnvironmentEnum,
-  secretProviderEnum,
-  secretScopeEnum,
-  secrets,
-} from "../../../db/schemas/secrets";
-import {
   earningsSourceEnum,
   ledgerEntryTypeEnum,
   redeemableEarnings,
   redeemableEarningsLedger,
   redeemedEarningsTracking,
 } from "../../../db/schemas/redeemable-earnings";
+import {
+  secretEnvironmentEnum,
+  secretProviderEnum,
+  secretScopeEnum,
+  secrets,
+} from "../../../db/schemas/secrets";
 import { users } from "../../../db/schemas/users";
-import { adSlotsRepository } from "../../../db/repositories/ad-slots";
 
 const PGLITE_TIMEOUT = 60_000;
 let pgliteReady = true;
@@ -52,7 +51,10 @@ let seq = 0;
 const uniq = (p: string) => `${p}-${(seq += 1)}-${Math.random().toString(36).slice(2, 8)}`;
 
 async function seedPublisher() {
-  const [org] = await dbWrite.insert(organizations).values({ name: "Pub", slug: uniq("pub") }).returning();
+  const [org] = await dbWrite
+    .insert(organizations)
+    .values({ name: "Pub", slug: uniq("pub") })
+    .returning();
   const [user] = await dbWrite
     .insert(users)
     .values({ steward_user_id: uniq("pub-u"), organization_id: org.id })
@@ -70,8 +72,13 @@ async function seedPublisher() {
   return { orgId: org.id, userId: user.id, appId: app.id };
 }
 
-async function seedAdvertiserCampaign(opts: { status?: string; allocated?: string; spent?: string } = {}) {
-  const [org] = await dbWrite.insert(organizations).values({ name: "Adv", slug: uniq("adv") }).returning();
+async function seedAdvertiserCampaign(
+  opts: { status?: string; allocated?: string; spent?: string } = {},
+) {
+  const [org] = await dbWrite
+    .insert(organizations)
+    .values({ name: "Adv", slug: uniq("adv") })
+    .returning();
   const [user] = await dbWrite
     .insert(users)
     .values({ steward_user_id: uniq("adv-u"), organization_id: org.id })
@@ -230,6 +237,36 @@ describe("Ad Inventory / SSP (#10687)", () => {
     expect(await creatorBalance(pub.userId)).toBe(0);
   });
 
+  test("serve does not overspend a campaign whose remaining budget is below the impression price", async () => {
+    if (!pgliteReady) return;
+    const pub = await seedPublisher();
+    const adv = await seedAdvertiserCampaign({
+      allocated: "0.01",
+      spent: "0.00",
+    });
+    const slot = await service.createSlot({
+      appId: pub.appId,
+      organizationId: pub.orgId,
+      name: "S",
+      format: "banner",
+      floorCpm: 20, // $0.02/impression, more than the remaining $0.01
+    });
+
+    expect(await service.serveAd(slot)).toBeNull();
+
+    const campaign = await dbWrite.query.adCampaigns.findFirst({
+      where: eq(adCampaigns.id, adv.campaignId),
+    });
+    expect(Number(campaign?.credits_spent)).toBe(0);
+    expect(campaign?.total_impressions).toBe(0);
+    expect(await creatorBalance(pub.userId)).toBe(0);
+    const events = await dbWrite
+      .select()
+      .from(adSlotEvents)
+      .where(eq(adSlotEvents.slot_id, slot.id));
+    expect(events).toHaveLength(0);
+  });
+
   test("a publisher cannot serve its own org's campaign (no self-serve)", async () => {
     if (!pgliteReady) return;
     const pub = await seedPublisher();
@@ -283,6 +320,32 @@ describe("Ad Inventory / SSP (#10687)", () => {
     expect(after?.total_clicks).toBe(1);
     // a click for an unknown impression is ignored
     expect(await service.recordClick(slot.id, "nope")).toBe(false);
+  });
+
+  test("a click cannot be attributed to a different slot than its impression", async () => {
+    if (!pgliteReady) return;
+    const pub = await seedPublisher();
+    await seedAdvertiserCampaign();
+    const slot = await service.createSlot({
+      appId: pub.appId,
+      organizationId: pub.orgId,
+      name: "Original",
+      format: "banner",
+      floorCpm: 20,
+    });
+    const otherSlot = await service.createSlot({
+      appId: pub.appId,
+      organizationId: pub.orgId,
+      name: "Other",
+      format: "banner",
+      floorCpm: 20,
+    });
+    const served = await service.serveAd(slot);
+    expect(served).not.toBeNull();
+
+    expect(await service.recordClick(otherSlot.id, served!.impressionId)).toBe(false);
+    expect((await service.getSlot(slot.id))?.total_clicks).toBe(0);
+    expect((await service.getSlot(otherSlot.id))?.total_clicks).toBe(0);
   });
 
   test("two serves credit the publisher per impression", async () => {
