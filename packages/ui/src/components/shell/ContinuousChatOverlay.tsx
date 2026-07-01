@@ -177,6 +177,7 @@ const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // of resting free — so near-detent releases are deterministic + clean, and only
 // the clear gaps between detents keep the free-drag rest height.
 const SHEET_DETENT_MAGNET = 64;
+const OUTSIDE_SHEET_TAP_SLOP = 10;
 
 // Feature flag: the resting one-tap prompt-suggestion strip. Off for now so the
 // composer can be tested without it; flip to true to bring the strip back.
@@ -745,9 +746,7 @@ function TurnStatusIndicator({
           // neutral white glass. No blue anywhere.
           // #10698: no own scrim — the shared panel glass carries the contrast;
           // keep only the tone border (orange when speaking) + FLOAT_SHADOW.
-          speaking
-            ? "border-[rgba(255,180,120,0.45)]"
-            : "border-white/10",
+          speaking ? "border-[rgba(255,180,120,0.45)]" : "border-white/10",
         )}
       >
         <TurnStatusInner status={status} />
@@ -1182,6 +1181,14 @@ export function ContinuousChatOverlay({
   // tell a FIRST tap (keyboard up → just dismiss + restore) from a SECOND tap
   // (keyboard already down → close the chat).
   const composerFocusedAtPressRef = React.useRef(false);
+  const outsideSheetPointerRef = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    composerFocusedAtPress: boolean;
+    dragged: boolean;
+  } | null>(null);
+  const suppressNextOutsideClickRef = React.useRef(false);
   // The live thread (history) height in px, as a MOTION VALUE — driven directly
   // by the pointer during a drag and spring-animated to a detent on release.
   // Keeping it off React state means a drag updates the DOM height every frame
@@ -2619,6 +2626,100 @@ export function ContinuousChatOverlay({
       document.removeEventListener("pointerdown", onPointerDown, true);
   }, [dismissKeyboardToPriorState]);
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onClick = (event: MouseEvent) => {
+      if (!suppressNextOutsideClickRef.current) return;
+      suppressNextOutsideClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener("click", onClick, true);
+    return () => window.removeEventListener("click", onClick, true);
+  }, []);
+
+  // The backdrop is visual-only while the sheet is open so launcher/home drags
+  // can hit the real HomeLauncherSurface underneath. This document-level tap
+  // detector preserves the old "tap outside to collapse" behavior without
+  // stealing horizontal swipes or vertical scroll from the background.
+  React.useEffect(() => {
+    if (typeof document === "undefined" || !sheetOpen) {
+      outsideSheetPointerRef.current = null;
+      suppressNextOutsideClickRef.current = false;
+      return undefined;
+    }
+
+    const isInsidePanel = (target: EventTarget | null): boolean =>
+      target instanceof Node && !!panelRef.current?.contains(target);
+    const isGrabber = (target: EventTarget | null): boolean =>
+      target instanceof Element &&
+      !!target.closest('[data-testid="chat-sheet-grabber"]');
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0 && event.pointerType === "mouse") return;
+      if (isInsidePanel(event.target) || isGrabber(event.target)) {
+        outsideSheetPointerRef.current = null;
+        return;
+      }
+      outsideSheetPointerRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        composerFocusedAtPress: composerFocusedAtPressRef.current,
+        dragged: false,
+      };
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const start = outsideSheetPointerRef.current;
+      if (!start || start.pointerId !== event.pointerId) return;
+      if (
+        Math.hypot(event.clientX - start.startX, event.clientY - start.startY) >
+        OUTSIDE_SHEET_TAP_SLOP
+      ) {
+        start.dragged = true;
+      }
+    };
+
+    const onPointerEnd = (event: PointerEvent) => {
+      const start = outsideSheetPointerRef.current;
+      if (!start || start.pointerId !== event.pointerId) return;
+      outsideSheetPointerRef.current = null;
+      if (start.dragged) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      suppressNextOutsideClickRef.current = true;
+      window.setTimeout(() => {
+        suppressNextOutsideClickRef.current = false;
+      }, 750);
+
+      if (start.composerFocusedAtPress) {
+        composerFocusedAtPressRef.current = false;
+        return;
+      }
+      collapse();
+    };
+    const onPointerCancel = (event: PointerEvent) => {
+      const start = outsideSheetPointerRef.current;
+      if (!start || start.pointerId !== event.pointerId) return;
+      outsideSheetPointerRef.current = null;
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove, true);
+    document.addEventListener("pointerup", onPointerEnd, true);
+    document.addEventListener("pointercancel", onPointerCancel, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onPointerMove, true);
+      document.removeEventListener("pointerup", onPointerEnd, true);
+      document.removeEventListener("pointercancel", onPointerCancel, true);
+    };
+  }, [sheetOpen, collapse]);
+
   // Escape collapses the chat from ANY open state, even a free-drag open with no
   // focused element (the element-level handlers on the textarea/thread only fire
   // when one of them holds focus). Registered only while open.
@@ -2919,8 +3020,9 @@ export function ContinuousChatOverlay({
     },
   });
 
-  // NOTE: the chat has NO close-on-outside-pointerdown beyond the keyboard blur;
-  // it COLLAPSES on a pull-down, Escape, or a click on the dimming scrim.
+  // NOTE: outside pointerdown only drops the keyboard. Outside TAP collapse is
+  // handled by the document-level tap detector above so drag gestures can still
+  // pass through the visual backdrop to the launcher/home surface underneath.
 
   return (
     <div
@@ -2953,36 +3055,22 @@ export function ContinuousChatOverlay({
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
-      {/* Dimming scrim behind the open chat. It fades in WITH the reveal and
-          captures pointer events while open; clicking it COLLAPSES the chat back
-          to the input. Collapsed → pointer-events-none, so the view behind stays
-          fully live (the overlay is non-blocking by design). */}
+      {/* Visual dimming scrim behind the open chat. It fades in WITH the reveal
+          but never captures pointer events; outside taps are handled by the
+          document-level detector above, and outside drags pass through to the
+          launcher/home surface. */}
       <motion.div
         aria-hidden="true"
         data-testid="chat-sheet-backdrop"
         data-active={sheetOpen ? "true" : "false"}
-        onClick={
-          sheetOpen
-            ? () => {
-                // First tap with the keyboard up only dismisses it (the
-                // pointerdown handler already dropped the keyboard and restored
-                // the pre-focus detent) — don't ALSO collapse. A tap with the
-                // keyboard already down closes the chat back to the input.
-                if (composerFocusedAtPressRef.current) {
-                  composerFocusedAtPressRef.current = false;
-                  return;
-                }
-                collapse();
-              }
-            : undefined
-        }
         className="fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.55)_46%,rgba(0,0,0,0.66)_100%)]"
         // Opacity follows the live history height (motion value) — no re-render
-        // during a drag. Capture clicks only once open.
+        // during a drag. Pointer events stay disabled so background gestures
+        // keep their original targets while chat is open.
         style={{
           opacity: revealed,
           visibility: scrimVisibility,
-          pointerEvents: sheetOpen ? "auto" : "none",
+          pointerEvents: "none",
         }}
       />
 
