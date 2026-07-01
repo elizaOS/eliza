@@ -71,6 +71,17 @@ Why this path:
 
 ## Required Implementation Slices
 
+> Status (#10690): slices 1–3 are **implemented** — `app_frontend_deployments`
+> (immutable, content-addressed, R2-backed) + repository + `AppFrontendHostingService`
+> (`packages/cloud/shared/src/lib/services/app-frontend-hosting.ts`), the
+> `apps/[id]/frontend` routes (publish/list/detail/activate-rollback/preview),
+> the public `hosted-frontend/serve` path with host→app resolution, SEO `<head>`
+> injection + a page-view beacon + server-side page-view recording, and the
+> `DEPLOY_FRONTEND` agent action + SDK methods. Remaining: `sitemap.xml`/`robots.txt`
+> generation, session/funnel analytics (slice 3 tail), the dashboard upload UI
+> (slice 4), and pointing production DNS/wildcard hosts at the Worker (operator,
+> tracked with the domain money-path in #10621).
+
 1. Frontend artifact model and routes:
    - schema/repository for frontend deployments and active manifest
    - upload/finalize/list/activate/rollback routes under `apps/[id]/frontend`

@@ -151,6 +151,50 @@ describe("ElizaCloudClient typed app methods", () => {
     });
   });
 
+  it("deployAppFrontend POSTs /api/v1/apps/:id/frontend with the bundle", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      deployment: { id: "dep_fe_1", version: 1, status: "active", file_count: 2 },
+    });
+    const res = await client.deployAppFrontend("app_1", {
+      files: [{ path: "index.html", content: "<html></html>" }],
+      buildMeta: { source: "agent" },
+    });
+    expect(res.deployment.id).toBe("dep_fe_1");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/frontend",
+      method: "POST",
+      body: { files: [{ path: "index.html", content: "<html></html>" }], buildMeta: { source: "agent" } },
+    });
+  });
+
+  it("listAppFrontendDeployments GETs /api/v1/apps/:id/frontend", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      active_deployment_id: "dep_fe_1",
+      deployments: [],
+    });
+    const res = await client.listAppFrontendDeployments("app_1");
+    expect(res.active_deployment_id).toBe("dep_fe_1");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/frontend",
+      method: "GET",
+    });
+  });
+
+  it("activateAppFrontend POSTs /api/v1/apps/:id/frontend/:deploymentId/activate", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      deployment: { id: "dep_fe_2", version: 2, status: "active" },
+    });
+    const res = await client.activateAppFrontend("app_1", "dep_fe_2");
+    expect(res.deployment.id).toBe("dep_fe_2");
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/frontend/dep_fe_2/activate",
+      method: "POST",
+    });
+  });
+
   it("getAppDeployStatus GETs /api/v1/apps/:id/deploy/status", async () => {
     const { client, requests } = createClientRecorder({
       success: true,
