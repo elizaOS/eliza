@@ -511,6 +511,19 @@ async function dispatchOrchestratorRoutes(
         );
         return true;
       }
+      // A criteria-free task cannot be auto-validated: `verifyGoalCompletion`
+      // short-circuits an empty criteria set to `passed: true` with NO model
+      // call, so forwarding that here would mark the task `done` with zero
+      // verification. The auto path parks such a task in `validating` instead;
+      // this route must be consistent and refuse rather than rubber-stamp it.
+      if (doc.acceptanceCriteria.length === 0) {
+        sendError(
+          res,
+          "Task has no acceptance criteria; auto-validation cannot verify it (it would pass with no LLM judgment). Add acceptance criteria or validate the task manually.",
+          422,
+        );
+        return true;
+      }
       const verdict = await verifyGoalCompletion(
         ctx.runtime,
         {
