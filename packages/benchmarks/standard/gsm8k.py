@@ -149,7 +149,11 @@ class GSM8KRunner:
         self,
         *,
         examples: Iterable[dict[str, object]] | None = None,
-        max_tokens: int = 384,
+        # Reasoning models spend the token budget on hidden reasoning before the
+        # visible answer; at the old 384-token default they truncated before the
+        # `#### <int>` line (gpt-oss-120b: 25 GSM8K items 0.72 -> 1.0 once given
+        # room). Non-reasoning models stop early and are unaffected.
+        max_tokens: int = 2048,
         include_edge_scenarios: bool = False,
     ) -> None:
         self._examples = list(examples) if examples is not None else None
@@ -251,7 +255,7 @@ class _GSM8KFactory(RunnerFactory):
         parser.add_argument(
             "--max-tokens",
             type=int,
-            default=384,
+            default=2048,
             help="Cap on generated tokens per problem (chain-of-thought needs headroom)",
         )
 

@@ -113,7 +113,35 @@ def test_mmlu_runner_raises_when_all_visible_outputs_empty(tmp_path: Path) -> No
 
 
 def test_mmlu_default_token_budget_allows_reasoning_models() -> None:
-    assert DEFAULT_MAX_TOKENS >= 256
+    # Raised from 256 so a reasoning model's hidden reasoning does not exhaust the
+    # budget before the visible answer (the 0.48-vs-0.92 gpt-oss-120b truncation).
+    assert DEFAULT_MAX_TOKENS >= 2048
+
+
+def test_mmlu_runner_partial_empty_outputs_surface_truncation_signal(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    # Alternating empty / non-empty visible output — a reasoning model truncating
+    # on some items. These are scored as misses, so the harness MUST surface the
+    # empty rate + a loud warning rather than silently reporting a depressed score.
+    runner = MMLURunner(examples=list(SMOKE_FIXTURES))
+    with caplog.at_level(logging.WARNING):
+        result = runner.run(
+            client=MockClient(["", "B"]),
+            model="mock-model",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+    empty = result.raw_json["empty_outputs"]
+    assert 0 < empty < result.n, "expected partial (not all) empty outputs"
+    assert result.raw_json["empty_output_rate"] == pytest.approx(round(empty / result.n, 4))
+    assert any(
+        "UNDERSTATES" in record.getMessage() for record in caplog.records
+    ), "a partial-empty run must emit the truncation warning"
 
 
 def test_mmlu_runner_writes_results_file(tmp_path: Path) -> None:
