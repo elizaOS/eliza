@@ -9,7 +9,7 @@ Adds comprehensive music capability to an Eliza agent: playback of YouTube and d
 ## Plugin Surface
 
 ### Actions
-- **`MUSIC`** (`src/actions/music.ts`) — Umbrella action. Dispatches all music operations via a verb-shaped `action` parameter: `play`, `pause`, `resume`, `skip`, `stop`, `queue_view`, `queue_add`, `queue_clear`, `playlist_play`, `playlist_save`, `search`, `play_query`, `download`, `play_audio`, `set_routing`, `set_zone`, `generate`, `extend`, `custom_generate`. Legacy aliases are accepted (e.g. `playlist`, `search_youtube`, `routing`, `zones`).
+- **`MUSIC`** (`src/actions/music.ts`) — Umbrella action. Dispatches all music operations via a verb-shaped `action` parameter: `play`, `pause`, `resume`, `skip`, `stop`, `queue_view`, `queue_add`, `queue_clear`, `playlist_play`, `playlist_save`, `playlist_delete`, `playlist_add`, `search`, `play_query`, `download`, `play_audio`, `set_routing`, `set_zone`, `generate`, `extend`, `custom_generate`. Legacy aliases are accepted (e.g. `playlist`, `search_youtube`, `routing`, `zones`).
 
 ### Services
 - **`MusicService`** (`src/service.ts`, serviceType: `"music"`) — Core playback engine. Manages per-guild queues, audio broadcasting, Discord voice wiring, audio routing, and the `AudioCacheService`.
@@ -201,7 +201,7 @@ bun run --cwd plugins/plugin-music test:e2e       # live smoke (requires running
 - **ffmpeg/ffprobe required.** Bundled via `ffmpeg-static`/`ffprobe-static` deps; paths overridden by `FFMPEG_PATH`/`FFPROBE_PATH`.
 - **Discord wiring is deferred.** The plugin init waits for the `discord` service load promise before wiring the voice manager. Music works web-only if Discord is absent.
 - **`@elizaos/plugin-suno` is a hard dep.** Generation subactions (`generate`, `extend`, `custom_generate`) delegate to `sunoGenerateMusicHandler` from that package; they are skipped/unreachable if `SUNO_API_KEY` is absent.
-- **Confirmation required for destructive ops.** `skip`, `stop`, `queue_add`, `queue_clear`, `playlist_save`, and `download` require `confirmed: true` in the action options (gated via `requireMusicConfirmation` in `src/actions/confirmation.ts`).
+- **Confirmation required for destructive ops.** `skip`, `stop`, `queue_add`, `queue_clear`, `playlist_save`, `playlist_delete`, `playlist_add`, and `download` require confirmation through `requireMusicConfirmation` in `src/actions/confirmation.ts`.
 - **MusicBrainz is the zero-config metadata source.** All other metadata APIs (Last.fm, Genius, TheAudioDB) are optional enhancements.
 - **MusicStorageService is a standalone exported utility.** It is not registered as a plugin service or auto-wired into `MusicLibraryService`; it is exported from `src/index.ts` for callers that want a permanent high-quality archive. Storage dir (`<cwd>/storage/music`) and quality mode are constructor arguments, not env vars.
 - **`@elizaos/plugin-sql` is expected for persistence.** Library, playlists, preferences, and analytics components write to the agent's database via runtime memory/cache APIs.
