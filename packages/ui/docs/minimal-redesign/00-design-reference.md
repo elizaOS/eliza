@@ -148,6 +148,17 @@ generous `gap-8`/`gap-5`/`gap-3` whitespace.
 borders, `backdrop-blur-2xl`, faint inset top edge) → fixed white text graded by opacity → lucide or
 inline-SVG icons → no badges/tags/dividers → opacity/translate motion → render only when populated.
 
+> **Widgets are the CHROMELESS EXCEPTION to the glass-tile language (#10708).** The
+> rounded-2xl/3xl border + `bg-black/*` glass surface above is for material surfaces
+> (`HomeCard`, launcher tiles, modals, popovers), NOT for home/dashboard widgets. Home
+> widgets render DIRECTLY on the wallpaper: no tile fill, no border, no corner radius.
+> Their whole affordance is the icon + graded-white text + whitespace/rank separation;
+> hover/press is opacity + transform, never a background fill. The `no-widget-chrome-gate`
+> test enforces this: any widget container (marked `data-widget-container`) that
+> reintroduces a border, a background fill, or a `rounded-*` fails the build. When a new
+> home widget needs a container, stamp it with the marker and keep it chromeless; borders,
+> fills, and radii stay for the glass surfaces, not widgets.
+
 ---
 
 ## (B) Token / theme system — full token list + how to reference
