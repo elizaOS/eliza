@@ -422,6 +422,17 @@ export class AppEarningsRepository {
     const [transaction] = await dbWrite.insert(appEarningsTransactions).values(data).returning();
     return transaction;
   }
+
+  /**
+   * Deletes an earnings transaction by id.
+   *
+   * Used to release a withdrawal idempotency claim whose debit then failed
+   * (e.g. insufficient balance), so the key is free for a legitimate retry and
+   * no phantom "processing" row lingers (#10878).
+   */
+  async deleteTransaction(id: string): Promise<void> {
+    await dbWrite.delete(appEarningsTransactions).where(eq(appEarningsTransactions.id, id));
+  }
 }
 
 /**

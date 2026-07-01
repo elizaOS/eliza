@@ -7,6 +7,7 @@ import {
   appEarningsRepository,
 } from "../../db/repositories/app-earnings";
 import { appsRepository } from "../../db/repositories/apps";
+import { isUniqueConstraintError } from "../utils/db-errors";
 import { logger } from "../utils/logger";
 
 /**
@@ -197,23 +198,14 @@ export class AppEarningsService {
     amount: number,
     idempotencyKey?: string,
   ): Promise<{ success: boolean; message: string; transactionId?: string }> {
-    // Idempotency check: return existing transaction if key was already used
+    // Idempotent fast path: return the prior transaction if this key already ran.
     if (idempotencyKey) {
       const existing = await appEarningsRepository.findTransactionByIdempotencyKey(
         appId,
         idempotencyKey,
       );
       if (existing) {
-        logger.info("[AppEarnings] Idempotent withdrawal request (duplicate)", {
-          appId,
-          idempotencyKey,
-          existingTransactionId: existing.id,
-        });
-        return {
-          success: true,
-          message: `$${Math.abs(Number(existing.amount)).toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
-          transactionId: existing.id,
-        };
+        return this.idempotentWithdrawalResult(appId, idempotencyKey, existing);
       }
     }
 
@@ -229,23 +221,74 @@ export class AppEarningsService {
       };
     }
 
+    const metadata = {
+      requested_at: new Date().toISOString(),
+      status: "processing",
+      note: "Earnings are available in your redeemable balance for redemption as elizaOS tokens",
+      ...(idempotencyKey && { idempotencyKey }),
+    };
+
+    // Claim the idempotency key BEFORE debiting. The partial unique index on
+    // (app_id, metadata->>'idempotencyKey') WHERE type='withdrawal' — not a prior
+    // SELECT — is the gate (#10878): a concurrent/retried request with the same
+    // key raises 23505 on this insert and never reaches the debit below, so the
+    // balance is mutated exactly once. Without a key there is nothing to dedupe,
+    // so we fall back to the legacy debit-then-record order.
+    let claim: AppEarningsTransaction | undefined;
+    if (idempotencyKey) {
+      try {
+        claim = await appEarningsRepository.createTransaction({
+          app_id: appId,
+          type: "withdrawal",
+          amount: String(-amount),
+          description: `Withdrawal request: $${amount.toFixed(2)}`,
+          metadata,
+        });
+      } catch (err) {
+        if (!isUniqueConstraintError(err)) throw err;
+        // Lost the race: another request already claimed this key. Return its
+        // result idempotently WITHOUT debiting.
+        const winner = await appEarningsRepository.findTransactionByIdempotencyKey(
+          appId,
+          idempotencyKey,
+        );
+        if (winner) {
+          return this.idempotentWithdrawalResult(appId, idempotencyKey, winner);
+        }
+        // The winning row isn't visible on the read replica yet; still safe —
+        // we never debited. The client can poll again.
+        logger.warn(
+          "[AppEarnings] Concurrent withdrawal for idempotency key; winner not yet readable",
+          { appId, idempotencyKey },
+        );
+        return {
+          success: false,
+          message: "Withdrawal already in progress for this request.",
+        };
+      }
+    }
+
     const result = await appEarningsRepository.processWithdrawal(appId, amount);
     if (!result.success) {
+      // Debit failed (below threshold / insufficient balance). Release the claim
+      // so a later legitimate retry can proceed and no phantom row lingers.
+      if (claim) {
+        await appEarningsRepository.deleteTransaction(claim.id);
+      }
       return { success: false, message: result.message };
     }
 
-    const transaction = await appEarningsRepository.createTransaction({
-      app_id: appId,
-      type: "withdrawal",
-      amount: String(-amount),
-      description: `Withdrawal request: $${amount.toFixed(2)}`,
-      metadata: {
-        requested_at: new Date().toISOString(),
-        status: "processing",
-        note: "Earnings are available in your redeemable balance for redemption as elizaOS tokens",
-        ...(idempotencyKey && { idempotencyKey }),
-      },
-    });
+    // Debit succeeded. When we pre-claimed (idempotencyKey path) the transaction
+    // row already exists; otherwise record it now.
+    const transaction =
+      claim ??
+      (await appEarningsRepository.createTransaction({
+        app_id: appId,
+        type: "withdrawal",
+        amount: String(-amount),
+        description: `Withdrawal request: $${amount.toFixed(2)}`,
+        metadata,
+      }));
 
     logger.info("[AppEarnings] Withdrawal requested", {
       appId,
@@ -258,6 +301,24 @@ export class AppEarningsService {
       success: true,
       message: `$${amount.toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
       transactionId: transaction.id,
+    };
+  }
+
+  /** The response for a withdrawal request that a prior call already recorded. */
+  private idempotentWithdrawalResult(
+    appId: string,
+    idempotencyKey: string,
+    existing: AppEarningsTransaction,
+  ): { success: boolean; message: string; transactionId?: string } {
+    logger.info("[AppEarnings] Idempotent withdrawal request (duplicate)", {
+      appId,
+      idempotencyKey,
+      existingTransactionId: existing.id,
+    });
+    return {
+      success: true,
+      message: `$${Math.abs(Number(existing.amount)).toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
+      transactionId: existing.id,
     };
   }
 }
