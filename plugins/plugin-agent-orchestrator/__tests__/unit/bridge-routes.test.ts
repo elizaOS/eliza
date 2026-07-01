@@ -453,6 +453,35 @@ describe("bridge-routes — credential bridge", () => {
     });
   });
 
+  it("GET collapses a raw (non-enum) rejection reason to a stable code", async () => {
+    const adapter = makeAdapter({
+      tryRetrieveCredential: vi.fn().mockResolvedValue({
+        status: "rejected",
+        reason: "Cannot read properties of undefined (reading 'x')",
+      }),
+    });
+    const req = fakeRequest({
+      method: "GET",
+      url: "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY?token=deadbeef",
+    });
+    const { res, status, body } = fakeResponse();
+
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY",
+      makeCtx(adapter),
+    );
+
+    expect(status()).toBe(403);
+    // Raw error text stays human-readable in `error` but must not leak into the
+    // machine-readable `code`.
+    expect(body()).toEqual({
+      error: "Cannot read properties of undefined (reading 'x')",
+      code: "rejected",
+    });
+  });
+
   it("GET requires the token query parameter", async () => {
     const adapter = makeAdapter();
     const req = fakeRequest({
