@@ -320,7 +320,7 @@ CACHE_ENABLED = "true"
 # (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
-REDIS_RATE_LIMITING = "false"
+REDIS_RATE_LIMITING = "true"
 # Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
 # enables it; when "true" with a writable KV backstop, an org clearing
 # SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
@@ -456,7 +456,7 @@ CACHE_ENABLED = "true"
 # (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
-REDIS_RATE_LIMITING = "false"
+REDIS_RATE_LIMITING = "true"
 # Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
 # enables it; when "true" with a writable KV backstop, an org clearing
 # SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
