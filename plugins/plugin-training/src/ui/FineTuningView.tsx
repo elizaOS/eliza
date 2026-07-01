@@ -49,6 +49,7 @@ import {
   ELIZA_ONE_BENCHMARK_TIER_LIST,
   ELIZA_ONE_BENCHMARK_TIERS,
 } from "../core/eliza1-benchmark-recipe.js";
+import { toLocalFileUrl } from "../util/local-file-url.js";
 import {
   type FineTuningSnapshot,
   FineTuningSpatialView,
@@ -85,8 +86,9 @@ const DEFAULT_ELIZA1_HF_DATASET_FILES = ELIZA_ONE_BENCHMARK_TIERS.flatMap(
 );
 
 function localViewerUrl(path: string): string {
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return path;
-  return encodeURI(`file://${path}`);
+  // `file://${path}` breaks on Windows drive paths (C:\… → file://C:%5C…, where
+  // the browser reads `C:` as the host). toLocalFileUrl handles both platforms.
+  return toLocalFileUrl(path);
 }
 
 interface AnalysisCoverageSummary {
