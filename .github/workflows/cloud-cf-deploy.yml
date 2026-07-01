@@ -104,19 +104,19 @@ jobs:
           # Cancelled/killed deploy runs never reach the trailing "Clean temp
           # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
           # monorepo materialization) leak and pile up on this shared self-hosted
-          # box until disk/inodes are exhausted and this run's own materialization
-          # blows its timeout — freezing prod (elizaOS/eliza#10839). Reclaim every
-          # stale checkout dir that is NOT from this run before we materialize ours.
-          # Deploys serialize on this box and the prefix is unique to this workflow,
-          # so nothing live is touched; best-effort, never fails the deploy.
-          reclaimed=0
-          for d in /tmp/eliza-checkout-*; do
-            [ -e "$d" ] || continue
-            case "$d" in /tmp/eliza-checkout-${{ github.run_id }}-*) continue ;; esac
-            timeout 120s rm -rf "$d" 2>/dev/null || echo "::warning::cleanup of $d exceeded 120s (non-fatal)"
-            reclaimed=$((reclaimed + 1))
-          done
-          echo "Reclaimed ${reclaimed} leaked checkout dir(s) from prior runs."
+          # box until disk/inodes are exhausted and materialization times out —
+          # freezing prod (elizaOS/eliza#10839). Reclaim leaked trees, but ONLY
+          # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
+          # a dir untouched for 90 min is a definitively-dead leak.
+          # CONCURRENCY-SAFE: push deploys use per-SHA concurrency groups (NOT
+          # serialized), so sibling runs materialize at the same time; the age
+          # filter never deletes another run's actively-writing checkout (its mtime
+          # stays fresh), and we also exclude this run's own dirs by name.
+          # (The prior run_id-only filter deleted concurrent siblings' live
+          # checkouts — this replaces it.) Best-effort; never fails the deploy.
+          stale=$(find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" 2>/dev/null | wc -l | tr -d ' ')
+          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null || true
+          echo "Reclaimed ${stale} stale (idle >90min) leaked checkout dir(s)."
           df -h /tmp / 2>/dev/null | tail -2 || true
       - name: Checkout repository
         timeout-minutes: 20
@@ -342,19 +342,19 @@ jobs:
           # Cancelled/killed deploy runs never reach the trailing "Clean temp
           # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
           # monorepo materialization) leak and pile up on this shared self-hosted
-          # box until disk/inodes are exhausted and this run's own materialization
-          # blows its timeout — freezing prod (elizaOS/eliza#10839). Reclaim every
-          # stale checkout dir that is NOT from this run before we materialize ours.
-          # Deploys serialize on this box and the prefix is unique to this workflow,
-          # so nothing live is touched; best-effort, never fails the deploy.
-          reclaimed=0
-          for d in /tmp/eliza-checkout-*; do
-            [ -e "$d" ] || continue
-            case "$d" in /tmp/eliza-checkout-${{ github.run_id }}-*) continue ;; esac
-            timeout 120s rm -rf "$d" 2>/dev/null || echo "::warning::cleanup of $d exceeded 120s (non-fatal)"
-            reclaimed=$((reclaimed + 1))
-          done
-          echo "Reclaimed ${reclaimed} leaked checkout dir(s) from prior runs."
+          # box until disk/inodes are exhausted and materialization times out —
+          # freezing prod (elizaOS/eliza#10839). Reclaim leaked trees, but ONLY
+          # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
+          # a dir untouched for 90 min is a definitively-dead leak.
+          # CONCURRENCY-SAFE: push deploys use per-SHA concurrency groups (NOT
+          # serialized), so sibling runs materialize at the same time; the age
+          # filter never deletes another run's actively-writing checkout (its mtime
+          # stays fresh), and we also exclude this run's own dirs by name.
+          # (The prior run_id-only filter deleted concurrent siblings' live
+          # checkouts — this replaces it.) Best-effort; never fails the deploy.
+          stale=$(find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" 2>/dev/null | wc -l | tr -d ' ')
+          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null || true
+          echo "Reclaimed ${stale} stale (idle >90min) leaked checkout dir(s)."
           df -h /tmp / 2>/dev/null | tail -2 || true
       - name: Checkout repository
         timeout-minutes: 20
@@ -615,19 +615,19 @@ jobs:
           # Cancelled/killed deploy runs never reach the trailing "Clean temp
           # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
           # monorepo materialization) leak and pile up on this shared self-hosted
-          # box until disk/inodes are exhausted and this run's own materialization
-          # blows its timeout — freezing prod (elizaOS/eliza#10839). Reclaim every
-          # stale checkout dir that is NOT from this run before we materialize ours.
-          # Deploys serialize on this box and the prefix is unique to this workflow,
-          # so nothing live is touched; best-effort, never fails the deploy.
-          reclaimed=0
-          for d in /tmp/eliza-checkout-*; do
-            [ -e "$d" ] || continue
-            case "$d" in /tmp/eliza-checkout-${{ github.run_id }}-*) continue ;; esac
-            timeout 120s rm -rf "$d" 2>/dev/null || echo "::warning::cleanup of $d exceeded 120s (non-fatal)"
-            reclaimed=$((reclaimed + 1))
-          done
-          echo "Reclaimed ${reclaimed} leaked checkout dir(s) from prior runs."
+          # box until disk/inodes are exhausted and materialization times out —
+          # freezing prod (elizaOS/eliza#10839). Reclaim leaked trees, but ONLY
+          # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
+          # a dir untouched for 90 min is a definitively-dead leak.
+          # CONCURRENCY-SAFE: push deploys use per-SHA concurrency groups (NOT
+          # serialized), so sibling runs materialize at the same time; the age
+          # filter never deletes another run's actively-writing checkout (its mtime
+          # stays fresh), and we also exclude this run's own dirs by name.
+          # (The prior run_id-only filter deleted concurrent siblings' live
+          # checkouts — this replaces it.) Best-effort; never fails the deploy.
+          stale=$(find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" 2>/dev/null | wc -l | tr -d ' ')
+          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null || true
+          echo "Reclaimed ${stale} stale (idle >90min) leaked checkout dir(s)."
           df -h /tmp / 2>/dev/null | tail -2 || true
       - name: Checkout repository
         timeout-minutes: 20
