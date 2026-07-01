@@ -82,9 +82,9 @@ describe("DefaultHomeWidgets", () => {
 
     // The time tile is gone…
     expect(screen.queryByTestId("home-time-widget")).toBeNull();
-    expect(screen.getByTestId("default-home-widgets").textContent).not.toContain(
-      "2:30",
-    );
+    expect(
+      screen.getByTestId("default-home-widgets").textContent,
+    ).not.toContain("2:30");
     // …but weather is independent and still shows immediately.
     expect(screen.getByTestId("home-weather")).toBeTruthy();
   });

@@ -1436,7 +1436,13 @@ async function handleStreamingRequest(
             description: `Chat reconciliation: ${model}`,
             // #10423: stable per-request key so a settlement retry doesn't
             // double-credit the app creator's redeemable earnings.
-            metadata: { model, provider, billingSource, streaming: true, idempotencyKey },
+            metadata: {
+              model,
+              provider,
+              billingSource,
+              streaming: true,
+              idempotencyKey,
+            },
           });
         }
 
@@ -1857,7 +1863,13 @@ async function handleNonStreamingRequest(
             description: `Chat: ${model}`,
             // #10423: stable per-request key so a non-streaming settlement retry
             // doesn't double-credit the app creator's redeemable earnings.
-            metadata: { model, provider, billingSource, streaming: false, idempotencyKey },
+            metadata: {
+              model,
+              provider,
+              billingSource,
+              streaming: false,
+              idempotencyKey,
+            },
           });
         }
 

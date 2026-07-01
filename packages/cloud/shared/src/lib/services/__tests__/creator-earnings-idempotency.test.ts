@@ -30,6 +30,7 @@ process.env.MOCK_REDIS = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
+import { organizations } from "../../../db/schemas/organizations";
 import {
   earningsSourceEnum,
   ledgerEntryTypeEnum,
@@ -37,7 +38,6 @@ import {
   redeemableEarningsLedger,
   redeemedEarningsTracking,
 } from "../../../db/schemas/redeemable-earnings";
-import { organizations } from "../../../db/schemas/organizations";
 import { users } from "../../../db/schemas/users";
 
 const PGLITE_TIMEOUT = 60_000;

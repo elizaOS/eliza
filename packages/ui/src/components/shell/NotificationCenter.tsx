@@ -1,12 +1,5 @@
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
-import {
-  Bell,
-  BellRing,
-  CheckCheck,
-  Inbox,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Bell, BellRing, CheckCheck, Inbox, Trash2, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,

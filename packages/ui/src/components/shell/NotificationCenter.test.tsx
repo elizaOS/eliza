@@ -172,16 +172,10 @@ describe("NotificationCenter", () => {
   });
 
   it("sheet variant: renders the panel controlled + closes via backdrop and X (#10706)", async () => {
-    seedNotifications([
-      notification("s1", "Pulled-down alert", "system"),
-    ]);
+    seedNotifications([notification("s1", "Pulled-down alert", "system")]);
     const onOpenChange = vi.fn();
     const { rerender } = render(
-      <NotificationCenter
-        variant="sheet"
-        open
-        onOpenChange={onOpenChange}
-      />,
+      <NotificationCenter variant="sheet" open onOpenChange={onOpenChange} />,
     );
 
     // Open: the sheet + its panel content are visible without any bell click.
@@ -231,7 +225,9 @@ describe("NotificationCenter", () => {
     await screen.findByText("Older high");
 
     // Default = Priority: unread → priority → recency → urgent, then high, then normal.
-    expect(screen.getByTestId("notif-sort-priority").getAttribute("aria-pressed")).toBe("true");
+    expect(
+      screen.getByTestId("notif-sort-priority").getAttribute("aria-pressed"),
+    ).toBe("true");
     expect(renderedTitleOrder(TITLES)).toEqual([
       "Oldest urgent",
       "Older high",
@@ -240,7 +236,9 @@ describe("NotificationCenter", () => {
 
     // Flip to Recent: pure most-recent-first, priority ignored.
     await user.click(screen.getByTestId("notif-sort-time"));
-    expect(screen.getByTestId("notif-sort-time").getAttribute("aria-pressed")).toBe("true");
+    expect(
+      screen.getByTestId("notif-sort-time").getAttribute("aria-pressed"),
+    ).toBe("true");
     expect(renderedTitleOrder(TITLES)).toEqual([
       "Newest normal",
       "Older high",

@@ -47,11 +47,11 @@ import type {
 import {
   classifyChatFailure,
   generateChatResponse,
-  normalizeAccountConnectRequest,
   generateConversationTitle,
   getChatFailureReply,
   hasRecentVisibleAssistantMemorySince,
   initSse,
+  normalizeAccountConnectRequest,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,

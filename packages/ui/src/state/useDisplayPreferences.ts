@@ -53,9 +53,8 @@ export function useDisplayPreferences() {
   );
   // Home time/date tile visibility (#10706): shown by default, hideable from
   // Appearance settings, persisted across reload.
-  const [homeTimeWidgetHidden, setHomeTimeWidgetHiddenState] = useState<boolean>(
-    loadHomeTimeWidgetHidden,
-  );
+  const [homeTimeWidgetHidden, setHomeTimeWidgetHiddenState] =
+    useState<boolean>(loadHomeTimeWidgetHidden);
   const backgroundConfigRef = useRef(backgroundConfig);
   backgroundConfigRef.current = backgroundConfig;
   const backgroundHistoryRef = useRef(backgroundHistory);

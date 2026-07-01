@@ -153,7 +153,11 @@ describe("NotificationsWidget (#9143)", () => {
   it("home slot: the tile leads with the top notification's category icon (#10697)", () => {
     __resetNotificationStoreForTests();
     __ingestNotificationForTests(
-      notification({ title: "New message", category: "message", priority: "high" }),
+      notification({
+        title: "New message",
+        category: "message",
+        priority: "high",
+      }),
       1,
     );
 

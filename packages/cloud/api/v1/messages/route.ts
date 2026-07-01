@@ -832,7 +832,13 @@ async function handleNonStream(
         estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
         actualBaseCost: billing.totalCost,
         description: `Messages API: ${model}`,
-        metadata: { model, provider, billingSource, streaming: false, idempotencyKey: requestId },
+        metadata: {
+          model,
+          provider,
+          billingSource,
+          streaming: false,
+          idempotencyKey: requestId,
+        },
       });
     }
 
@@ -986,7 +992,13 @@ async function handleStream(
             estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
             actualBaseCost: billing.totalCost,
             description: `Messages API stream: ${model}`,
-            metadata: { model, provider, billingSource, streaming: true, idempotencyKey: requestId },
+            metadata: {
+              model,
+              provider,
+              billingSource,
+              streaming: true,
+              idempotencyKey: requestId,
+            },
           });
         }
 
