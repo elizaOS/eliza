@@ -105,6 +105,7 @@ export function HomeLauncherSurface({
           // browser's own scroll/back gesture, which fires `pointercancel`
           // instead of `pointerup` — the flick silently never commits.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"
+          style={{ touchAction: "pan-y" }}
           onPointerDown={pager.handlers.onPointerDown}
           onPointerMove={pager.handlers.onPointerMove}
           onPointerUp={pager.handlers.onPointerUp}
@@ -120,6 +121,7 @@ export function HomeLauncherSurface({
           // Same as the home half: vertical scroll (the tile grid) stays with
           // the browser, horizontal flicks (right → back home) are ours.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"
+          style={{ touchAction: "pan-y" }}
           onPointerDown={pager.handlers.onPointerDown}
           onPointerMove={pager.handlers.onPointerMove}
           onPointerUp={pager.handlers.onPointerUp}

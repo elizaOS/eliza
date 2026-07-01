@@ -188,7 +188,6 @@ export function HomeScreen({
       {/* Thin top-edge pull affordance. Sits above the home surface (z-[2]) but
           only over the status-bar strip, so widget taps/scroll below are
           untouched. A faint grabber hints the gesture. */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only pull target, not a click affordance (the notification center has its own reachable trigger). */}
       <div
         data-testid="home-notification-pull-zone"
         className="absolute inset-x-0 top-0 z-[2] flex h-[calc(var(--safe-area-top,0px)+30px)] items-end justify-center pb-1"
@@ -208,85 +207,86 @@ export function HomeScreen({
       />
       <div
         data-testid="home-screen"
-      className={cn(
-        "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
-        // The shell root already reserves the status-bar safe area (its
-        // paddingTop: var(--safe-area-top)); adding it again here double-padded
-        // the content and left a large empty band above the dashboard. Just a
-        // small gutter — the notch is already cleared by the root.
-        "px-4",
-        // Clear the floating chat composer at the bottom.
-        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
-      )}
-    >
-      <style>{HOME_ENTER_CSS}</style>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        {clockAccessory ? (
-          <div className={cn(enterClass, "flex justify-end")}>
-            {clockAccessory}
-          </div>
-        ) : null}
+        style={{ touchAction: "pan-y" }}
+        className={cn(
+          "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
+          // The shell root already reserves the status-bar safe area (its
+          // paddingTop: var(--safe-area-top)); adding it again here double-padded
+          // the content and left a large empty band above the dashboard. Just a
+          // small gutter — the notch is already cleared by the root.
+          "px-4",
+          // Clear the floating chat composer at the bottom.
+          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
+        )}
+      >
+        <style>{HOME_ENTER_CSS}</style>
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+          {clockAccessory ? (
+            <div className={cn(enterClass, "flex justify-end")}>
+              {clockAccessory}
+            </div>
+          ) : null}
 
-        {/* The always-on base: a naked sized grid with the time + weather as
+          {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours and the week strip — no card, white text on the
             ambient field. */}
-        <div className={enterClass} style={{ animationDelay: "70ms" }}>
-          <DefaultHomeWidgets />
-        </div>
+          <div className={enterClass} style={{ animationDelay: "70ms" }}>
+            <DefaultHomeWidgets />
+          </div>
 
-        {/* The prioritized data widgets (#9143) flow in below the base. Each
+          {/* The prioritized data widgets (#9143) flow in below the base. Each
             self-hides when empty, so the host renders nothing until a widget has
             something to show — the base above keeps the dashboard from ever
             being just the floating chat. */}
-        <div className={enterClass} style={{ animationDelay: "110ms" }}>
-          <WidgetHost
-            slot="home"
-            layout="grid"
-            events={events}
-            clearEvents={clearEvents}
-          />
-        </div>
+          <div className={enterClass} style={{ animationDelay: "110ms" }}>
+            <WidgetHost
+              slot="home"
+              layout="grid"
+              events={events}
+              clearEvents={clearEvents}
+            />
+          </div>
 
-        {tiles.length > 0 ? (
-          <nav
-            aria-label="Apps"
-            data-testid="home-tiles"
-            className={cn(enterClass, "mt-2")}
-            style={{ animationDelay: "150ms" }}
-          >
-            <div className="grid grid-cols-4 gap-3">
-              {tiles.map((tile) => {
-                const Icon = tile.icon;
-                return (
-                  <button
-                    key={tile.id}
-                    type="button"
-                    data-testid={`home-tile-${tile.id}`}
-                    onClick={() => onOpenTile(tile.target)}
-                    className={cn(
-                      // Naked tile: icon + label sit directly on the ambient
-                      // orange field — no fill, no border.
-                      "flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
-                      // Tactile press: a quick scale-down on tap (stilled for
-                      // reduce-motion users), plus a faint white wash on hover.
-                      "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                      "hover:bg-white/8",
-                    )}
-                  >
-                    <Icon
-                      className="h-[22px] w-[22px] text-white"
-                      aria-hidden
-                    />
-                    <span className="max-w-full truncate text-[11px] font-medium text-white">
-                      {tile.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
-        ) : null}
-      </div>
+          {tiles.length > 0 ? (
+            <nav
+              aria-label="Apps"
+              data-testid="home-tiles"
+              className={cn(enterClass, "mt-2")}
+              style={{ animationDelay: "150ms" }}
+            >
+              <div className="grid grid-cols-4 gap-3">
+                {tiles.map((tile) => {
+                  const Icon = tile.icon;
+                  return (
+                    <button
+                      key={tile.id}
+                      type="button"
+                      data-testid={`home-tile-${tile.id}`}
+                      onClick={() => onOpenTile(tile.target)}
+                      className={cn(
+                        // Naked tile: icon + label sit directly on the ambient
+                        // orange field — no fill, no border.
+                        "flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
+                        // Tactile press: a quick scale-down on tap (stilled for
+                        // reduce-motion users), plus a faint white wash on hover.
+                        "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
+                        "hover:bg-white/8",
+                      )}
+                    >
+                      <Icon
+                        className="h-[22px] w-[22px] text-white"
+                        aria-hidden
+                      />
+                      <span className="max-w-full truncate text-[11px] font-medium text-white">
+                        {tile.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+          ) : null}
+        </div>
       </div>
     </>
   );

@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { touchSwipeFromPoint } from "@elizaos/ui/testing/real-touch-gestures";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
 import { installDefaultAppRoutes } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
@@ -1118,27 +1119,10 @@ export async function swipeLeftToLauncher(
   }
 
   if (input === "touch" || (input === "auto" && touchCapable)) {
-    const client = await page.context().newCDPSession(page);
-    try {
-      await client.send("Input.dispatchTouchEvent", {
-        type: "touchStart",
-        touchPoints: [{ x: startX, y: midY, id: 1, radiusX: 4, radiusY: 4 }],
-      });
-      for (let i = 1; i <= 6; i++) {
-        await client.send("Input.dispatchTouchEvent", {
-          type: "touchMove",
-          touchPoints: [
-            { x: startX - i * 40, y: midY, id: 1, radiusX: 4, radiusY: 4 },
-          ],
-        });
-      }
-      await client.send("Input.dispatchTouchEvent", {
-        type: "touchEnd",
-        touchPoints: [],
-      });
-    } finally {
-      await client.detach().catch(() => undefined);
-    }
+    await touchSwipeFromPoint(page, { x: startX, y: midY }, -240, 0, {
+      steps: 6,
+      stepDelayMs: 16,
+    });
     await page.waitForTimeout(250);
     if ((await surface.getAttribute("data-page")) !== "launcher") {
       throw new Error(

@@ -39,28 +39,34 @@ export interface TouchSwipeOptions {
   holdMs?: number;
 }
 
+export interface TouchStartPoint {
+  x: number;
+  y: number;
+}
+
 /**
- * Real touch swipe / drag from an element's center by (dx, dy).
+ * Real touch swipe / drag from an absolute viewport coordinate by (dx, dy).
  */
-export async function touchSwipe(
+export async function touchSwipeFromPoint(
   page: Page,
-  selector: string,
+  start: TouchStartPoint,
   dx: number,
   dy: number,
   { steps = 12, stepDelayMs = 0, holdMs = 0 }: TouchSwipeOptions = {},
 ): Promise<void> {
-  const { cx, cy } = await centerOf(page, selector);
   const client = await page.context().newCDPSession(page);
   try {
     await client.send("Input.dispatchTouchEvent", {
       type: "touchStart",
-      touchPoints: [point(cx, cy)],
+      touchPoints: [point(start.x, start.y)],
     });
     if (holdMs > 0) await page.waitForTimeout(holdMs);
     for (let i = 1; i <= steps; i += 1) {
       await client.send("Input.dispatchTouchEvent", {
         type: "touchMove",
-        touchPoints: [point(cx + (dx * i) / steps, cy + (dy * i) / steps)],
+        touchPoints: [
+          point(start.x + (dx * i) / steps, start.y + (dy * i) / steps),
+        ],
       });
       if (stepDelayMs > 0) await page.waitForTimeout(stepDelayMs);
     }
@@ -71,6 +77,20 @@ export async function touchSwipe(
   } finally {
     await client.detach();
   }
+}
+
+/**
+ * Real touch swipe / drag from an element's center by (dx, dy).
+ */
+export async function touchSwipe(
+  page: Page,
+  selector: string,
+  dx: number,
+  dy: number,
+  options: TouchSwipeOptions = {},
+): Promise<void> {
+  const { cx, cy } = await centerOf(page, selector);
+  await touchSwipeFromPoint(page, { x: cx, y: cy }, dx, dy, options);
 }
 
 /** A real touch tap at an element's center (touchStart → touchEnd, no move). */
