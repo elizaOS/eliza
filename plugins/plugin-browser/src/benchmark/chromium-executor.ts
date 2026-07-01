@@ -370,23 +370,8 @@ export async function createChromiumBenchmarkExecutor(
             el.tagName === "A" &&
             !!(el as HTMLAnchorElement).getAttribute("href"),
         );
-        const dispatchClick = () =>
-          handle.evaluate(
-            (el, clickCount) => {
-              const target = el as HTMLElement;
-              target.click();
-              if (clickCount === 2) {
-                target.dispatchEvent(
-                  new MouseEvent("dblclick", {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window,
-                  }),
-                );
-              }
-            },
-            command.subaction === "dblclick" ? 2 : 1,
-          );
+        const clickOptions =
+          command.subaction === "dblclick" ? { clickCount: 2 } : {};
         if (navigates) {
           await Promise.all([
             page
@@ -395,10 +380,10 @@ export async function createChromiumBenchmarkExecutor(
                 timeout: navigationTimeoutMs,
               })
               .catch(() => null),
-            dispatchClick(),
+            handle.click(clickOptions),
           ]);
         } else {
-          await dispatchClick();
+          await handle.click(clickOptions);
         }
         await handle.dispose();
         return result(command.subaction, { url: page.url() });
