@@ -27,6 +27,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { recordAppDeployFact } from "../app-facts.js";
+import { invalidateAppsCache } from "../providers/cloud-apps.js";
 import {
   extractAppReference,
   getCloudClient,
@@ -65,6 +66,9 @@ async function reportLive(
   const reply = `"${app.name}" is live at ${url} 🎉`;
   // Best-effort, idempotent facts cache — never fails the deploy.
   const fact = await recordAppDeployFact(runtime, message, app, url);
+  // The app's deployment status just changed — refresh the provider cache so it
+  // reflects the new live URL/status within the same conversation.
+  invalidateAppsCache(runtime);
   await callback?.({ text: reply, actions: ["DEPLOY_APP"] });
   return {
     success: true,

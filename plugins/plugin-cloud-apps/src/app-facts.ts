@@ -138,3 +138,31 @@ export async function recordAppDeployFact(
     return { written: false, updated: false };
   }
 }
+
+/**
+ * Purge the durable "app is live" deploy fact for `appId` (if one exists) after
+ * the app is deleted — otherwise the agent keeps recalling a deleted app as
+ * live at its old URL forever (the fact is `kind:"durable"`, so it never
+ * decays). Best-effort: returns `false` when there's nothing to remove or the
+ * runtime has no delete API; a failure never blocks the delete.
+ */
+export async function removeAppDeployFact(
+  runtime: IAgentRuntime,
+  message: Memory,
+  appId: string,
+): Promise<boolean> {
+  if (typeof runtime.deleteMemory !== "function") return false;
+  try {
+    const existing = await findExistingDeployFact(runtime, message, appId);
+    if (!existing?.id) return false;
+    await runtime.deleteMemory(existing.id);
+    return true;
+  } catch (err) {
+    logger.warn(
+      `[CloudApps] Failed to remove deploy fact for ${appId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return false;
+  }
+}
