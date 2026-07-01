@@ -71,6 +71,9 @@ class MockInsufficientCreditsError extends Error {
 
 mock.module("../credits", () => ({
   InsufficientCreditsError: MockInsufficientCreditsError,
+  // Must mirror the real export — app-credits.ts imports it for the $0-estimate
+  // floor; a missing export would break the module link under this mock.
+  MIN_RESERVATION: 0.000001,
   creditsService: {
     addCredits,
     reserveAndDeductCredits,

@@ -25,6 +25,10 @@
  *      `reconcile_charge` leg vs the `deduct` leg) and a settlement retry does
  *      not double-credit (same leg) — the property that subsumes #10873's
  *      per-request earnings dedupe.
+ *   4. A $0 estimate (free/unpriced model) opens a MIN_RESERVATION floor hold
+ *      instead of throwing `reserveAndDeductCredits`' "Amount must be positive"
+ *      (which the routes surfaced as a 500), and reconcile trues the floor up
+ *      to the actual cost in both directions.
  *
  * Self-skips LOUDLY if PGlite/pushSchema is unavailable (never silently passes).
  */
@@ -87,6 +91,7 @@ let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let appCreditsService: typeof import("../app-credits").appCreditsService;
 let InsufficientCreditsError: typeof import("../credits").InsufficientCreditsError;
+let MIN_RESERVATION: typeof import("../credits").MIN_RESERVATION;
 
 let seq = 0;
 function uniq(p: string): string {
@@ -180,7 +185,7 @@ beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ appCreditsService } = await import("../app-credits"));
-    ({ InsufficientCreditsError } = await import("../credits"));
+    ({ InsufficientCreditsError, MIN_RESERVATION } = await import("../credits"));
 
     const schema = {
       organizations,
@@ -351,6 +356,63 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
       await reservation.reconcile(2);
       expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.2, 6);
       expect(await creatorEarningLedgerCount(creatorId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a $0 estimate opens a MIN_RESERVATION floor hold instead of throwing 'Amount must be positive' (residual of #10892)",
+    async () => {
+      if (!pgliteReady) return;
+
+      const payerOrgId = await seedOrg("1.000000");
+      const consumerId = await seedUser(payerOrgId);
+      const creatorOrgId = await seedOrg("0.000000");
+      const creatorId = await seedUser(creatorOrgId);
+      // 0% markup: the hold and every reconcile adjustment move exactly the
+      // base-cost figures asserted below.
+      const app = await seedApp({
+        organizationId: creatorOrgId,
+        createdByUserId: creatorId,
+        inferenceMarkupPercentage: 0,
+      });
+      await dbWrite.insert(appUsers).values({ app_id: app.id, user_id: consumerId });
+
+      // calculateCost returns $0 for free/unpriced models; before the floor,
+      // that reached reserveAndDeductCredits' amount<=0 guard as a PLAIN Error
+      // (not InsufficientCreditsError), which /v1/chat/completions and
+      // /v1/messages rethrow as a 500 on every monetized-app request.
+      const reservation = await appCreditsService.reserveInferenceCredits({
+        appId: app.id,
+        userId: consumerId,
+        estimatedBaseCost: 0,
+        description: "zero-estimate hold",
+        idempotencyKey: "req-zero-1",
+        metadata: { model: "free-model" },
+        app,
+      });
+      expect(reservation.reservedAmount).toBeCloseTo(MIN_RESERVATION, 9);
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(1 - MIN_RESERVATION, 9);
+
+      // Actual $0 → the floor refunds in full; a free call costs nothing.
+      const settlement = await reservation.reconcile(0);
+      expect(settlement?.adjustmentType).toBe("refund");
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(1.0, 9);
+
+      // A $0-estimate call whose ACTUAL cost is real still charges through the
+      // overage leg — the floor never under-collects.
+      const second = await appCreditsService.reserveInferenceCredits({
+        appId: app.id,
+        userId: consumerId,
+        estimatedBaseCost: 0,
+        description: "zero-estimate hold with real cost",
+        idempotencyKey: "req-zero-2",
+        metadata: { model: "free-model" },
+        app,
+      });
+      const overage = await second.reconcile(0.05);
+      expect(overage?.adjustmentType).toBe("overage");
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(0.95, 6);
     },
     PGLITE_TIMEOUT,
   );
