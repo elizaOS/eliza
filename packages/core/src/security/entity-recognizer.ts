@@ -259,9 +259,9 @@ export class CompositeEntityRecognizer implements PiiEntityRecognizer {
 		}
 
 		// De-duplicate unlocated spans by (kind,value) and append.
-		const seen = new Set(kept.map((s) => `${s.kind} ${s.value}`));
+		const seen = new Set(kept.map((s) => `${s.kind}\0${s.value}`));
 		for (const { span } of unlocated) {
-			const key = `${span.kind} ${span.value}`;
+			const key = `${span.kind}\0${span.value}`;
 			if (seen.has(key)) continue;
 			seen.add(key);
 			kept.push(span);

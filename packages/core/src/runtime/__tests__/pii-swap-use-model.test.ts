@@ -81,6 +81,32 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 		expect(String(result)).not.toContain("Acme Robotics");
 	});
 
+	it("logs sanitized prompts to the DB model-call log", async () => {
+		const runtime = makeRuntime(true);
+		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);
+		const createLogs = vi.spyOn(runtime.adapter, "createLogs");
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_rt, params: { prompt: string }) => `ack ${params.prompt}`,
+			"test",
+		);
+
+		await runWithTrajectoryContext(
+			{ runId: "run-1", trajectoryStepId: "step-1" },
+			() =>
+				runtime.useModel(ModelType.TEXT_SMALL, {
+					prompt: "Email Dana Whitfield about the renewal.",
+				}),
+		);
+
+		expect(createLogs).toHaveBeenCalledTimes(1);
+		const call = createLogs.mock.calls[0]?.[0]?.[0] as {
+			body?: { prompt?: string };
+		};
+		expect(call.body?.prompt).not.toContain("Dana Whitfield");
+		expect(call.body?.prompt).toMatch(/^Email .+ about the renewal\.$/);
+	});
+
 	it("swaps named entities using a pre-seeded turn session (reused across the turn)", async () => {
 		const runtime = makeRuntime(true);
 		const session = new PseudonymSession({
@@ -111,6 +137,49 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 		expect(surrogate).toBeTruthy();
 		expect(seenPrompt).toBe(`Ping ${surrogate}.`);
 		expect(seenPrompt).not.toContain("Dana Whitfield");
+	});
+
+	it("restores streamed callback text while keeping the returned stream result pseudonymized", async () => {
+		const runtime = makeRuntime(true);
+		const streamedChunks: string[] = [];
+		const session = new PseudonymSession({
+			salt: "fixed",
+			recognizer: new GazetteerEntityRecognizer([
+				{ kind: "person", value: "Dana Whitfield" },
+			]),
+		});
+		await session.learn("Dana Whitfield");
+		const surrogate = session.entries[0]?.surrogate as string;
+		async function* textStream() {
+			yield `Tell ${surrogate.slice(0, 4)}`;
+			yield `${surrogate.slice(4)} hello.`;
+		}
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async () => ({
+				text: Promise.resolve(`Tell ${surrogate} hello.`),
+				textStream: textStream(),
+				usage: Promise.resolve({}),
+				finishReason: Promise.resolve("stop"),
+			}),
+			"test",
+		);
+
+		const result = await runWithTrajectoryContext(
+			{ runId: "run-stream", piiSwapSession: session },
+			() =>
+				runtime.useModel(ModelType.TEXT_SMALL, {
+					prompt: "Ping Dana Whitfield.",
+					stream: true,
+					onStreamChunk: (chunk: string) => {
+						streamedChunks.push(chunk);
+					},
+				}),
+		);
+
+		expect(streamedChunks.join("")).toBe("Tell Dana Whitfield hello.");
+		expect(String(result)).toBe(`Tell ${surrogate} hello.`);
+		expect(String(result)).not.toContain("Dana Whitfield");
 	});
 
 	it("pseudonymizes a street address with the built-in regex recognizer (no model needed)", async () => {
