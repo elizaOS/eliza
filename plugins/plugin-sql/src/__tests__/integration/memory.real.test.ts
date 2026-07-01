@@ -401,9 +401,16 @@ describe("Memory Integration Tests", () => {
       await adapter.createMemory(createTestMemory({ text: "message one" }), "messages");
       await adapter.createMemory(createTestMemory({ text: "message two" }), "messages");
 
+      // getMemories requires an explicit tableName (typed as required) and does
+      // NOT default like countMemories does — read the same "messages" table the
+      // rows were written to. The prior `{ roomId } as never` bypassed the typed
+      // requirement and queried an undefined table → 0 rows. countMemories below
+      // still exercises the real default-to-"messages" path (base.ts:2718). This
+      // drift went unnoticed because the real suite ran in no CI lane (#10718).
       const memories = await adapter.getMemories({
         roomId: testRoomId,
-      } as never);
+        tableName: "messages",
+      });
       const count = await adapter.countMemories(testRoomId, false);
 
       expect(memories).toHaveLength(2);

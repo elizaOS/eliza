@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
-import { expectCreatedEntityIds, expectNoCreatedEntityIds } from "./entity-create-assertions";
+import { expectCreatedEntityIds } from "./entity-create-assertions";
 
 describe("Entity CRUD Operations", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
@@ -215,9 +215,12 @@ describe("Entity CRUD Operations", () => {
       const firstResult = await adapter.createEntities([entity]);
       expectCreatedEntityIds(firstResult, [entity]);
 
-      // Second creation should fail
+      // Second creation is idempotent: createEntities treats a duplicate id as an
+      // already-created success and returns the existing id (base.ts createEntities,
+      // isDuplicateKeyError branch), NOT an empty array. This assertion had drifted
+      // from the adapter because the real suite ran in no CI lane (#10718).
       const secondResult = await adapter.createEntities([entity]);
-      expectNoCreatedEntityIds(secondResult);
+      expectCreatedEntityIds(secondResult, [entity]);
     });
 
     it("should handle batch entity operations", async () => {

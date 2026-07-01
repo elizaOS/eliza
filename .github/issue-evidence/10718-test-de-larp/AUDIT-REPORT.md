@@ -575,3 +575,12 @@ Surfaces confirmed genuinely well-tested (NOT larp — do not churn): scenario-r
 - **[high]** `packages/examples`: the example test runner (`verify-examples.mjs --mode test`) is in no workflow; `discord` / `app/capacitor/backend` / `app/electron/backend` are `vitest run --passWithNoTests` with zero tests yet VALIDATION.md claims them `test`-verified; `vercel` `test` swallows failures with `|| echo skipping`.
 - **[high]** `packages/benchmarks/voice-emotion/.../runner.py`: `_FIXTURE_ROWS` hardcodes predicted==gold for all 14 rows → the fixture suite always scores perfect (tautology). Gate the real classifier pytest instead.
 - **[medium/low]** remaining 16 findings (per-plugin harness lane, PA `test:background-real`, examples doc claims, benchmark CI no-op decorations) — see machine-readable findings in the workflow output.
+
+### 8a. Resolution of the plugin-sql critical (shipped)
+
+Un-excluding the 52 real DB-adapter tests (new `plugins/plugin-sql/src/vitest.real.config.ts` + `test:real` script) did not merely add coverage — it **surfaced 3 real failures the unconditional exclude had hidden**, all stale drift where the never-run tests still encoded contracts the intentional, code-commented adapter had moved past:
+
+- `createEntities` is deliberately idempotent — a duplicate id returns the EXISTING id (base.ts:1061-1069, `isDuplicateKeyError` branch, "returning existing IDs"). Two tests (`entity-crud.real.test.ts`, `base-adapter-methods.real.test.ts`) still asserted the pre-idempotency "empty array on duplicate". Fixed to `expectCreatedEntityIds`; removed the now-dead `expectNoCreatedEntityIds` helper.
+- `getMemories` requires an explicit `tableName` (typed required, no default — unlike `countMemories`, which defaults to `"messages"` at base.ts:2718). `memory.real.test.ts` passed `{ roomId } as never`, bypassing the type and querying an undefined table → 0 rows. Fixed to pass `tableName: "messages"`.
+
+Lane behavior: PGlite tests run for real (no external service); Postgres/RLS files self-skip cleanly when `POSTGRES_URL` is unset, so `test:real` is green locally and gains full coverage when a Postgres URL is provided. This is the clearest proof of the epic's thesis: excluded suites don't just lose coverage, they rot — the assertions silently drift from the code they claim to guard.

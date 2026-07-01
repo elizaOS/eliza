@@ -75,6 +75,7 @@
     "build": "cd src && bun run build.ts",
     "dev": "cd src && bun --hot build.ts",
     "test": "cd src && vitest run",
+    "test:real": "cd src && vitest run --config vitest.real.config.ts",
     "typecheck": "tsgo --noEmit -p src/tsconfig.json",
     "lint": "cd src && bun run lint",
     "lint:check": "cd src && bun run lint:check",
