@@ -91,7 +91,10 @@ export default scenario({
           "close",
         ],
       }),
-      responseIncludesAny: ["Frontier Tower", "follow", "done", "Thursday"],
+      // De-echoed (#9310): the old keywords ("Frontier Tower", "follow",
+      // "done", "Thursday") all appeared in the user's own turn text. The
+      // reply must now confirm the closure in words the prompt never used.
+      responseIncludesAny: ["closed", "marked", "wrapped", "locked in"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
