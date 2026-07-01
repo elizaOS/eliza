@@ -59,6 +59,10 @@
  *     lanes and any post-merge lane always serialize. Default 1 preserves the
  *     historical fully-serial behaviour, so existing callers are unaffected.
  *
+ *   --list | --dry-run
+ *     Print the exact discovered task plan (after lane/filter/shard/skip
+ *     handling) and exit before preparing databases or spawning tests.
+ *
  * Companion env knobs (legacy, still honoured):
  *   TEST_PACKAGE_FILTER  — same surface as --filter
  *   TEST_SCRIPT_FILTER   — regex over script name (test, test:e2e, ...)
@@ -153,6 +157,7 @@ function failUsage(message) {
 
 const noCloud = parseFlag("--no-cloud");
 const helpFlag = parseFlag("--help") || parseFlag("-h");
+const listFlag = parseFlag("--list") || parseFlag("--dry-run");
 let filterFlag;
 let patternFlag;
 let onlyFlag;
@@ -183,6 +188,8 @@ if (helpFlag) {
       "  --exclude=<path>     Exclude a repo-relative test path from this lane.",
       "  --concurrency=<n>    Run parallel-safe `test` tasks through an n-worker",
       "                       pool (pr lane only; default 1 = fully serial).",
+      "  --list, --dry-run    Print the discovered task plan and exit without",
+      "                       preparing databases or spawning tests.",
       "",
       "Env vars:",
       "  TEST_LANE=pr|post-merge        Lane select (default: pr).",
@@ -301,17 +308,18 @@ const NO_CLOUD_PACKAGE_DIRS = new Set([
 // must match a task's label for it to run — they intersect rather than
 // override each other so callers can stack a package filter (--filter) and a
 // per-test filter (--pattern) on top of one another.
-const packageFilters = [
+const packageFilterInputs = [
   filterFlag,
   patternFlag,
   process.env.TEST_PACKAGE_FILTER,
-]
-  .filter((value) => typeof value === "string" && value.length > 0)
-  .map((value) => new RegExp(value));
+].filter((value) => typeof value === "string" && value.length > 0);
+
+const packageFilters = packageFilterInputs.map((value) => new RegExp(value));
 
 const scriptFilter = process.env.TEST_SCRIPT_FILTER
   ? new RegExp(process.env.TEST_SCRIPT_FILTER)
   : null;
+const scriptFilterInput = process.env.TEST_SCRIPT_FILTER?.trim() || "";
 const startAt = process.env.TEST_START_AT?.trim() || "";
 const DEFAULT_POSTGRES_URL =
   "postgresql://eliza_test:test123@localhost:5432/eliza_test";
@@ -930,8 +938,6 @@ function runCloudTests() {
 // Main
 // ---------------------------------------------------------------------------
 
-ensurePluginSqlPostgresEnv();
-
 const packageJsonPaths = collectPackageJsonPaths();
 
 let started = startAt.length === 0;
@@ -940,6 +946,7 @@ let started = startAt.length === 0;
 // filters/skips. Collecting up front lets the runner dispatch the parallel-safe
 // subset through a worker pool instead of the historical strictly-serial loop.
 const tasks = [];
+const discoverySkips = [];
 
 for (const packageJsonPath of packageJsonPaths) {
   const cwd = path.dirname(packageJsonPath);
@@ -952,9 +959,12 @@ for (const packageJsonPath of packageJsonPaths) {
     continue;
   }
   if (noCloud && NO_CLOUD_PACKAGE_DIRS.has(relativeDir)) {
-    console.log(
-      `[eliza-test] SKIP ${packageJson.name || relativeDir} (${relativeDir}) (cloud package skipped by --no-cloud)`,
-    );
+    const label = `${packageJson.name || relativeDir} (${relativeDir})`;
+    const reason = "cloud package skipped by --no-cloud";
+    discoverySkips.push({ label, reason });
+    if (!listFlag) {
+      console.log(`[eliza-test] SKIP ${label} (${reason})`);
+    }
     continue;
   }
 
@@ -980,15 +990,60 @@ for (const packageJsonPath of packageJsonPaths) {
       continue;
     }
     if (shouldSkipEmptyVitestScript(cwd, scriptName, scripts)) {
-      console.log(
-        `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
-      );
+      const reason = "no local test files for vitest script";
+      discoverySkips.push({ label, reason });
+      if (!listFlag) {
+        console.log(`[eliza-test] SKIP ${label} (${reason})`);
+      }
       continue;
     }
 
     tasks.push({ cwd, scriptName, label, scripts, packageName });
   }
 }
+
+function printTaskPlan() {
+  const { parallel, serial } =
+    concurrency > 1
+      ? partitionTasks(tasks, TEST_LANE)
+      : { parallel: [], serial: tasks };
+  const parallelLabels = new Set(parallel.map((task) => task.label));
+  const scriptMode = onlyFlag ?? "all";
+  console.log("[eliza-test] plan");
+  console.log(`  lane: ${TEST_LANE}`);
+  console.log(`  scripts: ${scriptMode}`);
+  console.log(`  cloud: ${noCloud ? "disabled" : "enabled"}`);
+  console.log(`  shard: ${TEST_SHARD || "none"}`);
+  console.log(`  concurrency: ${concurrency}`);
+  console.log(
+    `  package filters: ${packageFilterInputs.length ? packageFilterInputs.join(" && ") : "none"}`,
+  );
+  console.log(`  script filter: ${scriptFilterInput || "none"}`);
+  console.log(`  start at: ${startAt || "none"}`);
+  console.log(`  excludes: ${excludeFlags.length}`);
+  console.log(`  runnable tasks: ${tasks.length}`);
+  console.log(`  parallel task(s): ${parallel.length}`);
+  console.log(`  serial task(s): ${serial.length + (noCloud ? 0 : 1)}`);
+  console.log(`  skipped during discovery: ${discoverySkips.length}`);
+
+  for (const task of tasks) {
+    const mode = parallelLabels.has(task.label) ? "parallel" : "serial";
+    console.log(`  ${mode} ${task.label}`);
+  }
+  if (!noCloud) {
+    console.log("  serial cloud#test");
+  }
+  for (const { label, reason } of discoverySkips) {
+    console.log(`  skip ${label} (${reason})`);
+  }
+}
+
+if (listFlag) {
+  printTaskPlan();
+  process.exit(0);
+}
+
+ensurePluginSqlPostgresEnv();
 
 const laneEnv = buildLaneEnv();
 

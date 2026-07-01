@@ -597,7 +597,7 @@ const LandingPage: React.FC = () => {
               target="_blank"
               rel="noopener noreferrer"
             >
-              here.
+              in this swap benchmark analysis thread.
             </a>{" "}
             In this environment, LLMs are prompted to construct swap
             transactions across different DEXes. SDKs to Jupiter, Orca, Meteora,
@@ -705,7 +705,7 @@ const LandingPage: React.FC = () => {
               rel="noopener noreferrer"
               style={{ textDecoration: "underline" }}
             >
-              here
+              through the Solana benchmark funding form
             </a>
             .
           </p>
