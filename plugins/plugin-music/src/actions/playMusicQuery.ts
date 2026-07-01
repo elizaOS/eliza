@@ -1,6 +1,7 @@
 import {
   type ActionExample,
   type ActionResult,
+  getActiveRoutingContextsForTurn,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -520,131 +521,89 @@ export const playMusicQuerySimiles = [
   "INTELLIGENT_MUSIC_SEARCH",
 ];
 
+const PLAY_MUSIC_QUERY_CONTEXTS = ["media", "knowledge"] as const;
+
+/**
+ * Read a structured play-query value from the action parameters. `play_query`
+ * is the "research and play this request" op, so any of the descriptive music
+ * fields the planner may emit counts as a query to resolve.
+ */
+function readPlayMusicQueryValue(
+  options?: Record<string, unknown>,
+): string | null {
+  const merged = mergedOptions(options);
+  const direct =
+    merged.query ??
+    merged.searchQuery ??
+    merged.song ??
+    merged.artist ??
+    merged.album ??
+    merged.genre ??
+    merged.mood ??
+    merged.keywords;
+  if (typeof direct === "string" && direct.trim().length > 0) {
+    return direct.trim();
+  }
+  return null;
+}
+
+/**
+ * True when the turn was routed to a music/knowledge context. This mirrors the
+ * other music-library sub-handlers: op selection follows the planner's routing
+ * decision, never an English keyword match on raw message text.
+ */
+function hasPlayMusicQueryContext(message: Memory, state?: State): boolean {
+  const active = new Set(
+    getActiveRoutingContextsForTurn(state, message).map((context) =>
+      `${context}`.toLowerCase(),
+    ),
+  );
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") active.add(item.toLowerCase());
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  return PLAY_MUSIC_QUERY_CONTEXTS.some((context) => active.has(context));
+}
+
+/**
+ * A direct YouTube URL is a machine token, not English intent. The faster
+ * `playYouTubeAudio` path handles it, so `play_query` defers when one is
+ * present.
+ */
+function isYouTubeUrl(value: string): boolean {
+  return value.includes("youtube.com/") || value.includes("youtu.be/");
+}
+
 export async function validatePlayMusicQuery(
   _runtime: IAgentRuntime,
   message: Memory,
-  _state?: State,
+  state?: State,
+  options?: Record<string, unknown>,
 ): Promise<boolean> {
   if (message.content.source !== "discord") {
     return false;
   }
 
-  const messageText = (message.content.text || "").toLowerCase();
+  const structuredQuery = readPlayMusicQueryValue(options);
 
-  // PERFORMANCE: Skip if this is a direct YouTube URL - let playYouTubeAudio handle it (much faster)
-  if (
-    messageText.includes("youtube.com/") ||
-    messageText.includes("youtu.be/")
-  ) {
+  const urlCandidate = structuredQuery ?? message.content.text ?? "";
+  if (isYouTubeUrl(urlCandidate)) {
     return false;
   }
 
-  // Check if this is a complex query that needs research
-  const researchKeywords = [
-    // Artist-specific
-    "first single",
-    "debut single",
-    "first song",
-    "debut album",
-    "first album",
-    "latest song",
-    "newest song",
-    "recent song",
-    "new song",
-    "new music",
-    "something like",
-    "similar to",
-    "sounds like",
-    "reminds me of",
-    "in the style of",
-    "most popular",
-    "biggest hit",
-    "best song",
-    "top song",
-    "second album",
-    "third album",
-    "2nd album",
-    "3rd album",
-    "nth album",
-
-    // Temporal
-    "80s",
-    "90s",
-    "2000s",
-    "70s",
-    "60s",
-    "from the",
-
-    // Genre/Mood
-    "genre:",
-    "chill",
-    "vibes",
-    "mood",
-    "upbeat",
-    "sad",
-    "happy",
-    "energetic",
-
-    // Activity
-    "workout",
-    "gym",
-    "study",
-    "focus",
-    "party",
-    "driving",
-    "sleep",
-
-    // Charts
-    "top",
-    "chart",
-    "billboard",
-    "trending",
-    "viral",
-    "popular now",
-
-    // Media
-    "soundtrack",
-    "theme song",
-    "theme from",
-    "from the movie",
-    "from the game",
-    "from the show",
-    "tv show",
-
-    // Lyrics/Topic
-    "songs about",
-    "with lyrics",
-    "that mentions",
-
-    // Versions
-    "cover of",
-    "remix of",
-    "acoustic version",
-    "live version",
-    "live at",
-    "instrumental",
-
-    // Album
-    "from the album",
-    "track",
-    "entire album",
-    "full album",
-    "whole album",
-  ];
-
-  const needsResearch = researchKeywords.some((keyword) =>
-    messageText.includes(keyword),
-  );
-
-  // Also check for pattern "play [genre/mood] music"
-  const simplePatterns = [
-    /play\s+(some\s+)?(jazz|rock|pop|hip hop|rap|metal|electronic|indie|folk|country|classical|blues)/i,
-    /play\s+(something\s+)?(chill|upbeat|sad|happy|energetic|mellow|intense)/i,
-  ];
-
-  return (
-    needsResearch || simplePatterns.some((pattern) => pattern.test(messageText))
-  );
+  // `play_query` is selected when a structured query is present or when the turn
+  // was routed to a music/knowledge context. The handler's LLM query analysis
+  // (`analyzeMusicQuery`) decides research vs. direct search — intent is never
+  // re-derived here from English keywords in raw message text.
+  return Boolean(structuredQuery) || hasPlayMusicQueryContext(message, state);
 }
 
 export async function handlePlayMusicQuery(
