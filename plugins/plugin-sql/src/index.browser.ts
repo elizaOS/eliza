@@ -7,14 +7,13 @@ import {
 } from "@elizaos/core";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import { PGliteClientManager } from "./pglite/manager";
+import { getOrCreatePgliteManagerForAgent, type PgliteManagerCache } from "./pglite/manager-cache";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 
 const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
 
-interface GlobalSingletons {
-  pgLiteClientManager?: PGliteClientManager;
-}
+type GlobalSingletons = PgliteManagerCache<PGliteClientManager>;
 
 interface RuntimeWithAdapterRegistrar {
   registerDatabaseAdapter: (adapter: IDatabaseAdapter) => void;
@@ -26,14 +25,17 @@ if (!globalSymbols[GLOBAL_SINGLETONS]) {
 }
 const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
+function getOrCreatePgliteManager(agentId: UUID): PGliteClientManager {
+  return getOrCreatePgliteManagerForAgent(globalSingletons, undefined, agentId, () => {
+    return new PGliteClientManager({ agentId });
+  });
+}
+
 export function createDatabaseAdapter(
   _config: { dataDir?: string },
   agentId: UUID
 ): IDatabaseAdapter {
-  if (!globalSingletons.pgLiteClientManager) {
-    globalSingletons.pgLiteClientManager = new PGliteClientManager({});
-  }
-  return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
+  return new PgliteDatabaseAdapter(agentId, getOrCreatePgliteManager(agentId));
 }
 
 export const plugin: Plugin = {
