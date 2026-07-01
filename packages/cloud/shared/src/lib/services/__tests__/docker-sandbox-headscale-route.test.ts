@@ -165,8 +165,8 @@ describe("buildManagedElizaRuntimeConfig", () => {
     const config = buildManagedElizaRuntimeConfig({
       ELIZAOS_CLOUD_API_KEY: "agent-api-key",
       ELIZAOS_CLOUD_BASE_URL: "https://api.elizacloud.ai/api/v1",
-      ELIZAOS_CLOUD_SMALL_MODEL: "gpt-oss-120b",
-      ELIZAOS_CLOUD_LARGE_MODEL: "zai-glm-4.7",
+      ELIZAOS_CLOUD_SMALL_MODEL: "gemma-4-31b",
+      ELIZAOS_CLOUD_LARGE_MODEL: "gemma-4-31b",
       ELIZA_CLOUD_AGENT_ID: "cloud-agent-1",
     });
 

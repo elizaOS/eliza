@@ -107,12 +107,12 @@ describe("selectLiveProvider", () => {
     const provider = selectLiveProvider();
     expect(provider?.name).toBe("cerebras");
     expect(provider?.baseUrl).toBe("https://api.cerebras.ai/v1");
-    expect(provider?.largeModel).toBe("zai-glm-4.7");
-    expect(provider?.smallModel).toBe("gpt-oss-120b");
+    expect(provider?.largeModel).toBe("gemma-4-31b");
+    expect(provider?.smallModel).toBe("gemma-4-31b");
     expect(provider?.env.ELIZA_PROVIDER).toBe("cerebras");
-    expect(provider?.env.CEREBRAS_MODEL).toBe("zai-glm-4.7");
-    expect(provider?.env.OPENAI_SMALL_MODEL).toBe("gpt-oss-120b");
-    expect(provider?.env.OPENAI_LARGE_MODEL).toBe("zai-glm-4.7");
+    expect(provider?.env.CEREBRAS_MODEL).toBe("gemma-4-31b");
+    expect(provider?.env.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
+    expect(provider?.env.OPENAI_LARGE_MODEL).toBe("gemma-4-31b");
   });
 
   it("resolves Cerebras vault references in the async selector", async () => {

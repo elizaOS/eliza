@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 
 const ELIZA_CLOUD_OPENAI_BASE = "https://www.elizacloud.ai/api/v1";
@@ -9,7 +10,7 @@ const OPENCODE_LOCAL_DEFAULT_BASE_URL = "http://localhost:11434/v1";
 const OPENCODE_OPENAI_COMPATIBLE_NPM = "@ai-sdk/openai-compatible";
 const OPENCODE_CEREBRAS_NPM = "@ai-sdk/cerebras";
 const CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
-const CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b";
+const CEREBRAS_DEFAULT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 
 // `webfetch` is a read-only HTTP GET (opencode caps the response at 5MB and
 // never mutates the workspace). `websearch` is opencode's general web-search

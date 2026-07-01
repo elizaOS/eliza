@@ -225,6 +225,9 @@ describe("forced provider route pricing ids", () => {
       expandPricingCatalogModelCandidates(canonicalModelId("gpt-oss-120b", "cerebras")),
     ).toContain("cerebras:gpt-oss-120b");
     expect(
+      expandPricingCatalogModelCandidates(canonicalModelId("gemma-4-31b", "cerebras")),
+    ).toContain("cerebras:gemma-4-31b");
+    expect(
       expandPricingCatalogModelCandidates(canonicalModelId("zai-glm-4.7", "cerebras")),
     ).toContain("cerebras:zai-glm-4.7");
   });
@@ -260,6 +263,12 @@ describe("forced provider route pricing ids", () => {
       const gptOutput = entries.find(
         (entry) => entry.model === "cerebras:gpt-oss-120b" && entry.chargeType === "output",
       );
+      const gemmaInput = entries.find(
+        (entry) => entry.model === "cerebras:gemma-4-31b" && entry.chargeType === "input",
+      );
+      const gemmaOutput = entries.find(
+        (entry) => entry.model === "cerebras:gemma-4-31b" && entry.chargeType === "output",
+      );
       const glmInput = entries.find(
         (entry) => entry.model === "cerebras:zai-glm-4.7" && entry.chargeType === "input",
       );
@@ -270,6 +279,9 @@ describe("forced provider route pricing ids", () => {
       expect(gptInput?.provider).toBe("cerebras");
       expect(gptInput?.unitPrice).toBe(0.00000035);
       expect(gptOutput?.unitPrice).toBe(0.00000075);
+      expect(gemmaInput?.provider).toBe("cerebras");
+      expect(gemmaInput?.unitPrice).toBe(0.00000099);
+      expect(gemmaOutput?.unitPrice).toBe(0.00000149);
       expect(glmInput?.unitPrice).toBe(0.00000225);
       expect(glmOutput?.unitPrice).toBe(0.00000275);
     } finally {
@@ -283,12 +295,11 @@ describe("forced provider route pricing ids", () => {
   });
 
   test("adds a synthetic openai/gpt-oss-120b row so :nitro / :free variants resolve", async () => {
-    // Default cloud TEXT_SMALL model is `openai/gpt-oss-120b:nitro`
-    // (packages/core/src/contracts/service-routing.ts). BitRouter's catalog
-    // doesn't currently return a priced row for the base id, so without this
-    // forced entry every credit-debiting chat request 500s with
+    // The old OpenRouter free/nitro variants still resolve through this base id.
+    // BitRouter's catalog doesn't currently return a priced row for the base id,
+    // so without this forced entry every credit-debiting fallback request 500s with
     // "Pricing unavailable for language:input openai/gpt-oss-120b". The
-    // variant stripper in candidate-selection collapses :nitro / :free onto
+    // The variant stripper in candidate-selection collapses :nitro / :free onto
     // the base, so one base entry covers every variant.
     const previousApiKey = process.env.OPENROUTER_API_KEY;
     const previousFetch = globalThis.fetch;

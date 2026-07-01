@@ -8,12 +8,13 @@
  * removed to avoid two-sources-of-truth drift.)
  *
  * The four modes (locked product vision):
- *   1. Eliza Cloud = eliza-code on Cerebras, fast/smart tier (gpt-oss-120b / zai-glm-4.7)
+ *   1. Eliza Cloud = eliza-code on Cerebras, fast/smart tier (gemma-4-31b)
  *   2. OpenCode on Cerebras
  *   3. Claude / Codex via the TOS-safe subscription connector
  *   4. Experimental TOS-unsafe Claude / Codex (gated)
  */
 
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import type {
   CodingAgentCreateTaskInput,
   CodingAgentTaskProviderPolicy,
@@ -24,8 +25,8 @@ export type ElizaCloudTier = "small" | "large";
 
 /** Canonical Cerebras model id per tier. */
 export const ELIZA_CLOUD_TIER_MODEL: Record<ElizaCloudTier, string> = {
-  small: "gpt-oss-120b",
-  large: "zai-glm-4.7",
+  small: DEFAULT_CEREBRAS_TEXT_MODEL,
+  large: DEFAULT_CEREBRAS_TEXT_MODEL,
 };
 
 /** One cockpit session's mode. */

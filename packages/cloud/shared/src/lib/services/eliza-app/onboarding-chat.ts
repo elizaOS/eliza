@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { cache } from "../../cache/client";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../../models";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { launchManagedElizaAgent } from "../eliza-managed-launch";
@@ -63,7 +64,7 @@ export interface OnboardingChatResult {
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
 const MAX_HISTORY_MESSAGES = 200;
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
-const CEREBRAS_MODEL = "gpt-oss-120b";
+const CEREBRAS_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
 const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
 const ELIZA_APP_PRICING_SUMMARY =

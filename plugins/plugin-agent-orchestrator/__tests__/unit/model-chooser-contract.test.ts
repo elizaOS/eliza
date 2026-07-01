@@ -258,7 +258,7 @@ describe("model-chooser contract: opencode provider/model resolution (pure)", ()
   const settingsRuntime = (settings: Record<string, string | undefined> = {}) =>
     ({ getSetting: vi.fn((key: string) => settings[key]) }) as never;
 
-  it("cerebras (api-key) → cerebras provider + gpt-oss-120b default", () => {
+  it("cerebras (api-key) → cerebras provider + Gemma default", () => {
     const config = buildOpencodeSpawnConfig(settingsRuntime(), {
       // sealed synthetic env (env !== process.env disables config-file fallback)
       CEREBRAS_API_KEY: "csk-pooled",
@@ -272,7 +272,7 @@ describe("model-chooser contract: opencode provider/model resolution (pure)", ()
     }).toEqual({
       provider: "cerebras",
       label: "Cerebras",
-      model: "cerebras/gpt-oss-120b",
+      model: "cerebras/gemma-4-31b",
       smallModel: undefined,
     });
     const parsed = JSON.parse(config?.configContent ?? "{}");
@@ -356,7 +356,7 @@ describe("model-chooser contract: buildOpencodeAcpEnv stamps resolved model into
       CEREBRAS_API_KEY: "csk-pooled",
     });
     expect(result.config?.providerId).toBe("cerebras");
-    expect(result.env.OPENCODE_MODEL).toBe("cerebras/gpt-oss-120b");
+    expect(result.env.OPENCODE_MODEL).toBe("cerebras/gemma-4-31b");
     expect(result.env.OPENCODE_CONFIG_CONTENT).toBe(
       result.config?.configContent,
     );
@@ -524,7 +524,7 @@ describe("model-chooser contract: opencode auth resolution", () => {
     });
     expect(injected.CEREBRAS_API_KEY).toBe("cb-key-pooled");
     // The opencode env builder resolves the cerebras provider/model from the key.
-    expect(injected.OPENCODE_MODEL).toBe("cerebras/gpt-oss-120b");
+    expect(injected.OPENCODE_MODEL).toBe("cerebras/gemma-4-31b");
   });
 });
 

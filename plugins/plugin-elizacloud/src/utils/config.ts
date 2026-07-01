@@ -1,8 +1,12 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, resolveSetting } from "@elizaos/core";
+import {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  logger,
+  resolveSetting,
+} from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
 
-export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = "zai-glm-4.7";
+export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 
 /**
  * Runtime config first, then `process.env`, then the supplied default.

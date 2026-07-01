@@ -1,9 +1,9 @@
 /**
  * Live Cerebras smoke test for the ResponseHandlerFieldRegistry substrate.
  *
- * Runs against `gpt-oss-120b` at https://api.cerebras.ai/v1 — the same
- * provider used in production for low-latency Stage-1 calls. Skipped unless
- * both `CEREBRAS_API_KEY` is set AND `ELIZA_RUN_LIVE_TESTS=1`.
+ * Runs against the default Cerebras text model at https://api.cerebras.ai/v1 —
+ * the same provider used in production for low-latency Stage-1 calls. Skipped
+ * unless both `CEREBRAS_API_KEY` is set AND `ELIZA_RUN_LIVE_TESTS=1`.
  *
  * What this proves:
  *   1. The composed schema (built from `BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS`
@@ -22,6 +22,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../contracts/service-routing";
 import { logger } from "../../logger";
 import type { Memory } from "../../types/memory";
 import type { IAgentRuntime } from "../../types/runtime";
@@ -41,7 +42,8 @@ const runLive =
 const liveDescribe = runLive ? describe : describe.skip;
 
 const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
-const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b";
+const CEREBRAS_MODEL =
+	process.env.CEREBRAS_MODEL?.trim() || DEFAULT_CEREBRAS_TEXT_MODEL;
 
 interface CerebrasChatRequest {
 	model: string;
@@ -201,7 +203,7 @@ function buildSystemPrompt(promptSlices: string): string {
 }
 
 liveDescribe("ResponseHandlerFieldRegistry — live Cerebras smoke", () => {
-	it("composes a stable schema and round-trips through gpt-oss-120b", async () => {
+	it("composes a stable schema and round-trips through the default Cerebras model", async () => {
 		const registry = new ResponseHandlerFieldRegistry();
 		for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
 			registry.register(evaluator);

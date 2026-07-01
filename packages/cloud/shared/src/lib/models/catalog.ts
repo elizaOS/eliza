@@ -42,28 +42,27 @@ export interface SelectorModel {
 
 export const BITROUTER_NITRO_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
 export const BITROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
-export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = "gpt-oss-120b";
-export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = "zai-glm-4.7";
+export const CEREBRAS_DEFAULT_TEXT_MODEL = "gemma-4-31b";
+export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
+export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
+export const CEREBRAS_NATIVE_TEXT_MODELS = [
+  CEREBRAS_DEFAULT_TEXT_MODEL,
+  "gpt-oss-120b",
+  "zai-glm-4.7",
+] as const;
 
 // The default served text model (drives PRO_MODEL_ID / the new-user default).
-// This is the Cerebras-direct bare id "gpt-oss-120b" — HTTP 200 in ~3s in prod —
-// NOT the gateway id "openai/gpt-oss-120b:nitro". The :nitro id has no Cerebras
-// route: it goes through the self-hosted BitRouter to OpenRouter, whose nitro
-// upstream returns 502, which we surface as 503 ("Failed after 3 attempts: Bad
-// Gateway") — the error every new user hits on their first message. The bare id
-// makes getLanguageModel()'s isCerebrasNativeModel() short-circuit straight to
-// the Cerebras client (providers/language-model.ts), Shaw's ~2000 tok/s path.
+// This is the Cerebras-direct bare id "gemma-4-31b", NOT a gateway id like
+// "openai/gpt-oss-120b:nitro". Bare ids make getLanguageModel()'s
+// isCerebrasNativeModel() short-circuit straight to the Cerebras client.
 export const BITROUTER_DEFAULT_TEXT_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
 
 // Models force-marked `recommended` by the annotation layer. Point this at the
-// healthy Cerebras defaults — NOT openai/gpt-oss-120b:nitro, whose gateway path
+// healthy Cerebras default — NOT openai/gpt-oss-120b:nitro, whose gateway path
 // returns 503 (the flakiness PR #8426 set out to stop recommending). Without
 // this, annotateCatalogModel re-adds the recommended badge to :nitro even though
 // its inline flag was removed.
-const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([
-  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
-  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
-]);
+const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([CEREBRAS_DEFAULT_TEXT_MODEL]);
 
 // Verified against the public provider catalogs on 2026-04-25:
 // - BitRouter: https://bitrouter.ai/api/v1/models
@@ -71,21 +70,21 @@ const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([
 // - Cerebras: https://api.cerebras.ai/public/v1/models?format=openrouter
 const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
   {
-    id: CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+    id: CEREBRAS_DEFAULT_TEXT_MODEL,
     object: "model",
-    created: 1767744000,
+    created: 1782864000,
     owned_by: "cerebras",
-    name: "Z.ai GLM 4.7",
-    description:
-      "Default TEXT_LARGE model on Cerebras for coding, advanced reasoning, and tool use",
+    name: "Gemma 4 31B",
+    description: "Default TEXT_SMALL and TEXT_LARGE model on Cerebras for fast cloud inference",
     type: "language",
-    context_window: 131072,
-    max_tokens: 40960,
-    tags: ["recommended", "reasoning", "tool-use", "cerebras"],
+    context_window: 131000,
+    max_tokens: 40000,
+    tags: ["recommended", "cerebras"],
+    supported_parameters: ["reasoning_effort"],
     recommended: true,
   },
   {
-    id: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    id: "gpt-oss-120b",
     object: "model",
     created: 1754438400,
     owned_by: "cerebras",
@@ -94,8 +93,19 @@ const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
     type: "language",
     context_window: 131072,
     max_tokens: 40960,
-    tags: ["recommended", "reasoning", "open-weight", "cerebras"],
-    recommended: true,
+    tags: ["reasoning", "open-weight", "cerebras"],
+  },
+  {
+    id: "zai-glm-4.7",
+    object: "model",
+    created: 1767744000,
+    owned_by: "cerebras",
+    name: "Z.ai GLM 4.7",
+    description: "Cerebras language model for coding, advanced reasoning, and tool use",
+    type: "language",
+    context_window: 131072,
+    max_tokens: 40960,
+    tags: ["reasoning", "tool-use", "cerebras"],
   },
   {
     id: BITROUTER_NITRO_TEXT_MODEL,
@@ -138,6 +148,17 @@ const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
 ];
 
 const CEREBRAS_TEXT_CATALOG_MODELS: CatalogModel[] = [
+  {
+    id: "cerebras:gemma-4-31b",
+    object: "model",
+    created: 0,
+    owned_by: "cerebras",
+    name: "Gemma 4 31B",
+    description: "Cerebras-hosted Gemma language model routed through BitRouter BYOK",
+    type: "language",
+    context_window: 131000,
+    tags: ["byok"],
+  },
   {
     id: "cerebras:gpt-oss-120b",
     object: "model",

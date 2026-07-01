@@ -1,4 +1,4 @@
-import { elizaLogger } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL, elizaLogger } from "@elizaos/core";
 
 const KNOWN_CEREBRAS_BARE_MODELS = new Set([
   "gpt-oss-120b",
@@ -65,7 +65,8 @@ export function autoWireCerebras(): void {
   process.env.OPENAI_API_KEY = cerebrasKey;
   process.env.ELIZA_PROVIDER = "cerebras";
 
-  const cerebrasModel = process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b";
+  const cerebrasModel =
+    process.env.CEREBRAS_MODEL?.trim() || DEFAULT_CEREBRAS_TEXT_MODEL;
   if (!process.env.OPENAI_LARGE_MODEL?.trim()) {
     process.env.OPENAI_LARGE_MODEL = cerebrasModel;
   }

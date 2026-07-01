@@ -380,7 +380,7 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
       providerPolicy: {
         preferredFramework: "elizaos",
         providerSource: "eliza-cloud",
-        model: "gpt-oss-120b",
+        model: "gemma-4-31b",
       },
     });
     renderPane();
@@ -391,7 +391,7 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
       expect(calls.updateOrchestratorTask).toHaveBeenCalledWith(
         "task-1",
         expect.objectContaining({
-          providerPolicy: expect.objectContaining({ model: "zai-glm-4.7" }),
+          providerPolicy: expect.objectContaining({ model: "gemma-4-31b" }),
         }),
       ),
     );

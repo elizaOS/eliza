@@ -40,7 +40,7 @@ function parseArgs(): Args {
   let model =
     process.env.CEREBRAS_MODEL?.trim() ||
     process.env.OPENAI_LARGE_MODEL?.trim() ||
-    "gpt-oss-120b";
+    "gemma-4-31b";
   let seedThoughts = 14;
 
   for (let i = 0; i < args.length; i += 1) {

@@ -1,12 +1,13 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import type { PtySpawnSpec } from "../services/pty-types";
 
 /**
  * Builds the {@link PtySpawnSpec} that launches the **interactive** `eliza-code`
  * CLI (the real slash-command TUI in `packages/examples/code`) inside a PTY,
- * pointed at Eliza Cloud so inference runs on cerebras (`gpt-oss-120b` fast /
- * `zai-glm-4.7` smart).
+ * pointed at Eliza Cloud so inference runs on cerebras (`gemma-4-31b` for both
+ * fast and smart tiers).
  *
  * This is the load-bearing wiring for "a real CLI on my phone": eliza-code is an
  * agent we own (no TOS exposure), it already implements `/help`, `/clear`,
@@ -23,8 +24,8 @@ import type { PtySpawnSpec } from "../services/pty-types";
  */
 
 export const ELIZA_CLOUD_DEFAULT_BASE_URL = "https://api.elizacloud.ai/v1";
-export const ELIZA_CLOUD_FAST_MODEL = "gpt-oss-120b";
-export const ELIZA_CLOUD_SMART_MODEL = "zai-glm-4.7";
+export const ELIZA_CLOUD_FAST_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
+export const ELIZA_CLOUD_SMART_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 
 export interface ElizaCodeCerebrasOptions {
   /** Working directory the interactive session runs in (confined to this). */

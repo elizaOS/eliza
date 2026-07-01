@@ -9,7 +9,7 @@
  *
  * Model routing: the turn goes through the SAME canonical `getLanguageModel`
  * router as every other inference path in cloud — bare Cerebras ids
- * (`gpt-oss-120b`, `zai-glm-4.7`) go straight to Cerebras, every other id goes
+ * (`gemma-4-31b`, `gpt-oss-120b`, `zai-glm-4.7`) go straight to Cerebras, every other id goes
  * through BitRouter. There is deliberately NO bespoke provider client here, so a
  * shared agent supports exactly the models the platform does and can never
  * diverge from the proven `/api/v1/chat/completions` path.
@@ -65,7 +65,7 @@ export interface RunSharedAgentTurnResult {
 /**
  * The shared default when an agent configures no model: the bare Cerebras small
  * id, which `getLanguageModel` sends straight to Cerebras (fast + cheap, no
- * gateway hop). Big-model agents simply set `zai-glm-4.7` (also bare Cerebras).
+ * gateway hop). Big-model agents can still set another bare Cerebras model.
  */
 const DEFAULT_SHARED_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
 

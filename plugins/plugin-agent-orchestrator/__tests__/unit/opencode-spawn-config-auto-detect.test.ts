@@ -19,7 +19,7 @@ describe("buildOpencodeSpawnConfig", () => {
     });
     expect(result?.providerId).toBe("cerebras");
     expect(result?.providerLabel).toBe("Cerebras");
-    expect(result?.model).toBe("cerebras/gpt-oss-120b");
+    expect(result?.model).toBe("cerebras/gemma-4-31b");
     const config = JSON.parse(result?.configContent ?? "{}");
     expect(config.provider.cerebras.options.baseURL).toBe(
       "https://api.cerebras.ai/v1",

@@ -73,7 +73,7 @@ vi.mock("@elizaos/ui", () => ({
             providerPolicy: {
               preferredFramework: "elizaos",
               providerSource: "eliza-cloud",
-              model: "gpt-oss-120b",
+              model: "gemma-4-31b",
             },
           })
         }
@@ -151,7 +151,7 @@ describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)",
         expect.objectContaining({
           framework: "elizaos",
           providerSource: "eliza-cloud",
-          model: "gpt-oss-120b",
+          model: "gemma-4-31b",
           task: "fix the auth bug",
         }),
       ),
