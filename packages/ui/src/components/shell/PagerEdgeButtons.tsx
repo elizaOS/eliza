@@ -5,17 +5,18 @@ import { cn } from "../../lib/utils";
 
 /**
  * Web/desktop `<` `>` edge buttons for a horizontal pager (#10717). Rendered
- * ONLY on desktop-width fine-pointer / hover-capable devices, so they never
- * appear on touch/coarse phones/tablets where the swipe gesture is the sole
- * navigation. The width guard also keeps mobile audit captures clean when a
- * headless browser reports a fine pointer at phone dimensions.
+ * ONLY on fine-pointer / hover-capable devices, so they never appear on
+ * touch/coarse phones/tablets where the swipe gesture is the sole navigation.
+ * There is deliberately NO width gate: page dots are off in production, so a
+ * fine-pointer window below desktop width (a narrow browser window, a small
+ * desktop shell) still needs a visible paging control alongside the drag
+ * gesture.
  *
  * Icon-only (no card chrome), neutral resting → neutral hover (no orange→black,
  * no blue), positioned on the vertical center of the left/right edges. Each
  * arrow is hidden when there is no page to move to in that direction.
  */
-const DESKTOP_EDGE_BUTTON_QUERY =
-  "(hover: hover) and (pointer: fine) and (min-width: 1024px)";
+const FINE_POINTER_EDGE_BUTTON_QUERY = "(hover: hover) and (pointer: fine)";
 
 export function PagerEdgeButtons({
   canPrev,
@@ -39,8 +40,8 @@ export function PagerEdgeButtons({
    */
   idPrefix?: string;
 }): React.JSX.Element | null {
-  const desktopFinePointer = useMediaQuery(DESKTOP_EDGE_BUTTON_QUERY);
-  if (!desktopFinePointer) return null;
+  const finePointer = useMediaQuery(FINE_POINTER_EDGE_BUTTON_QUERY);
+  if (!finePointer) return null;
 
   const prefix = idPrefix ? `${idPrefix}-` : "";
   const edgeClass =
