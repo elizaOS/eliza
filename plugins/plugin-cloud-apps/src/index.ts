@@ -45,6 +45,7 @@
  */
 
 import type { Plugin } from "@elizaos/core";
+import { bookInfluencerAction } from "./actions/book-influencer.js";
 import { createAppAction } from "./actions/create-app.js";
 import { deleteAppAction } from "./actions/delete-app.js";
 import { deployAppAction } from "./actions/deploy-app.js";
@@ -53,6 +54,10 @@ import { listFrontendDeploymentsAction, rollbackFrontendAction } from "./actions
 import { getAppAction } from "./actions/get-app.js";
 import { getAppDeployStatusAction } from "./actions/get-app-deploy-status.js";
 import { getAppEarningsAction } from "./actions/get-app-earnings.js";
+import {
+  createInfluencerProfileAction,
+  listInfluencersAction,
+} from "./actions/influencer.js";
 import { listCloudAppsAction } from "./actions/list-cloud-apps.js";
 import { regenerateAppApiKeyAction } from "./actions/regenerate-app-api-key.js";
 import { updateAppAction } from "./actions/update-app.js";
@@ -60,6 +65,7 @@ import { updateMonetizationAction } from "./actions/update-monetization.js";
 import { withdrawAppEarningsAction } from "./actions/withdraw-app-earnings.js";
 import { cloudAppsProvider } from "./providers/cloud-apps.js";
 
+export { bookInfluencerAction } from "./actions/book-influencer.js";
 export { createAppAction } from "./actions/create-app.js";
 export { deleteAppAction } from "./actions/delete-app.js";
 export { deployAppAction } from "./actions/deploy-app.js";
@@ -68,6 +74,10 @@ export { listFrontendDeploymentsAction, rollbackFrontendAction } from "./actions
 export { getAppAction } from "./actions/get-app.js";
 export { getAppDeployStatusAction } from "./actions/get-app-deploy-status.js";
 export { getAppEarningsAction } from "./actions/get-app-earnings.js";
+export {
+  createInfluencerProfileAction,
+  listInfluencersAction,
+} from "./actions/influencer.js";
 export { listCloudAppsAction } from "./actions/list-cloud-apps.js";
 export { regenerateAppApiKeyAction } from "./actions/regenerate-app-api-key.js";
 export { updateAppAction } from "./actions/update-app.js";
@@ -99,6 +109,9 @@ export const cloudAppsPlugin: Plugin = {
     getAppEarningsAction,
     withdrawAppEarningsAction,
     regenerateAppApiKeyAction,
+    createInfluencerProfileAction,
+    listInfluencersAction,
+    bookInfluencerAction,
   ],
   providers: [cloudAppsProvider],
 };

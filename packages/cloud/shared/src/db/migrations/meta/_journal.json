@@ -1100,6 +1100,13 @@
       "when": 1780618800000,
       "tag": "0158_compliance_review_and_usdc_payouts",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1780705200000,
+      "tag": "0159_influencer_marketplace",
+      "breakpoints": true
     }
   ]
 }

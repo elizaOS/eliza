@@ -1200,3 +1200,59 @@ export interface ApiKeyCreateResponse {
 export interface ApiKeyListResponse {
   keys: ApiKeySummary[];
 }
+
+// ---- Influencer marketplace (#10687) ----
+
+export interface InfluencerProfileDto {
+  id: string;
+  display_name: string;
+  niche: string | null;
+  bio: string | null;
+  platforms: Array<{ platform: string; handle: string; followers: number }>;
+  status: "active" | "inactive";
+}
+
+export interface CreateInfluencerProfileInput {
+  displayName: string;
+  niche?: string;
+  bio?: string;
+  platforms?: Array<{ platform: string; handle: string; followers: number }>;
+  rateCard?: Record<string, unknown>;
+}
+
+export interface CreateInfluencerProfileResponse {
+  success: boolean;
+  profile: InfluencerProfileDto;
+}
+
+export interface ListInfluencersResponse {
+  success: boolean;
+  profiles: InfluencerProfileDto[];
+}
+
+export interface InfluencerBookingDto {
+  id: string;
+  advertiser_org_id: string;
+  influencer_profile_id: string;
+  amount: string;
+  status:
+    | "offered"
+    | "accepted"
+    | "delivered"
+    | "approved"
+    | "rejected"
+    | "cancelled";
+  brief: string;
+}
+
+export interface CreateBookingInput {
+  profileId: string;
+  brief: string;
+  amount: number;
+}
+
+export interface CreateBookingResponse {
+  success: boolean;
+  booking?: InfluencerBookingDto;
+  error?: string;
+}
