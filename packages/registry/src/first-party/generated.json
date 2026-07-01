@@ -5922,6 +5922,86 @@
       "subtype": "feature"
     },
     {
+      "id": "pii-guard",
+      "name": "PII Guard",
+      "description": "Local NER PII pseudonymization for the model boundary — swaps named-entity PII (person / org / location) for realistic, reversible surrogates before the prompt reaches the provider, so the LLM never sees real names, employers, or places. Runs dslim/distilbert-NER (Apache-2.0) on-device via onnxruntime; enable the swap in core with ELIZA_PII_SWAP_ENABLED.",
+      "npmName": "@elizaos/plugin-pii-guard",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": [
+        "security",
+        "privacy",
+        "pii",
+        "ner",
+        "pseudonymization",
+        "local",
+        "local-models",
+        "self-hosted"
+      ],
+      "config": {
+        "ELIZA_PII_SWAP_ENABLED": {
+          "type": "boolean",
+          "required": false,
+          "sensitive": false,
+          "default": "false",
+          "label": "Enable PII Swap",
+          "help": "Master switch (read by @elizaos/core). When on, named-entity PII is pseudonymized before every model call and restored at the execution boundary. Off by default — zero behavior change.",
+          "advanced": false
+        },
+        "ELIZA_PII_NER_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "dslim/distilbert-NER",
+          "label": "NER Model",
+          "help": "HuggingFace token-classification model id for person/org/location detection. Downloaded on first use and cached under <stateDir>/local-inference/models.",
+          "advanced": true
+        },
+        "ELIZA_PII_NER_SCORE_THRESHOLD": {
+          "type": "number",
+          "required": false,
+          "sensitive": false,
+          "default": "0.5",
+          "label": "NER Score Threshold",
+          "help": "Minimum model confidence (0–1) for an entity to be swapped. Lower catches more PII (higher recall) at the cost of more false positives.",
+          "advanced": true
+        },
+        "ELIZA_PII_SWAP_EXEMPT_VALUES": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Never-Swap Values",
+          "help": "Comma-separated exact values that must never be pseudonymized (false-positive opt-out), on top of the built-in framework/brand blocklist.",
+          "advanced": true
+        },
+        "ELIZA_PII_SWAP_DISABLED_KINDS": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Disabled Entity Kinds",
+          "help": "Comma-separated entity kinds to leave untouched, e.g. `location,address`.",
+          "advanced": true
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "ShieldCheck",
+        "group": "security",
+        "groupOrder": 0,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza/tree/main/plugins/plugin-pii-guard#readme",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "kind": "plugin",
+      "subtype": "feature"
+    },
+    {
       "id": "plugin-manager",
       "name": "Plugin Manager",
       "description": "Plugin discovery, install, eject, sync, registry search, and creation",
