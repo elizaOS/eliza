@@ -315,9 +315,9 @@ function AppRunCard({
   const ViewerIcon = run.viewerAttachment === "attached" ? Eye : EyeOff;
 
   return (
-    <div className="rounded-sm border border-border/50 bg-bg-accent/30 p-2">
+    <div className="p-2">
       <div className="flex items-start gap-2">
-        <div className="w-20 shrink-0 overflow-hidden rounded-sm border border-white/10 bg-black/10">
+        <div className="w-20 shrink-0 overflow-hidden">
           <AppHero app={app} className="aspect-[5/4]" imageOnly />
         </div>
         <div className="min-w-0 flex-1">
@@ -538,7 +538,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       testId="chat-widget-app-runs"
     >
       {error ? (
-        <div className="mb-2 rounded-sm border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
+        <div className="mb-2 px-2 py-1.5 text-xs-tight text-danger">
           {error}
         </div>
       ) : null}
@@ -591,7 +591,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
             </span>
           </div>
           {attentionRuns.length > 0 ? (
-            <div className="rounded-sm border border-warn/30 bg-warn/10 p-2">
+            <div className="p-2 text-warn">
               <div className="mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.08em] text-warn">
                 <AlertTriangle className="h-3 w-3" />
                 {t("agentorchestrator.recovery", { defaultValue: "Recovery" })}

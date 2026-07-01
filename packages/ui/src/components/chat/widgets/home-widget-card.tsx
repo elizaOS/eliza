@@ -104,9 +104,11 @@ export function HomeWidgetCard({
       title={label}
       onClick={onActivate}
       className={cn(
-        // Dark neutral glass keeps white text and orange status values legible.
-        "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/55 px-3 py-2.5 text-left",
-        "transition-colors hover:bg-black/55",
+        // Chromeless (#10708): no border/background/rounded card — content sits
+        // directly on the wallpaper. Neutral-resting hover affordance is an
+        // opacity change (no background fill), per the neutral hover rule.
+        "group flex w-full items-center gap-3 px-3 py-2.5 text-left",
+        "transition-opacity hover:opacity-80",
       )}
     >
       <span
