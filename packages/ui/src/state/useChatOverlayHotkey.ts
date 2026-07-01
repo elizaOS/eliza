@@ -103,6 +103,15 @@ export function acceleratorFromKeyboardEvent(event: {
   if (MODIFIER_KEYS.has(event.key)) {
     return null;
   }
+  const hasModifier =
+    event.ctrlKey || event.metaKey || event.altKey || event.shiftKey;
+  // A bare single printable character (e.g. "C") is rejected as a global
+  // accelerator — registering it would hijack that key everywhere the app is
+  // backgrounded. Require at least one modifier for printable keys; named keys
+  // (F-keys, Space, arrows, …) may bind on their own.
+  if (event.key.length === 1 && !hasModifier) {
+    return null;
+  }
   const parts: string[] = [];
   if (event.ctrlKey || event.metaKey) {
     parts.push("CommandOrControl");

@@ -102,4 +102,15 @@ describe("acceleratorFromKeyboardEvent", () => {
       acceleratorFromKeyboardEvent({ ...base, key: "F5", shiftKey: true }),
     ).toBe("Shift+F5");
   });
+
+  it("rejects a bare printable key with no modifier (would hijack it globally)", () => {
+    expect(acceleratorFromKeyboardEvent({ ...base, key: "c" })).toBeNull();
+    expect(acceleratorFromKeyboardEvent({ ...base, key: "1" })).toBeNull();
+    // A named key may still bind on its own.
+    expect(acceleratorFromKeyboardEvent({ ...base, key: "F5" })).toBe("F5");
+    // Any modifier makes a printable key bindable again.
+    expect(
+      acceleratorFromKeyboardEvent({ ...base, key: "c", ctrlKey: true }),
+    ).toBe("CommandOrControl+C");
+  });
 });
