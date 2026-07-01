@@ -138,12 +138,28 @@ describe("SensitiveRequestPage — image/file upload (#8910)", () => {
     const input = (await screen.findByTestId(
       "sensitive-request-file-seed_photo",
     )) as HTMLInputElement;
+    const valid = new File([new Uint8Array([1, 2, 3])], "ok.png", {
+      type: "image/png",
+    });
+    fireEvent.change(input, { target: { files: [valid] } });
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: /upload/i }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+
     const tooBig = new File([new Uint8Array([1, 2, 3, 4])], "big.png", {
       type: "image/png",
     });
     fireEvent.change(input, { target: { files: [tooBig] } });
 
     await waitFor(() => expect(screen.getByText(/too large/i)).toBeTruthy());
+    expect(
+      (screen.getByRole("button", { name: /upload/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /upload/i }));
     expect(submits).toHaveLength(0);
   });
 

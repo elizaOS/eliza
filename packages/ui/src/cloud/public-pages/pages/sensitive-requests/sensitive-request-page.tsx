@@ -408,6 +408,11 @@ export default function SensitiveRequestPage() {
                           return;
                         }
                         if (field.maxBytes && file.size > field.maxBytes) {
+                          setFileValues((prev) => {
+                            const next = { ...prev };
+                            delete next[field.name];
+                            return next;
+                          });
                           setError(
                             `${field.label} is too large (max ${Math.round(
                               field.maxBytes / 1024,
@@ -424,8 +429,14 @@ export default function SensitiveRequestPage() {
                             [field.name]: String(reader.result ?? ""),
                           }));
                         };
-                        reader.onerror = () =>
+                        reader.onerror = () => {
+                          setFileValues((prev) => {
+                            const next = { ...prev };
+                            delete next[field.name];
+                            return next;
+                          });
                           setError(`Could not read ${field.label}.`);
+                        };
                         reader.readAsDataURL(file);
                       }}
                     />
