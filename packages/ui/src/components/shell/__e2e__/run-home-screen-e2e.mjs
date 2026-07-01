@@ -7,7 +7,7 @@
  * Run: bun run --cwd packages/ui test:home-screen-e2e
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,22 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-home");
 await mkdir(outDir, { recursive: true });
+const RECORDED_VIDEO_FILE = "mobile-launcher-flow.webm";
+
+async function clearGeneratedVideoArtifacts() {
+  await rm(join(outDir, RECORDED_VIDEO_FILE), { force: true });
+  for (const entry of await readdir(outDir)) {
+    if (/^page@.+\.webm$/.test(entry)) {
+      await rm(join(outDir, entry), { force: true });
+    }
+  }
+}
+
+function stripTrailingLineWhitespace(text) {
+  return text.replace(/[ \t]+$/gm, "");
+}
+
+await clearGeneratedVideoArtifacts();
 
 let failures = 0;
 function assert(cond, msg) {
@@ -142,14 +158,14 @@ const result = await build({
   write: false,
 });
 const js = result.outputFiles[0].text;
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>home screen e2e</title>
+const html = stripTrailingLineWhitespace(`<!doctype html><html><head><meta charset="utf-8"><title>home screen e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}
 :root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>
 <!-- Shim node-ish globals some of the dead-in-browser graph touches at module
      init (e.g. \`process.env\`). The real code paths never execute at render. -->
 <script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-</head><body><div id="root"></div><script>${js}</script></body></html>`;
+</head><body><div id="root"></div><script>${js}</script></body></html>`);
 const htmlPath = join(outDir, "home-screen.html");
 await writeFile(htmlPath, html);
 const url = `file://${htmlPath}`;
@@ -532,7 +548,9 @@ try {
   await mobileContext.close();
   if (mobileVideo) {
     const videoPath = await mobileVideo.path();
-    console.log(`  🎥 ${videoPath}`);
+    const stableVideoPath = join(outDir, RECORDED_VIDEO_FILE);
+    await rename(videoPath, stableVideoPath);
+    console.log(`  🎥 ${stableVideoPath}`);
   }
 
   // Desktop width

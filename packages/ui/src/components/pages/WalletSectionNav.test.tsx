@@ -32,7 +32,9 @@ describe("WalletSectionNav", () => {
   it("marks the active sub-view (aliases resolve to Wallet)", () => {
     render(<WalletSectionNav activePath="/inventory" />);
     expect(
-      screen.getByRole("button", { name: "Wallet" }).getAttribute("aria-current"),
+      screen
+        .getByRole("button", { name: "Wallet" })
+        .getAttribute("aria-current"),
     ).toBe("page");
     expect(
       screen
@@ -44,7 +46,9 @@ describe("WalletSectionNav", () => {
   it("marks Perps active on the hyperliquid route", () => {
     render(<WalletSectionNav activePath="/hyperliquid" />);
     expect(
-      screen.getByRole("button", { name: "Perps" }).getAttribute("aria-current"),
+      screen
+        .getByRole("button", { name: "Perps" })
+        .getAttribute("aria-current"),
     ).toBe("page");
   });
 

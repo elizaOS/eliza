@@ -426,7 +426,10 @@ export function Launcher({
   // (desktop-tab) favorites are capped at the pinning source too, but clamp
   // here as defense so the dock can never overflow regardless of caller.
   const favoriteIdList = useMemo(
-    () => (grouped ? [] : (favorites ?? layout.favorites).slice(0, LAUNCHER_DOCK_LIMIT)),
+    () =>
+      grouped
+        ? []
+        : (favorites ?? layout.favorites).slice(0, LAUNCHER_DOCK_LIMIT),
     [grouped, favorites, layout.favorites],
   );
   const favoriteEntries = useMemo(

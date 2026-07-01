@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import {
-  canonicalLauncherId,
-  curateLauncherPages,
-} from "./launcher-curation";
+import { canonicalLauncherId, curateLauncherPages } from "./launcher-curation";
 
 const ENABLED = { developer: true, preview: true } as const;
 
@@ -88,12 +85,12 @@ describe("curateLauncherPages", () => {
       entry("files"),
     ];
 
-    expect(ids(curateLauncherPages(views, { isAosp: false, enabledKinds: ENABLED }))).toEqual([
-      ["wallet"],
-    ]);
-    expect(ids(curateLauncherPages(views, { isAosp: true, enabledKinds: ENABLED }))).toEqual([
-      ["wallet", "phone", "messages", "contacts", "camera", "files"],
-    ]);
+    expect(
+      ids(curateLauncherPages(views, { isAosp: false, enabledKinds: ENABLED })),
+    ).toEqual([["wallet"]]);
+    expect(
+      ids(curateLauncherPages(views, { isAosp: true, enabledKinds: ENABLED })),
+    ).toEqual([["wallet", "phone", "messages", "contacts", "camera", "files"]]);
   });
 
   it("collapses duplicate wallet + automations registrations to one tile", () => {
@@ -114,10 +111,17 @@ describe("curateLauncherPages", () => {
 
   it("appends other loaded apps after the curated order on page 1", () => {
     const pages = curateLauncherPages(
-      [entry("browser"), entry("zebra-app"), entry("wallet"), entry("alpha-app")],
+      [
+        entry("browser"),
+        entry("zebra-app"),
+        entry("wallet"),
+        entry("alpha-app"),
+      ],
       { isAosp: false, enabledKinds: ENABLED },
     );
-    expect(ids(pages)).toEqual([["wallet", "browser", "alpha-app", "zebra-app"]]);
+    expect(ids(pages)).toEqual([
+      ["wallet", "browser", "alpha-app", "zebra-app"],
+    ]);
   });
 
   it("hides uncurated preview/developer views unless their kind is enabled", () => {
@@ -197,7 +201,12 @@ describe("curateLauncherPages — full realistic view set", () => {
 
   it("produces the exact off-fork two-page layout", () => {
     expect(
-      ids(curateLauncherPages(REAL_VIEWS, { isAosp: false, enabledKinds: ENABLED })),
+      ids(
+        curateLauncherPages(REAL_VIEWS, {
+          isAosp: false,
+          enabledKinds: ENABLED,
+        }),
+      ),
     ).toEqual([
       [
         "wallet",

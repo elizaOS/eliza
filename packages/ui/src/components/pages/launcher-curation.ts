@@ -112,7 +112,9 @@ export function canonicalLauncherId(id: string): string {
 }
 
 const APPS_INDEX = new Map(LAUNCHER_APPS_ORDER.map((id, i) => [id, i]));
-const DEVELOPER_INDEX = new Map(LAUNCHER_DEVELOPER_ORDER.map((id, i) => [id, i]));
+const DEVELOPER_INDEX = new Map(
+  LAUNCHER_DEVELOPER_ORDER.map((id, i) => [id, i]),
+);
 const AOSP_INDEX = new Map(LAUNCHER_AOSP_ONLY_IDS.map((id, i) => [id, i]));
 
 /** True when a canonical id belongs on the Developer page. */
