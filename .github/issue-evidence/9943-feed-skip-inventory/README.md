@@ -34,7 +34,7 @@ Generated on the branch with `bun run --cwd packages/feed test:skip-inventory --
 - `node --check packages/feed/scripts/testing-skip-inventory.mjs`
   - Passed.
 - `bun run --cwd packages/feed lint`
-  - Passed for Feed's existing lint scope.
+  - Passed after adding `scripts/testing-skip-inventory.mjs` to Feed's explicit lint scope.
 - `git diff --check`
   - Passed.
 - `bun run --cwd packages/feed typecheck`

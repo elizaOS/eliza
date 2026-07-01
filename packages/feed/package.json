@@ -40,7 +40,7 @@
     "start:staging": "NODE_ENV=production bun --env-file=.env.staging.local run start",
     "start:production": "NODE_ENV=production bun --env-file=.env.production.local run start",
     "check": "bunx @biomejs/biome check --write .",
-    "lint": "bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched package.json README.md CLAUDE.md AGENTS.md scripts/typecheck-workspace.ts",
+    "lint": "bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched package.json README.md CLAUDE.md AGENTS.md scripts/typecheck-workspace.ts scripts/testing-skip-inventory.mjs",
     "typecheck": "bun run scripts/typecheck-workspace.ts packages/shared packages/contracts packages/db packages/core packages/engine packages/sim packages/agents packages/api packages/a2a packages/mcp packages/testing apps/cli apps/mobile apps/web",
     "validate:all": "bun run typecheck && bun run lint",
     "test": "bun run test:unit && bun run test:integration && bun run test:integration:db-lazy",

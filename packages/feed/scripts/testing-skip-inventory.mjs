@@ -91,13 +91,23 @@ function contextFor(lines, lineIndex) {
 function classifySkip(line, context) {
   const haystack = `${line}\n${context}`.toLowerCase();
   if (hasQuotedReason(line)) return "documented-inline";
-  if (/skip:\s|skipping|broken|pre-existing|unrelated|todo|fixme/.test(haystack)) {
+  if (
+    /skip:\s|skipping|broken|pre-existing|unrelated|todo|fixme/.test(haystack)
+  ) {
     return "documented-nearby";
   }
-  if (/server.*(healthy|available)|healthy|base_url|playwright_base_url/.test(haystack)) {
+  if (
+    /server.*(healthy|available)|healthy|base_url|playwright_base_url/.test(
+      haystack,
+    )
+  ) {
     return "server-gated";
   }
-  if (/live.?llm|api.?key|openai|anthropic|groq|elizacloud|model key/.test(haystack)) {
+  if (
+    /live.?llm|api.?key|openai|anthropic|groq|elizacloud|model key/.test(
+      haystack,
+    )
+  ) {
     return "live-llm-gated";
   }
   if (/database|postgres|db\b|direct_database_url/.test(haystack)) {
@@ -112,7 +122,9 @@ function classifySkip(line, context) {
   if (/strict|local dev|optional/.test(haystack)) {
     return "local-optional";
   }
-  if (/\bif\s*\(|\belse\s*\{|\?\s*describe\.skip|\?\s*test\.skip/.test(context)) {
+  if (
+    /\bif\s*\(|\belse\s*\{|\?\s*describe\.skip|\?\s*test\.skip/.test(context)
+  ) {
     return "conditional-undocumented";
   }
   return "undocumented-unconditional";
