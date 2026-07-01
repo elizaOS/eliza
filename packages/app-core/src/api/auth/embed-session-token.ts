@@ -31,6 +31,42 @@ export interface EmbedSessionClaims {
 /** Default token lifetime (1 hour) — short by design; the embed re-launches. */
 export const DEFAULT_EMBED_TOKEN_TTL_MS = 60 * 60 * 1000;
 
+/**
+ * Setting keys (in preference order) that supply the HMAC secret used to sign
+ * and verify embed session tokens. A dedicated `ELIZA_EMBED_SESSION_SECRET` is
+ * preferred; it falls back to the configured `ELIZA_API_TOKEN`.
+ */
+export const EMBED_SESSION_SECRET_KEYS = [
+  "ELIZA_EMBED_SESSION_SECRET",
+  "ELIZA_API_TOKEN",
+] as const;
+
+/** Minimum secret length; a shorter value is treated as unconfigured. */
+export const EMBED_SESSION_SECRET_MIN_LENGTH = 16;
+
+/**
+ * Resolve the embed-session HMAC secret from a settings reader (the runtime's
+ * `getSetting` at mint time, or `process.env` on the auth path). The mint and
+ * verify sides MUST resolve the same secret, so both go through here. Returns
+ * `null` when no key is set to a value of at least
+ * {@link EMBED_SESSION_SECRET_MIN_LENGTH} characters — the caller then treats
+ * embed tokens as unsupported (no minting, no acceptance).
+ */
+export function resolveEmbedSessionSecret(
+  read: (key: string) => unknown,
+): string | null {
+  for (const key of EMBED_SESSION_SECRET_KEYS) {
+    const value = read(key);
+    if (
+      typeof value === "string" &&
+      value.trim().length >= EMBED_SESSION_SECRET_MIN_LENGTH
+    ) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
 function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");
 }

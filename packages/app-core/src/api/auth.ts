@@ -12,6 +12,11 @@ import { resolveApiToken } from "@elizaos/shared";
 // import below was INEFFECTIVE_DYNAMIC_IMPORT.
 import { type AuthIdentityRow, AuthStore } from "../services/auth-store.js";
 import {
+  type EmbedSessionClaims,
+  resolveEmbedSessionSecret,
+  verifyEmbedSessionToken,
+} from "./auth/embed-session-token.js";
+import {
   CSRF_HEADER_NAME,
   findActiveSession,
   verifyCsrfToken,
@@ -72,6 +77,41 @@ export function getProvidedApiToken(
     extractHeaderValue(req.headers["x-api-token"]);
 
   return headerToken?.trim() || null;
+}
+
+/**
+ * Resolve a request's embed session principal (#9947), or `null`.
+ *
+ * A cross-origin embedded surface (Telegram Mini App / Discord Activity iframe)
+ * cannot present the first-party session cookie, so after `/api/embed/auth`
+ * verifies its platform-signed launch it mints a scoped, HMAC-signed bearer.
+ * This resolves + verifies that bearer against the same configured secret,
+ * failing closed on a tampered/expired/malformed token or an unconfigured
+ * secret. `read` defaults to `process.env`; the sync boundary-role path passes
+ * its own env source.
+ */
+export function resolveEmbedPrincipal(
+  req: Pick<http.IncomingMessage, "headers">,
+  now?: number,
+  read: (key: string) => unknown = (key) => process.env[key],
+): EmbedSessionClaims | null {
+  const secret = resolveEmbedSessionSecret(read);
+  if (!secret) return null;
+  const provided = getProvidedApiToken(req);
+  if (!provided) return null;
+  return verifyEmbedSessionToken(provided, secret, now);
+}
+
+/**
+ * Map a verified embed principal to a boundary role. OWNER→OWNER; ADMIN→USER —
+ * non-escalating, because the HTTP boundary has no ADMIN tier and ADMIN ranks
+ * below OWNER. Returns `null` when there is no valid embed principal.
+ */
+export function embedBoundaryRole(
+  claims: EmbedSessionClaims | null,
+): RoleGateRole | null {
+  if (!claims) return null;
+  return claims.role === "OWNER" ? "OWNER" : "USER";
 }
 
 // ── Auth attempt rate limiter ─────────────────────────────────────────────────
@@ -242,6 +282,13 @@ export async function ensureCompatApiAuthorizedAsync(
       expectedToken &&
       tokenMatches(expectedToken, provided)
     ) {
+      return true;
+    }
+
+    // Embed session token (cross-origin Mini App / Activity iframe): a valid,
+    // unexpired token minted by /api/embed/auth authenticates the verified
+    // OWNER/ADMIN principal. Bearer-only, so CSRF-exempt like the paths above.
+    if (resolveEmbedPrincipal(req, options.now)) {
       return true;
     }
   }
@@ -504,6 +551,15 @@ async function resolveAuthorizedRouteRole(
       tokenMatches(expectedToken, provided)
     ) {
       return { ok: true, role: "OWNER" };
+    }
+
+    // Embed session token → its verified boundary role (OWNER→OWNER,
+    // ADMIN→USER). Fails closed on a tampered/expired token or no secret.
+    const embedRole = embedBoundaryRole(
+      resolveEmbedPrincipal(req, options.now),
+    );
+    if (embedRole) {
+      return { ok: true, role: embedRole };
     }
   }
 
