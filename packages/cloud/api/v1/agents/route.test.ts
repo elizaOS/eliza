@@ -42,8 +42,10 @@ const createCharacter = mock(async (input: Record<string, unknown>) => ({
 }));
 const deleteCharacter = mock(async () => undefined);
 const createAgent = mock(async (input: Record<string, unknown>) => ({
-  id: "cloud-agent-1",
-  input,
+  agent: {
+    id: "cloud-agent-1",
+    input,
+  },
 }));
 const provisionAgent = mock(
   async (): Promise<{
