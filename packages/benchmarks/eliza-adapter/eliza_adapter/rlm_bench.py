@@ -41,7 +41,31 @@ logger = logging.getLogger(__name__)
 _ANSWER_TAG_RE = re.compile(r"<answer>(.*?)</answer>", re.DOTALL | re.IGNORECASE)
 
 
+def _answer_from_action(params: dict) -> str | None:
+    """Pull the answer from the captured benchmark tool call.
+
+    The agent-driven bench server surfaces the planner's answer under
+    ``params["BENCHMARK_ACTION"]["arguments"]["answer"]``. ``response.text`` is
+    frequently a generic acknowledgement — or the "Sorry, something went wrong."
+    error fallback — that does NOT carry the answer, so the captured action is
+    the authoritative source.
+    """
+    action = params.get("BENCHMARK_ACTION")
+    if not isinstance(action, dict):
+        return None
+    arguments = action.get("arguments")
+    if not isinstance(arguments, dict):
+        return None
+    answer = arguments.get("answer")
+    if isinstance(answer, str) and answer.strip():
+        return answer.strip()
+    return None
+
+
 def _extract_answer(text: str, params: dict) -> str:
+    from_action = _answer_from_action(params)
+    if from_action is not None:
+        return from_action
     raw = params.get("answer")
     if isinstance(raw, str) and raw.strip():
         return raw.strip()
