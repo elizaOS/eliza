@@ -1,5 +1,6 @@
 import { Keyboard } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { invokeDesktopBridgeRequest } from "../../bridge";
 import {
   acceleratorFromKeyboardEvent,
   currentPlatform,
@@ -15,10 +16,29 @@ import { Button } from "../ui/button";
 
 /** Event the renderer shell listens for to re-register the global shortcut. */
 const HOTKEY_CHANGED_EVENT = "eliza:desktop:hotkey-changed";
+const SUMMON_CHAT_SHORTCUT_ID = "summon-chat";
 
 function announceChange(): void {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(HOTKEY_CHANGED_EVENT));
+  }
+}
+
+async function syncChatSummonShortcut(accelerator: string): Promise<void> {
+  await invokeDesktopBridgeRequest<void>({
+    rpcMethod: "desktopUnregisterShortcut",
+    ipcChannel: "desktop:unregisterShortcut",
+    params: { id: SUMMON_CHAT_SHORTCUT_ID },
+  });
+  const result = await invokeDesktopBridgeRequest<{ success: boolean }>({
+    rpcMethod: "desktopRegisterShortcut",
+    ipcChannel: "desktop:registerShortcut",
+    params: { id: SUMMON_CHAT_SHORTCUT_ID, accelerator },
+  });
+  if (result?.success === false) {
+    throw new Error(
+      `The operating system rejected ${accelerator}. Choose a different shortcut.`,
+    );
   }
 }
 
@@ -45,11 +65,35 @@ export function DesktopChatHotkeySetting({
   const effective = resolveChatSummonAccelerator(settings, platform);
   const isCustom = settings.chatSummonAccelerator !== null;
 
-  const commit = useCallback((next: DesktopHotkeySettings) => {
-    const stored = saveDesktopHotkeySettings(next);
-    setSettings(stored);
-    announceChange();
-  }, []);
+  const commit = useCallback(
+    async (next: DesktopHotkeySettings) => {
+      const effectiveNext = resolveChatSummonAccelerator(next, platform);
+      const previousEffective = resolveChatSummonAccelerator(
+        settings,
+        platform,
+      );
+      try {
+        await syncChatSummonShortcut(effectiveNext);
+        const stored = saveDesktopHotkeySettings(next);
+        setSettings(stored);
+        setError(null);
+        announceChange();
+      } catch (syncError) {
+        if (previousEffective !== effectiveNext) {
+          try {
+            await syncChatSummonShortcut(previousEffective);
+          } catch {
+            // The original binding failed to restore; keep the visible error
+            // focused on the user's rejected replacement.
+          }
+        }
+        setError(
+          syncError instanceof Error ? syncError.message : String(syncError),
+        );
+      }
+    },
+    [platform, settings],
+  );
 
   useEffect(() => {
     if (!recording) return;
@@ -70,9 +114,8 @@ export function DesktopChatHotkeySetting({
         );
         return;
       }
-      commit({ chatSummonAccelerator: accelerator });
       setRecording(false);
-      setError(null);
+      void commit({ chatSummonAccelerator: accelerator });
     };
 
     window.addEventListener("keydown", onKeyDown, { capture: true });
@@ -123,7 +166,7 @@ export function DesktopChatHotkeySetting({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => commit({ chatSummonAccelerator: null })}
+                onClick={() => void commit({ chatSummonAccelerator: null })}
                 data-testid="chat-hotkey-reset"
               >
                 Reset to default ({defaultLabel})

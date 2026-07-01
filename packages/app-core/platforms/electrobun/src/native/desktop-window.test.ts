@@ -492,6 +492,47 @@ describe("DesktopManager main window controls", () => {
     expect(electrobunMock.Utils.quit).not.toHaveBeenCalled();
   });
 
+  it("does not track global shortcuts rejected by the OS", async () => {
+    electrobunMock.GlobalShortcut.register.mockReturnValueOnce(false);
+    const manager = new DesktopManager();
+
+    const result = await manager.registerShortcut({
+      id: "summon-chat",
+      accelerator: "CommandOrControl+Shift+Space",
+    });
+    await manager.unregisterShortcut({ id: "summon-chat" });
+
+    expect(result).toEqual({ success: false });
+    expect(electrobunMock.GlobalShortcut.register).toHaveBeenCalledWith(
+      "CommandOrControl+Shift+Space",
+      expect.any(Function),
+    );
+    expect(electrobunMock.GlobalShortcut.unregister).not.toHaveBeenCalled();
+  });
+
+  it("tracks successfully registered global shortcuts for replacement and unregister", async () => {
+    const manager = new DesktopManager();
+
+    await manager.registerShortcut({
+      id: "summon-chat",
+      accelerator: "CommandOrControl+Shift+Space",
+    });
+    await manager.registerShortcut({
+      id: "summon-chat",
+      accelerator: "CommandOrControl+J",
+    });
+    await manager.unregisterShortcut({ id: "summon-chat" });
+
+    expect(electrobunMock.GlobalShortcut.unregister).toHaveBeenNthCalledWith(
+      1,
+      "CommandOrControl+Shift+Space",
+    );
+    expect(electrobunMock.GlobalShortcut.unregister).toHaveBeenNthCalledWith(
+      2,
+      "CommandOrControl+J",
+    );
+  });
+
   it("opens tray popover as an app renderer with preload, rpc, partition, and API injection", async () => {
     const manager = new DesktopManager();
     const rpc = { request: {}, send: {}, setTransport: vi.fn() };

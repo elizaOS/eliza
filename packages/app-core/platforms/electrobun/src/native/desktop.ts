@@ -841,12 +841,15 @@ export class DesktopManager {
     }
 
     try {
-      GlobalShortcut.register(options.accelerator, () => {
+      const registered = GlobalShortcut.register(options.accelerator, () => {
         this.send("desktopShortcutPressed", {
           id: options.id,
           accelerator: options.accelerator,
         });
       });
+      if (registered === false) {
+        return { success: false };
+      }
       this.shortcuts.set(options.id, options);
       return { success: true };
     } catch {
