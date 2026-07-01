@@ -3,8 +3,55 @@ import cloudApiWorker, {
   getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
   getFrontendAliasSyntheticResponse,
+  getHostedFrontendServeRewrite,
   redirectFrontendHost,
 } from "./index";
+
+describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
+  const env = { ELIZA_FRONTEND_HOST_SUFFIX: "sites.elizacloud.ai" };
+
+  test("is a no-op when the suffix env is unset (opt-in)", () => {
+    expect(
+      getHostedFrontendServeRewrite(new URL("https://acme.sites.elizacloud.ai/"), {}),
+    ).toBeNull();
+  });
+
+  test("rewrites a system-host page request to the internal serve route", () => {
+    const out = getHostedFrontendServeRewrite(
+      new URL("https://acme.sites.elizacloud.ai/dashboard"),
+      env,
+    );
+    expect(out?.pathname).toBe("/api/v1/hosted-frontend/serve/dashboard");
+    expect(out?.searchParams.get("host")).toBe("acme.sites.elizacloud.ai");
+  });
+
+  test("rewrites the root path", () => {
+    const out = getHostedFrontendServeRewrite(
+      new URL("https://acme.sites.elizacloud.ai/"),
+      env,
+    );
+    expect(out?.pathname).toBe("/api/v1/hosted-frontend/serve");
+  });
+
+  test("does NOT rewrite /api or /steward on a system host (beacon + APIs work)", () => {
+    expect(
+      getHostedFrontendServeRewrite(
+        new URL("https://acme.sites.elizacloud.ai/api/v1/track/pageview"),
+        env,
+      ),
+    ).toBeNull();
+    expect(
+      getHostedFrontendServeRewrite(new URL("https://acme.sites.elizacloud.ai/steward"), env),
+    ).toBeNull();
+  });
+
+  test("ignores hosts that are not under the suffix, and nested subdomains", () => {
+    expect(getHostedFrontendServeRewrite(new URL("https://elizacloud.ai/"), env)).toBeNull();
+    expect(
+      getHostedFrontendServeRewrite(new URL("https://a.b.sites.elizacloud.ai/"), env),
+    ).toBeNull();
+  });
+});
 
 describe("cloud-api worker entrypoint", () => {
   test("redirects www frontend host to apex without dropping path or query", () => {
