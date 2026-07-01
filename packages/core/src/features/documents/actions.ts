@@ -66,13 +66,14 @@ type DocumentActionParameters = {
 /**
  * Route-only subaction map: the planner selects the DOCUMENT subaction by
  * emitting a structured English-enum `action`/`subaction` value, and
- * {@link resolveActionArgs} routes on it. Every subaction declares
- * `required: []` because the per-subaction presence/invariant checks (a valid
- * document id, non-empty text, a resolvable source) are enforced inside the
- * individual handlers, which can also recover those values from machine
- * extractors (UUID / file-path / URL patterns). The `optional` lists mirror the
- * {@link DocumentActionParameters} keys each handler reads so the resolver
- * forwards them through.
+ * {@link resolveActionArgs} routes on it. Subactions whose values are natural
+ * language (`search.query`, `write.text`) require the planner/extractor to
+ * supply those values instead of trimming English command prefixes from the
+ * user's text. ID/path/URL subactions keep `required: []` because their
+ * handlers can recover values from structural machine extractors (UUID /
+ * file-path / URL patterns) before prompting for missing details. The
+ * `optional` lists mirror the {@link DocumentActionParameters} keys each
+ * handler reads so the resolver forwards them through.
  */
 const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
 	list: {
@@ -94,9 +95,8 @@ const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
 	search: {
 		description: "Semantic + keyword search over stored document fragments.",
 		descriptionCompressed: "search document fragments by query",
-		required: [],
+		required: ["query"],
 		optional: [
-			"query",
 			"limit",
 			"searchMode",
 			"scope",
@@ -116,8 +116,8 @@ const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
 	write: {
 		description: "Create a new text-backed document from supplied content.",
 		descriptionCompressed: "create text document",
-		required: [],
-		optional: ["text", "content", "title", "tags", "scope", "scopedToEntityId"],
+		required: ["text"],
+		optional: ["content", "title", "tags", "scope", "scopedToEntityId"],
 	},
 	edit: {
 		description: "Replace the content of an existing document by id.",
@@ -345,32 +345,19 @@ async function ensureDocumentMutationAccess(
 		: "Users can only edit or delete their own private documents.";
 }
 
-function getCleanWriteText(
-	params: DocumentActionParameters,
-	message: Memory,
-): string {
+function getCleanWriteText(params: DocumentActionParameters): string {
 	const explicit = params.text ?? params.content;
 	if (typeof explicit === "string" && explicit.trim()) {
 		return explicit.trim();
 	}
-	return (message.content.text ?? "")
-		.replace(
-			/^(save|store|write|create|remember|add)\s+(this|that|the following|a document|document)?:?\s*/i,
-			"",
-		)
-		.trim();
+	return "";
 }
 
-function getQuery(params: DocumentActionParameters, message: Memory): string {
+function getQuery(params: DocumentActionParameters): string {
 	if (typeof params.query === "string" && params.query.trim()) {
 		return params.query.trim();
 	}
-	return (message.content.text ?? "")
-		.replace(
-			/^(search|find|lookup|look up|query)\s+(my\s+|your\s+|the\s+)?documents?\s*(for|about)?\s*/i,
-			"",
-		)
-		.trim();
+	return "";
 }
 
 function getDocumentFilterParams(params: DocumentActionParameters): {
@@ -529,7 +516,7 @@ async function handleSearch(
 	params: DocumentActionParameters,
 	callback?: HandlerCallback,
 ): Promise<ActionResult> {
-	const query = getQuery(params, message);
+	const query = getQuery(params);
 	if (!query) {
 		const text = "What would you like me to search for in documents?";
 		await emit(callback, { text });
@@ -602,7 +589,7 @@ async function handleWrite(
 	params: DocumentActionParameters,
 	callback?: HandlerCallback,
 ): Promise<ActionResult> {
-	const text = getCleanWriteText(params, message);
+	const text = getCleanWriteText(params);
 	if (!text) {
 		const response = "I need non-empty text to create a document.";
 		await emit(callback, { text: response });

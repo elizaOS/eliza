@@ -15,8 +15,10 @@ import { DocumentService } from "../service";
 // structured English-enum `action` parameter (via `resolveActionArgs`), NOT
 // from natural-language keywords in the user's `message.content.text`. The
 // planner-trust path in `resolveActionArgs` resolves a valid `action` value
-// with zero required fields synchronously — no model call — so these tests are
-// fully deterministic.
+// synchronously when the required structured params are already present. When
+// natural-language values such as `query` or `text` are missing, the shared
+// extractor supplies them instead of the handler stripping English prefixes from
+// `message.content.text`.
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e7" as UUID;
 const USER_ID = "00000000-0000-0000-0000-00000000c0de" as UUID;
@@ -152,6 +154,135 @@ describe("documentAction.handler structured routing", () => {
 			),
 		);
 		expect(service[method]).toHaveBeenCalledTimes(1);
+	});
+
+	it("extracts a missing search query instead of stripping English prose in the handler", async () => {
+		const service = makeService();
+		const { runtime, useModel } = makeRuntime(service);
+		useModel.mockResolvedValueOnce(
+			JSON.stringify({
+				action: "search",
+				params: { query: "launch notes" },
+				missing: [],
+				confidence: 1,
+			}),
+		);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("search my documents for launch notes"),
+			undefined,
+			options({ action: "search" }),
+		);
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(service.searchDocuments).toHaveBeenCalledTimes(1);
+		expect(service.searchDocuments.mock.calls[0]?.[0]).toMatchObject({
+			content: { text: "launch notes" },
+		});
+		expect(res?.data).toMatchObject({
+			subaction: "search",
+			query: "launch notes",
+		});
+	});
+
+	it("extracts write text instead of stripping an English save prefix", async () => {
+		const service = makeService();
+		const { runtime, useModel } = makeRuntime(service);
+		useModel.mockResolvedValueOnce(
+			JSON.stringify({
+				action: "write",
+				params: { text: "Launch is Friday." },
+				missing: [],
+				confidence: 1,
+			}),
+		);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("save this as a document: Launch is Friday."),
+			undefined,
+			options({ action: "write" }),
+		);
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(service.addDocument).toHaveBeenCalledTimes(1);
+		expect(service.addDocument.mock.calls[0]?.[0]).toMatchObject({
+			content: "Launch is Friday.",
+		});
+		expect(res?.data).toMatchObject({ subaction: "write" });
+	});
+
+	it("asks for clarification when search has no query the extractor can supply", async () => {
+		const service = makeService();
+		const { runtime, useModel } = makeRuntime(service);
+		const clarifications: string[] = [];
+		useModel.mockResolvedValueOnce(
+			JSON.stringify({
+				action: "search",
+				params: {},
+				missing: ["query"],
+				confidence: 1,
+			}),
+		);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("search my documents"),
+			undefined,
+			options({ action: "search" }),
+			async (content) => {
+				if (typeof content.text === "string") {
+					clarifications.push(content.text);
+				}
+				return [];
+			},
+		);
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(service.searchDocuments).not.toHaveBeenCalled();
+		expect(res?.success).toBe(false);
+		expect(res?.values).toMatchObject({
+			error: "missing_sub_action",
+			missing: ["query"],
+		});
+		expect(clarifications).toHaveLength(1);
+	});
+
+	it("asks for clarification when write has no text the extractor can supply", async () => {
+		const service = makeService();
+		const { runtime, useModel } = makeRuntime(service);
+		const clarifications: string[] = [];
+		useModel.mockResolvedValueOnce(
+			JSON.stringify({
+				action: "write",
+				params: {},
+				missing: ["text"],
+				confidence: 1,
+			}),
+		);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("save this as a document"),
+			undefined,
+			options({ action: "write" }),
+			async (content) => {
+				if (typeof content.text === "string") {
+					clarifications.push(content.text);
+				}
+				return [];
+			},
+		);
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(service.addDocument).not.toHaveBeenCalled();
+		expect(res?.success).toBe(false);
+		expect(res?.values).toMatchObject({
+			error: "missing_sub_action",
+			missing: ["text"],
+		});
+		expect(clarifications).toHaveLength(1);
 	});
 
 	it("forwards a structured documentId to read without scanning the text", async () => {
