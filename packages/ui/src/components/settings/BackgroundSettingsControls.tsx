@@ -121,7 +121,19 @@ export function BackgroundSettingsControls({
       event.target.value = "";
       if (!file) return;
       try {
-        const imageUrl = await fileToBackgroundDataUrl(file);
+        const dataUrl = await fileToBackgroundDataUrl(file);
+        // Re-host into the media store so the persisted config (and the undo
+        // history) carries a tiny /api/media/<hash> URL instead of a multi-MB
+        // data URL that silently blows the localStorage quota. Offline or
+        // server-less, fall back to the data URL — the wallpaper still works,
+        // it just persists fat.
+        let imageUrl = dataUrl;
+        try {
+          const { url } = await client.uploadBackgroundImage(dataUrl);
+          if (url) imageUrl = url;
+        } catch {
+          // Keep the data-URL fallback.
+        }
         setBackgroundConfig({ mode: "image", color: activeColor, imageUrl });
         setError(null);
       } catch (err) {
