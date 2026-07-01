@@ -14,13 +14,13 @@ import type {
 	AudioChunk,
 	AudioSink,
 	BargeInSignal,
-	OmniVoiceBackend,
 	Phrase,
 	RejectedTokenRange,
 	SchedulerConfig,
 	SpeakerPreset,
 	StreamingTtsBackend,
 	TextToken,
+	TtsBackend,
 	TtsPcmChunk,
 	VoiceAudioSource,
 	VoiceSchedulerPhraseTelemetry,
@@ -81,7 +81,7 @@ export interface SchedulerEvents {
 }
 
 export interface SchedulerDeps {
-	backend: OmniVoiceBackend;
+	backend: TtsBackend;
 	sink?: AudioSink;
 	phraseCache?: PhraseCache;
 	/** Optional. Required only when `config.chunkerConfig.chunkOn ===
@@ -119,8 +119,8 @@ function phraseTelemetry(phrase: Phrase): VoiceSchedulerPhraseTelemetry {
 }
 
 function isStreamingTtsBackend(
-	backend: OmniVoiceBackend,
-): backend is OmniVoiceBackend & StreamingTtsBackend {
+	backend: TtsBackend,
+): backend is TtsBackend & StreamingTtsBackend {
 	return (
 		typeof (backend as Partial<StreamingTtsBackend>).synthesizeStream ===
 		"function"
@@ -128,8 +128,8 @@ function isStreamingTtsBackend(
 }
 
 function isNativeCancelableTtsBackend(
-	backend: OmniVoiceBackend,
-): backend is OmniVoiceBackend & NativeCancelableTtsBackend {
+	backend: TtsBackend,
+): backend is TtsBackend & NativeCancelableTtsBackend {
 	return (
 		typeof (backend as Partial<NativeCancelableTtsBackend>).cancelTts ===
 		"function"
@@ -169,7 +169,7 @@ export class VoiceScheduler {
 	 * correct play through without re-synthesizing.
 	 */
 	readonly prefixQueue = new PrefixPreservingQueue();
-	private readonly backend: OmniVoiceBackend;
+	private readonly backend: TtsBackend;
 	private readonly phraseCache: PhraseCache;
 	private readonly events: SchedulerEvents;
 	private readonly sampleRate: number;
