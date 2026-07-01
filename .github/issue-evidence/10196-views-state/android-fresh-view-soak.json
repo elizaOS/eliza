@@ -19,14 +19,14 @@
       "maxRenderCount": 0,
       "module": 0,
       "moduleEvicts": 0,
-      "render": 1
+      "render": 0
     },
     "after": {
-      "viewRuntime": 115,
+      "viewRuntime": 112,
       "shows": 112,
-      "hides": 3,
+      "hides": 0,
       "viewEvicts": 0,
-      "maxRenderCount": 1,
+      "maxRenderCount": 0,
       "module": 52,
       "moduleEvicts": 52,
       "render": 4
@@ -34,15 +34,16 @@
   },
   "heap": {
     "samples": [
-      42100000,
-      42100000,
-      42100000,
-      42100000,
-      42100000
+      50400000,
+      50400000,
+      50400000,
+      50400000,
+      50400000
     ],
-    "warmBytes": 42100000,
-    "endBytes": 42100000,
+    "warmBytes": 50400000,
+    "endBytes": 50400000,
     "boundedRatio": 1
   },
-  "pageErrors": []
+  "pageErrors": [],
+  "screenshotErrors": []
 }

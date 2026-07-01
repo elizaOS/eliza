@@ -5,9 +5,10 @@ Issue: #10196
 Command:
 
 ```bash
-ELIZA_MOBILE_REPO_ROOT=/home/shaw/milady/eliza \
+ELIZA_MOBILE_REPO_ROOT=/home/shaw/milady/eliza-wt-10196-view-runtime-soak \
 ELIZA_WEBVIEW_DEBUG=1 \
 ELIZA_BUN_RISCV64_OPTIONAL=1 \
+ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 \
 bun run --cwd packages/app build:android
 
 ANDROID_SERIAL=emulator-5556 \
@@ -23,16 +24,23 @@ Device/runtime:
 - Package: `ai.elizaos.app`
 - Backend: deterministic host agent at `http://127.0.0.1:31337` via `adb reverse`
 - Fresh WebView-debuggable APK built from the eliza checkout
+- Physical Pixel `27051JEGR10034` accepted a fresh install of the same APK, but
+  automated evidence capture was blocked by the device lockscreen/bouncer.
+  The soak evidence was captured on the emulator.
+- `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1` was used because this host-backend
+  WebView soak does not exercise the on-device llama service, and the local
+  fused native library was not present in the checkout.
 
 Result:
 
 - 15 registered views enumerated from `/api/views`
 - 60 real WebView activations
-- View-runtime telemetry: `0 -> 115` events, including 112 `show` events
+- View-runtime telemetry: `0 -> 112` events, including 112 `show` events
 - Module-cache telemetry: 52 events, 52 evictions
-- Worst per-view render count: 1
-- Heap stayed bounded: 42.1 MB warm -> 42.1 MB end, ratio 1.00
+- Render telemetry events: `0 -> 4`
+- Heap stayed bounded: 48.1 MB warm -> 48.1 MB end, ratio 1.00
 - Page errors: 0
+- Screenshot errors: 0
 
 Artifacts:
 

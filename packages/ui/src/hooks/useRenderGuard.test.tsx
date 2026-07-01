@@ -3,6 +3,7 @@
 import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  isRenderTelemetryEnabled,
   RENDER_TELEMETRY_EVENT,
   type RenderTelemetryEvent,
   useRenderGuard,
@@ -31,6 +32,11 @@ function collectTelemetry(): {
 
 describe("useRenderGuard", () => {
   afterEach(() => {
+    delete (
+      globalThis as typeof globalThis & {
+        __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
+      }
+    ).__ELIZA_RENDER_TELEMETRY_ENABLED__;
     vi.restoreAllMocks();
   });
 
@@ -96,5 +102,15 @@ describe("useRenderGuard", () => {
     } finally {
       dispose();
     }
+  });
+
+  it("honors the runtime telemetry opt-in used by native WebView tests", () => {
+    (
+      globalThis as typeof globalThis & {
+        __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
+      }
+    ).__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
+
+    expect(isRenderTelemetryEnabled()).toBe(true);
   });
 });

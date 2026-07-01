@@ -221,37 +221,98 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           const globalObject = globalThis as typeof globalThis & {
             process?: { env?: Record<string, string> };
             __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
+            __ELIZAOS_UI_APP_STORE__?: {
+              value?: {
+                setState?: (key: string, value: unknown) => void;
+              } | null;
+            };
           };
           globalObject.process ??= {};
           globalObject.process.env ??= {};
           globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
           globalObject.process.env.NODE_ENV = "test";
           globalObject.__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
+          globalObject.__ELIZAOS_UI_APP_STORE__?.value?.setState?.(
+            "firstRunComplete",
+            true,
+          );
           for (const [key, value] of Object.entries(seed)) {
             localStorage.setItem(key, value);
           }
         }, SEED_STORAGE);
-        await page.evaluate((seed: Record<string, string>) => {
+        await page.evaluate(async (seed: Record<string, string>) => {
           const globalObject = globalThis as typeof globalThis & {
             process?: { env?: Record<string, string> };
             __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
+            __ELIZAOS_UI_APP_STORE__?: {
+              value?: {
+                setState?: (key: string, value: unknown) => void;
+              } | null;
+            };
           };
           globalObject.process ??= {};
           globalObject.process.env ??= {};
           globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
           globalObject.process.env.NODE_ENV = "test";
           globalObject.__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
+          globalObject.__ELIZAOS_UI_APP_STORE__?.value?.setState?.(
+            "firstRunComplete",
+            true,
+          );
           for (const [key, value] of Object.entries(seed)) {
             localStorage.setItem(key, value);
           }
+          const preferences = (
+            window as Window & {
+              Capacitor?: {
+                Plugins?: {
+                  Preferences?: {
+                    set?: (args: {
+                      key: string;
+                      value: string;
+                    }) => Promise<void>;
+                  };
+                };
+              };
+            }
+          ).Capacitor?.Plugins?.Preferences;
+          if (preferences?.set) {
+            await Promise.all(
+              Object.entries(seed).map(([key, value]) =>
+                preferences.set?.({ key, value }),
+              ),
+            );
+          }
         }, SEED_STORAGE);
-        await page
-          .goto(`${ORIGIN}/`, {
-            waitUntil: "domcontentloaded",
-            timeout: 20_000,
-          })
-          .catch(() => {});
-        await waitForShellReady(page);
+        // Native localStorage is proxied to Capacitor Preferences on a later
+        // task. Let those writes land before the reload that rehydrates startup
+        // state from Preferences.
+        await delay(750);
+        if (!(await isShellReady(page)) || (await isFirstRunShowing(page))) {
+          await page
+            .goto(`${ORIGIN}/`, {
+              waitUntil: "domcontentloaded",
+              timeout: 20_000,
+            })
+            .catch(() => {});
+          await waitForShellReady(page);
+          await page
+            .evaluate(() => {
+              (
+                window as Window & {
+                  __ELIZAOS_UI_APP_STORE__?: {
+                    value?: {
+                      setState?: (key: string, value: unknown) => void;
+                    } | null;
+                  };
+                }
+              ).__ELIZAOS_UI_APP_STORE__?.value?.setState?.(
+                "firstRunComplete",
+                true,
+              );
+            })
+            .catch(() => {});
+        }
         await use(page);
       } finally {
         await cdpBrowser?.close().catch(() => {});
@@ -278,19 +339,24 @@ export async function isShellReady(page: Page): Promise<boolean> {
   const text = await page
     .evaluate(() => document.body?.innerText ?? "")
     .catch(() => "");
-  const firstRunChooser = await page
-    .locator('[data-testid="first-run-runtime-chooser"]')
-    .count()
-    .catch(() => 0);
-  const homeShell = await page
-    .locator('[data-testid="home-launcher-surface"]')
-    .count()
-    .catch(() => 0);
   const stillBooting = /Connecting to backend|INITIALIZING AGENT/i.test(text);
-  return (
-    homeShell > 0 ||
-    (firstRunChooser === 0 && !stillBooting && text.trim().length > 40)
-  );
+  return !stillBooting && text.trim().length > 40;
+}
+
+/** True when stale in-chat first-run UI is still mounted after fixture seeding. */
+export async function isFirstRunShowing(page: Page): Promise<boolean> {
+  return page
+    .evaluate(() =>
+      Boolean(
+        document.querySelector(
+          '[data-testid="first-run-runtime-chooser"], [data-testid="first-run-chat"]',
+        ) ||
+          /Choose first-run|How should Eliza run|Choose how Eliza should run/i.test(
+            document.body?.innerText ?? "",
+          ),
+      ),
+    )
+    .catch(() => false);
 }
 
 /** True once the React shell has rendered past the connecting/loading splash. */
@@ -304,14 +370,6 @@ export async function waitForShellReady(
         const text = await page
           .evaluate(() => document.body?.innerText ?? "")
           .catch(() => "");
-        const firstRunChooser = await page
-          .locator('[data-testid="first-run-runtime-chooser"]')
-          .count()
-          .catch(() => 0);
-        const homeShell = await page
-          .locator('[data-testid="home-launcher-surface"]')
-          .count()
-          .catch(() => 0);
         if (/BACKEND UNREACHABLE/i.test(text)) {
           throw new Error(
             `App reported backend unreachable: ${text.slice(0, 200)}`,
@@ -321,10 +379,7 @@ export async function waitForShellReady(
           /Connecting to backend|INITIALIZING AGENT|^\s*Loading\s*$/i.test(
             text,
           );
-        return (
-          homeShell > 0 ||
-          (firstRunChooser === 0 && !stillBooting && text.trim().length > 40)
-        );
+        return !stillBooting && text.trim().length > 40;
       },
       {
         timeout: timeoutMs,

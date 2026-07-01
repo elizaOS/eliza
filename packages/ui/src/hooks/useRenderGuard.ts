@@ -71,6 +71,7 @@ export function nextRenderTelemetrySequence(): number {
 }
 
 type RenderTelemetryGlobal = typeof globalThis & {
+  __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
   __ELIZA_RENDER_TELEMETRY_DISABLED__?: boolean;
 };
 
@@ -94,6 +95,12 @@ export function isRenderTelemetryEnabled(): boolean {
       .__ELIZA_RENDER_TELEMETRY_DISABLED__ === true
   ) {
     return false;
+  }
+  if (
+    (globalThis as RenderTelemetryGlobal).__ELIZA_RENDER_TELEMETRY_ENABLED__ ===
+    true
+  ) {
+    return true;
   }
 
   const explicit = readEnvValue("VITE_ELIZA_RENDER_TELEMETRY");

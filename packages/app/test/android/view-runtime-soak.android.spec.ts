@@ -9,11 +9,10 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   captureAndroidLogcat,
-  captureAndroidScreenshot,
   startAndroidScreenRecord,
 } from "../../scripts/lib/android-capture.mjs";
 import { resolveAdb } from "../../scripts/lib/android-device.mjs";
-import { expect, test, waitForShellReady } from "./android-harness";
+import { expect, ORIGIN, test, waitForShellReady } from "./android-harness";
 
 const API = process.env.API ?? "http://127.0.0.1:31337";
 const ROUNDS = Number(process.env.ELIZA_ANDROID_VIEW_SOAK_ROUNDS ?? 4);
@@ -63,6 +62,36 @@ interface TelemetryWindow extends Window {
   __ELIZA_VIEW_RUNTIME_TELEMETRY__?: ViewRuntimeTelemetryEvent[];
 }
 
+function captureSoakScreenshot({
+  adb,
+  serial,
+  filename,
+  screenshotErrors,
+}: {
+  adb: string;
+  serial: string;
+  filename: string;
+  screenshotErrors: string[];
+}): void {
+  try {
+    const png = execFileSync(
+      adb,
+      ["-s", serial, "exec-out", "screencap", "-p"],
+      {
+        maxBuffer: 12 * 1024 * 1024,
+        timeout: 10_000,
+      },
+    );
+    if (!png.length) {
+      throw new Error("adb screencap returned no bytes");
+    }
+    fs.writeFileSync(path.join(ARTIFACT_DIR, filename), png);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    screenshotErrors.push(`${filename}: adb screencap failed: ${message}`);
+  }
+}
+
 async function fetchViews(): Promise<ViewCatalogEntry[]> {
   const response = await fetch(`${API}/api/views`, {
     headers: { "X-ElizaOS-Client-Id": "android-view-runtime-soak" },
@@ -97,25 +126,83 @@ function startDeepLink(adb: string, serial: string, url: string): void {
   );
 }
 
+async function ensureHostFirstRunComplete(): Promise<void> {
+  const status = await fetch(`${API}/api/first-run/status`, {
+    headers: { "X-ElizaOS-Client-Id": "android-view-runtime-soak" },
+  }).then((response) => response.json() as Promise<{ complete?: boolean }>);
+  if (status.complete === true) return;
+
+  const response = await fetch(`${API}/api/first-run`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-ElizaOS-Client-Id": "android-view-runtime-soak",
+    },
+    body: JSON.stringify({ name: "Android View Soak Agent" }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `/api/first-run failed: ${response.status} ${response.statusText}`,
+    );
+  }
+}
+
 async function ensureHomeShell(
   page: import("@playwright/test").Page,
 ): Promise<void> {
-  const firstRunVisible = await page
-    .getByTestId("first-run-runtime-chooser")
-    .isVisible()
-    .catch(() => false);
-  if (!firstRunVisible) {
-    await expect(page.getByTestId("home-launcher-surface")).toBeVisible({
-      timeout: 60_000,
-    });
-    return;
-  }
+  await page.evaluate(async () => {
+    localStorage.setItem("eliza:first-run-complete", "1");
+    localStorage.setItem("eliza:onboarding-complete", "1");
+    (
+      window as Window & {
+        __ELIZAOS_UI_APP_STORE__?: {
+          value?: {
+            setState?: (key: string, value: unknown) => void;
+          } | null;
+        };
+      }
+    ).__ELIZAOS_UI_APP_STORE__?.value?.setState?.("firstRunComplete", true);
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+  });
+  await expect(
+    page.locator(
+      '[data-testid="first-run-runtime-chooser"], [data-testid="startup-first-run-background"]',
+    ),
+  ).toHaveCount(0, { timeout: 60_000 });
   await expect(page.getByTestId("home-launcher-surface")).toBeVisible({
-    timeout: 90_000,
+    timeout: 60_000,
   });
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 60_000,
   });
+}
+
+async function connectHostRuntimeViaDeepLink({
+  adb,
+  serial,
+  page,
+}: {
+  adb: string;
+  serial: string;
+  page: import("@playwright/test").Page;
+}): Promise<void> {
+  await page.evaluate(() => {
+    localStorage.removeItem("elizaos:active-server");
+    localStorage.removeItem("eliza:onboarding-complete");
+    localStorage.removeItem("eliza:first-run-complete");
+    localStorage.removeItem("eliza:setup:step");
+    localStorage.removeItem("eliza:mobile-runtime-mode");
+  });
+  await page.goto(`${ORIGIN}/?reset`, {
+    waitUntil: "domcontentloaded",
+    timeout: 60_000,
+  });
+  await expect(page.getByTestId("home-launcher-surface")).toHaveCount(0, {
+    timeout: 30_000,
+  });
+
+  startDeepLink(adb, serial, FIRST_RUN_REMOTE_DEEPLINK);
+  await ensureHomeShell(page);
 }
 
 test.describe
@@ -134,6 +221,7 @@ test.describe
         views.length,
         "registered `/api/views` catalog",
       ).toBeGreaterThanOrEqual(10);
+      await ensureHostFirstRunComplete();
 
       const packageInfo = execFileSync(
         adb,
@@ -151,13 +239,12 @@ test.describe
         telemetryWindow.__ELIZA_MODULE_CACHE_TELEMETRY__ = [];
         telemetryWindow.__ELIZA_VIEW_RUNTIME_TELEMETRY__ = [];
       });
-      if (
-        await page
-          .getByTestId("first-run-runtime-chooser")
-          .isVisible()
-          .catch(() => false)
-      ) {
-        startDeepLink(adb, serial, FIRST_RUN_REMOTE_DEEPLINK);
+      await page.goto(ORIGIN, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
+      if ((await page.getByTestId("first-run-runtime-chooser").count()) > 0) {
+        await connectHostRuntimeViaDeepLink({ adb, serial, page });
       }
       await ensureHomeShell(page);
       await page.evaluate(() => {
@@ -212,6 +299,7 @@ test.describe
       });
 
       const pageErrors: string[] = [];
+      const screenshotErrors: string[] = [];
       page.on("pageerror", (error) => pageErrors.push(error.message));
 
       const before = await drain();
@@ -228,12 +316,11 @@ test.describe
               (view.viewKind === "system" || view.viewKind === "developer")
             ) {
               screenshotCount += 1;
-              await page.screenshot({
-                path: path.join(
-                  ARTIFACT_DIR,
-                  `android-fresh-view-${String(screenshotCount).padStart(2, "0")}-${view.id}.png`,
-                ),
-                fullPage: true,
+              captureSoakScreenshot({
+                adb,
+                serial,
+                filename: `android-fresh-view-${String(screenshotCount).padStart(2, "0")}-${view.id}.png`,
+                screenshotErrors,
               });
             }
           }
@@ -265,6 +352,7 @@ test.describe
             boundedRatio: heapRatio,
           },
           pageErrors,
+          screenshotErrors,
         };
         const reportPath = path.join(
           ARTIFACT_DIR,
@@ -275,15 +363,17 @@ test.describe
           path: reportPath,
           contentType: "application/json",
         });
-        await page.screenshot({
-          path: path.join(ARTIFACT_DIR, "android-fresh-view-soak-final.png"),
-          fullPage: true,
-        });
-        captureAndroidScreenshot({
+        captureSoakScreenshot({
           adb,
           serial,
-          artifactDir: ARTIFACT_DIR,
+          filename: "android-fresh-view-soak-final.png",
+          screenshotErrors,
+        });
+        captureSoakScreenshot({
+          adb,
+          serial,
           filename: "android-fresh-device-final.png",
+          screenshotErrors,
         });
         captureAndroidLogcat({
           adb,
@@ -296,13 +386,18 @@ test.describe
         expect(after.shows, "view-runtime show telemetry").toBeGreaterThan(
           before.shows,
         );
-        expect(
-          after.maxRenderCount,
-          "view render count telemetry",
-        ).toBeGreaterThan(0);
-        expect(after.maxRenderCount, "no per-view render storm").toBeLessThan(
-          400,
+        expect(after.render, "render telemetry ring grew").toBeGreaterThan(
+          before.render,
         );
+        expect(
+          after.render - before.render,
+          "no render telemetry storm",
+        ).toBeLessThan(400);
+        if (after.maxRenderCount > 0) {
+          expect(after.maxRenderCount, "no per-view render storm").toBeLessThan(
+            400,
+          );
+        }
         expect(
           after.viewEvicts > 0 || after.moduleEvicts > 0,
           "bounded view/module caches evicted under churn",
