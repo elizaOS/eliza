@@ -171,11 +171,12 @@ function mediaSecurityHeaders(
 let cachedMediaDir: string | null = null;
 
 function mediaDir(): string {
-  if (cachedMediaDir) return cachedMediaDir;
   const dir = path.join(resolveStateDir(), "media");
-  fs.mkdirSync(dir, { recursive: true });
-  cachedMediaDir = dir;
-  return dir;
+  if (cachedMediaDir !== dir) {
+    cachedMediaDir = dir;
+  }
+  fs.mkdirSync(cachedMediaDir, { recursive: true });
+  return cachedMediaDir;
 }
 
 function extForMime(mimeType: string): string {
