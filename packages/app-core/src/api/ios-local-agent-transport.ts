@@ -114,6 +114,8 @@ const IOS_FULL_BUN_ENV: Record<string, string> = {
 };
 const STARTUP_TRACE_ID_WINDOW_KEY = "__ELIZA_STARTUP_TRACE_ID__";
 const STARTUP_TRACE_WINDOW_KEY = "__ELIZA_STARTUP_TRACE__";
+const IOS_RESTART_LISTENER_WINDOW_KEY =
+  "__ELIZA_IOS_LOCAL_AGENT_RESTART_LISTENER_INSTALLED__";
 
 type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
@@ -125,6 +127,7 @@ declare global {
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
+    [IOS_RESTART_LISTENER_WINDOW_KEY]?: boolean;
   }
 }
 
@@ -248,9 +251,7 @@ function isNativeIosCloudRuntime(): boolean {
 }
 
 function isPureRemoteRuntimeMode(mode: string | null): boolean {
-  return (
-    mode === "cloud" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
-  );
+  return mode === "cloud";
 }
 
 function usesStrictIosNetworkPolicy(): boolean {
@@ -321,9 +322,22 @@ function isMobileLocalAgentUrl(value: string): boolean {
   return isConfiguredMobileLocalAgentUrl(value);
 }
 
+/**
+ * Whether the selected iOS runtime owns an on-device agent process/runtime.
+ * `cloud` is the only pure remote mode. `cloud-hybrid` still runs the bundled
+ * agent while routing inference through cloud, and `tunnel-to-mobile` exposes
+ * the phone-side agent through a relay for a remote client.
+ */
+function iosRuntimeHasOnDeviceAgent(): boolean {
+  const mode = readRuntimeMode();
+  return (
+    mode === "local" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
+  );
+}
+
 function canUseIosLocalAgentIpc(): boolean {
   if (!isNativeIos()) return false;
-  if (readRuntimeMode() === "local" || shouldRequireFullBunRuntime()) {
+  if (iosRuntimeHasOnDeviceAgent() || shouldRequireFullBunRuntime()) {
     return true;
   }
   return !usesStrictIosNetworkPolicy();
@@ -569,7 +583,6 @@ async function restartIosFullBunRuntimeFromWatchdog(): Promise<void> {
   if (restartRequestInFlight) return restartRequestInFlight;
   restartRequestInFlight = (async () => {
     if (!isNativeIos()) return;
-    if (isNativeIosCloudRuntime()) return;
     if (isPureRemoteRuntimeMode(readRuntimeMode())) return;
     if (!isFullBunRuntimePluginAvailable()) {
       throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
@@ -609,6 +622,7 @@ function installIosLocalAgentRestartRequestListener(): void {
   if (restartRequestListenerInstalled) return;
   if (typeof window === "undefined") return;
   if (typeof window.addEventListener !== "function") return;
+  if (window[IOS_RESTART_LISTENER_WINDOW_KEY]) return;
   window.addEventListener(
     "eliza:local-agent-restart-requested",
     (event: Event) => {
@@ -623,6 +637,7 @@ function installIosLocalAgentRestartRequestListener(): void {
       });
     },
   );
+  window[IOS_RESTART_LISTENER_WINDOW_KEY] = true;
   restartRequestListenerInstalled = true;
 }
 
@@ -719,7 +734,11 @@ export async function handleIosLocalAgentNativeRequest(
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
-  if (isNativeIosCloudRuntime() && !isCloudRuntimeAllowedLocalAgentPath(path)) {
+  if (
+    isNativeIosCloudRuntime() &&
+    !iosRuntimeHasOnDeviceAgent() &&
+    !isCloudRuntimeAllowedLocalAgentPath(path)
+  ) {
     throw new TypeError(
       "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
     );

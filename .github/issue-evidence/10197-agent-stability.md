@@ -16,7 +16,7 @@ hardware/cluster not present in this environment (marked below, per
 | **Supervisor crash-recovery** | `packages/app-core/scripts/lib/restart-guard.mjs` (extracted from `run-node.mjs`) | 5 guard unit tests + **2 real-process integration tests** that drive the actual `run-node.mjs` with a fake child (real exit-75) → relaunch + crash-loop abort. |
 | **Soak / leak detector** | `packages/agent/src/runtime/memory-soak.ts` | `runSoak()` forces GC + reports heap slope; 2 tests prove it flags a retained-allocation leak and reports a steady workload as flat. |
 | **Umbrella + scoreboard** | `packages/app-core/scripts/stability-suite.mjs` (`stability:suite`) | One command **induces** crash → recovery + a leak workload, writes `10197-agent-stability-scoreboard.md`, exits non-zero on any failure. |
-| **iOS watchdog parity** | `packages/app-core/platforms/ios/App/App/AgentWatchdog.swift` (+ `AppDelegate.swift`), `packages/app-core/src/api/ios-local-agent-transport.ts`, `packages/ui/src/api/ios-local-agent-transport.ts` | Liveness poll via the in-process `ElizaBunRuntime` bridge (no TCP port) + 3-strike detection mirroring Android, emitting a bounded restart-request (max 5/backoff). The renderer now consumes `eliza:local-agent-restart-requested` and re-runs the existing `ElizaBunRuntime.start(...)` path; unit-proven and gated off in pure cloud/tunnel modes. Device-run gated (below). |
+| **iOS watchdog parity** | `packages/app-core/platforms/ios/App/App/AgentWatchdog.swift` (+ `AppDelegate.swift`), `packages/app-core/src/api/ios-local-agent-transport.ts`, `packages/ui/src/api/ios-local-agent-transport.ts` | Liveness poll via the in-process `ElizaBunRuntime` bridge (no TCP port) + 3-strike detection mirroring Android, emitting a bounded restart-request (max 5/backoff). The renderer now consumes `eliza:local-agent-restart-requested` and re-runs the existing `ElizaBunRuntime.start(...)` path; unit-proven, cross-bundle listener deduped, and gated off only in pure `cloud` mode. `cloud-hybrid` and `tunnel-to-mobile` restart the phone-side agent. Device-run gated (below). |
 | **Cloud crash-recovery lane** | `packages/cloud/infra/cloud/tests/10-agent-crash-recovery/` | Chainsaw suite wakes a real agent-server pod, proves baseline `/health` + `/ready`, kills PID 1 in the running container and asserts `restartCount` increases in the same pod, deletes the running pod, waits for a replacement pod with a different UID, then proves recovered `/health`, `/ready`, `POST /agents`, and `POST /agents/:id/message`. Static YAML coverage prevents dropping either crash injection. |
 
 ## Real, reviewed results
@@ -24,7 +24,7 @@ hardware/cluster not present in this environment (marked below, per
 ### Test suites (all green)
 - `packages/agent` — `memory-watchdog.test.ts` **12 passed**, `memory-soak.test.ts` **2 passed**.
 - `packages/app-core` — `restart-guard.test.mjs` **5 passed**, `run-node-supervisor.test.mjs` **2 passed** (real child processes).
-- `packages/app-core` — `ios-local-agent-transport.test.ts` **27 passed** (includes iOS watchdog restart-request consumer and cloud/tunnel no-op).
+- `packages/app-core` — `ios-local-agent-transport.test.ts` **29 passed** (includes iOS watchdog restart-request consumer, pure-cloud no-op, `cloud-hybrid`/`tunnel-to-mobile` restart, and cross-bundle listener dedupe).
 - `packages/cloud/infra` — **43 passed** (YAML/static tests, including `10-agent-crash-recovery` container/pod crash-injection guard).
 
 ### Umbrella scoreboard (`node packages/app-core/scripts/stability-suite.mjs`, exit 0)
@@ -49,3 +49,10 @@ The committed scoreboard is `10197-agent-stability-scoreboard.md` (regenerated b
 - The watchdog is **opt-in** (`ELIZA_MEMORY_WATCHDOG`), default off → production boot is byte-identical until enabled. Env documented in `packages/agent/CLAUDE.md`.
 - No second restart mechanism was added anywhere — the watchdog and both device watchdogs all funnel through the existing `requestRestart()`/supervisor (CLI) or the host relaunch entrypoint (device).
 - `ELIZA_SKIP_ARTIFACT_SYNC=1 bun install` passed. A full artifact sync attempted first but the 971 MiB archive hit local disk ENOSPC; large fixtures are not required for the focused stability checks above.
+- Follow-up validation after the iOS restart P0 fix:
+  - `bun run --cwd packages/app-core test -- src/api/ios-local-agent-transport.test.ts` passed: 29/29.
+  - `bun run --cwd packages/app-core typecheck` passed after building optional workspace dependency declarations.
+  - `bun run --cwd packages/app-core build` passed.
+  - `bun run --cwd packages/app-core lint` passed.
+  - `bun run --cwd packages/ui typecheck` passed.
+  - `bun run --cwd packages/ui lint` passed.

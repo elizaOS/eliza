@@ -103,7 +103,7 @@ const IOS_FULL_BUN_ENV: Record<string, string> = {
   RUNTIME_MODE: "local-safe",
   LOCAL_RUNTIME_MODE: "local-safe",
   ELIZA_IOS_LOCAL_BACKEND: "1",
-  ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "60000",
+  ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
   ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
   ELIZA_VAULT_BACKEND: "file",
   ELIZA_DISABLE_VAULT_PROFILE_RESOLVER: "1",
@@ -112,6 +112,8 @@ const IOS_FULL_BUN_ENV: Record<string, string> = {
   ELIZA_IOS_BRIDGE_TRANSPORT: "bun-host-ipc",
   LOG_LEVEL: "error",
 };
+const IOS_RESTART_LISTENER_WINDOW_KEY =
+  "__ELIZA_IOS_LOCAL_AGENT_RESTART_LISTENER_INSTALLED__";
 
 type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
@@ -122,6 +124,7 @@ declare global {
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
+    [IOS_RESTART_LISTENER_WINDOW_KEY]?: boolean;
   }
 }
 
@@ -245,9 +248,7 @@ function isNativeIosCloudRuntime(): boolean {
 }
 
 function isPureRemoteRuntimeMode(mode: string | null): boolean {
-  return (
-    mode === "cloud" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
-  );
+  return mode === "cloud";
 }
 
 function usesStrictIosNetworkPolicy(): boolean {
@@ -320,14 +321,14 @@ function isMobileLocalAgentUrl(value: string): boolean {
 
 /**
  * Whether the selected runtime runs an on-device agent that serves local-agent
- * IPC. Both `local` (on-device inference) and `cloud-hybrid` (on-device runtime
- * that routes inference through Eliza Cloud) run the bundled agent on the
- * device and therefore must be allowed to use the in-process IPC bridge — only
- * a pure `cloud` runtime talks exclusively to a remote agent.
+ * IPC. `local`, `cloud-hybrid`, and `tunnel-to-mobile` all run the bundled
+ * phone-side agent; only pure `cloud` talks exclusively to a remote agent.
  */
 function iosRuntimeHasOnDeviceAgent(): boolean {
   const mode = readRuntimeMode();
-  return mode === "local" || mode === "cloud-hybrid";
+  return (
+    mode === "local" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
+  );
 }
 
 function canUseIosLocalAgentIpc(): boolean {
@@ -554,7 +555,6 @@ async function restartIosFullBunRuntimeFromWatchdog(): Promise<void> {
   if (restartRequestInFlight) return restartRequestInFlight;
   restartRequestInFlight = (async () => {
     if (!isNativeIos()) return;
-    if (isNativeIosCloudRuntime()) return;
     if (isPureRemoteRuntimeMode(readRuntimeMode())) return;
     if (!isFullBunRuntimePluginAvailable()) {
       throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
@@ -594,6 +594,7 @@ function installIosLocalAgentRestartRequestListener(): void {
   if (restartRequestListenerInstalled) return;
   if (typeof window === "undefined") return;
   if (typeof window.addEventListener !== "function") return;
+  if (window[IOS_RESTART_LISTENER_WINDOW_KEY]) return;
   window.addEventListener(
     "eliza:local-agent-restart-requested",
     (event: Event) => {
@@ -608,6 +609,7 @@ function installIosLocalAgentRestartRequestListener(): void {
       });
     },
   );
+  window[IOS_RESTART_LISTENER_WINDOW_KEY] = true;
   restartRequestListenerInstalled = true;
 }
 
