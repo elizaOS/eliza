@@ -679,4 +679,30 @@ describe("orchestrator routes — room, telemetry, agents", () => {
       ).status,
     ).toBe(404);
   });
+
+  it("refuses to auto-validate a criteria-free task (no silent zero-verification pass)", async () => {
+    const service = makeService();
+    const id = await seedTask(service, "No criteria");
+    // Force the exact state the gate protects: validating, with no criteria.
+    // Without the gate, verifyGoalCompletion returns passed:true with NO model
+    // call and the task would be marked done.
+    await service.updateTask(id, {
+      status: "validating",
+      acceptanceCriteria: [],
+    });
+
+    const result = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/auto-validate`,
+      { completionEvidence: "I did the thing, trust me." },
+    );
+    expect(result.status).toBe(422);
+    expect(String(result.json.error)).toContain("no acceptance criteria");
+
+    // The task must NOT have advanced to done — the gate returns before any
+    // validation runs.
+    const after = await service.getTask(id);
+    expect(after?.status).toBe("validating");
+  });
 });
