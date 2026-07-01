@@ -28,6 +28,15 @@ function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+// The PGlite `live` extension is only loaded when a syncUrl is configured
+// (pglite/manager.ts). Without it, `manager.liveQuery()` returned null and every
+// test below early-returned with ZERO assertions — reported as PASSED while
+// verifying nothing (#10718). A bogus URL loads the extension for LOCAL live
+// queries; the background sync attempt fails harmlessly (no Electric server),
+// exactly as the sibling electric-sync-deferred.test.ts relies on. Local
+// reactivity (INSERT → callback) does not need a reachable sync server.
+const BOGUS_SYNC_URL = "https://example.invalid/electric";
+
 describe("Live query latency", () => {
   const cleanups: Array<{ dir: string; manager?: PGliteClientManager }> = [];
 
@@ -58,6 +67,7 @@ describe("Live query latency", () => {
     const manager = new PGliteClientManager({
       dataDir: dir,
       agentId,
+      syncUrl: BOGUS_SYNC_URL,
     });
     await manager.initialize();
     cleanups.push({ dir, manager });
@@ -97,7 +107,9 @@ describe("Live query latency", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
-    if (!liveNs) return; // Extensions disabled
+    // Fail loudly if the extension did not load — never silently pass.
+    expect(liveNs, "live extension must load when a syncUrl is configured").not.toBeNull();
+    if (!liveNs) return;
 
     const memoryId = v4();
     const roomId = v4();
@@ -165,6 +177,7 @@ describe("Live query latency", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
+    expect(liveNs, "live extension must load when a syncUrl is configured").not.toBeNull();
     if (!liveNs) return;
 
     const roomId = v4();
@@ -225,6 +238,7 @@ describe("Live query latency", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
+    expect(liveNs, "live extension must load when a syncUrl is configured").not.toBeNull();
     if (!liveNs) return;
 
     const roomId = v4();

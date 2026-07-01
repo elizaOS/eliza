@@ -26,6 +26,13 @@ function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+// The PGlite `live` extension only loads when a syncUrl is configured
+// (pglite/manager.ts). Without it, `manager.liveQuery()` returned null and every
+// it-block below early-returned with ZERO assertions — reported PASSED while
+// verifying nothing (#10718). A bogus URL loads the extension for LOCAL live
+// queries; the background sync attempt fails harmlessly (no Electric server).
+const BOGUS_SYNC_URL = "https://example.invalid/electric";
+
 describe("PGlite live query extension", () => {
   const cleanups: Array<{ dir: string; manager?: PGliteClientManager }> = [];
 
@@ -56,6 +63,7 @@ describe("PGlite live query extension", () => {
     const manager = new PGliteClientManager({
       dataDir: dir,
       agentId,
+      syncUrl: BOGUS_SYNC_URL,
     });
     await manager.initialize();
     cleanups.push({ dir, manager });
@@ -90,7 +98,8 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
-    if (!liveNs) return; // Extensions disabled
+    expect(liveNs, "live extension must load when a syncUrl is configured").not.toBeNull();
+    if (!liveNs) return;
 
     const roomId = v4();
     const now = Date.now() / 1000.0;
@@ -150,6 +159,7 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
+    expect(liveNs, "live extension must load when a syncUrl is configured").not.toBeNull();
     if (!liveNs) return;
 
     const roomId = v4();
@@ -209,6 +219,7 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
+    expect(liveNs, "live extension must load when a syncUrl is configured").not.toBeNull();
     if (!liveNs) return;
 
     const roomId = v4();
@@ -258,6 +269,7 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
+    expect(liveNs, "live extension must load when a syncUrl is configured").not.toBeNull();
     if (!liveNs) return;
 
     const roomId = v4();
@@ -314,6 +326,7 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
+    expect(liveNs, "live extension must load when a syncUrl is configured").not.toBeNull();
     if (!liveNs) return;
 
     const roomId = v4();
@@ -362,6 +375,7 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
+    expect(liveNs, "live extension must load when a syncUrl is configured").not.toBeNull();
     if (!liveNs) return;
 
     const roomId = v4();
