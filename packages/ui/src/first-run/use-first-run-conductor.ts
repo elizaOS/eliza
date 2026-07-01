@@ -220,7 +220,6 @@ export function useFirstRunConductor(): void {
     },
     [setConversationMessages],
   );
-
   const seedTutorial = React.useCallback(() => {
     provisionedRef.current = true;
     seedTurn(
