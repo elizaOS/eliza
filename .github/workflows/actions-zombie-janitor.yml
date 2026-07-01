@@ -1,0 +1,112 @@
+name: Actions Zombie Janitor
+
+# Reap zombie `in_progress` workflow runs whose runners died mid-run.
+#
+# WHY: when a self-hosted runner box dies, its runs stay `in_progress` until
+# GitHub's 6h timeout — and each one keeps holding org concurrency slots. With
+# enough zombies, NO new job can start repo-wide, including GitHub-hosted ones
+# (observed 2026-07-01 ~21:33–22:30 UTC: ~40 zombies from a 17:4x runner death
+# froze every queue — PR checks, gitleaks, and the production deploy
+# dispatches; see #10839 updates 9–12 and #11045). Cancelling QUEUED runs does
+# not help — the slots are held by the dead in-progress runs.
+#
+# WHAT COUNTS AS A ZOMBIE — both must hold:
+#   1. the run is older than MAX_AGE_HOURS (default 4), AND
+#   2. none of its jobs started OR completed within IDLE_MINUTES (default 90).
+# The idle check is load-bearing: right after a freeze clears, hours-old runs
+# legitimately start executing their backlogged jobs — age alone would kill
+# healthy recovering runs; age+idle reaps only runs nothing is working on.
+# (A real job that runs >90 min without finishing keeps its run alive via its
+# own started_at only until 90 min pass — so IDLE_MINUTES must stay above the
+# longest legitimately-silent job stretch; 90 min clears every current suite.)
+#
+# Tuning (repo variables, no code change needed):
+#   ACTIONS_JANITOR_DISABLED=true    — kill switch
+#   ACTIONS_JANITOR_MAX_AGE_HOURS    — default 4
+#   ACTIONS_JANITOR_IDLE_MINUTES     — default 90
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Log what would be cancelled without cancelling
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: write
+
+concurrency:
+  group: actions-zombie-janitor
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    name: Reap zombie runs
+    runs-on: ubuntu-latest
+    if: github.repository == 'elizaOS/eliza' && vars.ACTIONS_JANITOR_DISABLED != 'true'
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_MAX_AGE_HOURS || '4' }}
+      IDLE_MINUTES: ${{ vars.ACTIONS_JANITOR_IDLE_MINUTES || '90' }}
+      DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
+      SELF_RUN_ID: ${{ github.run_id }}
+    steps:
+      - name: Cancel old+idle in_progress runs
+        run: |
+          set -euo pipefail
+          now=$(date -u +%s)
+          {
+            echo "## Zombie janitor — $(date -u +%FT%TZ)"
+            echo ""
+            echo "| run | workflow | age (h) | idle (min) | action |"
+            echo "|---|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          gh run list --repo "$GH_REPO" --status in_progress --limit 100 \
+            --json databaseId,createdAt,workflowName \
+            --jq '.[] | "\(.databaseId)\t\(.createdAt)\t\(.workflowName)"' |
+          while IFS=$'\t' read -r id created name; do
+            [ "$id" = "$SELF_RUN_ID" ] && continue
+            created_s=$(date -u -d "$created" +%s)
+            age_h=$(( (now - created_s) / 3600 ))
+            if [ "$age_h" -lt "$MAX_AGE_HOURS" ]; then
+              continue
+            fi
+
+            # Newest job activity (start or finish) across up to 100 jobs; a
+            # run with no job timestamps at all idles from its creation time.
+            latest=$(gh api "repos/$GH_REPO/actions/runs/$id/jobs?per_page=100" \
+              --jq '[.jobs[] | (.started_at // empty), (.completed_at // empty)] | max // ""')
+            if [ -n "$latest" ]; then
+              latest_s=$(date -u -d "$latest" +%s)
+            else
+              latest_s=$created_s
+            fi
+            idle_min=$(( (now - latest_s) / 60 ))
+            if [ "$idle_min" -lt "$IDLE_MINUTES" ]; then
+              echo "alive: $id $name (age ${age_h}h, idle ${idle_min}m)"
+              continue
+            fi
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "would cancel: $id $name (age ${age_h}h, idle ${idle_min}m)"
+              echo "| $id | $name | $age_h | $idle_min | would cancel (dry run) |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            # Best-effort: a run finishing between list and cancel is fine.
+            if gh run cancel "$id" --repo "$GH_REPO"; then
+              echo "cancelled zombie: $id $name (age ${age_h}h, idle ${idle_min}m)"
+              echo "| $id | $name | $age_h | $idle_min | cancelled |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "cancel failed (likely already completed): $id $name"
+            fi
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Done." >> "$GITHUB_STEP_SUMMARY"
