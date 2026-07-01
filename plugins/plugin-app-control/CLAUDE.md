@@ -14,7 +14,7 @@ This plugin registers three actions, one natural-language shortcut set, two eval
 |---|---|---|
 | `APP` | `src/actions/app.ts` | Unified app control. Sub-modes: `launch`, `relaunch`, `load_from_directory`, `list`, `create`. `create` runs a multi-turn scaffold+coding-agent flow. Owner-gated. |
 | `VIEWS` | `src/actions/views.ts` | Manage UI views contributed by plugins. Sub-modes: `list`, `current`, `show`/`open`, `search`, `manager`, `broadcast`, `interact`, `pin`, `window`, `create`, `edit`, `icon`, `rollback`, `delete`/`remove`. Create/edit/icon/rollback/delete are owner-gated; read modes are open. `rollback` resets a created/edited view-or-plugin workdir to the pre-edit git snapshot taken before the coding agent ran (#8915) and re-registers it via `load-from-directory`. |
-| `BACKGROUND` | `src/actions/background.ts` | Change the unified app background from chat. Ops: `set` (color name/hex, an uploaded image attachment, or a generated image from a prompt), `undo`, `reset`. Broadcasts a `background:apply` view event via `POST /api/views/events/broadcast`; the renderer's `useBackgroundApplyChannel` (`@elizaos/ui`) applies it to the shared `BackgroundConfig` store. Drives the SAME background as the `/background` view — there is no separate homescreen-scene surface. |
+| `BACKGROUND` | `src/actions/background.ts` | Change the unified app background from chat. Ops: `set` (color name/hex, an uploaded image attachment, or a generated image from a prompt), `undo`, `redo`, `reset`. Broadcasts a `background:apply` view event via `POST /api/views/events/broadcast`; the renderer's `useBackgroundApplyChannel` (`@elizaos/ui`) applies it to the shared `BackgroundConfig` store. Drives the SAME background as the `/background` view — there is no separate homescreen-scene surface. |
 
 ### Evaluators
 
@@ -74,7 +74,7 @@ src/
     app-list.ts                   list sub-handler
     app-load-from-directory.ts    load_from_directory sub-handler
     app-create.ts                 create sub-handler (multi-turn scaffold + coding agent)
-    background.ts                 BACKGROUND action (set color/image/generate, undo, reset)
+    background.ts                 BACKGROUND action (set color/image/generate, undo, redo, reset)
     views.ts                      VIEWS action dispatcher
     views-client.ts               ViewsClient — loopback HTTP to /api/views/*
     views-list.ts                 list sub-handler

@@ -25,7 +25,9 @@ function seed(
     cloud?: boolean;
     setBackgroundConfig?: (config: unknown) => void;
     undoBackgroundConfig?: () => void;
+    redoBackgroundConfig?: () => void;
     canUndo?: boolean;
+    canRedo?: boolean;
     color?: string;
   } = {},
 ) {
@@ -33,7 +35,9 @@ function seed(
     backgroundConfig: { mode: "shader", color: opts.color ?? "#ef5a1f" },
     setBackgroundConfig: opts.setBackgroundConfig ?? vi.fn(),
     undoBackgroundConfig: opts.undoBackgroundConfig ?? vi.fn(),
+    redoBackgroundConfig: opts.redoBackgroundConfig ?? vi.fn(),
     canUndoBackground: opts.canUndo ?? false,
+    canRedoBackground: opts.canRedo ?? false,
     elizaCloudConnected: opts.cloud ?? false,
     elizaCloudAuthRejected: false,
   } as never);
@@ -69,6 +73,14 @@ describe("BackgroundView", () => {
     render(<BackgroundView />);
     fireEvent.click(screen.getByLabelText("Undo background change"));
     expect(undoBackgroundConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows Redo and re-applies the undone background", () => {
+    const redoBackgroundConfig = vi.fn();
+    seed({ canUndo: false, canRedo: true, redoBackgroundConfig });
+    render(<BackgroundView />);
+    fireEvent.click(screen.getByLabelText("Redo background change"));
+    expect(redoBackgroundConfig).toHaveBeenCalledTimes(1);
   });
 
   it("hides Generate when cloud is unavailable", () => {
