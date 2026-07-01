@@ -373,6 +373,24 @@ function duringWindowDue(
   if (task.metadata?.lastWindowFireKey === fireKey) {
     return { due: false, reason: "window_already_fired" };
   }
+  // A `firedAt` stamped inside the currently active window means this
+  // window's occurrence already happened. `lastWindowFireKey` is written by
+  // the tick AFTER the fire persists, so a recurrence-refire re-read in that
+  // gap (or a lost metadata edit) must still see the same window as spent —
+  // otherwise a parallel tick could double-fire one window occurrence.
+  const firedAtMs = parseIsoMs(task.state.firedAt);
+  if (
+    task.state.status !== "scheduled" &&
+    firedAtMs !== null &&
+    localDateKey(new Date(firedAtMs), timeZone) ===
+      localDateKey(context.now, timeZone)
+  ) {
+    const firedParts = localParts(new Date(firedAtMs), timeZone);
+    const firedMinutes = firedParts.hour * 60 + firedParts.minute;
+    if (firedMinutes >= active.start && firedMinutes < active.end) {
+      return { due: false, reason: "window_already_fired" };
+    }
+  }
   return {
     due: true,
     reason: "window_due",

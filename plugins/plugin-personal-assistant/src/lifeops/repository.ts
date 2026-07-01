@@ -7180,11 +7180,19 @@ export class LifeOpsRepository {
   }
 
   /**
-   * Atomically transition a ScheduledTask row from
-   * `state_json->>'status' = 'scheduled'` to `'fired'`. The whole flip
+   * Atomically transition a ScheduledTask row to `'fired'`. The whole flip
    * happens inside one Postgres statement so two parallel ticks racing on
-   * the same task cannot both see "scheduled". The loser sees zero rows
-   * affected → `{ kind: "raced" }`; the winner gets the post-update row.
+   * the same task cannot both claim it. The loser sees zero rows affected →
+   * `{ kind: "raced" }`; the winner gets the post-update row.
+   *
+   * Without `args.expected` the claim matches `status = 'scheduled'` only
+   * (fresh fire — the flip to `'fired'` self-invalidates the WHERE clause
+   * for concurrent claimers). With `args.expected` the claim is a CAS on the
+   * caller-observed `(status, firedAt)` pair — the recurrence-refire path,
+   * where the pre-claim status can be `fired` / `acknowledged` / terminal.
+   * The claim always rewrites `firedAt`, so even two ticks that observed the
+   * same status cannot both match: the winner changes `firedAt` and the
+   * loser's expected pair no longer holds.
    *
    * Also clears `next_fire_at` so the partial index slice no longer keeps
    * the row in the per-tick due-task scan until the runner re-computes a
@@ -7192,7 +7200,11 @@ export class LifeOpsRepository {
    */
   async claimScheduledTaskForFire(
     agentId: string,
-    args: { taskId: string; firedAtIso: string },
+    args: {
+      taskId: string;
+      firedAtIso: string;
+      expected?: import("@elizaos/plugin-scheduling").ScheduledTaskClaimExpectation;
+    },
   ): Promise<
     | {
         kind: "fired";
@@ -7201,6 +7213,15 @@ export class LifeOpsRepository {
     | { kind: "raced" }
   > {
     const now = isoNow();
+    const expected = args.expected;
+    const stateGuard = expected
+      ? `AND (state_json::jsonb ->> 'status') = ${sqlQuote(expected.status)}
+          AND ${
+            expected.firedAtIso === null
+              ? `(state_json::jsonb ->> 'firedAt') IS NULL`
+              : `(state_json::jsonb ->> 'firedAt') = ${sqlQuote(expected.firedAtIso)}`
+          }`
+      : `AND (state_json::jsonb ->> 'status') = 'scheduled'`;
     const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_scheduled_tasks
@@ -7220,7 +7241,7 @@ export class LifeOpsRepository {
               version = version + 1
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(args.taskId)}
-          AND (state_json::jsonb ->> 'status') = 'scheduled'
+          ${stateGuard}
         RETURNING *`,
     );
     const row = rows[0];

@@ -21,6 +21,7 @@ import type {
   AnchorRegistry,
   ConsolidationRegistry,
 } from "./consolidation-policy.js";
+import { isScheduledTaskDue } from "./due.js";
 import {
   type EscalationLadderRegistry,
   resetLadderForSnooze,
@@ -100,16 +101,36 @@ export type ScheduledTaskClaimResult =
   | { kind: "fired"; task: ScheduledTask }
   | { kind: "raced" };
 
+/**
+ * Compare-and-swap guard for a recurrence-refire claim. The runner passes the
+ * `(status, firedAt)` pair it OBSERVED on the row; the store only claims when
+ * the row still matches. Because a successful claim always rewrites
+ * `state.firedAt` to the (new) claim instant, two concurrent ticks refiring
+ * the same occurrence cannot both match: the winner's UPDATE changes
+ * `firedAt`, so the loser's expected pair no longer holds and it races out —
+ * even when both ticks observed the same status (e.g. `fired` → `fired`).
+ */
+export interface ScheduledTaskClaimExpectation {
+  status: ScheduledTask["state"]["status"];
+  firedAtIso: string | null;
+}
+
 export interface ScheduledTaskStore {
   upsert(
     task: ScheduledTask,
     options?: ScheduledTaskUpsertOptions,
   ): Promise<void>;
   /**
-   * Atomically transition a row from `state.status === "scheduled"` to
-   * `"fired"`, returning the resulting row. Returns `{ kind: "raced" }`
-   * when zero rows matched — either because the task is already past
-   * `scheduled` (another tick claimed it) or the id no longer exists.
+   * Atomically transition a row to `"fired"`, returning the resulting row.
+   * Returns `{ kind: "raced" }` when zero rows matched — either because the
+   * row's state moved (another tick claimed it) or the id no longer exists.
+   *
+   * Without `expected`, the claim matches `state.status === "scheduled"`
+   * only (the fresh-fire path — flipping `scheduled` → `fired` makes the
+   * WHERE clause self-invalidating for concurrent claimers). With
+   * `expected`, the claim is a CAS on the observed `(status, firedAt)` pair
+   * — the recurrence-refire path, where the pre-claim status may already be
+   * `fired` / `acknowledged` / a terminal state.
    *
    * The store is the only place where the read-mutate-write becomes
    * atomic; the runner's previous read-then-upsert pattern was racy
@@ -118,6 +139,7 @@ export interface ScheduledTaskStore {
   claimForFire(args: {
     taskId: string;
     firedAtIso: string;
+    expected?: ScheduledTaskClaimExpectation;
   }): Promise<ScheduledTaskClaimResult>;
   get(taskId: string): Promise<ScheduledTask | null>;
   findByIdempotencyKey(key: string): Promise<ScheduledTask | null>;
@@ -131,9 +153,17 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
     async upsert(task) {
       map.set(task.taskId, structuredClone(task));
     },
-    async claimForFire({ taskId, firedAtIso }) {
+    async claimForFire({ taskId, firedAtIso, expected }) {
       const existing = map.get(taskId);
-      if (existing?.state.status !== "scheduled") {
+      if (!existing) return { kind: "raced" };
+      if (expected) {
+        if (
+          existing.state.status !== expected.status ||
+          (existing.state.firedAt ?? null) !== expected.firedAtIso
+        ) {
+          return { kind: "raced" };
+        }
+      } else if (existing.state.status !== "scheduled") {
         return { kind: "raced" };
       }
       const next: ScheduledTask = structuredClone(existing);
@@ -605,11 +635,31 @@ export function createScheduledTaskRunner(
   async function resolveNextFireAt(
     task: ScheduledTask,
   ): Promise<string | null> {
-    // Terminal-state rows do not refire (except recurring triggers that get
-    // explicitly reopened via `fire({ allowTerminalRefire: true })`). Storing
-    // a stale `next_fire_at` would leave the row in the partial-index slice
-    // until the next mutation; clearing it keeps the index slim.
-    if (isTerminal(task.state.status)) return null;
+    // Dismissed rows never refire. Settled NON-recurring rows are done —
+    // storing a stale `next_fire_at` would leave them in the partial-index
+    // slice forever; clearing it keeps the index slim.
+    //
+    // RECURRING rows in every other status (`acknowledged` and the remaining
+    // terminal states) keep a trigger-derived `next_fire_at`: that is what
+    // lets the scheduler tick's indexed slice resurface a completed / skipped
+    // / acknowledged daily task at its NEXT occurrence (recurrence refire,
+    // claimed via the CAS in `fireWithResult`). `computeNextFireAt` projects
+    // forward from `now`, so the stored value is always the next FUTURE
+    // occurrence — a gate-denied occurrence does not re-enter the slice
+    // every tick.
+    if (task.state.status === "dismissed") return null;
+    if (isTerminal(task.state.status) && !isRecurringTrigger(task.trigger)) {
+      return null;
+    }
+    if (
+      task.state.status === "acknowledged" &&
+      !isRecurringTrigger(task.trigger)
+    ) {
+      // A non-recurring acknowledged row has no future occurrence; keeping
+      // its trigger-derived time would park it in the tick slice where every
+      // pass would race out on the `scheduled`-only claim.
+      return null;
+    }
     const ownerFacts = await deps.ownerFacts();
     return computeNextFireAt(task, {
       now: now(),
@@ -1022,29 +1072,52 @@ export function createScheduledTaskRunner(
   ): Promise<ScheduledTaskFireResult> {
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`fire: task ${taskId} not found`);
-    if (isTerminal(task.state.status)) {
-      const canRefire =
-        args?.allowTerminalRefire === true &&
-        task.state.status !== "dismissed" &&
-        isRecurringTrigger(task.trigger);
-      if (!canRefire) {
-        // Idempotent — already settled; report skipped so callers do not
-        // double-count this as a fresh fire.
-        return {
-          kind: "skipped",
-          task,
-          reason: `terminal:${task.state.status}`,
-        };
+    // Recurrence refire: `allowTerminalRefire` authorizes claiming the DUE
+    // next occurrence of a RECURRING task whose row is parked in a
+    // non-`scheduled` status — `fired` (zombie: nothing ever completed the
+    // previous occurrence), `acknowledged` (non-terminal by design), or a
+    // terminal state (`completed` / `skipped` / `expired` / `failed`).
+    // `dismissed` never refires; non-recurring triggers never refire.
+    //
+    // Race safety: there is deliberately NO reopen-then-claim two-step here.
+    // A pre-claim `persist(status = "scheduled")` is last-write-wins, so two
+    // concurrent ticks could each reopen and one could claim the other's
+    // reopen — double-fire. Instead the single atomic claim below CASes on
+    // the `(status, firedAt)` pair this read observed
+    // (see {@link ScheduledTaskClaimExpectation}); the winner rewrites
+    // `firedAt`, which invalidates the loser's expectation even when both
+    // observed the same status.
+    const refireClaim =
+      args?.allowTerminalRefire === true &&
+      task.state.status !== "scheduled" &&
+      task.state.status !== "dismissed" &&
+      isRecurringTrigger(task.trigger);
+    if (isTerminal(task.state.status) && !refireClaim) {
+      // Idempotent — already settled; report skipped so callers do not
+      // double-count this as a fresh fire.
+      return {
+        kind: "skipped",
+        task,
+        reason: `terminal:${task.state.status}`,
+      };
+    }
+    if (refireClaim) {
+      // Re-verify dueness on the FRESH row before claiming. The scheduler
+      // tick evaluated dueness against a candidate row read at tick entry;
+      // if a parallel tick already claimed this occurrence and fully
+      // persisted before our read above, the CAS below would match the NEW
+      // `(fired, firedAt)` pair and double-fire the same occurrence. A
+      // just-refired row's trigger-derived next occurrence is in the future,
+      // so the loser bails here as `raced` (no dispatch, no log noise).
+      const ownerFacts = await deps.ownerFacts();
+      const freshDecision = await isScheduledTaskDue(task, {
+        now: now(),
+        ownerFacts,
+        anchors: deps.anchors,
+      });
+      if (!freshDecision.due) {
+        return { kind: "raced", taskId: task.taskId };
       }
-      task.state.status = "scheduled";
-      delete task.state.acknowledgedAt;
-      delete task.state.completedAt;
-      task.state.lastDecisionLog = "recurrence refire";
-      clearEscalationCursor(task);
-      clearPendingDispatch(task);
-      // Flip the row back to `scheduled` so the atomic claim below has
-      // something to match. The claim writes `firedAt` itself.
-      await persist(task);
     }
 
     await logger.log(task.taskId, "fire_attempt", {
@@ -1097,6 +1170,19 @@ export function createScheduledTaskRunner(
             );
       task.state.lastDecisionLog = `${gateOutcome.gateKind ?? "gate"}: deferred ${offset}m (${gateOutcome.decision.reason})`;
       const newFireMs = now().getTime() + offset * 60_000;
+      if (refireClaim) {
+        // Park the deferred occurrence as a plain scheduled-override so it
+        // fires AT the defer time (`scheduledOverrideDue`), not at the
+        // trigger's next natural occurrence. This reopens the row from its
+        // parked status; the write is last-write-wins across concurrent
+        // ticks, which is safe here because both write the same target state
+        // and no dispatch happens without the atomic claim below.
+        task.state.status = "scheduled";
+        delete task.state.acknowledgedAt;
+        delete task.state.completedAt;
+        clearEscalationCursor(task);
+        clearPendingDispatch(task);
+      }
       task.state.firedAt = new Date(newFireMs).toISOString();
       await persist(task);
       await logger.log(task.taskId, "snoozed", {
@@ -1110,18 +1196,41 @@ export function createScheduledTaskRunner(
       };
     }
 
-    // Allow → atomic claim. The store does UPDATE … WHERE status='scheduled'
-    // RETURNING * so exactly one parallel caller can transition `scheduled`
-    // → `fired`. Concurrent ticks see `kind: "raced"` and bail.
+    // Allow → atomic claim. For a fresh fire the store does UPDATE … WHERE
+    // status='scheduled' RETURNING * so exactly one parallel caller can
+    // transition `scheduled` → `fired`. For a recurrence refire the claim
+    // CASes on the observed `(status, firedAt)` pair instead. Concurrent
+    // ticks see `kind: "raced"` and bail.
     const fireAtIso = now().toISOString();
     const claim = await deps.store.claimForFire({
       taskId: task.taskId,
       firedAtIso: fireAtIso,
+      ...(refireClaim
+        ? {
+            expected: {
+              status: task.state.status,
+              firedAtIso: task.state.firedAt ?? null,
+            },
+          }
+        : {}),
     });
     if (claim.kind === "raced") {
       return { kind: "raced", taskId: task.taskId };
     }
     const claimed = claim.task;
+    if (refireClaim) {
+      // Fresh occurrence: drop the previous occurrence's response state and
+      // any dispatch continuation — the new occurrence starts at the initial
+      // channel with a clean ladder. Persisted below with the post-claim
+      // metadata.
+      delete claimed.state.acknowledgedAt;
+      delete claimed.state.completedAt;
+      clearEscalationCursor(claimed);
+      clearPendingDispatch(claimed);
+      await logger.log(claimed.taskId, "reopened", {
+        reason: "recurrence refire",
+      });
+    }
     claimed.state.lastDecisionLog = "fired";
     // A pending continuation (retry / ladder advance from a previous typed
     // dispatch failure) routes this attempt through its recorded ladder
@@ -1365,7 +1474,10 @@ export function createScheduledTaskRunner(
     clearPendingDispatch(task);
     task.metadata = {
       ...(task.metadata ?? {}),
-      lastDispatchError: { name: "DispatchResultError", message: detailMessage },
+      lastDispatchError: {
+        name: "DispatchResultError",
+        message: detailMessage,
+      },
     };
     await persist(task);
     await logger.log(task.taskId, "failed", {

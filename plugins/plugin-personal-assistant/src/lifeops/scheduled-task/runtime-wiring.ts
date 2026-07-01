@@ -78,10 +78,11 @@ function makeRepositoryBackedStores(
           nextFireAtIso: options?.nextFireAtIso ?? null,
         });
       },
-      async claimForFire({ taskId, firedAtIso }) {
+      async claimForFire({ taskId, firedAtIso, expected }) {
         return repo.claimScheduledTaskForFire(agentId, {
           taskId,
           firedAtIso,
+          ...(expected ? { expected } : {}),
         });
       },
       async get(taskId: string) {
