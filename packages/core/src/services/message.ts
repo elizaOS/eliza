@@ -1663,6 +1663,24 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	return cleaned;
 }
 
+/**
+ * Restore PII surrogates → real values at the final user-facing reply egress
+ * (#10827). The NER pseudonymization layer swaps real PII to surrogates on
+ * ingress and restores them at the tool-call execution boundary
+ * (`execute-planned-tool-call.ts`) — but a direct/terminal reply that does NOT
+ * go through a tool call was still shipping the surrogate to the user. Mirror
+ * the tool-call egress restore here so the user (and the persisted assistant
+ * message they read back) sees the real value, while the model, trajectory,
+ * logs, and providers upstream keep the surrogate. Best-effort + a zero-cost
+ * no-op when PII swap is disabled (no session on the trajectory context) or the
+ * text carries no surrogate. Scoped to the reply TEXT only — the `thought`
+ * (reasoning trajectory) is intentionally left pseudonymized.
+ */
+export function restorePiiInUserReplyText(text: string): string {
+	const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
+	return piiSwapSession ? piiSwapSession.restoreInValue(text) : text;
+}
+
 function createV5ReplyStrategyResult(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1677,7 +1695,7 @@ function createV5ReplyStrategyResult(args: {
 		thought: args.thought,
 		actions: ["REPLY"],
 		providers: [],
-		text: args.text,
+		text: restorePiiInUserReplyText(args.text),
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
