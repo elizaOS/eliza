@@ -607,15 +607,15 @@ describe("RuntimeDbTaskStore", () => {
     }
   });
 
-  it("round-trips through the drizzle SQL builder against an eliza-shaped adapter", { timeout: 30_000 }, async () => {
+  it("round-trips through the drizzle SQL builder against an eliza-shaped adapter", {
+    timeout: 30_000,
+  }, async () => {
     // Prove the eliza `BaseDrizzleAdapter` path actually assembles valid
     // drizzle SQL objects. We use drizzle-orm's own SQL class to render the
     // query to plain SQL + params, then feed that into the FakeSqlAdapter so
     // the round-trip semantics are the same as the raw path.
     const drizzle = await import("drizzle-orm");
-    const pgDialect = new (
-      await import("drizzle-orm/pg-core")
-    ).PgDialect();
+    const pgDialect = new (await import("drizzle-orm/pg-core")).PgDialect();
     const adapter = new FakeSqlAdapter();
     const drizzleShaped = {
       db: {

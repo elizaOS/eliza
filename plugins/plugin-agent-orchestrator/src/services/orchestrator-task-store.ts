@@ -849,7 +849,9 @@ export class RuntimeDbTaskStore {
   async deleteTask(id: string): Promise<boolean> {
     return this.enqueue(async () => {
       await this.ensureInitialized();
-      await this.exec().run("DELETE FROM orchestrator_tasks WHERE id = ?", [id]);
+      await this.exec().run("DELETE FROM orchestrator_tasks WHERE id = ?", [
+        id,
+      ]);
       return true;
     });
   }
