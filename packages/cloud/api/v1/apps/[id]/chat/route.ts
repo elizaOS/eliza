@@ -587,11 +587,52 @@ async function handlePOST(
             },
           });
         } catch (error) {
-          // Stream failed - refund the reserved charge since we don't know actual usage
           const errorMessage =
             error instanceof Error ? error.message : "Unknown error";
+
+          if (writerClosed) {
+            // The full response was already streamed to the client and the writer
+            // was closed (writerClosed is set right after the stream loop, before
+            // the post-stream accounting). Reaching the catch with writerClosed
+            // means accounting (calculateCost / reconcileCredits) threw AFTER
+            // delivery — the user already received the complete answer, so a
+            // refund here would hand out free inference. Keep the reserved charge
+            // instead (best-effort; if this reconcile also throws, the
+            // reservation simply stands — never a refund of a delivered answer).
+            logger.error(
+              "[App Chat] Accounting failed AFTER the response was delivered — keeping reserved charge, NOT refunding",
+              { appId, userId: user.id, reservedBaseCost, error: errorMessage },
+            );
+            try {
+              await appCreditsService.reconcileCredits({
+                appId,
+                userId: user.id,
+                estimatedBaseCost: reservedBaseCost,
+                actualBaseCost: reservedBaseCost, // delivered → keep the reservation, do NOT refund
+                description:
+                  "Response delivered; post-stream accounting failed — reserved charge kept",
+                metadata: { error: true, streaming: true, deliveredBeforeError: true },
+              });
+            } catch (reconcileError) {
+              logger.error(
+                "[App Chat] Post-delivery reconcile also failed; reserved charge stands",
+                {
+                  appId,
+                  userId: user.id,
+                  error:
+                    reconcileError instanceof Error
+                      ? reconcileError.message
+                      : String(reconcileError),
+                },
+              );
+            }
+            return;
+          }
+
+          // Stream failed BEFORE the response was fully delivered — the user did
+          // not receive the answer, so refund the reserved charge.
           logger.error(
-            "[App Chat] Stream processing failed, refunding reserved",
+            "[App Chat] Stream failed before delivery, refunding reserved",
             {
               appId,
               userId: user.id,
@@ -609,19 +650,17 @@ async function handlePOST(
             metadata: { error: true, streaming: true },
           });
 
-          // Send error event to client if writer is still open
-          if (!writerClosed) {
-            const errorEvent = `data: ${JSON.stringify({
-              error: {
-                message: "Stream interrupted. Credits refunded.",
-                type: "api_error",
-                code: "stream_error",
-              },
-            })}\n\ndata: [DONE]\n\n`;
-            const encoder = new TextEncoder();
-            writer.write(encoder.encode(errorEvent));
-            writer.close();
-          }
+          // Send error event to client (the writer is still open on this path).
+          const errorEvent = `data: ${JSON.stringify({
+            error: {
+              message: "Stream interrupted. Credits refunded.",
+              type: "api_error",
+              code: "stream_error",
+            },
+          })}\n\ndata: [DONE]\n\n`;
+          const encoder = new TextEncoder();
+          writer.write(encoder.encode(errorEvent));
+          writer.close();
         }
       })();
 
