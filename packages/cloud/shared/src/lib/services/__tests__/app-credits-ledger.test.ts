@@ -356,10 +356,12 @@ describe("reserveInferenceCredits — holds app inference cost before model work
     const debit = reserveAndDeductCredits.mock.calls[0][0];
     expect(debit.organizationId).toBe(ORG_ID);
     expect(debit.amount).toBeCloseTo(1.1, 10);
-    expect(debit.metadata.idempotencyKey).toBe("req-1:estimate");
+    expect(debit.metadata.idempotencyKey).toBe("req-1");
     expect(reservation.reservedAmount).toBeCloseTo(1.1, 10);
     expect(reservation.reservationTransactionId).toBe("tx-2");
-    expect(addEarnings.mock.calls[0][0].sourceId).toBe("req-1:estimate:inference_markup");
+    // #10847: the movement leg — not a route-level phase suffix — makes the
+    // earnings dedupe key unique per movement: `${chargeKey}:${type}:${leg}`.
+    expect(addEarnings.mock.calls[0][0].sourceId).toBe("req-1:inference_markup:deduct");
   });
 
   test("fails before model work when the upfront app hold cannot be collected", async () => {
@@ -415,8 +417,8 @@ describe("reserveInferenceCredits — holds app inference cost before model work
 
     expect(result?.adjustmentType).toBe("overage");
     expect(addEarnings).toHaveBeenCalledTimes(2);
-    expect(addEarnings.mock.calls[0][0].sourceId).toBe("req-3:estimate:inference_markup");
-    expect(addEarnings.mock.calls[1][0].sourceId).toBe("req-3:reconcile:inference_markup");
+    expect(addEarnings.mock.calls[0][0].sourceId).toBe("req-3:inference_markup:deduct");
+    expect(addEarnings.mock.calls[1][0].sourceId).toBe("req-3:inference_markup:reconcile_charge");
   });
 });
 
