@@ -301,6 +301,179 @@ describe("CompactOnboarding", () => {
     ).toBe(true);
   });
 
+  it("gates the remote Connect button until a server address is entered", () => {
+    const finishRuntime = vi.fn(async () => {});
+    controllerMock.current = controller({
+      step: "remote",
+      draft: {
+        agentName: "Eliza",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: "",
+        remoteToken: "",
+      },
+      finishRuntime,
+    });
+
+    render(<CompactOnboarding />);
+
+    const connect =
+      screen.getByTestId<HTMLButtonElement>("onboarding-remote-connect");
+    expect(connect.disabled).toBe(true);
+    // Clicking a disabled required-field gate must not provision anything.
+    fireEvent.click(connect);
+    expect(finishRuntime).not.toHaveBeenCalled();
+  });
+
+  it("keeps Connect gated for a whitespace-only server address", () => {
+    const finishRuntime = vi.fn(async () => {});
+    controllerMock.current = controller({
+      step: "remote",
+      draft: {
+        agentName: "Eliza",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: "   ",
+        remoteToken: "",
+      },
+      finishRuntime,
+    });
+
+    render(<CompactOnboarding />);
+
+    // The gate trims — pure whitespace is not a valid address.
+    expect(
+      screen.getByTestId<HTMLButtonElement>("onboarding-remote-connect")
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByTestId("onboarding-remote-connect"));
+    expect(finishRuntime).not.toHaveBeenCalled();
+  });
+
+  it("writes each keystroke of the server address into the draft", () => {
+    const updateDraft = vi.fn();
+    controllerMock.current = controller({
+      step: "remote",
+      draft: {
+        agentName: "Eliza",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: "",
+        remoteToken: "",
+      },
+      updateDraft,
+    });
+
+    render(<CompactOnboarding />);
+
+    fireEvent.change(screen.getByPlaceholderText("https://agent.example.com"), {
+      target: { value: "https://box.local:3000" },
+    });
+    expect(updateDraft).toHaveBeenCalledWith(
+      "remoteApiBase",
+      "https://box.local:3000",
+    );
+  });
+
+  it("returns to the runtime choice from the remote step's Back button", () => {
+    const setStep = vi.fn();
+    controllerMock.current = controller({
+      step: "remote",
+      draft: {
+        agentName: "Eliza",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: "https://agent.example.com",
+        remoteToken: "",
+      },
+      setStep,
+    });
+
+    render(<CompactOnboarding />);
+    fireEvent.click(screen.getByText("Back"));
+
+    expect(setStep).toHaveBeenCalledWith("runtime");
+  });
+
+  it("submits the remote form when Enter is pressed in the token field", async () => {
+    const finishRuntime = vi.fn(async () => {});
+    controllerMock.current = controller({
+      step: "remote",
+      draft: {
+        agentName: "Eliza",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: "https://agent.example.com",
+        remoteToken: "secret",
+      },
+      finishRuntime,
+    });
+
+    render(<CompactOnboarding />);
+    fireEvent.keyDown(
+      screen.getByPlaceholderText("Leave blank to pair with a code"),
+      { key: "Enter" },
+    );
+
+    await waitFor(() => expect(finishRuntime).toHaveBeenCalledTimes(1));
+  });
+
+  it("blocks a second remote submit while the first is still in flight", () => {
+    const finishRuntime = vi.fn(async () => {});
+    controllerMock.current = controller({
+      step: "remote",
+      submitting: true,
+      busyText: "Connecting",
+      draft: {
+        agentName: "Eliza",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: "https://agent.example.com",
+        remoteToken: "",
+      },
+      finishRuntime,
+    });
+
+    render(<CompactOnboarding />);
+
+    const connect =
+      screen.getByTestId<HTMLButtonElement>("onboarding-remote-connect");
+    // The in-flight guard (busy) disables Connect so a double-tap is a no-op.
+    expect(connect.disabled).toBe(true);
+    fireEvent.click(connect);
+    fireEvent.click(connect);
+    expect(finishRuntime).not.toHaveBeenCalled();
+  });
+
+  it("auto-starts the cloud handoff exactly once on a cloud-only host", async () => {
+    const updateDraft = vi.fn();
+    const finishRuntime = vi.fn(async () => {});
+    controllerMock.current = controller({
+      cloudOnly: true,
+      updateDraft,
+      finishRuntime,
+    });
+
+    render(<CompactOnboarding />);
+
+    await waitFor(() => expect(finishRuntime).toHaveBeenCalledTimes(1));
+    expect(updateDraft).toHaveBeenCalledWith("runtime", "cloud");
+  });
+
+  it("hides the local + advanced paths on a cloud-only host", () => {
+    controllerMock.current = controller({ cloudOnly: true });
+
+    render(<CompactOnboarding />);
+
+    // Local is rendered-but-hidden (disabled) and Advanced is unmounted so a
+    // cloud-only build can never wander into an on-device / remote flow.
+    const local =
+      screen.getByTestId<HTMLButtonElement>("onboarding-option-local");
+    expect(local.disabled).toBe(true);
+    expect(local.className).toContain("hidden");
+    expect(screen.queryByTestId("onboarding-option-remote")).toBeNull();
+  });
+
   it("renders the agent picker on the pick-agent step and forwards a row pick", () => {
     const onPickAgent = vi.fn();
     controllerMock.current = controller({

@@ -143,6 +143,125 @@ describe("AgentActivityWidget", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("drops malformed items at the boundary and renders only the valid one", async () => {
+    // The route is untrusted network input. A leading null / string / item
+    // missing a required field (id/type/timestamp) must be filtered out; if the
+    // boundary validator regressed, `latest` would be a junk value and
+    // describeActivity would throw or render garbage.
+    getFeedAgentActivityMock.mockResolvedValue({
+      items: [
+        null,
+        "not-an-object",
+        { id: "bad", type: "post" }, // no timestamp
+        { type: "post", timestamp: "2025-01-01T00:00:00.000Z" }, // no id
+        activity({ id: "ok", summary: "Only valid row" }),
+      ],
+      total: 5,
+    });
+
+    render(<AgentActivityWidget {...homeProps} />);
+    const card = await screen.findByTestId("chat-widget-agent-activity");
+
+    expect(card.textContent).toContain("Only valid row");
+    // Only 1 item survives filtering; server total (5) >= 1 so total stays 5,
+    // giving extraCount = 5 - 1 = 4. Junk rows never inflate the shown datum.
+    expect(card.textContent).toContain("+4");
+  });
+
+  it("describes a trade with no summary/preview using type + ticker", async () => {
+    getFeedAgentActivityMock.mockResolvedValue({
+      items: [
+        activity({
+          type: "trade",
+          summary: undefined,
+          contentPreview: undefined,
+          ticker: "DEGEN",
+        }),
+      ],
+      total: 1,
+    });
+
+    render(<AgentActivityWidget {...homeProps} />);
+    const card = await screen.findByTestId("chat-widget-agent-activity");
+    expect(card.textContent).toContain("trade DEGEN");
+  });
+
+  it("falls back to the humanised type when every descriptive field is empty", async () => {
+    // Whitespace-only summary/preview must not win — the card must never show a
+    // blank value.
+    getFeedAgentActivityMock.mockResolvedValue({
+      items: [
+        activity({
+          type: "message",
+          summary: "   ",
+          contentPreview: "  ",
+          ticker: undefined,
+        }),
+      ],
+      total: 1,
+    });
+
+    render(<AgentActivityWidget {...homeProps} />);
+    const card = await screen.findByTestId("chat-widget-agent-activity");
+    const value = card.textContent ?? "";
+    expect(value).toContain("message");
+    // Never a blank/whitespace-only datum.
+    expect(value.trim().length).toBeGreaterThan(0);
+  });
+
+  it("clamps a total that is smaller than the returned item count", async () => {
+    // Adversarial: server reports total < number of items actually returned.
+    // extraCount must derive from the real item count, never go negative.
+    getFeedAgentActivityMock.mockResolvedValue({
+      items: [
+        activity({ id: "a-1", summary: "First" }),
+        activity({ id: "a-2", summary: "Second" }),
+        activity({ id: "a-3", summary: "Third" }),
+      ],
+      total: 1,
+    });
+
+    render(<AgentActivityWidget {...homeProps} />);
+    const card = await screen.findByTestId("chat-widget-agent-activity");
+    // total clamps up to items.length (3) -> extraCount = 3 - 1 = 2.
+    expect(card.textContent).toContain("First");
+    expect(card.textContent).toContain("+2");
+    // Never renders a negative badge.
+    expect(card.textContent).not.toContain("+-");
+    expect(card.textContent).not.toContain("-1");
+  });
+
+  it("navigates to the same feed target on rapid double activation (idempotent payload)", async () => {
+    getFeedAgentActivityMock.mockResolvedValue({
+      items: [activity({ summary: "Posted about markets" })],
+      total: 1,
+    });
+
+    render(<AgentActivityWidget {...homeProps} />);
+    const card = await screen.findByTestId("chat-widget-agent-activity");
+
+    card.click();
+    card.click();
+    card.click();
+
+    expect(openViewMock).toHaveBeenCalledTimes(3);
+    // Every invocation targets the same view + tab — no drift under rapid fire.
+    for (const call of openViewMock.mock.calls) {
+      expect(call).toEqual(["/apps/feed", "feed"]);
+    }
+  });
+
+  it("navigates from the loading card too (tap before the first fetch settles)", () => {
+    getFeedAgentActivityMock.mockReturnValue(new Promise(() => {}));
+
+    render(<AgentActivityWidget {...homeProps} />);
+    const card = screen.getByTestId("chat-widget-agent-activity");
+    expect(card.textContent).toContain("Loading");
+
+    card.click();
+    expect(openViewMock).toHaveBeenCalledWith("/apps/feed", "feed");
+  });
+
   it("applies the received spanClassName to its root grid item", async () => {
     getFeedAgentActivityMock.mockResolvedValue({
       items: [activity({ summary: "Posted about markets" })],

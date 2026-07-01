@@ -216,4 +216,88 @@ describe("WorkflowsWidget", () => {
     expect(root.className).toContain("col-span-2");
     expect(root.className).toContain("row-span-1");
   });
+
+  it("counts running tasks across BOTH sources for the +N badge", async () => {
+    // One active automation + one boot-seeded gm scheduled task = 2 running,
+    // merged client-side. "Daily digest" sorts before "Good morning" so it is
+    // the top line and the seeded task becomes the +1.
+    listAutomationsMock.mockResolvedValue(
+      listResponse([automation({ id: "w-1", title: "Daily digest" })]),
+    );
+    listScheduledTasksMock.mockResolvedValue(
+      scheduledResponse([scheduledTask({ metadata: { recordKey: "gm" } })]),
+    );
+    render(<WorkflowsWidget />);
+    await waitFor(() => expect(screen.getByText("Daily digest")).toBeTruthy());
+    expect(screen.getByText("+1")).toBeTruthy();
+  });
+
+  it("fires one nav event per rapid-fire click with a stable payload", async () => {
+    // The card's onActivate is memoized (useCallback over a stable nav), so
+    // rapid double/triple taps must each dispatch exactly one nav with an
+    // identical detail — no dropped or duplicated events, no crash.
+    listAutomationsMock.mockResolvedValue(
+      listResponse([automation({ id: "w-1", title: "Daily digest" })]),
+    );
+    const navSpy = vi.fn();
+    window.addEventListener("eliza:navigate:view", navSpy);
+    render(<WorkflowsWidget />);
+    const card = await screen.findByTestId("chat-widget-workflows");
+    fireEvent.click(card);
+    fireEvent.click(card);
+    fireEvent.click(card);
+    expect(navSpy).toHaveBeenCalledTimes(3);
+    for (const call of navSpy.mock.calls) {
+      expect((call[0] as CustomEvent).detail).toEqual({
+        viewPath: "/automations",
+      });
+    }
+    window.removeEventListener("eliza:navigate:view", navSpy);
+  });
+
+  it("exposes exactly one control — navigate — and no stop/cancel affordance", async () => {
+    // This is a glanceable card, not a controller: the ONLY interactive
+    // element is the whole-card nav button. There is no inline stop/cancel of a
+    // running workflow here (that lives in the full Tasks view). Pin that so a
+    // regression adding a hidden destructive control is caught.
+    listAutomationsMock.mockResolvedValue(
+      listResponse([automation({ id: "w-1", title: "Daily digest" })]),
+    );
+    const { container } = render(<WorkflowsWidget />);
+    const card = await screen.findByTestId("chat-widget-workflows");
+    const buttons = container.querySelectorAll("button");
+    expect(buttons.length).toBe(1);
+    expect(buttons[0]).toBe(card);
+    // No stop/cancel/delete labelling anywhere in the rendered subtree.
+    expect(container.textContent).not.toMatch(/stop|cancel|delete/i);
+  });
+
+  it("self-hides (no throw) when the API returns a malformed collection", async () => {
+    // Adversarial: a runtime returns a non-array `automations` / `tasks`
+    // payload. The reader guards with Array.isArray, so the widget must settle
+    // to "nothing running" and self-hide rather than throwing on .filter.
+    listAutomationsMock.mockResolvedValue({
+      automations: null,
+      summary: null,
+      workflowStatus: null,
+      workflowFetchError: null,
+    });
+    listScheduledTasksMock.mockResolvedValue({ tasks: "boom" });
+    const { container } = render(<WorkflowsWidget />);
+    await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
+    expect(container.firstElementChild).toBeNull();
+  });
+
+  it("isolates a malformed scheduled-tasks source and still shows valid automations", async () => {
+    // One source degrades (garbage tasks) but the other is healthy: the guard
+    // must drop only the bad source, not the whole surface.
+    listAutomationsMock.mockResolvedValue(
+      listResponse([automation({ id: "w-1", title: "Daily digest" })]),
+    );
+    listScheduledTasksMock.mockResolvedValue({ tasks: null });
+    render(<WorkflowsWidget />);
+    await waitFor(() => expect(screen.getByText("Daily digest")).toBeTruthy());
+    // Only the one healthy automation is running → no +N badge.
+    expect(screen.queryByText("+1")).toBeNull();
+  });
 });
