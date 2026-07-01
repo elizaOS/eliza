@@ -263,12 +263,34 @@ export function isSecretKey(key: string): boolean {
  * `knownSecrets` — so a plugin's `FOO_API_KEY` is swapped even if it never
  * appears in a recognised inline token shape.
  */
+/**
+ * Whether an env-derived value is secret-SHAPED enough to auto-seed into the
+ * swap catalog. A weak dictionary default (`password`, `changeme`) is a common
+ * English word, not a real secret: seeding it would swap that word out of any
+ * legitimate text that merely contains it (content corruption). Real opaque
+ * secrets — API keys, hex, base64, tokens, mnemonics-with-spaces — always carry
+ * a digit / uppercase / symbol / space, so they clear this. Explicitly
+ * configured character secrets never pass through here and always swap; this
+ * only narrows the open-ended env-name-derived catalog, never a declared secret.
+ */
+function isCatalogSeedableSecretValue(value: string): boolean {
+	const trimmed = value.trim();
+	// A single short all-lowercase-ASCII token has no entropy signal — treat it
+	// as a dictionary word rather than an opaque secret worth swapping verbatim.
+	return !(/^[a-z]+$/.test(trimmed) && trimmed.length < 16);
+}
+
 export function deriveKnownSecrets(
 	sources: Record<string, string | undefined>,
 ): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const [key, value] of Object.entries(sources)) {
-		if (typeof value === "string" && value.length > 0 && isSecretKey(key)) {
+		if (
+			typeof value === "string" &&
+			value.length > 0 &&
+			isSecretKey(key) &&
+			isCatalogSeedableSecretValue(value)
+		) {
 			out[key] = value;
 		}
 	}
