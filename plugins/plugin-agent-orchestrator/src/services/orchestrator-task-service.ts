@@ -225,6 +225,25 @@ export interface SpawnAgentForTaskOptions {
   nestingDepth?: number;
 }
 
+/** Descriptor for an already-spawned ACP session that we want to bind to an
+ *  existing task thread. Only what the attach path genuinely needs — identity,
+ *  workdir + status from the spawn, and the caller's context that isn't
+ *  discoverable from the SpawnResult (originalTask, model, providerSource,
+ *  repo). See {@link OrchestratorTaskService.attachSession}. */
+export interface AttachSessionInput {
+  sessionId: string;
+  agentType: string;
+  workdir: string;
+  status: string;
+  metadata?: Record<string, unknown>;
+  label?: string;
+  originalTask?: string;
+  model?: string;
+  providerSource?: string;
+  repo?: string;
+  goalPrompt?: string;
+}
+
 export interface AddMessageInput {
   content: string;
   senderKind: TaskMessageSenderKind;
@@ -2682,6 +2701,96 @@ export class OrchestratorTaskService extends Service {
     this.sessionTaskIndex.set(result.sessionId, taskId);
     await this.advanceTaskStatus(taskId, "active");
     return this.getTask(taskId);
+  }
+
+  /**
+   * Bind an ACP session that was spawned OUTSIDE `spawnAgentForTask` (e.g. the
+   * `TASKS:create` chat action, which spawns via `AcpService.spawnSession`
+   * directly and does its own multi-part label / prefix / model routing) into
+   * an existing task thread's session index.
+   *
+   * Without this the task store's `sessionTaskIndex` never learns about those
+   * sessions, so `resolveTaskId` returns undefined, the event bridge drops
+   * their events, and DTOs read `0/0 agents` with no token attribution.
+   *
+   * Idempotent: attaching the same sessionId twice is a no-op (the store's
+   * `addSession` also upserts by sessionId). If the task doesn't exist, returns
+   * `false` — callers treat that as a soft failure, same policy as thread-mint
+   * failure in the create action.
+   *
+   * Only advances the task status to `active` for a non-terminal session; a
+   * session that's already `completed` / `stopped` / `error` on arrival gets
+   * indexed for history + token attribution but doesn't lie about liveness.
+   */
+  async attachSession(
+    taskId: string,
+    input: AttachSessionInput,
+  ): Promise<boolean> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return false;
+    // Idempotent short-circuit — already indexed against THIS task.
+    if (this.sessionTaskIndex.get(input.sessionId) === taskId) {
+      const existing = doc.sessions.find(
+        (s) => s.sessionId === input.sessionId,
+      );
+      if (existing) return true;
+    }
+    const account = accountMetaFromSessionMetadata(input.metadata);
+    const ts = nowIso();
+    const now = Date.now();
+    const originalTask = input.originalTask ?? doc.task.goal;
+    const session: OrchestratorTaskSession = {
+      id: randomUUID(),
+      taskId,
+      sessionId: input.sessionId,
+      framework: input.agentType,
+      ...(input.providerSource ? { providerSource: input.providerSource } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(account
+        ? {
+            accountProviderId: account.providerId,
+            accountId: account.accountId,
+            accountLabel: account.label,
+          }
+        : {}),
+      label: input.label ?? input.sessionId,
+      originalTask,
+      ...(input.goalPrompt ? { goalPrompt: input.goalPrompt } : {}),
+      workdir: input.workdir,
+      ...(input.repo ? { repo: input.repo } : {}),
+      status: input.status,
+      decisionCount: 0,
+      autoResolvedCount: 0,
+      registeredAt: now,
+      lastActivityAt: now,
+      idleCheckCount: 0,
+      taskDelivered: false,
+      lastSeenDecisionIndex: 0,
+      spawnedAt: now,
+      ...(TERMINAL_TASK_SESSION_STATUSES.has(input.status)
+        ? { stoppedAt: now }
+        : {}),
+      retryCount: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cacheTokens: 0,
+      costUsd: 0,
+      usageState: "unavailable",
+      metadata: {},
+      createdAt: ts,
+      updatedAt: ts,
+    };
+    await this.store.addSession(session);
+    this.sessionTaskIndex.set(input.sessionId, taskId);
+    // Only claim liveness if the session actually is live — a terminal-on-
+    // arrival session (chat action's runPromptAndClose already stopped it) gets
+    // indexed for history + future token attribution without falsely promoting
+    // task status.
+    if (!TERMINAL_TASK_SESSION_STATUSES.has(input.status)) {
+      await this.advanceTaskStatus(taskId, "active");
+    }
+    return true;
   }
 
   async sendToTaskAgent(
