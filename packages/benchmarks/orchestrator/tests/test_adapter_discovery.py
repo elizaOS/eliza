@@ -81,6 +81,7 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
     assert ".pytest_cache" not in discovery.all_directories
     assert "memperf" not in discovery.all_directories
     assert "mobile-resource" not in discovery.all_directories
+    assert "view-bundle-size" not in discovery.all_directories
     assert "skillsbench" not in discovery.all_directories
     assert "skillsbench" not in orchestrator_adapters.IGNORED_BENCHMARK_DIRS
     assert not (_workspace_root() / "benchmarks" / "skillsbench").exists()

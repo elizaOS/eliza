@@ -76,6 +76,7 @@ IGNORED_BENCHMARK_DIRS = {
     "loadperf",
     "memperf",
     "mobile-resource",
+    "view-bundle-size",
     "voice",
     # Legacy/partial shim with no source files in this checkout.
     "eliza-format",
