@@ -12,11 +12,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO_ROOT="$(cd ../.. && pwd)"
-RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.mjs"
 PY=${PY:-python3}
 WORK=$(mktemp -d -t eliza-ci-XXXXXX)
-trap 'node "$RM_PATH_RECURSIVE" "$WORK"' EXIT
+# This smoke runs in a python-only container with no node on PATH, so clean the
+# mktemp scratch dir with rm -rf (repo convention) instead of the node helper —
+# otherwise the EXIT trap fails with `node: command not found` (exit 127) even
+# after every smoke phase passes.
+trap 'rm -rf "$WORK"' EXIT
 
 step() { echo; echo "[ci-smoke] $*"; }
 fail() { echo "[ci-smoke] FAIL: $*" >&2; exit 1; }
