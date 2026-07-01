@@ -46,6 +46,7 @@
 
 import type { Plugin } from "@elizaos/core";
 import { createAdSlotAction, listAdSlotsAction } from "./actions/ad-inventory.js";
+import { backupAppAction } from "./actions/backup-app.js";
 import { bookInfluencerAction } from "./actions/book-influencer.js";
 import { createAppAction } from "./actions/create-app.js";
 import { deleteAppAction } from "./actions/delete-app.js";
@@ -67,6 +68,7 @@ import { withdrawAppEarningsAction } from "./actions/withdraw-app-earnings.js";
 import { cloudAppsProvider } from "./providers/cloud-apps.js";
 
 export { createAdSlotAction, listAdSlotsAction } from "./actions/ad-inventory.js";
+export { backupAppAction } from "./actions/backup-app.js";
 export { bookInfluencerAction } from "./actions/book-influencer.js";
 export { createAppAction } from "./actions/create-app.js";
 export { deleteAppAction } from "./actions/delete-app.js";
@@ -116,6 +118,7 @@ export const cloudAppsPlugin: Plugin = {
     bookInfluencerAction,
     createAdSlotAction,
     listAdSlotsAction,
+    backupAppAction,
   ],
   providers: [cloudAppsProvider],
 };

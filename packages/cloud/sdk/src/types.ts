@@ -1298,3 +1298,37 @@ export interface ListAdSlotsResponse {
   success: boolean;
   slots: AdSlotDto[];
 }
+
+// ---- App config backup / restore (#10204) ----
+
+export interface AppBackupSnapshot {
+  version: number;
+  exportedAt: string;
+  app: {
+    name: string;
+    description: string | null;
+    app_url: string;
+    allowed_origins: string[];
+    logo_url: string | null;
+    website_url: string | null;
+    contact_email: string | null;
+    linked_character_ids: string[];
+  };
+  monetization: {
+    enabled: boolean;
+    inference_markup_percentage: number;
+    purchase_share_percentage: number;
+  };
+  active_frontend_content_hash?: string | null;
+}
+
+export interface ExportAppBackupResponse {
+  success: boolean;
+  backup: AppBackupSnapshot;
+}
+
+export interface RestoreAppBackupResponse {
+  success: boolean;
+  app: { id: string; name: string; slug: string };
+  apiKey: string;
+}

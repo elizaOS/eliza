@@ -26,7 +26,10 @@ import {
   type ContainerCredentialsResponse,
   type ContainerGetResponse,
   type ContainerHealthResponse,
+  type AppBackupSnapshot,
   type ContainerListResponse,
+  type ExportAppBackupResponse,
+  type RestoreAppBackupResponse,
   type ContainerQuotaResponse,
   type CreateAdSlotInput,
   type CreateAdSlotResponse,
@@ -940,6 +943,18 @@ export class ElizaCloudClient {
       "GET",
       "/api/v1/marketing/inventory",
     );
+  }
+
+  /** `GET /api/v1/apps/:id/backup` — export a secret-free app config snapshot (#10204). */
+  exportAppBackup(appId: string): Promise<ExportAppBackupResponse> {
+    return this.request<ExportAppBackupResponse>("GET", `/api/v1/apps/${appId}/backup`);
+  }
+
+  /** `POST /api/v1/apps/backup/restore` — recreate an app from a backup snapshot. */
+  restoreAppBackup(backup: AppBackupSnapshot, name?: string): Promise<RestoreAppBackupResponse> {
+    return this.request<RestoreAppBackupResponse>("POST", "/api/v1/apps/backup/restore", {
+      json: name ? { backup, name } : { backup },
+    });
   }
 
   createContainer(

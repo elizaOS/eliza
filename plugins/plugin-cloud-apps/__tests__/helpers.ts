@@ -32,10 +32,12 @@ import type {
   UpdateAppMonetizationInput,
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
+  type AppBackupSnapshot,
   type CreateBookingInput,
   type CreateBookingResponse,
   type CreateInfluencerProfileInput,
   type CreateInfluencerProfileResponse,
+  type ExportAppBackupResponse,
   type ListInfluencersResponse,
 } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
@@ -54,6 +56,7 @@ type CreateInfluencerProfileFn = (input: CreateInfluencerProfileInput) => Promis
 type ListInfluencersFn = (niche?: string) => Promise<ListInfluencersResponse>;
 type CreateAdSlotFn = (input: CreateAdSlotInput) => Promise<CreateAdSlotResponse>;
 type ListAdSlotsFn = () => Promise<ListAdSlotsResponse>;
+type ExportAppBackupFn = (appId: string) => Promise<ExportAppBackupResponse>;
 type DeployAppFn = (
   id: string,
   input?: DeployAppInput,
@@ -95,6 +98,7 @@ interface SdkState {
   listInfluencers: ListInfluencersFn;
   createAdSlot: CreateAdSlotFn;
   listAdSlots: ListAdSlotsFn;
+  exportAppBackup: ExportAppBackupFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
   updateApp: UpdateAppFn;
@@ -161,6 +165,7 @@ function defaultState(): SdkState {
         },
       }),
     listAdSlots: () => Promise.resolve({ success: true, slots: [] }),
+    exportAppBackup: () => Promise.resolve({ success: true, backup: { version: 1, exportedAt: "2020-01-01T00:00:00Z", app: { name: "App", description: null, app_url: "https://a", allowed_origins: [], logo_url: null, website_url: null, contact_email: null, linked_character_ids: [] }, monetization: { enabled: false, inference_markup_percentage: 0, purchase_share_percentage: 0 } } as AppBackupSnapshot }),
     getAppDeployStatus: () =>
       Promise.resolve({
         success: true,
@@ -221,6 +226,9 @@ export function setCreateAdSlot(fn: CreateAdSlotFn): void {
 }
 export function setListAdSlots(fn: ListAdSlotsFn): void {
   state.listAdSlots = fn;
+}
+export function setExportAppBackup(fn: ExportAppBackupFn): void {
+  state.exportAppBackup = fn;
 }
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
@@ -289,6 +297,9 @@ export class FakeElizaCloudClient {
   }
   listAdSlots(): Promise<ListAdSlotsResponse> {
     return state.listAdSlots();
+  }
+  exportAppBackup(appId: string): Promise<ExportAppBackupResponse> {
+    return state.exportAppBackup(appId);
   }
   getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id);
