@@ -20,6 +20,7 @@ import { type EmbedPlatform, verifyEmbedLaunch } from "./auth/embed-handshake";
 import {
   DEFAULT_EMBED_TOKEN_TTL_MS,
   mintEmbedSessionToken,
+  resolveEmbedSessionSecretForRuntime,
 } from "./auth/embed-session-token";
 import {
   type CompatRuntimeState,
@@ -32,24 +33,6 @@ import {
 
 function isEmbedPlatform(value: unknown): value is EmbedPlatform {
   return value === "telegram" || value === "discord";
-}
-
-/**
- * Resolve the secret used to sign the scoped embed session token. Prefers a
- * dedicated `ELIZA_EMBED_SESSION_SECRET`, falling back to the configured
- * `ELIZA_API_TOKEN`. Returns `null` when neither is set — the route then returns
- * the verified principal without a token rather than minting one with no secret.
- */
-function resolveEmbedTokenSecret(runtime: {
-  getSetting?: (key: string) => unknown;
-}): string | null {
-  for (const key of ["ELIZA_EMBED_SESSION_SECRET", "ELIZA_API_TOKEN"]) {
-    const value = runtime.getSetting?.(key);
-    if (typeof value === "string" && value.trim().length >= 16) {
-      return value.trim();
-    }
-  }
-  return null;
 }
 
 export async function handleEmbedAuthRoutes(
@@ -106,7 +89,7 @@ export async function handleEmbedAuthRoutes(
 
   // Mint the scoped, short-lived embed session token the cross-origin SPA will
   // present back (first-party Steward cookies do not cross into the iframe).
-  const secret = resolveEmbedTokenSecret(runtime);
+  const secret = resolveEmbedSessionSecretForRuntime(runtime);
   const expiresAt = Date.now() + DEFAULT_EMBED_TOKEN_TTL_MS;
   const token = secret
     ? mintEmbedSessionToken(
