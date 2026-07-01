@@ -470,6 +470,15 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
     };
     return mod.hyperliquidPlugin ?? null;
   }
+  if (pkg === "@elizaos/plugin-anthropic-proxy") {
+    const mod = (await import(
+      "../../../plugins/plugin-anthropic-proxy/index.ts"
+    )) as {
+      default?: Plugin;
+      anthropicProxyPlugin?: Plugin;
+    };
+    return mod.default ?? mod.anthropicProxyPlugin ?? null;
+  }
 
   const mod = (await import(pkg)) as Record<string, unknown>;
   const isPlugin = (value: unknown): value is Plugin => {

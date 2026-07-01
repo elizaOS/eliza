@@ -12,10 +12,9 @@ name: Keyless Harness E2E
 # secret — every provider key below is explicitly blanked to prove the loops
 # stay green without one.
 #
-# This is intentionally a NEW, additive lane (not an edit to the load-bearing
-# scenario-pr / test workflows) so a change here can never red-X the broader PR
-# gate. It runs in seconds: install with scripts skipped, then the central
-# vitest config plus a small set of per-plugin harness adoption proofs.
+# This standalone lane remains an always-on PR smoke. The same harness commands
+# are also folded into `.github/workflows/test.yml` through `zero-key-e2e` so at
+# least one per-plugin proof participates in the required `test-status` gate.
 
 on:
   pull_request:
@@ -74,6 +73,9 @@ jobs:
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       # Deterministic mock-LLM proxy + recorded payment/connector fixtures.
       # test/mocks/__tests__/** drives both with zero credentials.

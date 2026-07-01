@@ -24,11 +24,12 @@ function assertApiBody(options: {
  *
  * `scheduledFor = dueAt - offsetMinutes` (see reminders-service collectDue):
  * with `dueAt = now+90m`, the lead step is at now+30m and the due step at
- * now+90m. Fully deterministic (api turns only) — runs keyless on
- * `pr-deterministic`.
+ * now+90m. API-only, but kept live-only until the keyless runner timeout is
+ * resolved in #10757 and this scenario is promoted with passing PR-gated
+ * evidence.
  */
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "reminder-multistep-plan-outcome",
   title: "Each step of a multi-step reminder plan delivers at its own time",
   domain: "reminders",

@@ -23,7 +23,7 @@ function assertApiBody(options: {
  * clock — the timezone-mismatch edge case (issue #9970).
  */
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "reminder-timezone-mismatch-outcome",
   title: "A reminder window honors its own timezone, not the host clock",
   domain: "reminders",

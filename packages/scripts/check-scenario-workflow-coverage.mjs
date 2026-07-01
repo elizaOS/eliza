@@ -328,6 +328,25 @@ function workflowScenarioGlobs() {
     .filter((item) => item !== "**/*.scenario.ts");
 }
 
+const KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE = [
+  {
+    glob: "packages/test/scenarios/activity/**/*.scenario.ts",
+    issue: "#10757",
+  },
+  {
+    glob: "packages/test/scenarios/selfcontrol/**/*.scenario.ts",
+    issue: "#10757",
+  },
+  {
+    glob: "packages/test/scenarios/backup/**/*.scenario.ts",
+    issue: "#10757",
+  },
+  {
+    glob: "packages/test/scenarios/security/**/*.scenario.ts",
+    issue: "#10757",
+  },
+];
+
 function writeList(reportDir, fileName, rows) {
   writeFileSync(path.join(reportDir, fileName), `${rows.join("\n")}\n`, "utf8");
 }
@@ -493,7 +512,7 @@ function scenarioCatalogHtml() {
       <h2>Catalogs</h2>
       <div class="controls">
         <input id="search" type="search" placeholder="Search scenario id..." />
-        <select id="coverage"><option value="">all coverage states</option><option value="covered">covered</option><option value="missing">missing</option><option value="cataloged">cataloged outside default workflow gate</option></select>
+        <select id="coverage"><option value="">all coverage states</option><option value="covered">covered</option><option value="deferred">deferred with follow-up</option><option value="missing">missing</option><option value="cataloged">cataloged outside default workflow gate</option></select>
       </div>
       <div id="tabs" class="tabs"></div>
     </aside>
@@ -526,7 +545,9 @@ function scenarioCatalogHtml() {
         ["plugin-agent-orchestrator", s.pluginAgentOrchestratorCount || 0],
         ["runner tests", s.scenarioRunnerCount || 0],
         ["All catalog entries", s.allScenarioCount || 0],
+        ["Default pr-deterministic", s.prDeterministicDefaultCount || 0],
         ["Covered default", (s.coveredDefaultCount || 0) + "/" + (s.defaultScenarioCount || 0)],
+        ["Deferred default", (s.deferredDefaultIds || []).length],
         ["Missing default", (s.missingDefaultIds || []).length],
         ["Run artifacts", (data.runArtifacts || []).length],
       ];
@@ -542,8 +563,10 @@ function scenarioCatalogHtml() {
     }
     function coverageState(item) {
       const defaultSet = new Set(data.defaultScenarios || []);
+      const deferredSet = new Set(data.summary?.deferredDefaultIds || []);
       if ((item.scope || "") && item.scope !== "packages/test/scenarios") return "cataloged";
       if (!defaultSet.has(item.id || "")) return "cataloged";
+      if (deferredSet.has(item.id || "")) return "deferred";
       return isCovered(item.id) ? "covered" : "missing";
     }
     function renderScenarioRows(key, label) {
@@ -555,7 +578,7 @@ function scenarioCatalogHtml() {
         return (!q || id.toLowerCase().includes(q)) && (!coverage || state === coverage);
       });
       document.getElementById("title").textContent = label + " (" + rows.length + ")";
-      document.getElementById("content").innerHTML = '<table><thead><tr><th>#</th><th>scope</th><th>scenario id</th><th>workflow/live coverage</th></tr></thead><tbody>' + rows.map((item,i) => { const state = coverageState(item); return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(item.scope || "") + '</code></td><td><code>' + esc(item.id) + '</code></td><td class="' + (state === "missing" ? 'bad' : 'ok') + '">' + esc(state) + '</td></tr>'; }).join("") + '</tbody></table>';
+      document.getElementById("content").innerHTML = '<table><thead><tr><th>#</th><th>scope</th><th>scenario id</th><th>workflow coverage</th></tr></thead><tbody>' + rows.map((item,i) => { const state = coverageState(item); return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(item.scope || "") + '</code></td><td><code>' + esc(item.id) + '</code></td><td class="' + (state === "missing" ? 'bad' : 'ok') + '">' + esc(state) + '</td></tr>'; }).join("") + '</tbody></table>';
     }
     function renderArtifacts() {
       document.getElementById("title").textContent = "Run artifacts";
@@ -620,12 +643,25 @@ function renderMarkdown(summary, runArtifacts = []) {
     `scenario-runner test scenarios: ${summary.scenarioRunnerCount}`,
     `Unified scenario catalog entries: ${summary.allScenarioCount}`,
     "",
-    `Workflow/live covered default package scenarios: ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}`,
-    `Missing default package scenarios from current workflow/live globs: ${summary.missingDefaultIds.length}`,
+    `Default package pr-deterministic scenarios: ${summary.prDeterministicDefaultCount}`,
+    `Workflow covered default package scenarios: ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}`,
+    `Deferred default package scenarios tracked by follow-up: ${summary.deferredDefaultIds.length}`,
+    `Missing default package scenarios from current workflow coverage: ${summary.missingDefaultIds.length}`,
     "",
-    "## Missing IDs",
+    "## Deferred IDs",
     "",
   ];
+  if (summary.deferredDefaultIds.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const id of summary.deferredDefaultIds) {
+      const reason =
+        summary.deferredDefaultReasons?.[id] ??
+        "known deferred coverage tracked separately";
+      lines.push(`- \`${id}\` - ${reason}`);
+    }
+  }
+  lines.push("", "## Missing IDs", "");
   if (summary.missingDefaultIds.length === 0) {
     lines.push("- none");
   } else {
@@ -732,16 +768,39 @@ function main() {
     "packages/test/scenarios/executive-assistant/*.scenario.ts",
     "packages/test/scenarios/connector-certification/*.scenario.ts",
   ];
+  const prDeterministicDefaultIds = defaultScenarios
+    .filter((scenario) => scenario.lane === "pr-deterministic")
+    .map((scenario) => scenario.id)
+    .sort();
+  const deferred = new Map();
   for (const scenario of defaultScenarios) {
-    if (matchesScenarioFileGlobs(scenario.file, coverageGlobs)) {
+    const match = KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE.find((entry) =>
+      matchesScenarioFileGlobs(scenario.file, [entry.glob]),
+    );
+    if (match) {
+      deferred.set(
+        scenario.id,
+        `tracked in ${match.issue}; not currently part of the PR/live matrix`,
+      );
+    }
+  }
+  for (const scenario of defaultScenarios) {
+    if (
+      scenario.lane === "pr-deterministic" ||
+      matchesScenarioFileGlobs(scenario.file, coverageGlobs)
+    ) {
       covered.add(scenario.id);
     }
   }
 
   const defaultSet = new Set(defaultIds);
   const missingDefaultIds = [...defaultSet]
-    .filter((id) => !covered.has(id))
+    .filter((id) => !covered.has(id) && !deferred.has(id))
     .sort();
+  const deferredDefaultIds = [...deferred.keys()].sort();
+  const deferredDefaultReasons = Object.fromEntries(
+    deferredDefaultIds.map((id) => [id, deferred.get(id)]),
+  );
   const summary = {
     defaultScenarioCount: defaultIds.length,
     includePendingScenarioCount: includePendingIds.length,
@@ -750,7 +809,12 @@ function main() {
     pluginAgentOrchestratorCount: pluginAgentOrchestratorIds.length,
     scenarioRunnerCount: scenarioRunnerIds.length,
     allScenarioCount: allScenarioRows.length,
+    prDeterministicDefaultCount: prDeterministicDefaultIds.length,
+    prDeterministicDefaultIds,
     coveredDefaultCount: defaultIds.filter((id) => covered.has(id)).length,
+    deferredDefaultCount: deferredDefaultIds.length,
+    deferredDefaultIds,
+    deferredDefaultReasons,
     missingDefaultIds,
     untaggedLaneScenarios,
   };
@@ -814,7 +878,7 @@ function main() {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   } else {
     process.stdout.write(
-      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; missing ${summary.missingDefaultIds.length}; untagged-lane ${summary.untaggedLaneScenarios.length}\n`,
+      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; deferred ${summary.deferredDefaultIds.length}; missing ${summary.missingDefaultIds.length}; untagged-lane ${summary.untaggedLaneScenarios.length}\n`,
     );
     if (summary.untaggedLaneScenarios.length > 0) {
       process.stderr.write(

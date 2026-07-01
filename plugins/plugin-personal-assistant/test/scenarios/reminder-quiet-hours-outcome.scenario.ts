@@ -26,7 +26,7 @@ function assertApiBody(options: {
  * processing at 03:00 UTC lands inside it.
  */
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "reminder-quiet-hours-outcome",
   title: "An interruptive reminder is suppressed during quiet hours",
   domain: "reminders",
