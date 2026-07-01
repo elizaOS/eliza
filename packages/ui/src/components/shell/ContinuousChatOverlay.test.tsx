@@ -1290,13 +1290,15 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 
-  it("does not render a separate transcribe button in the composer", () => {
+  it("hides the transcribe button when NOT in voice mode (#10699)", () => {
+    // Default controller: no hands-free, not recording → resting composer shows
+    // only the single mic control.
     render(<ContinuousChatOverlay controller={makeController()} />);
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
   });
 
-  it("keeps the composer transcribe button hidden during voice capture", () => {
+  it("shows the transcribe button in voice mode, next to the mic (#10699)", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -1306,11 +1308,15 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
+    // Both controls present in voice mode; the mic stays the master control.
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
-    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+    expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
+    expect(
+      screen.getByTestId("chat-composer-transcribe").getAttribute("aria-label"),
+    ).toBe("start transcription");
   });
 
-  it("shows transcription status without adding a composer transcribe button", () => {
+  it("shows the transcribe button (as stop) while transcribing, alongside the status badge (#10699)", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -1320,7 +1326,24 @@ describe("ContinuousChatOverlay", () => {
     );
     fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
-    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+    const transcribe = screen.getByTestId("chat-composer-transcribe");
+    expect(transcribe).toBeTruthy();
+    expect(transcribe.getAttribute("aria-label")).toBe("stop transcription");
+  });
+
+  it("clicking the transcribe button toggles transcription mode (#10699)", () => {
+    const toggleTranscriptionMode = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          handsFree: true,
+          recording: true,
+          toggleTranscriptionMode,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("chat-composer-transcribe"));
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the mic button ON while transcribing (additive, not a takeover)", () => {
