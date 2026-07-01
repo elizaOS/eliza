@@ -308,12 +308,6 @@ function buildDefaultPrepareCommands() {
       env: commonEnv,
     },
     {
-      label: "ui css string modules",
-      cwd: "packages/ui",
-      command: [bunBin, "run", "generate:css-strings"],
-      env: commonEnv,
-    },
-    {
       label: "cloud dev vars",
       cwd: ".",
       command: cloudDevVarsCommand,

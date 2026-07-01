@@ -947,13 +947,6 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
 }
 
-function ensureUiGeneratedAssets() {
-  runBun(["run", "generate:css-strings"], {
-    cwd: UI_PACKAGE_DIR,
-    label: "Generating @elizaos/ui CSS string modules",
-  });
-}
-
 function desktopRendererBuildEnv() {
   const env = {
     ...process.env,
@@ -1327,11 +1320,6 @@ function stageDesktopBuild() {
   // dev builds stay fast; auto-built best-effort on CI release builds.
   stageDesktopFusedLib();
 
-  runBun(["run", "generate:css-strings"], {
-    cwd: UI_PACKAGE_DIR,
-    label: "Generating UI runtime CSS string modules",
-  });
-
   runBun([WRITE_BUILD_INFO_SCRIPT], {
     cwd: ROOT,
     label: "Writing build metadata",
@@ -1352,8 +1340,6 @@ function stageDesktopBuild() {
     ELECTROBUN_DIR,
     "Ensuring Electrobun workspace dependencies are installed",
   );
-
-  ensureUiGeneratedAssets();
 
   // Capture the moment the renderer build starts so we can prove afterward that
   // a FRESH bundle was produced — not a stale dist silently reused (issue #9309).
