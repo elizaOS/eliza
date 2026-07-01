@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import type { WalletBalancesResponse } from "@elizaos/shared";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../api", () => ({
@@ -158,5 +164,110 @@ describe("WalletBalanceWidget", () => {
     const { container } = render(<WalletBalanceWidget />);
     await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
+  });
+
+  it("navigates to the wallet view when the tile is tapped", async () => {
+    getWalletBalances.mockResolvedValue({
+      evm: null,
+      solana: { address: "sol1", solBalance: "1", solValueUsd: "42", tokens: [] },
+    });
+
+    render(<WalletBalanceWidget />);
+    const tile = await screen.findByTestId("chat-widget-wallet-balance");
+
+    expect(navOpenView).not.toHaveBeenCalled();
+    fireEvent.click(tile);
+
+    expect(navOpenView).toHaveBeenCalledTimes(1);
+    expect(navOpenView).toHaveBeenCalledWith("/wallet", "wallet");
+  });
+
+  it("routes each rapid double-tap to the same wallet view (idempotent target)", async () => {
+    getWalletBalances.mockResolvedValue({
+      evm: null,
+      solana: { address: "sol1", solBalance: "1", solValueUsd: "42", tokens: [] },
+    });
+
+    render(<WalletBalanceWidget />);
+    const tile = await screen.findByTestId("chat-widget-wallet-balance");
+
+    fireEvent.click(tile);
+    fireEvent.click(tile);
+    fireEvent.click(tile);
+
+    expect(navOpenView).toHaveBeenCalledTimes(3);
+    // Every activation resolves to the identical destination — no drift/mutation.
+    for (const call of navOpenView.mock.calls) {
+      expect(call).toEqual(["/wallet", "wallet"]);
+    }
+  });
+
+  it("renders nothing (no throw) when the wallet endpoint rejects", async () => {
+    const rejection = new Error("wallet endpoint unreachable");
+    getWalletBalances.mockRejectedValue(rejection);
+
+    const { container } = render(<WalletBalanceWidget />);
+
+    await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
+    // Error path is balance-gated to empty: the loading placeholder must clear
+    // and nothing renders — the rejection is swallowed, not surfaced.
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("chat-widget-wallet-balance-loading"),
+      ).toBeNull();
+      expect(container.firstChild).toBeNull();
+    });
+    expect(navOpenView).not.toHaveBeenCalled();
+  });
+
+  it("degrades malformed/NaN USD strings to zero without polluting the total", async () => {
+    getWalletBalances.mockResolvedValue({
+      evm: {
+        address: "0xabc",
+        chains: [
+          {
+            chain: "ethereum",
+            chainId: 1,
+            nativeBalance: "1",
+            nativeSymbol: "ETH",
+            nativeValueUsd: "not-a-number",
+            tokens: [
+              {
+                symbol: "USDC",
+                name: "USD Coin",
+                balance: "100",
+                decimals: 6,
+                valueUsd: "100",
+                logoUrl: "",
+                contractAddress: "0xusdc",
+              },
+              {
+                symbol: "BAD",
+                name: "Corrupt Feed",
+                balance: "5",
+                decimals: 18,
+                valueUsd: "",
+                logoUrl: "",
+                contractAddress: "0xbad",
+              },
+            ],
+            error: null,
+          },
+        ],
+      },
+      solana: null,
+    });
+
+    render(<WalletBalanceWidget />);
+    await screen.findByTestId("chat-widget-wallet-balance");
+
+    // Malformed native ("not-a-number") + empty token ("") both → 0; only the
+    // valid 100 survives. The rendered value must be exactly the clean total,
+    // never "$NaN".
+    const rendered = screen.getByTestId("value").textContent ?? "";
+    expect(rendered).not.toContain("NaN");
+    expect(rendered).toContain("100");
+    // The chain still carries positive value → counted as one chain.
+    expect(screen.getByTestId("badge").textContent).toBe("1 chain");
   });
 });
