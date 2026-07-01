@@ -18,12 +18,12 @@
 import type {
   Action,
   ActionResult,
-  Content,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
+import { defineActionParameters } from "../../../shared/action-parameters";
 import type { BroadcastFn, DispatchAgentChatFn } from "./dispatch-types";
 
 /** Per-agent dispatch timeout — prevents one slow agent from blocking all others */
@@ -50,14 +50,14 @@ export const dispatchToAgentsAction: Action = {
 
   // Parameters defined as plain object for Feed's dispatch system.
   // Cast needed: alpha elizaos expects ActionParameter[] (protobuf array).
-  parameters: {
+  parameters: defineActionParameters({
     dispatches: {
       type: "array",
       required: true,
       description:
         'Array of dispatch objects, each with agentId and command. Example: [{"agentId": "abc", "command": "check positions"}, {"agentId": "def", "command": "analyze trends"}]',
     },
-  },
+  }),
 
   examples: [
     [
@@ -137,7 +137,7 @@ export const dispatchToAgentsAction: Action = {
         success: false,
         text: "Missing required parameters for multi-agent dispatch. Provide an array of {agentId, command} objects.",
       };
-      _callback?.({ content: failResult });
+      _callback?.({ text: failResult.text });
       return failResult;
     }
 
@@ -199,7 +199,10 @@ export const dispatchToAgentsAction: Action = {
     // Collect results
     const agentResults: AgentDispatchResult[] = settledResults.map(
       (settled, i) => {
-        const dispatch = cappedDispatches[i]!;
+        const dispatch = cappedDispatches[i];
+        if (!dispatch) {
+          throw new Error(`Missing dispatch metadata for result ${i}`);
+        }
         if (settled.status === "fulfilled") {
           const result = settled.value;
           return {
@@ -245,7 +248,11 @@ export const dispatchToAgentsAction: Action = {
         totalCount,
       },
     };
-    _callback?.({ content: finalResult });
+    _callback?.({
+      text: finalResult.text,
+      successCount,
+      totalCount,
+    });
     return finalResult;
   },
 };

@@ -69,6 +69,17 @@ interface ExtendedAgentRuntime extends AgentRuntime {
   trajectoryLogger?: TrajectoryLoggerService;
 }
 
+function toMessageExampleGroups(
+  examples: PackActor["messageExamples"],
+): Character["messageExamples"] {
+  return examples.map((exampleGroup) => ({
+    examples: exampleGroup.map(({ user, content }) => ({
+      name: user,
+      content,
+    })),
+  }));
+}
+
 /** Global runtime cache for warm container reuse */
 const globalRuntimes = new Map<string, AgentRuntime>();
 
@@ -182,7 +193,10 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
       return [];
     }
     ensureRoom(roomId);
-    const members = roomParticipants.get(roomId)!;
+    const members = roomParticipants.get(roomId);
+    if (!members) {
+      return [];
+    }
     for (const participantId of participantIds) {
       members.add(participantId);
     }
@@ -674,7 +688,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
 }
 
 function applyRuntimeCompatibilityShims(runtime: AgentRuntime): void {
-  const adapterRecord = runtime.adapter as Record<
+  const adapterRecord = runtime.adapter as unknown as Record<
     string,
     unknown
   > | null;
@@ -682,7 +696,7 @@ function applyRuntimeCompatibilityShims(runtime: AgentRuntime): void {
     return;
   }
 
-  const runtimeRecord = runtime as Record<string, unknown>;
+  const runtimeRecord = runtime as unknown as Record<string, unknown>;
   const bindAdapterMethod = (
     runtimeName: string,
     adapterName: string,
@@ -920,7 +934,10 @@ export class AgentRuntimeManager {
           createdAtMs: Date.now(),
           refreshCount: 0,
         });
-        const runtime = globalRuntimes.get(agentUserId)!;
+        const runtime = globalRuntimes.get(agentUserId);
+        if (!runtime) {
+          throw new Error(`Runtime cache miss for agent ${agentUserId}`);
+        }
         logger.info(
           `Using cached runtime for agent ${agentUserId} (lifecycle initialized)`,
           undefined,
@@ -930,7 +947,10 @@ export class AgentRuntimeManager {
       }
 
       if (!this.shouldRefreshRuntime(lifecycle.createdAtMs)) {
-        const runtime = globalRuntimes.get(agentUserId)!;
+        const runtime = globalRuntimes.get(agentUserId);
+        if (!runtime) {
+          throw new Error(`Runtime cache miss for agent ${agentUserId}`);
+        }
         logger.info(
           `Using cached runtime for agent ${agentUserId}`,
           undefined,
@@ -1365,7 +1385,7 @@ export class AgentRuntimeManager {
         topics: packActor.topics,
         adjectives: packActor.adjectives,
         style: packActor.style,
-        messageExamples: packActor.messageExamples,
+        messageExamples: toMessageExampleGroups(packActor.messageExamples),
         postExamples: packActor.postExamples,
         plugins: [],
         settings: {
@@ -1661,7 +1681,11 @@ export class AgentRuntimeManager {
         undefined,
         "AgentRuntimeManager",
       );
-      return globalRuntimes.get(COORDINATOR_RUNTIME_ID)!;
+      const runtime = globalRuntimes.get(COORDINATOR_RUNTIME_ID);
+      if (!runtime) {
+        throw new Error("Coordinator runtime cache miss");
+      }
+      return runtime;
     }
 
     // Check if there's already a pending creation to avoid race conditions

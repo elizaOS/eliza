@@ -21,6 +21,15 @@ export interface AgentIdentity {
   instanceId: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getActorFeed(actor: object): Record<string, unknown> | undefined {
+  const feed = Reflect.get(actor, "feed");
+  return isRecord(feed) ? feed : undefined;
+}
+
 /**
  * Build identity map of ALL agents so interaction labeling can determine
  * whether a counterparty is red/blue/gray. Without this, all interaction
@@ -35,9 +44,7 @@ export async function buildAgentIdentityMap(): Promise<
   try {
     const allActors = StaticDataRegistry.getAllActors();
     for (const actor of allActors) {
-      const feed = (actor as Record<string, unknown>).feed as
-        | Record<string, unknown>
-        | undefined;
+      const feed = getActorFeed(actor);
       if (!feed) continue;
       map.set(actor.id, {
         team: (feed.team as string) ?? "gray",
@@ -89,9 +96,7 @@ export async function populateIdentityMapOnRuntime(
 
   // Store this agent's own alignment for downstream use
   if (isNpc) {
-    const feed = (
-      runtime.character as { feed?: Record<string, unknown> }
-    ).feed;
+    const feed = (runtime.character as { feed?: Record<string, unknown> }).feed;
     (runtime as { _agentTeam?: string })._agentTeam =
       (feed?.team as string) ?? "gray";
     (runtime as { _agentAlignment?: string })._agentAlignment =
