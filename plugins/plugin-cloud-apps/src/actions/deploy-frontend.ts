@@ -15,7 +15,10 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { DeployAppFrontendInput, FrontendUploadFileInput } from "@elizaos/cloud-sdk";
+import type {
+  DeployAppFrontendInput,
+  FrontendUploadFileInput,
+} from "@elizaos/cloud-sdk";
 import type {
   Action,
   ActionResult,
@@ -38,6 +41,8 @@ const NO_REFERENCE_MESSAGE =
   "Which app's frontend should I publish? Tell me the app name and the built-site directory.";
 const NO_SOURCE_MESSAGE =
   "I need the built site to publish — give me the directory of your build output (e.g. ./dist) or the files.";
+const OUTSIDE_ROOT_MESSAGE =
+  "I can only publish build output from the configured frontend build root.";
 const ERROR_MESSAGE =
   "I couldn't publish that frontend right now — the Cloud API returned an error. Try again in a moment.";
 
@@ -47,8 +52,17 @@ const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".turbo", ".cache"]);
 const SKIP_FILES = new Set([".DS_Store", "Thumbs.db"]);
 const TEXT_EXTS = new Set([
-  "html", "htm", "js", "mjs", "css", "json", "webmanifest", "map", "txt",
-  "xml", "svg",
+  "html",
+  "htm",
+  "js",
+  "mjs",
+  "css",
+  "json",
+  "webmanifest",
+  "map",
+  "txt",
+  "xml",
+  "svg",
 ]);
 
 interface FrontendIntent {
@@ -58,14 +72,23 @@ interface FrontendIntent {
   spaFallback?: boolean;
 }
 
-const DIRECTORY_KEYS = ["directory", "dir", "path", "buildDir", "build_dir", "source"];
+const DIRECTORY_KEYS = [
+  "directory",
+  "dir",
+  "path",
+  "buildDir",
+  "build_dir",
+  "source",
+];
+const FRONTEND_BUILD_ROOT_SETTING = "ELIZAOS_CLOUD_FRONTEND_BUILD_ROOT";
 
 function readOptionRecord(options: unknown): Record<string, unknown> | null {
   if (!options || typeof options !== "object") return null;
   const opts = options as Record<string, unknown>;
   // Validated planner params arrive nested under `parameters`; fall back to top-level.
   const nested = opts.parameters;
-  if (nested && typeof nested === "object") return nested as Record<string, unknown>;
+  if (nested && typeof nested === "object")
+    return nested as Record<string, unknown>;
   return opts;
 }
 
@@ -84,12 +107,49 @@ function parseIntent(options: unknown): FrontendIntent {
     intent.files = rec.files as FrontendUploadFileInput[];
   }
   if (typeof rec.entrypoint === "string") intent.entrypoint = rec.entrypoint;
-  if (typeof rec.spaFallback === "boolean") intent.spaFallback = rec.spaFallback;
+  if (typeof rec.spaFallback === "boolean")
+    intent.spaFallback = rec.spaFallback;
   return intent;
 }
 
+function isInsideRoot(root: string, target: string): boolean {
+  const rel = path.relative(root, target);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+async function resolveFrontendBuildRoot(
+  runtime: IAgentRuntime,
+): Promise<string> {
+  const configured = runtime.getSetting?.(FRONTEND_BUILD_ROOT_SETTING);
+  const root =
+    typeof configured === "string" && configured.trim().length > 0
+      ? configured.trim()
+      : process.cwd();
+  const absRoot = path.isAbsolute(root)
+    ? path.resolve(root)
+    : path.resolve(process.cwd(), root);
+  return fs.realpath(absRoot);
+}
+
+async function resolveBuildDirectory(
+  runtime: IAgentRuntime,
+  requestedDirectory: string,
+): Promise<string> {
+  const root = await resolveFrontendBuildRoot(runtime);
+  const requested = path.isAbsolute(requestedDirectory)
+    ? path.resolve(requestedDirectory)
+    : path.resolve(root, requestedDirectory);
+  const realRequested = await fs.realpath(requested);
+  if (!isInsideRoot(root, realRequested)) {
+    throw new Error(OUTSIDE_ROOT_MESSAGE);
+  }
+  return realRequested;
+}
+
 /** Walk a build directory into upload files (text as utf8, binary as base64). */
-async function readDirectoryAsFiles(root: string): Promise<FrontendUploadFileInput[]> {
+async function readDirectoryAsFiles(
+  root: string,
+): Promise<FrontendUploadFileInput[]> {
   const files: FrontendUploadFileInput[] = [];
   let totalBytes = 0;
 
@@ -101,23 +161,40 @@ async function readDirectoryAsFiles(root: string): Promise<FrontendUploadFileInp
         await walk(path.join(dir, entry.name));
         continue;
       }
-      if (!entry.isFile() || SKIP_FILES.has(entry.name)) continue;
+      if (
+        !entry.isFile() ||
+        SKIP_FILES.has(entry.name) ||
+        entry.name.startsWith(".")
+      )
+        continue;
 
       const abs = path.join(dir, entry.name);
       const rel = path.relative(root, abs).split(path.sep).join("/");
       const bytes = await fs.readFile(abs);
       totalBytes += bytes.byteLength;
       if (files.length + 1 > MAX_FILES) {
-        throw new Error(`Too many files (> ${MAX_FILES}). Trim the build output.`);
+        throw new Error(
+          `Too many files (> ${MAX_FILES}). Trim the build output.`,
+        );
       }
       if (totalBytes > MAX_TOTAL_BYTES) {
-        throw new Error(`Build exceeds the ${MAX_TOTAL_BYTES / (1024 * 1024)}MB frontend cap.`);
+        throw new Error(
+          `Build exceeds the ${MAX_TOTAL_BYTES / (1024 * 1024)}MB frontend cap.`,
+        );
       }
       const ext = rel.split(".").pop()?.toLowerCase() ?? "";
       if (TEXT_EXTS.has(ext)) {
-        files.push({ path: rel, content: bytes.toString("utf8"), encoding: "utf8" });
+        files.push({
+          path: rel,
+          content: bytes.toString("utf8"),
+          encoding: "utf8",
+        });
       } else {
-        files.push({ path: rel, content: bytes.toString("base64"), encoding: "base64" });
+        files.push({
+          path: rel,
+          content: bytes.toString("base64"),
+          encoding: "base64",
+        });
       }
     }
   }
@@ -128,10 +205,17 @@ async function readDirectoryAsFiles(root: string): Promise<FrontendUploadFileInp
 
 export const deployFrontendAction: Action = {
   name: "DEPLOY_FRONTEND",
-  similes: ["HOST_FRONTEND", "PUBLISH_SITE", "PUBLISH_FRONTEND", "DEPLOY_SITE", "HOST_SITE"],
+  similes: [
+    "HOST_FRONTEND",
+    "PUBLISH_SITE",
+    "PUBLISH_FRONTEND",
+    "DEPLOY_SITE",
+    "HOST_SITE",
+  ],
   description:
     "Publish a static frontend (built site directory or files) to an Eliza Cloud app's managed host, served with SEO + analytics. Use when the user asks to host, publish, or deploy the app's website/frontend.",
-  descriptionCompressed: "Publish an app's static frontend to Eliza Cloud managed hosting.",
+  descriptionCompressed:
+    "Publish an app's static frontend to Eliza Cloud managed hosting.",
   contexts: ["settings", "apps"],
   contextGate: { anyOf: ["settings", "apps"] },
   suppressPostActionContinuation: true,
@@ -160,7 +244,10 @@ export const deployFrontendAction: Action = {
 
     const reference = extractAppReference(message, options);
     if (!reference) {
-      await callback?.({ text: NO_REFERENCE_MESSAGE, actions: ["DEPLOY_FRONTEND"] });
+      await callback?.({
+        text: NO_REFERENCE_MESSAGE,
+        actions: ["DEPLOY_FRONTEND"],
+      });
       return {
         success: false,
         text: "No app reference supplied.",
@@ -190,9 +277,14 @@ export const deployFrontendAction: Action = {
       if (intent.files && intent.files.length > 0) {
         files = intent.files;
       } else if (intent.directory) {
-        files = await readDirectoryAsFiles(intent.directory);
+        files = await readDirectoryAsFiles(
+          await resolveBuildDirectory(runtime, intent.directory),
+        );
       } else {
-        await callback?.({ text: NO_SOURCE_MESSAGE, actions: ["DEPLOY_FRONTEND"] });
+        await callback?.({
+          text: NO_SOURCE_MESSAGE,
+          actions: ["DEPLOY_FRONTEND"],
+        });
         return {
           success: false,
           text: "No build directory or files provided.",
@@ -202,7 +294,10 @@ export const deployFrontendAction: Action = {
       }
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      await callback?.({ text: `I couldn't read the build: ${detail}`, actions: ["DEPLOY_FRONTEND"] });
+      await callback?.({
+        text: `I couldn't read the build: ${detail}`,
+        actions: ["DEPLOY_FRONTEND"],
+      });
       return {
         success: false,
         text: "Failed to read build output.",
@@ -213,7 +308,10 @@ export const deployFrontendAction: Action = {
     }
 
     if (files.length === 0) {
-      await callback?.({ text: NO_SOURCE_MESSAGE, actions: ["DEPLOY_FRONTEND"] });
+      await callback?.({
+        text: NO_SOURCE_MESSAGE,
+        actions: ["DEPLOY_FRONTEND"],
+      });
       return {
         success: false,
         text: "No files to publish.",
