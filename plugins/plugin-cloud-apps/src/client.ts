@@ -161,42 +161,111 @@ export function formatAppDetail(app: AppDto): string {
 }
 
 /**
- * Resolve an app from a free-text reference (id or name) against a list.
+ * Result of resolving a free-text app reference: a single confident match, or —
+ * when the reference is ambiguous (several apps match equally well) — no match
+ * plus the tied `candidates`, so a destructive/money action can ask the user to
+ * disambiguate instead of silently acting on the wrong app.
+ */
+export interface AppReferenceMatch {
+  app: AppDto | null;
+  candidates: AppDto[];
+}
+
+/** Escape a string for safe literal use inside a RegExp. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * True when `needle` occurs in `haystack` bounded by non-alphanumeric
+ * characters (a word boundary) — so "bot" matches "delete bot" but NOT the
+ * "bot" inside "chatbot". Both sides are matched case-insensitively.
+ */
+function containsAsWholeWord(haystack: string, needle: string): boolean {
+  return new RegExp(
+    `(^|[^a-z0-9])${escapeRegExp(needle)}([^a-z0-9]|$)`,
+    "i",
+  ).test(haystack);
+}
+
+/**
+ * Specificity score for how well the lowercased reference `lower` targets an
+ * app's name/slug. 0 = no match; higher = more specific:
+ *   - the name/slug appears in the reference as WHOLE WORDS (a sentence naming
+ *     the app) — scored by the matched name length, so a longer, more specific
+ *     name ("Prod API Backup", 15) beats a prefix ("Prod API", 8).
+ *   - otherwise the reference is a substring the user typed of the name/slug (a
+ *     fragment like "acme") — always scored below any whole-word match.
+ */
+function referenceScore(lower: string, app: AppDto): number {
+  let best = 0;
+  for (const field of [app.name, app.slug]) {
+    const f = (field ?? "").toLowerCase();
+    if (!f) continue;
+    if (f.length >= 3 && containsAsWholeWord(lower, f)) {
+      best = Math.max(best, 1000 + f.length);
+    } else if (lower.length >= 2 && f.includes(lower)) {
+      best = Math.max(best, 500 + lower.length);
+    }
+  }
+  return best;
+}
+
+/**
+ * Resolve an app from a free-text reference against a list, ambiguity-aware.
  *
  * Match priority:
  *   1. exact id
  *   2. exact (case-insensitive) name or slug
- *   3. bidirectional substring on name/slug — the reference may be a fragment of
- *      the name ("acme") OR a full sentence containing the name ("tell me about
- *      my Acme Bot app"). The "reference contains name" direction requires a
- *      name/slug of >= 3 chars to avoid spurious matches inside a sentence.
+ *   3. best-scoring fuzzy match ({@link referenceScore}) — a whole-word
+ *      name-in-sentence beats a typed fragment, and a longer name beats a
+ *      shorter prefix. When two or more apps tie for the top score the result
+ *      is AMBIGUOUS: `app` is null and `candidates` holds the tied apps.
  *
- * Returns null when nothing matches.
+ * Never silently returns the first of several equally-good matches — the old
+ * raw-substring `find()` let a one-message "delete Prod API Backup" resolve to
+ * (and tear down) the wrong "Prod API" app, and "delete my chatbot helper"
+ * match an app named "Bot" via the "bot" inside "chatbot".
+ */
+export function matchAppByReference(
+  apps: AppDto[],
+  reference: string,
+): AppReferenceMatch {
+  const ref = reference.trim();
+  if (!ref) return { app: null, candidates: [] };
+  const lower = ref.toLowerCase();
+
+  const byId = apps.find((a) => a.id === ref);
+  if (byId) return { app: byId, candidates: [byId] };
+
+  const exact = apps.filter(
+    (a) => a.name.toLowerCase() === lower || a.slug.toLowerCase() === lower,
+  );
+  if (exact.length === 1) return { app: exact[0], candidates: exact };
+  if (exact.length > 1) return { app: null, candidates: exact };
+
+  const scored = apps
+    .map((a) => ({ app: a, score: referenceScore(lower, a) }))
+    .filter((s) => s.score > 0);
+  if (scored.length === 0) return { app: null, candidates: [] };
+
+  const max = Math.max(...scored.map((s) => s.score));
+  const top = scored.filter((s) => s.score === max).map((s) => s.app);
+  return top.length === 1
+    ? { app: top[0], candidates: top }
+    : { app: null, candidates: top };
+}
+
+/**
+ * Back-compat single-result resolver: the confident match, or null (including
+ * when the reference is ambiguous). Prefer {@link matchAppByReference} when you
+ * need to surface the tied candidates to the user.
  */
 export function findAppByReference(
   apps: AppDto[],
   reference: string,
 ): AppDto | null {
-  const ref = reference.trim();
-  if (!ref) return null;
-  const lower = ref.toLowerCase();
-
-  const byId = apps.find((a) => a.id === ref);
-  if (byId) return byId;
-
-  const byExactName = apps.find(
-    (a) => a.name.toLowerCase() === lower || a.slug.toLowerCase() === lower,
-  );
-  if (byExactName) return byExactName;
-
-  const matchesField = (field: string): boolean => {
-    const f = field.toLowerCase();
-    if (!f) return false;
-    if (f.includes(lower)) return true; // reference is a fragment of the name
-    return f.length >= 3 && lower.includes(f); // sentence contains the name
-  };
-
-  return apps.find((a) => matchesField(a.name) || matchesField(a.slug)) ?? null;
+  return matchAppByReference(apps, reference).app;
 }
 
 /** RFC-4122-ish UUID shape check (used to take the direct `getApp(id)` path). */
@@ -240,17 +309,24 @@ export function extractAppReference(
 }
 
 export interface ResolvedApp {
-  /** The matched app, or null when nothing matched. */
+  /** The matched app, or null when nothing matched OR the reference was ambiguous. */
   app: AppDto | null;
   /** Names of the user's apps (for a helpful not-found message). */
   available: string[];
+  /**
+   * Names of the tied candidate apps when the reference was AMBIGUOUS (set only
+   * when `app` is null because >1 app matched equally well). Lets a
+   * destructive/money action ask "which one?" instead of a generic not-found.
+   */
+  ambiguous?: string[];
 }
 
 /**
  * Resolve an app from a free-text reference against the user's apps. Id-shaped
  * references take the direct `getApp(id)` path; names resolve via `listApps()` +
- * {@link findAppByReference}. Read-only — used by the mutating actions to locate
- * the target before they mutate it.
+ * {@link matchAppByReference}. Read-only — used by the mutating actions to locate
+ * the target before they mutate it. When the reference is ambiguous, `app` is
+ * null and `ambiguous` holds the tied candidate names.
  */
 export async function resolveApp(
   client: ElizaCloudClient,
@@ -262,8 +338,13 @@ export async function resolveApp(
   }
   const { apps } = await client.listApps();
   const list = apps ?? [];
+  const match = matchAppByReference(list, reference);
   return {
-    app: findAppByReference(list, reference),
+    app: match.app,
     available: list.map((a) => a.name),
+    ambiguous:
+      match.app === null && match.candidates.length > 1
+        ? match.candidates.map((a) => a.name)
+        : undefined,
   };
 }
