@@ -45,6 +45,7 @@ import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { reservationOutputTokens } from "./chat-reservation";
 import { reconcileStreamProcessingError } from "./stream-refund";
 
 const ROUTE_MAX_DURATION = 800;
@@ -52,10 +53,6 @@ const ROUTE_MAX_DURATION = 800;
 // Safety multiplier for cost estimation to reduce undercharging risk
 // We charge 1.5x estimated upfront, then reconcile to actual
 const COST_SAFETY_MULTIPLIER = 1.5;
-
-// Default estimated output tokens for cost pre-calculation
-// This is a reasonable average for chat completions
-const DEFAULT_ESTIMATED_OUTPUT_TOKENS = 500;
 
 function isProviderHttpError(error: unknown): error is ProviderHttpError {
   return Boolean(
@@ -298,7 +295,12 @@ async function handlePOST(
       .join(" ");
 
     const estimatedInputTokens = estimateTokens(inputText);
-    const estimatedOutputTokens = DEFAULT_ESTIMATED_OUTPUT_TOKENS;
+    // #10924: reserve for the caller's max_tokens ceiling (forwarded to the
+    // provider), not a fixed estimate — otherwise a low-balance caller drains
+    // inference the all-or-nothing reconcile can't recover.
+    const estimatedOutputTokens = reservationOutputTokens(
+      chatRequest.max_tokens,
+    );
     const { totalCost: estimatedBaseCost } = await calculateCost(
       normalizedModel,
       provider,
