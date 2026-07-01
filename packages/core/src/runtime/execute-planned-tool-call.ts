@@ -262,6 +262,18 @@ export async function executePlannedToolCall(
 				{ failOnUnresolved: true },
 			);
 		}
+		// Egress (#10469 / #7007): restore real named-entity PII here too —
+		// including the REPLY action's own text, so the tool call runs against the
+		// real recipient and the user sees their real contacts, while the model,
+		// trajectory, and logs kept the surrogates. Best-effort (no failOnUnresolved):
+		// a surrogate the model rewrote, or a genuinely new name it introduced, is
+		// simply left as-is.
+		const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
+		if (piiSwapSession && handlerOptions.parameters !== undefined) {
+			handlerOptions.parameters = piiSwapSession.restoreInValue(
+				handlerOptions.parameters,
+			);
+		}
 		const result = await runWithActionRoutingContext(
 			{ actionName: action.name, modelClass: action.modelClass },
 			() =>
