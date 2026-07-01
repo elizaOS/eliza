@@ -18,8 +18,8 @@
  *
  * The source table is NEVER dropped or altered. `life_inbox_triage_entries`
  * maps columns explicitly so old `app_lifeops` rows copy into the newer
- * additive `snoozed_until` target column as NULL; the other two tables still
- * use the identical-column `SELECT s.*` copy.
+ * additive `snoozed_until` target column as NULL when the source predates that
+ * column; the other two tables still use the identical-column `SELECT s.*` copy.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
@@ -98,6 +98,23 @@ async function targetTableIsEmpty(
   return rows[0]?.empty === true || rows[0]?.empty === "true";
 }
 
+async function sourceColumnExists(
+  exec: SqlExecutor,
+  table: MigratedInboxTable,
+  column: string,
+): Promise<boolean> {
+  const rows = await exec(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = '${SOURCE_SCHEMA}'
+         AND table_name = '${table}'
+         AND column_name = '${column}'
+     ) AS present`,
+  );
+  return rows[0]?.present === true || rows[0]?.present === "true";
+}
+
 async function repairTargetTable(
   exec: SqlExecutor,
   table: MigratedInboxTable,
@@ -124,10 +141,17 @@ export async function migrateInboxTable(
   const target = `${TARGET_SCHEMA}.${quoteIdent(table)}`;
   const source = `${SOURCE_SCHEMA}.${quoteIdent(table)}`;
   if (table === "life_inbox_triage_entries") {
+    const hasSourceSnoozedUntil = await sourceColumnExists(
+      exec,
+      table,
+      "snoozed_until",
+    );
     const columns = TRIAGE_ENTRY_COLUMNS.map(quoteIdent).join(", ");
     const sourceColumns = TRIAGE_ENTRY_COLUMNS.map((column) =>
       column === "snoozed_until"
-        ? "NULL AS snoozed_until"
+        ? hasSourceSnoozedUntil
+          ? `s.${quoteIdent(column)}`
+          : "NULL AS snoozed_until"
         : `s.${quoteIdent(column)}`,
     ).join(", ");
     await exec(

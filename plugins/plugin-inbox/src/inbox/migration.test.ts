@@ -42,6 +42,7 @@ describe("InboxMigration", () => {
       [
         [/to_regclass/, [{ present: true }]],
         [/SELECT NOT EXISTS \(SELECT 1 FROM/, [{ empty: true }]],
+        [/information_schema\.columns/, [{ present: false }]],
       ],
       log,
     );
@@ -62,12 +63,31 @@ describe("InboxMigration", () => {
     expect(log.some((s) => /DROP|ALTER .*app_lifeops/.test(s))).toBe(false);
   });
 
+  it("preserves source snooze values when the legacy source has the column", async () => {
+    const log: string[] = [];
+    const exec = fakeExec(
+      [
+        [/to_regclass/, [{ present: true }]],
+        [/SELECT NOT EXISTS \(SELECT 1 FROM/, [{ empty: true }]],
+        [/information_schema\.columns/, [{ present: true }]],
+      ],
+      log,
+    );
+
+    const r = await migrateInboxTable(exec, "life_inbox_triage_entries");
+
+    expect(r.outcome).toBe("copied");
+    expect(log.some((s) => /s\."snoozed_until"/.test(s))).toBe(true);
+    expect(log.some((s) => /NULL AS snoozed_until/.test(s))).toBe(false);
+  });
+
   it("creates the target schema and processes every inbox table", async () => {
     const log: string[] = [];
     const exec = fakeExec(
       [
         [/to_regclass/, [{ present: true }]],
         [/SELECT NOT EXISTS/, [{ empty: true }]],
+        [/information_schema\.columns/, [{ present: false }]],
       ],
       log,
     );
