@@ -185,13 +185,34 @@ function isApexControlPlaneHost(): boolean {
 }
 
 /**
+ * Where an authenticated visitor landing on the apex ROOT is sent. The apex
+ * (elizacloud.ai) is the cloud CONSOLE — its job is "add credits / manage your
+ * account", not chat (chat is the agent app's home, served from
+ * app.elizacloud.ai). `/settings#billing` is the canonical credits/billing
+ * surface (every in-app billing link resolves here, e.g. the
+ * `dashboard/billing → /settings#billing` compat redirect above) and its tabbed
+ * shell (Billing · Developer/API keys · Connections · Organization) is the
+ * account-management hub. Both domains serve the SAME packages/app bundle, so
+ * without this the apex and the app subdomain look identical when signed in.
+ */
+const APEX_AUTHENTICATED_HOME = "/settings#billing";
+
+/**
  * Catch-all element. Renders the agent app exactly as before, EXCEPT on an apex
- * control-plane host where the Steward session is resolved-and-unauthenticated —
- * there it redirects to the registered cloud `/login` page (`returnTo`
- * preserved) instead of booting the agent shell that would 401-wall. The apex
- * 401-wall was a router fall-through: no route registers the apex root `/`, so
- * an unauthenticated apex visitor hit this catch-all and booted the agent
- * runtime against a backend that isn't there.
+ * control-plane host, where it makes the two domains behave differently:
+ *
+ *  - unauthenticated → the Steward `/login` page (`returnTo` preserved) instead
+ *    of booting the agent shell that would 401-wall on `/api/*`. (The apex
+ *    401-wall was a router fall-through: no route registers the apex root `/`,
+ *    so an unauthenticated apex visitor hit this catch-all and booted the agent
+ *    runtime against a backend that isn't there.)
+ *  - authenticated AND on the bare apex root (`/`) → the cloud console home
+ *    ({@link APEX_AUTHENTICATED_HOME}) instead of chat, so elizacloud.ai lands
+ *    on the credits/manage dashboard. Deeper apex paths (a shared agent, a deep
+ *    link) still render the app so those links keep working.
+ *
+ * Every non-apex host (per-agent subdomains, app.elizacloud.ai, localhost) is
+ * untouched: chat stays home.
  */
 export function AppCatchAllRoute({
   appElement,
@@ -200,11 +221,21 @@ export function AppCatchAllRoute({
 }): React.JSX.Element {
   const { ready, authenticated } = useSessionAuth();
   const location = useLocation();
-  if (isApexControlPlaneHost() && ready && !authenticated) {
-    const returnTo = encodeURIComponent(
-      `${location.pathname}${location.search}`,
-    );
-    return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
+  if (isApexControlPlaneHost() && ready) {
+    if (!authenticated) {
+      const returnTo = encodeURIComponent(
+        `${location.pathname}${location.search}`,
+      );
+      return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
+    }
+    // Authenticated on the bare apex root → the console home. Guard on the root
+    // path (and no tab hash) so we redirect ONLY the landing, never a deep link
+    // the user navigated to on purpose. The target is `/settings`, which is not
+    // an apex-console route, so it re-enters this catch-all at a non-root path
+    // and renders the app (which reads `#billing`) — no redirect loop.
+    if (location.pathname === "/" && !location.hash) {
+      return <Navigate to={APEX_AUTHENTICATED_HOME} replace />;
+    }
   }
   return <>{appElement}</>;
 }
