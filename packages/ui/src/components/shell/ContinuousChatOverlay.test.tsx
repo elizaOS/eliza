@@ -1079,7 +1079,7 @@ describe("ContinuousChatOverlay", () => {
       const bubble = screen
         .getByText("the answer is 42")
         .closest('[data-testid="thread-line"]')
-        ?.querySelector("div") as HTMLElement;
+        ?.querySelector("div.select-text") as HTMLElement;
       fireEvent.pointerDown(bubble, { clientX: 10, clientY: 10, pointerId: 1 });
       act(() => {
         vi.advanceTimersByTime(450); // past the hold threshold
@@ -1119,7 +1119,7 @@ describe("ContinuousChatOverlay", () => {
       const bubble = screen
         .getByText(text)
         .closest('[data-testid="thread-line"]')
-        ?.querySelector("div") as HTMLElement;
+        ?.querySelector("div.select-text") as HTMLElement;
       expect(bubble.className).toContain("select-text");
       expect(bubble.className).not.toContain("select-none");
       expect(textNode.closest('[data-chat-selectable="true"]')).toBeTruthy();
@@ -1937,7 +1937,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
         controller={makeController({
           responding: false,
           messages: reasoningMessages,
-        })}
+        } as unknown as Partial<ShellController>)}
       />,
     );
     // Open the sheet so the thread (and its reasoning block) mounts.
@@ -1957,7 +1957,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
         controller={makeController({
           responding: false,
           messages: reasoningMessages,
-        })}
+        } as unknown as Partial<ShellController>)}
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
@@ -1975,10 +1975,149 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
           // block stays hidden until the stream completes.
           responding: true,
           messages: reasoningMessages,
-        })}
+        } as unknown as Partial<ShellController>)}
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
+  });
+});
+
+// Per-message click-to-reveal action row (#10713): assistant → Copy + Play,
+// user → Copy + Edit-and-resend, temp turns are not editable.
+describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
+  function openThreadWith(overrides: Partial<ShellController>) {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController(overrides as Partial<ShellController>)}
+      />,
+    );
+    // Focusing the composer opens the sheet so the transcript renders.
+    fireEvent.focus(screen.getByLabelText("message"));
+  }
+
+  function bubbleFor(text: string): HTMLElement {
+    return screen
+      .getByText(text)
+      .closest('[data-testid="thread-line"]')
+      ?.querySelector("div.select-text") as HTMLElement;
+  }
+
+  it("reveals Copy + Play on an assistant message and no top-menu copy button", () => {
+    const speak = vi.fn();
+    openThreadWith({
+      messages: [{ id: "a", role: "assistant", content: "the answer", createdAt: 1 }],
+      speak,
+      speaking: false,
+    });
+    // No row until the bubble is clicked.
+    expect(screen.queryByTestId("thread-line-actions")).toBeNull();
+    fireEvent.click(bubbleFor("the answer"));
+    expect(screen.getByTestId("thread-line-actions")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-speak")).toBeTruthy();
+    // Assistant has no edit affordance.
+    expect(screen.queryByTestId("thread-line-edit")).toBeNull();
+    // The removed "copy conversation" top-menu button stays gone.
+    expect(
+      screen.queryByRole("button", { name: /copy conversation/i }),
+    ).toBeNull();
+  });
+
+  it("Play speaks the assistant message via the controller", () => {
+    const speak = vi.fn();
+    openThreadWith({
+      messages: [{ id: "a", role: "assistant", content: "read me aloud", createdAt: 1 }],
+      speak,
+      speaking: false,
+    });
+    fireEvent.click(bubbleFor("read me aloud"));
+    fireEvent.click(screen.getByTestId("thread-line-speak"));
+    expect(speak).toHaveBeenCalledWith("read me aloud");
+  });
+
+  it("Play toggles to Stop while speaking", () => {
+    const speak = vi.fn();
+    const stopSpeaking = vi.fn();
+    openThreadWith({
+      messages: [{ id: "a", role: "assistant", content: "now playing", createdAt: 1 }],
+      speak,
+      stopSpeaking,
+      speaking: true,
+    });
+    fireEvent.click(bubbleFor("now playing"));
+    const play = screen.getByTestId("thread-line-speak");
+    expect(play.getAttribute("aria-label")).toBe("Stop");
+    fireEvent.click(play);
+    // While speaking, the control stops playback instead of re-speaking.
+    expect(stopSpeaking).toHaveBeenCalledTimes(1);
+    expect(speak).not.toHaveBeenCalled();
+  });
+
+  it("row Copy writes the message text to the clipboard", () => {
+    vi.mocked(copyTextToClipboard).mockClear();
+    openThreadWith({
+      messages: [{ id: "a", role: "assistant", content: "copy this text", createdAt: 1 }],
+      speak: vi.fn(),
+    });
+    fireEvent.click(bubbleFor("copy this text"));
+    fireEvent.click(screen.getByTestId("thread-line-copy"));
+    expect(copyTextToClipboard).toHaveBeenCalledWith("copy this text");
+  });
+
+  it("reveals Copy + Edit on a user message and resends the edited text", () => {
+    const send = vi.fn();
+    openThreadWith({
+      messages: [{ id: "u", role: "user", content: "helo wrld", createdAt: 1 }],
+      send,
+    });
+    fireEvent.click(bubbleFor("helo wrld"));
+    expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-edit")).toBeTruthy();
+    // User turns have no play control.
+    expect(screen.queryByTestId("thread-line-speak")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("thread-line-edit"));
+    const input = screen.getByTestId("thread-line-edit-input") as HTMLTextAreaElement;
+    expect(input.value).toBe("helo wrld");
+    fireEvent.change(input, { target: { value: "hello world" } });
+    fireEvent.click(screen.getByTestId("thread-line-edit-save"));
+    expect(send).toHaveBeenCalledWith("hello world");
+  });
+
+  it("does not offer Edit on an optimistic temp- user turn", () => {
+    openThreadWith({
+      messages: [{ id: "temp-123", role: "user", content: "pending turn", createdAt: 1 }],
+      send: vi.fn(),
+    });
+    fireEvent.click(bubbleFor("pending turn"));
+    expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
+    expect(screen.queryByTestId("thread-line-edit")).toBeNull();
+  });
+
+  it("dismisses the row on an outside tap", () => {
+    openThreadWith({
+      messages: [{ id: "a", role: "assistant", content: "tap away", createdAt: 1 }],
+      speak: vi.fn(),
+    });
+    fireEvent.click(bubbleFor("tap away"));
+    expect(screen.getByTestId("thread-line-actions")).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByTestId("thread-line-actions")).toBeNull();
+  });
+
+  it("Escape cancels the inline editor without resending", () => {
+    const send = vi.fn();
+    openThreadWith({
+      messages: [{ id: "u", role: "user", content: "keep me", createdAt: 1 }],
+      send,
+    });
+    fireEvent.click(bubbleFor("keep me"));
+    fireEvent.click(screen.getByTestId("thread-line-edit"));
+    const input = screen.getByTestId("thread-line-edit-input");
+    fireEvent.change(input, { target: { value: "changed" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
+    expect(send).not.toHaveBeenCalled();
   });
 });

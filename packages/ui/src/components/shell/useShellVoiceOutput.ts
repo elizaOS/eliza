@@ -22,6 +22,12 @@ function findLatestAssistantText(
 export interface ShellVoiceOutput {
   /** True while an assistant reply is being spoken aloud. */
   speaking: boolean;
+  /**
+   * Speak an arbitrary message aloud on demand — backs the per-message
+   * "Play audio" control (#10713). Distinct from the automatic voice-reply
+   * playback: this is user-initiated, so it ignores the voice-turn gate.
+   */
+  speak: (text: string) => void;
   /** Immediately stop any in-flight assistant speech (e.g. on hands-free exit). */
   stopSpeaking: () => void;
   /** True while assistant voice output is muted by the user. */
@@ -73,6 +79,7 @@ export function useShellVoiceOutput(
 
   const {
     queueAssistantSpeech,
+    speak,
     stopSpeaking,
     isSpeaking,
     needsAudioUnlock,
@@ -162,6 +169,7 @@ export function useShellVoiceOutput(
 
   return {
     speaking: isSpeaking,
+    speak,
     stopSpeaking,
     agentVoiceMuted,
     toggleAgentVoiceMute,

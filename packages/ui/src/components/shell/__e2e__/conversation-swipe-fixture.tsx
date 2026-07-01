@@ -237,6 +237,8 @@ function Harness(): React.JSX.Element {
     transcriptionMode: false,
     transcript: "",
     speaking: false,
+    speak: () => {},
+    stopSpeaking: () => {},
     agentVoiceMuted: false,
     needsAudioUnlock: false,
     modelStatus: {
