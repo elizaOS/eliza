@@ -52,6 +52,12 @@ describe("InboxMigration", () => {
         /INSERT INTO .*app_inbox.*life_inbox_triage_entries/s.test(s),
       ),
     ).toBe(true);
+    expect(log.some((s) => /NULL AS snoozed_until/.test(s))).toBe(true);
+    expect(
+      log.some((s) =>
+        /ALTER TABLE app_inbox\."life_inbox_triage_entries"/.test(s),
+      ),
+    ).toBe(true);
     // never touches the source
     expect(log.some((s) => /DROP|ALTER .*app_lifeops/.test(s))).toBe(false);
   });

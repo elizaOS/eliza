@@ -60,6 +60,7 @@ function triageRow(
     suggested_response: "Sure, will do.",
     draft_response: null,
     auto_replied: false,
+    snoozed_until: null,
     resolved: false,
     resolved_at: null,
     created_at: "2026-06-17T10:00:00.000Z",
@@ -120,8 +121,29 @@ describe("InboxRepository", () => {
 
     const select = env.calls[0]?.sql ?? "";
     expect(select).toContain("resolved = FALSE");
+    expect(select).toContain("snoozed_until IS NULL");
     expect(select).toContain("CASE urgency WHEN 'high' THEN 0");
     expect(select).toContain("LIMIT 25");
+  });
+
+  it("can include snoozed unresolved rows when explicitly requested", async () => {
+    env = makeRuntime((sql) => {
+      if (sql.includes("life_inbox_triage_entries")) {
+        return [
+          triageRow({
+            id: "snoozed",
+            snoozed_until: "2099-01-01T00:00:00.000Z",
+          }),
+        ];
+      }
+      return [];
+    });
+    const repo = new InboxRepository(env.runtime);
+    const rows = await repo.getUnresolved({ includeSnoozed: true });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.snoozedUntil).toBe("2099-01-01T00:00:00.000Z");
+    expect(env.calls[0]?.sql).not.toContain("snoozed_until IS NULL");
   });
 
   it("getByClassification filters on classification and unresolved", async () => {
@@ -178,6 +200,26 @@ describe("InboxRepository", () => {
     expect(update?.sql).toContain("resolved = TRUE");
     expect(update?.sql).toContain("draft_response = 'done'");
     expect(update?.sql).toContain("auto_replied = TRUE");
+    expect(update?.sql).toContain("WHERE id = 'row-1'");
+  });
+
+  it("updateDraftResponse persists a draft without resolving the entry", async () => {
+    const repo = new InboxRepository(env.runtime);
+    await repo.updateDraftResponse("row-1", "Draft reply");
+
+    const update = env.calls.find((c) => c.sql.startsWith("UPDATE"));
+    expect(update?.sql).toContain("draft_response = 'Draft reply'");
+    expect(update?.sql).not.toContain("resolved = TRUE");
+    expect(update?.sql).toContain("WHERE id = 'row-1'");
+  });
+
+  it("snoozeUntil stores the wake timestamp and keeps the entry unresolved", async () => {
+    const repo = new InboxRepository(env.runtime);
+    await repo.snoozeUntil("row-1", "2026-07-02T04:00:00.000Z");
+
+    const update = env.calls.find((c) => c.sql.startsWith("UPDATE"));
+    expect(update?.sql).toContain("snoozed_until = '2026-07-02T04:00:00.000Z'");
+    expect(update?.sql).toContain("resolved = FALSE");
     expect(update?.sql).toContain("WHERE id = 'row-1'");
   });
 

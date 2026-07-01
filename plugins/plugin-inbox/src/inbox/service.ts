@@ -409,6 +409,11 @@ export class InboxService {
     );
   }
 
+  /** Snooze a triage entry until a future ISO timestamp. */
+  async snooze(id: string, snoozedUntil: string): Promise<void> {
+    await this.repository.snoozeUntil(id, snoozedUntil);
+  }
+
   /** Non-ignored triage entries created since `sinceIso`, urgency-ordered. */
   async digest(sinceIso: string): Promise<TriageEntry[]> {
     return this.repository.getRecentForDigest(sinceIso);
