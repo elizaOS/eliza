@@ -22,6 +22,10 @@ import type {
 import { MCPMethod } from "../types/mcp";
 import { executeTool } from "./tool-handlers";
 
+function asJsonRpcResult(result: unknown): JsonRpcResult {
+  return result as JsonRpcResult;
+}
+
 /**
  * MCP Request Handler
  * Processes JSON-RPC 2.0 requests and routes to appropriate handlers
@@ -91,7 +95,7 @@ export class MCPRequestHandler {
     return {
       jsonrpc: "2.0",
       id: request.id,
-      result: result as unknown as JsonRpcResult,
+      result: asJsonRpcResult(result),
     };
   }
 
@@ -120,7 +124,7 @@ export class MCPRequestHandler {
     return {
       jsonrpc: "2.0",
       id: request.id,
-      result: result as unknown as JsonRpcResult,
+      result: asJsonRpcResult(result),
     };
   }
 
@@ -182,7 +186,7 @@ export class MCPRequestHandler {
       return {
         jsonrpc: "2.0",
         id: request.id,
-        result: result as unknown as JsonRpcResult,
+        result: asJsonRpcResult(result),
       };
     } catch (error) {
       // Per MCP spec: Tool execution errors should be reported in tool results
@@ -203,7 +207,7 @@ export class MCPRequestHandler {
       return {
         jsonrpc: "2.0",
         id: request.id,
-        result: result as unknown as JsonRpcResult,
+        result: asJsonRpcResult(result),
       };
     }
   }

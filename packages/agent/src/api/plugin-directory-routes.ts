@@ -2,7 +2,6 @@ import type http from "node:http";
 import path from "node:path";
 import {
   buildStoreVariantBlockedMessage,
-  type IAgentRuntime,
   isLocalCodeExecutionAllowed,
 } from "@elizaos/core";
 import { buildPluginReloadedViewEvent } from "./plugin-reloaded-event.ts";
@@ -84,7 +83,7 @@ export async function handlePluginDirectoryRoutes(
       (await import("../runtime/load-plugin-from-directory.ts"))
         .loadPluginFromDirectory;
     const result = await loadPluginFromDirectory({
-      runtime: state.runtime as IAgentRuntime,
+      runtime: state.runtime,
       directory,
       ...(entry ? { entry } : {}),
     });

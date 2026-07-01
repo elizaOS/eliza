@@ -131,12 +131,19 @@ export function rankByKeyword<T>(
   );
   const results = bm25.search(query, items.length);
   if (results.length === 0) return items.map((item) => ({ item, score: 0 }));
-  const maxScore = results[0]?.score ?? 0;
+  const firstScore = results[0]?.score;
+  const maxScore = typeof firstScore === "number" ? firstScore : 0;
   const scoreByIndex = new Map(results.map((r) => [r.index, r.score]));
-  return items.map((item, i) => ({
-    item,
-    score: maxScore > 0 ? (scoreByIndex.get(i) ?? 0) / maxScore : 0,
-  }));
+  return items.map((item, i) => {
+    const indexedScore = scoreByIndex.get(i);
+    return {
+      item,
+      score:
+        maxScore > 0
+          ? (typeof indexedScore === "number" ? indexedScore : 0) / maxScore
+          : 0,
+    };
+  });
 }
 
 /**

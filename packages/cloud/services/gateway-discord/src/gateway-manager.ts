@@ -30,6 +30,23 @@ import {
   VoiceMessageHandler,
 } from "./voice-message-handler";
 
+interface GatewayRedis {
+  get<T = string>(key: string): Promise<T | null>;
+  set(
+    key: string,
+    value: unknown,
+    options?: { ex?: number; px?: number; nx?: boolean },
+  ): Promise<unknown>;
+  setex(key: string, ttlSeconds: number, value: string): Promise<string>;
+  del(...keys: string[]): Promise<number>;
+  expire(key: string, seconds: number): Promise<number>;
+  sadd(key: string, ...members: string[]): Promise<number>;
+  srem(key: string, ...members: string[]): Promise<number>;
+  smembers(key: string): Promise<string[]>;
+  lpush(key: string, ...values: string[]): Promise<number>;
+  ltrim(key: string, start: number, stop: number): Promise<string>;
+}
+
 // ============================================
 // Helpers
 // ============================================
@@ -229,7 +246,7 @@ interface BotConnection {
   statusChangedAt?: Date;
   error?: string;
   /** Store listener references for cleanup */
-  listeners: Map<string, (...args: unknown[]) => void>;
+  listeners: Map<string, unknown>;
 }
 
 interface HealthStatus {
@@ -279,7 +296,7 @@ async function fetchWithTimeout(
 
 export class GatewayManager {
   private config: GatewayConfig;
-  private redis: Redis | null = null;
+  private redis: GatewayRedis | null = null;
   private connections: Map<string, BotConnection> = new Map();
   private startTime: Date = new Date();
   private pollInterval: NodeJS.Timeout | null = null;
@@ -316,12 +333,12 @@ export class GatewayManager {
     // when unset, so real credentials are still honored when present.
     const isTcpRedisUrl = (u: string): boolean => /^rediss?:\/\//i.test(u);
     if (process.env.MOCK_REDIS === "1") {
-      this.redis = createMockRedis() as unknown as Redis;
+      this.redis = createMockRedis();
       logger.info("[GatewayManager] using in-memory mock Redis (MOCK_REDIS=1)");
     } else if (config.redisUrl && isTcpRedisUrl(config.redisUrl)) {
       // Railway (and any TCP Redis): RESP over ioredis, wrapped in the
       // Upstash-compatible adapter so call sites stay unchanged.
-      this.redis = createNativeRedis(config.redisUrl) as unknown as Redis;
+      this.redis = createNativeRedis(config.redisUrl);
       logger.info("[GatewayManager] using native TCP Redis client");
     } else if (config.redisUrl && config.redisToken) {
       // Upstash REST (https URL + token) — legacy fallback.
@@ -847,10 +864,7 @@ export class GatewayManager {
           });
         }
       };
-      conn.listeners.set(
-        eventName,
-        wrappedHandler as unknown as (...args: unknown[]) => void,
-      );
+      conn.listeners.set(eventName, wrappedHandler);
       return wrappedHandler;
     };
 

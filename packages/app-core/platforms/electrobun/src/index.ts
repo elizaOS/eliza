@@ -1556,6 +1556,16 @@ type ElizaDesktopRpc = ReturnType<
 // biome-ignore lint/suspicious/noExplicitAny: bridges typed rpc.request to the handler-module's any-params signature
 type RpcRequestProxy = Record<string, (params: any) => Promise<any>>;
 
+function asRpcRequestProxy(request: unknown): RpcRequestProxy {
+  return request as RpcRequestProxy;
+}
+
+function asRpcSend(
+  send: unknown,
+): (message: string, payload?: unknown) => void {
+  return send as (message: string, payload?: unknown) => void;
+}
+
 const MAX_RPC_REQUEST_TIME_MS = 600_000;
 
 /**
@@ -1593,10 +1603,7 @@ function createDesktopRpc(label: string): {
       // dispatch through the same underlying sendFn. Cast to a plain
       // function signature to call it dynamically by name without the
       // schema-typed overloads narrowing the message string.
-      (rpc.send as unknown as (m: string, p?: unknown) => void)(
-        message,
-        payload ?? null,
-      );
+      asRpcSend(rpc.send)(message, payload ?? null);
     } catch (err) {
       logger.warn(
         `[sendToWebview:${label}] send(${message}) failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -1644,7 +1651,7 @@ function wireMainWindowAfterCreate(
   initializeNativeModules(win, sendToWebview);
   setStewardSendToWebview(sendToWebview);
   wireBrowserWorkspaceCaller({
-    request: rpc.request as unknown as RpcRequestProxy,
+    request: asRpcRequestProxy(rpc.request),
   });
 }
 
@@ -1659,7 +1666,7 @@ function wireMainWindowAfterCreate(
  */
 function wireSettingsRpcAfterCreate(rpc: ElizaDesktopRpc): void {
   wireBrowserWorkspaceCaller({
-    request: rpc.request as unknown as RpcRequestProxy,
+    request: asRpcRequestProxy(rpc.request),
   });
 }
 

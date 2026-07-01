@@ -42,11 +42,27 @@ Issues covered:
 - `bun run --cwd packages/elizaos test -- src/__tests__/min-plugin-viewkind-contract.test.ts` passed: 1 file, 1 test.
 - `bun run --cwd packages/app test -- test/route-coverage.test.ts test/ui-smoke-coverage.test.ts test/view-interaction-coverage.test.ts` passed: 3 files, 20 tests.
 - `bun run --cwd packages/app audit:app` passed: 349/349, `broken=0`, `minimalism-budget-failures=0`.
-- Manual review notes were filled in the ignored audit output for the touched routes: `builtin-apps`, `builtin-views`, `plugin-views-manager-gui`, and `plugin-cockpit-gui` across mobile portrait, mobile landscape, desktop landscape, and iPad portrait.
+- `bun run --cwd packages/app audit:app` passed again after the shared chat overlay cleanup: 349/349, `broken=0`, `minimalism-budget-failures=0`.
+- `bun run --cwd packages/app audit:app` passed again after fixing the health plugin mobile-landscape overlap found during manual screenshot review: 349/349, `broken=0`, `minimalism-budget-failures=0`.
+- Manual review notes were filled in the ignored audit output for all 348 generated view/viewport screenshots after inspecting the four viewport contact sheets (`mobile-portrait`, `mobile-landscape`, `desktop-landscape`, `ipad-portrait`); all manual-review verdicts are `good`.
+- Direct health plugin screenshots were opened and reviewed in all audit viewports (`mobile-portrait`, `mobile-landscape`, `desktop-landscape`, `ipad-portrait`) after the responsive layout fix; no remaining overlap, clipping, or app-shell back-button collision was observed.
+- `node packages/app/scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts --project=audit-app --grep "plugin-health-gui mobile-landscape"` passed after the health responsive fix.
+- `bunx @biomejs/biome check --write plugins/plugin-health/src/components/health/HealthSpatialView.tsx` passed.
+- `bun run --cwd plugins/plugin-health test -- HealthView.test.tsx HealthSpatialView.test.tsx` passed: 2 files, 16 tests.
+- `bun run --cwd plugins/plugin-health typecheck` passed.
+- `bun run --cwd plugins/plugin-health lint` passed.
+- `bun run --cwd plugins/plugin-health build` passed.
 - Targeted Biome checks for changed UI/agent files passed.
+- `bun run audit:type-safety-ratchet` passed: `as unknown as` reduced to 73/77; non-null assertions reduced to 518/547; `?? ""` reduced to 611/620; `?? []` reduced to 573/588; `?? {}` reduced to 374/377; `?? 0` reduced to 379/380.
+- `bun run --cwd packages/ui lint` passed.
+- `bun run --cwd packages/ui test -- ContinuousChatOverlay.test.tsx` passed: 104 tests.
+- `bun run --cwd packages/ui typecheck` passed.
+- `bun run --cwd packages/agent typecheck` passed.
+- `bun run --cwd packages/app-core typecheck` passed.
+- `bun run --cwd packages/app-core/platforms/electrobun typecheck` passed.
+- `bun run --cwd plugins/plugin-capacitor-bridge typecheck` passed.
+- `bun run --cwd packages/cloud/services/gateway-discord typecheck` passed.
+- `bun run --cwd packages/feed/packages/mcp typecheck` passed.
+- `bun run --cwd packages/feed typecheck` passed.
+- `bun run verify` passed end to end after the final health responsive fix, including 477 Turbo tasks, audit build/typecheck consistency, turbo dependency audit, tee secret-leak audit, script audit, and 28 dist-path consumer configs. `tsconfig.dist-paths.json` is current with 195 aliases.
 - `git diff --check` passed.
-
-Known repo-wide verification limits:
-
-- `bun run verify` currently stops at `audit:type-safety-ratchet` before typecheck/lint: `as unknown as` is 107 current vs 77 baseline and `?? 0` is 381 current vs 380 baseline. The production files changed here do not add those patterns.
-- Running the direct turbo typecheck/lint lane after the ratchet stop reached `@elizaos/ui#lint`; the remaining failures are existing unrelated `ContinuousChatOverlay.test.tsx` formatting and `ContinuousChatOverlay.tsx` formatting/a11y issues. The touched UI files pass targeted Biome checks.
