@@ -77,7 +77,6 @@ export function HomeLauncherSurface({
   // No page indicator: the dots collided with the floating chat composer, and
   // the swipe gesture (left → launcher, right → home / back a page) is the
   // sole, sufficient navigation. Paging across launcher pages stays a swipe.
-
   return (
     <section
       ref={pager.viewportRef}

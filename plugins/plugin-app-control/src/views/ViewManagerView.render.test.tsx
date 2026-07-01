@@ -7,7 +7,9 @@
 // wrapper against a stubbed `fetch` and assert the populated list renders and
 // that each control fires the correct loopback request.
 
+import { emitViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
 import {
+	act,
 	cleanup,
 	fireEvent,
 	render,
@@ -167,6 +169,41 @@ describe("ViewManagerView (gui/xr) wrapper", () => {
 
 		resolveFetch?.(jsonResponse(guiViews));
 		await screen.findByText("Wallet");
+	});
+
+	it("refreshes the list when a plugin_reloaded event is broadcast (#8916)", async () => {
+		let response = guiViews;
+		const { calls } = stubFetch(({ url }) => {
+			if (url === "/api/views") return jsonResponse(response);
+			throw new Error(`Unexpected request: ${url}`);
+		});
+
+		render(<ViewManagerView />);
+		await screen.findByText("Wallet");
+		expect(calls.filter((c) => c.url === "/api/views")).toHaveLength(1);
+
+		response = {
+			views: [
+				...guiViews.views,
+				{
+					id: "habit-tracker",
+					label: "Habit Tracker",
+					path: "/habit-tracker",
+					available: true,
+					pluginName: "@elizaos/plugin-habit-tracker",
+				},
+			],
+		};
+		act(() => {
+			emitViewEvent(
+				VIEW_EVENTS.PLUGIN_RELOADED,
+				{ pluginName: "@elizaos/plugin-habit-tracker" },
+				"agent",
+			);
+		});
+
+		await screen.findByText("Habit Tracker");
+		expect(calls.filter((c) => c.url === "/api/views")).toHaveLength(2);
 	});
 
 	it("collapses duplicate gui/xr/tui declarations of one id into a single row with modality chips", async () => {

@@ -89,7 +89,7 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     await screenshot(page, "home");
 
     // A real left-flick over the home page pans the rail to the launcher.
-    await swipeLeftToLauncher(page, surface);
+    await swipeLeftToLauncher(page, surface, { input: "touch" });
     await screenshot(page, "launcher");
   });
 

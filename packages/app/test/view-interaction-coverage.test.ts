@@ -301,6 +301,17 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["smartglasses bridge controls", "Connect"],
     },
   ],
+  cockpit: [
+    {
+      spec: "plugins/plugin-task-coordinator/src/CockpitRoute.test.tsx",
+      proves:
+        "Exercises the developer-only cockpit route through spawn wiring and deck/session-pane navigation.",
+      signals: [
+        "CockpitRoute — live spawn wiring",
+        "spawning creates the task AND spawns the agent",
+      ],
+    },
+  ],
 };
 
 // Every decomposed personal-assistant view has a dedicated interaction owner
@@ -377,7 +388,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(56);
+    expect(visualCases.length).toBe(55);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

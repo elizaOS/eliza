@@ -49,6 +49,9 @@ export {
   // Avatar / VRM
   VRM_TELEPORT_COMPLETE_EVENT,
 } from "@elizaos/shared/events";
+export { useEmitViewEvent, useViewEvent } from "../hooks/useViewEvent";
+export * from "../views/view-event-bus";
+export * from "../views/view-event-types";
 
 // ── UI-only events (no server producer) ──────────────────────────────────
 

@@ -1088,14 +1088,13 @@ export async function collapseChatOverlay(page: Page): Promise<void> {
 /**
  * Swipe-left on the home page → the rail pans to the launcher, then assert a
  * real launcher tile. Uses a real left-flick that moves past the 72px
- * RAIL_FLICK_THRESHOLD. Touch-capable mobile contexts try Chromium's
- * touch-input path first, then fall back to the component's touch-typed
- * pointer contract if CI does not synthesize pointer events from that touch
- * stream. Desktop contexts use a mouse pointer drag.
+ * RAIL_FLICK_THRESHOLD. Mobile callers use Chromium CDP touch input and fail if
+ * the real touch stream does not move the rail; desktop callers use mouse drag.
  */
 export async function swipeLeftToLauncher(
   page: Page,
   surface: Locator,
+  options: { input?: "mouse" | "touch" | "auto" } = {},
 ): Promise<void> {
   // The in-chat onboarding overlay rests OPEN; collapse it so the swipe lands on
   // the home rail rather than the chat scrim.
@@ -1111,8 +1110,14 @@ export async function swipeLeftToLauncher(
       navigator.maxTouchPoints > 0 ||
       window.matchMedia("(pointer: coarse)").matches,
   );
+  const input = options.input ?? "auto";
+  if (input === "touch" && !touchCapable) {
+    throw new Error(
+      "swipeLeftToLauncher requested touch input in a non-touch context",
+    );
+  }
 
-  if (touchCapable) {
+  if (input === "touch" || (input === "auto" && touchCapable)) {
     const client = await page.context().newCDPSession(page);
     try {
       await client.send("Input.dispatchTouchEvent", {
@@ -1136,32 +1141,8 @@ export async function swipeLeftToLauncher(
     }
     await page.waitForTimeout(250);
     if ((await surface.getAttribute("data-page")) !== "launcher") {
-      await homePage.evaluate(
-        (element, coordinates) => {
-          const dispatchPointer = (type: string, x: number) => {
-            element.dispatchEvent(
-              new PointerEvent(type, {
-                bubbles: true,
-                button: 0,
-                buttons: type === "pointerup" ? 0 : 1,
-                cancelable: true,
-                clientX: x,
-                clientY: coordinates.midY,
-                composed: true,
-                isPrimary: true,
-                pointerId: 1,
-                pointerType: "touch",
-              }),
-            );
-          };
-
-          dispatchPointer("pointerdown", coordinates.startX);
-          for (let i = 1; i <= 6; i++) {
-            dispatchPointer("pointermove", coordinates.startX - i * 40);
-          }
-          dispatchPointer("pointerup", coordinates.startX - 240);
-        },
-        { startX, midY },
+      throw new Error(
+        "CDP touch swipe did not open the launcher; refusing synthetic pointer fallback",
       );
     }
   } else {
