@@ -222,7 +222,7 @@ jobs:
       # that was verified (no second build, no "latest yt-dlp" drift between the
       # verified and published image).
       - id: build-local
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: .
           file: packages/app-core/deploy/Dockerfile.ci
