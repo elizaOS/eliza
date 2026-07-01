@@ -42,10 +42,19 @@ export function useDisplayPreferences() {
   const [backgroundHistory, setBackgroundHistoryState] = useState<
     BackgroundConfig[]
   >(loadBackgroundHistory);
+  // Bounded REDO stack (#10694): configs that were undone, most-recent last, so
+  // "step back if you don't like it" can also step forward. In-memory only (a
+  // within-session concept — the persisted undo history survives reload, redo
+  // does not); cleared by any new edit.
+  const [backgroundRedo, setBackgroundRedoState] = useState<BackgroundConfig[]>(
+    [],
+  );
   const backgroundConfigRef = useRef(backgroundConfig);
   backgroundConfigRef.current = backgroundConfig;
   const backgroundHistoryRef = useRef(backgroundHistory);
   backgroundHistoryRef.current = backgroundHistory;
+  const backgroundRedoRef = useRef(backgroundRedo);
+  backgroundRedoRef.current = backgroundRedo;
 
   // Normalize + persist wrappers
   const setUiThemeMode = useCallback((mode: UiThemeMode) => {
@@ -60,7 +69,8 @@ export function useDisplayPreferences() {
     [setUiThemeMode],
   );
 
-  // Setting pushes the outgoing config onto the undo stack (unless unchanged).
+  // Setting pushes the outgoing config onto the undo stack (unless unchanged),
+  // and clears the redo stack — a new edit invalidates the redo future.
   const setBackgroundConfig = useCallback((config: BackgroundConfig) => {
     const next = normalizeBackgroundConfig(config);
     const prev = backgroundConfigRef.current;
@@ -68,16 +78,34 @@ export function useDisplayPreferences() {
     setBackgroundHistoryState((h) =>
       [...h, prev].slice(-MAX_BACKGROUND_HISTORY),
     );
+    setBackgroundRedoState((r) => (r.length ? [] : r));
     setBackgroundConfigState(next);
   }, []);
 
-  // Undo restores the most recent previous config and pops it off the stack.
-  // There is no redo — stepping back simply discards the undone config.
+  // Undo restores the most recent previous config, pops it off the undo stack,
+  // and pushes the now-undone current config onto the redo stack (#10694).
   const undoBackgroundConfig = useCallback(() => {
     const history = backgroundHistoryRef.current;
     if (history.length === 0) return;
+    const current = backgroundConfigRef.current;
+    setBackgroundRedoState((r) =>
+      [...r, current].slice(-MAX_BACKGROUND_HISTORY),
+    );
     setBackgroundConfigState(history[history.length - 1]);
     setBackgroundHistoryState((h) => h.slice(0, -1));
+  }, []);
+
+  // Redo re-applies the most recently undone config and pushes the current one
+  // back onto the undo stack — the forward half of undo/redo (#10694).
+  const redoBackgroundConfig = useCallback(() => {
+    const redo = backgroundRedoRef.current;
+    if (redo.length === 0) return;
+    const current = backgroundConfigRef.current;
+    setBackgroundHistoryState((h) =>
+      [...h, current].slice(-MAX_BACKGROUND_HISTORY),
+    );
+    setBackgroundConfigState(redo[redo.length - 1]);
+    setBackgroundRedoState((r) => r.slice(0, -1));
   }, []);
 
   // Resolve mode -> concrete theme. When following the system, track OS
@@ -119,10 +147,12 @@ export function useDisplayPreferences() {
       uiThemeMode,
       backgroundConfig,
       canUndoBackground: backgroundHistory.length > 0,
+      canRedoBackground: backgroundRedo.length > 0,
     },
     setUiTheme,
     setUiThemeMode,
     setBackgroundConfig,
     undoBackgroundConfig,
+    redoBackgroundConfig,
   };
 }
