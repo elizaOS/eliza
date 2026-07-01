@@ -5,7 +5,7 @@
  * Supports assignment to apps, containers, agents, and MCPs.
  */
 
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -130,8 +130,12 @@ export const managedDomains = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
 
-    // Domain name (lowercase, normalized)
-    domain: text("domain").notNull().unique(),
+    // Domain name (lowercase, normalized). NOT globally unique on its own: only
+    // VERIFIED or cloudflare-registrar rows are globally exclusive (partial
+    // unique index below). Different orgs may each hold a competing UNVERIFIED
+    // pending row for the same domain, so an unproven attach can't squat the
+    // global namespace and permanently deny the rightful owner (#11024).
+    domain: text("domain").notNull(),
 
     // Registration details
     registrar: domainRegistrarEnum("registrar").notNull().default("external"),
@@ -208,7 +212,18 @@ export const managedDomains = pgTable(
   },
   (table) => ({
     organizationIdx: index("managed_domains_org_idx").on(table.organizationId),
-    domainIdx: uniqueIndex("managed_domains_domain_idx").on(table.domain),
+    // Only VERIFIED or cloudflare rows hold the exclusive global slot for a
+    // domain. Unverified external pending rows are NOT globally unique, so they
+    // can't squat the namespace (#11024). The reader (`getDomainByName`) returns
+    // this exclusive row; serving already requires verified+active.
+    domainExclusiveIdx: uniqueIndex("managed_domains_domain_exclusive_idx")
+      .on(table.domain)
+      .where(sql`${table.verified} = true OR ${table.registrar} = 'cloudflare'`),
+    // An org still can't hold two rows for the same domain.
+    orgDomainIdx: uniqueIndex("managed_domains_org_domain_idx").on(
+      table.organizationId,
+      table.domain,
+    ),
     appIdx: index("managed_domains_app_idx").on(table.appId),
     containerIdx: index("managed_domains_container_idx").on(table.containerId),
     agentIdx: index("managed_domains_agent_idx").on(table.agentId),
