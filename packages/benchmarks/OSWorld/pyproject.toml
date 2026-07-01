@@ -29,7 +29,7 @@ dependencies = [
     "pytesseract",
     "google-genai",
     "python-dotenv",
-    "Pillow~=12.2.0",
+    "Pillow~=12.3.0",
     "fabric",
     "gymnasium~=1.3.0",
     "requests~=2.34.2",
