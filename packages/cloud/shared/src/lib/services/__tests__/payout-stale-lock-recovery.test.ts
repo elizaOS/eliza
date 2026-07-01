@@ -162,9 +162,10 @@ async function readRedemption(id: string): Promise<{
   tx_hash: string | null;
   retry_count: string;
   processing_started_at: string | null;
+  requires_review: boolean;
 }> {
   const rows = await dbWrite.execute(
-    `SELECT status, broadcast_tx_hash, tx_hash, retry_count, processing_started_at
+    `SELECT status, broadcast_tx_hash, tx_hash, retry_count, processing_started_at, requires_review
      FROM token_redemptions WHERE id = '${id}';`,
   );
   return rows.rows[0] as {
@@ -173,6 +174,7 @@ async function readRedemption(id: string): Promise<{
     tx_hash: string | null;
     retry_count: string;
     processing_started_at: string | null;
+    requires_review: boolean;
   };
 }
 
@@ -462,8 +464,68 @@ describe("payout stale-lock recovery (#10553)", () => {
       const row = await readRedemption(id);
       expect(row.status).toBe("failed");
       expect(row.broadcast_tx_hash).toBeNull();
+      expect(row.requires_review).toBe(true);
       // Never silently re-broadcast.
       expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(f2) #10628: stale-lock recovery fails the row when its recovery strike reaches the retry ceiling",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({
+        status: "processing",
+        broadcastTxHash: null,
+        startedMinutesAgo: 10,
+        retryCount: 2, // recovery strike reaches MAX_RETRY_ATTEMPTS (3)
+      });
+
+      const stats = await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(stats.processed).toBe(0);
+      expect(row.status).toBe("failed");
+      expect(Number(row.retry_count)).toBe(3);
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(row.processing_started_at).toBeNull();
+      expect(row.requires_review).toBe(true);
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(g) #10628: final retryable failure is failed, not orphaned as unselectable approved",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({
+        status: "approved",
+        retryCount: 2, // next retry reaches MAX_RETRY_ATTEMPTS (3)
+        payoutAddress: FAIL_ADDRESS,
+      });
+
+      prepareTxMock.mockImplementation(async (args: { data: `0x${string}` }) => {
+        if (recipientOf(args.data) === FAIL_ADDRESS.toLowerCase()) {
+          throw new Error("RPC connection reset before broadcast");
+        }
+        return { ...args, nonce: 0 };
+      });
+
+      const stats = await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(stats.failed).toBe(1);
+      expect(row.status).toBe("failed");
+      expect(Number(row.retry_count)).toBe(3);
+      expect(row.requires_review).toBe(true);
+      expect(row.processing_started_at).toBeNull();
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(1);
     },
     PGLITE_TIMEOUT,
   );
