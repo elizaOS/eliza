@@ -2569,6 +2569,9 @@ export class OrchestratorTaskService extends Service {
         const manifest = await buildSkillsManifest(this.runtime, {
           recommendedSlugs: ["build-monetized-app", "eliza-cloud"],
           virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }],
+          // Economics tasks may deploy Cloud views — teach the sub-agent the
+          // ViewKind contract so views are categorized correctly. (#8917)
+          includeViewKindContract: true,
         });
         await writeFile(join(workdir, "SKILLS.md"), manifest.markdown, "utf8");
       } catch (err) {
