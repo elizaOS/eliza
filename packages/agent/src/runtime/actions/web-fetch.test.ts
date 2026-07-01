@@ -165,4 +165,66 @@ describe("WEB_FETCH action", () => {
     expect(result.success).toBe(false);
     expect(result.text).toContain("url");
   });
+
+  // SSRF block-path coverage (#10718). The allow-path tests above all use a
+  // public IP literal, so a regression that deleted the literal-hostname block
+  // list or the resolved-IP check in resolveUrlSafety (custom-actions.ts) would
+  // NOT fail any of them — the classic SSRF payloads would silently start
+  // reaching the network. These pin the block path: for each, the pinned fetch
+  // is armed to THROW, so if the guard fails to block, the test fails loudly
+  // (either the throw surfaces or a success result comes back) instead of the
+  // expected "blocked host".
+  describe("SSRF guard blocks internal/metadata/private targets", () => {
+    // The pinned fetch is armed to SUCCEED, not throw, and we count its calls.
+    // This is load-bearing: an earlier version threw here, but a thrown pinned
+    // fetch produces a "blocked"-like result on its own, so the test passed even
+    // when the guard was neutered (verified). Arming success means a guard
+    // regression lets the request through → success → the assertions below fail.
+    let pinnedCalls = 0;
+    const armSuccessFetch = () => {
+      pinnedCalls = 0;
+      __setPinnedFetchImplForTests(async () => {
+        pinnedCalls += 1;
+        return new Response("SHOULD_NOT_REACH_INTERNAL_HOST", { status: 200 });
+      });
+    };
+
+    const BLOCKED_HOSTS = [
+      "https://localhost/data",
+      "https://127.0.0.1/data",
+      "https://[::1]/data",
+      "https://0.0.0.0/data",
+      "https://169.254.169.254/latest/meta-data/", // AWS link-local metadata
+      "https://metadata.google.internal/computeMetadata/v1/", // GCP metadata
+      "https://printer.local/admin", // mDNS .local
+      "https://10.0.0.5/data", // RFC1918 private
+      "https://192.168.1.1/data", // RFC1918 private
+      "https://172.16.0.1/data", // RFC1918 private
+    ];
+
+    for (const url of BLOCKED_HOSTS) {
+      it(`blocks ${url} without sending a request`, async () => {
+        armSuccessFetch();
+        const { result } = await runHandler({ url });
+        // The request must never leave the guard.
+        expect(pinnedCalls, `${url}: guard let the request through`).toBe(0);
+        expect(result.success, `${url} should be blocked`).toBe(false);
+        expect(result.text?.toLowerCase()).toContain("blocked host");
+        expect(result.text).not.toContain("SHOULD_NOT_REACH_INTERNAL_HOST");
+      });
+    }
+
+    it("blocks DNS rebinding — a public hostname that resolves to a private IP", async () => {
+      // The hostname is public, but DNS returns an RFC1918 address; the
+      // resolved-IP check must block it before the pinned request runs.
+      __setDnsLookupImplForTests(async () => ["10.10.10.10"]);
+      armSuccessFetch();
+      const { result } = await runHandler({
+        url: "https://totally-legit.example.test/data",
+      });
+      expect(pinnedCalls, "rebinding: guard let the request through").toBe(0);
+      expect(result.success).toBe(false);
+      expect(result.text?.toLowerCase()).toContain("blocked host");
+    });
+  });
 });
