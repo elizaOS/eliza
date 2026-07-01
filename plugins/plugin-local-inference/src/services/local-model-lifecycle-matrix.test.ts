@@ -144,11 +144,23 @@ describe("buildLocalModelLifecycleMatrix", () => {
 			hardware: hardware(),
 			observedAt: "2026-07-01T00:15:00.000Z",
 			remoteChecks: { "eliza-1-4b:text": remote },
+			bundleChecks: {
+				"eliza-1-4b": {
+					status: "pass",
+					detail: "12 manifest file(s) passed remote checks",
+					checkedAt: "2026-07-01T00:10:00.000Z",
+					manifestUrl:
+						"https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+					fileCount: 12,
+					failingFiles: [],
+				},
+			},
 			localFileChecks: { "eliza-1-4b:text": localFile },
 		});
 
 		const text = matrix.rows.find((row) => row.component === "text");
 		expect(text?.checks.downloadable.status).toBe("pass");
+		expect(text?.checks.bundleClosure.status).toBe("pass");
 		expect(text?.checks.installed.status).toBe("pass");
 		expect(text?.checks.loadsAndRunsOnDevice.status).toBe("pass");
 		expect(text?.runtime.expectedPrimaryBackend).toBe("cuda");

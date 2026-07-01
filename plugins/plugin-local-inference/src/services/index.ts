@@ -132,6 +132,7 @@ export {
 	buildLocalModelLifecycleMatrix,
 	collectLocalLifecycleFileChecks,
 	formatLocalModelLifecycleMatrixMarkdown,
+	type LifecycleBundleRemoteCheck,
 	type LifecycleCheck,
 	type LifecycleCheckStatus,
 	type LifecycleLocalFileCheck,

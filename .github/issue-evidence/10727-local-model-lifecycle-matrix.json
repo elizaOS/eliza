@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "issue": 10727,
-  "observedAt": "2026-07-01T17:27:33.990Z",
+  "observedAt": "2026-07-01T17:46:16.591Z",
   "host": {
     "platform": "darwin",
     "arch": "arm64",
     "totalRamGb": 128,
-    "freeRamGb": 17.5,
+    "freeRamGb": 21.1,
     "gpuBackend": "metal",
     "deviceBackends": [
       "cpu",
@@ -76,6 +76,24 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -97,9 +115,15 @@
         "downloadable": {
           "status": "pass",
           "detail": "HTTP 200 OK",
-          "checkedAt": "2026-07-01T17:27:31.916Z",
+          "checkedAt": "2026-07-01T17:46:08.893Z",
           "httpStatus": 200,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b-128k.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "2/22 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:13.506Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -111,10 +135,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
         }
       },
-      "blockers": []
+      "blockers": [
+        "bundleClosure: 2/22 manifest file(s) failed remote checks"
+      ]
     },
     {
       "key": "eliza-1-2b:voice",
@@ -159,6 +185,24 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -180,9 +224,15 @@
         "downloadable": {
           "status": "fail",
           "detail": "HTTP 404 Not Found",
-          "checkedAt": "2026-07-01T17:27:32.380Z",
+          "checkedAt": "2026-07-01T17:46:09.316Z",
           "httpStatus": 404,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "2/22 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:13.506Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -194,11 +244,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
         }
       },
       "blockers": [
-        "downloadable: HTTP 404 Not Found"
+        "downloadable: HTTP 404 Not Found",
+        "bundleClosure: 2/22 manifest file(s) failed remote checks"
       ]
     },
     {
@@ -207,11 +258,11 @@
       "displayName": "eliza-1-2B",
       "component": "asr",
       "expected": true,
-      "catalogAdvertised": false,
-      "sourceRepo": null,
-      "sourceFile": null,
-      "bundleFile": null,
-      "downloadUrl": null,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/2b/asr/mmproj-audio-2b-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-2b-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/asr/mmproj-audio-2b-bf16.gguf?download=true",
       "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
       "publishStatus": "published",
       "quantization": null,
@@ -244,26 +295,54 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
         },
         "integrated": {
-          "status": "warn",
-          "detail": "TRANSCRIPTION handler via the local ASR pipeline exists, but the catalog artifact is missing"
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
         },
         "deployable": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/asr/mmproj-audio-2b-bf16.gguf?download=true"
         },
         "published": {
-          "status": "fail",
-          "detail": "catalog does not advertise a hosted artifact for this component"
+          "status": "pass",
+          "detail": "tier publish status is published"
         },
         "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-01T17:46:09.554Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/asr/mmproj-audio-2b-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
           "status": "fail",
-          "detail": "no download URL exists for this artifact"
+          "detail": "2/22 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:13.506Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -275,14 +354,11 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
         }
       },
       "blockers": [
-        "implemented: asr is expected but has no catalog source file",
-        "deployable: asr is expected but has no catalog source file",
-        "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "bundleClosure: 2/22 manifest file(s) failed remote checks"
       ]
     },
     {
@@ -328,6 +404,24 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -349,9 +443,15 @@
         "downloadable": {
           "status": "pass",
           "detail": "HTTP 200 OK",
-          "checkedAt": "2026-07-01T17:27:32.420Z",
+          "checkedAt": "2026-07-01T17:46:09.620Z",
           "httpStatus": 200,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "2/22 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:13.506Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -363,10 +463,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
         }
       },
-      "blockers": []
+      "blockers": [
+        "bundleClosure: 2/22 manifest file(s) failed remote checks"
+      ]
     },
     {
       "key": "eliza-1-2b:embedding",
@@ -411,6 +513,24 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "fail",
@@ -432,6 +552,12 @@
           "status": "fail",
           "detail": "no download URL exists for this artifact"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "2/22 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:13.506Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -442,14 +568,15 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
         }
       },
       "blockers": [
         "implemented: embedding is expected but has no catalog source file",
         "deployable: embedding is expected but has no catalog source file",
         "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "downloadable: no download URL exists for this artifact",
+        "bundleClosure: 2/22 manifest file(s) failed remote checks"
       ]
     },
     {
@@ -495,6 +622,24 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -516,9 +661,15 @@
         "downloadable": {
           "status": "pass",
           "detail": "HTTP 200 OK",
-          "checkedAt": "2026-07-01T17:27:32.491Z",
+          "checkedAt": "2026-07-01T17:46:09.892Z",
           "httpStatus": 200,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/vision/mmproj-2b.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "2/22 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:13.506Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -530,10 +681,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
         }
       },
-      "blockers": []
+      "blockers": [
+        "bundleClosure: 2/22 manifest file(s) failed remote checks"
+      ]
     },
     {
       "key": "eliza-1-2b:litert",
@@ -578,6 +731,24 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -599,9 +770,15 @@
         "downloadable": {
           "status": "fail",
           "detail": "HTTP 404 Not Found",
-          "checkedAt": "2026-07-01T17:27:32.681Z",
+          "checkedAt": "2026-07-01T17:46:10.042Z",
           "httpStatus": 404,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b.litertlm?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "2/22 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:13.506Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -613,11 +790,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
         }
       },
       "blockers": [
-        "downloadable: HTTP 404 Not Found"
+        "downloadable: HTTP 404 Not Found",
+        "bundleClosure: 2/22 manifest file(s) failed remote checks"
       ]
     },
     {
@@ -663,6 +841,24 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true",
+        "fileCount": 22,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "fail",
@@ -684,6 +880,12 @@
           "status": "fail",
           "detail": "no download URL exists for this artifact"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "2/22 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:13.506Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -694,14 +896,15 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cpu)"
         }
       },
       "blockers": [
         "implemented: mtp is expected but has no catalog source file",
         "deployable: mtp is expected but has no catalog source file",
         "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "downloadable: no download URL exists for this artifact",
+        "bundleClosure: 2/22 manifest file(s) failed remote checks"
       ]
     },
     {
@@ -765,6 +968,84 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/model_q4.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_nicole.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sarah.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sky.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_adam.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_michael.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_emma.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_isabella.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_george.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_lewis.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -786,9 +1067,15 @@
         "downloadable": {
           "status": "pass",
           "detail": "HTTP 200 OK",
-          "checkedAt": "2026-07-01T17:27:32.725Z",
+          "checkedAt": "2026-07-01T17:46:10.139Z",
           "httpStatus": 200,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/text/eliza-1-4b-128k.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "12/24 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -800,10 +1087,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
-      "blockers": []
+      "blockers": [
+        "bundleClosure: 12/24 manifest file(s) failed remote checks"
+      ]
     },
     {
       "key": "eliza-1-4b:voice",
@@ -850,6 +1139,84 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/model_q4.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_nicole.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sarah.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sky.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_adam.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_michael.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_emma.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_isabella.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_george.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_lewis.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -871,9 +1238,15 @@
         "downloadable": {
           "status": "fail",
           "detail": "HTTP 404 Not Found",
-          "checkedAt": "2026-07-01T17:27:32.800Z",
+          "checkedAt": "2026-07-01T17:46:10.288Z",
           "httpStatus": 404,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "12/24 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -885,11 +1258,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
-        "downloadable: HTTP 404 Not Found"
+        "downloadable: HTTP 404 Not Found",
+        "bundleClosure: 12/24 manifest file(s) failed remote checks"
       ]
     },
     {
@@ -898,11 +1272,11 @@
       "displayName": "eliza-1-4B",
       "component": "asr",
       "expected": true,
-      "catalogAdvertised": false,
-      "sourceRepo": null,
-      "sourceFile": null,
-      "bundleFile": null,
-      "downloadUrl": null,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/4b/asr/mmproj-audio-4b-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-4b-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/asr/mmproj-audio-4b-bf16.gguf?download=true",
       "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
       "publishStatus": "published",
       "quantization": null,
@@ -937,26 +1311,114 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/model_q4.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_nicole.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sarah.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sky.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_adam.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_michael.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_emma.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_isabella.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_george.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_lewis.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
         },
         "integrated": {
-          "status": "warn",
-          "detail": "TRANSCRIPTION handler via the local ASR pipeline exists, but the catalog artifact is missing"
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
         },
         "deployable": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/asr/mmproj-audio-4b-bf16.gguf?download=true"
         },
         "published": {
-          "status": "fail",
-          "detail": "catalog does not advertise a hosted artifact for this component"
+          "status": "pass",
+          "detail": "tier publish status is published"
         },
         "downloadable": {
+          "status": "pass",
+          "detail": "HTTP 200 OK",
+          "checkedAt": "2026-07-01T17:46:10.404Z",
+          "httpStatus": 200,
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/asr/mmproj-audio-4b-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
           "status": "fail",
-          "detail": "no download URL exists for this artifact"
+          "detail": "12/24 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -968,14 +1430,11 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
-        "implemented: asr is expected but has no catalog source file",
-        "deployable: asr is expected but has no catalog source file",
-        "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "bundleClosure: 12/24 manifest file(s) failed remote checks"
       ]
     },
     {
@@ -1023,6 +1482,84 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/model_q4.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_nicole.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sarah.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sky.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_adam.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_michael.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_emma.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_isabella.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_george.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_lewis.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -1044,9 +1581,15 @@
         "downloadable": {
           "status": "pass",
           "detail": "HTTP 200 OK",
-          "checkedAt": "2026-07-01T17:27:32.919Z",
+          "checkedAt": "2026-07-01T17:46:10.568Z",
           "httpStatus": 200,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/vad/silero-vad-v5.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "12/24 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -1058,10 +1601,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
-      "blockers": []
+      "blockers": [
+        "bundleClosure: 12/24 manifest file(s) failed remote checks"
+      ]
     },
     {
       "key": "eliza-1-4b:embedding",
@@ -1108,6 +1653,84 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/model_q4.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_nicole.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sarah.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sky.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_adam.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_michael.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_emma.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_isabella.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_george.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_lewis.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -1129,9 +1752,15 @@
         "downloadable": {
           "status": "pass",
           "detail": "HTTP 200 OK",
-          "checkedAt": "2026-07-01T17:27:32.986Z",
+          "checkedAt": "2026-07-01T17:46:10.635Z",
           "httpStatus": 200,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/embedding/eliza-1-embedding.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "12/24 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -1143,10 +1772,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
-      "blockers": []
+      "blockers": [
+        "bundleClosure: 12/24 manifest file(s) failed remote checks"
+      ]
     },
     {
       "key": "eliza-1-4b:vision",
@@ -1193,6 +1824,84 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/model_q4.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_nicole.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sarah.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sky.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_adam.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_michael.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_emma.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_isabella.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_george.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_lewis.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -1214,9 +1923,15 @@
         "downloadable": {
           "status": "pass",
           "detail": "HTTP 200 OK",
-          "checkedAt": "2026-07-01T17:27:33.218Z",
+          "checkedAt": "2026-07-01T17:46:10.856Z",
           "httpStatus": 200,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/vision/mmproj-4b.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "12/24 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -1228,10 +1943,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
-      "blockers": []
+      "blockers": [
+        "bundleClosure: 12/24 manifest file(s) failed remote checks"
+      ]
     },
     {
       "key": "eliza-1-4b:litert",
@@ -1278,6 +1995,84 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/model_q4.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_nicole.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sarah.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sky.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_adam.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_michael.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_emma.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_isabella.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_george.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_lewis.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -1299,9 +2094,15 @@
         "downloadable": {
           "status": "fail",
           "detail": "HTTP 404 Not Found",
-          "checkedAt": "2026-07-01T17:27:33.302Z",
+          "checkedAt": "2026-07-01T17:46:10.911Z",
           "httpStatus": 404,
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/text/eliza-1-4b.litertlm?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "12/24 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -1313,11 +2114,12 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
-        "downloadable: HTTP 404 Not Found"
+        "downloadable: HTTP 404 Not Found",
+        "bundleClosure: 12/24 manifest file(s) failed remote checks"
       ]
     },
     {
@@ -1365,6 +2167,84 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true",
+        "fileCount": 24,
+        "failingFiles": [
+          {
+            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/model_q4.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_nicole.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sarah.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/af_sky.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_adam.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/am_michael.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_emma.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bf_isabella.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_george.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "tts/kokoro/voices/bm_lewis.bin",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          },
+          {
+            "path": "vad/silero-vad-int8.onnx",
+            "status": "fail",
+            "detail": "HTTP 404 Not Found",
+            "httpStatus": 404
+          }
+        ]
+      },
       "checks": {
         "implemented": {
           "status": "fail",
@@ -1386,6 +2266,12 @@
           "status": "fail",
           "detail": "no download URL exists for this artifact"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "12/24 manifest file(s) failed remote checks",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -1396,14 +2282,15 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "implemented: mtp is expected but has no catalog source file",
         "deployable: mtp is expected but has no catalog source file",
         "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "downloadable: no download URL exists for this artifact",
+        "bundleClosure: 12/24 manifest file(s) failed remote checks"
       ]
     },
     {
@@ -1464,6 +2351,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -1487,6 +2379,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/text/eliza-1-9b-128k.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -1497,12 +2395,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -1550,6 +2449,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -1573,6 +2477,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/tts/omnivoice-base-Q8_0.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -1583,12 +2493,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -1597,11 +2508,11 @@
       "displayName": "eliza-1-9B",
       "component": "asr",
       "expected": true,
-      "catalogAdvertised": false,
-      "sourceRepo": null,
-      "sourceFile": null,
-      "bundleFile": null,
-      "downloadUrl": null,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/9b/asr/mmproj-audio-9b-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-9b-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/asr/mmproj-audio-9b-bf16.gguf?download=true",
       "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
       "publishStatus": "pending",
       "quantization": null,
@@ -1636,26 +2547,39 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
         },
         "integrated": {
-          "status": "warn",
-          "detail": "TRANSCRIPTION handler via the local ASR pipeline exists, but the catalog artifact is missing"
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
         },
         "deployable": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/asr/mmproj-audio-9b-bf16.gguf?download=true"
         },
         "published": {
           "status": "fail",
-          "detail": "catalog does not advertise a hosted artifact for this component"
+          "detail": "tier publish status is pending"
         },
         "downloadable": {
           "status": "fail",
-          "detail": "no download URL exists for this artifact"
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/asr/mmproj-audio-9b-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -1667,14 +2591,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
-        "implemented: asr is expected but has no catalog source file",
-        "deployable: asr is expected but has no catalog source file",
-        "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -1722,6 +2645,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -1745,6 +2673,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/vad/silero-vad-v5.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -1755,12 +2689,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -1808,6 +2743,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -1831,6 +2771,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/embedding/eliza-1-embedding.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -1841,12 +2787,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -1894,6 +2841,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -1917,6 +2869,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/vision/mmproj-9b.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -1927,12 +2885,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -1980,6 +2939,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "fail",
@@ -2001,6 +2965,12 @@
           "status": "fail",
           "detail": "no download URL exists for this artifact"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.370Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2011,14 +2981,15 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "implemented: mtp is expected but has no catalog source file",
         "deployable: mtp is expected but has no catalog source file",
         "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "downloadable: no download URL exists for this artifact",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2079,6 +3050,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -2102,6 +3078,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/text/eliza-1-27b-128k.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.488Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2112,12 +3094,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2165,6 +3148,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -2188,6 +3176,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/tts/omnivoice-base-Q8_0.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.488Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2198,12 +3192,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2212,11 +3207,11 @@
       "displayName": "eliza-1-27B",
       "component": "asr",
       "expected": true,
-      "catalogAdvertised": false,
-      "sourceRepo": null,
-      "sourceFile": null,
-      "bundleFile": null,
-      "downloadUrl": null,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b/asr/mmproj-audio-27b-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-27b-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/asr/mmproj-audio-27b-bf16.gguf?download=true",
       "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
       "publishStatus": "pending",
       "quantization": null,
@@ -2251,26 +3246,39 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
         },
         "integrated": {
-          "status": "warn",
-          "detail": "TRANSCRIPTION handler via the local ASR pipeline exists, but the catalog artifact is missing"
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
         },
         "deployable": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/asr/mmproj-audio-27b-bf16.gguf?download=true"
         },
         "published": {
           "status": "fail",
-          "detail": "catalog does not advertise a hosted artifact for this component"
+          "detail": "tier publish status is pending"
         },
         "downloadable": {
           "status": "fail",
-          "detail": "no download URL exists for this artifact"
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/asr/mmproj-audio-27b-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.488Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -2282,14 +3290,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
-        "implemented: asr is expected but has no catalog source file",
-        "deployable: asr is expected but has no catalog source file",
-        "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2337,6 +3344,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -2360,6 +3372,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/vad/silero-vad-v5.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.488Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2370,12 +3388,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2423,6 +3442,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -2446,6 +3470,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/embedding/eliza-1-embedding.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.488Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2456,12 +3486,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2509,6 +3540,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -2532,6 +3568,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/vision/mmproj-27b.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.488Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2542,12 +3584,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2595,6 +3638,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "fail",
@@ -2616,6 +3664,12 @@
           "status": "fail",
           "detail": "no download URL exists for this artifact"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.488Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2626,14 +3680,15 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "implemented: mtp is expected but has no catalog source file",
         "deployable: mtp is expected but has no catalog source file",
         "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "downloadable: no download URL exists for this artifact",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2694,6 +3749,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -2717,6 +3777,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/text/eliza-1-27b-256k.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.525Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2727,12 +3793,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2780,6 +3847,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -2803,6 +3875,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/tts/omnivoice-base-Q8_0.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.525Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2813,12 +3891,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2827,11 +3906,11 @@
       "displayName": "eliza-1-27B-256k",
       "component": "asr",
       "expected": true,
-      "catalogAdvertised": false,
-      "sourceRepo": null,
-      "sourceFile": null,
-      "bundleFile": null,
-      "downloadUrl": null,
+      "catalogAdvertised": true,
+      "sourceRepo": "elizaos/eliza-1",
+      "sourceFile": "bundles/27b-256k/asr/mmproj-audio-27b-256k-bf16.gguf",
+      "bundleFile": "asr/mmproj-audio-27b-256k-bf16.gguf",
+      "downloadUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/asr/mmproj-audio-27b-256k-bf16.gguf?download=true",
       "bootPath": "TRANSCRIPTION handler via the local ASR pipeline",
       "publishStatus": "pending",
       "quantization": null,
@@ -2866,26 +3945,39 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "asr has a catalog source file and download path"
         },
         "integrated": {
-          "status": "warn",
-          "detail": "TRANSCRIPTION handler via the local ASR pipeline exists, but the catalog artifact is missing"
+          "status": "pass",
+          "detail": "TRANSCRIPTION handler via the local ASR pipeline"
         },
         "deployable": {
-          "status": "fail",
-          "detail": "asr is expected but has no catalog source file"
+          "status": "pass",
+          "detail": "artifact has a resolved catalog download URL",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/asr/mmproj-audio-27b-256k-bf16.gguf?download=true"
         },
         "published": {
           "status": "fail",
-          "detail": "catalog does not advertise a hosted artifact for this component"
+          "detail": "tier publish status is pending"
         },
         "downloadable": {
           "status": "fail",
-          "detail": "no download URL exists for this artifact"
+          "detail": "tier publish status is pending",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/asr/mmproj-audio-27b-256k-bf16.gguf?download=true"
+        },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.525Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
         },
         "installed": {
           "status": "unknown",
@@ -2897,14 +3989,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
-        "implemented: asr is expected but has no catalog source file",
-        "deployable: asr is expected but has no catalog source file",
-        "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "published: tier publish status is pending",
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -2952,6 +4043,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -2975,6 +4071,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/vad/silero-vad-v5.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.525Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -2985,12 +4087,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -3038,6 +4141,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -3061,6 +4169,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/embedding/eliza-1-embedding.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.525Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -3071,12 +4185,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -3124,6 +4239,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "pass",
@@ -3147,6 +4267,12 @@
           "detail": "tier publish status is pending",
           "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/vision/mmproj-27b-256k.gguf?download=true"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.525Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -3157,12 +4283,13 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "published: tier publish status is pending",
-        "downloadable: tier publish status is pending"
+        "downloadable: tier publish status is pending",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     },
     {
@@ -3210,6 +4337,11 @@
         "componentPath": null,
         "componentFile": null
       },
+      "bundle": {
+        "manifestUrl": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true",
+        "fileCount": 0,
+        "failingFiles": []
+      },
       "checks": {
         "implemented": {
           "status": "fail",
@@ -3231,6 +4363,12 @@
           "status": "fail",
           "detail": "no download URL exists for this artifact"
         },
+        "bundleClosure": {
+          "status": "fail",
+          "detail": "manifest unavailable: HTTP 404 Not Found",
+          "checkedAt": "2026-07-01T17:46:16.525Z",
+          "url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/eliza-1.manifest.json?download=true"
+        },
         "installed": {
           "status": "unknown",
           "detail": "bundle is not installed in this state dir"
@@ -3241,103 +4379,127 @@
         },
         "backendPolicy": {
           "status": "pass",
-          "detail": "accelerated backend metal is available; CPU must not be the default (device backends: cpu, metal)"
+          "detail": "accelerated backend metal is available and supported; CPU must not be the default (device backends: cpu, metal, supported: metal, vulkan, cuda, rocm, cpu)"
         }
       },
       "blockers": [
         "implemented: mtp is expected but has no catalog source file",
         "deployable: mtp is expected but has no catalog source file",
         "published: catalog does not advertise a hosted artifact for this component",
-        "downloadable: no download URL exists for this artifact"
+        "downloadable: no download URL exists for this artifact",
+        "bundleClosure: manifest unavailable: HTTP 404 Not Found"
       ]
     }
   ],
   "summary": {
     "totalRows": 37,
-    "failingRows": 30,
+    "failingRows": 37,
     "unknownRows": 37,
     "installedRows": 0,
     "verifiedRows": 0,
     "pendingPublishRows": 21,
     "blockers": [
+      "eliza-1-2b:text: bundleClosure: 2/22 manifest file(s) failed remote checks",
       "eliza-1-2b:voice: downloadable: HTTP 404 Not Found",
-      "eliza-1-2b:asr: implemented: asr is expected but has no catalog source file",
-      "eliza-1-2b:asr: deployable: asr is expected but has no catalog source file",
-      "eliza-1-2b:asr: published: catalog does not advertise a hosted artifact for this component",
-      "eliza-1-2b:asr: downloadable: no download URL exists for this artifact",
+      "eliza-1-2b:voice: bundleClosure: 2/22 manifest file(s) failed remote checks",
+      "eliza-1-2b:asr: bundleClosure: 2/22 manifest file(s) failed remote checks",
+      "eliza-1-2b:vad: bundleClosure: 2/22 manifest file(s) failed remote checks",
       "eliza-1-2b:embedding: implemented: embedding is expected but has no catalog source file",
       "eliza-1-2b:embedding: deployable: embedding is expected but has no catalog source file",
       "eliza-1-2b:embedding: published: catalog does not advertise a hosted artifact for this component",
       "eliza-1-2b:embedding: downloadable: no download URL exists for this artifact",
+      "eliza-1-2b:embedding: bundleClosure: 2/22 manifest file(s) failed remote checks",
+      "eliza-1-2b:vision: bundleClosure: 2/22 manifest file(s) failed remote checks",
       "eliza-1-2b:litert: downloadable: HTTP 404 Not Found",
+      "eliza-1-2b:litert: bundleClosure: 2/22 manifest file(s) failed remote checks",
       "eliza-1-2b:mtp: implemented: mtp is expected but has no catalog source file",
       "eliza-1-2b:mtp: deployable: mtp is expected but has no catalog source file",
       "eliza-1-2b:mtp: published: catalog does not advertise a hosted artifact for this component",
       "eliza-1-2b:mtp: downloadable: no download URL exists for this artifact",
+      "eliza-1-2b:mtp: bundleClosure: 2/22 manifest file(s) failed remote checks",
+      "eliza-1-4b:text: bundleClosure: 12/24 manifest file(s) failed remote checks",
       "eliza-1-4b:voice: downloadable: HTTP 404 Not Found",
-      "eliza-1-4b:asr: implemented: asr is expected but has no catalog source file",
-      "eliza-1-4b:asr: deployable: asr is expected but has no catalog source file",
-      "eliza-1-4b:asr: published: catalog does not advertise a hosted artifact for this component",
-      "eliza-1-4b:asr: downloadable: no download URL exists for this artifact",
+      "eliza-1-4b:voice: bundleClosure: 12/24 manifest file(s) failed remote checks",
+      "eliza-1-4b:asr: bundleClosure: 12/24 manifest file(s) failed remote checks",
+      "eliza-1-4b:vad: bundleClosure: 12/24 manifest file(s) failed remote checks",
+      "eliza-1-4b:embedding: bundleClosure: 12/24 manifest file(s) failed remote checks",
+      "eliza-1-4b:vision: bundleClosure: 12/24 manifest file(s) failed remote checks",
       "eliza-1-4b:litert: downloadable: HTTP 404 Not Found",
+      "eliza-1-4b:litert: bundleClosure: 12/24 manifest file(s) failed remote checks",
       "eliza-1-4b:mtp: implemented: mtp is expected but has no catalog source file",
       "eliza-1-4b:mtp: deployable: mtp is expected but has no catalog source file",
       "eliza-1-4b:mtp: published: catalog does not advertise a hosted artifact for this component",
       "eliza-1-4b:mtp: downloadable: no download URL exists for this artifact",
+      "eliza-1-4b:mtp: bundleClosure: 12/24 manifest file(s) failed remote checks",
       "eliza-1-9b:text: published: tier publish status is pending",
       "eliza-1-9b:text: downloadable: tier publish status is pending",
+      "eliza-1-9b:text: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-9b:voice: published: tier publish status is pending",
       "eliza-1-9b:voice: downloadable: tier publish status is pending",
-      "eliza-1-9b:asr: implemented: asr is expected but has no catalog source file",
-      "eliza-1-9b:asr: deployable: asr is expected but has no catalog source file",
-      "eliza-1-9b:asr: published: catalog does not advertise a hosted artifact for this component",
-      "eliza-1-9b:asr: downloadable: no download URL exists for this artifact",
+      "eliza-1-9b:voice: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-9b:asr: published: tier publish status is pending",
+      "eliza-1-9b:asr: downloadable: tier publish status is pending",
+      "eliza-1-9b:asr: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-9b:vad: published: tier publish status is pending",
       "eliza-1-9b:vad: downloadable: tier publish status is pending",
+      "eliza-1-9b:vad: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-9b:embedding: published: tier publish status is pending",
       "eliza-1-9b:embedding: downloadable: tier publish status is pending",
+      "eliza-1-9b:embedding: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-9b:vision: published: tier publish status is pending",
       "eliza-1-9b:vision: downloadable: tier publish status is pending",
+      "eliza-1-9b:vision: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-9b:mtp: implemented: mtp is expected but has no catalog source file",
       "eliza-1-9b:mtp: deployable: mtp is expected but has no catalog source file",
       "eliza-1-9b:mtp: published: catalog does not advertise a hosted artifact for this component",
       "eliza-1-9b:mtp: downloadable: no download URL exists for this artifact",
+      "eliza-1-9b:mtp: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b:text: published: tier publish status is pending",
       "eliza-1-27b:text: downloadable: tier publish status is pending",
+      "eliza-1-27b:text: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b:voice: published: tier publish status is pending",
       "eliza-1-27b:voice: downloadable: tier publish status is pending",
-      "eliza-1-27b:asr: implemented: asr is expected but has no catalog source file",
-      "eliza-1-27b:asr: deployable: asr is expected but has no catalog source file",
-      "eliza-1-27b:asr: published: catalog does not advertise a hosted artifact for this component",
-      "eliza-1-27b:asr: downloadable: no download URL exists for this artifact",
+      "eliza-1-27b:voice: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b:asr: published: tier publish status is pending",
+      "eliza-1-27b:asr: downloadable: tier publish status is pending",
+      "eliza-1-27b:asr: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b:vad: published: tier publish status is pending",
       "eliza-1-27b:vad: downloadable: tier publish status is pending",
+      "eliza-1-27b:vad: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b:embedding: published: tier publish status is pending",
       "eliza-1-27b:embedding: downloadable: tier publish status is pending",
+      "eliza-1-27b:embedding: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b:vision: published: tier publish status is pending",
       "eliza-1-27b:vision: downloadable: tier publish status is pending",
+      "eliza-1-27b:vision: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b:mtp: implemented: mtp is expected but has no catalog source file",
       "eliza-1-27b:mtp: deployable: mtp is expected but has no catalog source file",
       "eliza-1-27b:mtp: published: catalog does not advertise a hosted artifact for this component",
       "eliza-1-27b:mtp: downloadable: no download URL exists for this artifact",
+      "eliza-1-27b:mtp: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b-256k:text: published: tier publish status is pending",
       "eliza-1-27b-256k:text: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:text: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b-256k:voice: published: tier publish status is pending",
       "eliza-1-27b-256k:voice: downloadable: tier publish status is pending",
-      "eliza-1-27b-256k:asr: implemented: asr is expected but has no catalog source file",
-      "eliza-1-27b-256k:asr: deployable: asr is expected but has no catalog source file",
-      "eliza-1-27b-256k:asr: published: catalog does not advertise a hosted artifact for this component",
-      "eliza-1-27b-256k:asr: downloadable: no download URL exists for this artifact",
+      "eliza-1-27b-256k:voice: bundleClosure: manifest unavailable: HTTP 404 Not Found",
+      "eliza-1-27b-256k:asr: published: tier publish status is pending",
+      "eliza-1-27b-256k:asr: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:asr: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b-256k:vad: published: tier publish status is pending",
       "eliza-1-27b-256k:vad: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:vad: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b-256k:embedding: published: tier publish status is pending",
       "eliza-1-27b-256k:embedding: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:embedding: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b-256k:vision: published: tier publish status is pending",
       "eliza-1-27b-256k:vision: downloadable: tier publish status is pending",
+      "eliza-1-27b-256k:vision: bundleClosure: manifest unavailable: HTTP 404 Not Found",
       "eliza-1-27b-256k:mtp: implemented: mtp is expected but has no catalog source file",
       "eliza-1-27b-256k:mtp: deployable: mtp is expected but has no catalog source file",
       "eliza-1-27b-256k:mtp: published: catalog does not advertise a hosted artifact for this component",
-      "eliza-1-27b-256k:mtp: downloadable: no download URL exists for this artifact"
+      "eliza-1-27b-256k:mtp: downloadable: no download URL exists for this artifact",
+      "eliza-1-27b-256k:mtp: bundleClosure: manifest unavailable: HTTP 404 Not Found"
     ]
   }
 }

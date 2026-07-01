@@ -63,6 +63,20 @@ export interface LifecycleLocalFileCheck {
 	sizeBytes?: number;
 }
 
+export interface LifecycleBundleRemoteCheck {
+	status: "pass" | "fail" | "warn";
+	detail: string;
+	checkedAt: string;
+	manifestUrl: string;
+	fileCount: number;
+	failingFiles: Array<{
+		path: string;
+		status: "fail" | "warn";
+		detail: string;
+		httpStatus?: number;
+	}>;
+}
+
 export interface LocalModelLifecycleArtifact {
 	key: string;
 	modelId: string;
@@ -103,12 +117,18 @@ export interface LocalModelLifecycleRow extends LocalModelLifecycleArtifact {
 		componentPath: string | null;
 		componentFile: LifecycleLocalFileCheck | null;
 	};
+	bundle: {
+		manifestUrl: string;
+		fileCount: number;
+		failingFiles: LifecycleBundleRemoteCheck["failingFiles"];
+	} | null;
 	checks: {
 		implemented: LifecycleCheck;
 		integrated: LifecycleCheck;
 		deployable: LifecycleCheck;
 		published: LifecycleCheck;
 		downloadable: LifecycleCheck;
+		bundleClosure: LifecycleCheck;
 		installed: LifecycleCheck;
 		loadsAndRunsOnDevice: LifecycleCheck;
 		backendPolicy: LifecycleCheck;
@@ -150,6 +170,7 @@ export interface BuildLocalModelLifecycleMatrixOptions {
 	hardware: HardwareProbe;
 	observedAt?: string;
 	remoteChecks?: Readonly<Record<string, LifecycleRemoteCheck>>;
+	bundleChecks?: Readonly<Record<string, LifecycleBundleRemoteCheck>>;
 	localFileChecks?: Readonly<Record<string, LifecycleLocalFileCheck>>;
 }
 
@@ -431,6 +452,22 @@ function downloadableCheck(
 	});
 }
 
+function bundleClosureCheck(
+	model: CatalogModel,
+	remote: LifecycleBundleRemoteCheck | undefined,
+): LifecycleCheck {
+	if (!model.bundleManifestFile) {
+		return status("skipped", "model does not use an Eliza-1 bundle manifest");
+	}
+	if (!remote) {
+		return status("unknown", "bundle manifest closure was not checked");
+	}
+	return status(remote.status, remote.detail, {
+		checkedAt: remote.checkedAt,
+		url: remote.manifestUrl,
+	});
+}
+
 function installedCheck(
 	installed: InstalledModel | undefined,
 	localFile: LifecycleLocalFileCheck | null,
@@ -562,6 +599,8 @@ export function buildLocalModelLifecycleMatrix(
 			options.remoteChecks?.[artifact.key],
 			published,
 		);
+		const bundleCheck = options.bundleChecks?.[model.id];
+		const bundleClosure = bundleClosureCheck(model, bundleCheck);
 		const installedStatus = installedCheck(installed, fileCheck);
 		const loadRun = loadRunCheck(installed);
 		const backend = backendPolicyCheck(
@@ -592,12 +631,20 @@ export function buildLocalModelLifecycleMatrix(
 				componentPath,
 				componentFile: fileCheck,
 			},
+			bundle: bundleCheck
+				? {
+						manifestUrl: bundleCheck.manifestUrl,
+						fileCount: bundleCheck.fileCount,
+						failingFiles: bundleCheck.failingFiles,
+					}
+				: null,
 			checks: {
 				implemented,
 				integrated,
 				deployable,
 				published,
 				downloadable,
+				bundleClosure,
 				installed: installedStatus,
 				loadsAndRunsOnDevice: loadRun,
 				backendPolicy: backend,
@@ -692,8 +739,8 @@ export function formatLocalModelLifecycleMatrixMarkdown(
 		"",
 		"## Matrix",
 		"",
-		"| Model | Component | Publish | Download | Installed | Load/run | Backend | Blockers |",
-		"| --- | --- | --- | --- | --- | --- | --- | --- |",
+		"| Model | Component | Publish | Download | Bundle | Installed | Load/run | Backend | Blockers |",
+		"| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
 	];
 
 	for (const row of matrix.rows) {
@@ -703,6 +750,7 @@ export function formatLocalModelLifecycleMatrixMarkdown(
 				row.component,
 				compactCheck(row.checks.published),
 				compactCheck(row.checks.downloadable),
+				compactCheck(row.checks.bundleClosure),
 				compactCheck(row.checks.installed),
 				compactCheck(row.checks.loadsAndRunsOnDevice),
 				`${row.runtime.expectedPrimaryBackend}${row.runtime.cpuFallbackAllowed ? " (CPU allowed)" : ""}`,
