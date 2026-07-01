@@ -31,7 +31,10 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    const review = await runAppReview({ app: appRow, triggeredByUserId: user.id });
+    const review = await runAppReview({
+      app: appRow,
+      triggeredByUserId: user.id,
+    });
 
     logger.info("[AppReview API] Submitted app for review", {
       appId,

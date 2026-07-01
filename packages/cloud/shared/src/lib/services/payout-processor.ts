@@ -714,12 +714,42 @@ export class PayoutProcessorService {
     const tokenConfig = getPayoutTokenConfig("solana", redemption.asset);
     const mintAddress = new PublicKey(tokenConfig.address);
     const toAddress = new PublicKey(redemption.payout_address);
-    const amount = BigInt(
-      Math.floor(Number(redemption.eliza_amount) * 10 ** tokenConfig.decimals),
-    );
+    const amount = BigInt(Math.floor(Number(redemption.eliza_amount) * 10 ** tokenConfig.decimals));
 
     // Get source token account (hot wallet's ATA)
     const sourceAta = await getAssociatedTokenAddress(mintAddress, this.solanaKeypair.publicKey);
+    let sourceAccount;
+    try {
+      sourceAccount = await getAccount(this.solanaConnection, sourceAta);
+    } catch (error) {
+      if (error instanceof TokenAccountNotFoundError) {
+        logger.error("[PayoutProcessor] Source token account not found", {
+          redemptionId: redemption.id,
+          asset: redemption.asset,
+          mint: tokenConfig.address,
+          sourceAta: sourceAta.toBase58(),
+        });
+        return {
+          success: false,
+          error: "Source token account not configured - contact support",
+          retryable: true,
+        };
+      }
+      throw error;
+    }
+    if (sourceAccount.amount < amount) {
+      logger.error("[PayoutProcessor] Insufficient Solana hot wallet balance", {
+        redemptionId: redemption.id,
+        asset: redemption.asset,
+        required: amount.toString(),
+        available: sourceAccount.amount.toString(),
+      });
+      return {
+        success: false,
+        error: "Insufficient hot wallet balance - contact support",
+        retryable: true,
+      };
+    }
 
     // Get or create destination token account
     const destinationAta = await getAssociatedTokenAddress(mintAddress, toAddress);

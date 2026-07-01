@@ -14,8 +14,8 @@
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { isOxaPayConfigured, oxaPayService } from "../oxapay";
-import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 import { type PaymentProviderAdapter, type PaymentRequestRow } from "../payment-requests";
+import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 
 function readMetaString(request: PaymentRequestRow, key: string): string | undefined {
   const meta = (request.metadata ?? {}) as Record<string, unknown>;

@@ -11,10 +11,9 @@
  * networks; Ethereum + BNB mints are included for completeness/back-compat.
  */
 
-import { ELIZA_DECIMALS } from "./token-constants";
-import { isTestnetMode } from "./payout-networks";
-import { ELIZA_TOKEN_ADDRESSES } from "./payout-networks";
 import type { SupportedNetwork } from "../services/eliza-token-price";
+import { ELIZA_TOKEN_ADDRESSES, isTestnetMode } from "./payout-networks";
+import { ELIZA_DECIMALS } from "./token-constants";
 
 export type PayoutAsset = "eliza" | "usdc";
 

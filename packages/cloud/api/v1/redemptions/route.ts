@@ -98,8 +98,14 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       );
     }
 
-    const { appId, pointsAmount, payoutAddress, signature, idempotencyKey, asset } =
-      validation.data;
+    const {
+      appId,
+      pointsAmount,
+      payoutAddress,
+      signature,
+      idempotencyKey,
+      asset,
+    } = validation.data;
     const network = normalizeRedemptionNetwork(validation.data.network);
 
     // The network-availability probe reflects the elizaOS hot-wallet status and

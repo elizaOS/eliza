@@ -19,8 +19,8 @@
  */
 
 import { generateObject } from "ai";
-import { z } from "zod";
 import { desc, eq } from "drizzle-orm";
+import { z } from "zod";
 import { dbRead, dbWrite } from "../../db/client";
 import { type AppReview, appReviews } from "../../db/schemas/app-reviews";
 import { type App, apps } from "../../db/schemas/apps";
@@ -225,10 +225,9 @@ export interface AppReviewCandidate {
  * change-detection hash. Only fields that change the compliance picture are
  * included, so cosmetic edits (logo, analytics) don't force a re-review.
  */
-export function buildReviewCandidate(app: Pick<
-  App,
-  "name" | "description" | "app_url" | "website_url" | "metadata"
->): AppReviewCandidate {
+export function buildReviewCandidate(
+  app: Pick<App, "name" | "description" | "app_url" | "website_url" | "metadata">,
+): AppReviewCandidate {
   const declaredTags = extractDeclaredTags(app.metadata);
   const document = [
     `Name: ${app.name ?? ""}`,
@@ -249,7 +248,8 @@ function extractDeclaredTags(metadata: Record<string, unknown> | null | undefine
   for (const key of ["category", "categories", "tags", "features", "keywords"]) {
     const value = (metadata as Record<string, unknown>)[key];
     if (typeof value === "string") parts.push(value);
-    else if (Array.isArray(value)) parts.push(value.filter((v) => typeof v === "string").join(", "));
+    else if (Array.isArray(value))
+      parts.push(value.filter((v) => typeof v === "string").join(", "));
   }
   return parts.join("; ");
 }
