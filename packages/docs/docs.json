@@ -458,7 +458,8 @@
               "advanced/trajectories",
               "websocket-events",
               "stability/known-failure-modes",
-              "security/codeflow-residual-risk"
+              "security/codeflow-residual-risk",
+              "security/MODEL-BOUNDARY-PRIVACY"
             ]
           }
         ]

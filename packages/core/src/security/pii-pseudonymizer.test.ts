@@ -189,4 +189,56 @@ describe("PseudonymSession", () => {
 		expect(swapped).toContain("Rivertown");
 		expect(swapped).not.toContain("Dana Whitfield");
 	});
+
+	it("round-trips values containing regex-special characters and unicode", () => {
+		const s = new PseudonymSession({ salt: "fixed-test-salt" });
+		const text = "Ping José María at AT&T re: O'Brien & Sons (est. 1998).";
+		s.learnSpans(text, [
+			{ kind: "person", value: "José María" },
+			{ kind: "org", value: "AT&T" },
+			{ kind: "org", value: "O'Brien & Sons" },
+		]);
+		const swapped = s.substituteText(text);
+		expect(swapped).not.toContain("José María");
+		expect(swapped).not.toContain("AT&T");
+		expect(swapped).not.toContain("O'Brien & Sons");
+		// Exact inverse despite the +/&/'/( characters that would break a naive regex.
+		expect(s.restoreText(swapped)).toBe(text);
+	});
+
+	it("does not corrupt a longer value that a shorter learned value is a prefix of", () => {
+		const s = new PseudonymSession({ salt: "fixed-test-salt" });
+		const text =
+			"Compare Acme with Acme Robotics and Acme Robotics International.";
+		s.learnSpans(text, [
+			{ kind: "org", value: "Acme" },
+			{ kind: "org", value: "Acme Robotics" },
+			{ kind: "org", value: "Acme Robotics International" },
+		]);
+		const swapped = s.substituteText(text);
+		expect(swapped).not.toMatch(/(?<![A-Za-z0-9_])Acme(?![A-Za-z0-9_])/);
+		// Longest-first single pass keeps the three overlapping orgs distinct.
+		expect(s.restoreText(swapped)).toBe(text);
+		expect(new Set(s.entries.map((e) => e.surrogate)).size).toBe(3);
+	});
+
+	it("keeps two sessions independent (no shared surrogate vault)", async () => {
+		const roster = [{ kind: "person", value: "Dana Whitfield" }];
+		const a = new PseudonymSession({
+			salt: "salt-a",
+			recognizer: new GazetteerEntityRecognizer(roster),
+		});
+		const b = new PseudonymSession({
+			salt: "salt-b",
+			recognizer: new GazetteerEntityRecognizer(roster),
+		});
+		await a.learn("call Dana Whitfield");
+		await b.learn("call Dana Whitfield");
+		// Different salts ⇒ different surrogates (unlinkable), each restores only
+		// against its own vault.
+		expect(a.entries[0]?.surrogate).not.toBe(b.entries[0]?.surrogate);
+		expect(a.restoreText(a.substituteText("call Dana Whitfield"))).toBe(
+			"call Dana Whitfield",
+		);
+	});
 });

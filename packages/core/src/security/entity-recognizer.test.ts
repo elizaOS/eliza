@@ -39,6 +39,37 @@ describe("RegexEntityRecognizer", () => {
 		const spans = await on.recognize("mail a@b.com or call 415-555-0100");
 		expect(spans.map((s) => s.kind).sort()).toEqual(["email", "phone"]);
 	});
+
+	it("catches varied valid address forms and rejects near-miss non-addresses", async () => {
+		const r = new RegexEntityRecognizer();
+		for (const addr of [
+			"Send it to 350 Fifth Avenue today",
+			"HQ at 1 Infinite Loop, Cupertino",
+			"Ship to 221B Baker Street, Apt 2",
+		]) {
+			expect((await r.recognize(addr)).length).toBeGreaterThan(0);
+		}
+		for (const noAddr of [
+			"Meet me at 3 PM sharp",
+			"Chapter 12 covers Section 3",
+			"Order 4 blue shirts please",
+			"Route 66 was closed",
+		]) {
+			expect(await r.recognize(noAddr)).toHaveLength(0);
+		}
+	});
+
+	it("the street-address regex does not catastrophically backtrack (ReDoS guard)", async () => {
+		const r = new RegexEntityRecognizer();
+		// A pathological run of capitalized words with a trailing digit and no
+		// street-type keyword — the {1,4} bound keeps matching linear, so this
+		// returns promptly rather than hanging. Test completion IS the assertion.
+		const pathological = `9 ${"Ba ".repeat(5000)}1`;
+		const start = Date.now();
+		const spans = await r.recognize(pathological);
+		expect(Date.now() - start).toBeLessThan(2000);
+		expect(Array.isArray(spans)).toBe(true);
+	});
 });
 
 describe("GazetteerEntityRecognizer", () => {

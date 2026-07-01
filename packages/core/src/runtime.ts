@@ -4919,7 +4919,6 @@ export class AgentRuntime implements IAgentRuntime {
 			ModelType.AUDIO,
 			ModelType.VIDEO,
 			ModelType.TEXT_EMBEDDING,
-			ModelType.TEXT_EMBEDDING_BATCH,
 		];
 		let modelParams: ModelParamsMap[T];
 		const paramsClone = isPlainObject(params)
@@ -5041,9 +5040,12 @@ export class AgentRuntime implements IAgentRuntime {
 		let handlerDeliveredStream = false;
 		let streamedText = "";
 		let secretSwapSession: SecretSwapSession | null = null;
-		let secretSwapStreamBuffer = "";
+		let guardedStreamBuffer = "";
 		let piiSwapSession: PseudonymSession | null = null;
-		const emitModelStreamChunk = async (safeChunk: string): Promise<void> => {
+		const emitModelStreamChunk = async (
+			safeChunk: string,
+			visibleChunk = safeChunk,
+		): Promise<void> => {
 			if (abortSignal?.aborted) return;
 			if (streamedText === "" && safeChunk.length > 0) {
 				markInference(INFERENCE_MARKS.firstToken);
@@ -5071,33 +5073,42 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			await runInsideModelStreamChunkDelivery(async () => {
 				if (structuredExtractor) {
-					structuredExtractor.push(safeChunk);
+					structuredExtractor.push(visibleChunk);
 					return;
 				}
-				if (paramsChunk) await paramsChunk(safeChunk, msgId, undefined);
-				if (ctxChunk) await ctxChunk(safeChunk, msgId, undefined);
+				if (paramsChunk) await paramsChunk(visibleChunk, msgId, undefined);
+				if (ctxChunk) await ctxChunk(visibleChunk, msgId, undefined);
 			});
 		};
 		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
 			if (abortSignal?.aborted) return;
-			if (secretSwapSession) {
-				secretSwapStreamBuffer += chunk;
+			if (secretSwapSession || piiSwapSession) {
+				guardedStreamBuffer += chunk;
 				return;
 			}
 			await emitModelStreamChunk(chunk);
 		};
-		const flushSecretSwapStream = async (): Promise<void> => {
+		const flushGuardedStream = async (): Promise<void> => {
 			if (
 				abortSignal?.aborted ||
-				!secretSwapSession ||
-				secretSwapStreamBuffer.length === 0
+				(!secretSwapSession && !piiSwapSession) ||
+				guardedStreamBuffer.length === 0
 			) {
 				return;
 			}
-			const safeText = secretSwapSession.substituteText(secretSwapStreamBuffer);
-			secretSwapStreamBuffer = "";
+			let safeText = guardedStreamBuffer;
+			guardedStreamBuffer = "";
+			if (secretSwapSession) {
+				safeText = secretSwapSession.substituteText(safeText);
+			}
+			if (piiSwapSession) {
+				safeText = piiSwapSession.substituteText(safeText);
+			}
 			if (safeText.length > 0) {
-				await emitModelStreamChunk(safeText);
+				const visibleText = piiSwapSession
+					? piiSwapSession.restoreText(safeText)
+					: safeText;
+				await emitModelStreamChunk(safeText, visibleText);
 			}
 		};
 		// Wire the handler-facing stream callback for local providers AND for the
@@ -5332,9 +5343,11 @@ export class AgentRuntime implements IAgentRuntime {
 			modelParams as Record<string, JsonValue | object>,
 		);
 
-		const resultRef: { current: unknown } = {
-			current: secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse,
-		};
+		let safeRawResponse: unknown =
+			secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse;
+		safeRawResponse =
+			piiSwapSession?.substituteInValue(safeRawResponse) ?? safeRawResponse;
+		const resultRef: { current: unknown } = { current: safeRawResponse };
 		const modelOutToTrajectoryString = (v: unknown) =>
 			typeof v === "string" ? v : stringifyStructuredForPrompt({ response: v });
 
@@ -5348,7 +5361,7 @@ export class AgentRuntime implements IAgentRuntime {
 				if (abortSignal?.aborted) break;
 				await deliverModelStreamChunk(chunk);
 			}
-			await flushSecretSwapStream();
+			await flushGuardedStream();
 			structuredExtractor?.flush();
 
 			const trajStreamEnd = getTrajectoryContext();
@@ -5440,6 +5453,9 @@ export class AgentRuntime implements IAgentRuntime {
 			resultRef.current =
 				secretSwapSession?.substituteInValue(resultRef.current) ??
 				resultRef.current;
+			resultRef.current =
+				piiSwapSession?.substituteInValue(resultRef.current) ??
+				resultRef.current;
 
 			this.logger.trace(
 				{
@@ -5455,7 +5471,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.logModelCall(
 				String(modelType),
 				resolvedModelKey,
-				params,
+				modelParams,
 				promptContent,
 				effectiveSystemPrompt,
 				elapsedTime,
@@ -5480,7 +5496,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		if (handlerDeliveredStream) {
-			await flushSecretSwapStream();
+			await flushGuardedStream();
 			structuredExtractor?.flush();
 			const trajStreamEnd = getTrajectoryContext();
 			await this.invokePipelineHooks(
@@ -5526,6 +5542,8 @@ export class AgentRuntime implements IAgentRuntime {
 		resultRef.current =
 			secretSwapSession?.substituteInValue(resultRef.current) ??
 			resultRef.current;
+		resultRef.current =
+			piiSwapSession?.substituteInValue(resultRef.current) ?? resultRef.current;
 
 		this.logger.trace(
 			{
@@ -5540,7 +5558,7 @@ export class AgentRuntime implements IAgentRuntime {
 		this.logModelCall(
 			String(modelType),
 			resolvedModelKey,
-			params,
+			modelParams,
 			promptContent,
 			effectiveSystemPrompt,
 			elapsedTime,

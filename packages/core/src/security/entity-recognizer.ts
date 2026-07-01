@@ -83,11 +83,14 @@ export interface RegexEntityRecognizerOptions {
 	phone?: boolean;
 }
 
-// US-style street address: number + street words + a street-type keyword, with an
-// optional trailing unit/city/state/ZIP tail. Kept conservative (requires the
-// street-type keyword) so ordinary "12 items" / "3 apples" never match.
+// US-style street address: a house number (optionally with a letter suffix like
+// "221B") + 1–4 capitalized street words + a street-type keyword, with an optional
+// trailing unit/city/state/ZIP tail. Kept conservative (requires the street-type
+// keyword AND capitalized street words) so ordinary "12 items" / "3 apples" /
+// "Route 66 was closed" never match. The {1,4} bound keeps matching linear (no
+// catastrophic backtracking) on pathological input.
 const STREET_ADDRESS =
-	/\b\d{1,6}\s+(?:[A-Z][A-Za-z.'-]+\s+){1,4}(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln|Drive|Dr|Court|Ct|Way|Terrace|Ter|Place|Pl|Circle|Cir|Highway|Hwy|Parkway|Pkwy)\b\.?(?:\s*(?:#|Apt\.?|Suite|Ste\.?|Unit)\s*\w+)?(?:,\s*[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)*)?(?:,\s*[A-Z]{2})?(?:\s+\d{5}(?:-\d{4})?)?/g;
+	/\b\d{1,6}[A-Za-z]?\s+(?:[A-Z][A-Za-z.'-]+\s+){1,4}(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Lane|Ln|Drive|Dr|Court|Ct|Way|Terrace|Ter|Place|Pl|Circle|Cir|Highway|Hwy|Parkway|Pkwy|Loop|Trail|Trl|Plaza|Square|Sq|Row|Alley|Crescent|Cres|Pike|Walk|Path)\b\.?(?:\s*(?:#|Apt\.?|Suite|Ste\.?|Unit)\s*\w+)?(?:,\s*[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)*)?(?:,\s*[A-Z]{2})?(?:\s+\d{5}(?:-\d{4})?)?/g;
 
 // Reuse the same well-tested email/phone shapes the secret-swap detectors use.
 const EMAIL = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
@@ -259,9 +262,9 @@ export class CompositeEntityRecognizer implements PiiEntityRecognizer {
 		}
 
 		// De-duplicate unlocated spans by (kind,value) and append.
-		const seen = new Set(kept.map((s) => `${s.kind} ${s.value}`));
+		const seen = new Set(kept.map((s) => `${s.kind}\0${s.value}`));
 		for (const { span } of unlocated) {
-			const key = `${span.kind} ${span.value}`;
+			const key = `${span.kind}\0${span.value}`;
 			if (seen.has(key)) continue;
 			seen.add(key);
 			kept.push(span);

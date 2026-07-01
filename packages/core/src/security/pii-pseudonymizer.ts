@@ -402,7 +402,7 @@ function mintSurrogate(
 	value: string,
 	attempt: number,
 ): string {
-	const seed = fnv1a(`${salt} ${kind} ${value} ${attempt}`);
+	const seed = fnv1a(`${salt}\0${kind}\0${value}\0${attempt}`);
 	switch (kind) {
 		case "person": {
 			const first = pick(FIRST_NAMES, seed);
