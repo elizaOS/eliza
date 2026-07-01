@@ -14,6 +14,8 @@ import { cn } from "../../lib/utils";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
+import { NotificationCenter } from "./NotificationCenter";
+import { usePullGesture } from "./use-pull-gesture";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -173,9 +175,39 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
 
+  // Pull-DOWN from the top edge opens the notification center (#10706), iOS-style.
+  // The gesture lives on a thin non-scrolling top strip — deliberately NOT the
+  // scrollable widget list — so it can never fight the list's vertical scroll.
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationPull = usePullGesture({
+    onPullDown: () => setNotificationsOpen(true),
+  });
+
   return (
-    <div
-      data-testid="home-screen"
+    <>
+      {/* Thin top-edge pull affordance. Sits above the home surface (z-[2]) but
+          only over the status-bar strip, so widget taps/scroll below are
+          untouched. A faint grabber hints the gesture. */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only pull target, not a click affordance (the notification center has its own reachable trigger). */}
+      <div
+        data-testid="home-notification-pull-zone"
+        className="absolute inset-x-0 top-0 z-[2] flex h-[calc(var(--safe-area-top,0px)+30px)] items-end justify-center pb-1"
+        style={{ touchAction: "none" }}
+        {...notificationPull}
+      >
+        <div
+          className="h-1 w-9 rounded-full bg-white/25"
+          aria-hidden
+          data-testid="home-notification-grabber"
+        />
+      </div>
+      <NotificationCenter
+        variant="sheet"
+        open={notificationsOpen}
+        onOpenChange={setNotificationsOpen}
+      />
+      <div
+        data-testid="home-screen"
       className={cn(
         "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
         // The shell root already reserves the status-bar safe area (its
@@ -255,6 +287,7 @@ export function HomeScreen({
           </nav>
         ) : null}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
