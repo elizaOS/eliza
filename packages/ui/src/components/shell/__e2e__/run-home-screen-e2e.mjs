@@ -576,6 +576,55 @@ try {
   await waitForSurfacePageSettled(desktop, "launcher");
   await snap(desktop, "desktop-launcher");
   await desktop.close();
+
+  // #10717: the web/desktop `< >` edge buttons render ONLY on fine-pointer /
+  // hover-capable devices. Headless chromium reports a coarse/no pointer by
+  // default (so the arrows are correctly hidden in the captures above); force
+  // the fine-pointer media features before load to exercise + capture them.
+  const finePointer = await browser.newPage({
+    viewport: { width: 1180, height: 900 },
+  });
+  finePointer.on("pageerror", (e) => sink.errors.push(String(e)));
+  await finePointer.addInitScript(() => {
+    const real = window.matchMedia.bind(window);
+    const stub = (query) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    });
+    window.matchMedia = (query) =>
+      /hover: hover|pointer: fine/.test(query) ? stub(query) : real(query);
+  });
+  await finePointer.goto(url);
+  await finePointer.waitForSelector('[data-testid="home-launcher-surface"]');
+  await finePointer.waitForTimeout(400);
+  // On the HOME half the rail offers a `>` (→ launcher) and no `<` (home is the
+  // first view).
+  assert(
+    (await finePointer.getByTestId("rail-pager-edge-next").count()) === 1,
+    "desktop fine-pointer: `>` edge button present on home",
+  );
+  assert(
+    (await finePointer.getByTestId("rail-pager-edge-prev").count()) === 0,
+    "desktop fine-pointer: no `<` edge button on the first (home) view",
+  );
+  await snap(finePointer, "desktop-edge-buttons-home");
+  // Click `>` to page to the launcher; the `<` (→ home) now appears.
+  await finePointer.getByTestId("rail-pager-edge-next").click();
+  await waitForSurfacePageSettled(finePointer, "launcher");
+  assert(
+    (await finePointer.getByTestId("rail-pager-edge-prev").count()) === 1,
+    "desktop fine-pointer: `<` edge button (→ home) present on the launcher",
+  );
+  await snap(finePointer, "desktop-edge-buttons-launcher");
+  await finePointer.close();
 } finally {
   await browser.close();
 }
