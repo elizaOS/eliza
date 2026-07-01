@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character } from "../types";
 
@@ -56,6 +57,73 @@ describe("AgentRuntime.getSetting", () => {
 		});
 
 		expect(runtime.getSetting("ROUTE_POLICY")).toBe('{"default":"guest"}');
+	});
+
+	it("keeps character settings ahead of constructor settings", () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "character-settings-override-test",
+				settings: {
+					ROUTE_POLICY: '{"default":"owner"}',
+				},
+			} as Character,
+			settings: {
+				ROUTE_POLICY: '{"default":"guest"}',
+			},
+		});
+
+		expect(runtime.getSetting("ROUTE_POLICY")).toBe('{"default":"owner"}');
+	});
+
+	it("uses fresh constructor settings over DB-persisted agent settings on restart", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const characterName = "runtime-settings-restart-test";
+		const firstRuntime = new AgentRuntime({
+			character: {
+				name: characterName,
+				bio: ["test"],
+				settings: {},
+			} as Character,
+			adapter,
+			settings: { FOO: "v1" },
+			logLevel: "fatal",
+		});
+
+		let secondRuntime: AgentRuntime | undefined;
+		try {
+			await firstRuntime.initialize({ skipMigrations: true });
+			expect(firstRuntime.getSetting("FOO")).toBe("v1");
+			await adapter.updateAgents([
+				{
+					agentId: firstRuntime.agentId,
+					agent: {
+						settings: { FOO: "v1", secrets: { BAR: "v1" } },
+						secrets: { BAZ: "v1" },
+					},
+				},
+			]);
+
+			secondRuntime = new AgentRuntime({
+				character: {
+					name: characterName,
+					bio: ["test"],
+					settings: {},
+				} as Character,
+				adapter,
+				settings: { FOO: "v2", BAR: "v2", BAZ: "v2" },
+				logLevel: "fatal",
+			});
+			await secondRuntime.initialize({ skipMigrations: true });
+
+			expect(secondRuntime.getSetting("FOO")).toBe("v2");
+			expect(secondRuntime.getSetting("BAR")).toBe("v2");
+			expect(secondRuntime.getSetting("BAZ")).toBe("v2");
+		} finally {
+			await firstRuntime.stop({ fast: true });
+			await secondRuntime?.stop({ fast: true });
+			firstRuntime.promptBatcher.dispose();
+			secondRuntime?.promptBatcher.dispose();
+		}
 	});
 });
 
