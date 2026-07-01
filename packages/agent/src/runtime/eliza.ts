@@ -2112,6 +2112,17 @@ export async function autoFetchCloudGithubToken(
 }
 
 /**
+ * Non-secret fingerprint of a cloud API key for boot logs and mismatch
+ * warnings (#11038): first 6 chars + length, so `hasApiKey=true` can never
+ * mean "yes, a 31-char placeholder" without the log showing it.
+ */
+export function cloudApiKeyFingerprint(value: string | undefined): string {
+  const v = value?.trim();
+  if (!v) return "(none)";
+  return `${v.slice(0, 6)}…(len ${v.length})`;
+}
+
+/**
  * Propagate cloud config from Eliza config into process.env so the
  * ElizaCloud plugin can discover settings at startup.
  */
@@ -2186,7 +2197,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
 
   if (shouldLoadCloudPlugin) {
     logger.info(
-      `[eliza] Cloud config: inference=${topology.services.inference}, runtime=${topology.runtime}, hasApiKey=${Boolean(cloud?.apiKey || process.env.ELIZAOS_CLOUD_API_KEY)}, baseUrl=${cloud?.baseUrl ?? "(default)"}, isCloudContainer=${isCloudContainer}`,
+      `[eliza] Cloud config: inference=${topology.services.inference}, runtime=${topology.runtime}, hasApiKey=${Boolean(cloud?.apiKey || process.env.ELIZAOS_CLOUD_API_KEY)}, apiKey=${cloudApiKeyFingerprint(cloud?.apiKey ?? process.env.ELIZAOS_CLOUD_API_KEY)}, baseUrl=${cloud?.baseUrl ?? "(default)"}, isCloudContainer=${isCloudContainer}`,
     );
     // Only propagate the API key from config when it is a real credential —
     // never set the literal "[REDACTED]" placeholder (which can leak into the
@@ -2202,6 +2213,20 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     const isRealApiKey =
       cloud?.apiKey && cloud.apiKey.trim().toUpperCase() !== "[REDACTED]";
     if (isRealApiKey) {
+      // #11038: a stale/placeholder vault entry resolved into config here
+      // silently CLOBBERS a valid key already in the service env, and the
+      // resulting 401s are indistinguishable from a server-side auth outage
+      // (env inspection lies — /proc shows the spawn-time value). The config
+      // key still wins (by design), but a mismatch against a non-empty env
+      // value is loudly fingerprinted so the operator can see which credential
+      // is actually on the wire.
+      const configKey = (cloud?.apiKey ?? "").trim();
+      const envKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
+      if (envKey && configKey && envKey !== configKey) {
+        logger.warn(
+          `[eliza] Cloud API key from config (${cloudApiKeyFingerprint(configKey)}) differs from process.env.ELIZAOS_CLOUD_API_KEY (${cloudApiKeyFingerprint(envKey)}) — the config/vault value wins and will OVERRIDE the env key. If cloud calls start returning 401 "Invalid or expired API key", the vault likely holds a stale/placeholder entry (#11038).`,
+        );
+      }
       process.env.ELIZAOS_CLOUD_API_KEY = cloud.apiKey;
     } else if (
       !isCloudContainer &&
