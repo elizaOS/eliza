@@ -116,6 +116,14 @@ export interface DeductCreditsParams {
   session_token?: string;
   /** Optional tokens consumed for usage tracking. */
   tokens_consumed?: number;
+  /**
+   * Optional idempotency key. When set, a prior committed deduction with the
+   * same key returns that transaction instead of deducting again — backed by the
+   * unique index on `stripe_payment_intent_id`. Used by {@link reconcile} so a
+   * retry after a commit-then-ack-loss cannot double-charge an overage (#10846).
+   * Omit it (all existing callers) for the unchanged non-idempotent behavior.
+   */
+  stripePaymentIntentId?: string;
 }
 
 export interface ReserveAndDeductParams extends DeductCreditsParams {
@@ -448,11 +456,30 @@ export class CreditsService {
       session_token,
       tokens_consumed,
       minimumBalanceRequired = 0,
+      stripePaymentIntentId,
     } = params;
 
     if (amount <= 0) {
       throw new Error("Amount must be positive");
     }
+
+    // Opt-in idempotency: a keyed deduction that already committed (e.g. a
+    // reconcile retry after the commit landed but the ack was lost) returns the
+    // prior transaction instead of deducting again. The unique index on
+    // stripe_payment_intent_id is the concurrency backstop (a racing duplicate
+    // aborts the whole atomic statement, and the caller retries into this
+    // check). Callers that pass no key keep the exact previous behavior. (#10846)
+    if (stripePaymentIntentId) {
+      const existing = await this.getTransactionByStripePaymentIntent(stripePaymentIntentId);
+      if (existing) {
+        return {
+          success: true,
+          newBalance: await this.getOrganizationBalanceUsd(organizationId),
+          transaction: existing,
+        };
+      }
+    }
+    const stripeId = stripePaymentIntentId ?? null;
 
     const metadataJson = JSON.stringify(metadata ?? {});
     const rows = await sqlRows<CreditMutationRow>(
@@ -489,6 +516,7 @@ export class CreditsService {
             type,
             description,
             metadata,
+            stripe_payment_intent_id,
             created_at
           )
           SELECT
@@ -497,6 +525,7 @@ export class CreditsService {
             'debit',
             ${description},
             ${metadataJson}::jsonb,
+            ${stripeId},
             NOW()
           FROM eligible
           WHERE EXISTS (SELECT 1 FROM updated)
@@ -764,7 +793,7 @@ export class CreditsService {
     transaction: CreditTransaction;
     newBalance: number;
   }> {
-    const { organizationId, amount, description, metadata } = params;
+    const { organizationId, amount, description, metadata, stripePaymentIntentId } = params;
 
     if (amount <= 0) {
       throw new Error("Refund amount must be positive");
@@ -775,6 +804,10 @@ export class CreditsService {
       amount,
       description,
       metadata,
+      // Thread the idempotency key so a reconcile retry doesn't double-refund
+      // (applyCreditIncrease dedupes on stripe_payment_intent_id via ON
+      // CONFLICT DO NOTHING). (#10846)
+      stripePaymentIntentId,
       transactionType: "refund",
     }).then(async (result) => {
       invalidateOrganizationCache(organizationId).catch((error) => {
@@ -822,6 +855,19 @@ export class CreditsService {
       actual: actualCost,
     };
 
+    // Stable per-(reservation, phase) idempotency key. Threaded into
+    // refund/deduct as `stripePaymentIntentId` so a retry of an already-committed
+    // reconcile (commit-then-ack-loss) is a no-op instead of a second refund
+    // (platform loss) or a second overage charge (consumer double-charge).
+    // Without a reservation id there is nothing stable to key on, so we keep the
+    // prior non-idempotent behavior. (#10846 finding 2)
+    const reservationTxId =
+      typeof metadata?.reservation_transaction_id === "string"
+        ? metadata.reservation_transaction_id
+        : null;
+    const reconKey = (phase: "refund" | "overage"): string | undefined =>
+      reservationTxId ? `recon:${reservationTxId}:${phase}` : undefined;
+
     const MAX_RETRIES = 3;
     const RETRY_DELAY_MS = 100;
 
@@ -833,6 +879,7 @@ export class CreditsService {
             amount: difference,
             description: `${description} (refund)`,
             metadata: { ...baseMetadata, type: "reconciliation_refund" },
+            stripePaymentIntentId: reconKey("refund"),
           });
           logger.info("[Credits] Reconciled - refunded excess", {
             organizationId,
@@ -858,6 +905,7 @@ export class CreditsService {
           amount: overage,
           description: `${description} (overage)`,
           metadata: { ...baseMetadata, type: "reconciliation_overage" },
+          stripePaymentIntentId: reconKey("overage"),
         });
         if (!overageResult.success || !overageResult.transaction) {
           logger.warn("[Credits] Reconciled - overage uncollected", {

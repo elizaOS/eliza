@@ -408,3 +408,91 @@ describe("CreditsService.reconcile", () => {
     PGLITE_TIMEOUT,
   );
 });
+
+/**
+ * #10846 finding 2: the reconcile retry loop double-applied the refund/overage
+ * on a commit-then-ack-loss because neither branch carried a dedupe key. The fix
+ * derives a stable `recon:<reservation_transaction_id>:<phase>` key and threads
+ * it into refundCredits / deductCredits, so a re-run of an already-settled
+ * reconcile is a no-op. Re-invoking reconcile with the same reservation id is the
+ * observable equivalent of the retry (the key is what protects the retry).
+ */
+describe("CreditsService.reconcile idempotency (#10846)", () => {
+  const RES_ID = "00000000-0000-0000-0000-0000000000f6";
+
+  test(
+    "a re-run refund with the same reservation id does NOT double-credit",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+      const args = {
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0.4,
+        description: "reconcile refund idempotent",
+        metadata: { user_id: USER_ID, reservation_transaction_id: RES_ID },
+      };
+
+      const first = await creditsService.reconcile(args);
+      const second = await creditsService.reconcile(args);
+
+      // Refund applied exactly once: balance = 10 + 0.6, one refund row.
+      expect(await getBalance()).toBeCloseTo(10.6, 6);
+      expect(await countByType("refund")).toBe(1);
+      expect(await countTransactions()).toBe(1);
+      // Both invocations report the SAME settlement transaction.
+      expect(second.settlementTransactionIds).toEqual(first.settlementTransactionIds);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a re-run overage with the same reservation id does NOT double-charge",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("20");
+      const args = {
+        organizationId: ORG_ID,
+        reservedAmount: 0.4,
+        actualCost: 1.0,
+        description: "reconcile overage idempotent",
+        metadata: { user_id: USER_ID, reservation_transaction_id: RES_ID },
+      };
+
+      const first = await creditsService.reconcile(args);
+      const second = await creditsService.reconcile(args);
+
+      // Overage charged exactly once: balance = 20 - 0.6, one debit row.
+      expect(await getBalance()).toBeCloseTo(19.4, 6);
+      expect(await countByType("debit")).toBe(1);
+      expect(await countTransactions()).toBe(1);
+      expect(second.settlementTransactionIds).toEqual(first.settlementTransactionIds);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "without a reservation id the fix is opt-in — behavior is unchanged (still double-applies)",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+      // No reservation_transaction_id ⇒ no dedupe key ⇒ prior non-idempotent
+      // behavior is preserved (this documents that the fix does NOT silently
+      // change any existing caller that lacks a reservation id).
+      const args = {
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0.4,
+        description: "reconcile refund no-key",
+        metadata: { user_id: USER_ID },
+      };
+
+      await creditsService.reconcile(args);
+      await creditsService.reconcile(args);
+
+      expect(await getBalance()).toBeCloseTo(11.2, 6);
+      expect(await countByType("refund")).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
