@@ -1363,7 +1363,18 @@ export function useChatSend(deps: UseChatSendDeps) {
         chatSendQueueRef.current.push({
           rawInput,
           channelType: options?.channelType ?? "DM",
-          conversationId: options?.conversationId,
+          // Pin the target conversation at ENQUEUE, not at drain (#10700). The
+          // shell send() path (voice converse turns + tapped suggestions) omits
+          // conversationId, so without this the queued turn resolved its target
+          // LATE in runQueuedChatSend as `activeConversationIdRef.current` — and
+          // a new-chat between enqueue and drain rerouted it to the wrong (new)
+          // conversation. Snapshot the active conversation now so the turn lands
+          // where it was sent. When there is NO active conversation (cold open),
+          // stay null and let the drain-time create-or-join resolve it, so a
+          // rapid second cold-open turn still joins the one created conversation
+          // rather than spawning its own.
+          conversationId:
+            options?.conversationId ?? activeConversationIdRef.current ?? null,
           images: options?.images,
           metadata: buildChatViewMetadata(tab, options?.metadata),
           resolve,
