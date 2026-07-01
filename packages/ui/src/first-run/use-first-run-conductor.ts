@@ -141,6 +141,21 @@ function cloudOAuthSecretRequest(
   };
 }
 
+interface FirstRunTurnWriter {
+  seedTurn(turn: ConversationMessage): void;
+  replaceTurn(id: string, next: ConversationMessage): void;
+}
+
+export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
+  const connectTurn = makeTurn(
+    "first-run:cloud-oauth",
+    "Connect your Eliza Cloud account to continue, then pick Eliza Cloud again.",
+    { secretRequest: cloudOAuthSecretRequest("failed") },
+  );
+  writer.seedTurn(connectTurn);
+  writer.replaceTurn("first-run:cloud-oauth", connectTurn);
+}
+
 export function useFirstRunConductor(): void {
   const {
     firstRunComplete,
@@ -324,20 +339,7 @@ export function useFirstRunConductor(): void {
           );
           return;
         case "needs-cloud-login": {
-          // Surface the "Connect Eliza Cloud" widget so the user can re-auth.
-          // seedTurn ADDS the turn if this path never created it — the hybrid
-          // "Local + Eliza Cloud inference" provider path never seeds a
-          // cloud-oauth turn, unlike the runtime:cloud path — then replaceTurn
-          // sets the failed/connect state. Without the seed, replaceTurn is a
-          // no-op and onboarding dead-ends silently (no widget, no error, no
-          // status) with recovery only via app restart (#10836).
-          const connectTurn = makeTurn(
-            "first-run:cloud-oauth",
-            "Connect your Eliza Cloud account to continue, then pick Eliza Cloud again.",
-            { secretRequest: cloudOAuthSecretRequest("failed") },
-          );
-          seedTurn(connectTurn);
-          replaceTurn("first-run:cloud-oauth", connectTurn);
+          surfaceCloudLoginRetryTurn({ seedTurn, replaceTurn });
           return;
         }
         case "error":
