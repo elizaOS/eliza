@@ -136,6 +136,42 @@ export function scenarioLane(value) {
   return lane;
 }
 
+/**
+ * Resolve a scenario's platform-gated deferral, if any. A deferred scenario is
+ * a live-only scenario that additionally cannot run in any current lane because
+ * the platform/runner it needs does not exist yet (e.g. a macOS SelfControl
+ * shard awaiting an `eliza-e2e-macos` self-hosted runner). It stays visible in
+ * the corpus inventory as a distinct "deferred platform-gated" class rather than
+ * being conflated with ordinary live-only coverage. Returns `null` when the
+ * scenario is not deferred. (#10757)
+ */
+export function scenarioDeferral(value) {
+  const deferred = value?.deferred;
+  if (deferred === undefined || deferred === null) {
+    return null;
+  }
+  if (
+    typeof deferred !== "object" ||
+    typeof deferred.reason !== "string" ||
+    deferred.reason.trim().length === 0
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has an invalid \`deferred\`; expected { reason: string, runner?: string }`,
+    );
+  }
+  // A deferred scenario is inherently unrunnable in any current lane, so it must
+  // never masquerade as a keyless PR-deterministic scenario.
+  if (scenarioLane(value) === "pr-deterministic") {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" is marked \`deferred\` but declares lane "pr-deterministic"; deferred scenarios must be live-only`,
+    );
+  }
+  return {
+    reason: deferred.reason,
+    ...(typeof deferred.runner === "string" ? { runner: deferred.runner } : {}),
+  };
+}
+
 export function scenario(value) {
   if (value && typeof value === "object") {
     if (Array.isArray(value.finalChecks)) {
@@ -143,6 +179,8 @@ export function scenario(value) {
     }
     // Validate the lane eagerly so a typo fails at definition time, not in CI.
     scenarioLane(value);
+    // Validate the deferral shape (and lane compatibility) eagerly too.
+    scenarioDeferral(value);
   }
   return value;
 }

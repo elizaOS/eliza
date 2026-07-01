@@ -83,12 +83,21 @@ jobs:
         working-directory: packages
         run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/
 
-      # Issue #8801 follow-up: the central harness proves the substrate, but the
-      # per-plugin adoption proofs are excluded from default vitest runs. Keep a
-      # representative model-provider and connector harness in this keyless PR
-      # lane so those proofs cannot drift while still avoiding live provider
-      # credentials.
+      # Issue #8801 / #10757 follow-up: the central harness proves the substrate,
+      # but the per-plugin adoption proofs are excluded from default vitest runs
+      # (each plugin's vitest.config.ts excludes *.harness.test.ts). Gate every
+      # checked-in per-plugin harness suite here so those proofs cannot drift,
+      # while still avoiding live provider credentials — each suite loads the real
+      # plugin under the deterministic mock-LLM runtime with keys blanked.
+      # NOTE (#10757): plugin-goals also ships a harness suite but is not gated
+      # here yet — it depends on the built @elizaos/registry first-party subpath
+      # and could not be confirmed keyless-green outside a full workspace build.
       - name: Per-plugin keyless harness adoption proofs
         run: |
           bun run --cwd plugins/plugin-anthropic test:harness
           bun run --cwd plugins/plugin-discord test:harness
+          bun run --cwd plugins/plugin-openai test:harness
+          bun run --cwd plugins/plugin-groq test:harness
+          bun run --cwd plugins/plugin-openrouter test:harness
+          bun run --cwd plugins/plugin-google-genai test:harness
+          bun run --cwd plugins/plugin-telegram test:harness
