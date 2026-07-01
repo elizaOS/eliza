@@ -405,6 +405,7 @@ export function NotificationCenter({
           type="button"
           aria-label="Dismiss notifications"
           data-testid="notification-sheet-backdrop"
+          data-above-shell-overlay
           onClick={() => onOpenChange?.(false)}
           className="fixed inset-0 z-[9500] bg-black/40"
         />
@@ -412,6 +413,7 @@ export function NotificationCenter({
           role="dialog"
           aria-label="Notifications"
           data-testid="notification-sheet"
+          data-above-shell-overlay
           className={cn(
             "fixed inset-x-0 top-0 z-[9501] mx-auto flex max-h-[85vh] w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover shadow-xl",
             "pt-[var(--safe-area-top,0px)]",

@@ -708,6 +708,60 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("cedes taps to a layer painted ABOVE the chat (dialog / notification sheet) instead of collapsing", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // Simulate the notification pull-down sheet / a Radix dialog stacked above
+    // the chat glass (role="dialog" or data-above-shell-overlay): its taps must
+    // NOT be swallowed into a chat collapse — the overlay's own handlers win.
+    const overlay = document.createElement("div");
+    overlay.setAttribute("role", "dialog");
+    const rowButton = document.createElement("button");
+    overlay.appendChild(rowButton);
+    document.body.appendChild(overlay);
+    try {
+      fireEvent.pointerDown(rowButton, {
+        clientX: 30,
+        clientY: 30,
+        pointerId: 5,
+      });
+      fireEvent.pointerUp(rowButton, {
+        clientX: 30,
+        clientY: 30,
+        pointerId: 5,
+      });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    } finally {
+      overlay.remove();
+    }
+  });
+
+  it("lets an open dialog own Escape — the chat only collapses once the dialog is gone", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // An open Radix dialog (e.g. the command palette) above the chat: Escape
+    // must close IT, not also collapse the chat underneath.
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("data-state", "open");
+    document.body.appendChild(dialog);
+    try {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    } finally {
+      dialog.remove();
+    }
+    // Dialog gone: Escape collapses the chat as before.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
   it("renders the full thread as one scroll log when the sheet is open", () => {
     const controller = makeController({
       messages: [
