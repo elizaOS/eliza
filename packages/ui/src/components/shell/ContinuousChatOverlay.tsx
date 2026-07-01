@@ -788,6 +788,17 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
   );
 }
 
+function isNestedInteractiveTarget(
+  currentTarget: HTMLElement,
+  target: EventTarget | null,
+): boolean {
+  if (!(target instanceof Element)) return false;
+  const interactive = target.closest(
+    'button,a,input,textarea,select,[role="button"]',
+  );
+  return !!interactive && interactive !== currentTarget;
+}
+
 /**
  * One icon-only control in a message's click-to-reveal action row (#10713).
  * Overlay glass styling: no card fill, neutral resting → neutral-opacity hover;
@@ -831,8 +842,8 @@ function ThreadLineActionButton({
 
 /**
  * Inline editor for a user message (#10713). Prefilled with the message text;
- * ⌘/Ctrl+Enter resends the edit, Escape cancels. `stopPropagation` on the
- * container keeps clicks inside from toggling the message's reveal row.
+ * ⌘/Ctrl+Enter resends the edit, Escape cancels. The parent reveal handler
+ * ignores events while editing.
  */
 function ThreadLineEditor({
   value,
@@ -853,7 +864,7 @@ function ThreadLineEditor({
     el.setSelectionRange(el.value.length, el.value.length);
   }, []);
   return (
-    <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+    <div className="flex flex-col gap-2">
       <textarea
         ref={ref}
         data-testid="thread-line-edit-input"
@@ -955,6 +966,7 @@ const ThreadLine = React.memo(function ThreadLine({
   const copyHandlers = canCopy
     ? {
         onPointerDown: (e: React.PointerEvent) => {
+          if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
           holdStart.current = { x: e.clientX, y: e.clientY };
           holdTimer.current = window.setTimeout(() => {
             onCopy?.(message.content);
@@ -1018,6 +1030,22 @@ const ThreadLine = React.memo(function ThreadLine({
     if (sel && sel.toString().trim().length > 0) return;
     setRevealed((v) => !v);
   }, [hasActions, editing]);
+  const handleBubbleClick = React.useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
+      toggleRevealed();
+    },
+    [toggleRevealed],
+  );
+  const handleBubbleKeyDown = React.useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!hasActions || editing) return;
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      toggleRevealed();
+    },
+    [hasActions, editing, toggleRevealed],
+  );
 
   React.useEffect(() => {
     if (!revealed) return;
@@ -1130,155 +1158,168 @@ const ThreadLine = React.memo(function ThreadLine({
           isUser ? "items-end" : "items-start",
         )}
       >
-      <div
-        {...(copyHandlers ?? {})}
-        onClick={toggleRevealed}
-        className={cn(
-          // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
-          // hashes / paths so they can't blow out the bubble width on a phone.
-          "relative w-fit max-w-full whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
-          // The chrome-free transcript renders floating: each bubble carries its
-          // own dark glass so it stays legible directly over whatever view is
-          // behind. The light tone is for any embedding that supplies its own
-          // surrounding scrim.
-          isUser ? "rounded-br-md" : "rounded-bl-md",
-          // Message text must remain selectable for normal highlight/copy.
-          // Assistant bubbles still keep the press-and-hold copy shortcut.
-          "select-text [-webkit-touch-callout:default]",
-          // Tapping a bubble with actions reveals its row (pointer affordance).
-          hasActions && !editing && "cursor-pointer",
-          // #10698: no per-message fill — text floats transparently on the one
-          // shared panel glass. FLOAT_SHADOW + light text keep it legible; a
-          // hairline edge remains to define the item boundary.
-          floating
-            ? cn("border border-white/15 text-white", FLOAT_SHADOW)
-            : isUser
-              ? "text-white"
-              : "text-white/90",
-        )}
-      >
-        {isUser && editing ? (
-          <ThreadLineEditor
-            value={editDraft}
-            onChange={setEditDraft}
-            onSave={saveEdit}
-            onCancel={cancelEdit}
-          />
-        ) : (
-          <>
-        <div data-chat-selectable="true">
-          {isAssistant &&
-          !message.content.trim() &&
-          !message.attachments?.length ? (
-            // The in-flight assistant turn (kept by visibleMessages only while
-            // responding): show dots INSIDE the bubble, anchored where the
-            // streamed text fills in — then the text replaces them. Labels stay
-            // in the standalone status row so the bubble never flashes
-            // "Running …" text in place of the answer.
-            <>
-              <TurnStatusInner status={turnStatus ?? null} showLabel={false} />
-              {message.attachments?.length ? (
-                <MessageAttachments attachments={message.attachments} />
-              ) : null}
-            </>
-          ) : isUser ? (
-            // User turns stay raw text (slash command bolded); user uploads render
-            // through the standalone attachment renderer.
-            <>
-              <ThreadLineText content={message.content} />
-              {message.attachments?.length ? (
-                <MessageAttachments attachments={message.attachments} />
-              ) : null}
-            </>
-          ) : (
-            // Settled assistant turn: render inline widgets (task/choice/form/
-            // followups) instead of leaking raw `[TASK:…]`/`[CHOICE]`/… markers as
-            // text (#8997); plain replies fall through the fast path unchanged.
-            // Attachments, the secret/OAuth request, and the reasoning block render
-            // alongside. The secret block is `pointer-events-auto` so it stays
-            // clickable inside the open thread's scroll surface.
-            <>
-              <InlineWidgetText content={message.content} />
-              {message.attachments?.length ? (
-                <MessageAttachments attachments={message.attachments} />
-              ) : null}
-              {message.secretRequest ? (
-                <div className="pointer-events-auto">
-                  <SensitiveRequestBlock request={message.secretRequest} />
-                </div>
-              ) : null}
-              {!suppressReasoning && message.reasoning?.trim() ? (
-                <ThinkingBlock reasoning={message.reasoning} />
-              ) : null}
-            </>
-          )}
-        </div>
-        <AnimatePresence>
-          {copied ? (
-            <motion.span
-              key="copied"
-              data-testid="thread-line-copied"
-              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: reduce ? 0 : 0.18 }}
-              className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
-            >
-              Copied
-            </motion.span>
-          ) : null}
-        </AnimatePresence>
-          </>
-        )}
-      </div>
-      {revealed && !editing && hasActions ? (
+        {/* biome-ignore lint/a11y/useSemanticElements: transcript bubbles contain selectable text plus nested inline widgets, so they cannot be real buttons. */}
         <div
-          data-testid="thread-line-actions"
+          {...(copyHandlers ?? {})}
+          role="button"
+          tabIndex={0}
+          aria-expanded={revealed}
+          aria-label={
+            revealed ? "hide message actions" : "show message actions"
+          }
+          onClick={handleBubbleClick}
+          onKeyDown={handleBubbleKeyDown}
           className={cn(
-            "flex items-center gap-1.5",
-            isUser ? "pr-1" : "pl-1",
+            // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
+            // hashes / paths so they can't blow out the bubble width on a phone.
+            "relative w-fit max-w-full whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
+            // The chrome-free transcript renders floating: each bubble carries its
+            // own dark glass so it stays legible directly over whatever view is
+            // behind. The light tone is for any embedding that supplies its own
+            // surrounding scrim.
+            isUser ? "rounded-br-md" : "rounded-bl-md",
+            // Message text must remain selectable for normal highlight/copy.
+            // Assistant bubbles still keep the press-and-hold copy shortcut.
+            "select-text [-webkit-touch-callout:default]",
+            // Tapping a bubble with actions reveals its row (pointer affordance).
+            hasActions && !editing && "cursor-pointer",
+            // #10698: no per-message fill — text floats transparently on the one
+            // shared panel glass. FLOAT_SHADOW + light text keep it legible; a
+            // hairline edge remains to define the item boundary.
+            floating
+              ? cn("border border-white/15 text-white", FLOAT_SHADOW)
+              : isUser
+                ? "text-white"
+                : "text-white/90",
           )}
         >
-          {canRowCopy ? (
-            <ThreadLineActionButton
-              label={rowCopied ? "Copied" : "Copy"}
-              testId="thread-line-copy"
-              icon={
-                rowCopied ? (
-                  <Check className="h-3.5 w-3.5" />
+          {isUser && editing ? (
+            <ThreadLineEditor
+              value={editDraft}
+              onChange={setEditDraft}
+              onSave={saveEdit}
+              onCancel={cancelEdit}
+            />
+          ) : (
+            <>
+              <div data-chat-selectable="true">
+                {isAssistant &&
+                !message.content.trim() &&
+                !message.attachments?.length ? (
+                  // The in-flight assistant turn (kept by visibleMessages only while
+                  // responding): show dots INSIDE the bubble, anchored where the
+                  // streamed text fills in — then the text replaces them. Labels stay
+                  // in the standalone status row so the bubble never flashes
+                  // "Running …" text in place of the answer.
+                  <>
+                    <TurnStatusInner
+                      status={turnStatus ?? null}
+                      showLabel={false}
+                    />
+                    {message.attachments?.length ? (
+                      <MessageAttachments attachments={message.attachments} />
+                    ) : null}
+                  </>
+                ) : isUser ? (
+                  // User turns stay raw text (slash command bolded); user uploads render
+                  // through the standalone attachment renderer.
+                  <>
+                    <ThreadLineText content={message.content} />
+                    {message.attachments?.length ? (
+                      <MessageAttachments attachments={message.attachments} />
+                    ) : null}
+                  </>
                 ) : (
-                  <Copy className="h-3.5 w-3.5" />
-                )
-              }
-              onClick={handleRowCopy}
-              active={rowCopied}
-            />
-          ) : null}
-          {canSpeak ? (
-            <ThreadLineActionButton
-              label={speaking ? "Stop" : "Play audio"}
-              testId="thread-line-speak"
-              icon={
-                speaking ? (
-                  <Square className="h-3.5 w-3.5" />
-                ) : (
-                  <Volume2 className="h-3.5 w-3.5" />
-                )
-              }
-              onClick={handleSpeak}
-              active={speaking}
-            />
-          ) : null}
-          {canEdit ? (
-            <ThreadLineActionButton
-              label="Edit"
-              testId="thread-line-edit"
-              icon={<Pencil className="h-3.5 w-3.5" />}
-              onClick={openEditor}
-            />
-          ) : null}
+                  // Settled assistant turn: render inline widgets (task/choice/form/
+                  // followups) instead of leaking raw `[TASK:…]`/`[CHOICE]`/… markers as
+                  // text (#8997); plain replies fall through the fast path unchanged.
+                  // Attachments, the secret/OAuth request, and the reasoning block render
+                  // alongside. The secret block is `pointer-events-auto` so it stays
+                  // clickable inside the open thread's scroll surface.
+                  <>
+                    <InlineWidgetText content={message.content} />
+                    {message.attachments?.length ? (
+                      <MessageAttachments attachments={message.attachments} />
+                    ) : null}
+                    {message.secretRequest ? (
+                      <div className="pointer-events-auto">
+                        <SensitiveRequestBlock
+                          request={message.secretRequest}
+                        />
+                      </div>
+                    ) : null}
+                    {!suppressReasoning && message.reasoning?.trim() ? (
+                      <ThinkingBlock reasoning={message.reasoning} />
+                    ) : null}
+                  </>
+                )}
+              </div>
+              <AnimatePresence>
+                {copied ? (
+                  <motion.span
+                    key="copied"
+                    data-testid="thread-line-copied"
+                    initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: reduce ? 0 : 0.18 }}
+                    className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
+                  >
+                    Copied
+                  </motion.span>
+                ) : null}
+              </AnimatePresence>
+            </>
+          )}
         </div>
-      ) : null}
+        {revealed && !editing && hasActions ? (
+          <div
+            data-testid="thread-line-actions"
+            className={cn(
+              "flex items-center gap-1.5",
+              isUser ? "pr-1" : "pl-1",
+            )}
+          >
+            {canRowCopy ? (
+              <ThreadLineActionButton
+                label={rowCopied ? "Copied" : "Copy"}
+                testId="thread-line-copy"
+                icon={
+                  rowCopied ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )
+                }
+                onClick={handleRowCopy}
+                active={rowCopied}
+              />
+            ) : null}
+            {canSpeak ? (
+              <ThreadLineActionButton
+                label={speaking ? "Stop" : "Play audio"}
+                testId="thread-line-speak"
+                icon={
+                  speaking ? (
+                    <Square className="h-3.5 w-3.5" />
+                  ) : (
+                    <Volume2 className="h-3.5 w-3.5" />
+                  )
+                }
+                onClick={handleSpeak}
+                active={speaking}
+              />
+            ) : null}
+            {canEdit ? (
+              <ThreadLineActionButton
+                label="Edit"
+                testId="thread-line-edit"
+                icon={<Pencil className="h-3.5 w-3.5" />}
+                onClick={openEditor}
+              />
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </motion.div>
   );

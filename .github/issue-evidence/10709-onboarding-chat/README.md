@@ -3,11 +3,15 @@
 Final validation for moving first-run onboarding into chat and covering
 cloud/local/remote adoption paths.
 
+Latest validation was rerun after rebasing onto `origin/develop` at
+`e8b6637f51`.
+
 ## Passing runs
 
 - Browser desktop/mobile smoke:
-  `ELIZA_UI_SMOKE_PORT=2158 ELIZA_UI_SMOKE_API_PORT=31358 ELIZA_API_PORT=31358 bunx playwright test --config packages/app/playwright.ui-smoke.config.ts packages/app/test/ui-smoke/onboarding-to-home.spec.ts packages/app/test/ui-smoke/onboarding-to-home-mobile.spec.ts --project=chromium`
-  - Result: 10 passed after deleting `FirstRunRuntimeChooser`.
+  `ELIZA_UI_SMOKE_PORT=2170 ELIZA_UI_SMOKE_API_PORT=31370 ELIZA_API_PORT=31370 bunx playwright test --config packages/app/playwright.ui-smoke.config.ts packages/app/test/ui-smoke/onboarding-to-home.spec.ts packages/app/test/ui-smoke/onboarding-to-home-mobile.spec.ts --project=chromium`
+  - Result: 10 passed after rebasing and preserving nested in-chat choice
+    clicks inside the message bubble action-row behavior.
 - Focused evidence recapture:
   `ELIZA_UI_SMOKE_PORT=2161 ELIZA_UI_SMOKE_API_PORT=31361 ELIZA_API_PORT=31361 bunx playwright test --config packages/app/playwright.ui-smoke.config.ts packages/app/test/ui-smoke/onboarding-to-home.spec.ts --project=chromium -g "Local onboarding lands"`
   - Result: 1 passed; refreshed desktop chat-first/home/launcher screenshots.
@@ -25,7 +29,7 @@ cloud/local/remote adoption paths.
   `ANDROID_SERIAL=emulator-5554 ELIZA_ANDROID_BACKEND=host ELIZA_ANDROID_REQUIRE_AGENT=1 ELIZA_ANDROID_ALLOW_FIRST_RUN=1 ELIZA_ANDROID_CLEAR_APP_DATA=1 ELIZA_ANDROID_APK=packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk bunx playwright test --config packages/app/playwright.android.config.ts packages/app/test/android/onboarding-to-home.android.spec.ts`
   - Result: 1 passed.
 - Android Chrome browser smoke:
-  `ANDROID_SERIAL=emulator-5554 ELIZA_UI_SMOKE_PORT=2165 ELIZA_UI_SMOKE_API_PORT=31365 ELIZA_API_PORT=31365 bunx playwright test --config packages/app/playwright.android-browser.config.ts packages/app/test/android-browser/onboarding-to-home.android-browser.spec.ts`
+  `ANDROID_SERIAL=emulator-5554 ELIZA_UI_SMOKE_PORT=2168 ELIZA_UI_SMOKE_API_PORT=31368 ELIZA_API_PORT=31368 bunx playwright test --config packages/app/playwright.android-browser.config.ts packages/app/test/android-browser/onboarding-to-home.android-browser.spec.ts`
   - Result: 1 passed. The harness runs Chrome on the emulator through
     Playwright Android, uses `adb reverse` to serve the web app at the browser's
     `127.0.0.1`, verifies the in-chat first-run transcript choices, completes
