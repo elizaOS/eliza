@@ -76,7 +76,7 @@ import {
 	SecretSwapSession,
 } from "./security/secret-swap";
 import { DefaultMessageService } from "./services/message";
-import { isRateLimitError } from "./services/message/fallback-reply";
+import { isModelProviderFallbackError } from "./services/message/fallback-reply";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
@@ -4661,8 +4661,12 @@ export class AgentRuntime implements IAgentRuntime {
 				continue;
 			}
 
+			const modelWithProvider =
+				provider && models.find((model) => model.provider === provider);
 			const candidateModels = provider
-				? models.filter((model) => model.provider === provider)
+				? modelWithProvider
+					? [modelWithProvider]
+					: []
 				: models;
 
 			for (const resolvedModel of candidateModels) {
@@ -4712,12 +4716,12 @@ export class AgentRuntime implements IAgentRuntime {
 				error:
 					args.error instanceof Error ? args.error.message : String(args.error),
 			},
-			"Model provider rate-limited; trying next registered provider",
+			"Model provider failed; trying next registered provider",
 		);
 	}
 
 	private shouldFailOverModelProvider(error: unknown): boolean {
-		return isRateLimitError(error);
+		return isModelProviderFallbackError(error);
 	}
 
 	private throwNoModelHandler(requestedModelKey: string): never {
@@ -5100,6 +5104,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		let lastModelError: unknown;
+		let providerAttemptStartedOutput = false;
 		for (
 			let resolvedIndex = 0;
 			resolvedIndex < resolvedModels.length;
@@ -5111,6 +5116,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 			const resolvedModelKey = resolvedModel.modelKey;
 			const handler = resolvedModel.handler;
+			providerAttemptStartedOutput = false;
 
 			try {
 				const binaryModels: string[] = [
@@ -5256,6 +5262,9 @@ export class AgentRuntime implements IAgentRuntime {
 					visibleChunk = safeChunk,
 				): Promise<void> => {
 					if (abortSignal?.aborted) return;
+					if (safeChunk.length > 0) {
+						providerAttemptStartedOutput = true;
+					}
 					if (streamedText === "" && safeChunk.length > 0) {
 						markInference(INFERENCE_MARKS.firstToken);
 					}
@@ -5804,6 +5813,7 @@ export class AgentRuntime implements IAgentRuntime {
 				if (
 					requestedProvider !== undefined ||
 					!nextModel ||
+					providerAttemptStartedOutput ||
 					!this.shouldFailOverModelProvider(error)
 				) {
 					this.rethrowModelFailoverError(error);

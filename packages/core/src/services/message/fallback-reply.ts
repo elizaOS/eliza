@@ -93,6 +93,38 @@ export function isAuthError(error: unknown): boolean {
 	);
 }
 
+/**
+ * Detect failures where another model provider is worth trying before giving up.
+ * This intentionally includes {@link isRateLimitError} so subscription-credit
+ * exhaustion from CLI-SDK providers follows the same structural 429/session-limit
+ * classifier as the graceful reply path.
+ */
+export function isModelProviderFallbackError(error: unknown): boolean {
+	const unwrapped = unwrapRetryError(error);
+	if (isRateLimitError(error)) {
+		return true;
+	}
+	if (hasHttpStatus(unwrapped, [500, 502, 503, 504])) {
+		return true;
+	}
+	if (!(error instanceof Error)) return false;
+	const haystack = `${error.name} ${error.message}`.toLowerCase();
+	return (
+		haystack.includes("timeout") ||
+		haystack.includes("timed out") ||
+		haystack.includes("temporarily unavailable") ||
+		haystack.includes("service unavailable") ||
+		haystack.includes("bad gateway") ||
+		haystack.includes("gateway timeout") ||
+		haystack.includes("internal server error") ||
+		haystack.includes("econnreset") ||
+		haystack.includes("socket hang up") ||
+		haystack.includes("network error") ||
+		haystack.includes("fetch failed") ||
+		haystack.includes("overloaded")
+	);
+}
+
 export function buildFailureReplyPrompt(recentMessages: string): string {
 	return [
 		"You hit a transient model error and have to send a short user-facing reply.",

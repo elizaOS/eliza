@@ -1,6 +1,10 @@
 import { APICallError, RetryError } from "ai";
 import { describe, expect, it } from "vitest";
-import { buildFailureReplyPrompt, isRateLimitError } from "../message";
+import {
+	buildFailureReplyPrompt,
+	isModelProviderFallbackError,
+	isRateLimitError,
+} from "../message";
 
 /**
  * Pinned hard rules for the transient-failure reply prompt.
@@ -210,5 +214,42 @@ describe("isRateLimitError", () => {
 		expect(isRateLimitError(null)).toBe(false);
 		expect(isRateLimitError(undefined)).toBe(false);
 		expect(isRateLimitError({ message: "429" })).toBe(false);
+	});
+});
+
+describe("isModelProviderFallbackError", () => {
+	it("reuses the rate-limit classifier for CLI-SDK subscription/session limits", () => {
+		expect(
+			isModelProviderFallbackError(
+				new Error("You've hit your session limit. Please try again later."),
+			),
+		).toBe(true);
+	});
+
+	it("unwraps a RetryError-wrapped 5xx APICallError structurally", () => {
+		const inner = new APICallError({
+			message: "upstream unavailable",
+			url: "https://api.example.test/v1/chat/completions",
+			requestBodyValues: {},
+			statusCode: 503,
+		});
+		const err = new RetryError({
+			message: "Failed after 3 attempts.",
+			reason: "maxRetriesExceeded",
+			errors: [inner],
+		});
+		expect(isModelProviderFallbackError(err)).toBe(true);
+	});
+
+	it("does not treat non-retryable auth or validation errors as provider fallback", () => {
+		for (const statusCode of [400, 401, 403, 404]) {
+			const err = new APICallError({
+				message: "non retryable upstream error",
+				url: "https://api.example.test/v1/chat/completions",
+				requestBodyValues: {},
+				statusCode,
+			});
+			expect(isModelProviderFallbackError(err)).toBe(false);
+		}
 	});
 });
