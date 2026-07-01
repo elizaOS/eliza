@@ -50,9 +50,48 @@ export interface SupervisorTaskView {
   activeSessions: number;
   /** Latest session label (often "agentType · account"), if any. */
   sessionLabel?: string | null;
+  /** Coarse staleness indicator for a progress-expected task that has gone
+   *  idle (e.g. "⏳ idle 8m+"), or undefined when fresh. Folded into the digest
+   *  line so a genuinely STUCK task changes the digest and re-posts, instead of
+   *  being deduped into silence after the first post. */
+  staleness?: string;
   /** The originating chat target; null tasks (no chat origin) are skipped. */
   origin: { roomId: string; source: string } | null;
 }
+
+// Coarse staleness bands (minutes → label), highest first. Bucketed on purpose:
+// steady progress within a band still dedups, but a stall crossing into the
+// next band changes the digest and re-posts, escalating as it worsens.
+const SUPERVISOR_STALENESS_BANDS: ReadonlyArray<readonly [number, string]> = [
+  [45, "⚠️ stalled 45m+"],
+  [20, "⏳ idle 20m+"],
+  [8, "⏳ idle 8m+"],
+  [3, "⏳ idle 3m+"],
+];
+
+/** Coarse staleness label for a progress-expected task, or undefined when it is
+ *  fresh / has no known activity time. Pure (takes `nowMs`) so the digest stays
+ *  deterministic and unit-testable without a clock. */
+export function supervisorStalenessLabel(
+  latestActivityAt: number | null | undefined,
+  nowMs: number,
+): string | undefined {
+  if (typeof latestActivityAt !== "number" || latestActivityAt <= 0) {
+    return undefined;
+  }
+  const ageMin = (nowMs - latestActivityAt) / 60_000;
+  for (const [min, label] of SUPERVISOR_STALENESS_BANDS) {
+    if (ageMin >= min) return label;
+  }
+  return undefined;
+}
+
+/** Statuses where the sub-agent is expected to be MAKING PROGRESS, so a long
+ *  idle indicates a stall worth surfacing. (waiting_on_user / blocked are
+ *  legitimately idle — no stall indicator there.) */
+const PROGRESS_EXPECTED_STATUSES: ReadonlySet<OrchestratorTaskStatus> = new Set(
+  ["active", "validating"],
+);
 
 /** Compose the digest body for one room's set of live tasks. Deterministic. */
 export function composeRoomDigest(views: SupervisorTaskView[]): string {
@@ -67,7 +106,8 @@ export function composeRoomDigest(views: SupervisorTaskView[]): string {
       const detail = v.sessionLabel ? ` · ${v.sessionLabel}` : "";
       const sessions =
         v.activeSessions > 0 ? ` (${v.activeSessions} running)` : "";
-      return `${statusEmoji(v.status)} ${v.label} — ${v.status}${sessions}${detail}`;
+      const stale = v.staleness ? ` ${v.staleness}` : "";
+      return `${statusEmoji(v.status)} ${v.label} — ${v.status}${sessions}${detail}${stale}`;
     });
   return [header, ...lines].join("\n");
 }
@@ -167,6 +207,7 @@ interface TaskServiceLike {
       status: OrchestratorTaskStatus;
       activeSessionCount: number;
       latestSessionLabel: string | null;
+      latestActivityAt: number | null;
     }>
   >;
   getTaskOriginTarget(
@@ -281,6 +322,7 @@ export class TaskSupervisorService extends Service {
     try {
       const tasks = await taskSvc.listTasks({ includeArchived: false });
       const live = tasks.filter((t) => LIVE_STATUSES.has(t.status));
+      const now = Date.now();
       const views: SupervisorTaskView[] = await Promise.all(
         live.map(async (t) => ({
           id: t.id,
@@ -288,6 +330,11 @@ export class TaskSupervisorService extends Service {
           status: t.status,
           activeSessions: t.activeSessionCount,
           sessionLabel: t.latestSessionLabel,
+          // Surface a stall only for progress-expected statuses; waiting_on_user
+          // / blocked are legitimately idle.
+          staleness: PROGRESS_EXPECTED_STATUSES.has(t.status)
+            ? supervisorStalenessLabel(t.latestActivityAt, now)
+            : undefined,
           origin: await taskSvc.getTaskOriginTarget(t.id),
         })),
       );
