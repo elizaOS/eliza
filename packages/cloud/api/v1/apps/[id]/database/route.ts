@@ -38,6 +38,13 @@ async function loadOwnedApp(c: AppContext) {
   if (!appRow || appRow.organization_id !== user.organization_id) {
     return { error: "App not found", status: 404 as const };
   }
+  // A per-app API key may only act on its own app, never a sibling (#10852).
+  if (await appsService.isApiKeyScopedToOtherApp(c.get("apiKeyId"), appId)) {
+    return {
+      error: "This API key is scoped to a different app",
+      status: 403 as const,
+    };
+  }
   return { appRow, appId };
 }
 

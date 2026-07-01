@@ -40,7 +40,7 @@ async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ): Promise<Response> {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
   const body = await request.json();
@@ -58,6 +58,14 @@ async function __hono_POST(
   const app = await appsService.getById(id);
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
+  }
+
+  // A per-app API key may only act on its own app, never a sibling (#10852).
+  if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, id)) {
+    return Response.json(
+      { success: false, error: "This API key is scoped to a different app" },
+      { status: 403 },
+    );
   }
 
   // Create a preview app object with the selected character for generation

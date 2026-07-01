@@ -31,6 +31,14 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
+    // A per-app API key may only act on its own app, never a sibling (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(c.get("apiKeyId"), appId)) {
+      return c.json(
+        { success: false, error: "This API key is scoped to a different app" },
+        403,
+      );
+    }
+
     const record = await appDeploymentsService.getLatestDeployment(appId);
     if (!record) {
       return c.json({

@@ -78,6 +78,14 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
+    // A per-app API key may only act on its own app, never a sibling (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(c.get("apiKeyId"), appId)) {
+      return c.json(
+        { success: false, error: "This API key is scoped to a different app" },
+        403,
+      );
+    }
+
     // Claim the idempotency key BEFORE any debit/register. The unique insert is
     // the single point of serialization: only the winner runs the purchase; a
     // concurrent/retried buy of the same domain short-circuits below.

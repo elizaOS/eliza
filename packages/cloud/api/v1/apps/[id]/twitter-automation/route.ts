@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { appsService } from "@/lib/services/apps";
 import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -22,8 +23,16 @@ async function __hono_GET(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ): Promise<Response> {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
+
+  // A per-app API key may only act on its own app, never a sibling (#10852).
+  if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, id)) {
+    return Response.json(
+      { success: false, error: "This API key is scoped to a different app" },
+      { status: 403 },
+    );
+  }
 
   const status = await twitterAppAutomationService.getAutomationStatus(
     user.organization_id,
@@ -37,8 +46,16 @@ async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ): Promise<Response> {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
+
+  // A per-app API key may only act on its own app, never a sibling (#10852).
+  if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, id)) {
+    return Response.json(
+      { success: false, error: "This API key is scoped to a different app" },
+      { status: 403 },
+    );
+  }
 
   const body = await request.json();
   const parsed = TwitterAutomationConfigSchema.safeParse(body);
@@ -107,8 +124,16 @@ async function __hono_DELETE(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ): Promise<Response> {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
+
+  // A per-app API key may only act on its own app, never a sibling (#10852).
+  if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, id)) {
+    return Response.json(
+      { success: false, error: "This API key is scoped to a different app" },
+      { status: 403 },
+    );
+  }
 
   logger.info("[Twitter Automation API] Disabling automation", {
     appId: id,

@@ -197,7 +197,7 @@ async function handlePOST(
       );
     }
 
-    const { user } = authResult;
+    const { user, apiKey } = authResult;
 
     // Access control: non-monetized apps are internal (same org only)
     // Monetized apps are public (anyone with credits can use)
@@ -210,6 +210,22 @@ async function handlePOST(
           {
             error: {
               message: "Access denied to this app",
+              type: "invalid_request_error",
+              code: "access_denied",
+            },
+          },
+          { status: 403 },
+        ),
+      );
+    }
+
+    // A per-app API key may only act on its own app, never a sibling (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, appId)) {
+      return withCors(
+        Response.json(
+          {
+            error: {
+              message: "This API key is scoped to a different app",
               type: "invalid_request_error",
               code: "access_denied",
             },

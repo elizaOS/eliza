@@ -11,6 +11,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { appsService } from "@/lib/services/apps";
 import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 
@@ -22,8 +23,16 @@ async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ): Promise<Response> {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id: appId } = await params;
+
+  // A per-app API key may only act on its own app, never a sibling (#10852).
+  if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, appId)) {
+    return Response.json(
+      { success: false, error: "This API key is scoped to a different app" },
+      { status: 403 },
+    );
+  }
 
   let body: z.infer<typeof postSchema>;
   try {

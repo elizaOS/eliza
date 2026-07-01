@@ -6,6 +6,7 @@ import {
   appPromotionService,
   type PromotionConfig,
 } from "@/lib/services/app-promotion";
+import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -113,8 +114,16 @@ async function __hono_GET(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ) {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
+
+  // A per-app API key may only act on its own app, never a sibling (#10852).
+  if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, id)) {
+    return Response.json(
+      { success: false, error: "This API key is scoped to a different app" },
+      { status: 403 },
+    );
+  }
 
   const url = new URL(request.url);
   const isHistory = url.searchParams.get("history") === "true";
@@ -139,8 +148,16 @@ async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ) {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
+
+  // A per-app API key may only act on its own app, never a sibling (#10852).
+  if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, id)) {
+    return Response.json(
+      { success: false, error: "This API key is scoped to a different app" },
+      { status: 403 },
+    );
+  }
 
   const body = await request.json();
   const parsed = PromotionConfigSchema.safeParse(body);

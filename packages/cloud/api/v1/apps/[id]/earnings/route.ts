@@ -22,7 +22,7 @@ async function __hono_GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
     const daysParam = new URL(request.url).searchParams.get("days");
@@ -42,6 +42,14 @@ async function __hono_GET(
     if (app.organization_id !== user.organization_id) {
       return Response.json(
         { success: false, error: "Access denied" },
+        { status: 403 },
+      );
+    }
+
+    // A per-app API key may only act on its own app, never a sibling (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, id)) {
+      return Response.json(
+        { success: false, error: "This API key is scoped to a different app" },
         { status: 403 },
       );
     }
