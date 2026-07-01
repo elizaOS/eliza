@@ -106,7 +106,10 @@ export function HomeWidgetCard({
       className={cn(
         // Dark neutral glass keeps white text and orange status values legible.
         "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/55 px-3 py-2.5 text-left",
-        "transition-colors hover:bg-black/55",
+        // Neutral resting → darker-neutral hover. Was `hover:bg-black/55`, i.e.
+        // identical to the resting fill, so this whole-card button gave zero
+        // hover feedback — a neutral-hover-rule violation (#10719).
+        "transition-colors hover:bg-black/70",
       )}
     >
       <span
