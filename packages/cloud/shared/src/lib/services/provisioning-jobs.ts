@@ -2868,7 +2868,6 @@ export class ProvisioningJobService {
         staleThresholdMs: COLD_BOOT_JOB_TYPES.has(jobType)
           ? COLD_BOOT_STALE_JOB_THRESHOLD_MS
           : DEFAULT_STALE_JOB_THRESHOLD_MS,
-        maxAttempts: 3,
       });
       totalRecovered += recovered;
     }
