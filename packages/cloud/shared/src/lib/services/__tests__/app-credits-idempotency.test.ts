@@ -26,6 +26,7 @@ import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
 import { appEarnings, appEarningsTransactions } from "../../../db/schemas/app-earnings";
 import {
   appDeploymentStatusEnum,
+  appReviewStatusEnum,
   apps,
   appUsers,
   userDatabaseStatusEnum,
@@ -116,6 +117,7 @@ beforeAll(async () => {
       redeemedEarningsTracking,
       creditTransactions,
       appDeploymentStatusEnum,
+      appReviewStatusEnum,
       userDatabaseStatusEnum,
       earningsSourceEnum,
       ledgerEntryTypeEnum,

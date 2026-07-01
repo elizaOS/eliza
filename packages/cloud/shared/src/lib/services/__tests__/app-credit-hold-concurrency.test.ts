@@ -62,7 +62,13 @@ import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
 import type { App } from "../../../db/repositories/apps";
 import { appEarnings, appEarningsTransactions } from "../../../db/schemas/app-earnings";
-import { appDeploymentStatusEnum, apps, appUsers } from "../../../db/schemas/apps";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  appUsers,
+  userDatabaseStatusEnum,
+} from "../../../db/schemas/apps";
 import { creditTransactions } from "../../../db/schemas/credit-transactions";
 import { organizations } from "../../../db/schemas/organizations";
 import {
@@ -188,6 +194,8 @@ beforeAll(async () => {
       redeemableEarningsLedger,
       redeemedEarningsTracking,
       appDeploymentStatusEnum,
+      appReviewStatusEnum,
+      userDatabaseStatusEnum,
       earningsSourceEnum,
       ledgerEntryTypeEnum,
     };
