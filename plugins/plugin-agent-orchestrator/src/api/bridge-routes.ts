@@ -44,6 +44,23 @@ const DEFAULT_LONG_POLL_MS = 5 * 60 * 1000;
 const POLL_INTERVAL_MS = 250;
 
 /**
+ * Machine-readable rejection reasons the credential adapter may emit
+ * (`CredentialScopeError.code`). Anything outside this set is a raw
+ * `error.message` from an unexpected failure and must NOT leak into the
+ * structured `code` channel — it collapses to a stable `rejected`.
+ */
+const KNOWN_CREDENTIAL_REJECTION_CODES: ReadonlySet<string> = new Set([
+  "invalid_input",
+  "key_not_in_scope",
+  "invalid_token",
+  "unknown_scope",
+  "scope_expired",
+  "session_mismatch",
+  "already_redeemed",
+  "no_ciphertext",
+]);
+
+/**
  * Adapter surface the bridge routes need from the parent runtime. The
  * concrete implementation lives in app-core (`CredentialTunnelService`) and
  * is registered into the parent runtime out-of-band; the route layer never
@@ -332,7 +349,12 @@ async function handleGet(
       return;
     }
     if (outcome.status === "rejected") {
-      sendJson(res, { error: outcome.reason, code: outcome.reason }, 403);
+      // `reason` may be a raw error.message for an unexpected failure; keep the
+      // free text in `error` but only pass a KNOWN adapter code into `code`.
+      const code = KNOWN_CREDENTIAL_REJECTION_CODES.has(outcome.reason)
+        ? outcome.reason
+        : "rejected";
+      sendJson(res, { error: outcome.reason, code }, 403);
       return;
     }
     await delay(POLL_INTERVAL_MS);
