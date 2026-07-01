@@ -274,6 +274,8 @@ try {
   const mobileContext = await browser.newContext({
     viewport: { width: 402, height: 874 },
     deviceScaleFactor: 2,
+    hasTouch: true,
+    isMobile: true,
     recordVideo: {
       dir: outDir,
       size: { width: 402, height: 874 },
@@ -281,6 +283,25 @@ try {
   });
   const mobile = await mobileContext.newPage();
   mobile.on("pageerror", (e) => sink.errors.push(String(e)));
+  await mobile.addInitScript(() => {
+    const real = window.matchMedia.bind(window);
+    const coarsePointer = (query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    });
+    window.matchMedia = (query) =>
+      /hover:\s*hover|pointer:\s*fine/.test(query)
+        ? coarsePointer(query)
+        : real(query);
+  });
   // Install the shared layout-shift PerformanceObserver BEFORE any paint, so
   // every shift during the home settle lands in window.__ELIZA_LAYOUT_SHIFTS__
   // (the same contract HomeScreen's dev observer + the KPI specs use). We read
@@ -291,6 +312,13 @@ try {
   await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
   await mobile.waitForTimeout(600);
+  assert(
+    (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-next").count()) === 0,
+    "mobile coarse-pointer: no rail or launcher edge buttons on home",
+  );
   assert(
     (await mobile.getByTestId("home-launcher-surface").getAttribute(
       "data-page",
@@ -393,6 +421,13 @@ try {
 
   await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
   await waitForSurfacePageSettled(mobile, "launcher");
+  assert(
+    (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-next").count()) === 0,
+    "mobile coarse-pointer: no rail or launcher edge buttons on launcher",
+  );
 
   // ── Curated apps page — the everyday apps render as tiles, in curated order.
   for (const id of ["wallet", "automations", "browser", "settings"]) {
@@ -578,9 +613,9 @@ try {
   await desktop.close();
 
   // #10717: the web/desktop `< >` edge buttons render ONLY on fine-pointer /
-  // hover-capable devices. Headless chromium reports a coarse/no pointer by
-  // default (so the arrows are correctly hidden in the captures above); force
-  // the fine-pointer media features before load to exercise + capture them.
+  // hover-capable devices. The mobile path above explicitly emulates touch /
+  // coarse-pointer and asserts the buttons are absent; this page forces the
+  // fine-pointer media features before load to exercise + capture them.
   const finePointer = await browser.newPage({
     viewport: { width: 1180, height: 900 },
   });

@@ -37,9 +37,10 @@ launcher app-pages):
   both arrows on fine pointers, click → goPrev/goNext, self-hide at first/last
   page, neutral color with no card chrome / blue.
 - `run-home-screen-e2e.mjs` — real headless-chromium render of both surfaces;
-  added a fine-pointer capture (headless defaults to coarse, so the arrows are
-  correctly hidden in the normal captures). Asserts `>` present on home, no `<`
-  on home, `<` (→ home) present on the launcher. `0` page errors.
+  the mobile path explicitly emulates a touch/coarse-pointer device and asserts
+  zero rail/launcher edge buttons before capture, while the desktop path forces
+  fine-pointer media features and asserts `>` present on home, no `<` on home,
+  and `<` (→ home) present on the launcher. `0` page errors.
 
 ## Evidence
 
@@ -48,8 +49,12 @@ launcher app-pages):
 - `desktop-edge-launcher.png` — launcher view, fine-pointer: the rail's `<`
   (→ home) on the **left** and the inner launcher's `>` (next app page) on the
   **right** — the two pagers coexist on opposite edges (no stacking).
-- `mobile-no-arrows.png` / `mobile-launcher-no-arrows.png` — the same views on a
-  coarse-pointer mobile viewport: **no arrows** (swipe is the sole navigation).
+- `mobile-no-arrows.png` / `mobile-launcher-no-arrows.png` — the same views on
+  an explicitly emulated coarse-pointer/touch mobile viewport: **no arrows**
+  (swipe is the sole navigation).
+- `mobile-launcher-flow.webm` — recorded mobile walkthrough from the same e2e:
+  home → launcher → developer page with swipe-only navigation and no edge-button
+  affordances.
 
 The momentum smoothness itself is a timing behavior best seen in the unit test's
 fast-vs-slow assertion (a headless screenshot can't show settle velocity).
@@ -57,5 +62,6 @@ fast-vs-slow assertion (a headless screenshot can't show settle velocity).
 - Real-LLM trajectory / backend logs — **N/A**: pure client-side gesture/UI
   change, no model or server path.
 - Native iOS/Android capture — deferred to the device lanes; the touch behavior
-  (finger-follow + momentum, arrows absent) is covered by the coarse-pointer
-  mobile captures + the unit tests here.
+  (finger-follow + momentum, arrows absent) is covered here by explicit
+  coarse-pointer browser assertions, mobile screenshots, and the walkthrough
+  recording.

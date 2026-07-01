@@ -123,7 +123,10 @@ export function useHorizontalPager<
   // layout effect below — so the velocity-derived settle duration is handed to
   // that effect here (instead of the fixed SETTLE_MS) so the momentum survives
   // the controlled-page update.
-  const pendingSettleMsRef = React.useRef<number | null>(null);
+  const pendingSettleRef = React.useRef<{
+    targetPage: number;
+    durationMs: number;
+  } | null>(null);
   const mountedRef = React.useRef(false);
   const pageRef = React.useRef(page);
   const pageCountRef = React.useRef(pageCount);
@@ -221,8 +224,12 @@ export function useHorizontalPager<
     const nextPage = clampPage(page, pageCount);
     // Prefer the velocity-derived duration a committed swipe just parked here;
     // fall back to the fixed rate for a programmatic / button-driven page change.
-    const settleMs = pendingSettleMsRef.current ?? SETTLE_MS;
-    pendingSettleMsRef.current = null;
+    const pendingSettle = pendingSettleRef.current;
+    pendingSettleRef.current = null;
+    const settleMs =
+      pendingSettle?.targetPage === nextPage
+        ? pendingSettle.durationMs
+        : SETTLE_MS;
     writeOffset(
       pageOffset(nextPage, width),
       mountedRef.current && !dragRef.current ? settleMs : null,
@@ -310,10 +317,13 @@ export function useHorizontalPager<
         // Park the momentum duration for the layout effect that the
         // onPageChange-driven re-render triggers, so the controlled-page update
         // settles with the flick's velocity rather than the fixed rate.
-        pendingSettleMsRef.current = momentumSettleMs(
-          Math.abs(targetOffset - lastVisual),
-          velocity,
-        );
+        pendingSettleRef.current = {
+          targetPage,
+          durationMs: momentumSettleMs(
+            Math.abs(targetOffset - lastVisual),
+            velocity,
+          ),
+        };
         onPageChangeRef.current(targetPage);
       } else {
         // Already at the clamped edge — settle directly (no page change fires).
