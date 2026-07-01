@@ -12,7 +12,9 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import type { NewApp } from "@/db/schemas/apps";
 import { appCleanupService } from "@/lib/services/app-cleanup";
+import { buildReviewCandidate } from "@/lib/services/app-review";
 import { appsService } from "@/lib/services/apps";
 import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
@@ -113,10 +115,30 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
     }
   }
 
-  const updateData = {
+  const updateData: Partial<NewApp> = {
     ...validationResult.data,
     app_url: validationResult.data.app_url ?? undefined,
   };
+
+  // Re-review on material change (#10732): if a review-relevant field changed on
+  // an app that went through the automated review (has a snapshot hash), drop it
+  // back to `draft` so it must be re-submitted before it can keep monetizing.
+  // Grandfathered apps (no hash) keep their legacy approval. (Enforcement is
+  // airtight regardless via the content-hash check in isAppMonetizationApproved.)
+  if (existing.review_status === "approved" && existing.review_content_hash) {
+    const nextHash = buildReviewCandidate({
+      name: updateData.name ?? existing.name,
+      description: updateData.description ?? existing.description,
+      app_url: updateData.app_url ?? existing.app_url,
+      website_url: updateData.website_url ?? existing.website_url,
+      metadata: existing.metadata,
+    }).contentHash;
+    if (nextHash !== existing.review_content_hash) {
+      updateData.review_status = "draft";
+      updateData.review_content_hash = null;
+    }
+  }
+
   const updated = await appsService.update(id, updateData);
 
   logger.info(
