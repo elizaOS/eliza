@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from .adapters import discover_adapters
+from .artifact_guard import build_artifact_guard_report
 from .calibration_report import build_calibration_report, print_calibration_report
 from .compare_vs_random import add_compare_vs_random_parser
 from .db import (
@@ -442,6 +443,13 @@ def _cmd_validate_runtime_gates(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def _cmd_verify_artifacts(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    report = build_artifact_guard_report(workspace_root)
+    print(report.to_markdown())
+    return 0 if report.ok else 1
+
+
 def _parse_model_spec(spec: str) -> tuple[str, str, str | None]:
     """Parse ``provider:model[@base_url]`` into ``(provider, model, base_url)``.
 
@@ -811,6 +819,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_inventory.add_argument("--format", choices=("markdown", "json"), default="markdown")
     p_inventory.set_defaults(func=_cmd_inventory)
+
+    p_verify_artifacts = sub.add_parser(
+        "verify-artifacts",
+        help="Fail if generated benchmark output (results/DBs/trajectories) is committed",
+    )
+    p_verify_artifacts.set_defaults(func=_cmd_verify_artifacts)
 
     p_run = sub.add_parser("run", help="Run one or more benchmarks idempotently")
     p_run.add_argument("--all", action="store_true", help="Run all integrated benchmarks")
