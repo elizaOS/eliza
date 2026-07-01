@@ -282,7 +282,12 @@ export class ChatPane implements Focusable {
         `${borderColor("│")} ${chalk.dim("Processing...")}${" ".repeat(Math.max(0, innerWidth - 14))}${borderColor("│")}`,
       );
     } else {
-      const editorLines = this.editor.render(innerWidth);
+      // The composer row wraps the editor in "│ > " + "│" — 5 columns of
+      // chrome on top of innerWidth (= width - 4), so the editor must render
+      // narrower than innerWidth or the row exceeds the terminal width and
+      // the TUI's overflow guard aborts — fatal on phone-width terminals
+      // (the cockpit xterm is ~43 cols).
+      const editorLines = this.editor.render(Math.max(1, innerWidth - 3));
       const promptLine = chalk.cyan("> ") + (editorLines[0] || "");
       output.push(
         `${borderColor("│")} ${promptLine.padEnd(innerWidth - 1)}${borderColor("│")}`,

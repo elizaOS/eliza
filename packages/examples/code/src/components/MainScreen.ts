@@ -1,4 +1,5 @@
 import type { Component, Focusable, Terminal } from "@elizaos/tui";
+import { truncateToWidth } from "@elizaos/tui";
 import { useStore } from "../lib/store.js";
 import type { ChatPane } from "./ChatPane.js";
 import type { StatusBar } from "./StatusBar.js";
@@ -43,11 +44,19 @@ export class MainScreen implements Component, Focusable {
     const statusLines = this.statusBar.render(width);
     const contentHeight = Math.max(1, height - statusLines.length);
 
+    // Clip every assembled line to the terminal width. Child components are
+    // responsible for their own layout, but any visible-width overflow that
+    // slips through (fixed-width footers, unpadded chrome on narrow
+    // terminals) is a fatal render abort in the TUI — clip here at the one
+    // choke point instead of crashing.
+    const clip = (lines: string[]): string[] =>
+      lines.map((line) => truncateToWidth(line, width));
+
     if (!showTasks) {
-      return [
+      return clip([
         ...statusLines,
         ...this.chatPane.renderContent(width, contentHeight),
-      ];
+      ]);
     }
 
     const taskW = Math.max(
@@ -65,6 +74,6 @@ export class MainScreen implements Component, Focusable {
       const right = taskLines[r] ?? "";
       body.push(`${left}${sep}${right}`);
     }
-    return [...statusLines, ...body];
+    return clip([...statusLines, ...body]);
   }
 }

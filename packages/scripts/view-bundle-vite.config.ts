@@ -67,6 +67,14 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
         },
         output: {
           exports: "named",
+          // One self-contained module per view bundle — never emit lazy
+          // chunks. A chunk re-imports "./bundle.js" WITHOUT the
+          // ?hostExternalRuntime query DynamicViewLoader loaded the entry
+          // with, so the browser fetches the raw bundle as a second module
+          // and its bare externals ("@elizaos/ui", "react") fail to resolve,
+          // killing the whole lazy graph (e.g. the cockpit terminal's xterm
+          // import).
+          inlineDynamicImports: true,
         },
       },
     },
