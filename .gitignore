@@ -17,6 +17,8 @@ packages/ui/src/components/chat/widgets/__e2e__/output-ftu/
 packages/ui/src/components/views/__e2e__/output-view-lifecycle/
 # Desktop bottom-bar e2e output (screenshots + webm — regenerate via test:bottombar-e2e; committed evidence lives in .github/issue-evidence/9953-windows-bottom-bar/)
 packages/ui/src/components/shell/__e2e__/output-bottombar/
+# Connector card e2e output (screenshots + bundles — regenerate via test:connectors-e2e; committed evidence lives in .github/issue-evidence/10705-connector-config-co-render/)
+packages/ui/src/components/pages/__e2e__/output-connectors/
 
 .next/
 **/.next/**
