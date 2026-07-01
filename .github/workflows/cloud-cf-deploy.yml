@@ -129,12 +129,16 @@ jobs:
         timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
+        working-directory: /tmp
         run: |
           set -euo pipefail
-          mkdir -p "$CHECKOUT_DIR"
-          git init "$CHECKOUT_DIR"
-          git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-            || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          init_checkout_dir() {
+            mkdir -p "$CHECKOUT_DIR"
+            git init -q "$CHECKOUT_DIR"
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          }
+          init_checkout_dir
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
@@ -146,7 +150,11 @@ jobs:
               break
             fi
             echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            sleep 10
+            if [ "$attempt" -lt 2 ]; then
+              rm -rf "$CHECKOUT_DIR"
+              sleep 10
+              init_checkout_dir
+            fi
           done
           [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
@@ -179,8 +187,11 @@ jobs:
         # the deploy — the same resilience the checkout step already uses (#10310).
         run: |
           set -euo pipefail
+          install_cache="$PWD/.bun-install-cache"
           for attempt in 1 2 3; do
-            if timeout 300s bun install --no-save --ignore-scripts; then
+            test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
+            mkdir -p "$install_cache"
+            if timeout 300s bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -188,6 +199,7 @@ jobs:
               exit 1
             fi
             echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
+            rm -rf node_modules "$install_cache"
           done
           git diff --exit-code -- bun.lock
 
@@ -320,7 +332,14 @@ jobs:
       - name: Clean temp checkout
         if: always()
         working-directory: /tmp
-        run: timeout 120s rm -rf "$CHECKOUT_DIR" || echo "::warning::Timed out cleaning $CHECKOUT_DIR"
+        run: |
+          set -uo pipefail
+          if [ -e "$CHECKOUT_DIR" ]; then
+            stale_dir="${CHECKOUT_DIR}.stale-${GITHUB_JOB:-job}-$(date +%s)"
+            mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
+            nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
+            echo "Scheduled best-effort cleanup for ${stale_dir}."
+          fi
 
   # ---------------------------------------------------------------------------
   # Console frontend (Cloudflare Pages) — packages/app at the elizacloud.ai apex.
@@ -374,12 +393,16 @@ jobs:
         timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
+        working-directory: /tmp
         run: |
           set -euo pipefail
-          mkdir -p "$CHECKOUT_DIR"
-          git init "$CHECKOUT_DIR"
-          git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-            || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          init_checkout_dir() {
+            mkdir -p "$CHECKOUT_DIR"
+            git init -q "$CHECKOUT_DIR"
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          }
+          init_checkout_dir
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
@@ -395,7 +418,11 @@ jobs:
               break
             fi
             echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            sleep 10
+            if [ "$attempt" -lt 2 ]; then
+              rm -rf "$CHECKOUT_DIR"
+              sleep 10
+              init_checkout_dir
+            fi
           done
           [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
@@ -428,8 +455,11 @@ jobs:
         # the deploy — the same resilience the checkout step already uses (#10310).
         run: |
           set -euo pipefail
+          install_cache="$PWD/.bun-install-cache"
           for attempt in 1 2 3; do
-            if timeout 300s bun install --no-save --ignore-scripts; then
+            test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
+            mkdir -p "$install_cache"
+            if timeout 300s bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -437,6 +467,7 @@ jobs:
               exit 1
             fi
             echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
+            rm -rf node_modules "$install_cache"
           done
           git diff --exit-code -- bun.lock
 
@@ -600,7 +631,14 @@ jobs:
       - name: Clean temp checkout
         if: always()
         working-directory: /tmp
-        run: timeout 120s rm -rf "$CHECKOUT_DIR" || echo "::warning::Timed out cleaning $CHECKOUT_DIR"
+        run: |
+          set -uo pipefail
+          if [ -e "$CHECKOUT_DIR" ]; then
+            stale_dir="${CHECKOUT_DIR}.stale-${GITHUB_JOB:-job}-$(date +%s)"
+            mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
+            nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
+            echo "Scheduled best-effort cleanup for ${stale_dir}."
+          fi
 
   # ---------------------------------------------------------------------------
   # App frontend (Cloudflare Pages) — packages/app (the Eliza agent app) at
@@ -654,12 +692,16 @@ jobs:
         timeout-minutes: 20
         env:
           CHECKOUT_TOKEN: ${{ github.token }}
+        working-directory: /tmp
         run: |
           set -euo pipefail
-          mkdir -p "$CHECKOUT_DIR"
-          git init "$CHECKOUT_DIR"
-          git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-            || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          init_checkout_dir() {
+            mkdir -p "$CHECKOUT_DIR"
+            git init -q "$CHECKOUT_DIR"
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          }
+          init_checkout_dir
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
@@ -675,7 +717,11 @@ jobs:
               break
             fi
             echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            sleep 10
+            if [ "$attempt" -lt 2 ]; then
+              rm -rf "$CHECKOUT_DIR"
+              sleep 10
+              init_checkout_dir
+            fi
           done
           [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
@@ -708,8 +754,11 @@ jobs:
         # the deploy — the same resilience the checkout step already uses (#10310).
         run: |
           set -euo pipefail
+          install_cache="$PWD/.bun-install-cache"
           for attempt in 1 2 3; do
-            if timeout 300s bun install --no-save --ignore-scripts; then
+            test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
+            mkdir -p "$install_cache"
+            if timeout 300s bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -717,6 +766,7 @@ jobs:
               exit 1
             fi
             echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
+            rm -rf node_modules "$install_cache"
           done
           git diff --exit-code -- bun.lock
 
@@ -832,4 +882,11 @@ jobs:
       - name: Clean temp checkout
         if: always()
         working-directory: /tmp
-        run: timeout 120s rm -rf "$CHECKOUT_DIR" || echo "::warning::Timed out cleaning $CHECKOUT_DIR"
+        run: |
+          set -uo pipefail
+          if [ -e "$CHECKOUT_DIR" ]; then
+            stale_dir="${CHECKOUT_DIR}.stale-${GITHUB_JOB:-job}-$(date +%s)"
+            mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
+            nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
+            echo "Scheduled best-effort cleanup for ${stale_dir}."
+          fi
