@@ -406,7 +406,6 @@
     "@storybook/react": "^10.0.0",
     "@storybook/react-vite": "^10.0.0",
     "@tailwindcss/vite": "^4.3.1",
-    "storybook": "^10.0.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -415,6 +414,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.184.0",
+    "@types/webxr": "^0.5.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react-swc": "^4.3.1",
     "esbuild": "^0.28.0",
@@ -426,11 +426,12 @@
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "react-plaid-link": "^4.1.1",
+    "sharp": "^0.34.5",
+    "storybook": "^10.0.0",
     "three": "^0.184.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
-    "vitest": "^4.0.18",
-    "@types/webxr": "^0.5.0"
+    "vitest": "^4.0.18"
   },
   "publishConfig": {
     "access": "public",

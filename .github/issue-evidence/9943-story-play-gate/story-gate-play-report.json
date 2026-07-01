@@ -1,6 +1,6 @@
 {
   "schema": "eliza_story_gate_v1",
-  "generatedAt": "2026-07-01T02:55:01.568Z",
+  "generatedAt": "2026-07-01T03:09:47.272Z",
   "frozenEpochMs": 1748779200000,
   "totals": {
     "stories": 7,
@@ -30,20 +30,6 @@
       }
     },
     {
-      "id": "pages-launcher--edit-mode-toggle",
-      "title": "Pages/Launcher",
-      "name": "Edit Mode Toggle",
-      "verdict": "good",
-      "issues": [],
-      "consoleErrors": [],
-      "a11y": [],
-      "play": {
-        "expected": true,
-        "prepared": true,
-        "phase": "finished"
-      }
-    },
-    {
       "id": "pages-launcher--loading",
       "title": "Pages/Launcher",
       "name": "Loading",
@@ -54,6 +40,20 @@
       "play": {
         "expected": false,
         "prepared": false,
+        "phase": "finished"
+      }
+    },
+    {
+      "id": "pages-launcher--edit-mode-toggle",
+      "title": "Pages/Launcher",
+      "name": "Edit Mode Toggle",
+      "verdict": "good",
+      "issues": [],
+      "consoleErrors": [],
+      "a11y": [],
+      "play": {
+        "expected": true,
+        "prepared": true,
         "phase": "finished"
       }
     },

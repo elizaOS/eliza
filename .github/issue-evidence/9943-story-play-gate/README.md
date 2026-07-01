@@ -12,6 +12,8 @@ final verdict run. The report also records `playExpected` and `playPrepared`.
   `playExpected=3`.
 - `pages-launcher-long-press-to-edit.png` - screenshot captured after the
   long-press `play` story finished.
+- `pages-launcher-loading.png` - screenshot proving the loading skeleton is
+  visible under the blank-render detector.
 
 ## Commands
 
@@ -19,8 +21,13 @@ final verdict run. The report also records `playExpected` and `playPrepared`.
 bun install --frozen-lockfile --ignore-scripts
 bun run generate:action-search-keywords
 bun run --cwd packages/ui build-storybook --output-dir storybook-static --quiet
-node packages/ui/test/story-gate/run-story-gate.mjs --static-dir packages/ui/storybook-static --out test/story-gate/output-play-smoke --grep launcher --concurrency 2 --no-a11y
+node packages/ui/test/story-gate/run-story-gate.mjs --static-dir packages/ui/storybook-static --out test/story-gate/output-play-smoke-sharp --grep launcher --concurrency 2 --no-a11y
 ```
+
+Follow-up validation installed `sharp` as an explicit `packages/ui`
+devDependency and reran the gate with blank-render detection active. That caught
+the launcher loading story rendering as a single-color black frame; the loading
+skeleton was adjusted and the gate now passes with `sharp` active.
 
 ## N/A
 
