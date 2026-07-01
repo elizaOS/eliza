@@ -1,6 +1,10 @@
 import { createRequire } from "node:module";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+// Mirrors AGENT_ROUTING_TTL_SECONDS in ../redis (30 days). Asserted directly so
+// a wrong-duration TTL regression can't pass a mere `> 0` check.
+const THIRTY_DAYS_SECONDS = 30 * 24 * 3600;
+
 const PREV_MOCK = process.env.MOCK_REDIS;
 
 beforeAll(() => {
@@ -36,9 +40,14 @@ describe("operator capabilities/redis (MOCK_REDIS=1)", () => {
 
     expect(await probe.get("server:s1:status")).toBe("ready");
     expect(await probe.get("server:s1:url")).toBe("http://s1.local");
-    // Both keys carry the 30-day agent-routing TTL, not a permanent write.
-    expect(await probe.ttl("server:s1:status")).toBeGreaterThan(0);
-    expect(await probe.ttl("server:s1:url")).toBeGreaterThan(0);
+    // Both keys carry the 30-day agent-routing TTL, not a permanent write and
+    // not some other duration. Assert the actual window (allowing a few seconds
+    // of clock slack), so a regression to a wrong TTL — or a missing EX — fails.
+    for (const key of ["server:s1:status", "server:s1:url"]) {
+      const ttl = await probe.ttl(key);
+      expect(ttl, `${key} TTL`).toBeGreaterThan(THIRTY_DAYS_SECONDS - 60);
+      expect(ttl, `${key} TTL`).toBeLessThanOrEqual(THIRTY_DAYS_SECONDS);
+    }
   });
 
   test("setAgentServer maps an agent to its server; removeAgentServer clears it", async () => {
@@ -48,7 +57,9 @@ describe("operator capabilities/redis (MOCK_REDIS=1)", () => {
 
     await setAgentServer("a1", "s1");
     expect(await probe.get("agent:a1:server")).toBe("s1");
-    expect(await probe.ttl("agent:a1:server")).toBeGreaterThan(0);
+    const agentTtl = await probe.ttl("agent:a1:server");
+    expect(agentTtl).toBeGreaterThan(THIRTY_DAYS_SECONDS - 60);
+    expect(agentTtl).toBeLessThanOrEqual(THIRTY_DAYS_SECONDS);
 
     await removeAgentServer("a1");
     expect(await probe.get("agent:a1:server")).toBeNull();

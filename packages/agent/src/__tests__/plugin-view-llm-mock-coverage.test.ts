@@ -133,43 +133,21 @@ describe("plugin view LLM mock coverage", () => {
   // Anthropic model in `view-llm-eval.test.ts` (`describe.skipIf(!hasCredential)`,
   // live lane). This file owns the deterministic PR-lane contract: the journey
   // corpus stays in lockstep with the visual + XR matrices (the tests above).
-  // Below is a REAL corpus-quality guard the live eval depends on — that every
-  // journey prompt is unambiguous, so a real longest-path router cannot resolve
-  // it to a DIFFERENT view than the one it declares.
-  it("every journey prompt unambiguously identifies its own view (no colliding paths)", () => {
-    const casesByLongestPath = [...PLUGIN_VIEW_LLM_MOCK_CASES].sort(
-      (left, right) => right.path.length - left.path.length,
-    );
-    for (const journey of PLUGIN_VIEW_LLM_MOCK_JOURNEYS) {
-      const declared = PLUGIN_VIEW_LLM_MOCK_CASES.find(
-        (view) =>
-          journey.expectedBehavior.includes(`"${view.id}"`) &&
-          journey.expectedBehavior.includes(`"${view.viewType}"`) &&
-          journey.expectedBehavior.includes(`"${view.path}"`),
-      );
-      expect(declared, `missing case backing ${journey.id}`).toBeTruthy();
-
-      // Resolve the prompt the way a deterministic longest-path router would,
-      // honoring the modality the prompt names. `declared` comes from the
-      // journey's expectedBehavior, `routed` from its userMessage — if they
-      // diverge, two cases have colliding paths and the live eval would flake.
-      const message = journey.userMessage.toLowerCase();
-      const wantType = message.includes("spatial xr")
-        ? "xr"
-        : message.includes("terminal tui")
-          ? "tui"
-          : message.includes("visual gui")
-            ? "gui"
-            : null;
-      const routed = casesByLongestPath.find(
-        (view) =>
-          (!wantType || view.viewType === wantType) &&
-          message.includes(view.path.toLowerCase()),
-      );
-      expect(
-        routed ? `${routed.id}-${routed.viewType}` : null,
-        `journey ${journey.id}: prompt routes to ${routed?.id}-${routed?.viewType}, not its declared ${declared?.id}-${declared?.viewType} (ambiguous/colliding corpus prompt)`,
-      ).toBe(`${declared?.id}-${declared?.viewType}`);
+  //
+  // The direct corpus-integrity property the live eval depends on: no two cases
+  // share the same (viewType, path). A duplicate would make a "show me <path>"
+  // prompt ambiguous — the model could open either view and the eval would
+  // flake or wrongly fail. Asserted straight, not disguised as a re-implemented
+  // router, so it fails only on a real authoring bug (a duplicated route).
+  it("has no two view cases sharing the same (viewType, path)", () => {
+    const seen = new Map<string, string>();
+    const collisions: string[] = [];
+    for (const view of PLUGIN_VIEW_LLM_MOCK_CASES) {
+      const key = `${view.viewType}:${view.path}`;
+      const prior = seen.get(key);
+      if (prior) collisions.push(`${key} claimed by both "${prior}" and "${view.id}"`);
+      else seen.set(key, view.id);
     }
+    expect(collisions, collisions.join("; ")).toEqual([]);
   });
 });

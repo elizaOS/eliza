@@ -228,12 +228,51 @@ function selfTest() {
       );
     }
   }
+  // Ratchet self-test: the count-aware baseline diff is the enforcement core,
+  // so unit-check it directly (a prior version checked key presence only, which
+  // let the untracked-skip backlog grow silently).
+  const mk = (entries) => new Map(entries.map(([k, count]) => [k, { key: k, file: k, runner: "it", member: "skip", count, lines: [1] }]));
+  const ratchetCases = [
+    { name: "brand-new key flagged", now: mk([["a::it.skip", 1]]), base: {}, expectNew: 1 },
+    { name: "grandfathered key unchanged passes", now: mk([["a::it.skip", 2]]), base: { "a::it.skip": { count: 2 } }, expectNew: 0 },
+    { name: "grown count flagged (bypass regression)", now: mk([["a::it.skip", 3]]), base: { "a::it.skip": { count: 2 } }, expectNew: 1 },
+    { name: "shrunk count passes (ratchets down)", now: mk([["a::it.skip", 1]]), base: { "a::it.skip": { count: 2 } }, expectNew: 0 },
+    { name: "removed key passes", now: mk([]), base: { "a::it.skip": { count: 2 } }, expectNew: 0 },
+  ];
+  for (const [i, c] of ratchetCases.entries()) {
+    const got = diffAgainstBaseline(c.now, c.base).length;
+    if (got !== c.expectNew) {
+      failed += 1;
+      console.error(`  ratchet self-test #${i} (${c.name}) FAIL: got ${got} new, expected ${c.expectNew}`);
+    }
+  }
+
   if (failed) {
     console.error(`[test-larp-gate] self-test: ${failed} case(s) failed`);
     process.exit(1);
   }
-  console.log(`[test-larp-gate] self-test: all ${cases.length} cases passed`);
+  console.log(
+    `[test-larp-gate] self-test: all ${cases.length + ratchetCases.length} cases passed (classifier + ratchet)`,
+  );
   process.exit(0);
+}
+
+/**
+ * Count-aware ratchet diff. Returns the untracked-skip sites that are new
+ * relative to the baseline: either a key the baseline never had, or a key whose
+ * occurrence count exceeds its grandfathered count. `untrackedSkips` is a
+ * Map<key, {file, runner, member, count, lines}>; `baselineMap` is the plain
+ * object `{ [key]: { count } }` from the baseline file.
+ */
+function diffAgainstBaseline(untrackedSkips, baselineMap) {
+  const out = [];
+  for (const [key, rec] of untrackedSkips) {
+    const baseCount = baselineMap[key]?.count ?? 0;
+    if (rec.count > baseCount) {
+      out.push({ key, ...rec, baselineCount: baseCount, added: rec.count - baseCount });
+    }
+  }
+  return out;
 }
 
 function main() {
@@ -241,13 +280,15 @@ function main() {
 
   const { files, onlyViolations, untrackedSkips } = scan();
   const baseline = loadBaseline();
-  const baselineKeys = new Set(Object.keys(baseline.untrackedSkips ?? {}));
+  const baselineMap = baseline.untrackedSkips ?? {};
+  const baselineKeys = new Set(Object.keys(baselineMap));
 
-  // New untracked skips = present now, absent from baseline.
-  const newUntracked = [];
-  for (const [key, rec] of untrackedSkips) {
-    if (!baselineKeys.has(key)) newUntracked.push({ key, ...rec });
-  }
+  // New untracked skips = a key absent from the baseline OR a key whose count
+  // GREW past its grandfathered count. The count check is load-bearing: without
+  // it the ratchet is bypassable — a second untracked skip in a file already
+  // grandfathered for that (runner.member) shape would slip through on key
+  // presence alone, so the backlog could grow silently. It ratchets down only.
+  const newUntracked = diffAgainstBaseline(untrackedSkips, baselineMap);
 
   if (UPDATE_BASELINE) {
     const next = { generatedAt: new Date().toISOString().slice(0, 10), untrackedSkips: {} };
@@ -287,7 +328,8 @@ function main() {
       `\n[test-larp-gate] ✗ ${newUntracked.length} NEW untracked skip site(s) — add a \`#<issue>\` ref or \`larp-gate-allow: <reason>\` on the skip line (or line above):`,
     );
     for (const v of newUntracked) {
-      console.error(`    ${v.file}  ${v.runner}.${v.member}  (line${v.lines.length > 1 ? "s" : ""} ${v.lines.join(", ")})`);
+      const grew = v.baselineCount > 0 ? ` (+${v.added} over ${v.baselineCount} grandfathered)` : "";
+      console.error(`    ${v.file}  ${v.runner}.${v.member}  (line${v.lines.length > 1 ? "s" : ""} ${v.lines.join(", ")})${grew}`);
     }
   }
 
