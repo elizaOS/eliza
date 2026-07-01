@@ -68,8 +68,13 @@ export function PhoneView() {
     setLoading(true);
     setError(null);
     try {
+      // A null status means requestPermissions() itself threw — treat that as
+      // "not granted" and stop. Otherwise we fall through to listRecentCalls,
+      // which rejects ("READ_CALL_LOG permission is required") and Capacitor
+      // logs the raw rejection to the console (#10196). Web reports "granted",
+      // so the web/desktop path is unchanged.
       const status = await Phone.requestPermissions().catch(() => null);
-      if (status && status.phone !== "granted") {
+      if (status?.phone !== "granted") {
         setCalls([]);
         setCallReady(false);
         setError(
