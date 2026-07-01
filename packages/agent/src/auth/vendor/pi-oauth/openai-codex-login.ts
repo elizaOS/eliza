@@ -188,11 +188,7 @@ async function refreshAccessToken(
       expires_in?: number;
       id_token?: string;
     };
-    if (
-      !json.access_token ||
-      !json.refresh_token ||
-      typeof json.expires_in !== "number"
-    ) {
+    if (!json.access_token || typeof json.expires_in !== "number") {
       logger.error(
         `[openai-codex] Token refresh response missing fields: ${JSON.stringify(
           json,
@@ -203,7 +199,10 @@ async function refreshAccessToken(
     return {
       type: "success",
       access: json.access_token,
-      refresh: json.refresh_token,
+      // RFC 6749 §6: a refresh response that omits refresh_token means
+      // "keep the current one". Failing here would discard a successful
+      // refresh and strand the account on an already-consumed token.
+      refresh: json.refresh_token ?? refreshToken,
       expires: Date.now() + json.expires_in * 1000,
       ...(json.id_token ? { idToken: json.id_token } : {}),
     };
