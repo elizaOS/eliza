@@ -77,9 +77,40 @@ function makePlugin(overrides: Partial<PluginInfo> = {}): PluginInfo {
   } as PluginInfo;
 }
 
+function makeParam(
+  overrides: Partial<Record<string, unknown>> & { key: string },
+): Record<string, unknown> {
+  return {
+    type: "string",
+    description: "",
+    required: false,
+    sensitive: false,
+    currentValue: null,
+    isSet: false,
+    ...overrides,
+  };
+}
+
+/** jsdom has no real DataTransfer; the drag handlers only need these members. */
+function fakeDataTransfer() {
+  return {
+    effectAllowed: "",
+    dropEffect: "",
+    setData: vi.fn(),
+    getData: vi.fn(() => ""),
+  };
+}
+
+function domPluginOrder(): string[] {
+  return Array.from(document.querySelectorAll("[data-plugin-id]"))
+    .map((el) => el.getAttribute("data-plugin-id"))
+    .filter((id): id is string => !!id && id !== "__ui-showcase__");
+}
+
 beforeEach(() => {
   clientMock.onWsEvent.mockClear();
   clientMock.testPluginConnection.mockReset();
+  localStorage.clear();
   appMock.value = makeContext();
 });
 
@@ -187,5 +218,199 @@ describe("PluginsView", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(ensureCalls.count).toBe(1);
+  });
+
+  // ── Enable/disable idempotency ─────────────────────────────────────────
+  it("dispatches handlePluginToggle exactly once for a rapid triple-click while a toggle is in flight", async () => {
+    // A deferred that never resolves keeps the toggle "in flight" for the whole
+    // test, so the in-flight guard (togglingPlugins) must swallow clicks 2 & 3.
+    let resolveToggle: (() => void) | undefined;
+    const toggleGate = new Promise<void>((resolve) => {
+      resolveToggle = resolve;
+    });
+    const handlePluginToggle = vi.fn(async () => {
+      await toggleGate;
+    });
+    appMock.value = makeContext({
+      plugins: [makePlugin({ id: "weather", enabled: true })],
+      handlePluginToggle,
+    });
+
+    render(<PluginsView />);
+
+    const toggle = document.querySelector(
+      '[data-plugin-toggle="weather"]',
+    ) as HTMLButtonElement;
+    expect(toggle).toBeTruthy();
+
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(handlePluginToggle).toHaveBeenCalledTimes(1);
+    });
+    // Only one write, and it flips the current (enabled) state to disabled.
+    expect(handlePluginToggle).toHaveBeenCalledTimes(1);
+    expect(handlePluginToggle).toHaveBeenCalledWith("weather", false);
+    // The in-flight button is disabled — no second write can be queued.
+    expect(toggle.disabled).toBe(true);
+    resolveToggle?.();
+  });
+
+  // ── Config save persistence + clear-after-save ─────────────────────────
+  it("saves the edited plugin config through the settings dialog and clears the draft after save", async () => {
+    const handlePluginConfigSave = vi.fn(async () => {});
+    appMock.value = makeContext({
+      plugins: [
+        makePlugin({
+          id: "weather",
+          parameters: [makeParam({ key: "NICKNAME" })],
+        } as Partial<PluginInfo>),
+      ],
+      // The dialog reads these as Sets (pluginSaving.has / pluginSaveSuccess.has).
+      pluginSaving: new Set<string>(),
+      pluginSaveSuccess: new Set<string>(),
+      pluginSettingsOpen: new Set<string>(["weather"]),
+      handlePluginConfigSave,
+    });
+
+    render(<PluginsView />);
+
+    // The config renderer emits a text input tagged with the param key.
+    const input = document.querySelector(
+      '[data-config-key="NICKNAME"]',
+    ) as HTMLInputElement;
+    expect(input).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "Stormy" } });
+
+    const saveBtn = screen.getByRole("button", { name: /save settings/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(handlePluginConfigSave).toHaveBeenCalledWith("weather", {
+        NICKNAME: "Stormy",
+      });
+    });
+
+    // The draft is deleted after a successful save: a second save with no
+    // further edits must send an empty config (proving no stale/duplicate draft
+    // is re-submitted).
+    fireEvent.click(saveBtn);
+    await waitFor(() => {
+      expect(handlePluginConfigSave).toHaveBeenCalledTimes(2);
+    });
+    expect(handlePluginConfigSave).toHaveBeenLastCalledWith("weather", {});
+  });
+
+  // ── Search / filter ────────────────────────────────────────────────────
+  it("renders only plugins matching the active search query", () => {
+    appMock.value = makeContext({
+      pluginSearch: "weather",
+      plugins: [
+        makePlugin({ id: "weather", name: "Weather Plugin", group: "voice" }),
+        makePlugin({
+          id: "spotify",
+          name: "Spotify Plugin",
+          description: "Plays music",
+          group: "voice",
+        }),
+      ] as PluginInfo[],
+    });
+
+    render(<PluginsView />);
+
+    expect(screen.getByText("Weather Plugin")).toBeTruthy();
+    expect(screen.queryByText("Spotify Plugin")).toBeNull();
+  });
+
+  it("renders only disabled plugins when the status filter is 'disabled'", () => {
+    appMock.value = makeContext({
+      pluginStatusFilter: "disabled",
+      plugins: [
+        makePlugin({
+          id: "weather",
+          name: "Weather Plugin",
+          enabled: true,
+          group: "voice",
+        }),
+        makePlugin({
+          id: "spotify",
+          name: "Spotify Plugin",
+          enabled: false,
+          group: "voice",
+        }),
+      ] as PluginInfo[],
+    });
+
+    render(<PluginsView />);
+
+    expect(screen.getByText("Spotify Plugin")).toBeTruthy();
+    expect(screen.queryByText("Weather Plugin")).toBeNull();
+  });
+
+  // ── Drag reorder handler ───────────────────────────────────────────────
+  it("reorders the visible list and persists custom order when a card is dropped onto another", async () => {
+    appMock.value = makeContext({
+      plugins: [
+        makePlugin({ id: "a", name: "Alpha", group: "voice" }),
+        makePlugin({ id: "b", name: "Bravo", group: "voice" }),
+        makePlugin({ id: "c", name: "Charlie", group: "voice" }),
+      ] as PluginInfo[],
+    });
+
+    render(<PluginsView />);
+
+    // Default sort is alphabetical by name.
+    expect(domPluginOrder()).toEqual(["a", "b", "c"]);
+
+    const cardC = document.querySelector('[data-plugin-id="c"]') as Element;
+    const cardA = document.querySelector('[data-plugin-id="a"]') as Element;
+    const dt = fakeDataTransfer();
+    fireEvent.dragStart(cardC, { dataTransfer: dt });
+    fireEvent.dragOver(cardA, { dataTransfer: dt });
+    fireEvent.drop(cardA, { dataTransfer: dt });
+
+    // The dropped card moves to the target's index; the list re-renders.
+    await waitFor(() => {
+      expect(domPluginOrder()).toEqual(["c", "a", "b"]);
+    });
+
+    const persisted: string[] = JSON.parse(
+      localStorage.getItem("pluginOrder") ?? "[]",
+    );
+    expect(persisted.filter((id) => id !== "__ui-showcase__")).toEqual([
+      "c",
+      "a",
+      "b",
+    ]);
+  });
+
+  // ── Reset order ────────────────────────────────────────────────────────
+  it("reset-order restores the default sort and clears the persisted order", () => {
+    // Seed a custom order that inverts the default alphabetical sort.
+    localStorage.setItem("pluginOrder", JSON.stringify(["c", "b", "a"]));
+    appMock.value = makeContext({
+      plugins: [
+        makePlugin({ id: "a", name: "Alpha", group: "voice" }),
+        makePlugin({ id: "b", name: "Bravo", group: "voice" }),
+        makePlugin({ id: "c", name: "Charlie", group: "voice" }),
+      ] as PluginInfo[],
+    });
+
+    render(<PluginsView />);
+
+    // Seeded custom order is honored on mount.
+    expect(domPluginOrder()).toEqual(["c", "b", "a"]);
+
+    const resetBtn = screen.getByText("pluginsview.ResetOrder");
+    fireEvent.click(resetBtn);
+
+    // Order reverts to the default sort and the persisted key is removed.
+    expect(domPluginOrder()).toEqual(["a", "b", "c"]);
+    expect(localStorage.getItem("pluginOrder")).toBeNull();
+    // With no custom order the reset affordance disappears.
+    expect(screen.queryByText("pluginsview.ResetOrder")).toBeNull();
   });
 });

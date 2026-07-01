@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoredFile } from "../../api";
+import { getViewChatBinding } from "../../state/view-chat-binding";
 import { FilesView } from "./FilesView";
 
 // FilesView talks to the runtime exclusively through the `client` singleton
@@ -232,5 +234,186 @@ describe("FilesView", () => {
       expect(screen.getByRole("alert")).toBeTruthy();
     });
     expect(screen.getByRole("alert").textContent).toContain("boom");
+  });
+
+  it("shows the loading indicator until the list resolves, then clears it", async () => {
+    // Hold listFiles open so we can observe the pending state deterministically.
+    let resolve!: (v: { files: StoredFile[] }) => void;
+    clientMock.listFiles.mockReturnValue(
+      new Promise<{ files: StoredFile[] }>((r) => {
+        resolve = r;
+      }),
+    );
+
+    render(<FilesView />);
+
+    // aria-busy + the loading affordance are live while the request is pending.
+    expect(screen.getByTestId("files-loading")).toBeTruthy();
+    expect(
+      screen.getByTestId("files-view").getAttribute("aria-busy"),
+    ).toBe("true");
+    expect(screen.queryByTestId("file-card")).toBeNull();
+
+    await act(async () => {
+      resolve({ files: FIXTURE_FILES });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("files-loading")).toBeNull();
+    });
+    expect(screen.getByTestId("files-view").getAttribute("aria-busy")).toBe(
+      "false",
+    );
+    expect(screen.getAllByTestId("file-card")).toHaveLength(2);
+  });
+
+  it("narrows the grid to filename matches as the chat-binding query changes", async () => {
+    render(<FilesView />);
+    await screen.findByText("photo.png");
+
+    // The active view takes over the floating composer; each keystroke flows in
+    // through the registered onQuery. Case-insensitive substring on fileName.
+    const binding = getViewChatBinding();
+    expect(typeof binding?.onQuery).toBe("function");
+
+    act(() => binding?.onQuery?.("REPORT"));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("file-card")).toHaveLength(1);
+    });
+    expect(screen.getByText("report.pdf")).toBeTruthy();
+    expect(screen.queryByText("photo.png")).toBeNull();
+
+    // Clearing the query restores the full grid.
+    act(() => binding?.onQuery?.(""));
+    await waitFor(() => {
+      expect(screen.getAllByTestId("file-card")).toHaveLength(2);
+    });
+  });
+
+  it("shows the filtered-empty panel when a query matches nothing", async () => {
+    render(<FilesView />);
+    await screen.findByText("photo.png");
+
+    act(() => getViewChatBinding()?.onQuery?.("does-not-exist.zip"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("files-empty-filter")).toBeTruthy();
+    });
+    // Distinct from the true-empty state (files exist, none match).
+    expect(screen.queryByTestId("files-empty")).toBeNull();
+    expect(screen.queryByTestId("file-card")).toBeNull();
+  });
+
+  it("treats a non-array files payload as empty instead of crashing", async () => {
+    // Adversarial DTO: server (or a broken proxy) returns a null list.
+    clientMock.listFiles.mockResolvedValue({
+      files: null as unknown as StoredFile[],
+    });
+    render(<FilesView />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("files-empty")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("file-card")).toBeNull();
+  });
+
+  it("falls back to download when native share reports it did not share", async () => {
+    downloadShareMock.shareAttachment.mockResolvedValue(false);
+    render(<FilesView />);
+    await screen.findByText("photo.png");
+
+    const imageCard = screen
+      .getAllByTestId("file-card")
+      .find((c) => c.getAttribute("data-file-name") === "photo.png");
+
+    fireEvent.click(within(imageCard as HTMLElement).getByTestId("file-share"));
+
+    await waitFor(() => {
+      expect(downloadShareMock.shareAttachment).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(downloadShareMock.downloadAttachment).toHaveBeenCalledTimes(1);
+    });
+    const [url, filename] = downloadShareMock.downloadAttachment.mock.calls[0];
+    expect(String(url)).toContain("photo.png");
+    expect(filename).toBe("photo.png");
+  });
+
+  it("restores the row and surfaces an alert when delete throws", async () => {
+    clientMock.deleteFile.mockRejectedValue(new Error("network down"));
+    render(<FilesView />);
+    await screen.findByText("report.pdf");
+
+    const pdfCard = screen
+      .getAllByTestId("file-card")
+      .find((c) => c.getAttribute("data-file-name") === "report.pdf");
+    fireEvent.click(within(pdfCard as HTMLElement).getByTestId("file-delete"));
+
+    await waitFor(() => {
+      expect(clientMock.deleteFile).toHaveBeenCalledWith("report.pdf");
+    });
+    // The optimistic removal is rolled back after the rejection.
+    await waitFor(() => {
+      expect(screen.getByText("report.pdf")).toBeTruthy();
+    });
+    expect(screen.getByRole("alert")).toBeTruthy();
+  });
+
+  it("retries the load after an error and renders the recovered list", async () => {
+    clientMock.listFiles
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ files: FIXTURE_FILES });
+    render(<FilesView />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeTruthy();
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("alert")).getByText(/retry/i),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("photo.png")).toBeTruthy();
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(clientMock.listFiles).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not fire a second delete when the same row is double-clicked", async () => {
+    // Hold the delete open so the optimistic UI + deleting flag settle between
+    // the burst of clicks and the resolution.
+    let resolveDelete!: (v: { deleted: boolean }) => void;
+    clientMock.deleteFile.mockReturnValue(
+      new Promise<{ deleted: boolean }>((r) => {
+        resolveDelete = r;
+      }),
+    );
+    render(<FilesView />);
+    await screen.findByText("report.pdf");
+
+    const pdfCard = screen
+      .getAllByTestId("file-card")
+      .find((c) => c.getAttribute("data-file-name") === "report.pdf");
+    const btn = within(pdfCard as HTMLElement).getByTestId("file-delete");
+
+    // Rapid double-fire in a single synchronous burst.
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+
+    // Exactly one request goes out, keyed on the filename — no duplicate DELETE.
+    await waitFor(() => {
+      expect(clientMock.deleteFile).toHaveBeenCalledTimes(1);
+    });
+    expect(clientMock.deleteFile).toHaveBeenCalledWith("report.pdf");
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveDelete({ deleted: true });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("report.pdf")).toBeNull();
+    });
   });
 });
