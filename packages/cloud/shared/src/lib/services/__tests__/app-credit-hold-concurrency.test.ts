@@ -19,11 +19,12 @@
  *      exactly 3 win, the surplus 5 throw InsufficientCreditsError, the balance
  *      never goes negative, and exactly 3 debit rows exist.
  *   2. Settling a winner to zero (provider failure path) refunds the full hold.
- *   3. The phase-suffixed idempotency keys (`:estimate` / `:reconcile`) mint
- *      creator earnings exactly once per phase against the REAL redeemable-
- *      earnings dedupe: the overage still pays (distinct key) and a settlement
- *      retry does not double-credit (same key) — the property that subsumes
- *      #10873's per-request earnings dedupe.
+ *   3. The leg-discriminated earnings dedupe keys (`${chargeKey}:${type}:${leg}`,
+ *      #10847 follow-up) mint creator earnings exactly once per movement against
+ *      the REAL redeemable-earnings dedupe: the overage still pays (distinct
+ *      `reconcile_charge` leg vs the `deduct` leg) and a settlement retry does
+ *      not double-credit (same leg) — the property that subsumes #10873's
+ *      per-request earnings dedupe.
  *
  * Self-skips LOUDLY if PGlite/pushSchema is unavailable (never silently passes).
  */
@@ -61,7 +62,13 @@ import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
 import type { App } from "../../../db/repositories/apps";
 import { appEarnings, appEarningsTransactions } from "../../../db/schemas/app-earnings";
-import { appDeploymentStatusEnum, apps, appUsers } from "../../../db/schemas/apps";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  appUsers,
+  userDatabaseStatusEnum,
+} from "../../../db/schemas/apps";
 import { creditTransactions } from "../../../db/schemas/credit-transactions";
 import { organizations } from "../../../db/schemas/organizations";
 import {
@@ -187,6 +194,8 @@ beforeAll(async () => {
       redeemableEarningsLedger,
       redeemedEarningsTracking,
       appDeploymentStatusEnum,
+      appReviewStatusEnum,
+      userDatabaseStatusEnum,
       earningsSourceEnum,
       ledgerEntryTypeEnum,
     };
@@ -295,7 +304,7 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
   );
 
   test(
-    "phase-keyed creator earnings against the REAL dedupe: estimate and overage each mint once; a settlement retry does not double-credit",
+    "leg-keyed creator earnings against the REAL dedupe: estimate and overage each mint once; a settlement retry does not double-credit",
     async () => {
       if (!pgliteReady) return;
 
@@ -310,7 +319,7 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
       });
 
       // Upfront hold: $1 estimate + 10% markup = $1.10 debited; the creator's
-      // 10¢ markup mints under the `<key>:estimate` phase key.
+      // 10¢ markup mints under the `deduct` leg of the dedupe key.
       const reservation = await appCreditsService.reserveInferenceCredits({
         appId: app.id,
         userId: consumerId,
@@ -326,7 +335,7 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
       expect(await creatorEarningLedgerCount(creatorId)).toBe(1);
 
       // Actual cost $2 → $1.10 overage charge. The overage markup mints under
-      // the DISTINCT `<key>:reconcile` phase key — if the phases shared a key,
+      // the DISTINCT `reconcile_charge` leg — if both movements shared a key,
       // the real dedupe below would swallow this legitimate 10¢.
       const overage = await reservation.reconcile(2);
       expect(overage?.adjustmentType).toBe("overage");
@@ -335,10 +344,10 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
       expect(await creatorEarningLedgerCount(creatorId)).toBe(2);
 
       // A reconcile retry for the SAME request (the #10423/#10873 double-credit
-      // shape) reuses the `:reconcile` key, so the REAL redeemable-earnings
-      // dedupe drops the duplicate mint. (The routes' idempotent settler already
-      // prevents the duplicate org charge; earnings idempotency is what the
-      // phase keys must guarantee at this layer.)
+      // shape) reuses the `reconcile_charge` leg key, so the REAL redeemable-
+      // earnings dedupe drops the duplicate mint. (The routes' idempotent
+      // settler already prevents the duplicate org charge; earnings idempotency
+      // is what the leg keys must guarantee at this layer.)
       await reservation.reconcile(2);
       expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.2, 6);
       expect(await creatorEarningLedgerCount(creatorId)).toBe(2);

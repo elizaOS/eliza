@@ -43,6 +43,7 @@ import {
   getLanguageModel,
   resolveAiProviderSource,
 } from "@/lib/providers/language-model";
+import { getRequestIdempotencyKey } from "@/lib/runtime/request-context";
 import {
   billUsage,
   estimateInputTokens,
@@ -618,7 +619,10 @@ app.post("/", async (c) => {
       estimatedOutputTokens,
       billingSource,
     );
-    const idempotencyKey = crypto.randomUUID();
+    // #10423: prefer the request-stable key (Idempotency-Key/X-Request-Id via
+    // the bootstrap ALS) so a client retry of the SAME request dedupes the
+    // creator-earnings legs; a fresh uuid per invocation would never match.
+    const idempotencyKey = getRequestIdempotencyKey() ?? crypto.randomUUID();
 
     try {
       reservation = await appCreditsService.reserveInferenceCredits({

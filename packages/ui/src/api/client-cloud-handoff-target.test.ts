@@ -53,7 +53,7 @@ function fakeClient(detailById: Record<string, CloudCompatAgent>) {
 }
 
 const SHARED_BASE =
-  "https://www.elizacloud.ai/api/v1/eliza/agents/shared-1/api";
+  "https://elizacloud.ai/api/v1/eliza/agents/shared-1/api";
 
 describe("startCloudAgentHandoff — dedicated migration target", () => {
   // The handoff reads the shared conversation over `fetch` (authedFetch). Stub

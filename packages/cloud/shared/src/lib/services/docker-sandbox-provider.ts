@@ -1346,7 +1346,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
           throw new Error(
             "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
-              "Refusing to fall back to the hardcoded prod URL (https://www.elizacloud.ai/api/v1) — " +
+              "Refusing to fall back to the hardcoded prod URL (https://elizacloud.ai/api/v1) — " +
               "this caused staging containers to silently call prod. " +
               "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
               "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
