@@ -125,7 +125,10 @@ describe("runEmbedHandshake", () => {
       jsonResponse(200, { role: "ADMIN", adminMode: true, token: "t" }),
     );
     const outcome = await runEmbedHandshake({
-      win: fakeWin("/embed", "?platform=discord&code=oauth2-code"),
+      win: fakeWin(
+        "/embed",
+        "?platform=discord&code=oauth2-code&state=signed-state",
+      ),
       fetchImpl: fetchImpl as unknown as typeof fetch,
       client,
     });
@@ -133,6 +136,7 @@ describe("runEmbedHandshake", () => {
     expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toMatchObject({
       platform: "discord",
       signedLaunchPayload: "oauth2-code",
+      state: "signed-state",
     });
   });
 
@@ -161,7 +165,7 @@ describe("runEmbedHandshake", () => {
       jsonResponse(200, { role: "ADMIN", adminMode: true, token: "t" }),
     );
     const outcome = await runEmbedHandshake({
-      win: fakeWin("/embed", "?code=disc-code"),
+      win: fakeWin("/embed", "?code=disc-code&state=signed-state"),
       fetchImpl: fetchImpl as unknown as typeof fetch,
       client,
     });
@@ -169,7 +173,26 @@ describe("runEmbedHandshake", () => {
     expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toMatchObject({
       platform: "discord",
       signedLaunchPayload: "disc-code",
+      state: "signed-state",
     });
+  });
+
+  it("fails closed when a discord redirect has a code but omits OAuth state", async () => {
+    const { client, setToken } = fakeClient();
+    const fetchImpl = fakeFetch(
+      jsonResponse(200, { role: "ADMIN", adminMode: true, token: "t" }),
+    );
+    const outcome = await runEmbedHandshake({
+      win: fakeWin("/embed", "?code=disc-code"),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      client,
+    });
+    expect(outcome).toEqual({
+      status: "failed",
+      reason: "missing_oauth_state",
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(setToken).not.toHaveBeenCalled();
   });
 
   it("fails closed on a bare /embed with no platform signal at all", async () => {

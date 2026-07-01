@@ -92,6 +92,11 @@ function readLaunchPayload(
   return code ? code : null;
 }
 
+function readDiscordOAuthState(params: URLSearchParams): string | null {
+  const state = params.get("state")?.trim();
+  return state ? state : null;
+}
+
 /**
  * Run the embed-launch handshake if the current location is the `/embed` route.
  * Returns `{ status: "not-embed" }` (a no-op) otherwise so callers can invoke it
@@ -115,6 +120,11 @@ export async function runEmbedHandshake(
   if (!signedLaunchPayload) {
     return { status: "failed", reason: "missing_launch_payload" };
   }
+  const oauthState =
+    platform === "discord" ? readDiscordOAuthState(params) : undefined;
+  if (platform === "discord" && !oauthState) {
+    return { status: "failed", reason: "missing_oauth_state" };
+  }
 
   const embedClient = deps.client;
   if (!embedClient) {
@@ -129,7 +139,12 @@ export async function runEmbedHandshake(
     response = await fetchImpl(`${base}/api/embed/auth`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ platform, signedLaunchPayload, accountId }),
+      body: JSON.stringify({
+        platform,
+        signedLaunchPayload,
+        accountId,
+        ...(oauthState ? { state: oauthState } : {}),
+      }),
     });
   } catch {
     return { status: "failed", reason: "network_error" };
