@@ -183,7 +183,10 @@ describe("weekday_only honors params.weekdays", () => {
     } as ScheduledTask;
   }
 
-  function contextAt(task: ScheduledTask, nowIso: string): GateEvaluationContext {
+  function contextAt(
+    task: ScheduledTask,
+    nowIso: string,
+  ): GateEvaluationContext {
     return {
       task,
       nowIso,
@@ -212,15 +215,13 @@ describe("weekday_only honors params.weekdays", () => {
   it("denies an unlisted weekday (Tue not in [1,3,5]) — the pre-fix bug", async () => {
     const decision = await decide(weekdayTask([1, 3, 5]), TUESDAY);
     expect(decision?.kind).toBe("deny");
-    expect(
-      decision && "reason" in decision ? decision.reason : "",
-    ).toContain("day 2 not in [1,3,5]");
+    expect(decision && "reason" in decision ? decision.reason : "").toContain(
+      "day 2 not in [1,3,5]",
+    );
   });
 
   it("denies a weekend day not in the list", async () => {
-    expect((await decide(weekdayTask([1, 3, 5]), SATURDAY))?.kind).toBe(
-      "deny",
-    );
+    expect((await decide(weekdayTask([1, 3, 5]), SATURDAY))?.kind).toBe("deny");
   });
 
   it("an explicit list including a weekend day allows that day", async () => {

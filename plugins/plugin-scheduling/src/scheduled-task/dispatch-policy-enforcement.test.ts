@@ -103,14 +103,13 @@ function makeHarness(initialIso = "2026-05-11T12:00:00.000Z"): Harness {
     anchors: createAnchorRegistry(),
     consolidation: createConsolidationRegistry(),
     ownerFacts: () => ({ timezone: "UTC" }),
-    globalPause: { isActive: () => false },
+    globalPause: { current: async () => ({ active: false }) },
     activity: { hasSignalSince: () => false },
-    subjectStore: {
-      resolve: async () => null,
-    },
+    subjectStore: { wasUpdatedSince: () => false },
     dispatcher: {
       async dispatch(record) {
-        const result = queued.length > 0 ? queued.shift() : { ok: true };
+        const result: DispatchResult | undefined =
+          queued.length > 0 ? queued.shift() : { ok: true };
         dispatches.push({ record, result });
         return result;
       },
@@ -161,10 +160,16 @@ async function transitions(h: Harness, taskId: string): Promise<string[]> {
 describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
   it("terminal fail: ok:false with no ladder marks failed and fires pipeline.onFail", async () => {
     const h = makeHarness();
-    const onFailChild = reminderInput({
-      promptInstructions: "notify owner the reminder could not be delivered",
-      trigger: { kind: "manual" },
-    });
+    // A fully-shaped ScheduledTask ref; `runPipeline` strips the
+    // server-managed fields and re-runs `schedule()` to mint the child.
+    const onFailChild: ScheduledTask = {
+      taskId: "st_onfail_template",
+      state: { status: "scheduled", followupCount: 0 },
+      ...reminderInput({
+        promptInstructions: "notify owner the reminder could not be delivered",
+        trigger: { kind: "manual" },
+      }),
+    };
     const task = await h.runner.schedule(
       reminderInput({
         pipeline: { onFail: [onFailChild] },
