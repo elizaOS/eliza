@@ -46,7 +46,8 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "lifeops:gepa-seed": "bun run scripts/lifeops-gepa-seed.ts"
+    "lifeops:gepa-seed": "bun run scripts/lifeops-gepa-seed.ts",
+    "trajectories:review": "bun run scripts/trajectory-quality-review.ts"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",

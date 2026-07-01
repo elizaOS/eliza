@@ -49,7 +49,7 @@ export type TrajectoryTrainingTask =
   (typeof ALL_TRAJECTORY_TRAINING_TASKS)[number];
 
 /** The LifeOps per-capability subset of {@link ALL_TRAJECTORY_TRAINING_TASKS}. */
-export const LIFEOPS_TRAINING_TASKS: readonly TrajectoryTrainingTask[] = [
+export const LIFEOPS_TRAINING_TASKS = [
   "calendar_extract",
   "schedule_plan",
   "reminder_dispatch",
@@ -58,7 +58,9 @@ export const LIFEOPS_TRAINING_TASKS: readonly TrajectoryTrainingTask[] = [
   "morning_brief",
   "health_checkin",
   "screentime_recap",
-];
+] as const satisfies readonly TrajectoryTrainingTask[];
+
+export type LifeOpsTrainingTask = (typeof LIFEOPS_TRAINING_TASKS)[number];
 
 /** Build a full per-task record by deriving an entry for every training task. */
 export function buildTaskRecord<T>(
@@ -223,9 +225,7 @@ export interface TrajectoryQualitySignal {
   judgeScore?: number;
 }
 
-function readQualityBag(
-  bag: Record<string, unknown>,
-): TrajectoryQualitySignal {
+function readQualityBag(bag: Record<string, unknown>): TrajectoryQualitySignal {
   const out: TrajectoryQualitySignal = {};
   const status = bag.scenario_status;
   if (status === "passed" || status === "failed" || status === "skipped") {

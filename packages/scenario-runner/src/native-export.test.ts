@@ -498,9 +498,7 @@ describe("judge score serialization (#8795)", () => {
   });
 
   it("leaves rows for unjudged scenarios untouched", () => {
-    const runDir = mkdtempSync(
-      path.join(tmpdir(), "scenario-native-nojudge-"),
-    );
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-nojudge-"));
     try {
       const trajDir = path.join(runDir, "trajectories", "agent-test");
       mkdirSync(trajDir, { recursive: true });
