@@ -1916,3 +1916,67 @@ describe("ContinuousChatOverlay — empty thread while the sheet is open", () =>
     expect(screen.queryByTestId("chat-thread-loading")).toBeNull();
   });
 });
+
+describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () => {
+  const reasoningMessages = [
+    { id: "u", role: "user", content: "why X over Y?", createdAt: 1 },
+    {
+      id: "a",
+      role: "assistant",
+      content: "because X is simpler",
+      reasoning: "compared X and Y; X has fewer moving parts",
+      createdAt: 2,
+    },
+  ];
+
+  it("renders the collapsed Thinking disclosure for an assistant turn that carries reasoning", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: reasoningMessages,
+        })}
+      />,
+    );
+    // Open the sheet so the thread (and its reasoning block) mounts.
+    fireEvent.focus(screen.getByLabelText("message"));
+    const thinking = screen.getByRole("button", { name: /thinking/i });
+    expect(thinking).toBeTruthy();
+    // Collapsed by default: the reasoning body is not shown until toggled.
+    expect(thinking.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByText("compared X and Y; X has fewer moving parts"),
+    ).toBeNull();
+  });
+
+  it("reveals the reasoning body when the Thinking disclosure is toggled", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: reasoningMessages,
+        })}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    fireEvent.click(screen.getByRole("button", { name: /thinking/i }));
+    expect(
+      screen.getByText("compared X and Y; X has fewer moving parts"),
+    ).toBeTruthy();
+  });
+
+  it("suppresses reasoning on the last assistant turn while it is still streaming", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          // suppressReasoning = responding && isLastAssistant → the Thinking
+          // block stays hidden until the stream completes.
+          responding: true,
+          messages: reasoningMessages,
+        })}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
+  });
+});
