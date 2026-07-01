@@ -183,6 +183,40 @@ class RedeemableEarningsService {
   }
 
   /**
+   * True when an `earning` ledger row already exists for (`source`, `sourceId`).
+   *
+   * SECURITY (money-out): a Stripe Connect payout debits under one idempotency
+   * key, then — on a DEFINITIVE Stripe rejection — compensates by adding an
+   * `${key}:refund` earning that restores the balance. The debit's own dedup row
+   * (keyed on `key`) is immutable and survives that rollback, so a later same-key
+   * retry finds the debit `deduplicated` and skips debiting while firing a FRESH
+   * transfer → double-pay. The payout route uses this to detect "this key was
+   * already rejected + refunded" (a `${key}:refund` earning exists) and refuse
+   * the retry, forcing a fresh idempotency key. Matches the `dedupeBySourceId`
+   * lookup (normalized source_id, `entry_type='earning'`).
+   */
+  async hasEarningBySourceId(params: {
+    userId: string;
+    source: EarningsSource;
+    sourceId: string;
+  }): Promise<boolean> {
+    const ledgerSourceId = normalizeLedgerSourceId(params.sourceId);
+    const [existing] = await dbRead
+      .select({ id: redeemableEarningsLedger.id })
+      .from(redeemableEarningsLedger)
+      .where(
+        and(
+          eq(redeemableEarningsLedger.user_id, params.userId),
+          eq(redeemableEarningsLedger.entry_type, "earning"),
+          eq(redeemableEarningsLedger.earnings_source, params.source),
+          eq(redeemableEarningsLedger.source_id, ledgerSourceId),
+        ),
+      )
+      .limit(1);
+    return Boolean(existing);
+  }
+
+  /**
    * Add earnings from a valid source (miniapp, agent, or mcp)
    *
    * SECURITY: This is the ONLY way earnings can be added.

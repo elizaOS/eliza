@@ -197,3 +197,80 @@ describe("creator earnings idempotency (#10423)", () => {
     expect(await earningLedgerCount(userId)).toBe(2);
   });
 });
+
+/**
+ * #11022 — the Stripe-Connect payout double-pay guard's DB primitive.
+ *
+ * When a payout's transfer is DEFINITIVELY rejected, the route restores balance
+ * by adding a compensating `${idempotency_key}:refund` earning. `hasEarningBySourceId`
+ * is what lets the route detect, on a same-key retry, that the debit was already
+ * rolled back (a refund exists) and refuse a fresh transfer. This drives the REAL
+ * lookup against PGlite: it must find the compensating refund row (via the same
+ * normalized source_id + `entry_type='earning'` the dedup path writes) and must
+ * NOT false-positive on an unrelated key.
+ */
+describe("hasEarningBySourceId — payout refund detection (#11022)", () => {
+  test("pglite applied (loud, never a silent no-op pass)", () => {
+    expect(pgliteReady).toBe(true);
+  });
+
+  let userId: string;
+  beforeEach(async () => {
+    if (!pgliteReady) return;
+    userId = await seedUser();
+  });
+
+  test("detects a compensating `${key}:refund` earning; false for an untouched key", async () => {
+    if (!pgliteReady) return;
+    const key = "idem_key_0123456789abcdef";
+
+    // No refund yet → the legitimate ambiguous-retry path (must NOT be blocked).
+    expect(
+      await redeemableEarningsService.hasEarningBySourceId({
+        userId,
+        source: "creator_revenue_share",
+        sourceId: `${key}:refund`,
+      }),
+    ).toBe(false);
+
+    // A definitively-rejected transfer restores the balance with a compensating
+    // refund keyed exactly as the route writes it.
+    const refund = await redeemableEarningsService.addEarnings({
+      userId,
+      amount: 10,
+      source: "creator_revenue_share",
+      sourceId: `${key}:refund`,
+      dedupeBySourceId: true,
+      description: "Stripe Connect payout rejected — balance restored",
+    });
+    expect(refund.success).toBe(true);
+
+    // Now the refund is detectable → the route refuses a same-key retry.
+    expect(
+      await redeemableEarningsService.hasEarningBySourceId({
+        userId,
+        source: "creator_revenue_share",
+        sourceId: `${key}:refund`,
+      }),
+    ).toBe(true);
+
+    // A different, untouched key is unaffected (no false-positive block).
+    expect(
+      await redeemableEarningsService.hasEarningBySourceId({
+        userId,
+        source: "creator_revenue_share",
+        sourceId: "idem_key_totally_different:refund",
+      }),
+    ).toBe(false);
+
+    // And the bare debit key (not `:refund`) is a different ledger source id —
+    // the guard keys specifically on the refund marker, never the debit.
+    expect(
+      await redeemableEarningsService.hasEarningBySourceId({
+        userId,
+        source: "creator_revenue_share",
+        sourceId: key,
+      }),
+    ).toBe(false);
+  });
+});
