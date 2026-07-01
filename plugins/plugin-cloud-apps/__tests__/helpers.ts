@@ -29,6 +29,8 @@ import type {
   UpdateAppMonetizationInput,
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
+  type CreateBookingInput,
+  type CreateBookingResponse,
   type CreateInfluencerProfileInput,
   type CreateInfluencerProfileResponse,
   type ListInfluencersResponse,
@@ -44,6 +46,7 @@ type DeployAppFrontendFn = (
   id: string,
   input: DeployAppFrontendInput,
 ) => Promise<DeployAppFrontendResponse>;
+type CreateBookingFn = (input: CreateBookingInput) => Promise<CreateBookingResponse>;
 type CreateInfluencerProfileFn = (input: CreateInfluencerProfileInput) => Promise<CreateInfluencerProfileResponse>;
 type ListInfluencersFn = (niche?: string) => Promise<ListInfluencersResponse>;
 type DeployAppFn = (
@@ -83,6 +86,7 @@ interface SdkState {
   listAppFrontendDeployments: ListFrontendDeploymentsFn;
   activateAppFrontend: ActivateFrontendFn;
   createInfluencerProfile: CreateInfluencerProfileFn;
+  createBooking: CreateBookingFn;
   listInfluencers: ListInfluencersFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
@@ -133,6 +137,7 @@ function defaultState(): SdkState {
     createInfluencerProfile: () =>
       Promise.resolve({ success: true, profile: { id: "inf_1", display_name: "Creator", niche: null, bio: null, platforms: [], status: "active" } }),
     listInfluencers: () => Promise.resolve({ success: true, profiles: [] }),
+    createBooking: () => Promise.resolve({ success: true, booking: { id: "bk_1", advertiser_org_id: "org", influencer_profile_id: "inf_1", amount: "100.00", status: "offered", brief: "b" } }),
     getAppDeployStatus: () =>
       Promise.resolve({
         success: true,
@@ -184,6 +189,9 @@ export function setCreateInfluencerProfile(fn: CreateInfluencerProfileFn): void 
 }
 export function setListInfluencers(fn: ListInfluencersFn): void {
   state.listInfluencers = fn;
+}
+export function setCreateBooking(fn: CreateBookingFn): void {
+  state.createBooking = fn;
 }
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
@@ -243,6 +251,9 @@ export class FakeElizaCloudClient {
   }
   listInfluencers(niche?: string): Promise<ListInfluencersResponse> {
     return state.listInfluencers(niche);
+  }
+  createBooking(input: CreateBookingInput): Promise<CreateBookingResponse> {
+    return state.createBooking(input);
   }
   getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id);

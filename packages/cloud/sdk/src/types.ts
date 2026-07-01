@@ -1229,3 +1229,24 @@ export interface ListInfluencersResponse {
   success: boolean;
   profiles: InfluencerProfileDto[];
 }
+
+export interface InfluencerBookingDto {
+  id: string;
+  advertiser_org_id: string;
+  influencer_profile_id: string;
+  amount: string;
+  status: "offered" | "accepted" | "delivered" | "approved" | "rejected" | "cancelled";
+  brief: string;
+}
+
+export interface CreateBookingInput {
+  profileId: string;
+  brief: string;
+  amount: number;
+}
+
+export interface CreateBookingResponse {
+  success: boolean;
+  booking?: InfluencerBookingDto;
+  error?: string;
+}

@@ -45,6 +45,7 @@
  */
 
 import type { Plugin } from "@elizaos/core";
+import { bookInfluencerAction } from "./actions/book-influencer.js";
 import { createInfluencerProfileAction, listInfluencersAction } from "./actions/influencer.js";
 import { createAppAction } from "./actions/create-app.js";
 import { deleteAppAction } from "./actions/delete-app.js";
@@ -61,6 +62,7 @@ import { updateMonetizationAction } from "./actions/update-monetization.js";
 import { withdrawAppEarningsAction } from "./actions/withdraw-app-earnings.js";
 import { cloudAppsProvider } from "./providers/cloud-apps.js";
 
+export { bookInfluencerAction } from "./actions/book-influencer.js";
 export { createInfluencerProfileAction, listInfluencersAction } from "./actions/influencer.js";
 export { createAppAction } from "./actions/create-app.js";
 export { deleteAppAction } from "./actions/delete-app.js";
@@ -103,6 +105,7 @@ export const cloudAppsPlugin: Plugin = {
     regenerateAppApiKeyAction,
     createInfluencerProfileAction,
     listInfluencersAction,
+    bookInfluencerAction,
   ],
   providers: [cloudAppsProvider],
 };
