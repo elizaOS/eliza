@@ -29,6 +29,9 @@ import type {
   UpdateAppMonetizationInput,
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
+  type CreateInfluencerProfileInput,
+  type CreateInfluencerProfileResponse,
+  type ListInfluencersResponse,
 } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 
@@ -41,6 +44,8 @@ type DeployAppFrontendFn = (
   id: string,
   input: DeployAppFrontendInput,
 ) => Promise<DeployAppFrontendResponse>;
+type CreateInfluencerProfileFn = (input: CreateInfluencerProfileInput) => Promise<CreateInfluencerProfileResponse>;
+type ListInfluencersFn = (niche?: string) => Promise<ListInfluencersResponse>;
 type DeployAppFn = (
   id: string,
   input?: DeployAppInput,
@@ -77,6 +82,8 @@ interface SdkState {
   deployAppFrontend: DeployAppFrontendFn;
   listAppFrontendDeployments: ListFrontendDeploymentsFn;
   activateAppFrontend: ActivateFrontendFn;
+  createInfluencerProfile: CreateInfluencerProfileFn;
+  listInfluencers: ListInfluencersFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
   updateApp: UpdateAppFn;
@@ -123,6 +130,9 @@ function defaultState(): SdkState {
       }),
     listAppFrontendDeployments: () => Promise.resolve({ success: true, active_deployment_id: null, deployments: [] }),
     activateAppFrontend: (_a, id) => Promise.resolve({ success: true, deployment: { id, app_id: "app_1", version: 1, status: "active", r2_prefix: "p", content_hash: null, file_count: 0, total_bytes: 0, error: null, created_at: "2020-01-01", activated_at: "2020-01-01" } }),
+    createInfluencerProfile: () =>
+      Promise.resolve({ success: true, profile: { id: "inf_1", display_name: "Creator", niche: null, bio: null, platforms: [], status: "active" } }),
+    listInfluencers: () => Promise.resolve({ success: true, profiles: [] }),
     getAppDeployStatus: () =>
       Promise.resolve({
         success: true,
@@ -168,6 +178,12 @@ export function setListAppFrontendDeployments(fn: ListFrontendDeploymentsFn): vo
 }
 export function setActivateAppFrontend(fn: ActivateFrontendFn): void {
   state.activateAppFrontend = fn;
+}
+export function setCreateInfluencerProfile(fn: CreateInfluencerProfileFn): void {
+  state.createInfluencerProfile = fn;
+}
+export function setListInfluencers(fn: ListInfluencersFn): void {
+  state.listInfluencers = fn;
 }
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
@@ -221,6 +237,12 @@ export class FakeElizaCloudClient {
   }
   activateAppFrontend(appId: string, deploymentId: string): Promise<ActivateAppFrontendResponse> {
     return state.activateAppFrontend(appId, deploymentId);
+  }
+  createInfluencerProfile(input: CreateInfluencerProfileInput): Promise<CreateInfluencerProfileResponse> {
+    return state.createInfluencerProfile(input);
+  }
+  listInfluencers(niche?: string): Promise<ListInfluencersResponse> {
+    return state.listInfluencers(niche);
   }
   getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id);

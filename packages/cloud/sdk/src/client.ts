@@ -27,6 +27,9 @@ import {
   type ContainerGetResponse,
   type ContainerHealthResponse,
   type ContainerListResponse,
+  type CreateInfluencerProfileInput,
+  type CreateInfluencerProfileResponse,
+  type ListInfluencersResponse,
   type ContainerQuotaResponse,
   type CreateAgentRequest,
   type CreateAgentResponse,
@@ -877,6 +880,21 @@ export class ElizaCloudClient {
 
   listContainers(): Promise<ContainerListResponse> {
     return this.request<ContainerListResponse>("GET", "/api/v1/containers");
+  }
+
+  /** `POST /api/v1/marketing/influencers` — publish an influencer profile to earn from bookings (#10687). */
+  createInfluencerProfile(
+    input: CreateInfluencerProfileInput,
+  ): Promise<CreateInfluencerProfileResponse> {
+    return this.request<CreateInfluencerProfileResponse>("POST", "/api/v1/marketing/influencers", {
+      json: input,
+    });
+  }
+
+  /** `GET /api/v1/marketing/influencers` — browse active influencer profiles. */
+  listInfluencers(niche?: string): Promise<ListInfluencersResponse> {
+    const q = niche ? `?niche=${encodeURIComponent(niche)}` : "";
+    return this.request<ListInfluencersResponse>("GET", `/api/v1/marketing/influencers${q}`);
   }
 
   createContainer(
