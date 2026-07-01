@@ -431,7 +431,8 @@ describe("Launcher controlled favorites (desktop tabs)", () => {
   it("clamps the dock to LAUNCHER_DOCK_LIMIT even when more are supplied", () => {
     // Controlled mode (onToggleFavorite set) renders the caller's favoriteIds.
     // A caller that supplies more than the cap must still render at most
-    // LAUNCHER_DOCK_LIMIT dock tiles (the iOS-style 4-slot dock).
+    // LAUNCHER_DOCK_LIMIT dock tiles (the iOS-style 4-slot dock), and those
+    // docked ids must not duplicate in the page grid.
     const ids = ["a", "b", "c", "d", "e", "f"];
     render(
       <Launcher
@@ -445,6 +446,17 @@ describe("Launcher controlled favorites (desktop tabs)", () => {
       .getByTestId("launcher-dock")
       .querySelectorAll('[data-testid^="launcher-tile-"]');
     expect(dockTiles).toHaveLength(LAUNCHER_DOCK_LIMIT);
+    expect(
+      within(screen.getByTestId("launcher-dock")).getByTestId(
+        "launcher-tile-a",
+      ),
+    ).toBeTruthy();
+
+    const page = within(screen.getByTestId("launcher-page-0"));
+    expect(page.queryByTestId("launcher-tile-a")).toBeNull();
+    expect(page.queryByTestId("launcher-tile-d")).toBeNull();
+    expect(page.getByTestId("launcher-tile-e")).toBeTruthy();
+    expect(page.getByTestId("launcher-tile-f")).toBeTruthy();
   });
 });
 
