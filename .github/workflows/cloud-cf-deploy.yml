@@ -179,8 +179,11 @@ jobs:
         # the deploy — the same resilience the checkout step already uses (#10310).
         run: |
           set -euo pipefail
+          install_cache="$PWD/.bun-install-cache"
           for attempt in 1 2 3; do
-            if timeout 300s bun install --no-save --ignore-scripts; then
+            test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
+            mkdir -p "$install_cache"
+            if timeout 300s bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -188,6 +191,7 @@ jobs:
               exit 1
             fi
             echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
+            rm -rf node_modules "$install_cache"
           done
           git diff --exit-code -- bun.lock
 
@@ -428,8 +432,11 @@ jobs:
         # the deploy — the same resilience the checkout step already uses (#10310).
         run: |
           set -euo pipefail
+          install_cache="$PWD/.bun-install-cache"
           for attempt in 1 2 3; do
-            if timeout 300s bun install --no-save --ignore-scripts; then
+            test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
+            mkdir -p "$install_cache"
+            if timeout 300s bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -437,6 +444,7 @@ jobs:
               exit 1
             fi
             echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
+            rm -rf node_modules "$install_cache"
           done
           git diff --exit-code -- bun.lock
 
@@ -708,8 +716,11 @@ jobs:
         # the deploy — the same resilience the checkout step already uses (#10310).
         run: |
           set -euo pipefail
+          install_cache="$PWD/.bun-install-cache"
           for attempt in 1 2 3; do
-            if timeout 300s bun install --no-save --ignore-scripts; then
+            test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
+            mkdir -p "$install_cache"
+            if timeout 300s bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -717,6 +728,7 @@ jobs:
               exit 1
             fi
             echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
+            rm -rf node_modules "$install_cache"
           done
           git diff --exit-code -- bun.lock
 
