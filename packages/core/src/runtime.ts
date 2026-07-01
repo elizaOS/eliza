@@ -1156,7 +1156,8 @@ export class AgentRuntime implements IAgentRuntime {
 			values: Record<string, unknown> | undefined,
 		): Record<string, string | undefined> => {
 			const result: Record<string, string | undefined> = {};
-			for (const [key, value] of Object.entries(values ?? {})) {
+			const entries = values ? Object.entries(values) : [];
+			for (const [key, value] of entries) {
 				if (typeof value === "string") {
 					result[key] = value;
 				}

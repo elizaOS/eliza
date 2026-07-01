@@ -332,6 +332,7 @@
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/ui#build",
+        "@elizaos/app-core#build",
         "@elizaos/plugin-agent-skills#build",
         "@elizaos/plugin-app-manager#build",
         "@elizaos/plugin-task-coordinator#build"
@@ -393,7 +394,9 @@
     "@elizaos/plugin-personal-assistant#typecheck": {
       "dependsOn": [
         "@elizaos/plugin-blocker#build",
+        "@elizaos/plugin-calendar#build",
         "@elizaos/plugin-finances#build",
+        "@elizaos/plugin-goals#build",
         "@elizaos/plugin-inbox#build",
         "@elizaos/plugin-reminders#build"
       ],
