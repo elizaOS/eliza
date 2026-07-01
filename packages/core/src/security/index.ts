@@ -38,6 +38,7 @@ export {
 	registerCoreIncomingMessageSecurityHook,
 	scrubIncomingMessageTextForStorage,
 } from "./incoming-message-security.js";
+export { mnemonicValid } from "./bip39-wordlist.js";
 export {
 	cardBrand,
 	detectPii,
@@ -49,6 +50,7 @@ export {
 	type PiiDetector,
 	type PiiMatch,
 	ssnValid,
+	wifValid,
 } from "./pii-detectors.js";
 export {
 	createSecretsRedactor,
