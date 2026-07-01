@@ -49,6 +49,29 @@ describe("inferBackgroundPlan", () => {
 		});
 	});
 
+	it("detects redo", () => {
+		expect(
+			inferBackgroundPlan("redo the background change", undefined),
+		).toEqual({
+			op: "redo",
+		});
+	});
+
+	it("detects redo from a 'go forward' phrasing", () => {
+		expect(
+			inferBackgroundPlan("go forward on the background", undefined),
+		).toEqual({ op: "redo" });
+	});
+
+	it("resolves a color word like 'red' to a set, not redo", () => {
+		expect(inferBackgroundPlan("make the background red", undefined)).toEqual({
+			op: "set",
+			mode: "shader",
+			color: "#dc2626",
+			colorLabel: "red",
+		});
+	});
+
 	it("detects reset", () => {
 		expect(
 			inferBackgroundPlan("reset the background to default", undefined),
@@ -200,6 +223,21 @@ describe("BACKGROUND action handler", () => {
 			vi.fn(),
 		);
 		expect(emitted).toEqual([{ op: "undo" }]);
+	});
+
+	it("broadcasts redo", async () => {
+		const { action, emitted, replies, callback } = setup();
+		const result = await action.handler(
+			runtime,
+			message("redo the background"),
+			undefined,
+			undefined,
+			callback,
+		);
+		expect(emitted).toEqual([{ op: "redo" }]);
+		expect(result.success).toBe(true);
+		expect(result.values).toEqual({ op: "redo" });
+		expect(replies[0].toLowerCase()).toContain("re-applied");
 	});
 
 	it("reports a clear error when the broadcast fails", async () => {
