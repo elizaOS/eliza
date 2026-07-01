@@ -1,23 +1,21 @@
 /**
- * Apps CRUD — REAL global middleware chain + REAL route handlers, in-process.
+ * Apps CRUD — app route handlers plus app-key scope middleware, in-process.
  *
  * Mirrors `shared-agent-messages-stream.integration.test.ts`: builds a Hono app
- * that replicates `createApp()`'s global chain (the real `corsMiddleware`, the
- * same `secureHeaders` config, the no-store JSON pass, and the real
- * `authMiddleware`) and mounts the REAL apps route handlers at their codegen
- * mount paths. Only the DATA seams are mocked so no Postgres/Worker is needed.
+ * with the real `corsMiddleware`, the same `secureHeaders` config, the no-store
+ * JSON pass, the real app-key scope middleware, and the REAL apps route
+ * handlers at their codegen mount paths. Data and session-auth seams are mocked
+ * so no Postgres/Redis/Worker is needed.
  *
  * Seams mocked (and ONLY these):
  *   - `@/lib/auth/workers-hono-auth` → `requireUserOrApiKeyWithOrg` maps the
  *     `Bearer eliza_*` token to a fixed org user. A SECOND token resolves to a
- *     SECOND org so the 403 cross-org paths are exercised. The real
- *     `authMiddleware` still gates the request (a `Bearer eliza_*` passes its
- *     programmatic-auth check; no auth header → 401 from the route resolver via
- *     `failureResponse`). The real module is spread so `getCurrentUser` (used by
- *     `authMiddleware`) is untouched.
+ *     SECOND org so the 403 cross-org paths are exercised.
  *   - `@/lib/services/apps` → `appsService` backed by an in-memory
- *     `Map<string, App>` so create→list→get→update→delete are coherent. Keeps
- *     the REAL `AppNameConflictError`.
+ *     `Map<string, App>` so create→list→get→update→delete are coherent, plus
+ *     the route-visible `AppNameConflictError` and `AppCreationLimitError`.
+ *   - `@/lib/services/api-keys` → `validateApiKey` maps org keys and app keys
+ *     so the real app-key scope middleware can reverse-check `apps.api_key_id`.
  *   - `@/lib/services/app-factory` → `createApp` seeds the store + returns an
  *     `eliza_test_*` apiKey (no GitHub side-effect); throws `AppNameConflictError`
  *     for a duplicate name.
@@ -29,23 +27,14 @@
  * No DB, no Worker; runs in plain `bun test`.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { secureHeaders } from "hono/secure-headers";
 import type { App } from "@/db/repositories/apps";
 import { AuthenticationError } from "@/lib/api/cloud-worker-errors";
-import * as realAuth from "@/lib/auth/workers-hono-auth";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
-import * as realAppCleanup from "@/lib/services/app-cleanup";
-import * as realAppCredits from "@/lib/services/app-credits";
-import * as realAppFactory from "@/lib/services/app-factory";
-// Keep the real modules so afterAll can restore them — bun's `mock.module` is
-// process-global and leaks across files otherwise.
-import * as realApps from "@/lib/services/apps";
-import * as realChars from "@/lib/services/characters/characters";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-import { authMiddleware } from "../src/middleware/auth";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -56,12 +45,41 @@ const USER_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 const USER_B = "bbbbbbbb-2222-4222-8222-222222222222";
 
-// Programmatic-auth bearer keys. `authMiddleware` passes any `Bearer eliza_*`
+// Programmatic-auth bearer keys. The local auth gate passes any `Bearer eliza_*`
 // through; the mocked resolver maps each token to its org.
 const KEY_A = "eliza_test_org_a_key";
 const KEY_B = "eliza_test_org_b_key";
+const ORG_KEY_A_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const ORG_KEY_B_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const APP_A_KEY = "eliza_test_app_a_key";
+const APP_A_KEY_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const APP_B_KEY = "eliza_test_app_b_key";
+const APP_B_KEY_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
+
+class AppNameConflictError extends Error {
+  constructor(
+    message: string,
+    public conflictType: "app" | "subdomain",
+    public suggestedName: string,
+  ) {
+    super(message);
+    this.name = "AppNameConflictError";
+  }
+}
+
+class AppCreationLimitError extends Error {
+  constructor(
+    public organizationId: string,
+    public limit: number,
+  ) {
+    super(
+      `Organization ${organizationId} has reached its app creation limit of ${limit}`,
+    );
+    this.name = "AppCreationLimitError";
+  }
+}
 
 let nextId = 0;
 function freshUuid(): string {
@@ -131,6 +149,42 @@ function makeApp(overrides: Partial<App>): App {
 const store = new Map<string, App>();
 let createAppLimit: number | null = null;
 
+const validateApiKey = mock(async (token: string) => {
+  const idByToken: Record<string, string> = {
+    [KEY_A]: ORG_KEY_A_ID,
+    [KEY_B]: ORG_KEY_B_ID,
+    [APP_A_KEY]: APP_A_KEY_ID,
+    [APP_B_KEY]: APP_B_KEY_ID,
+  };
+  const userByToken: Record<string, string> = {
+    [KEY_A]: USER_A,
+    [APP_A_KEY]: USER_A,
+    [APP_B_KEY]: USER_A,
+    [KEY_B]: USER_B,
+  };
+  const organizationByToken: Record<string, string> = {
+    [KEY_A]: ORG_A,
+    [APP_A_KEY]: ORG_A,
+    [APP_B_KEY]: ORG_A,
+    [KEY_B]: ORG_B,
+  };
+  const id = idByToken[token];
+  if (!id) return null;
+  return {
+    id,
+    user_id: userByToken[token],
+    organization_id: organizationByToken[token],
+    key_hash: "hash",
+    key_prefix: token.slice(0, 10),
+    name: "Test API key",
+    is_active: true,
+    last_used_at: null,
+    expires_at: null,
+    created_at: new Date(),
+    updated_at: new Date(),
+  };
+});
+
 function slugFor(name: string): string {
   return name
     .toLowerCase()
@@ -142,6 +196,9 @@ function slugFor(name: string): string {
 const appsServiceMock = {
   async getById(id: string): Promise<App | undefined> {
     return store.get(id);
+  },
+  async getByApiKeyId(apiKeyId: string): Promise<App | undefined> {
+    return [...store.values()].find((app) => app.api_key_id === apiKeyId);
   },
   async listByOrganizationWithDatabaseState(orgId: string): Promise<App[]> {
     return [...store.values()].filter((a) => a.organization_id === orgId);
@@ -194,7 +251,7 @@ const createApp = mock(
     // Real factory checks name availability first and throws on conflict.
     const slug = slugFor(data.name);
     if ([...store.values()].some((a) => a.slug === slug)) {
-      throw new realApps.AppNameConflictError(
+      throw new AppNameConflictError(
         `An app with the name "${data.name}" already exists. Please choose a different name.`,
         "app",
         `${data.name}-a1b2`,
@@ -207,10 +264,7 @@ const createApp = mock(
         (a) => a.organization_id === data.organization_id,
       ).length >= createAppLimit
     ) {
-      throw new realApps.AppCreationLimitError(
-        data.organization_id,
-        createAppLimit,
-      );
+      throw new AppCreationLimitError(data.organization_id, createAppLimit);
     }
 
     const githubRepoCreated = options.createGitHubRepo !== false;
@@ -284,14 +338,20 @@ const deleteAppWithCleanup = mock(
   },
 );
 
-// Auth resolver: map the bearer token to its org user. The real
-// `authMiddleware` runs first and lets `Bearer eliza_*` through; this resolver
-// then does the per-route org binding (and throws for missing/invalid auth,
-// which `failureResponse` turns into a 401).
+// Auth resolver: map the bearer token to its org user. The local auth gate lets
+// `Bearer eliza_*` through; this resolver then does the per-route org binding.
 const requireUserOrApiKeyWithOrg = mock(async (c: AppContext) => {
   const auth = c.req.header("authorization");
   const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-  if (bearer === KEY_A) {
+  if (bearer === KEY_A || bearer === APP_A_KEY || bearer === APP_B_KEY) {
+    const apiKeyId =
+      bearer === APP_A_KEY
+        ? APP_A_KEY_ID
+        : bearer === APP_B_KEY
+          ? APP_B_KEY_ID
+          : ORG_KEY_A_ID;
+    c.set("apiKeyId", apiKeyId);
+    c.set("authMethod", "api_key");
     return {
       id: USER_A,
       email: "a@example.com",
@@ -305,6 +365,8 @@ const requireUserOrApiKeyWithOrg = mock(async (c: AppContext) => {
     };
   }
   if (bearer === KEY_B) {
+    c.set("apiKeyId", ORG_KEY_B_ID);
+    c.set("authMethod", "api_key");
     return {
       id: USER_B,
       email: "b@example.com",
@@ -319,15 +381,20 @@ const requireUserOrApiKeyWithOrg = mock(async (c: AppContext) => {
   }
   throw AuthenticationError("Authentication required");
 });
-
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  ...realAuth,
   requireUserOrApiKeyWithOrg,
 }));
 
 mock.module("@/lib/services/apps", () => ({
-  ...realApps,
+  AppCreationLimitError,
+  AppNameConflictError,
   appsService: appsServiceMock,
+}));
+
+mock.module("@/lib/services/api-keys", () => ({
+  apiKeysService: {
+    validateApiKey,
+  },
 }));
 
 // The PUT /apps/:id route validates each linked_character_id via the real
@@ -337,51 +404,53 @@ mock.module("@/lib/services/apps", () => ({
 // route's existence + ownership guard passes for the happy-path link test. No
 // test asserts a character rejection, so this stays faithful to the route.
 mock.module("@/lib/services/characters/characters", () => ({
-  ...realChars,
   charactersService: {
-    ...realChars.charactersService,
     getById: async (id: string) => ({ id, user_id: USER_A, is_public: true }),
   },
 }));
 
 mock.module("@/lib/services/app-factory", () => ({
-  ...realAppFactory,
-  appFactoryService: { ...realAppFactory.appFactoryService, createApp },
+  appFactoryService: { createApp },
 }));
 
 mock.module("@/lib/services/app-cleanup", () => ({
-  ...realAppCleanup,
   appCleanupService: {
-    ...realAppCleanup.appCleanupService,
     deleteAppWithCleanup,
   },
 }));
 
 mock.module("@/lib/services/app-credits", () => ({
-  ...realAppCredits,
   appCreditsService: {
-    ...realAppCredits.appCreditsService,
     updateMonetizationSettings,
   },
 }));
 
 // Routes import the mocked seams at module-eval time, so import AFTER the mocks.
+const { appApiKeyScopeMiddleware } = await import(
+  "../src/middleware/app-api-key-scope"
+);
 const listRoute = (await import("../v1/apps/route")).default;
 const detailRoute = (await import("../v1/apps/[id]/route")).default;
 const checkNameRoute = (await import("../v1/apps/check-name/route")).default;
 
-afterAll(() => {
-  mock.module("@/lib/auth/workers-hono-auth", () => realAuth);
-  mock.module("@/lib/services/apps", () => realApps);
-  mock.module("@/lib/services/characters/characters", () => realChars);
-  mock.module("@/lib/services/app-factory", () => realAppFactory);
-  mock.module("@/lib/services/app-cleanup", () => realAppCleanup);
-  mock.module("@/lib/services/app-credits", () => realAppCredits);
-});
+// ---------------------------------------------------------------------------
+// App under test — middleware around the real route handlers.
+// ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// App under test — the real global chain around the real route handlers.
-// ---------------------------------------------------------------------------
+const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const authorization = c.req.header("authorization");
+  const bearer = authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length).trim()
+    : null;
+  if (c.req.header("X-API-Key") || bearer?.startsWith("eliza_")) {
+    await next();
+    return;
+  }
+  return c.json(
+    { success: false, error: "Unauthorized", code: "authentication_required" },
+    401,
+  );
+};
 
 function buildApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>({ strict: false });
@@ -409,6 +478,7 @@ function buildApp(): Hono<AppEnv> {
     }
   });
   app.use("*", authMiddleware);
+  app.use("*", appApiKeyScopeMiddleware);
   // Mount order matters: the more specific check-name route before :id so a POST
   // to /api/v1/apps/check-name is not swallowed by the :id detail route.
   app.route("/api/v1/apps/check-name", checkNameRoute);
@@ -464,6 +534,7 @@ beforeEach(() => {
   updateMonetizationSettings.mockClear();
   deleteAppWithCleanup.mockClear();
   requireUserOrApiKeyWithOrg.mockClear();
+  validateApiKey.mockClear();
 });
 
 // ===========================================================================
@@ -687,6 +758,35 @@ describe("GET /api/v1/apps/:id (get)", () => {
     expect((json.app as App).id).toBe(a.id);
     expect((json.app as App).name).toBe("Detail App");
   });
+
+  test("200 when using the app's own API key", async () => {
+    const a = seed({
+      organization_id: ORG_A,
+      api_key_id: APP_A_KEY_ID,
+      name: "Own Key App",
+    });
+    const { status, json } = await req("GET", `/api/v1/apps/${a.id}`, {
+      key: APP_A_KEY,
+    });
+    expect(status).toBe(200);
+    expect((json.app as App).id).toBe(a.id);
+  });
+
+  test("403 when an app key targets a sibling app in the same org", async () => {
+    seed({ organization_id: ORG_A, api_key_id: APP_A_KEY_ID });
+    const sibling = seed({
+      organization_id: ORG_A,
+      api_key_id: APP_B_KEY_ID,
+      name: "Sibling App",
+    });
+
+    const { status, json } = await req("GET", `/api/v1/apps/${sibling.id}`, {
+      key: APP_A_KEY,
+    });
+
+    expect(status).toBe(403);
+    expect(json.error).toBe("Invalid API key for this app");
+  });
 });
 
 // ===========================================================================
@@ -749,6 +849,24 @@ describe("PUT /api/v1/apps/:id (update)", () => {
     });
     expect(status).toBe(403);
     expect(json.error).toBe("Access denied");
+  });
+
+  test("403 sibling app key does not update a same-org app", async () => {
+    seed({ organization_id: ORG_A, api_key_id: APP_A_KEY_ID });
+    const sibling = seed({
+      organization_id: ORG_A,
+      api_key_id: APP_B_KEY_ID,
+      name: "Before",
+    });
+
+    const { status, json } = await req("PUT", `/api/v1/apps/${sibling.id}`, {
+      key: APP_A_KEY,
+      body: { name: "After" },
+    });
+
+    expect(status).toBe(403);
+    expect(json.error).toBe("Invalid API key for this app");
+    expect(store.get(sibling.id)?.name).toBe("Before");
   });
 
   test("200 name/description/allowed_origins/linked_character_ids update", async () => {
@@ -820,6 +938,24 @@ describe("PATCH /api/v1/apps/:id (update)", () => {
     expect(status).toBe(403);
   });
 
+  test("403 sibling app key does not patch a same-org app", async () => {
+    seed({ organization_id: ORG_A, api_key_id: APP_A_KEY_ID });
+    const sibling = seed({
+      organization_id: ORG_A,
+      api_key_id: APP_B_KEY_ID,
+      description: "before",
+    });
+
+    const { status, json } = await req("PATCH", `/api/v1/apps/${sibling.id}`, {
+      key: APP_A_KEY,
+      body: { description: "after" },
+    });
+
+    expect(status).toBe(403);
+    expect(json.error).toBe("Invalid API key for this app");
+    expect(store.get(sibling.id)?.description).toBe("before");
+  });
+
   test("400 invalid app_url", async () => {
     const a = seed({ organization_id: ORG_A });
     const { status } = await req("PATCH", `/api/v1/apps/${a.id}`, {
@@ -867,6 +1003,23 @@ describe("DELETE /api/v1/apps/:id (delete)", () => {
     });
     expect(status).toBe(403);
     expect(json.error).toBe("Access denied");
+  });
+
+  test("403 sibling app key does not delete a same-org app", async () => {
+    seed({ organization_id: ORG_A, api_key_id: APP_A_KEY_ID });
+    const sibling = seed({
+      organization_id: ORG_A,
+      api_key_id: APP_B_KEY_ID,
+    });
+
+    const { status, json } = await req("DELETE", `/api/v1/apps/${sibling.id}`, {
+      key: APP_A_KEY,
+    });
+
+    expect(status).toBe(403);
+    expect(json.error).toBe("Invalid API key for this app");
+    expect(store.has(sibling.id)).toBe(true);
+    expect(deleteAppWithCleanup).not.toHaveBeenCalled();
   });
 
   test("200 happy → cleaned, then follow-up GET → 404", async () => {

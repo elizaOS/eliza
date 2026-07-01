@@ -31,6 +31,7 @@ import jwksRoute from "../.well-known/jwks.json/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
 import { mountRoutes } from "./_router.generated";
 import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
+import { appApiKeyScopeMiddleware } from "./middleware/app-api-key-scope";
 import { authMiddleware } from "./middleware/auth";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
@@ -321,6 +322,7 @@ export function createApp(): Hono<AppEnv> {
   );
 
   app.use("*", authMiddleware);
+  app.use("*", appApiKeyScopeMiddleware);
 
   app.all("/steward", embeddedStewardHandler);
   app.all("/steward/*", embeddedStewardHandler);
