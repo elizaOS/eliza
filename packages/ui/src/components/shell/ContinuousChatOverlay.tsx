@@ -1,7 +1,5 @@
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
-  Check,
-  Copy,
   FileText,
   Film,
   LayoutGrid,
@@ -65,7 +63,6 @@ import {
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { SensitiveRequestBlock } from "../chat/MessageContent";
-import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import {
@@ -1344,37 +1341,6 @@ export function ContinuousChatOverlay({
     turnStatus?.toolName,
     markLayoutShiftIntent,
   ]);
-
-  // Copy the whole thread as a plain-text transcript from the full-state header
-  // — parity with the desktop ChatView header. Flashes a check on success.
-  const [conversationCopied, setConversationCopied] = React.useState(false);
-  const conversationCopiedTimerRef = React.useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  React.useEffect(
-    () => () => {
-      if (conversationCopiedTimerRef.current) {
-        clearTimeout(conversationCopiedTimerRef.current);
-      }
-    },
-    [],
-  );
-  const handleCopyConversation = React.useCallback(() => {
-    const transcript = conversationTranscriptText(
-      visibleMessages.map((m) => ({ role: m.role, text: m.content })),
-      { agentName },
-    );
-    if (!transcript) return;
-    void copyTextToClipboard(transcript);
-    setConversationCopied(true);
-    if (conversationCopiedTimerRef.current) {
-      clearTimeout(conversationCopiedTimerRef.current);
-    }
-    conversationCopiedTimerRef.current = setTimeout(
-      () => setConversationCopied(false),
-      2000,
-    );
-  }, [agentName, visibleMessages]);
 
   // The last line id the scroll effect pinned to — lets it tell a NEW line
   // (always pin to bottom) from streaming growth of the current line (follow
@@ -3335,18 +3301,6 @@ export function ContinuousChatOverlay({
                     onClick={toggleMaximize}
                     testId="chat-full-maximize"
                   />
-                  {hasThread ? (
-                    <HeaderButton
-                      icon={conversationCopied ? Check : Copy}
-                      label={
-                        conversationCopied
-                          ? "conversation copied"
-                          : "copy conversation"
-                      }
-                      onClick={handleCopyConversation}
-                      testId="chat-full-copy-conversation"
-                    />
-                  ) : null}
                   <HeaderButton
                     icon={RotateCcw}
                     label="clear conversation"
