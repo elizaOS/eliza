@@ -89,7 +89,7 @@ describe("resolveCloudRoute", () => {
       ),
     ).toMatchObject({
       source: "cloud-proxy",
-      baseUrl: "https://www.elizacloud.ai/api/v1/apis/quotes",
+      baseUrl: "https://elizacloud.ai/api/v1/apis/quotes",
       headers: { Authorization: "Bearer cloud-secret" },
     });
   });

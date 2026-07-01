@@ -4,7 +4,7 @@ import {
   startCloudConversationHandoff,
 } from "./cloud-handoff-supervisor";
 
-const SHARED = "https://www.elizacloud.ai/api/v1/eliza/agents/agent-1/api";
+const SHARED = "https://elizacloud.ai/api/v1/eliza/agents/agent-1/api";
 const CONTAINER = "https://agent-1.elizacloud.ai";
 const CONV = "agent-1";
 

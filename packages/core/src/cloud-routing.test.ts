@@ -104,7 +104,7 @@ describe("resolveCloudRoute — the three modes", () => {
 		);
 		expect(route.source).toBe("cloud-proxy");
 		if (route.source !== "cloud-proxy") throw new Error("unreachable");
-		expect(route.baseUrl).toBe("https://www.elizacloud.ai/api/v1/apis/openai");
+		expect(route.baseUrl).toBe("https://elizacloud.ai/api/v1/apis/openai");
 		expect(route.headers.Authorization).toBe("Bearer cloud-key");
 	});
 

@@ -54,7 +54,7 @@ import { isPrivateNetworkHost } from "./private-network-host";
 const ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS = 1000;
 const ELIZA_CLOUD_LOGIN_TIMEOUT_MS = 300_000;
 const ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS = 3;
-const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
+const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
 
 /** Cloud=Steward token-lifecycle: how often to check the JWT for expiry. */
 const STEWARD_REFRESH_CHECK_INTERVAL_MS = 60_000;
@@ -520,7 +520,7 @@ export function useCloudState({
       // direct cloud auth (no local backend) or go through the agent proxy.
       const hasBackend = hasCloudLoginBackend();
       const cloudApiBase =
-        getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
+        getBootConfig().cloudApiBase ?? "https://elizacloud.ai";
       let useDirectAuth = !hasBackend;
 
       if (hasBackend) {

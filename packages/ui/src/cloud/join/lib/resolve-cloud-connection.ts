@@ -14,7 +14,7 @@ import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { getBootConfig } from "../../../config/boot-config";
 
 /** Fallback direct-cloud origin used when boot config carries no `cloudApiBase`. */
-const DEFAULT_CLOUD_API_BASE = "https://www.elizacloud.ai";
+const DEFAULT_CLOUD_API_BASE = "https://elizacloud.ai";
 
 /**
  * The resolved direct-cloud origin the join flow provisions against. Prefers the
