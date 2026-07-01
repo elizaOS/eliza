@@ -102,7 +102,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Cache uv package cache
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('packages/benchmarks/lifeops-bench/pyproject.toml') }}
@@ -167,7 +167,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Cache uv package cache
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('packages/benchmarks/lifeops-bench/pyproject.toml') }}
@@ -330,7 +330,7 @@ jobs:
 
       - name: Cache uv package cache
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('packages/benchmarks/lifeops-bench/pyproject.toml') }}
