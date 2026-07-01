@@ -47,10 +47,16 @@ const app = new Hono<AppEnv>();
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const parsed = RestoreSchema.safeParse(await c.req.json().catch(() => ({})));
+    const parsed = RestoreSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid backup", details: parsed.error.flatten() },
+        {
+          success: false,
+          error: "Invalid backup",
+          details: parsed.error.flatten(),
+        },
         400,
       );
     }
@@ -63,7 +69,11 @@ app.post("/", async (c) => {
     );
     logger.info("[App Backup API] restored app", { appId: restored.id });
     return c.json(
-      { success: true, app: { id: restored.id, name: restored.name, slug: restored.slug }, apiKey },
+      {
+        success: true,
+        app: { id: restored.id, name: restored.name, slug: restored.slug },
+        apiKey,
+      },
       201,
     );
   } catch (error) {

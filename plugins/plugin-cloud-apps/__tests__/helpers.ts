@@ -9,6 +9,7 @@
 
 import { mock } from "bun:test";
 import type {
+  AppBackupSnapshot,
   AppDeployStatusResponse,
   AppDto,
   AppEarningsResponse,
@@ -25,6 +26,7 @@ import type {
   DeployAppInput,
   ListAppFrontendDeploymentsResponse,
   DeployAppResponse,
+  ExportAppBackupResponse,
   ListAdSlotsResponse,
   ListAppsResponse,
   RegenerateAppApiKeyResponse,
@@ -32,12 +34,10 @@ import type {
   UpdateAppMonetizationInput,
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
-  type AppBackupSnapshot,
   type CreateBookingInput,
   type CreateBookingResponse,
   type CreateInfluencerProfileInput,
   type CreateInfluencerProfileResponse,
-  type ExportAppBackupResponse,
   type ListInfluencersResponse,
 } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";

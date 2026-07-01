@@ -16,7 +16,6 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { appConfig } from "../../../db/schemas/app-config";
@@ -34,7 +33,10 @@ let seq = 0;
 const uniq = (p: string) => `${p}-${(seq += 1)}-${Math.random().toString(36).slice(2, 8)}`;
 
 async function seed(): Promise<{ orgId: string; userId: string }> {
-  const [org] = await dbWrite.insert(organizations).values({ name: "O", slug: uniq("o") }).returning();
+  const [org] = await dbWrite
+    .insert(organizations)
+    .values({ name: "O", slug: uniq("o") })
+    .returning();
   const [user] = await dbWrite
     .insert(users)
     .values({ steward_user_id: uniq("u"), organization_id: org.id })
@@ -99,6 +101,42 @@ describe("App config backup/restore", () => {
       inferenceMarkupPercentage: 25,
       purchaseSharePercentage: 40,
     });
+    await appsService.update(source.id, {
+      linked_character_ids: ["11111111-1111-4111-8111-111111111111"],
+      discord_automation: {
+        enabled: true,
+        guildId: "guild-1",
+        channelId: "channel-1",
+        autoAnnounce: true,
+        announceIntervalMin: 60,
+        announceIntervalMax: 120,
+      },
+      telegram_automation: {
+        enabled: true,
+        groupId: "chat-1",
+        autoReply: true,
+        autoAnnounce: true,
+        announceIntervalMin: 60,
+        announceIntervalMax: 120,
+      },
+      twitter_automation: {
+        enabled: false,
+        autoPost: false,
+        autoReply: false,
+        autoEngage: false,
+        discovery: false,
+        postIntervalMin: 90,
+        postIntervalMax: 150,
+      },
+      promotional_assets: [
+        {
+          type: "social_card",
+          url: "https://cdn.example.com/card.png",
+          size: { width: 1200, height: 630 },
+          generatedAt: "2026-07-01T00:00:00.000Z",
+        },
+      ],
+    });
 
     const fresh = await appsService.getById(source.id);
     const backup = await appBackupService.exportApp(fresh!);
@@ -112,6 +150,17 @@ describe("App config backup/restore", () => {
       inference_markup_percentage: 25,
       purchase_share_percentage: 40,
     });
+    expect(backup.app.linked_character_ids).toEqual(["11111111-1111-4111-8111-111111111111"]);
+    expect(backup.automation.discord).toMatchObject({ guildId: "guild-1", channelId: "channel-1" });
+    expect(backup.automation.telegram).toMatchObject({ groupId: "chat-1" });
+    expect(backup.promotional_assets).toEqual([
+      {
+        type: "social_card",
+        url: "https://cdn.example.com/card.png",
+        size: { width: 1200, height: 630 },
+        generatedAt: "2026-07-01T00:00:00.000Z",
+      },
+    ]);
     // No secret fields leak into the snapshot.
     expect(JSON.stringify(backup)).not.toContain("api_key");
     expect(JSON.stringify(backup)).not.toContain(source.id);
@@ -128,6 +177,21 @@ describe("App config backup/restore", () => {
     expect(Number(restoredFresh?.inference_markup_percentage)).toBe(25);
     expect(Number(restoredFresh?.purchase_share_percentage)).toBe(40);
     expect(restoredFresh?.allowed_origins).toEqual(["https://myapp.example.com"]);
+    expect(restoredFresh?.linked_character_ids).toEqual(["11111111-1111-4111-8111-111111111111"]);
+    expect(restoredFresh?.discord_automation).toMatchObject({
+      guildId: "guild-1",
+      channelId: "channel-1",
+    });
+    expect(restoredFresh?.telegram_automation).toMatchObject({ groupId: "chat-1" });
+    expect(restoredFresh?.twitter_automation).toMatchObject({ enabled: false });
+    expect(restoredFresh?.promotional_assets).toEqual([
+      {
+        type: "social_card",
+        url: "https://cdn.example.com/card.png",
+        size: { width: 1200, height: 630 },
+        generatedAt: "2026-07-01T00:00:00.000Z",
+      },
+    ]);
   });
 
   test("restore rejects an unsupported backup version", async () => {

@@ -10,7 +10,6 @@
  */
 
 import type { App } from "../../db/repositories/apps";
-import { appsRepository } from "../../db/repositories/apps";
 import { logger } from "../utils/logger";
 import { appCreditsService } from "./app-credits";
 import { appsService } from "./apps";
@@ -36,11 +35,11 @@ export interface AppBackup {
     purchase_share_percentage: number;
   };
   automation: {
-    discord: unknown;
-    telegram: unknown;
-    twitter: unknown;
+    discord: App["discord_automation"] | null;
+    telegram: App["telegram_automation"] | null;
+    twitter: App["twitter_automation"] | null;
   };
-  promotional_assets: unknown;
+  promotional_assets: App["promotional_assets"] | null;
   /** Reference only — the immutable content hash of the active frontend, if any. */
   active_frontend_content_hash?: string | null;
 }
@@ -48,16 +47,7 @@ export interface AppBackup {
 export class AppBackupService {
   /** Build a secret-free config snapshot of an app. */
   async exportApp(app: App): Promise<AppBackup> {
-    let contentHash: string | null = null;
-    try {
-      const { appFrontendDeploymentsRepository } = await import(
-        "../../db/repositories/app-frontend-deployments"
-      );
-      const active = await appFrontendDeploymentsRepository.getActive(app.id);
-      contentHash = active?.content_hash ?? null;
-    } catch {
-      // frontend hosting not present on this deployment — omit.
-    }
+    const contentHash: string | null = null;
 
     return {
       version: APP_BACKUP_VERSION,
@@ -110,6 +100,14 @@ export class AppBackupService {
       logo_url: backup.app.logo_url ?? undefined,
       website_url: backup.app.website_url ?? undefined,
       contact_email: backup.app.contact_email ?? undefined,
+    });
+
+    await appsService.update(created.app.id, {
+      linked_character_ids: backup.app.linked_character_ids ?? [],
+      discord_automation: backup.automation?.discord ?? null,
+      telegram_automation: backup.automation?.telegram ?? null,
+      twitter_automation: backup.automation?.twitter ?? null,
+      promotional_assets: backup.promotional_assets ?? null,
     });
 
     // Reapply monetization settings (create() does not carry them).
