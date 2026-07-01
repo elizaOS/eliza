@@ -9,8 +9,11 @@ import {
   bucket,
   computeVerdict,
   evaluateAestheticMetricBudget,
+  evaluateMinimalismRatchet,
   evaluateStrictGate,
+  minimalismBaselineKey,
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
+  parseMinimalismBaseline,
   parseNavigationTabPaths,
 } from "./aesthetic-audit-rules";
 import {
@@ -41,6 +44,21 @@ const AUDIT_STRICT_NEEDS_WORK =
 // that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention).
 const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {};
 
+// "Her"-minimal ratchet baseline (#9950) — the committed per-view record of the
+// existing divider-density debt (same idiom as
+// packages/scripts/ui-determinism-baseline.json). A breaching view NOT in this
+// file, or a baselined view that regressed past its recorded metrics +
+// tolerance, is a BLOCKING `needs-work` and fails the run in afterAll —
+// unconditionally, not just under ELIZA_AUDIT_APP_STRICT (same posture as the
+// system-view metric budget throw below). Refresh deliberately from a run's
+// report.json: `bun run --cwd packages/app audit:app:minimalism:update`.
+const MINIMALISM_BASELINE_PATH = fileURLToPath(
+  new URL("./aesthetic-minimalism-baseline.json", import.meta.url),
+);
+const MINIMALISM_BASELINE = parseMinimalismBaseline(
+  readFileSync(MINIMALISM_BASELINE_PATH, "utf8"),
+);
+
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
  * cloud-frontend's `audit:cloud`. It walks EVERY view (built-in tabs + plugin
@@ -51,9 +69,11 @@ const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {};
  * `manual-review/<slug>.md` verdict stub + `contact-sheet.html` +
  * `report.json`.
  *
- * It is a REPORTER, not a first-failure gate: it records findings for every
- * view (so the 5-loop grind can drive each to `good`) and only fails the run on
- * an uncaught page error (a real crash). Output dir:
+ * It records findings for every view (no first-failure abort, so the 5-loop
+ * grind can drive each to `good`), then gates in afterAll: an uncaught page
+ * error fails the walk immediately; the system-view metric budgets and the
+ * Her-minimal ratchet baseline (#9950) fail the run unconditionally; `broken`
+ * verdicts fail under ELIZA_AUDIT_APP_STRICT=1. Output dir:
  * `aesthetic-audit-output/` (override with ELIZA_AUDIT_APP_DIR).
  *
  * Built-in views come from `@elizaos/ui` TAB_PATHS; plugin views from
@@ -274,6 +294,9 @@ interface ViewFinding {
   consoleErrors: string[];
   blueColors: string[];
   hoverViolations: string[];
+  /** Buttons the hover probe could not drive (hover timeout / detach) — a
+   * harness failure surfaced as a finding, not silently swallowed. */
+  hoverFailures: string[];
   borderRadiusViolations: string[];
   overlayPresent: boolean;
   overlayClearanceIssues: string[];
@@ -284,8 +307,12 @@ interface ViewFinding {
   borderDividerDensity: number;
   textDensity: number;
   whitespaceRatio: number;
+  /** Rendered viewport area in px² — the divider-density normalization basis. */
+  viewportArea: number;
   minimalismBudget: AestheticMetricBudget | null;
   minimalismBudgetViolations: string[];
+  /** Blocking Her-minimal ratchet violations vs the committed baseline (#9950). */
+  minimalismRatchetViolations: string[];
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
   verdict: "good" | "needs-work" | "needs-eyeball" | "broken";
@@ -307,11 +334,19 @@ async function collectBlueColors(page: Page): Promise<string[]> {
   return colors.filter((c) => bucket(c) === "blue");
 }
 
+interface HoverScanResult {
+  violations: string[];
+  /** Orange-resting buttons the probe could not actually hover — recorded as
+   * findings so a hover failure never silently passes as "no violation". */
+  hoverFailures: string[];
+}
+
 /** Tag primary buttons, read rest+hover backgrounds, flag brand violations. */
-async function collectHoverViolations(page: Page): Promise<string[]> {
+async function collectHoverViolations(page: Page): Promise<HoverScanResult> {
   const buttons = page.locator("button, a[role='button'], [data-audit-btn]");
   const count = Math.min(await buttons.count(), 24);
   const violations: string[] = [];
+  const hoverFailures: string[] = [];
   for (let i = 0; i < count; i += 1) {
     const btn = buttons.nth(i);
     if (!(await btn.isVisible().catch(() => false))) continue;
@@ -319,7 +354,21 @@ async function collectHoverViolations(page: Page): Promise<string[]> {
       .evaluate((el) => getComputedStyle(el).backgroundColor)
       .catch(() => "");
     if (bucket(rest) !== "orange") continue; // only orange-resting buttons matter
-    await btn.hover({ timeout: 1000 }).catch(() => {});
+    let hoverError: string | null = null;
+    try {
+      await btn.hover({ timeout: 1000 });
+    } catch (error) {
+      hoverError = (error instanceof Error ? error.message : String(error))
+        .split("\n")[0]
+        .slice(0, 120);
+    }
+    if (hoverError !== null) {
+      // The hover never applied, so reading the "hover" background would just
+      // re-read the rest color and vacuously pass. Surface the probe failure.
+      const label = (await btn.innerText().catch(() => "")).slice(0, 24);
+      hoverFailures.push(`"${label}" hover probe failed: ${hoverError}`);
+      continue;
+    }
     const hover = await btn
       .evaluate((el) => getComputedStyle(el).backgroundColor)
       .catch(() => "");
@@ -329,7 +378,7 @@ async function collectHoverViolations(page: Page): Promise<string[]> {
       violations.push(`"${label}" orange→${dest} (${rest} -> ${hover})`);
     }
   }
-  return violations;
+  return { violations, hoverFailures };
 }
 
 /**
@@ -389,6 +438,8 @@ interface AestheticDensityMetrics {
   borderDividerDensity: number;
   textDensity: number;
   whitespaceRatio: number;
+  /** Viewport px² the densities were normalized by. 0 = measurement failed. */
+  viewportArea: number;
 }
 
 function roundMetric(value: number): number {
@@ -595,6 +646,7 @@ async function collectAestheticDensityMetrics(
       ),
       textDensity: Number((textChars / (viewportArea / 10_000)).toFixed(4)),
       whitespaceRatio: Number(whitespaceRatio.toFixed(4)),
+      viewportArea,
     };
   });
 }
@@ -814,6 +866,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **blue colors (banned):** ${finding.blueColors.length ? finding.blueColors.join(", ") : "none"}`,
     `- **border-radius violations (off-token):** ${finding.borderRadiusViolations.length ? finding.borderRadiusViolations.join(", ") : "none"}`,
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
+    `- **hover probe failures:** ${finding.hoverFailures.length ? finding.hoverFailures.join("; ") : "none"}`,
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
     `- **floating chat overlay clearance:** ${finding.overlayClearanceIssues.length ? finding.overlayClearanceIssues.join("; ") : "clear"}`,
     `- **readable content chars:** ${finding.readableChars}`,
@@ -821,6 +874,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **text density:** ${roundMetric(finding.textDensity)} chars / 10K px`,
     `- **whitespace ratio:** ${roundMetric(finding.whitespaceRatio)}`,
     `- **minimalism budget:** ${finding.minimalismBudget ? (finding.minimalismBudgetViolations.length ? finding.minimalismBudgetViolations.join("; ") : "pass") : "n/a"}`,
+    `- **minimalism ratchet (#9950):** ${finding.minimalismRatchetViolations.length ? finding.minimalismRatchetViolations.join("; ") : "pass"}`,
     `- **screenshot quality issues:** ${finding.qualityIssues.length ? finding.qualityIssues.join("; ") : "none"}`,
     "",
     "## Notes",
@@ -993,9 +1047,14 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           : [];
 
         const blueColors = await collectBlueColors(page).catch(() => []);
-        const hoverViolations = await collectHoverViolations(page).catch(
-          () => [],
-        );
+        const { violations: hoverViolations, hoverFailures } =
+          await collectHoverViolations(page).catch((error: unknown) => ({
+            violations: [],
+            // The whole hover scan failing is itself a finding, not a silent pass.
+            hoverFailures: [
+              `hover scan failed: ${(error instanceof Error ? error.message : String(error)).split("\n")[0].slice(0, 120)}`,
+            ],
+          }));
         const borderRadiusViolations = await collectBorderRadiusViolations(
           page,
         ).catch(() => []);
@@ -1010,6 +1069,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             borderDividerDensity: 0,
             textDensity: 0,
             whitespaceRatio: 1,
+            viewportArea: 0,
           }),
         );
         const minimalismBudget = systemMetricBudgetFor(view.slug, vp.name);
@@ -1025,6 +1085,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           consoleErrors,
           blueColors,
           hoverViolations,
+          hoverFailures,
           borderRadiusViolations,
           overlayPresent,
           overlayClearanceIssues,
@@ -1035,9 +1096,16 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           quality,
           qualityIssues,
         };
+        // Her-minimal ratchet (#9950): blocks a NEW density breach (no baseline
+        // entry) or a baselined breach that regressed past tolerance.
+        const minimalismRatchetViolations = evaluateMinimalismRatchet(
+          base,
+          MINIMALISM_BASELINE.views[minimalismBaselineKey(view.slug, vp.name)],
+        );
         const finding: ViewFinding = {
           ...base,
-          verdict: computeVerdict(base),
+          minimalismRatchetViolations,
+          verdict: computeVerdict({ ...base, minimalismRatchetViolations }),
         };
         findings.push(finding);
 
@@ -1069,12 +1137,13 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           `<tr><td>${f.slug}</td><td>${f.viewport}</td><td>${f.verdict}</td>` +
           `<td>${f.consoleErrors.length}</td><td>${f.blueColors.length}</td>` +
           `<td>${f.borderRadiusViolations.length}</td>` +
-          `<td>${f.hoverViolations.length}</td><td>${f.overlayPresent ? "✓" : "✗"}</td>` +
+          `<td>${f.hoverViolations.length}${f.hoverFailures.length ? ` (+${f.hoverFailures.length} probe-failed)` : ""}</td><td>${f.overlayPresent ? "✓" : "✗"}</td>` +
           `<td>${f.overlayClearanceIssues.length}</td>` +
           `<td>${roundMetric(f.borderDividerDensity)}</td>` +
           `<td>${roundMetric(f.textDensity)}</td>` +
           `<td>${roundMetric(f.whitespaceRatio)}</td>` +
-          `<td>${f.minimalismBudgetViolations.length ? f.minimalismBudgetViolations.join("<br>") : "✓"}</td></tr>`,
+          `<td>${f.minimalismBudgetViolations.length ? f.minimalismBudgetViolations.join("<br>") : "✓"}</td>` +
+          `<td>${f.minimalismRatchetViolations.length ? f.minimalismRatchetViolations.join("<br>") : "✓"}</td></tr>`,
       )
       .join("\n");
     await writeFile(
@@ -1083,7 +1152,8 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `<table border="1" cellpadding="6"><tr><th>view</th><th>viewport</th>` +
         `<th>verdict</th><th>console</th><th>blue</th><th>radius</th><th>hover</th>` +
         `<th>overlay</th><th>overlay clearance</th><th>border/divider density</th>` +
-        `<th>text density</th><th>whitespace ratio</th><th>minimalism budget</th></tr>` +
+        `<th>text density</th><th>whitespace ratio</th><th>minimalism budget</th>` +
+        `<th>minimalism ratchet</th></tr>` +
         `${rows}</table>`,
       "utf8",
     );
@@ -1101,16 +1171,35 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       strict: AUDIT_STRICT,
       needsWorkStrict: AUDIT_STRICT_NEEDS_WORK,
     });
+    const minimalismRatchetFailures = findings.filter(
+      (f) => f.minimalismRatchetViolations.length > 0,
+    );
+    const hoverProbeFailures = findings.filter(
+      (f) => f.hoverFailures.length > 0,
+    );
     console.log(
       `[aesthetic-audit] ${findings.length} findings — ` +
         `broken=${broken.length} needs-work=${needsWork.length} ` +
         `needs-eyeball=${findings.filter((f) => f.verdict === "needs-eyeball").length} ` +
         `good=${findings.filter((f) => f.verdict === "good").length} ` +
         `minimalism-budget-failures=${minimalismBudgetFailures.length} ` +
+        `minimalism-ratchet-failures=${minimalismRatchetFailures.length} ` +
+        `hover-probe-failures=${hoverProbeFailures.length} ` +
         `(strict=${AUDIT_STRICT}, needs-work-strict=${AUDIT_STRICT_NEEDS_WORK}, ` +
         `undebted-broken=${gate.undebtedBroken.length}, ` +
         `undebted-needs-work=${gate.undebtedNeedsWork.length})`,
     );
+    if (hoverProbeFailures.length > 0) {
+      // Surfaced, not gated: a hover probe that cannot drive a button is a
+      // harness reliability signal, recorded per view in report.json and the
+      // manual-review stubs.
+      const detail = hoverProbeFailures
+        .map(
+          (f) => `  ${f.slug} @ ${f.viewport}: ${f.hoverFailures.join("; ")}`,
+        )
+        .join("\n");
+      console.log(`[aesthetic-audit] hover probe failures:\n${detail}`);
+    }
     if (minimalismBudgetFailures.length > 0) {
       const detail = minimalismBudgetFailures
         .map(
@@ -1126,6 +1215,26 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           `Update the UI to reduce divider/text density or increase whitespace; ` +
           `only adjust SYSTEM_VIEW_METRIC_BUDGETS when intentionally ratcheting ` +
           `from a fresh clean baseline.`,
+      );
+    }
+    // Her-minimal ratchet gate (#9950) — unconditional, like the system-view
+    // budget above: a NEW divider-density breach, or a baselined breach that
+    // regressed past its recorded metrics + tolerance, fails the run.
+    if (minimalismRatchetFailures.length > 0) {
+      const detail = minimalismRatchetFailures
+        .map(
+          (f) =>
+            `  ${f.slug} @ ${f.viewport}: ${f.minimalismRatchetViolations.join("; ")}`,
+        )
+        .join("\n");
+      throw new Error(
+        `[aesthetic-audit] Her-minimal ratchet failed for ` +
+          `${minimalismRatchetFailures.length} view(s):\n${detail}\n` +
+          `Remove redundant borders/dividers (or de-cramp the layout) so the ` +
+          `view drops back under its baseline. Only after an intentional, ` +
+          `reviewed design change, refresh the committed baseline from this ` +
+          `run's report.json:\n` +
+          `  bun run --cwd packages/app audit:app:minimalism:update`,
       );
     }
     if (gate.failed) {

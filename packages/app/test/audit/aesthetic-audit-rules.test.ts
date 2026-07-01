@@ -1,14 +1,21 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   bucket,
+  buildMinimalismBaseline,
   computeVerdict,
   evaluateAestheticMetricBudget,
+  evaluateMinimalismRatchet,
   evaluateStrictGate,
   exceedsMinimalismBudget,
   type GateFinding,
   MINIMALISM_DENSITY_CEILING,
+  MINIMALISM_RATCHET_TOLERANCE,
+  minimalismBaselineKey,
   minimalismDensity,
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
+  parseMinimalismBaseline,
   parseNavigationTabPaths,
   parseRgb,
   type VerdictFinding,
@@ -284,6 +291,315 @@ describe("minimalism density gate (#9950)", () => {
     const f = finding({ borderDividerCount: 20, viewportArea: 1_000_000 });
     expect(exceedsMinimalismBudget(f, 10)).toBe(true);
     expect(exceedsMinimalismBudget(f, 30)).toBe(false);
+  });
+});
+
+describe("minimalism ratchet (#9950 Her-minimal gate teeth)", () => {
+  // A breaching gui view: density 100/Mpx² over the 45 ceiling, with the
+  // count/area pair kept numerically consistent with borderDividerDensity.
+  const breaching = (o: Partial<VerdictFinding> = {}): VerdictFinding => ({
+    slug: "plugin-foo-gui",
+    viewType: "gui",
+    consoleErrors: [],
+    qualityIssues: [],
+    readableChars: 500,
+    borderDividerDensity: 100,
+    textDensity: 10,
+    whitespaceRatio: 0.4,
+    blueColors: [],
+    hoverViolations: [],
+    overlayPresent: true,
+    overlayClearanceIssues: [],
+    borderRadiusViolations: [],
+    borderDividerCount: 100,
+    viewportArea: 1_000_000,
+    ...o,
+  });
+  const baselineEntry = {
+    borderDividerDensity: 100,
+    textDensity: 10,
+    whitespaceRatio: 0.4,
+  };
+
+  it("a breaching view NOT in the baseline is a new breach → blocks as needs-work", () => {
+    const violations = evaluateMinimalismRatchet(breaching(), undefined);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatch(/new minimalism breach/);
+    expect(violations[0]).toMatch(/no committed baseline entry/);
+    expect(
+      computeVerdict({
+        ...breaching(),
+        minimalismRatchetViolations: violations,
+      }),
+    ).toBe("needs-work");
+  });
+
+  it("a baselined breach within tolerance stays SOFT (needs-eyeball, not blocking)", () => {
+    const violations = evaluateMinimalismRatchet(breaching(), baselineEntry);
+    expect(violations).toEqual([]);
+    expect(
+      computeVerdict({
+        ...breaching(),
+        minimalismRatchetViolations: violations,
+      }),
+    ).toBe("needs-eyeball");
+  });
+
+  it("a baselined view that regressed past tolerance blocks — on any of the three metrics", () => {
+    // Divider density: 100 → 106 is > 100 × 1.05.
+    const denser = breaching({ borderDividerDensity: 106 });
+    const denserViolations = evaluateMinimalismRatchet(denser, baselineEntry);
+    expect(denserViolations).toHaveLength(1);
+    expect(denserViolations[0]).toMatch(/border\/divider density regressed/);
+    expect(
+      computeVerdict({
+        ...denser,
+        minimalismRatchetViolations: denserViolations,
+      }),
+    ).toBe("needs-work");
+    // Text density: 10 → 10.6 is > 10 × 1.05.
+    expect(
+      evaluateMinimalismRatchet(
+        breaching({ textDensity: 10.6 }),
+        baselineEntry,
+      ),
+    ).toEqual([expect.stringMatching(/text density regressed/)]);
+    // Whitespace (lower is worse): 0.4 → 0.37 is < 0.4 × 0.95.
+    expect(
+      evaluateMinimalismRatchet(
+        breaching({ whitespaceRatio: 0.37 }),
+        baselineEntry,
+      ),
+    ).toEqual([expect.stringMatching(/whitespace ratio regressed/)]);
+  });
+
+  it("drift exactly at the ±5% tolerance boundary does not block", () => {
+    expect(
+      evaluateMinimalismRatchet(
+        breaching({
+          borderDividerDensity: 105,
+          textDensity: 10.5,
+          whitespaceRatio: 0.38,
+        }),
+        baselineEntry,
+      ),
+    ).toEqual([]);
+    expect(MINIMALISM_RATCHET_TOLERANCE).toBe(0.05);
+  });
+
+  it("an improvement never blocks (and tightening is only via a deliberate refresh)", () => {
+    expect(
+      evaluateMinimalismRatchet(
+        breaching({
+          borderDividerDensity: 60,
+          textDensity: 5,
+          whitespaceRatio: 0.6,
+        }),
+        baselineEntry,
+      ),
+    ).toEqual([]);
+  });
+
+  it("views at or under the ceiling never engage the ratchet — they behave as before", () => {
+    const clean = breaching({
+      borderDividerDensity: MINIMALISM_DENSITY_CEILING,
+      borderDividerCount: MINIMALISM_DENSITY_CEILING,
+      // Even with a baseline entry that current metrics "regress" against.
+      textDensity: 99,
+      whitespaceRatio: 0.01,
+    });
+    expect(evaluateMinimalismRatchet(clean, undefined)).toEqual([]);
+    expect(evaluateMinimalismRatchet(clean, baselineEntry)).toEqual([]);
+    expect(computeVerdict({ ...clean, minimalismRatchetViolations: [] })).toBe(
+      "good",
+    );
+  });
+
+  it("TUI and overlay-native surfaces are exempt from the ratchet", () => {
+    expect(
+      evaluateMinimalismRatchet(breaching({ viewType: "tui" }), undefined),
+    ).toEqual([]);
+    expect(
+      evaluateMinimalismRatchet(breaching({ slug: "builtin-chat" }), undefined),
+    ).toEqual([]);
+  });
+
+  it("honors caller-supplied ceiling and tolerance overrides", () => {
+    const f = breaching({ borderDividerDensity: 30, borderDividerCount: 30 });
+    // Density 30 breaches a ceiling of 20 → new breach.
+    expect(
+      evaluateMinimalismRatchet(f, undefined, { ceiling: 20 }),
+    ).toHaveLength(1);
+    // A 10% tolerance forgives the 6% regression that blocks at 5%.
+    expect(
+      evaluateMinimalismRatchet(
+        breaching({ borderDividerDensity: 106 }),
+        baselineEntry,
+        { tolerance: 0.1 },
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("minimalism baseline parse/build (#9950 update path)", () => {
+  it("minimalismBaselineKey is `<slug>@<viewport>`", () => {
+    expect(minimalismBaselineKey("builtin-settings", "desktop-landscape")).toBe(
+      "builtin-settings@desktop-landscape",
+    );
+  });
+
+  it("parses a valid baseline and round-trips the entries", () => {
+    const parsed = parseMinimalismBaseline(
+      JSON.stringify({
+        generatedAt: "2026-07-01T00:00:00.000Z",
+        views: {
+          "builtin-settings@desktop-landscape": {
+            borderDividerDensity: 512.3,
+            textDensity: 61.2,
+            whitespaceRatio: 0.18,
+          },
+        },
+      }),
+    );
+    expect(parsed.generatedAt).toBe("2026-07-01T00:00:00.000Z");
+    expect(parsed.views["builtin-settings@desktop-landscape"]).toEqual({
+      borderDividerDensity: 512.3,
+      textDensity: 61.2,
+      whitespaceRatio: 0.18,
+    });
+  });
+
+  it("throws loudly on malformed baselines — a corrupt file must never soften the gate", () => {
+    expect(() => parseMinimalismBaseline("[]")).toThrow(/JSON object/);
+    expect(() => parseMinimalismBaseline("{}")).toThrow(/generatedAt/);
+    expect(() =>
+      parseMinimalismBaseline(JSON.stringify({ generatedAt: "x" })),
+    ).toThrow(/views/);
+    expect(() =>
+      parseMinimalismBaseline(
+        JSON.stringify({ generatedAt: "x", views: { "a@b": 3 } }),
+      ),
+    ).toThrow(/must be an object/);
+    expect(() =>
+      parseMinimalismBaseline(
+        JSON.stringify({
+          generatedAt: "x",
+          views: {
+            "a@b": {
+              borderDividerDensity: "512",
+              textDensity: 1,
+              whitespaceRatio: 0.5,
+            },
+          },
+        }),
+      ),
+    ).toThrow(/non-numeric `borderDividerDensity`/);
+  });
+
+  it("the COMMITTED baseline file parses (spec-load integrity)", () => {
+    // process.cwd() is the vitest root (packages/app); jsdom rewrites
+    // import.meta.url to a non-file scheme, so resolve from the root.
+    const committed = readFileSync(
+      path.join(
+        process.cwd(),
+        "test/ui-smoke/aesthetic-minimalism-baseline.json",
+      ),
+      "utf8",
+    );
+    const parsed = parseMinimalismBaseline(committed);
+    expect(typeof parsed.generatedAt).toBe("string");
+    // Every committed entry must itself be a breach — a non-breaching entry is
+    // stale and should have been pruned by the update script.
+    for (const [key, entry] of Object.entries(parsed.views)) {
+      expect(
+        entry.borderDividerDensity,
+        `${key} baselined below the ceiling — stale entry`,
+      ).toBeGreaterThan(MINIMALISM_DENSITY_CEILING);
+    }
+  });
+
+  it("update mode records exactly the breaching non-exempt views, sorted, and prunes the rest", () => {
+    const baseline = buildMinimalismBaseline(
+      [
+        // Breaching gui views — recorded (given out of order to test sorting).
+        {
+          slug: "builtin-settings",
+          viewport: "mobile-portrait",
+          viewType: "gui",
+          borderDividerDensity: 300,
+          textDensity: 61.2,
+          whitespaceRatio: 0.18,
+        },
+        {
+          slug: "builtin-automations",
+          viewport: "desktop-landscape",
+          viewType: "gui",
+          borderDividerDensity: 46,
+          textDensity: 20,
+          whitespaceRatio: 0.3,
+        },
+        // At the ceiling → NOT a breach → pruned.
+        {
+          slug: "builtin-files",
+          viewport: "desktop-landscape",
+          viewType: "gui",
+          borderDividerDensity: MINIMALISM_DENSITY_CEILING,
+          textDensity: 10,
+          whitespaceRatio: 0.5,
+        },
+        // Exempt surfaces → never recorded even when dense.
+        {
+          slug: "plugin-terminal-tui",
+          viewport: "desktop-landscape",
+          viewType: "tui",
+          borderDividerDensity: 900,
+          textDensity: 90,
+          whitespaceRatio: 0.05,
+        },
+        {
+          slug: "builtin-chat",
+          viewport: "mobile-portrait",
+          viewType: "gui",
+          borderDividerDensity: 900,
+          textDensity: 90,
+          whitespaceRatio: 0.05,
+        },
+      ],
+      "2026-07-01T12:00:00.000Z",
+    );
+    expect(baseline.generatedAt).toBe("2026-07-01T12:00:00.000Z");
+    expect(Object.keys(baseline.views)).toEqual([
+      "builtin-automations@desktop-landscape",
+      "builtin-settings@mobile-portrait",
+    ]);
+    expect(baseline.views["builtin-settings@mobile-portrait"]).toEqual({
+      borderDividerDensity: 300,
+      textDensity: 61.2,
+      whitespaceRatio: 0.18,
+    });
+    // The build output feeds straight back into the gate: the recorded view is
+    // now within tolerance (soft), an unrecorded breach still blocks.
+    const recorded = baseline.views["builtin-settings@mobile-portrait"];
+    expect(
+      evaluateMinimalismRatchet(
+        {
+          slug: "builtin-settings",
+          viewType: "gui",
+          consoleErrors: [],
+          qualityIssues: [],
+          readableChars: 500,
+          borderDividerDensity: 300,
+          textDensity: 61.2,
+          whitespaceRatio: 0.18,
+          blueColors: [],
+          hoverViolations: [],
+          overlayPresent: true,
+          overlayClearanceIssues: [],
+          borderRadiusViolations: [],
+        },
+        recorded,
+      ),
+    ).toEqual([]);
   });
 });
 
