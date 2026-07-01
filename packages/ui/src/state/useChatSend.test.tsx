@@ -11,7 +11,11 @@ import type {
 } from "../api";
 import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
-import { type UseChatSendDeps, useChatSend } from "./useChatSend";
+import {
+  buildSendFailureNotice,
+  type UseChatSendDeps,
+  useChatSend,
+} from "./useChatSend";
 
 const SHARED_BASE = "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123";
 const DEDICATED_BASE = "https://agent-456.elizacloud.ai";
@@ -951,5 +955,31 @@ describe("useChatSend empty-reply failure surfacing (#10231)", () => {
       (m) => m.role === "assistant",
     );
     expect(assistant.length).toBe(0);
+  });
+});
+
+describe("buildSendFailureNotice (#10231)", () => {
+  it("maps auth/rate/availability/kind failures to status-specific copy", () => {
+    expect(buildSendFailureNotice({ status: 401 })).toContain(
+      "session expired",
+    );
+    expect(buildSendFailureNotice({ status: 403 })).toContain(
+      "session expired",
+    );
+    expect(buildSendFailureNotice({ status: 429 })).toContain("busy");
+    expect(buildSendFailureNotice({ status: 503 })).toContain("waking up");
+    expect(buildSendFailureNotice({ status: 502 })).toContain("waking up");
+    expect(buildSendFailureNotice({ kind: "timeout" })).toContain(
+      "took too long",
+    );
+    expect(buildSendFailureNotice({ kind: "network" })).toContain(
+      "check your connection",
+    );
+  });
+
+  it("falls back to a generic resend notice for an unknown failure (never empty)", () => {
+    const notice = buildSendFailureNotice(new Error("boom"));
+    expect(notice.length).toBeGreaterThan(0);
+    expect(notice).toContain("resend");
   });
 });

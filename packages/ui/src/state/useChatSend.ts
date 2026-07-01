@@ -105,6 +105,33 @@ function asStringList(value: unknown): string[] {
   return [];
 }
 
+/**
+ * Map a send/stream failure (HTTP status + error `kind`) to a user-facing notice
+ * so a stalled turn is never silent dead air. Shared by the main-chat send path
+ * and the action/inbox/connector send path — both must surface the same
+ * status-specific message. (#10231)
+ */
+export function buildSendFailureNotice(err: unknown): string {
+  const status = (err as { status?: number }).status;
+  const kind = (err as { kind?: string }).kind;
+  if (status === 401 || status === 403) {
+    return "Your session expired — sign in again and resend your message.";
+  }
+  if (status === 429) {
+    return "The agent is busy right now — wait a few seconds and resend.";
+  }
+  if (status === 503 || status === 502) {
+    return "The agent is still waking up — give it a moment and resend.";
+  }
+  if (kind === "timeout") {
+    return "The agent took too long to respond — give it a moment and resend.";
+  }
+  if (kind === "network") {
+    return "Couldn't reach the agent — check your connection and resend.";
+  }
+  return "That message didn't go through — please resend.";
+}
+
 function abortServerConversationTurn(
   roomId: string | null | undefined,
   reason: string,
@@ -1208,20 +1235,8 @@ export function useChatSend(deps: UseChatSendDeps) {
           // idle timeout is 60s — without this the user just sees the dots
           // vanish and nothing replace them, reading as "my message was lost").
           dropEmptyAssistantPlaceholder(assistantMsgId);
-          const kind = (err as { kind?: string }).kind;
           const isAuth = status === 401 || status === 403;
-          const notice = isAuth
-            ? "Your session expired — sign in again and resend your message."
-            : status === 429
-              ? "The agent is busy right now — wait a few seconds and resend."
-              : status === 503 || status === 502
-                ? "The agent is still waking up — give it a moment and resend."
-                : kind === "timeout"
-                  ? "The agent took too long to respond — give it a moment and resend."
-                  : kind === "network"
-                    ? "Couldn't reach the agent — check your connection and resend."
-                    : "That message didn't go through — please resend.";
-          setActionNotice(notice, "error", 8_000);
+          setActionNotice(buildSendFailureNotice(err), "error", 8_000);
           // Reconcile from the server for non-auth errors — loadConversationMessages
           // no longer wipes the thread on transient failures (404-only clear), so
           // this is safe; skip on auth where the reload would just fail again.
@@ -1625,6 +1640,10 @@ export function useChatSend(deps: UseChatSendDeps) {
             dropEmptyAssistantPlaceholder(assistantMsgId);
             return;
           }
+          // Surface a status-specific notice so an inbox/connector send that
+          // 5xxs, times out, or auth-fails is never silent dead air — the
+          // main-chat send path already does this; this one did not (#10231).
+          setActionNotice(buildSendFailureNotice(err), "error", 8_000);
           await loadConversationMessages(convId);
         } finally {
           // Belt-and-braces: cancel any frame still pending (idempotent).
